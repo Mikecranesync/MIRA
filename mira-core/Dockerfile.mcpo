@@ -1,0 +1,2 @@
+FROM ghcr.io/open-webui/mcpo:main
+RUN uv pip install --python /app/.venv/bin/python "fastmcp==0.4.*"

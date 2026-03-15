@@ -1,0 +1,160 @@
+================================================================
+  CCW DEPLOY INSTRUCTIONS — Micro820 Program v3.0
+  PLC: 2080-LC20-20QBB at 192.168.1.100
+  Project: Cosmos_Demo_v1.0
+================================================================
+
+WHAT'S NEW IN v3.1:
+  - O-03 PBRunLED: illuminated Sweideer RUN pushbutton (ON = running)
+  - Comments updated with physical terminal labels (I-XX, O-XX)
+WHAT'S NEW IN v3.0:
+  - FWD/OFF/REV selector (replaces AUTO/MANUAL/OFF)
+  - Safety contactor Q1 on O-02 (hardwired E-stop)
+  - VFD Modbus RTU WRITE commands (start/stop/direction/speed)
+  - Updated I/O mapping per master wiring guide
+
+================================================================
+STEP 1: COPY FILES
+================================================================
+
+  Option A — Manual copy:
+    1. Copy Micro820_v3_Program.st →
+       C:\Users\hharp\Documents\CCW\Cosmos_Demo_v1.0\
+       Controller\Controller\Micro820\Micro820\Prog2.stf
+    2. Copy MbSrvConf_v3.xml →
+       C:\Users\hharp\Documents\CCW\Cosmos_Demo_v1.0\
+       Controller\Controller\MbSrvConf.xml
+
+  Option B — If deploy_dropin.py exists, update its paths.
+
+================================================================
+STEP 2: OPEN PROJECT IN CCW
+================================================================
+
+  1. Launch Connected Components Workbench
+  2. File → Open Project → Cosmos_Demo_v1.0.ccwsln
+  3. Wait for full load
+
+================================================================
+STEP 3: ADD NEW VARIABLES
+================================================================
+
+  Open CCW_VARIABLES_v3.txt and add ALL new variables listed.
+
+  Quick list (add in Global Variables):
+    dir_fwd               BOOL    FALSE
+    dir_rev               BOOL    FALSE
+    dir_off               BOOL    FALSE
+    dir_fault             BOOL    FALSE
+    estop_wiring_fault    BOOL    FALSE
+    prev_button           BOOL    FALSE
+    vfd_poll_active       BOOL    FALSE
+    vfd_poll_step         INT     0
+    vfd_freq_setpoint     INT     0
+    vfd_cmd_word          INT     5
+
+  Add MSG instances:
+    mb_write_cmd          MSG
+    mb_write_freq         MSG
+
+  Add config structs:
+    write_cmd_local_cfg   MSG_MODBUS_LOCAL
+    write_cmd_target_cfg  MSG_MODBUS_TARGET
+    write_freq_local_cfg  MSG_MODBUS_LOCAL
+    write_freq_target_cfg MSG_MODBUS_TARGET
+
+  Add data arrays:
+    write_cmd_data        INT[1..10]
+    write_freq_data       INT[1..10]
+
+================================================================
+STEP 4: VERIFY SERIAL PORT SETTINGS
+================================================================
+
+  In Controller → Serial Port (or Embedded Serial):
+    Protocol:    Modbus RTU Master
+    Baud Rate:   9600
+    Data Bits:   8
+    Parity:      None
+    Stop Bits:   2
+
+  These should already be set from v2.0.
+
+================================================================
+STEP 5: UPDATE MODBUS TCP MAPPING
+================================================================
+
+  Delete existing mapping rows and re-add from MbSrvConf_v3.xml.
+
+  New coils (v3.0 additions):
+    Coil 7:  dir_fwd              (was auto_mode)
+    Coil 8:  dir_rev              (NEW)
+    Coil 10: estop_wiring_fault   (NEW)
+    Coil 11: dir_fault            (NEW)
+
+  New registers (v3.0 additions):
+    400115:  vfd_cmd_word         (NEW — current VFD command)
+    400116:  vfd_freq_setpoint    (NEW — current freq setpoint)
+
+================================================================
+STEP 6: REBUILD + DOWNLOAD
+================================================================
+
+  1. Ctrl+Shift+B to rebuild
+  2. Fix any compile errors (likely missing variables — go to Step 3)
+  3. Go Online → Connect to PLC at 192.168.1.100
+  4. Switch to PROGRAM mode
+  5. Download
+  6. Switch to RUN mode
+  7. Verify heartbeat toggling in online monitor
+
+================================================================
+STEP 7: VERIFY
+================================================================
+
+  In CCW Online Monitor, check:
+
+  E-Stop:
+    [ ] E-stop released → I-02=1, I-03=0, e_stop_active=FALSE
+    [ ] E-stop pressed  → I-02=0, I-03=1, e_stop_active=TRUE
+    [ ] O-02 (contactor Q1) = NOT e_stop_active
+
+  Selector:
+    [ ] FWD position → I-00=1, I-01=0, dir_fwd=TRUE
+    [ ] OFF position → I-00=0, I-01=0, dir_off=TRUE
+    [ ] REV position → I-00=0, I-01=1, dir_rev=TRUE
+
+  Run:
+    [ ] Press RUN button → button_rising pulses TRUE
+    [ ] With selector FWD + E-stop OK → conv_state goes 0→1→2
+    [ ] Green light (O-00) ON when conv_state=2
+    [ ] RUN pushbutton LED (O-03) ON when conv_state=2
+    [ ] VFD_cmd_word = 1 (forward) during run
+
+  Stop:
+    [ ] Selector to OFF → conv_state goes 2→3→0
+    [ ] VFD_cmd_word = 5 (stop)
+    [ ] Green light (O-00) OFF
+    [ ] Pushbutton LED (O-03) OFF
+
+  Fault:
+    [ ] Press E-stop → conv_state = 4, error_code = 6
+    [ ] Red light (O-01) ON
+    [ ] O-02 (contactor Q1) OFF — VFD loses power
+    [ ] Release E-stop + press RUN → conv_state returns to 0
+
+  VFD Comms:
+    [ ] vfd_comm_ok = TRUE (Modbus read succeeding)
+    [ ] vfd_frequency shows actual VFD Hz * 10
+    [ ] vfd_cmd_word changes with state machine
+
+================================================================
+ERROR CODES (v3.0):
+
+  0 = No fault
+  6 = E-stop active
+  7 = E-stop wiring fault (dual-channel violation)
+  8 = Selector fault (FWD + REV both active)
+  9 = VFD communication error
+
+================================================================

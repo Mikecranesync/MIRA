@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mira-mcp": {
+      "command": "python",
+      "args": ["/mcp/server.py"],
+      "env": { "MIRA_DB_PATH": "/data/mira.db" }
+    }
+  }
+}

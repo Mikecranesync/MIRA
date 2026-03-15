@@ -1,0 +1,29 @@
+services:
+  telegram-bot:
+    build: ./telegram
+    container_name: mira-bot-telegram
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      - MCP_BASE_URL=${MCP_BASE_URL:-http://mira-mcp:8001}
+      - MIRA_DB_PATH=/data/mira.db
+      - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
+      - VISION_MODEL=${VISION_MODEL:-qwen2.5vl:7b}
+    volumes:
+      - ../mira-bridge/data:/data:rw
+    networks:
+      - bot-net
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  bot-net:
+    external: true
+  core-net:
+    external: true
