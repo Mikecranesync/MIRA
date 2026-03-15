@@ -1,0 +1,5 @@
+slack-bolt==1.*
+slack-sdk==3.*
+httpx==0.27.*
+Pillow>=12.0
+pytesseract>=0.3

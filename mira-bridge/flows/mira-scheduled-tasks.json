@@ -1,0 +1,235 @@
+[
+    {
+        "id": "mira-sched-comment",
+        "type": "comment",
+        "name": "MIRA Scheduled Tasks — Proactive alerts and reports",
+        "info": "5 scheduled flows:\n1. Fault Watchdog (60s)\n2. Morning Briefing (06:00)\n3. Shift Handoff (06:00, 14:00, 22:00)\n4. Comms Health (5min)\n5. Weekly Trend (Monday 07:00)\n\nAll POST to Slack via SLACK_WEBHOOK_URL env var."
+    },
+
+    {"id": "sched-sep-1", "type": "comment", "name": "=== 1. FAULT WATCHDOG (every 60 seconds) ==="},
+
+    {
+        "id": "fault-watchdog-inject",
+        "type": "inject",
+        "name": "Every 60s",
+        "repeat": "60",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "30",
+        "wires": [["fault-watchdog-query"]]
+    },
+    {
+        "id": "fault-watchdog-query",
+        "type": "sqlite",
+        "name": "Unalerted faults",
+        "mydb": "mira-sched-db",
+        "sqlquery": "fixed",
+        "sql": "SELECT f.id, f.equipment_id, f.fault_code, f.description, f.severity, f.timestamp, e.name as equipment_name FROM faults f JOIN equipment_status e ON f.equipment_id = e.equipment_id WHERE f.resolved = 0 AND f.alerted = 0",
+        "wires": [["fault-watchdog-check"]]
+    },
+    {
+        "id": "fault-watchdog-check",
+        "type": "function",
+        "name": "Format fault alerts",
+        "func": "const faults = msg.payload;\nif (!faults || faults.length === 0) return null;\n\nconst lines = faults.map(f => {\n    const icon = f.severity === 'critical' ? '🔴' : f.severity === 'warning' ? '🟡' : 'ℹ️';\n    return `${icon} *[${f.severity.toUpperCase()}]* ${f.equipment_name} (${f.equipment_id}) — ${f.fault_code}: ${f.description} (${f.timestamp})`;\n});\n\nmsg.payload = {\n    text: `⚠️ *MIRA Fault Alert*\\n\\n${lines.join('\\n')}`\n};\n\n// Store fault IDs to mark as alerted\nmsg.fault_ids = faults.map(f => f.id);\nreturn msg;",
+        "wires": [["fault-watchdog-slack", "fault-watchdog-mark"]]
+    },
+    {
+        "id": "fault-watchdog-slack",
+        "type": "http request",
+        "name": "POST to Slack",
+        "method": "POST",
+        "ret": "txt",
+        "url": "${SLACK_WEBHOOK_URL}",
+        "wires": [[]]
+    },
+    {
+        "id": "fault-watchdog-mark",
+        "type": "function",
+        "name": "Build UPDATE query",
+        "func": "const ids = msg.fault_ids;\nif (!ids || ids.length === 0) return null;\nmsg.params = {};\nmsg.topic = `UPDATE faults SET alerted = 1 WHERE id IN (${ids.join(',')})`;\nreturn msg;",
+        "wires": [["fault-watchdog-update"]]
+    },
+    {
+        "id": "fault-watchdog-update",
+        "type": "sqlite",
+        "name": "Mark alerted",
+        "mydb": "mira-sched-db",
+        "sqlquery": "msg.topic",
+        "wires": [[]]
+    },
+
+    {"id": "sched-sep-2", "type": "comment", "name": "=== 2. MORNING BRIEFING (daily 06:00) ==="},
+
+    {
+        "id": "morning-briefing-inject",
+        "type": "inject",
+        "name": "Daily 06:00",
+        "repeat": "",
+        "crontab": "00 06 * * *",
+        "once": false,
+        "wires": [["morning-briefing-query"]]
+    },
+    {
+        "id": "morning-briefing-query",
+        "type": "sqlite",
+        "name": "24h summary",
+        "mydb": "mira-sched-db",
+        "sqlquery": "fixed",
+        "sql": "SELECT 'faults_24h' as metric, COUNT(*) as value FROM faults WHERE timestamp >= datetime('now', '-24 hours') UNION ALL SELECT 'active_faults', COUNT(*) FROM faults WHERE resolved = 0 UNION ALL SELECT 'equipment_count', COUNT(*) FROM equipment_status UNION ALL SELECT 'running_count', COUNT(*) FROM equipment_status WHERE status = 'running'",
+        "wires": [["morning-briefing-format"]]
+    },
+    {
+        "id": "morning-briefing-format",
+        "type": "function",
+        "name": "Format briefing",
+        "func": "const rows = msg.payload || [];\nconst metrics = {};\nrows.forEach(r => { metrics[r.metric] = r.value; });\n\nconst now = new Date().toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'});\n\nmsg.payload = {\n    text: `☀️ *MIRA Morning Briefing — ${now}*\\n\\n` +\n        `📊 Equipment: ${metrics.running_count || 0}/${metrics.equipment_count || 0} running\\n` +\n        `⚠️ Active faults: ${metrics.active_faults || 0}\\n` +\n        `📋 Faults in last 24h: ${metrics.faults_24h || 0}\\n\\n` +\n        `Use \\`/mira-faults\\` for details.`\n};\nreturn msg;",
+        "wires": [["morning-briefing-slack"]]
+    },
+    {
+        "id": "morning-briefing-slack",
+        "type": "http request",
+        "name": "POST to Slack",
+        "method": "POST",
+        "ret": "txt",
+        "url": "${SLACK_WEBHOOK_URL}",
+        "wires": [[]]
+    },
+
+    {"id": "sched-sep-3", "type": "comment", "name": "=== 3. SHIFT HANDOFF (06:00, 14:00, 22:00) ==="},
+
+    {
+        "id": "shift-handoff-inject",
+        "type": "inject",
+        "name": "Shift change",
+        "repeat": "",
+        "crontab": "00 06,14,22 * * *",
+        "once": false,
+        "wires": [["shift-handoff-query"]]
+    },
+    {
+        "id": "shift-handoff-query",
+        "type": "sqlite",
+        "name": "8h events",
+        "mydb": "mira-sched-db",
+        "sqlquery": "fixed",
+        "sql": "SELECT f.fault_code, f.description, f.severity, f.timestamp, f.resolved, e.name as equipment_name FROM faults f JOIN equipment_status e ON f.equipment_id = e.equipment_id WHERE f.timestamp >= datetime('now', '-8 hours') ORDER BY f.timestamp DESC",
+        "wires": [["shift-handoff-format"]]
+    },
+    {
+        "id": "shift-handoff-format",
+        "type": "function",
+        "name": "Format handoff",
+        "func": "const events = msg.payload || [];\nconst now = new Date();\nconst hour = now.getHours();\nlet shift = 'Night';\nif (hour >= 6 && hour < 14) shift = 'Day';\nelse if (hour >= 14 && hour < 22) shift = 'Evening';\n\nlet text = `🔄 *Shift Handoff — ${shift} Shift Starting*\\n\\n`;\n\nif (events.length === 0) {\n    text += 'No events in the last 8 hours. Clean shift. ✅';\n} else {\n    text += `${events.length} event(s) in the last 8 hours:\\n`;\n    events.forEach(e => {\n        const status = e.resolved ? '✅ Resolved' : '⚠️ Active';\n        text += `• ${e.equipment_name} — ${e.fault_code}: ${e.description} [${status}]\\n`;\n    });\n}\n\nmsg.payload = { text };\nreturn msg;",
+        "wires": [["shift-handoff-slack"]]
+    },
+    {
+        "id": "shift-handoff-slack",
+        "type": "http request",
+        "name": "POST to Slack",
+        "method": "POST",
+        "ret": "txt",
+        "url": "${SLACK_WEBHOOK_URL}",
+        "wires": [[]]
+    },
+
+    {"id": "sched-sep-4", "type": "comment", "name": "=== 4. COMMS HEALTH CHECK (every 5 minutes) ==="},
+
+    {
+        "id": "comms-health-inject",
+        "type": "inject",
+        "name": "Every 5min",
+        "repeat": "300",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "60",
+        "wires": [["comms-health-core", "comms-health-mcp", "comms-health-ollama"]]
+    },
+    {
+        "id": "comms-health-core",
+        "type": "http request",
+        "name": "Ping mira-core",
+        "method": "GET",
+        "ret": "txt",
+        "url": "http://mira-core:8080/health",
+        "wires": [["comms-health-collect"]]
+    },
+    {
+        "id": "comms-health-mcp",
+        "type": "http request",
+        "name": "Ping mira-mcp",
+        "method": "GET",
+        "ret": "txt",
+        "url": "http://mira-mcp:8000/sse",
+        "wires": [["comms-health-collect"]]
+    },
+    {
+        "id": "comms-health-ollama",
+        "type": "http request",
+        "name": "Ping Ollama",
+        "method": "GET",
+        "ret": "txt",
+        "url": "http://host.docker.internal:11434/api/tags",
+        "wires": [["comms-health-collect"]]
+    },
+    {
+        "id": "comms-health-collect",
+        "type": "function",
+        "name": "Check response",
+        "func": "// Initialize context for collecting results\nconst ctx = context.get('health') || {checks: 0, failures: []};\nctx.checks++;\n\nif (msg.statusCode >= 400 || msg.statusCode === undefined) {\n    ctx.failures.push(msg.url || 'unknown service');\n}\n\n// Wait for all 3 checks\nif (ctx.checks < 3) {\n    context.set('health', ctx);\n    return null;\n}\n\n// All checks complete\ncontext.set('health', {checks: 0, failures: []});\n\nif (ctx.failures.length === 0) return null; // all healthy\n\nmsg.payload = {\n    text: `🚨 *MIRA Comms Health Alert*\\n\\n` +\n        `${ctx.failures.length} service(s) unreachable:\\n` +\n        ctx.failures.map(f => `• ${f}`).join('\\n') +\n        `\\n\\nCheck Docker containers: \\`docker ps\\``\n};\nreturn msg;",
+        "wires": [["comms-health-slack"]]
+    },
+    {
+        "id": "comms-health-slack",
+        "type": "http request",
+        "name": "POST to Slack",
+        "method": "POST",
+        "ret": "txt",
+        "url": "${SLACK_WEBHOOK_URL}",
+        "wires": [[]]
+    },
+
+    {"id": "sched-sep-5", "type": "comment", "name": "=== 5. WEEKLY TREND REPORT (Monday 07:00) ==="},
+
+    {
+        "id": "weekly-trend-inject",
+        "type": "inject",
+        "name": "Monday 07:00",
+        "repeat": "",
+        "crontab": "00 07 * * 1",
+        "once": false,
+        "wires": [["weekly-trend-query"]]
+    },
+    {
+        "id": "weekly-trend-query",
+        "type": "sqlite",
+        "name": "7-day stats",
+        "mydb": "mira-sched-db",
+        "sqlquery": "fixed",
+        "sql": "SELECT date(f.timestamp) as day, COUNT(*) as fault_count, GROUP_CONCAT(DISTINCT f.fault_code) as codes FROM faults f WHERE f.timestamp >= datetime('now', '-7 days') GROUP BY date(f.timestamp) ORDER BY day",
+        "wires": [["weekly-trend-format"]]
+    },
+    {
+        "id": "weekly-trend-format",
+        "type": "function",
+        "name": "Format trend",
+        "func": "const days = msg.payload || [];\nconst total = days.reduce((sum, d) => sum + d.fault_count, 0);\nconst avgPerDay = days.length > 0 ? (total / 7).toFixed(1) : '0';\n\nlet text = `📈 *MIRA Weekly Trend Report*\\n\\n`;\ntext += `Total faults this week: ${total}\\n`;\ntext += `Average per day: ${avgPerDay}\\n\\n`;\n\nif (days.length === 0) {\n    text += '🎉 No faults recorded this week!';\n} else {\n    text += 'Daily breakdown:\\n';\n    days.forEach(d => {\n        text += `• ${d.day}: ${d.fault_count} fault(s) — ${d.codes}\\n`;\n    });\n}\n\nmsg.payload = { text };\nreturn msg;",
+        "wires": [["weekly-trend-slack"]]
+    },
+    {
+        "id": "weekly-trend-slack",
+        "type": "http request",
+        "name": "POST to Slack",
+        "method": "POST",
+        "ret": "txt",
+        "url": "${SLACK_WEBHOOK_URL}",
+        "wires": [[]]
+    },
+
+    {
+        "id": "mira-sched-db",
+        "type": "sqlitedb",
+        "db": "/mira-db/mira.db",
+        "mode": "RWC"
+    }
+]

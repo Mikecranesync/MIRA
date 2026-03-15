@@ -1,11 +1,12 @@
 services:
   node-red:
-    image: nodered/node-red:latest
+    build: .
     container_name: mira-bridge
     ports:
       - "${NODERED_PORT:-1880}:1880"
     environment:
       - TZ=${TZ:-America/New_York}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
     volumes:
       - node-red-data:/data
       - ${MIRA_DB_PATH:-./data}:/mira-db
