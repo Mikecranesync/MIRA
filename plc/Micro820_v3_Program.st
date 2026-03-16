@@ -1,5 +1,5 @@
 PROGRAM Prog2
-  (* ================================================================ *)
+(* ================================================================ *)
   (* MIRA -- Micro820 Complete Program v3.2                           *)
   (* PLC: 2080-LC20-20QBB  |  IP: 192.168.1.100                      *)
   (*                                                                  *)
@@ -79,7 +79,7 @@ PROGRAM Prog2
       motor_running := FALSE;
       conveyor_running := FALSE;
       motor_speed := 0;
-      vfd_cmd_word := 5;  (* VFD stop command *)
+      vfd_cmd_word := 1;  (* GS10 stop command = 0x0001 *)
 
       IF button_rising AND (dir_fwd OR dir_rev)
          AND NOT e_stop_active AND NOT fault_alarm
@@ -92,13 +92,13 @@ PROGRAM Prog2
 
       (* Set VFD command based on direction *)
       IF dir_fwd THEN
-        vfd_cmd_word := 1;  (* Forward run *)
+        vfd_cmd_word := 18;  (* GS10 FWD+RUN = 0x0012 *)
       ELSIF dir_rev THEN
-        vfd_cmd_word := 2;  (* Reverse run *)
+        vfd_cmd_word := 20;  (* GS10 REV+RUN = 0x0014 *)
       END_IF;
 
       IF e_stop_active OR fault_alarm OR dir_fault THEN
-        vfd_cmd_word := 5;  (* Stop *)
+        vfd_cmd_word := 1;  (* GS10 stop = 0x0001 *)
         conv_state := 4;
       ELSIF start_timer.Q THEN
         conveyor_running := TRUE;
@@ -111,18 +111,18 @@ PROGRAM Prog2
 
       (* Maintain VFD direction command *)
       IF dir_fwd THEN
-        vfd_cmd_word := 1;
+        vfd_cmd_word := 18;  (* GS10 FWD+RUN *)
       ELSIF dir_rev THEN
-        vfd_cmd_word := 2;
+        vfd_cmd_word := 20;  (* GS10 REV+RUN *)
       END_IF;
 
       (* Fault conditions *)
       IF e_stop_active OR fault_alarm OR dir_fault THEN
-        vfd_cmd_word := 5;
+        vfd_cmd_word := 1;  (* GS10 stop *)
         conv_state := 4;
       (* Normal stop: selector to OFF *)
       ELSIF dir_off THEN
-        vfd_cmd_word := 5;
+        vfd_cmd_word := 1;  (* GS10 stop *)
         conv_state := 3;
       END_IF;
 
@@ -137,7 +137,7 @@ PROGRAM Prog2
 
     3: (* STOPPING -- coast down *)
       motor_running := FALSE;
-      vfd_cmd_word := 5;
+      vfd_cmd_word := 1;  (* GS10 stop *)
       motor_speed := 0;
 
       IF e_stop_active OR fault_alarm THEN
@@ -150,7 +150,7 @@ PROGRAM Prog2
     4: (* FAULT -- latched, requires reset *)
       motor_running := FALSE;
       conveyor_running := FALSE;
-      vfd_cmd_word := 5;
+      vfd_cmd_word := 1;  (* GS10 stop *)
       motor_speed := 0;
 
       IF e_stop_active THEN
@@ -215,14 +215,14 @@ PROGRAM Prog2
   write_cmd_local_cfg.TriggerType := 0;
   write_cmd_local_cfg.Cmd := 6;
   write_cmd_local_cfg.ElementCnt := 1;
-  write_cmd_target_cfg.Addr := 8448;
+  write_cmd_target_cfg.Addr := 8192;  (* v3.3: 0x2000 = GS10 control command register *)
   write_cmd_target_cfg.Node := 1;
 
   write_freq_local_cfg.Channel := 2;
   write_freq_local_cfg.TriggerType := 0;
   write_freq_local_cfg.Cmd := 6;
   write_freq_local_cfg.ElementCnt := 1;
-  write_freq_target_cfg.Addr := 8449;
+  write_freq_target_cfg.Addr := 8193;  (* v3.3: 0x2001 = GS10 frequency command register *)
   write_freq_target_cfg.Node := 1;
 
   (* --- Compute VFD frequency setpoint --- *)
