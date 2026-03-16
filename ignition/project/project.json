@@ -1,0 +1,7 @@
+{
+  "title": "ConveyorMIRA",
+  "description": "MIRA conveyor dashboard - Micro820 + GS10 VFD",
+  "parent": "",
+  "enabled": true,
+  "inheritable": false
+}

@@ -1,0 +1,506 @@
+{
+  "custom": {},
+  "params": {},
+  "props": {
+    "defaultSize": {
+      "height": 800,
+      "width": 1280
+    }
+  },
+  "root": {
+    "children": [
+      {
+        "meta": { "name": "Title" },
+        "position": { "basis": "48px", "shrink": 0 },
+        "props": {
+          "style": {
+            "color": "#FFFFFF",
+            "fontSize": "22px",
+            "fontWeight": "bold",
+            "letterSpacing": "3px",
+            "padding": "8px 16px"
+          },
+          "text": "CONVEYOR STATUS"
+        },
+        "type": "ia.display.label"
+      },
+      {
+        "meta": { "name": "StateBanner" },
+        "position": { "basis": "80px", "shrink": 0 },
+        "propConfig": {
+          "props.style.backgroundColor": {
+            "binding": {
+              "config": {
+                "expression": "if({[default]Conveyor/EStop_Active}, '#DC3545', if({[default]Conveyor/Fault_Alarm}, '#FFA500', if({[default]Conveyor/Motor_Running}, '#28A745', '#6C757D')))"
+              },
+              "type": "expr"
+            }
+          }
+        },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "justify": "center",
+          "style": {
+            "backgroundColor": "#6C757D",
+            "borderRadius": "6px",
+            "margin": "4px 16px",
+            "padding": "8px"
+          }
+        },
+        "children": [
+          {
+            "meta": { "name": "StateText" },
+            "position": { "basis": "auto" },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "case({[default]Conveyor/Conv_State}, 0, 'STOPPED', 1, 'STARTING...', 2, 'RUNNING', 3, 'STOPPING...', 4, 'FAULT', 'UNKNOWN')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "color": "#FFFFFF",
+                "fontSize": "28px",
+                "fontWeight": "bold",
+                "letterSpacing": "4px"
+              },
+              "text": "STOPPED"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "meta": { "name": "HzValue" },
+                "position": { "basis": "auto" },
+                "propConfig": {
+                  "props.text": {
+                    "binding": {
+                      "config": {
+                        "expression": "format({[default]Conveyor/VFD_Hz}, '#0.0') + ' Hz'"
+                      },
+                      "type": "expr"
+                    }
+                  }
+                },
+                "props": {
+                  "style": {
+                    "color": "#00C851",
+                    "fontSize": "28px",
+                    "fontWeight": "bold"
+                  },
+                  "text": "0.0 Hz"
+                },
+                "type": "ia.display.label"
+              },
+              {
+                "meta": { "name": "HzLabel" },
+                "position": { "basis": "auto" },
+                "props": {
+                  "style": { "color": "#AAAAAA", "fontSize": "12px" },
+                  "text": "OUTPUT FREQ"
+                },
+                "type": "ia.display.label"
+              }
+            ],
+            "meta": { "name": "HzTile" },
+            "position": { "basis": "1", "grow": 1 },
+            "props": {
+              "align": "center",
+              "direction": "column",
+              "justify": "center",
+              "style": {
+                "backgroundColor": "#2a2a2a",
+                "borderRadius": "8px",
+                "margin": "4px",
+                "padding": "16px"
+              }
+            },
+            "type": "ia.container.flex"
+          },
+          {
+            "children": [
+              {
+                "meta": { "name": "AmpsValue" },
+                "position": { "basis": "auto" },
+                "propConfig": {
+                  "props.text": {
+                    "binding": {
+                      "config": {
+                        "expression": "format({[default]Conveyor/VFD_Amps}, '#0.0') + ' A'"
+                      },
+                      "type": "expr"
+                    }
+                  }
+                },
+                "props": {
+                  "style": {
+                    "color": "#00C851",
+                    "fontSize": "28px",
+                    "fontWeight": "bold"
+                  },
+                  "text": "0.0 A"
+                },
+                "type": "ia.display.label"
+              },
+              {
+                "meta": { "name": "AmpsLabel" },
+                "position": { "basis": "auto" },
+                "props": {
+                  "style": { "color": "#AAAAAA", "fontSize": "12px" },
+                  "text": "OUTPUT CURRENT"
+                },
+                "type": "ia.display.label"
+              }
+            ],
+            "meta": { "name": "AmpsTile" },
+            "position": { "basis": "1", "grow": 1 },
+            "props": {
+              "align": "center",
+              "direction": "column",
+              "justify": "center",
+              "style": {
+                "backgroundColor": "#2a2a2a",
+                "borderRadius": "8px",
+                "margin": "4px",
+                "padding": "16px"
+              }
+            },
+            "type": "ia.container.flex"
+          },
+          {
+            "children": [
+              {
+                "meta": { "name": "DCBusValue" },
+                "position": { "basis": "auto" },
+                "propConfig": {
+                  "props.text": {
+                    "binding": {
+                      "config": {
+                        "expression": "format({[default]Conveyor/VFD_DCBus_V}, '#0.0') + ' V'"
+                      },
+                      "type": "expr"
+                    }
+                  }
+                },
+                "props": {
+                  "style": {
+                    "color": "#00C851",
+                    "fontSize": "28px",
+                    "fontWeight": "bold"
+                  },
+                  "text": "0.0 V"
+                },
+                "type": "ia.display.label"
+              },
+              {
+                "meta": { "name": "DCBusLabel" },
+                "position": { "basis": "auto" },
+                "props": {
+                  "style": { "color": "#AAAAAA", "fontSize": "12px" },
+                  "text": "DC BUS VOLTAGE"
+                },
+                "type": "ia.display.label"
+              }
+            ],
+            "meta": { "name": "DCBusTile" },
+            "position": { "basis": "1", "grow": 1 },
+            "props": {
+              "align": "center",
+              "direction": "column",
+              "justify": "center",
+              "style": {
+                "backgroundColor": "#2a2a2a",
+                "borderRadius": "8px",
+                "margin": "4px",
+                "padding": "16px"
+              }
+            },
+            "type": "ia.container.flex"
+          },
+          {
+            "children": [
+              {
+                "meta": { "name": "FaultValue" },
+                "position": { "basis": "auto" },
+                "propConfig": {
+                  "props.text": {
+                    "binding": {
+                      "config": {
+                        "expression": "case({[default]Conveyor/VFD_FaultCode}, 0, 'OK', 1, 'OC', 2, 'OV', 3, 'OH', 4, 'OL', 5, 'OL1', 6, 'OP', 7, 'UV', 8, 'GF', toStr({[default]Conveyor/VFD_FaultCode}))"
+                      },
+                      "type": "expr"
+                    }
+                  },
+                  "props.style.color": {
+                    "binding": {
+                      "config": {
+                        "expression": "if({[default]Conveyor/VFD_FaultCode} > 0, '#FF4444', '#00C851')"
+                      },
+                      "type": "expr"
+                    }
+                  }
+                },
+                "props": {
+                  "style": {
+                    "color": "#00C851",
+                    "fontSize": "28px",
+                    "fontWeight": "bold"
+                  },
+                  "text": "OK"
+                },
+                "type": "ia.display.label"
+              },
+              {
+                "meta": { "name": "FaultLabel" },
+                "position": { "basis": "auto" },
+                "props": {
+                  "style": { "color": "#AAAAAA", "fontSize": "12px" },
+                  "text": "VFD FAULT"
+                },
+                "type": "ia.display.label"
+              }
+            ],
+            "meta": { "name": "FaultTile" },
+            "position": { "basis": "1", "grow": 1 },
+            "props": {
+              "align": "center",
+              "direction": "column",
+              "justify": "center",
+              "style": {
+                "backgroundColor": "#2a2a2a",
+                "borderRadius": "8px",
+                "margin": "4px",
+                "padding": "16px"
+              }
+            },
+            "type": "ia.container.flex"
+          }
+        ],
+        "meta": { "name": "MetricRow" },
+        "position": { "basis": "140px", "shrink": 0 },
+        "props": {
+          "direction": "row",
+          "style": { "margin": "8px 12px" },
+          "wrap": "nowrap"
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "meta": { "name": "MotorRunningPill" },
+            "position": { "basis": "auto", "grow": 1 },
+            "propConfig": {
+              "props.style.backgroundColor": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/Motor_Running}, '#28A745', '#555555')"
+                  },
+                  "type": "expr"
+                }
+              },
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/Motor_Running}, '● MOTOR RUNNING', '○ MOTOR STOPPED')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "backgroundColor": "#555555",
+                "borderRadius": "20px",
+                "color": "#FFFFFF",
+                "fontSize": "13px",
+                "fontWeight": "bold",
+                "margin": "4px",
+                "padding": "8px 16px",
+                "textAlign": "center"
+              },
+              "text": "○ MOTOR STOPPED"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "FaultAlarmPill" },
+            "position": { "basis": "auto", "grow": 1 },
+            "propConfig": {
+              "props.style.backgroundColor": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/Fault_Alarm}, '#FF4444', '#555555')"
+                  },
+                  "type": "expr"
+                }
+              },
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/Fault_Alarm}, '⚠ FAULT ALARM', '✓ NO FAULT')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "backgroundColor": "#555555",
+                "borderRadius": "20px",
+                "color": "#FFFFFF",
+                "fontSize": "13px",
+                "fontWeight": "bold",
+                "margin": "4px",
+                "padding": "8px 16px",
+                "textAlign": "center"
+              },
+              "text": "✓ NO FAULT"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "EStopPill" },
+            "position": { "basis": "auto", "grow": 1 },
+            "propConfig": {
+              "props.style.backgroundColor": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/EStop_Active}, '#FF4444', '#555555')"
+                  },
+                  "type": "expr"
+                }
+              },
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/EStop_Active}, '🛑 E-STOP ACTIVE', '✓ E-STOP OK')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "backgroundColor": "#555555",
+                "borderRadius": "20px",
+                "color": "#FFFFFF",
+                "fontSize": "13px",
+                "fontWeight": "bold",
+                "margin": "4px",
+                "padding": "8px 16px",
+                "textAlign": "center"
+              },
+              "text": "✓ E-STOP OK"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "ContactorQ1Pill" },
+            "position": { "basis": "auto", "grow": 1 },
+            "propConfig": {
+              "props.style.backgroundColor": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/Raw_O02}, '#28A745', '#555555')"
+                  },
+                  "type": "expr"
+                }
+              },
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/Raw_O02}, '⚡ CONTACTOR Q1 ON', '○ CONTACTOR Q1 OFF')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "backgroundColor": "#555555",
+                "borderRadius": "20px",
+                "color": "#FFFFFF",
+                "fontSize": "13px",
+                "fontWeight": "bold",
+                "margin": "4px",
+                "padding": "8px 16px",
+                "textAlign": "center"
+              },
+              "text": "○ CONTACTOR Q1 OFF"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "StatusPillRow" },
+        "position": { "basis": "60px", "shrink": 0 },
+        "props": {
+          "direction": "row",
+          "style": { "margin": "8px 12px" },
+          "wrap": "nowrap"
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "meta": { "name": "UptimeLabel" },
+            "position": { "basis": "auto" },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "'Uptime: ' + toStr({[default]Conveyor/Uptime_Seconds}) + 's   Items: ' + toStr({[default]Conveyor/Item_Count})   + '   State: ' + toStr({[default]Conveyor/Conv_State})"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "color": "#888888",
+                "fontSize": "13px",
+                "padding": "8px 16px"
+              },
+              "text": "Uptime: 0s   Items: 0   State: 0"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "FooterRow" },
+        "position": { "basis": "40px", "shrink": 0 },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {
+            "borderTop": "1px solid #333333",
+            "margin": "8px 12px"
+          }
+        },
+        "type": "ia.container.flex"
+      }
+    ],
+    "meta": { "name": "root" },
+    "position": { "basis": "auto" },
+    "props": {
+      "direction": "column",
+      "style": {
+        "backgroundColor": "#1a1a1a",
+        "height": "100%",
+        "padding": "8px"
+      }
+    },
+    "type": "ia.container.flex"
+  }
+}

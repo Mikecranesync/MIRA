@@ -1,0 +1,219 @@
+{
+  "custom": {},
+  "params": {},
+  "props": {
+    "defaultSize": {
+      "height": 60,
+      "width": 1280
+    }
+  },
+  "root": {
+    "children": [
+      {
+        "meta": { "name": "BrandLabel" },
+        "position": { "basis": "auto", "shrink": 0 },
+        "props": {
+          "style": {
+            "color": "#00C851",
+            "fontSize": "20px",
+            "fontWeight": "bold",
+            "letterSpacing": "4px",
+            "padding": "0 20px"
+          },
+          "text": "MIRA"
+        },
+        "type": "ia.display.label"
+      },
+      {
+        "children": [
+          {
+            "events": {
+              "component": {
+                "onActionPerformed": {
+                  "script": "    system.perspective.navigate('/ConveyorStatus')\n"
+                }
+              }
+            },
+            "meta": { "name": "StatusNav" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "backgroundColor": "transparent",
+                "border": "1px solid #444444",
+                "borderRadius": "4px",
+                "color": "#FFFFFF",
+                "fontSize": "14px",
+                "fontWeight": "bold",
+                "margin": "0 4px",
+                "padding": "6px 18px"
+              },
+              "text": "STATUS"
+            },
+            "type": "ia.input.button"
+          },
+          {
+            "events": {
+              "component": {
+                "onActionPerformed": {
+                  "script": "    system.perspective.navigate('/SpeedControl')\n"
+                }
+              }
+            },
+            "meta": { "name": "SpeedNav" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "backgroundColor": "transparent",
+                "border": "1px solid #444444",
+                "borderRadius": "4px",
+                "color": "#FFFFFF",
+                "fontSize": "14px",
+                "fontWeight": "bold",
+                "margin": "0 4px",
+                "padding": "6px 18px"
+              },
+              "text": "SPEED"
+            },
+            "type": "ia.input.button"
+          },
+          {
+            "events": {
+              "component": {
+                "onActionPerformed": {
+                  "script": "    system.perspective.navigate('/FaultLog')\n"
+                }
+              }
+            },
+            "meta": { "name": "FaultNav" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "backgroundColor": "transparent",
+                "border": "1px solid #444444",
+                "borderRadius": "4px",
+                "color": "#FFFFFF",
+                "fontSize": "14px",
+                "fontWeight": "bold",
+                "margin": "0 4px",
+                "padding": "6px 18px"
+              },
+              "text": "FAULTS"
+            },
+            "type": "ia.input.button"
+          }
+        ],
+        "meta": { "name": "NavButtons" },
+        "position": { "basis": "auto", "grow": 1 },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "justify": "center",
+          "style": {}
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "meta": { "name": "Timestamp" },
+            "position": { "basis": "auto" },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "dateFormat(now(), 'HH:mm:ss')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "color": "#888888",
+                "fontSize": "12px",
+                "marginRight": "8px"
+              },
+              "text": "00:00:00"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "ConnDot" },
+            "position": { "basis": "auto" },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/VFD_Comm_OK} && {[default]Conveyor/Heartbeat}, '●', '●')"
+                  },
+                  "type": "expr"
+                }
+              },
+              "props.style.color": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/VFD_Comm_OK} && {[default]Conveyor/Heartbeat}, '#00C851', '#FF4444')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "color": "#FF4444",
+                "fontSize": "20px",
+                "marginRight": "4px"
+              },
+              "text": "●"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "ConnLabel" },
+            "position": { "basis": "auto" },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/VFD_Comm_OK} && {[default]Conveyor/Heartbeat}, 'PLC LIVE', 'PLC OFFLINE')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "color": "#888888",
+                "fontSize": "12px",
+                "marginRight": "16px"
+              },
+              "text": "PLC OFFLINE"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "RightCluster" },
+        "position": { "basis": "auto", "shrink": 0 },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {}
+        },
+        "type": "ia.container.flex"
+      }
+    ],
+    "meta": { "name": "root" },
+    "position": { "basis": "auto" },
+    "props": {
+      "align": "center",
+      "direction": "row",
+      "style": {
+        "backgroundColor": "#111111",
+        "borderBottom": "1px solid #333333",
+        "height": "60px",
+        "width": "100%"
+      }
+    },
+    "type": "ia.container.flex"
+  }
+}
