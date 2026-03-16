@@ -10,9 +10,9 @@ Usage:
 
 Keyboard:
     Q = Quit
-    F = FWD run (write cmd=1)
-    R = REV run (write cmd=2)
-    S = STOP (write cmd=5)
+    F = FWD run (write cmd=18, GS10 FWD+RUN)
+    R = REV run (write cmd=20, GS10 REV+RUN)
+    S = STOP (write cmd=1, GS10 STOP)
     X = Fault reset (write cmd=7)
     + = Speed up (+200)
     - = Speed down (-200)
@@ -38,13 +38,13 @@ from rich.text import Text
 from rich import box
 
 # -- Modbus addresses (zero-indexed) -----------------------------------------
-# Coils: C1-C20 → address 0-19
+# Coils: C1-C22 → address 0-21
 COIL_BASE = 0
-COIL_COUNT = 20
+COIL_COUNT = 22
 
-# Holding registers: HR400101-HR400116 → address 100-115
+# Holding registers: HR400101-HR400117 → address 100-116
 HR_BASE = 100
-HR_COUNT = 16
+HR_COUNT = 17
 
 # VFD command write target: conveyor_speed_cmd is at HR400113 → address 112
 HR_SPEED_CMD = 112
@@ -73,6 +73,8 @@ C_DO_00 = 16   # LightGreen
 C_DO_01 = 17   # LightRed
 C_DO_02 = 18   # ContactorQ1
 C_DO_03 = 19   # PBRunLED
+C_VFD_POLL_ACTIVE = 20
+C_VFD_FAULT_RESET = 21
 
 # -- HR index map (offset from HR_BASE) --------------------------------------
 HR_MOTOR_SPEED = 0      # 100
@@ -91,12 +93,13 @@ HR_SPEED_CMD_IDX = 12   # 112
 HR_CONV_STATE = 13      # 113
 HR_VFD_CMD_WORD = 14    # 114
 HR_VFD_FREQ_SP = 15     # 115
+HR_VFD_POLL_STEP = 16   # 116
 
 # -- Lookup tables ------------------------------------------------------------
 STATE_NAMES = {0: "IDLE", 1: "STARTING", 2: "RUNNING", 3: "STOPPING", 4: "FAULT"}
 STATE_COLORS = {0: "white", 1: "yellow", 2: "green", 3: "yellow", 4: "red bold"}
 ERROR_NAMES = {0: "none", 6: "E-STOP", 7: "WIRING", 8: "DIR FAULT", 9: "VFD COMM"}
-CMD_NAMES = {1: "FWD", 2: "REV", 5: "STOP", 7: "RESET"}
+CMD_NAMES = {1: "STOP", 18: "FWD+RUN", 20: "REV+RUN", 7: "RESET"}
 
 
 def bool_dot(val, true_color="green", false_color="dim"):
@@ -272,6 +275,9 @@ class PLCMonitor:
         t_vfd.add_row("DC Bus", Text(f"{dcbus:.1f} V", style="cyan"))
         t_vfd.add_row("Freq Setpoint", Text(f"{freq_sp:.1f} Hz", style="cyan"))
         t_vfd.add_row("vfd_comm_ok", bool_text(c[C_VFD_COMM_OK], "green bold", "red bold"))
+        t_vfd.add_row("poll_active", bool_text(c[C_VFD_POLL_ACTIVE], "green bold", "red bold"))
+        t_vfd.add_row("poll_step", Text(f"{r[HR_VFD_POLL_STEP]} (1-4 cycle)", style="cyan"))
+        t_vfd.add_row("fault_reset", bool_text(c[C_VFD_FAULT_RESET], "yellow", "dim"))
         t_vfd.add_row("Speed Cmd", Text(f"{r[HR_SPEED_CMD_IDX]} / 4095", style="cyan"))
 
         # -- Safety table -----------------------------------------------------
@@ -357,11 +363,11 @@ def key_listener(monitor):
             if key == "q":
                 monitor.running = False
             elif key == "f":
-                monitor.write_vfd_cmd(1)   # FWD
+                monitor.write_vfd_cmd(18)  # GS10 FWD+RUN
             elif key == "r":
-                monitor.write_vfd_cmd(2)   # REV
+                monitor.write_vfd_cmd(20)  # GS10 REV+RUN
             elif key == "s":
-                monitor.write_vfd_cmd(5)   # STOP
+                monitor.write_vfd_cmd(1)   # GS10 STOP
             elif key == "x":
                 monitor.write_vfd_cmd(7)   # Fault reset
             elif key == "+":
