@@ -13,7 +13,7 @@ Target: brownfield plants with Micro820 PLCs and GS10 VFDs.
 - Ignition Perspective for visual HMI dashboard
 - Deployment tiers: cloud-connected / edge / air-gapped
 
-## Current Status -- Last updated 2026-03-15
+## Current Status -- Last updated 2026-03-16
 
 ### COMPLETED
 - Wiring guide documented
@@ -29,28 +29,39 @@ Target: brownfield plants with Micro820 PLCs and GS10 VFDs.
 - E-stop circuit verified healthy (NC closed, NO open)
 - State machine running -- conv_state = 0 (IDLE)
 - test_modbus.py passing all checks
+- Ignition 8.1 Standard Edition (trial mode) installed on PLC laptop
+- Ignition Perspective ConveyorMIRA project files committed: 4 views + tags.json (36 tags)
 
 ### NEXT STEPS (in order)
-1. Program GS10 VFD keypad (P09.xx, P00.xx, P01.xx) -- clears fault_alarm
-2. Verify vfd_comm_ok goes TRUE after VFD keypad programmed
-3. Test selector FWD then RUN button for first motor run
-4. Test E-stop drops ContactorQ1
-5. Test selector REV run
-6. Assign static IP 192.168.1.100 to PLC (currently on 169.254.32.93 APIPA)
-7. Update all config files with confirmed IP
-8. Connect Node-RED mira-bridge to poll live PLC data
-9. MIRA Telegram integration live
+1. Phase 3: Create Modbus TCP device Micro820_Conveyor in Ignition (IP: 192.168.1.100 or 169.254.32.93, port 502)
+2. Phase 5: Import ignition/tags/tags.json into Ignition tag provider
+3. Phase 7: Copy ignition/project/ → Ignition data/projects/ConveyorMIRA/ and scan
+4. Phase 8: Live test — ConveyorStatus view shows STOPPED, gauges 0.0, conn dot green
+5. Program GS10 VFD keypad (P09.xx, P00.xx) -- clears fault_alarm
+6. Verify vfd_comm_ok goes TRUE after VFD keypad programmed
+7. Test selector FWD then RUN button for first motor run
+8. Test E-stop drops ContactorQ1
+9. Test selector REV run
+10. MIRA Telegram integration live
 
 ### CONFIRMED NETWORK
-- PLC Micro820: 169.254.32.93 (APIPA -- assign static 192.168.1.100 after commissioning)
-- PLC Laptop: 192.168.1.10 / 169.254.100.1 (Ethernet)
+- PLC Micro820: 169.254.32.93 (APIPA) -- try 192.168.1.100 as static (may be assigned)
+- PLC Laptop: 192.168.1.10 / 169.254.100.1 (Ethernet), Tailscale: 100.72.2.99
 - Modbus TCP port 502: OPEN
-- Tailscale PLC laptop: 100.72.2.99
+- Ignition gateway on PLC laptop: http://localhost:8088 (Standard trial)
 
 ### KNOWN ISSUE
 - fault_alarm = TRUE -- VFD comm fault latched
 - CAUSE: GS10 keypad not yet programmed for Modbus RTU
-- FIX: Set P09.00=1, P09.01=1, P09.02=3, P09.03=0, P00.02=3, P00.04=2 on keypad
+- FIX: Set P09.00=1, P09.01=96, P09.02=0, P09.03=5, P09.04=13, P00.21=2 on keypad
+  (Note: corrected params per GS10_Integration_Guide.md -- old CLAUDE.md had GS1 params)
+
+### IGNITION PROJECT
+- Edition: Standard trial (resets every 2h, never bricks -- better than Maker for dev)
+- Project name: ConveyorMIRA
+- Device name (must match exactly): Micro820_Conveyor
+- Protocol: Modbus TCP
+- Files: ignition/project/ (4 views) + ignition/tags/tags.json (36 tags)
 
 ## Hardware
 - PLC: Allen-Bradley Micro820 2080-LC20-20QBB (EtherNet/IP + Modbus TCP, port 502)
