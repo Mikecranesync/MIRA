@@ -13,22 +13,54 @@ Target: brownfield plants with Micro820 PLCs and GS10 VFDs.
 - Ignition Perspective for visual HMI dashboard
 - Deployment tiers: cloud-connected / edge / air-gapped
 
-## Current State
-- mira-bot-telegram: Python Docker container on Mac Mini (bravonode:100.86.236.11)
-- GSD engine: mira-bots/telegram/gsd_engine.py (FSM with OCR, ELECTRICAL_PRINT state)
-- Models running on Mac Mini via Ollama: mira (4.7GB), qwen2.5vl (5.0GB), glm-ocr (2.2GB), nomic-embed-text (0.3GB)
-- Node-RED mira-bridge: running but NO Modbus nodes installed — all equipment data is seed data, not live
-- NO live PLC connection yet — this is the #1 priority
+## Current Status -- Last updated 2026-03-15
+
+### COMPLETED
+- Wiring guide documented
+- PLC program v3.3 written and compiled (0 errors)
+- MIRA monorepo created at github.com/Mikecranesync/MIRA
+- All gists archived (read-only)
+- Ignition HMI designed
+- CCW variables loaded via populate_variables.py (59 variables)
+- Model corrected: 2080-LC20-20QBB (QWB bug fixed)
+- Program downloaded to PLC
+- MODBUS TCP CONFIRMED LIVE at 169.254.32.93:502
+- PLC scan running -- heartbeat toggling, uptime_seconds incrementing
+- E-stop circuit verified healthy (NC closed, NO open)
+- State machine running -- conv_state = 0 (IDLE)
+- test_modbus.py passing all checks
+
+### NEXT STEPS (in order)
+1. Program GS10 VFD keypad (P09.xx, P00.xx, P01.xx) -- clears fault_alarm
+2. Verify vfd_comm_ok goes TRUE after VFD keypad programmed
+3. Test selector FWD then RUN button for first motor run
+4. Test E-stop drops ContactorQ1
+5. Test selector REV run
+6. Assign static IP 192.168.1.100 to PLC (currently on 169.254.32.93 APIPA)
+7. Update all config files with confirmed IP
+8. Connect Node-RED mira-bridge to poll live PLC data
+9. MIRA Telegram integration live
+
+### CONFIRMED NETWORK
+- PLC Micro820: 169.254.32.93 (APIPA -- assign static 192.168.1.100 after commissioning)
+- PLC Laptop: 192.168.1.10 / 169.254.100.1 (Ethernet)
+- Modbus TCP port 502: OPEN
+- Tailscale PLC laptop: 100.72.2.99
+
+### KNOWN ISSUE
+- fault_alarm = TRUE -- VFD comm fault latched
+- CAUSE: GS10 keypad not yet programmed for Modbus RTU
+- FIX: Set P09.00=1, P09.01=1, P09.02=3, P09.03=0, P00.02=3, P00.04=2 on keypad
 
 ## Hardware
-- PLC: Allen-Bradley Micro820 (EtherNet/IP + Modbus TCP, port 502)
-- Drive: AutomationDirect GS10 VFD (data comes through Micro820)
-- Modbus Register Map: [PASTE CCW EXPORT HERE — this is required before any PLC work]
+- PLC: Allen-Bradley Micro820 2080-LC20-20QBB (EtherNet/IP + Modbus TCP, port 502)
+- Drive: AutomationDirect GS10 VFD (RS-485 Modbus RTU slave addr 1, 9600/8N2)
+- Modbus Register Map: see Modbus_Register_Map.md
 
 ## Immediate Priorities (do in this order)
-1. Fix technical debt: deploy.sh (add glm-ocr), init_db.sql (add voice_enabled column), tts.py stub, commit v1.2.0
-2. Install node-red-contrib-modbus in mira-bridge, build live polling flow → equipment_status SQLite
-3. Install node-red-mcp-server so Claude can deploy Node-RED flows directly
+1. Program GS10 VFD keypad for Modbus RTU communication
+2. First motor run test (FWD + REV)
+3. Install node-red-contrib-modbus in mira-bridge, build live polling flow
 4. Begin Ignition 8.1 install + EtherNet/IP connection to Micro820
 5. Port gsd_engine.py FSM logic into Ignition Gateway scripts
 
