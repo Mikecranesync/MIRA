@@ -232,7 +232,7 @@ PROGRAM Prog2
 
   (* ================================================================ *)
   (* SECTION 6 -- VFD MODBUS RTU COMMUNICATION                       *)
-  (*   Channel 2 = embedded RS-485 serial port on 2080-LC20-20QBB    *)
+  (*   Channel 0 = built-in RS-485 serial port on 2080-LC20-20QBB    *)
   (*   GS10 DURApulse at slave address 1, 9600 baud, 8N2             *)
   (*   Four MSG blocks cycle: read -> write_cmd -> write_freq         *)
   (*   Step 4 (fault_reset) only fires when pending                   *)
@@ -248,7 +248,7 @@ PROGRAM Prog2
   (* ================================================================ *)
 
   (* --- Configure Modbus READ parameters --- *)
-  read_local_cfg.Channel := 2;
+  read_local_cfg.Channel := 0;
   read_local_cfg.TriggerType := 0;
   read_local_cfg.Cmd := 3;        (* FC03 = read holding registers *)
   read_local_cfg.ElementCnt := 6; (* read 6 regs: freq,curr,dcbus,volts,torque,rpm *)
@@ -256,7 +256,7 @@ PROGRAM Prog2
   read_target_cfg.Node := 1;
 
   (* --- Configure Modbus WRITE COMMAND parameters --- *)
-  write_cmd_local_cfg.Channel := 2;
+  write_cmd_local_cfg.Channel := 0;
   write_cmd_local_cfg.TriggerType := 0;
   write_cmd_local_cfg.Cmd := 6;        (* FC06 = write single register *)
   write_cmd_local_cfg.ElementCnt := 1;
@@ -264,7 +264,7 @@ PROGRAM Prog2
   write_cmd_target_cfg.Node := 1;
 
   (* --- Configure Modbus WRITE FREQUENCY parameters --- *)
-  write_freq_local_cfg.Channel := 2;
+  write_freq_local_cfg.Channel := 0;
   write_freq_local_cfg.TriggerType := 0;
   write_freq_local_cfg.Cmd := 6;        (* FC06 = write single register *)
   write_freq_local_cfg.ElementCnt := 1;
@@ -272,7 +272,7 @@ PROGRAM Prog2
   write_freq_target_cfg.Node := 1;
 
   (* --- Configure Modbus FAULT RESET parameters --- *)
-  fault_reset_local_cfg.Channel := 2;
+  fault_reset_local_cfg.Channel := 0;
   fault_reset_local_cfg.TriggerType := 0;
   fault_reset_local_cfg.Cmd := 6;        (* FC06 = write single register *)
   fault_reset_local_cfg.ElementCnt := 1;

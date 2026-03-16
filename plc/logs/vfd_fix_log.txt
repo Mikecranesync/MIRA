@@ -1,0 +1,90 @@
+[11:34:34.820] ============================================================
+[11:34:34.820] VFD FIX ATTEMPTS SESSION START
+[11:34:34.820] Target: 169.254.32.93:502
+[11:34:34.820] ============================================================
+[11:34:34.820] 
+[11:34:34.820] BASELINE: Reading current state...
+[11:34:34.832]   comm=FAIL step=2 state=4 err=9 fault=True dcbus=0.0V freq=0.0Hz cmd=1 uptime=157s
+[11:34:34.832] 
+[11:34:34.832] FIX 1: Monitor poll_step cycling (10 reads, 0.5s apart)
+[11:34:34.832]   Goal: Verify MSG_MODBUS blocks are executing on Channel 0
+[11:34:34.844]   Read 1/10: poll_step=3 poll_active=False comm_ok=False dc_bus=0.0V
+[11:34:35.354]   Read 2/10: poll_step=1 poll_active=False comm_ok=False dc_bus=0.0V
+[11:34:35.865]   Read 3/10: poll_step=3 poll_active=False comm_ok=False dc_bus=0.0V
+[11:34:36.377]   Read 4/10: poll_step=2 poll_active=False comm_ok=False dc_bus=0.0V
+[11:34:36.893]   Read 5/10: poll_step=2 poll_active=False comm_ok=False dc_bus=0.0V
+[11:34:37.404]   Read 6/10: poll_step=1 poll_active=False comm_ok=False dc_bus=0.0V
+[11:34:37.915]   Read 7/10: poll_step=2 poll_active=False comm_ok=False dc_bus=0.0V
+[11:34:38.427]   Read 8/10: poll_step=3 poll_active=False comm_ok=False dc_bus=0.0V
+[11:34:38.940]   Read 9/10: poll_step=1 poll_active=False comm_ok=False dc_bus=0.0V
+[11:34:39.452]   Read 10/10: poll_step=3 poll_active=False comm_ok=False dc_bus=0.0V
+[11:34:39.953]   RESULT: poll_step IS cycling: [3, 1, 3, 2, 2, 1, 2, 3, 1, 3]
+[11:34:39.953]   -> MSG blocks are firing. Channel 0 appears active.
+[11:34:39.953] 
+[11:34:39.953] FIX 2: Reset fault_alarm via Modbus TCP write
+[11:34:39.953]   Goal: Clear fault state, observe if vfd_comm_ok goes TRUE
+[11:34:39.958]   Wrote fault_alarm = FALSE
+[11:34:39.964]   Wrote error_code = 0
+[11:34:40.482]   +0.5s: comm=False fault=True err=9 dc_bus=0.0V step=1
+[11:34:40.996]   +1.0s: comm=False fault=True err=9 dc_bus=0.0V step=3
+[11:34:41.507]   +1.5s: comm=False fault=True err=9 dc_bus=0.0V step=2
+[11:34:42.017]   +2.0s: comm=False fault=True err=9 dc_bus=0.0V step=3
+[11:34:42.529]   +2.5s: comm=False fault=True err=9 dc_bus=0.0V step=1
+[11:34:43.040]   +3.0s: comm=False fault=True err=9 dc_bus=0.0V step=2
+[11:34:43.553]   +3.5s: comm=False fault=True err=9 dc_bus=0.0V step=1
+[11:34:44.065]   +4.0s: comm=False fault=True err=9 dc_bus=0.0V step=2
+[11:34:44.577]   +4.5s: comm=False fault=True err=9 dc_bus=0.0V step=2
+[11:34:45.089]   +5.0s: comm=False fault=True err=9 dc_bus=0.0V step=1
+[11:34:45.089]   RESULT: fault_alarm re-latched. VFD still not responding.
+[11:34:45.089] 
+[11:34:45.089] FIX 3: Trigger VFD fault reset via vfd_fault_reset_pending
+[11:34:45.089]   Goal: Clear latched VFD fault (F30 comm error)
+[11:34:45.095]   Wrote vfd_fault_reset_pending = TRUE
+[11:34:48.106]   After 3s: comm=False reset_pending=False dc_bus=0.0V step=2
+[11:34:48.106]   reset_pending cleared -- fault reset MSG was sent to VFD
+[11:34:48.106]   RESULT: VFD still not responding after fault reset.
+[11:34:48.106] 
+[11:34:48.106] FIX 4: Set vfd_cmd_word=0 (no command), test read-only
+[11:34:48.106]   Goal: See if VFD responds to FC03 READ when not being written to
+[11:34:48.112]   Wrote vfd_cmd_word = 0
+[11:34:48.124]   Cleared fault_alarm + error_code
+[11:34:49.136]   +1s: comm=False cmd=1 dc_bus=0.0V step=1
+[11:34:50.146]   +2s: comm=False cmd=1 dc_bus=0.0V step=3
+[11:34:51.158]   +3s: comm=False cmd=1 dc_bus=0.0V step=3
+[11:34:52.169]   +4s: comm=False cmd=1 dc_bus=0.0V step=2
+[11:34:53.180]   +5s: comm=False cmd=1 dc_bus=0.0V step=1
+[11:34:54.190]   +6s: comm=False cmd=1 dc_bus=0.0V step=2
+[11:34:55.200]   +7s: comm=False cmd=1 dc_bus=0.0V step=1
+[11:34:56.210]   +8s: comm=False cmd=1 dc_bus=0.0V step=1
+[11:34:56.216]   Restored vfd_cmd_word = 1 (STOP)
+[11:34:56.228]   RESULT: VFD still not responding even with no writes.
+[11:34:56.228] 
+[11:34:56.228] FIX 5: Extended rapid monitoring (20s, 4Hz)
+[11:34:56.228]   Goal: Catch any transient VFD response over longer window
+[11:34:56.252]   +0.0s: step=3 comm=False fault=True
+[11:35:01.477]   +5.0s: step=1 comm=False fault=True
+[11:35:06.723]   +10.0s: step=2 comm=False fault=True
+[11:35:11.959]   +15.0s: step=2 comm=False fault=True
+[11:35:17.166]   Steps observed: [1, 2, 3] (from 80 samples)
+[11:35:17.166]   Max DC bus: 0.0V  Max freq: 0.0Hz
+[11:35:17.166]   RESULT: Zero VFD response over 20 seconds.
+[11:35:17.166] 
+[11:35:17.166] ============================================================
+[11:35:17.166] SUMMARY OF FIX ATTEMPTS
+[11:35:17.166] ============================================================
+[11:35:17.177] Final state: comm=FAIL step=2 state=4 err=9 fault=True dcbus=0.0V freq=0.0Hz cmd=1 uptime=199s
+[11:35:17.177] 
+[11:35:17.177] FINDING: poll_step IS cycling -- MSG blocks are executing.
+[11:35:17.177]   This means Channel 0 IS driving the serial port.
+[11:35:17.177]   The VFD is not responding to the frames.
+[11:35:17.177] 
+[11:35:17.177] LIKELY CAUSES (in order):
+[11:35:17.177]   1. RS-485 D+/D- wires swapped -- TRY SWAPPING WIRES
+[11:35:17.178]   2. Stop bits mismatch -- PLC may send 8N1, VFD expects 8N2 (P09.04=13)
+[11:35:17.178]      Try changing VFD to 8N1: set P09.04=12 on keypad
+[11:35:17.178]   3. VFD has latched fault -- press STOP/RESET on VFD keypad
+[11:35:17.178]   4. VFD slave addr wrong -- verify P09.00=1 on keypad
+[11:35:17.178]   5. Baud rate mismatch -- verify P09.01=9.6 (9600) on keypad
+[11:35:17.178] 
+[11:35:17.178] Full log saved to: plc/logs/vfd_fix_log.txt
+[11:35:17.178] ============================================================

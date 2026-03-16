@@ -154,6 +154,7 @@ def print_report(coils, regs, host, poll_num):
     print(f"      vfd_cmd_word      = {cmd} ({cmd_name})")
     print(f"      vfd_fault_reset   = {format_bool(coils.get('vfd_fault_reset_pending', None))}")
 
+
     # System state
     uptime = regs.get("uptime_seconds", 0)
     hb = coils.get("heartbeat", False)
@@ -208,6 +209,7 @@ def print_report(coils, regs, host, poll_num):
             print(f"  !! vfd_poll_step={poll_step} but vfd_comm_ok=FALSE")
             print("     -> MSG blocks are executing but VFD not responding")
             print("     -> Check RS-485 wiring (try swapping D+/D-)")
+            print("     -> Verify Channel=0 (built-in port), NOT Channel=2")
             print("     -> Verify VFD params: P09.00=1, P09.01=9.6, P09.04=13, P00.21=2")
             print("     -> Clear VFD faults: press STOP/RESET on keypad")
         if poll_active is not None and not poll_active:
