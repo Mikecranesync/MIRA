@@ -187,6 +187,24 @@
           "tooltip": "Raw O-03 (PBRunLED)"
         },
         {
+          "name": "VFD_Poll_Active",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C21",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "VFD Modbus RTU poll cycle is active"
+        },
+        {
+          "name": "VFD_Fault_Reset_Pending",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C22",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "VFD fault reset command pending"
+        },
+        {
           "name": "VFD_OutputFreq_Raw",
           "tagType": "OpcTag",
           "opcServer": "Ignition OPC-UA Server",
@@ -224,12 +242,10 @@
         },
         {
           "name": "VFD_FaultCode",
-          "tagType": "OpcTag",
-          "opcServer": "Ignition OPC-UA Server",
-          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400110",
+          "tagType": "ExpressionTag",
           "dataType": "Int4",
-          "scanClass": "Default",
-          "tooltip": "VFD fault code — same address as VFD_DCBus_Raw (HR400110) per Ignition_Tags.md"
+          "expression": "{Conveyor/Error_Code}",
+          "tooltip": "VFD fault code — mirrors Error_Code (vfd_fault_code has no dedicated HR register)"
         },
         {
           "name": "Error_Code",
@@ -295,6 +311,15 @@
           "scanClass": "Default",
           "readOnly": false,
           "tooltip": "Frequency setpoint raw (×10, e.g. 300=30.0 Hz) → maps to GS10 0x2001"
+        },
+        {
+          "name": "VFD_Poll_Step",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400117",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "tooltip": "VFD Modbus poll step (0-3: cmd/freq/read/reset)"
         },
         {
           "name": "VFD_Hz",
