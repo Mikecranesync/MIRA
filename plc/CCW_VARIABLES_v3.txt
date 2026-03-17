@@ -1,6 +1,7 @@
 ================================================================
-  CCW VARIABLE DECLARATIONS — v3.0
+  CCW VARIABLE DECLARATIONS — v4.0
   For: Micro820 2080-LC20-20QBB
+  Updated: 2026-03-16 (matches Micro820_v4.0.0_Program.st)
 ================================================================
 
 NEW VARIABLES (add these in CCW Global Variables):
@@ -16,14 +17,14 @@ NEW VARIABLES (add these in CCW Global Variables):
   vfd_poll_active       BOOL    FALSE     Modbus message in progress
   vfd_poll_step         INT     0         Current poll step (1=read, 2=write_cmd, 3=write_freq)
   vfd_freq_setpoint     INT     0         Calculated VFD frequency (0-400)
-  vfd_cmd_word          INT     5         VFD command register value (5=stop)
+  vfd_cmd_word          INT     1         VFD command register value (1=GS10 STOP)
 
 NEW MSG INSTANCES (for VFD write commands):
 
   Name                  Type    Purpose
   --------------------  ------  -----------------------------------
-  mb_write_cmd          MSG     Write command word to VFD reg 0x2100
-  mb_write_freq         MSG     Write freq setpoint to VFD reg 0x2101
+  mb_write_cmd          MSG     Write command word to VFD reg 0x2000
+  mb_write_freq         MSG     Write freq setpoint to VFD reg 0x2001
 
 NEW CONFIG STRUCTS:
 
@@ -40,6 +41,17 @@ NEW DATA ARRAYS:
   --------------------  ----------  -----------------------------------
   write_cmd_data        INT[1..10]  Buffer for command write
   write_freq_data       INT[1..10]  Buffer for freq write
+  fault_reset_data      INT[1..10]  Buffer for fault reset write
+
+================================================================
+NEW IN v4.0 (add these in CCW Global Variables):
+
+  Name                     Type              Initial   Purpose
+  -----------------------  ----------------  --------  -----------------------------------
+  vfd_fault_reset_pending  BOOL              FALSE     Trigger VFD fault reset on next poll
+  mb_fault_reset           MSG               —         Fault reset MSG block (reg 0x2002)
+  fault_reset_local_cfg    MSG_MODBUS_LOCAL  —         Config for fault reset write
+  fault_reset_target_cfg   MSG_MODBUS_TARGET —         Config for fault reset write
 
 ================================================================
 RENAMED/REMAPPED VARIABLES (from v2.0):
