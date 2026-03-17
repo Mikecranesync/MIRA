@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v0.2.2 — vision output fixes: 1024px, JSON/markdown sanitizer, screen UI prompt
+**Version:** v0.3.0 — NeonDB tenant registry, pgvector recall, dual-database architecture (NeonDB + SQLite)
 **Hardware:** Apple Mac Mini M4 16GB (bravonode · 192.168.1.11)
 **Tailscale:** 100.86.236.11
 **Repo root:** ~/Mira/
@@ -32,6 +32,15 @@
 - `~/Mira/mira-bots/docker-compose.yml` — mira-bot-telegram
 - `~/Mira/mira-mcp/docker-compose.yml` — mira-mcp
 
+## NeonDB (v0.3.0+)
+
+- **Endpoint:** `ep-purple-hall-ahimeyn0-pooler.c-3.us-east-1.aws.neon.tech/neondb`
+- **Secret:** `NEON_DATABASE_URL` in Doppler `factorylm/prd` and `factorylm/dev`
+- **MIRA_TENANT_ID:** `78917b56-f85f-43bb-9a08-1bb98a6cd6c3` (FactoryLM BRAVO — Lake Wales FL)
+- **Module:** `mira-ingest/db/neon.py` — `get_tenant()`, `get_tier_limits()`, `recall_knowledge()`
+- **Healthcheck:** `GET /health/db` on mira-ingest
+- **Snapshot:** `artifacts/neondb_snapshot_pre_cleanup.json` (pre-cleanup baseline, 2026-03-17)
+
 ## Key Env Vars (all in .env per repo)
 
 | Var | Used By |
@@ -42,6 +51,8 @@
 | `WEBUI_SECRET_KEY` | mira-core |
 | `MCPO_API_KEY` | mira-core mcpo |
 | `KNOWLEDGE_COLLECTION_ID` | mira-bots, mira-ingest |
+| `NEON_DATABASE_URL` | mira-ingest (NeonDB) — via Doppler factorylm/prd |
+| `MIRA_TENANT_ID` | mira-ingest (tenant scoping) — via Doppler factorylm/prd |
 
 ## v0.2.0 Feature Summary
 
