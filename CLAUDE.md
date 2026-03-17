@@ -1,8 +1,11 @@
 # MIRA — Build State
 
-**Version:** v0.3.0 — NeonDB tenant registry, pgvector recall, dual-database architecture (NeonDB + SQLite)
+**Version:** v0.3.1 — Claude API inference router, dual-backend vision (INFERENCE_BACKEND=claude|local)
 **Hardware:** Apple Mac Mini M4 16GB (bravonode · 192.168.1.11)
 **Tailscale:** 100.86.236.11
+**Inference:** `INFERENCE_BACKEND=claude` → Anthropic claude-3-5-sonnet-20241022 (vision ID step)
+               `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b (default)
+               GLM-OCR always local regardless of backend
 **Repo root:** ~/Mira/
 **Date:** 2026-03-17
 
@@ -53,6 +56,9 @@
 | `KNOWLEDGE_COLLECTION_ID` | mira-bots, mira-ingest |
 | `NEON_DATABASE_URL` | mira-ingest (NeonDB) — via Doppler factorylm/prd |
 | `MIRA_TENANT_ID` | mira-ingest (tenant scoping) — via Doppler factorylm/prd |
+| `INFERENCE_BACKEND` | mira-bots | `"claude"` or `"local"` (default) — via Doppler factorylm/prd |
+| `ANTHROPIC_API_KEY` | mira-bots | Claude API key — via Doppler factorylm/prd |
+| `CLAUDE_MODEL` | mira-bots | Claude model ID (default: claude-3-5-sonnet-20241022) |
 
 ## v0.2.0 Feature Summary
 
