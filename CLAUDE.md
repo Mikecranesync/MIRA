@@ -1,10 +1,10 @@
 # MIRA — Build State
 
-**Version:** v0.2.0 — Production Hardened Release
+**Version:** v0.2.2 — vision output fixes: 1024px, JSON/markdown sanitizer, screen UI prompt
 **Hardware:** Apple Mac Mini M4 16GB (bravonode · 192.168.1.11)
 **Tailscale:** 100.86.236.11
 **Repo root:** ~/Mira/
-**Date:** 2026-03-13
+**Date:** 2026-03-17
 
 ---
 
