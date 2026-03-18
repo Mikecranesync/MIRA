@@ -336,7 +336,27 @@ Mac Mini M4 16GB (bravonode · 192.168.1.11 · Tailscale 100.86.236.11)
 
 ## Phase 1 Completion — Hardening Results
 
-*(To be filled after Phase 1 work is done)*
+**Completed:** 2026-03-18
+
+### Smoke Test Results
+
+| Service | Endpoint | Result |
+|---------|----------|--------|
+| open-webui | GET localhost:3000/health | ✅ PASS — `{"status":true}` |
+| mira-ingest | GET localhost:8002/health | ✅ PASS — `{"status":"ok"}` |
+| mira-mcp | GET localhost:8001/health | ✅ PASS — `{"status":"ok"}` |
+| node-red | GET localhost:1880/ | ✅ PASS — HTML 200 |
+
+### Issues Resolved
+
+| Issue | Resolution |
+|-------|-----------|
+| R-01: mira-core/.env in git (P0) | WEBUI_SECRET_KEY + MCPO_API_KEY rotated, set in Doppler. Root .gitignore blocks all .env commits. |
+| R-02: pymupdf AGPL-3.0 (P1) | Replaced with pdfplumber==0.11.9 (MIT). Was stale dep — no source imports found. |
+| R-03: 4 floating Docker tags (P1) | open-webui pinned to v0.8.10, mcpo to v0.0.20, node-red to 4.1.7-22, python to 3.12.13-slim. |
+| R-04: 6 unpinned Python packages (P1) | All pinned: openviking==0.2.6, uvicorn==0.42.0, starlette==0.52.1, pdfplumber==0.11.9, python-multipart==0.0.22, anyio[trio]==4.12.1. |
+| R-05+R-06: No GitHub remote, 3 repos untracked (P1) | Monorepo consolidated. Remote: github.com/Mikecranesync/MIRA (private). |
+| R-09: SLACK_ALLOWED_CHANNELS not enforced (P2) | Channel guard added to mira-bots/slack/bot.py handle_message(). |
 
 ---
 
