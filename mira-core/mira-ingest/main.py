@@ -234,6 +234,19 @@ async def ingest_photo(
     location: str = Form(default=""),
     notes: str = Form(default=""),
 ):
+    # Tier limit check — returns HTTP 429 if daily limit exceeded
+    tenant_id = os.getenv("MIRA_TENANT_ID", "")
+    if tenant_id:
+        try:
+            from db.neon import check_tier_limit
+            allowed, reason = check_tier_limit(tenant_id)
+            if not allowed:
+                raise HTTPException(status_code=429, detail=reason)
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # fail open — never block on DB errors
+
     raw = await image.read()
     if not raw:
         raise HTTPException(status_code=422, detail="Empty image upload")

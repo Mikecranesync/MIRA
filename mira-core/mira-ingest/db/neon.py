@@ -70,6 +70,41 @@ def recall_knowledge(embedding: list[float], tenant_id: str, limit: int = 5) -> 
     return [dict(r) for r in rows]
 
 
+def check_tier_limit(tenant_id: str) -> tuple[bool, str]:
+    """Check if tenant is within their tier's daily request limit.
+
+    Returns (allowed, reason).
+    Returns (True, '') if no limit is configured or NeonDB is unavailable.
+    Wire into photo ingest endpoint — return HTTP 429 if not allowed.
+    """
+    try:
+        tenant = get_tenant(tenant_id)
+        if not tenant:
+            return (True, "")  # unknown tenant — allow, log elsewhere
+
+        tier = tenant.get("tier", "free")
+        limits = get_tier_limits(tier)
+        if not limits:
+            return (True, "")  # no limits configured for this tier
+
+        daily_limit = limits.get("daily_requests")
+        if not daily_limit:
+            return (True, "")
+
+        with _engine().connect() as conn:
+            today_count = conn.execute(text("""
+                SELECT COUNT(*) FROM knowledge_entries
+                WHERE tenant_id = :tid
+                  AND created_at >= CURRENT_DATE
+            """), {"tid": tenant_id}).scalar() or 0
+
+        if today_count >= daily_limit:
+            return (False, f"Daily limit of {daily_limit} requests reached for tier '{tier}'")
+        return (True, "")
+    except Exception:
+        return (True, "")  # fail open — never block on DB errors
+
+
 def health_check() -> dict[str, Any]:
     """Return NeonDB status + key row counts."""
     try:

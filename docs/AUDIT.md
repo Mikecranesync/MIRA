@@ -362,4 +362,29 @@ Mac Mini M4 16GB (bravonode · 192.168.1.11 · Tailscale 100.86.236.11)
 
 ## Phase 5 Completion — Production Release
 
-*(To be filled after Phase 5 work is done)*
+**Completed:** 2026-03-18
+
+### Smoke Test Results (5/5 PASS)
+
+| Service | Endpoint | Result |
+|---------|----------|--------|
+| open-webui | GET localhost:3000/health | ✅ HTTP 200 |
+| mira-ingest | GET localhost:8002/health | ✅ HTTP 200 |
+| mira-mcp | GET localhost:8001/health | ✅ HTTP 200 |
+| mira-mcpo | GET localhost:8003/mira-mcp/docs | ✅ HTTP 200 |
+| node-red | GET localhost:1880/ | ✅ HTTP 200 |
+
+### Definition of Done Checklist
+
+- [x] `git clone → doppler run -- docker compose up -d` boots clean
+- [x] `smoke_test.sh` returns 0 failures (5/5)
+- [x] Teams + WhatsApp adapters built (manual cloud setup required)
+- [x] No AGPL licenses — pymupdf replaced with pdfplumber MIT
+- [x] All Docker images pinned to explicit semver
+- [x] No `.env` files in git index
+- [x] `CLAUDE.md` committed and accurate
+- [x] `docs/AUDIT.md` Phase 1–5 complete
+- [x] Prompt v0.1 locked with golden dataset (8 test cases)
+- [x] `api_usage` table + `write_api_usage()` in router.py
+- [x] `check_tier_limit()` wired into mira-ingest photo endpoint
+- [x] `README.md` 3-step setup documented

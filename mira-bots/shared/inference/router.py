@@ -14,6 +14,7 @@ and the Messages API is a simple POST.
 import logging
 import os
 import re
+import sqlite3
 import time
 from pathlib import Path
 
@@ -228,3 +229,60 @@ class InferenceRouter:
         logger.info(
             "CLAUDE_USAGE: input=%d output=%d est_cost=$%.5f", inp, out, cost
         )
+
+    @staticmethod
+    def write_api_usage(
+        session_id: str,
+        usage: dict,
+        model: str,
+        has_image: bool,
+        response_time_ms: int,
+    ) -> None:
+        """Write one row to the api_usage table in mira.db.
+
+        Table is created if missing (idempotent). Session ID format:
+        {tenant_id}_{platform}_{user_id} — platform extracted from middle segment.
+        """
+        db_path = os.getenv("MIRA_DB_PATH", "/data/mira.db")
+        if not db_path or not os.path.exists(db_path):
+            return
+
+        parts = session_id.split("_", 2)
+        tenant_id = parts[0] if len(parts) >= 1 else "unknown"
+        platform = parts[1] if len(parts) >= 2 else "unknown"
+
+        try:
+            con = sqlite3.connect(db_path, timeout=5)
+            con.execute("PRAGMA journal_mode=WAL")
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS api_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tenant_id TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    input_tokens INTEGER,
+                    output_tokens INTEGER,
+                    model TEXT,
+                    has_image BOOLEAN,
+                    response_time_ms INTEGER,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            con.execute(
+                """INSERT INTO api_usage
+                   (tenant_id, platform, session_id, input_tokens, output_tokens,
+                    model, has_image, response_time_ms)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    tenant_id, platform, session_id,
+                    usage.get("input_tokens", 0),
+                    usage.get("output_tokens", 0),
+                    model,
+                    1 if has_image else 0,
+                    response_time_ms,
+                ),
+            )
+            con.commit()
+            con.close()
+        except Exception as e:
+            logger.warning("api_usage write failed: %s", e)
