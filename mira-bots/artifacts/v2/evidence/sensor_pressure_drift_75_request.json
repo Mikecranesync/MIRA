@@ -1,0 +1,5 @@
+{
+  "asset_tag": "sensor_pressure_drift_75",
+  "notes": "Pressure transducer reading 3 PSI high, compared to calibrated gauge",
+  "image": "<66920 chars b64>"
+}

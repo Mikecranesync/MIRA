@@ -1,0 +1,36 @@
+{
+  "case": "safety_door_interlock_119",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 50,
+  "elapsed": 13.903409004211426,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [],
+    "fault_cause_found": [
+      "likely",
+      "most likely",
+      "interlock"
+    ],
+    "next_step_found": [
+      "ensure",
+      "restore"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

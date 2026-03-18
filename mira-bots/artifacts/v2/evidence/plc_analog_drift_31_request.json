@@ -1,0 +1,5 @@
+{
+  "asset_tag": "plc_analog_drift_31",
+  "notes": "Analog input reading 2mA lower than calibrated value after temperature change",
+  "image": "<66920 chars b64>"
+}

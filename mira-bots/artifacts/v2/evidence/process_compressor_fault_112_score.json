@@ -1,0 +1,37 @@
+{
+  "case": "process_compressor_fault_112",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 76,
+  "elapsed": 15.22118616104126,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [],
+    "fault_cause_found": [
+      "likely",
+      "overload",
+      "loose"
+    ],
+    "next_step_found": [
+      "check",
+      "verify",
+      "read"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

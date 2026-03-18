@@ -1,0 +1,11 @@
+include:
+  - mira-core/docker-compose.yml
+  - mira-bridge/docker-compose.yml
+  - mira-bots/docker-compose.yml
+  - mira-mcp/docker-compose.yml
+
+networks:
+  core-net:
+    driver: bridge
+  bot-net:
+    driver: bridge

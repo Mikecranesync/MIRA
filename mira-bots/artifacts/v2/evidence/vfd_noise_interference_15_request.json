@@ -1,0 +1,5 @@
+{
+  "asset_tag": "vfd_noise_interference_15",
+  "notes": "PLC getting random faults whenever the drive starts, suspect electrical noise",
+  "image": "<67628 chars b64>"
+}

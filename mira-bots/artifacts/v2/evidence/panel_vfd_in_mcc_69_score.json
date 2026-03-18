@@ -1,0 +1,39 @@
+{
+  "case": "panel_vfd_in_mcc_69",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 62,
+  "elapsed": 14.503206014633179,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "Square D"
+    ],
+    "fault_cause_found": [
+      "due to",
+      "likely",
+      "tripped"
+    ],
+    "next_step_found": [
+      "check",
+      "verify",
+      "read"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

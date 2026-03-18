@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and automate industrial processes.\n\n(2) The most likely cause is a faulty input module or a PLC itself, as the LED isn't lighting and the input is off despite the target being within range.\n\n(3) The tech should check the input module and the PLC's status. If the input module is faulty, replace it. If the PLC is the issue, check its programming and settings."
+}

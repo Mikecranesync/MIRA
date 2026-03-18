@@ -1,0 +1,30 @@
+services:
+  mira-mcp:
+    build: .
+    container_name: mira-mcp
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    environment:
+      - MIRA_DB_PATH=/mira-db/mira.db
+      - FASTMCP_HOST=0.0.0.0
+      - FASTMCP_PORT=8000
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY}
+      - RETRIEVAL_BACKEND=${RETRIEVAL_BACKEND:-openwebui}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - VIKING_STORE_PATH=/mira-db/viking
+    volumes:
+      - ${MIRA_DB_PATH:-../mira-bridge/data}:/mira-db
+    networks:
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/sse')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  core-net:
+    external: true

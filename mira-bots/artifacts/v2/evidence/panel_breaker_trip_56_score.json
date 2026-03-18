@@ -1,0 +1,39 @@
+{
+  "case": "panel_breaker_trip_56",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 91,
+  "elapsed": 16.793489933013916,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "Square D"
+    ],
+    "fault_cause_found": [
+      "due to",
+      "tripped",
+      "overload"
+    ],
+    "next_step_found": [
+      "check",
+      "test",
+      "ensure"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

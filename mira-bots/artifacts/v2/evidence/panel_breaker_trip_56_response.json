@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This device is a Square D Motor Control Center (MCC) panel MCC-003. It's used to control and protect motor circuits.\n\n(2) The most probable fault cause is a short circuit or overload in the connected motor or circuit.\n\n(3) The tech should check the MCC for any visible signs of damage or overheating. If no obvious issue is found, test the MCC's breaker for continuity and ensure it's not tripped due to a fault. If the breaker is not tripped, check the connected motor and circuit for any obvious faults."
+}

@@ -1,0 +1,27 @@
+services:
+  node-red:
+    image: nodered/node-red:latest
+    container_name: mira-bridge
+    ports:
+      - "${NODERED_PORT:-1880}:1880"
+    environment:
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - node-red-data:/data
+      - ${MIRA_DB_PATH:-./data}:/mira-db
+    networks:
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1880/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  node-red-data:
+
+networks:
+  core-net:
+    external: true

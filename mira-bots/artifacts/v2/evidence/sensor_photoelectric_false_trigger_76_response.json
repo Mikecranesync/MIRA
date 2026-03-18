@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and automate industrial processes.\n\n(2) The most likely cause is a sensor issue or a problem with the PLC's programming. The ambient light change might be affecting the sensor's sensitivity.\n\n(3) The tech should check the photoelectric sensor's settings and ensure it's properly calibrated. If the issue persists, re tech should consult the PLC's programming to ensure it's correctly configured for the application."
+}

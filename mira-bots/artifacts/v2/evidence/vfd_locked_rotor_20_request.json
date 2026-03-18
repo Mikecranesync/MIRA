@@ -1,0 +1,5 @@
+{
+  "asset_tag": "vfd_locked_rotor_20",
+  "notes": "Drive trips immediately when I command a start, motor shaft is locked",
+  "image": "<67628 chars b64>"
+}

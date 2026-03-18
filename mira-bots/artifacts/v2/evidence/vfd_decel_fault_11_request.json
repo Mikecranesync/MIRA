@@ -1,0 +1,5 @@
+{
+  "asset_tag": "vfd_decel_fault_11",
+  "notes": "Drive trips when stopping the conveyor, only happens on decel",
+  "image": "<67628 chars b64>"
+}

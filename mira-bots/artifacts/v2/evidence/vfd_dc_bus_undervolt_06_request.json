@@ -1,0 +1,5 @@
+{
+  "asset_tag": "vfd_dc_bus_undervolt_06",
+  "notes": "Drive faulted on UV, power dipped during a thunderstorm, trying to reset",
+  "image": "<67628 chars b64>"
+}

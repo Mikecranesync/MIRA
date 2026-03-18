@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and monitor industrial processes.\n\n(2) The most likely cause for the e-stop circuit not resetting could be a a faulty relay or a programming error in the PLC's logic.\n\n(3) The tech should check the relay contacts and verify the PLC's programming for the e-stop circuit."
+}

@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This device is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and automate industrial processes.\n\n(2) The most probable fault cause could be a a PLC's power supply or the input/output points, as it's a 24VDC powered device with 20 I/O points.\n\n(3) The tech should check the power supply and ensure all I/O points are correctly connected and functioning.\n\nFor an unknown fault on this equipment type, the tech should start by verifying the power supply and checking the wiring for any obvious issues."
+}

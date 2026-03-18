@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is a Square D MCC-003 Motor Control Center. It's used to control and protect motors in industrial setting.\n\n(2) The most likely issue is overcurrent or overload, given the high current rating of 100A. This contactor might be failing.\n\n(3) The tech should check the current draw and compare it to the rated current. If it's too high, the contactor might need replacing. If the contactor is fine, the issue might be in motor or wiring."
+}

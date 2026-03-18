@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This device is an AutomationDirect GS10 Variable Frequency Drive. It controls motor speed by adjusting voltage and frequency.\n\n(2) The most likely cause of the CE fault is a PLC losing communication with the drive, which might be due to a PLC's settings or a drive's configuration not being correctly set.\n\n(3) The tech should check the PLC's settings and ensure the communication parameters match the drive's configuration. If the issue persists, verify the drive's local mode settings and ensure the motor is properly connected."
+}

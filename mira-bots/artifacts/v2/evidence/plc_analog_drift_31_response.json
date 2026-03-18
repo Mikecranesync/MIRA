@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and monitor industrial processes.\n\n(2) The most likely cause is a temperature-related drift in the analog input module, which might have altered its calibration.\n\n(3) The tech should check the temperature of the analog input module and recalibrate it if necessary."
+}

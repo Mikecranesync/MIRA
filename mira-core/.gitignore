@@ -1,0 +1,6 @@
+.env
+*.log
+data/photos/
+mira.db
+mira.db-shm
+mira.db-wal

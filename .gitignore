@@ -1,5 +1,54 @@
-Secrets/
+# Secrets — NEVER commit these
 .env
-*.log
+*.env.local
+mira-core/.env
+mira-bots/.env
+mira-mcp/.env
+
+# Telethon sessions
+*.session
+*.session-journal
+
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Test artifacts
+artifacts/latest_run/
+artifacts/v2/
+.pytest_cache/
+*.log
+
+# SQLite WAL files
+*.db-shm
+*.db-wal
+
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Orphan directories
+mira-bots-phase1/
+mira-bots-phase2/
+mira-bots-phase3/
+
+# State / local planning (not code)
+.planning/
+
+# Node
+node_modules/
+
+# Secrets directory (empty — kept as marker)
+Secrets/
+
+# Archives (large binary blobs)
+archives/

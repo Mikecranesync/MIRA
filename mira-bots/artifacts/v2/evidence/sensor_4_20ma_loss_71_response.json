@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and monitor industrial processes.\n\n(2) The most likely cause is a flow transmitter's sensor or wiring issue, as the PLC is showing a input as bad.\n\n(3) The tech should check the flow transmitter's sensor and wiring for any damage or loose connections."
+}

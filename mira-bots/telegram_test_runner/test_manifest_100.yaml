@@ -1,0 +1,2214 @@
+cases:
+  # ── VFD/DRIVE FAULTS (20 cases) ────────────────────────────────────────────
+
+  - name: vfd_overcurrent_01
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "My GS10 drive tripped on overcurrent this morning, motor was running fine yesterday"
+    scenario: VFD tripped overcurrent fault at startup
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10, VFD]
+      must_not_contain: [Allen-Bradley, PowerFlex, PLC]
+      must_include_action_verb: true
+    fault_cause_keywords: [overcurrent, overload, winding, short, load, motor]
+    next_step_keywords: [check, inspect, measure, reset, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_overvoltage_02
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Drive showing OV fault code on the display, line voltage reads 248VAC"
+    scenario: VFD overvoltage fault with high line voltage
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: [Allen-Bradley, PLC]
+      must_include_action_verb: true
+    fault_cause_keywords: [overvoltage, voltage, high, bus, regeneration]
+    next_step_keywords: [check, measure, verify, reduce, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_ground_fault_03
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Ground fault light is on, drive won't restart, tripped GFCI upstream"
+    scenario: VFD ground fault with upstream GFCI trip
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: [Allen-Bradley]
+      must_include_action_verb: true
+    fault_cause_keywords: [ground, fault, insulation, winding, leakage, short]
+    next_step_keywords: [check, test, disconnect, measure, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_overtemp_04
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Drive keeps shutting down after about 20 minutes, enclosure feels very hot"
+    scenario: VFD thermal overtemperature shutdown
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [overtemp, temperature, heat, thermal, cooling, fan, ambient]
+    next_step_keywords: [check, clean, inspect, verify, replace, measure]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_comm_loss_05
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "PLC lost comms to the drive, drive shows CE fault, running in local mode now"
+    scenario: VFD communication loss fault from PLC
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [communication, comms, network, Modbus, timeout, wiring]
+    next_step_keywords: [check, verify, inspect, reset, reconnect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_dc_bus_undervolt_06
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Drive faulted on UV, power dipped during a thunderstorm, trying to reset"
+    scenario: VFD DC bus undervoltage after power dip
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [undervoltage, voltage, bus, low, power, supply]
+    next_step_keywords: [check, reset, measure, verify, clear]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_motor_stall_07
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor won't accelerate to setpoint, drive shows high current and then trips"
+    scenario: VFD motor stall during acceleration
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [stall, overload, torque, current, load, mechanical]
+    next_step_keywords: [check, reduce, inspect, measure, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_output_phase_loss_08
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor running rough, vibrating badly, drive output current unbalanced"
+    scenario: VFD output phase loss causing motor imbalance
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [phase, output, wiring, connection, terminal, unbalanced]
+    next_step_keywords: [check, inspect, measure, tighten, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_keypad_fault_09
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Keypad display showing dashes and not responding to buttons"
+    scenario: VFD keypad/display communication fault
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [keypad, display, communication, connector, loose, power]
+    next_step_keywords: [check, reseat, replace, inspect, reset]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_input_phase_loss_10
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Drive showing IPL fault, one of the input fuses blew this morning"
+    scenario: VFD input phase loss after fuse failure
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [input, phase, fuse, power, supply, voltage]
+    next_step_keywords: [replace, check, verify, measure, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_decel_fault_11
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Drive trips when stopping the conveyor, only happens on decel"
+    scenario: VFD overvoltage fault during deceleration
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [deceleration, decel, regen, overvoltage, braking, time]
+    next_step_keywords: [increase, adjust, set, check, add]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_external_fault_12
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Drive shows EF fault, external fault input triggered but nothing obvious"
+    scenario: VFD external fault input triggered
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [external, fault, input, signal, wiring, trigger]
+    next_step_keywords: [check, inspect, trace, verify, disconnect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_run_at_low_freq_13
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor overheating running at 15Hz continuously for 8 hours"
+    scenario: VFD motor overheating at low frequency
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [low frequency, cooling, fan, speed, thermal, overload]
+    next_step_keywords: [add, install, check, reduce, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_parameter_lost_14
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Drive reset to factory defaults after power outage, motor runs wrong speed now"
+    scenario: VFD parameters lost after power event
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [parameter, lost, power, reset, memory, battery]
+    next_step_keywords: [reprogram, restore, set, verify, check]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_noise_interference_15
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "PLC getting random faults whenever the drive starts, suspect electrical noise"
+    scenario: VFD electrical noise interfering with PLC
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [noise, EMI, ground, shield, filter, interference]
+    next_step_keywords: [add, install, check, separate, ground]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_capacitor_worn_16
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "5-year-old drive has been sitting idle for 2 years, trying to bring it back online"
+    scenario: VFD capacitor reformation after long storage
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [capacitor, storage, age, reform, bus, voltage]
+    next_step_keywords: [reform, apply, slowly, check, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_fan_failure_17
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Cooling fan inside drive stopped spinning, drive overtemp after 30 minutes"
+    scenario: VFD internal cooling fan failure
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [fan, cooling, overtemp, thermal, heat, replace]
+    next_step_keywords: [replace, check, clean, verify, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: vfd_glare_image_18
+    image: test-assets/sample_tags/bad_glare_tag.jpg
+    caption: "Drive won't start, LED on front panel flashing red, what's wrong?"
+    scenario: VFD fault with degraded image quality
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 15
+      must_contain: []
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [fault, trip, error, overload, wiring]
+    next_step_keywords: [check, inspect, read, reset, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: true
+    scenario_type: fault
+
+  - name: vfd_cropped_tag_19
+    image: test-assets/sample_tags/cropped_tight_tag.jpg
+    caption: "What drive is this and what should I check first for a no-run fault?"
+    scenario: VFD identification from cropped nameplate
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 15
+      must_contain: []
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [fault, no-run, power, input, wiring]
+    next_step_keywords: [check, verify, inspect, measure, read]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: true
+    scenario_type: fault
+
+  - name: vfd_locked_rotor_20
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Drive trips immediately when I command a start, motor shaft is locked"
+    scenario: VFD locked rotor overcurrent trip
+    expected:
+      fault_category: VFD_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [locked, rotor, mechanical, jam, bearing, shaft]
+    next_step_keywords: [check, free, inspect, rotate, remove]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  # ── PLC FAULTS (20 cases) ──────────────────────────────────────────────────
+
+  - name: plc_io_failure_21
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Output card not responding, field devices not activating on command"
+    scenario: PLC output card failure
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: [AutomationDirect, VFD]
+      must_include_action_verb: true
+    fault_cause_keywords: [I/O, output, card, module, failed, overload, wiring]
+    next_step_keywords: [check, inspect, replace, verify, test]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_comms_timeout_22
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "SCADA losing connection to PLC every few hours, comms timeout alarm"
+    scenario: PLC Ethernet comms timeout
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [communication, comms, timeout, Ethernet, network, cable]
+    next_step_keywords: [check, inspect, ping, verify, replace]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_program_fault_23
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "PLC went to fault mode, red fault LED on, machine stopped"
+    scenario: PLC major program fault
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [fault, program, exception, overflow, watchdog, code]
+    next_step_keywords: [check, read, clear, connect, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_power_loss_24
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "PLC rebooted itself during production, power supply reading 23V on 24V input"
+    scenario: PLC brownout reboot from marginal power supply
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [power, supply, voltage, brownout, reboot, low]
+    next_step_keywords: [measure, replace, check, verify, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_input_card_failure_25
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Field sensor signals not reading, input LEDs not lighting on card"
+    scenario: PLC input card failure
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [input, card, module, sensor, wiring, failed, voltage]
+    next_step_keywords: [check, inspect, test, replace, verify, measure]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_battery_low_26
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Battery low warning on PLC, been running for 3 years"
+    scenario: PLC battery low warning
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [battery, low, voltage, age, backup, memory]
+    next_step_keywords: [replace, backup, check, verify, swap]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_modbus_slave_error_27
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Modbus polling to drive getting exception code 02, started after maintenance"
+    scenario: PLC Modbus slave exception error
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [Modbus, exception, address, register, slave, wiring]
+    next_step_keywords: [check, verify, inspect, read, test]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_watchdog_fault_28
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "PLC scan time exceeding limit, watchdog fault every few cycles"
+    scenario: PLC watchdog timeout from long scan time
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [watchdog, scan, time, program, loop, routine]
+    next_step_keywords: [check, optimize, increase, reduce, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_output_shorted_29
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Output module blew a fuse, relay coil on output 5 feels hot"
+    scenario: PLC output overloaded by shorted load
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [short, output, overload, fuse, current, load]
+    next_step_keywords: [check, replace, measure, disconnect, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_ethernet_ip_offline_30
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "EtherNet/IP device showing offline in PLC, just swapped the cable"
+    scenario: PLC EtherNet/IP device connection failure
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [Ethernet, IP, network, connection, cable, address, ping]
+    next_step_keywords: [ping, check, verify, set, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_analog_drift_31
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Analog input reading 2mA lower than calibrated value after temperature change"
+    scenario: PLC analog input drift
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [analog, drift, calibration, temperature, offset, signal]
+    next_step_keywords: [recalibrate, check, verify, measure, adjust]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_ram_fault_32
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "PLC showing memory error, program corrupted after power spike"
+    scenario: PLC RAM fault after power spike
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [memory, RAM, corrupt, power, surge, spike]
+    next_step_keywords: [download, restore, reload, check, replace]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_firmware_mismatch_33
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Replaced PLC with spare unit but program won't download, version mismatch error"
+    scenario: PLC firmware version mismatch
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [firmware, version, mismatch, software, revision, upgrade]
+    next_step_keywords: [update, download, check, verify, upgrade]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_glare_fault_34
+    image: test-assets/sample_tags/bad_glare_tag.jpg
+    caption: "PLC in fault mode, I can barely read the tag, what should I do?"
+    scenario: PLC fault with degraded nameplate photo
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 15
+      must_contain: []
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [fault, program, power, error]
+    next_step_keywords: [check, read, connect, inspect, clear]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: true
+    scenario_type: fault
+
+  - name: plc_cropped_fault_35
+    image: test-assets/sample_tags/cropped_tight_tag.jpg
+    caption: "This controller stopped, I only got part of the label in the photo"
+    scenario: PLC fault identification from partial tag
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 15
+      must_contain: []
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [fault, stop, program, I/O]
+    next_step_keywords: [check, inspect, connect, read, clear]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: true
+    scenario_type: fault
+
+  - name: plc_ground_loop_36
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Intermittent analog noise on all AI channels, getting random readings"
+    scenario: PLC ground loop on analog inputs
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [ground, loop, noise, analog, signal, common, shield]
+    next_step_keywords: [check, add, isolate, install, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_node_address_conflict_37
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Added second PLC to the network and now both are acting erratic"
+    scenario: PLC IP address conflict on network
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [address, conflict, IP, duplicate, network, collision]
+    next_step_keywords: [change, assign, check, set, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_no_output_power_38
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "All outputs dead, PLC running normally, checked program and bits are set"
+    scenario: PLC output power supply missing
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [power, supply, output, fuse, voltage, common, wiring]
+    next_step_keywords: [check, verify, measure, inspect, replace]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_dip_switch_wrong_39
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "New replacement card not working, same model, different part number suffix"
+    scenario: PLC replacement module DIP switch mismatch
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [configuration, switch, setting, module, mismatch, address]
+    next_step_keywords: [check, set, verify, compare, configure]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: plc_online_edit_crash_40
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "PLC crashed mid online edit, program reverted to old version"
+    scenario: PLC crash during online program edit
+    expected:
+      fault_category: PLC_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [online edit, crash, program, revert, fault, scan]
+    next_step_keywords: [download, backup, verify, connect, check]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  # ── MOTOR FAULTS (15 cases) ────────────────────────────────────────────────
+
+  - name: motor_overload_trip_41
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Overload relay tripped on conveyor motor, reset and it tripped again in 5 min"
+    scenario: Motor thermal overload relay repeated trip
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [overload, thermal, motor, current, load, bearing, jam]
+    next_step_keywords: [check, measure, inspect, verify, reduce]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_bearing_noise_42
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor making loud grinding noise, vibration sensor showing high amplitude"
+    scenario: Motor bearing failure with audible noise
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [bearing, vibration, worn, lubrication, noise, mechanical]
+    next_step_keywords: [replace, inspect, lubricate, check, measure]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_winding_fault_43
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Megger test showing low insulation resistance on motor windings, 0.5 MOhm"
+    scenario: Motor insulation winding breakdown
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [insulation, winding, megger, resistance, moisture, contamination]
+    next_step_keywords: [replace, rewind, check, dry, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_phase_loss_44
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor running hot, drawing high current on two phases, third phase very low"
+    scenario: Motor single-phasing from phase loss
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [phase, loss, single phasing, unbalanced, current, winding]
+    next_step_keywords: [check, measure, inspect, trace, replace]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_overtemp_sensor_45
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor thermistor input on drive showing open circuit, motor temp alarm active"
+    scenario: Motor thermistor open circuit
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [thermistor, temperature, sensor, open, wiring, thermal]
+    next_step_keywords: [check, measure, replace, inspect, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_coupling_failure_46
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor spinning freely but pump not moving, shaft coupling looks damaged"
+    scenario: Motor coupling failure
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [coupling, shaft, mechanical, failed, disconnect, spider]
+    next_step_keywords: [replace, inspect, check, align, install]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_cooling_blocked_47
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor fan guard completely packed with dust, running at high temperature"
+    scenario: Motor cooling blocked by contamination
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [cooling, fan, dust, contamination, blocked, overheating]
+    next_step_keywords: [clean, remove, inspect, clear, check]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_vibration_misalign_48
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "High vibration at 1x and 2x running speed, just replaced the motor"
+    scenario: Motor misalignment after replacement
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [misalignment, vibration, shaft, coupling, alignment, balance]
+    next_step_keywords: [realign, check, measure, align, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_rotor_bar_49
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor current fluctuating rhythmically, speed varies slightly under load"
+    scenario: Motor broken rotor bar
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [rotor, current, fluctuating, slip, broken, bar]
+    next_step_keywords: [replace, check, measure, inspect, rewind]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_wrong_rotation_50
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Pump running backward after electrical work, flow reversed"
+    scenario: Motor wrong rotation direction after wiring change
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [rotation, phase, reversed, wiring, direction, swap]
+    next_step_keywords: [swap, reverse, check, correct, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_locked_bearing_51
+    image: test-assets/sample_tags/cropped_tight_tag.jpg
+    caption: "Motor won't spin by hand, seized bearing, won't start under load"
+    scenario: Motor locked bearing
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 15
+      must_contain: []
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [bearing, seized, locked, lubrication, mechanical]
+    next_step_keywords: [replace, remove, inspect, check, service]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: true
+    scenario_type: fault
+
+  - name: motor_cabinet_generic_52
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Motor control panel on conveyor won't start, breaker is good, lights off"
+    scenario: Motor starter in MCC panel not starting
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [starter, contactor, overload, control, power, signal]
+    next_step_keywords: [check, inspect, verify, measure, test]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_undersized_53
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor runs fine unloaded but trips when belt is connected, added a new conveyor"
+    scenario: Motor undersized for new load
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [undersized, load, overload, HP, current, torque]
+    next_step_keywords: [check, replace, measure, verify, calculate]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_delta_open_54
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor drawing high current, one winding shows open on resistance check"
+    scenario: Motor open delta winding
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [winding, open, resistance, short, burnout, delta]
+    next_step_keywords: [replace, rewind, measure, check, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: motor_seal_failure_55
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Oil contamination inside motor enclosure, windings look wet"
+    scenario: Motor seal failure with fluid contamination
+    expected:
+      fault_category: MOTOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [seal, contamination, oil, moisture, winding, insulation]
+    next_step_keywords: [replace, clean, dry, inspect, check]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  # ── PANEL/MCC FAULTS (15 cases) ────────────────────────────────────────────
+
+  - name: panel_breaker_trip_56
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Main breaker in MCC tripped, everything downstream is dead"
+    scenario: MCC main breaker trip
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [breaker, overload, short, fault, trip, current]
+    next_step_keywords: [check, inspect, measure, verify, reset]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_contactor_failure_57
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Contactor not pulling in, coil voltage good, contacts pitted and black"
+    scenario: Panel contactor contact failure
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [contactor, contacts, pitted, burned, coil, wear]
+    next_step_keywords: [replace, inspect, check, clean, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_blown_fuse_58
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Control fuse blown on 24VDC circuit, replaced it and it blew again immediately"
+    scenario: Panel blown control fuse with short circuit
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [fuse, short, blown, circuit, current, wiring, overload]
+    next_step_keywords: [trace, check, find, isolate, inspect, disconnect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_loose_connection_59
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Intermittent power loss on 480V feeder, terminal block heating up"
+    scenario: Panel loose terminal connection causing hot spot
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [loose, connection, terminal, resistance, heating, contact]
+    next_step_keywords: [tighten, torque, inspect, check, replace]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_phase_reversal_60
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "After utility work, phase rotation monitor tripped, machines running backward"
+    scenario: Panel phase rotation reversal after utility work
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [phase, rotation, reversal, utility, sequence, reconnected]
+    next_step_keywords: [swap, check, verify, correct, measure]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_surge_damage_61
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Lightning strike nearby, several drives and PLCs damaged, panel smells burnt"
+    scenario: Panel surge damage from nearby lightning strike
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [surge, lightning, transient, damaged, burned, SPD]
+    next_step_keywords: [inspect, replace, check, isolate, install]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_ground_fault_interrupter_62
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "GFCI outlet in panel tripped, reset and trips immediately, panel wet inside"
+    scenario: Panel GFCI trip with moisture ingress
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [GFCI, ground fault, moisture, water, insulation, leakage]
+    next_step_keywords: [dry, inspect, seal, check, find]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_relay_coil_burn_63
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Control relay coil burned out, visible scorch marks, smell of burning"
+    scenario: Panel control relay coil failure
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [relay, coil, burned, overvoltage, voltage, failed]
+    next_step_keywords: [replace, check, verify, inspect, measure]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_overloaded_bus_64
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Bus bar running very hot, 80% of loads recently added, bus discolored"
+    scenario: Panel bus bar overloaded
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [bus, overloaded, current, capacity, load, temperature]
+    next_step_keywords: [measure, check, reduce, inspect, upgrade]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_arc_flash_event_65
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Arc flash occurred when tech opened panel door energized, need damage assessment"
+    scenario: Panel arc flash damage assessment
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [arc flash, damaged, burned, fault, energy, incident]
+    next_step_keywords: [de-energize, inspect, replace, report, isolate]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_nuisance_trip_66
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Breaker tripping every 2 hours with no apparent overload, current reads normal"
+    scenario: Panel nuisance breaker trip
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [nuisance, thermal, heat, ambient, overload, worn, age]
+    next_step_keywords: [replace, check, measure, verify, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_no_neutral_67
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "120V control circuit not working, 120V reads fine line to ground, nothing at neutral"
+    scenario: Panel missing neutral connection
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [neutral, open, connection, missing, wiring, terminal]
+    next_step_keywords: [check, trace, inspect, tighten, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_glare_fault_68
+    image: test-assets/sample_tags/bad_glare_tag.jpg
+    caption: "Panel shut down, I can see the brand but not much else in this glare"
+    scenario: Panel fault with glare-degraded photo
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 15
+      must_contain: []
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [fault, trip, breaker, power]
+    next_step_keywords: [check, inspect, verify, measure]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: true
+    scenario_type: fault
+
+  - name: panel_vfd_in_mcc_69
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "VFD inside MCC section won't start, door interlock light off"
+    scenario: VFD inside MCC door interlock tripped
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [interlock, door, switch, safety, power, VFD]
+    next_step_keywords: [check, close, inspect, verify, reset]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: panel_wire_label_missing_70
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Wire labels fell off in panel during flood, need to trace 24V control wires"
+    scenario: Panel unlabeled wires after flood damage
+    expected:
+      fault_category: PANEL_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [labels, unlabeled, trace, wiring, flood, water]
+    next_step_keywords: [trace, check, label, verify, use]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  # ── SENSOR/INSTRUMENTATION FAULTS (10 cases) ──────────────────────────────
+
+  - name: sensor_4_20ma_loss_71
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Flow transmitter 4-20mA signal dropped to 0mA, PLC showing bad input"
+    scenario: 4-20mA loop signal loss
+    expected:
+      fault_category: SENSOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [4-20mA, loop, signal, power, wiring, transmitter, open]
+    next_step_keywords: [check, measure, trace, verify, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: sensor_encoder_fault_72
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Encoder on conveyor showing wrong position, counts jumping randomly"
+    scenario: Encoder signal noise or wiring fault
+    expected:
+      fault_category: SENSOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [encoder, noise, signal, wiring, shield, coupling, electrical]
+    next_step_keywords: [check, shield, inspect, replace, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: sensor_thermocouple_open_73
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Thermocouple input on PLC showing -999 degrees, oven temperature control lost"
+    scenario: Thermocouple open circuit
+    expected:
+      fault_category: SENSOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [thermocouple, open, broken, wiring, connection, temperature]
+    next_step_keywords: [replace, check, inspect, verify, test]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: sensor_proximity_no_output_74
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Proximity sensor LED not lighting, target within range, PLC input off"
+    scenario: Proximity sensor failed no-output
+    expected:
+      fault_category: SENSOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [proximity, sensor, power, output, target, failed, damaged]
+    next_step_keywords: [check, measure, replace, verify, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: sensor_pressure_drift_75
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Pressure transducer reading 3 PSI high, compared to calibrated gauge"
+    scenario: Pressure transducer calibration drift
+    expected:
+      fault_category: SENSOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [calibration, drift, offset, zero, span, pressure, transducer]
+    next_step_keywords: [recalibrate, check, zero, verify, replace]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: sensor_photoelectric_false_trigger_76
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Photoelectric sensor falsely triggering when ambient light changes, alignment good"
+    scenario: Photoelectric sensor false triggering from ambient light
+    expected:
+      fault_category: SENSOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [photoelectric, ambient, light, sensitivity, threshold, background]
+    next_step_keywords: [adjust, shield, reduce, check, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: sensor_rtd_shorted_77
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "RTD input showing maximum temperature, resistance reading 0 ohms"
+    scenario: RTD shorted
+    expected:
+      fault_category: SENSOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [RTD, shorted, resistance, wiring, damaged, temperature]
+    next_step_keywords: [replace, check, measure, verify, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: sensor_level_switch_stuck_78
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Float level switch showing full even though tank is empty, switch stuck closed"
+    scenario: Level switch stuck closed
+    expected:
+      fault_category: SENSOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [level, switch, stuck, float, debris, failed, contact]
+    next_step_keywords: [replace, inspect, clean, check, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: sensor_vfd_feedback_lost_79
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Speed feedback from tachometer lost, drive running open loop"
+    scenario: VFD tachometer feedback signal lost
+    expected:
+      fault_category: SENSOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: true
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [feedback, tachometer, signal, wiring, open loop, encoder]
+    next_step_keywords: [check, inspect, replace, verify, reconnect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: fault
+
+  - name: sensor_cable_damage_80
+    image: test-assets/sample_tags/cropped_tight_tag.jpg
+    caption: "Sensor cable caught in moving machinery, intermittent signal, visible damage"
+    scenario: Sensor cable damage from mechanical interference
+    expected:
+      fault_category: SENSOR_FAULT
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 15
+      must_contain: []
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: [cable, damaged, broken, mechanical, intermittent]
+    next_step_keywords: [replace, reroute, inspect, protect, check]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: true
+    scenario_type: fault
+
+  # ── STARTUP/COMMISSIONING SCENARIOS (10 cases) ────────────────────────────
+
+  - name: startup_first_power_on_81
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Brand new PLC, first power on, what do I need to check before loading the program?"
+    scenario: PLC first power-on commissioning
+    expected:
+      fault_category: STARTUP
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [check, verify, connect, set, download]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: startup
+
+  - name: startup_vfd_first_run_82
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "New GS10 drive installed, need to run it for the first time today, what are the steps?"
+    scenario: VFD first-time startup
+    expected:
+      fault_category: STARTUP
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [set, program, verify, run, check]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: startup
+
+  - name: startup_panel_energize_83
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Ready to energize this panel for the first time after install, any checklist?"
+    scenario: New panel first energization
+    expected:
+      fault_category: STARTUP
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [verify, check, inspect, close, energize]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: startup
+
+  - name: startup_modbus_config_84
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Setting up Modbus RTU from PLC to VFD for the first time, what baud rate settings?"
+    scenario: Modbus RTU commissioning between PLC and VFD
+    expected:
+      fault_category: STARTUP
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [set, configure, match, verify, check]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: startup
+
+  - name: startup_motor_direction_85
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Before I couple the motor to the pump, how do I verify rotation direction safely?"
+    scenario: Motor rotation direction check before coupling
+    expected:
+      fault_category: STARTUP
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [jog, run, verify, check, observe]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: startup
+
+  - name: startup_ip_address_config_86
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Need to set the IP address on this new PLC before putting it on the network"
+    scenario: PLC IP address configuration
+    expected:
+      fault_category: STARTUP
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [set, configure, connect, open, assign]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: startup
+
+  - name: startup_parameter_backup_87
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Drive is running well now, how do I save parameters before I leave today?"
+    scenario: VFD parameter backup before leaving site
+    expected:
+      fault_category: STARTUP
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [save, backup, copy, navigate, set]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: startup
+
+  - name: startup_acceleration_tuning_88
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor accelerates too fast and trips on load, need to adjust ramp time"
+    scenario: VFD acceleration ramp commissioning
+    expected:
+      fault_category: STARTUP
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [increase, adjust, set, change, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: startup
+
+  - name: startup_overload_set_89
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Need to set the electronic overload on this drive to match the motor nameplate FLA"
+    scenario: VFD electronic overload setting
+    expected:
+      fault_category: STARTUP
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [set, navigate, enter, program, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: startup
+
+  - name: startup_io_check_90
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Doing final I/O checkout before production startup, best approach?"
+    scenario: PLC I/O checkout during commissioning
+    expected:
+      fault_category: STARTUP
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [force, verify, check, test, toggle]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: startup
+
+  # ── PREVENTIVE MAINTENANCE SCENARIOS (10 cases) ───────────────────────────
+
+  - name: pm_vfd_annual_91
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Annual PM on this drive, 3 years old, what should I inspect today?"
+    scenario: VFD annual preventive maintenance
+    expected:
+      fault_category: PM
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [inspect, clean, check, measure, verify, test]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: pm
+
+  - name: pm_plc_annual_92
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Annual PM on PLC system, 4 years in service, what are the top things to check?"
+    scenario: PLC annual preventive maintenance
+    expected:
+      fault_category: PM
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [check, backup, inspect, replace, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: pm
+
+  - name: pm_panel_thermal_scan_93
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "About to do a thermal scan on this panel, what should I look for?"
+    scenario: MCC panel thermographic inspection
+    expected:
+      fault_category: PM
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [scan, look, check, identify, inspect]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: pm
+
+  - name: pm_contactor_replace_94
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "This contactor has 50,000 operations per the counter, time to replace it?"
+    scenario: Panel contactor end-of-life replacement decision
+    expected:
+      fault_category: PM
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [replace, inspect, check, verify, schedule]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: pm
+
+  - name: pm_vfd_capacitor_age_95
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Drive is 7 years old, still running good, should I replace the capacitors?"
+    scenario: VFD aging capacitor inspection
+    expected:
+      fault_category: PM
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [inspect, measure, replace, check, test]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: pm
+
+  - name: pm_encoder_cleaning_96
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Encoder on servo axis getting intermittent, last cleaned 18 months ago"
+    scenario: Encoder PM cleaning and inspection
+    expected:
+      fault_category: PM
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [clean, inspect, check, verify, replace]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: pm
+
+  - name: pm_motor_lubrication_97
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Motor is due for bearing greasing per our PM schedule, last done 6 months ago"
+    scenario: Motor bearing lubrication PM
+    expected:
+      fault_category: PM
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [grease, lubricate, apply, check, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: pm
+
+  - name: pm_battery_replace_98
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Scheduled battery replacement on PLC, has been 2 years"
+    scenario: PLC battery scheduled replacement
+    expected:
+      fault_category: PM
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Allen-Bradley, Micro820]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [replace, backup, remove, install, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: pm
+
+  - name: pm_panel_cleaning_99
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Annual panel cleaning, lots of dust buildup inside on every component"
+    scenario: Panel annual cleaning PM
+    expected:
+      fault_category: PM
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [Square D]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [clean, vacuum, blow, inspect, check]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: pm
+
+  - name: pm_vfd_torque_check_100
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "PM checklist says to check all terminal torque on drive, any other tips?"
+    scenario: VFD terminal torque PM check
+    expected:
+      fault_category: PM
+      must_identify_device: true
+      must_give_fault_cause: false
+      must_give_next_step: true
+    pass_conditions:
+      max_words: 150
+      min_words: 20
+      must_contain: [AutomationDirect, GS10]
+      must_not_contain: []
+      must_include_action_verb: true
+    fault_cause_keywords: []
+    next_step_keywords: [torque, tighten, check, inspect, verify]
+    max_words: 150
+    speed_timeout: 30
+    adversarial: false
+    scenario_type: pm

@@ -1,0 +1,263 @@
+"""NeonDB connection layer for MIRA.
+
+Uses NullPool so Neon's PgBouncer handles connection pooling.
+Read-only lookups and manual ingest writes both live here.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+import json
+import uuid
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import NullPool
+
+
+def _engine():
+    url = os.environ.get("NEON_DATABASE_URL")
+    if not url:
+        raise RuntimeError("NEON_DATABASE_URL not set")
+    return create_engine(
+        url,
+        poolclass=NullPool,
+        connect_args={"sslmode": "require"},
+        pool_pre_ping=True,
+    )
+
+
+def get_tenant(tenant_id: str) -> dict[str, Any] | None:
+    with _engine().connect() as conn:
+        row = conn.execute(
+            text("SELECT * FROM tenants WHERE id = :id"),
+            {"id": tenant_id},
+        ).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def get_tier_limits(tier: str) -> dict[str, Any] | None:
+    with _engine().connect() as conn:
+        row = conn.execute(
+            text("SELECT * FROM tier_limits WHERE tier = :tier"),
+            {"tier": tier},
+        ).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def recall_knowledge(embedding: list[float], tenant_id: str, limit: int = 5) -> list[dict[str, Any]]:
+    """pgvector cosine similarity search over knowledge_entries."""
+    with _engine().connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT
+                    content,
+                    manufacturer,
+                    model_number,
+                    equipment_type,
+                    source_type,
+                    metadata,
+                    1 - (embedding <=> cast(:emb AS vector)) AS similarity
+                FROM knowledge_entries
+                WHERE tenant_id = :tid
+                  AND embedding IS NOT NULL
+                ORDER BY embedding <=> cast(:emb AS vector)
+                LIMIT :lim
+            """),
+            {"emb": str(embedding), "tid": tenant_id, "lim": limit},
+        ).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def health_check() -> dict[str, Any]:
+    """Return NeonDB status + key row counts."""
+    try:
+        with _engine().connect() as conn:
+            tenant_count = conn.execute(text("SELECT COUNT(*) FROM tenants")).scalar()
+            ke_count = conn.execute(text("SELECT COUNT(*) FROM knowledge_entries")).scalar()
+        return {"status": "ok", "tenant_count": tenant_count, "knowledge_entries": ke_count}
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Manual ingest helpers (write path — used by mira-core/scripts/ingest_manuals.py)
+# ---------------------------------------------------------------------------
+
+def get_pending_urls() -> list[dict[str, Any]]:
+    """Return all URLs queued for ingest from the three source tables.
+
+    Returns a list of dicts with keys:
+        source_table, row_id, url, manufacturer, model, title
+    """
+    results: list[dict[str, Any]] = []
+    with _engine().connect() as conn:
+        # source_fingerprints: atoms_created = 0, skip example.com sentinel
+        rows = conn.execute(text(
+            "SELECT id, url, source_type FROM source_fingerprints "
+            "WHERE atoms_created = 0 AND url NOT LIKE 'https://example.com%'"
+        )).mappings().fetchall()
+        for r in rows:
+            results.append({
+                "source_table": "source_fingerprints",
+                "row_id": r["id"],
+                "url": r["url"],
+                "source_type": r["source_type"],
+                "manufacturer": None,
+                "model": None,
+                "title": None,
+            })
+
+        # manual_cache: pdf_stored = false
+        rows = conn.execute(text(
+            "SELECT id, manual_url, manufacturer, model, manual_title "
+            "FROM manual_cache WHERE pdf_stored = false AND manual_url IS NOT NULL"
+        )).mappings().fetchall()
+        for r in rows:
+            url = r["manual_url"]
+            source_type = "pdf" if url.lower().endswith(".pdf") else "web"
+            results.append({
+                "source_table": "manual_cache",
+                "row_id": r["id"],
+                "url": url,
+                "source_type": source_type,
+                "manufacturer": r["manufacturer"],
+                "model": r["model"],
+                "title": r["manual_title"],
+            })
+
+        # manuals: is_verified = false, file_url present
+        rows = conn.execute(text(
+            "SELECT id, file_url, manufacturer, model_number, title "
+            "FROM manuals WHERE is_verified = false AND file_url IS NOT NULL"
+        )).mappings().fetchall()
+        for r in rows:
+            url = r["file_url"]
+            source_type = "pdf" if url.lower().endswith(".pdf") else "web"
+            results.append({
+                "source_table": "manuals",
+                "row_id": str(r["id"]),
+                "url": url,
+                "source_type": source_type,
+                "manufacturer": r["manufacturer"],
+                "model": r["model_number"],
+                "title": r["title"],
+            })
+
+    return results
+
+
+def knowledge_entry_exists(tenant_id: str, source_url: str, chunk_index: int) -> bool:
+    """Check if a chunk has already been ingested (dedup guard)."""
+    with _engine().connect() as conn:
+        count = conn.execute(text(
+            "SELECT COUNT(*) FROM knowledge_entries "
+            "WHERE tenant_id = :tid "
+            "AND source_url = :url "
+            "AND source_page = :chunk"
+        ), {"tid": tenant_id, "url": source_url, "chunk": chunk_index}).scalar()
+    return (count or 0) > 0
+
+
+def insert_knowledge_entry(
+    tenant_id: str,
+    content: str,
+    embedding: list[float],
+    manufacturer: str | None,
+    model_number: str | None,
+    source_url: str,
+    chunk_index: int,
+    page_num: int | None,
+    section: str | None,
+    source_type: str = "manual",
+) -> str:
+    """Insert one chunk into knowledge_entries. Returns the new row id."""
+    entry_id = str(uuid.uuid4())
+    meta = {
+        "source_url": source_url,
+        "chunk_index": chunk_index,
+        "page_num": page_num,
+        "section": section,
+    }
+    with _engine().connect() as conn:
+        conn.execute(text("""
+            INSERT INTO knowledge_entries
+                (id, tenant_id, source_type, manufacturer, model_number,
+                 content, embedding, source_url, source_page, metadata,
+                 is_private, verified)
+            VALUES
+                (:id, :tenant_id, :source_type, :manufacturer, :model_number,
+                 :content, cast(:embedding AS vector), :source_url, :source_page, cast(:metadata AS jsonb),
+                 false, false)
+        """), {
+            "id": entry_id,
+            "tenant_id": tenant_id,
+            "source_type": source_type,
+            "manufacturer": manufacturer,
+            "model_number": model_number,
+            "content": content,
+            "embedding": str(embedding),
+            "source_url": source_url,
+            "source_page": chunk_index,
+            "metadata": json.dumps(meta),
+        })
+        conn.commit()
+    return entry_id
+
+
+def mark_source_fingerprint_done(row_id: int, atoms_created: int) -> None:
+    with _engine().connect() as conn:
+        conn.execute(text(
+            "UPDATE source_fingerprints SET atoms_created = :n WHERE id = :id"
+        ), {"n": atoms_created, "id": row_id})
+        conn.commit()
+
+
+def mark_manual_cache_done(row_id: int) -> None:
+    with _engine().connect() as conn:
+        conn.execute(text(
+            "UPDATE manual_cache SET pdf_stored = true WHERE id = :id"
+        ), {"id": row_id})
+        conn.commit()
+
+
+def mark_manual_verified(row_id: str) -> None:
+    with _engine().connect() as conn:
+        conn.execute(text(
+            "UPDATE manuals SET is_verified = true, access_count = COALESCE(access_count, 0) + 1 "
+            "WHERE id = cast(:id AS uuid)"
+        ), {"id": row_id})
+        conn.commit()
+
+
+def insert_manual_cache_url(
+    manufacturer: str,
+    model: str | None,
+    manual_url: str,
+    manual_title: str | None,
+    source: str = "apify",
+    confidence: float = 0.8,
+) -> bool:
+    """Insert a newly-discovered URL into manual_cache. Returns True if inserted, False if duplicate."""
+    with _engine().connect() as conn:
+        exists = conn.execute(text(
+            "SELECT 1 FROM manual_cache WHERE manual_url = :url LIMIT 1"
+        ), {"url": manual_url}).fetchone()
+        if exists:
+            return False
+        conn.execute(text("""
+            INSERT INTO manual_cache
+                (manufacturer, model, manual_url, manual_title, pdf_stored, source, confidence)
+            VALUES
+                (:mfr, :model, :url, :title, false, :source, :conf)
+        """), {
+            "mfr": manufacturer,
+            "model": model,
+            "url": manual_url,
+            "title": manual_title,
+            "source": source,
+            "conf": confidence,
+        })
+        conn.commit()
+    return True
