@@ -15,12 +15,35 @@ import logging
 import os
 import re
 import time
+from pathlib import Path
 
 import httpx
+import yaml
 
 logger = logging.getLogger("mira-gsd")
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+
+_PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
+
+
+def get_system_prompt() -> str:
+    """Load system prompt from prompts/diagnose/active.yaml on each call.
+
+    Loading on every request enables zero-downtime prompt rollouts — swap
+    active.yaml and the next inference call picks up the new prompt.
+    Falls back to empty string if file is missing or malformed.
+    """
+    try:
+        with open(_PROMPT_PATH) as f:
+            data = yaml.safe_load(f)
+        return data.get("system_prompt", "")
+    except FileNotFoundError:
+        logger.warning("active.yaml not found at %s — using empty system prompt", _PROMPT_PATH)
+        return ""
+    except Exception as e:
+        logger.error("Failed to load active.yaml: %s", e)
+        return ""
 ANTHROPIC_VERSION = "2023-06-01"
 
 # Regex patterns for PII / sensitive data sanitization
