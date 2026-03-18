@@ -1,0 +1,230 @@
+{
+  "custom": {},
+  "params": {},
+  "props": {
+    "defaultSize": {
+      "height": 800,
+      "width": 1280
+    }
+  },
+  "root": {
+    "children": [
+      {
+        "meta": { "name": "Title" },
+        "position": { "basis": "48px", "shrink": 0 },
+        "props": {
+          "style": {
+            "color": "#FFFFFF",
+            "fontSize": "22px",
+            "fontWeight": "bold",
+            "letterSpacing": "3px",
+            "padding": "8px 16px"
+          },
+          "text": "FAULT LOG"
+        },
+        "type": "ia.display.label"
+      },
+      {
+        "children": [
+          {
+            "meta": { "name": "ActiveFaultLabel" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#AAAAAA",
+                "fontSize": "13px"
+              },
+              "text": "ACTIVE VFD FAULT:"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "ActiveFaultValue" },
+            "position": { "basis": "auto" },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "case({[default]Conveyor/VFD_FaultCode}, 0, 'No Fault', 1, 'OC — Overcurrent', 2, 'OV — Overvoltage', 3, 'OH — Overheat', 4, 'OL — Overload', 5, 'OL1 — Motor Overload', 6, 'OP — Open Phase', 7, 'UV — Undervoltage', 8, 'GF — Ground Fault', 'Code ' + toStr({[default]Conveyor/VFD_FaultCode}))"
+                  },
+                  "type": "expr"
+                }
+              },
+              "props.style.color": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]Conveyor/VFD_FaultCode} > 0, '#FF4444', '#00C851')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "color": "#00C851",
+                "fontSize": "20px",
+                "fontWeight": "bold",
+                "marginTop": "4px"
+              },
+              "text": "No Fault"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "ActiveErrorCode" },
+            "position": { "basis": "auto" },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "case({[default]Conveyor/Error_Code}, 0, 'System OK', 6, 'E-Stop Tripped', 7, 'E-Stop Wiring Fault', 8, 'Direction Fault', 9, 'VFD Comm Fault', 'Error Code ' + toStr({[default]Conveyor/Error_Code}))"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "color": "#AAAAAA",
+                "fontSize": "13px",
+                "marginTop": "8px"
+              },
+              "text": "System OK"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "ActiveFaultPanel" },
+        "position": { "basis": "110px", "shrink": 0 },
+        "props": {
+          "direction": "column",
+          "style": {
+            "backgroundColor": "#2a2a2a",
+            "borderRadius": "8px",
+            "margin": "4px 16px",
+            "padding": "16px 20px"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "events": {
+              "component": {
+                "onActionPerformed": {
+                  "script": "    # Write 2 to HR400115 (VFD_CmdWord) — maps to GS10 register 0x2002 bit 1 (fault reset)\n    system.tag.writeBlocking(['[default]Conveyor/VFD_CmdWord'], [2])\n"
+                }
+              }
+            },
+            "meta": { "name": "ClearFaultsButton" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "backgroundColor": "#FF4444",
+                "border": "none",
+                "borderRadius": "8px",
+                "color": "#FFFFFF",
+                "fontSize": "15px",
+                "fontWeight": "bold",
+                "height": "52px",
+                "letterSpacing": "1px",
+                "marginRight": "16px",
+                "padding": "0 32px"
+              },
+              "text": "CLEAR FAULTS  (writes 2 → HR400115)"
+            },
+            "type": "ia.input.button"
+          },
+          {
+            "meta": { "name": "ClearNote" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#666666",
+                "fontSize": "12px"
+              },
+              "text": "Or press STOP/RESET on VFD keypad. If fault won't clear: power cycle VFD."
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "ClearRow" },
+        "position": { "basis": "68px", "shrink": 0 },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": { "margin": "8px 16px" }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "meta": { "name": "FaultTableTitle" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#AAAAAA",
+                "fontSize": "13px",
+                "marginBottom": "8px"
+              },
+              "text": "GS10 FAULT CODE REFERENCE"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "FaultRef" },
+            "position": { "basis": "auto", "grow": 1 },
+            "props": {
+              "data": {
+                "columnNames": ["Code", "Display", "Name", "Fix"],
+                "columnTypes": ["int", "str", "str", "str"],
+                "rows": [
+                  [0, "—", "No Fault", "Normal operation"],
+                  [1, "OC", "Overcurrent", "Check motor wiring, reduce load"],
+                  [2, "OV", "Overvoltage", "Check DC bus (>300V), reduce decel rate"],
+                  [3, "OH", "Overheat", "Check ventilation, reduce load"],
+                  [4, "OL", "Overload", "Reduce load or check motor sizing"],
+                  [5, "OL1", "Motor Overload", "Check motor current rating in P01.02"],
+                  [6, "OP", "Open Phase", "Check input power wiring"],
+                  [7, "UV", "Undervoltage", "Check input voltage, check power supply"],
+                  [8, "GF", "Ground Fault", "Check motor and cable insulation"],
+                  [58, "CE10", "Comm Timeout", "Check RS-485 wiring, P09.03, baud rate"]
+                ]
+              },
+              "style": {
+                "fontSize": "13px",
+                "height": "280px"
+              }
+            },
+            "type": "ia.display.table"
+          }
+        ],
+        "meta": { "name": "FaultRefPanel" },
+        "position": { "basis": "1", "grow": 1 },
+        "props": {
+          "direction": "column",
+          "style": {
+            "backgroundColor": "#2a2a2a",
+            "borderRadius": "8px",
+            "margin": "4px 16px 16px 16px",
+            "padding": "16px 20px"
+          }
+        },
+        "type": "ia.container.flex"
+      }
+    ],
+    "meta": { "name": "root" },
+    "position": { "basis": "auto" },
+    "props": {
+      "direction": "column",
+      "style": {
+        "backgroundColor": "#1a1a1a",
+        "height": "100%",
+        "padding": "8px"
+      }
+    },
+    "type": "ia.container.flex"
+  }
+}
