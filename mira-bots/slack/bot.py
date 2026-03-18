@@ -29,6 +29,13 @@ MCP_BASE_URL = os.environ.get("MCP_BASE_URL", "http://mira-mcp:8001")
 MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
 KNOWLEDGE_COLLECTION_ID = os.environ.get("KNOWLEDGE_COLLECTION_ID", "")
 
+# Optional channel allowlist — if set, MIRA only responds in listed channel IDs
+ALLOWED_CHANNELS = [
+    c.strip()
+    for c in os.environ.get("SLACK_ALLOWED_CHANNELS", "").split(",")
+    if c.strip()
+]
+
 engine = GSDEngine(
     db_path=os.environ.get("MIRA_DB_PATH", "/data/mira.db"),
     openwebui_url=OPENWEBUI_BASE_URL,
@@ -104,6 +111,9 @@ async def handle_message(event, say, client):
         return
     if event.get("bot_id"):
         return
+
+    if ALLOWED_CHANNELS and event.get("channel") not in ALLOWED_CHANNELS:
+        return  # silently ignore messages outside allowed channels
 
     session = _session_key(event)
     thread = _thread_ts(event)
