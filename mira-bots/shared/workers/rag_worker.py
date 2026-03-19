@@ -7,6 +7,7 @@ import time
 import httpx
 
 from ..guardrails import rewrite_question
+from ..langfuse_setup import trace_rag_query
 
 logger = logging.getLogger("mira-gsd")
 
@@ -111,36 +112,52 @@ class RAGWorker:
     ) -> str:
         """3-stage RAG pipeline. Returns raw LLM response string."""
         model = vision_model if photo_b64 else None
+        metadata = {"fsm_state": state.get("state"), "photo": bool(photo_b64)}
 
-        # Stage 1: Query rewrite (Nemotron Q2E or passthrough)
-        rewritten = message
-        if self.nemotron and not photo_b64:
-            rewritten = await self.nemotron.rewrite_query(
-                query=message,
-                context=state.get("asset_identified", ""),
-            )
+        async with trace_rag_query(message, metadata=metadata) as spans:
+            # Stage 1: Query rewrite (Nemotron Q2E or passthrough)
+            rewritten = message
+            async with spans.embed_query(message):
+                if self.nemotron and not photo_b64:
+                    rewritten = await self.nemotron.rewrite_query(
+                        query=message,
+                        context=state.get("asset_identified", ""),
+                    )
 
-        # Stage 2: Retrieve via Open WebUI RAG
-        messages = self._build_prompt(state, rewritten, photo_b64)
-        raw = await self._call_llm(messages, model=model)
+            # Stage 2: Retrieve via Open WebUI RAG
+            messages = self._build_prompt(state, rewritten, photo_b64)
+            t0 = time.monotonic()
+            raw = await self._call_llm(messages, model=model)
+            elapsed_ms = int((time.monotonic() - t0) * 1000)
 
-        # Stage 2b: Rerank retrieved chunks (if Nemotron enabled + sources available)
-        if (
-            self.nemotron
-            and self.nemotron.enabled
-            and self._last_sources
-            and not photo_b64
-        ):
-            reranked = await self.nemotron.rerank(rewritten, self._last_sources)
-            top_chunks = [r["text"] for r in reranked if r["score"] > 0]
-            if top_chunks:
-                # Rebuild prompt with reranked chunks injected explicitly
-                messages = self._build_prompt_with_chunks(
-                    state, rewritten, top_chunks,
-                )
-                raw = await self._call_llm(messages, model=model)
+            # Record retrieval results (populated by _call_openwebui above)
+            async with spans.vector_search(rewritten, self._last_sources[:5], self._last_distances[:5]):
+                pass
+            async with spans.context_compose(self._last_sources[:5], "\n".join(self._last_sources[:3])):
+                pass
 
-        return raw
+            # Stage 2b: Rerank retrieved chunks (if Nemotron enabled + sources available)
+            if (
+                self.nemotron
+                and self.nemotron.enabled
+                and self._last_sources
+                and not photo_b64
+            ):
+                reranked = await self.nemotron.rerank(rewritten, self._last_sources)
+                top_chunks = [r["text"] for r in reranked if r["score"] > 0]
+                if top_chunks:
+                    # Rebuild prompt with reranked chunks injected explicitly
+                    messages = self._build_prompt_with_chunks(
+                        state, rewritten, top_chunks,
+                    )
+                    t0 = time.monotonic()
+                    raw = await self._call_llm(messages, model=model)
+                    elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+            async with spans.llm_inference(len(str(messages)) // 4, raw, elapsed_ms):
+                pass
+
+            return raw
 
     def _build_prompt_with_chunks(
         self, state: dict, message: str, chunks: list[str],

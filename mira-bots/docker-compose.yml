@@ -18,6 +18,11 @@ services:
       - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_PUBLIC_API_KEY=${LANGFUSE_PUBLIC_API_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
     volumes:
       - ../mira-bridge/data:/data:rw
     networks:
@@ -50,6 +55,11 @@ services:
       - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_PUBLIC_API_KEY=${LANGFUSE_PUBLIC_API_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
     volumes:
       - ../mira-bridge/data:/data:rw
     networks:
@@ -80,6 +90,11 @@ services:
       - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_PUBLIC_API_KEY=${LANGFUSE_PUBLIC_API_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
     volumes:
       - ../mira-bridge/data:/data:rw
     ports:
@@ -112,6 +127,11 @@ services:
       - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_PUBLIC_API_KEY=${LANGFUSE_PUBLIC_API_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
     volumes:
       - ../mira-bridge/data:/data:rw
     ports:

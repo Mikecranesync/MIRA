@@ -111,6 +111,9 @@ chore: build system, deps, tooling
 | `INFERENCE_BACKEND` | mira-bots — `"claude"` or `"local"` |
 | `ANTHROPIC_API_KEY` | mira-bots — Claude API key |
 | `CLAUDE_MODEL` | mira-bots — default: claude-3-5-sonnet-20241022 |
+| `LANGFUSE_SECRET_KEY` | mira-bots — Langfuse tracing (all bots) |
+| `LANGFUSE_PUBLIC_KEY` | mira-bots — Langfuse tracing (all bots) |
+| `LANGFUSE_HOST` | mira-bots — optional, defaults to cloud.langfuse.com |
 
 ## Phase History
 
