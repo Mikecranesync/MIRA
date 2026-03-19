@@ -1,11 +1,12 @@
+# MIRA — Root Compose
+# Usage: bash install/up.sh
+#   (creates Docker networks then runs doppler run -- docker compose up -d)
+#
+# Networks core-net and bot-net must exist before compose up.
+# install/up.sh handles this automatically.
+
 include:
   - mira-core/docker-compose.yml
   - mira-bridge/docker-compose.yml
   - mira-bots/docker-compose.yml
   - mira-mcp/docker-compose.yml
-
-networks:
-  core-net:
-    driver: bridge
-  bot-net:
-    driver: bridge
