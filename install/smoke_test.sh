@@ -27,11 +27,12 @@ check() {
 echo "=== MIRA Smoke Test ==="
 echo ""
 
-check "open-webui"    "http://localhost:3000/health"
-check "mira-ingest"   "http://localhost:8002/health"
-check "mira-mcp"      "http://localhost:8001/health"
-check "mira-mcpo"     "http://localhost:8003/mira-mcp/docs"
-check "node-red"      "http://localhost:1880/"
+check "open-webui"       "http://localhost:3000/health"
+check "mira-ingest"      "http://localhost:8002/health"
+check "mira-mcp"         "http://localhost:8001/health"
+check "mira-mcpo"        "http://localhost:8003/mira-mcp/docs"
+check "node-red"         "http://localhost:1880/"
+check "test-runner-results" "http://localhost:8021/results" "503"  # 503 = running, no results yet
 
 echo "Results:"
 for r in "${RESULTS[@]}"; do

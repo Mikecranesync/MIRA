@@ -1,0 +1,58 @@
+name: Prompt Version Guard
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "mira-bots/prompts/diagnose/active.yaml"
+
+jobs:
+  prompt-changed:
+    name: Warn on active prompt change
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Read prompt metadata
+        id: meta
+        run: |
+          python - <<'EOF'
+          import yaml, os
+          with open("mira-bots/prompts/diagnose/active.yaml") as f:
+              m = yaml.safe_load(f)
+          env = os.environ.get("GITHUB_OUTPUT", "/dev/stdout")
+          with open(env, "a") as out:
+              out.write(f"version={m.get('version', 'unknown')}\n")
+              out.write(f"codename={m.get('codename', 'unknown')}\n")
+              out.write(f"status={m.get('status', 'unknown')}\n")
+          EOF
+
+      - name: Post commit status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            repos/${{ github.repository }}/statuses/${{ github.sha }} \
+            -f state=success \
+            -f description="⚠️ Prompt changed → ${{ steps.meta.outputs.codename }} v${{ steps.meta.outputs.version }} now active. Run test suite to validate." \
+            -f context="prompt-guard"
+
+      - name: Write job summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## ⚠️ Active Prompt Changed
+
+          | Field | Value |
+          |-------|-------|
+          | New prompt version | ${{ steps.meta.outputs.version }} |
+          | Codename | ${{ steps.meta.outputs.codename }} |
+          | Status | ${{ steps.meta.outputs.status }} |
+          | Action required | Run \`/mira-test\` on test-runner to validate |
+          EOF

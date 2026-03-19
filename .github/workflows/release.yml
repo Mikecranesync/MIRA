@@ -1,0 +1,72 @@
+name: Auto Release
+
+on:
+  push:
+    tags:
+      - "mira-*-v*.*"
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract tag and version info
+        id: tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          # Determine prerelease: true if tag contains "dev" or version < 1.0
+          if echo "$TAG" | grep -qiE "dev|alpha|beta|rc"; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          elif echo "$TAG" | grep -qE "v0\."; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Extract changelog section
+        id: changelog
+        run: |
+          python - <<'EOF'
+          import re, os
+
+          tag = os.environ["TAG"]
+          # Match version number from tag (e.g. mira-ci-v0.5 → 0.5)
+          m = re.search(r"v(\d+\.\d+[\.\d]*)", tag)
+          version = m.group(1) if m else None
+
+          body = f"Release {tag}"
+          if version:
+              try:
+                  text = open("CHANGELOG.md").read()
+                  # Look for ## [version] or ## version section
+                  pattern = rf"(?:^|\n)## .*{re.escape(version)}.*\n(.*?)(?=\n## |\Z)"
+                  hit = re.search(pattern, text, re.DOTALL)
+                  if hit:
+                      body = hit.group(1).strip()
+              except FileNotFoundError:
+                  pass
+
+          with open("release_body.txt", "w") as f:
+              f.write(body)
+          print(f"Release body ({len(body)} chars) written.")
+          EOF
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            --title "${{ steps.tag.outputs.tag }}" \
+            --notes-file release_body.txt \
+            ${{ steps.tag.outputs.prerelease == 'true' && '--prerelease' || '' }}

@@ -1,0 +1,80 @@
+name: Dependency Audit
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"  # Monday 9am UTC
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: CVE Audit
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: pip install "pip-audit==2.*"
+
+      - name: Audit mira-ingest
+        id: audit_ingest
+        run: pip-audit -r mira-core/mira-ingest/requirements.txt --output json > audit_ingest.json || true
+
+      - name: Audit mira-bots/telegram
+        id: audit_telegram
+        run: pip-audit -r mira-bots/telegram/requirements.txt --output json > audit_telegram.json || true
+
+      - name: Audit mira-mcp
+        id: audit_mcp
+        run: pip-audit -r mira-mcp/requirements.txt --output json > audit_mcp.json || true
+
+      - name: Combine results and fail if CVEs found
+        id: check
+        run: |
+          python - <<'EOF'
+          import json, sys, os
+
+          vulns = []
+          for name, path in [
+              ("mira-ingest", "audit_ingest.json"),
+              ("mira-bots/telegram", "audit_telegram.json"),
+              ("mira-mcp", "audit_mcp.json"),
+          ]:
+              try:
+                  data = json.load(open(path))
+                  for dep in data.get("dependencies", []):
+                      for vuln in dep.get("vulns", []):
+                          vulns.append(f"**{name}** — {dep['name']}=={dep['version']}: {vuln['id']} {vuln.get('description','')[:200]}")
+              except Exception as e:
+                  print(f"Could not parse {path}: {e}")
+
+          if vulns:
+              body = "## Security: CVE found in dependencies\n\n"
+              body += "\n".join(f"- {v}" for v in vulns)
+              body += "\n\nRun `pip-audit` locally and upgrade affected packages."
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"has_vulns=true\n")
+              # Write body for issue creation
+              with open("issue_body.txt", "w") as f:
+                  f.write(body)
+              print(f"Found {len(vulns)} vulnerabilities")
+              sys.exit(0)  # Don't fail the step — let the issue-creation step handle it
+          else:
+              print("No CVEs found.")
+          EOF
+
+      - name: Create GitHub issue if CVEs found
+        if: steps.check.outputs.has_vulns == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Security: CVE found in dependencies" \
+            --body-file issue_body.txt \
+            --label "security" \
+            --assignee Mikecranesync

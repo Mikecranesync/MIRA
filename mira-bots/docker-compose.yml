@@ -70,7 +70,7 @@ services:
     environment:
       - TEAMS_APP_ID=${TEAMS_APP_ID:-}
       - TEAMS_APP_PASSWORD=${TEAMS_APP_PASSWORD:-}
-      - TEAMS_PORT=${TEAMS_PORT:-8020}
+      - TEAMS_PORT=${TEAMS_PORT:-8030}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
@@ -83,7 +83,7 @@ services:
     volumes:
       - ../mira-bridge/data:/data:rw
     ports:
-      - "${TEAMS_PORT:-8020}:8020"
+      - "${TEAMS_PORT:-8030}:${TEAMS_PORT:-8030}"
     networks:
       - bot-net
       - core-net
