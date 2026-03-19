@@ -1,3 +1,53 @@
+# Platforms covered by this test suite.
+# telegram: live (Telethon runner)
+# slack/teams/whatsapp: manual or mock — wire test clients when adapters stable
+platforms:
+  - telegram
+  - slack
+  - teams
+  - whatsapp
+
+# ── Cross-platform acceptance cases (PRD §2.5) ────────────────────────────────
+# All 4 platforms must pass TC01-TC05 before Phase 2 milestone is declared done.
+cross_platform_cases:
+  - id: TC01
+    input: "What is this?"
+    has_image: true
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    pass_conditions:
+      max_words: 80
+      must_contain_question: true
+      must_not_contain: ["I cannot help", "I don't know"]
+
+  - id: TC02
+    input: "/reset"
+    has_image: false
+    pass_conditions:
+      max_words: 15
+      no_image_analysis: true
+
+  - id: TC03
+    input: "Do you have the user manual?"
+    has_image: false
+    pass_conditions:
+      must_contain_one_of: ["knowledge base", "drop the PDF", "manual", "part number"]
+
+  - id: TC04
+    input: "How do I wire this?"
+    has_image: true
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    pass_conditions:
+      max_words: 80
+      must_contain_question: true
+
+  - id: TC05
+    input: "asdfghjkl random garbage"
+    has_image: false
+    pass_conditions:
+      must_contain_question: true
+      graceful_fallback: true
+
+# ── Photo identification cases (Telegram-focused) ─────────────────────────────
 cases:
   - name: ab_micro820_tag
     image: test-assets/sample_tags/ab_micro820_tag.jpg

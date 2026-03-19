@@ -7,7 +7,7 @@ and inserts into NeonDB knowledge_entries.
 
 Usage:
     doppler run --project factorylm --config prd -- \\
-      uv run --with pymupdf --with psycopg2-binary --with sqlalchemy \\
+      uv run --with pdfplumber --with psycopg2-binary --with sqlalchemy \\
              --with httpx --with beautifulsoup4 \\
       python mira-core/scripts/ingest_manuals.py
 """
@@ -123,34 +123,30 @@ def _detect_sections(page_text: str) -> list[tuple[str, str]]:
 def _extract_from_pdf(data: bytes) -> list[dict]:
     """Return list of {text, page_num, section} dicts from a PDF."""
     try:
-        import fitz  # PyMuPDF
+        import pdfplumber
     except ImportError:
-        log.error("PyMuPDF not available — install pymupdf")
+        log.error("pdfplumber not available — install pdfplumber")
         return []
 
+    blocks: list[dict] = []
     try:
-        doc = fitz.open(stream=data, filetype="pdf")
+        with pdfplumber.open(io.BytesIO(data)) as doc:
+            pages_to_read = min(len(doc.pages), MAX_PDF_PAGES)
+            for page_idx in range(pages_to_read):
+                raw = doc.pages[page_idx].extract_text()
+                if not raw or len(raw.strip()) < 50:
+                    continue
+                text = _clean_text(raw)
+                sections = _detect_sections(text)
+                if not sections:
+                    sections = [("", text)]
+                for heading, body in sections:
+                    if len(body) >= MIN_CHUNK_CHARS:
+                        blocks.append({"text": body, "page_num": page_idx + 1, "section": heading})
     except Exception as exc:
         log.warning("Failed to open PDF: %s", exc)
         return []
 
-    pages_to_read = min(len(doc), MAX_PDF_PAGES)
-    blocks: list[dict] = []
-
-    for page_idx in range(pages_to_read):
-        page = doc[page_idx]
-        raw = page.get_text("text")
-        if not raw or len(raw.strip()) < 50:
-            continue
-        text = _clean_text(raw)
-        sections = _detect_sections(text)
-        if not sections:
-            sections = [("", text)]
-        for heading, body in sections:
-            if len(body) >= MIN_CHUNK_CHARS:
-                blocks.append({"text": body, "page_num": page_idx + 1, "section": heading})
-
-    doc.close()
     return blocks
 
 
