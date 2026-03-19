@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "sqlite": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sqlite",
+        "--db-path",
+        "/Users/bravonode/Mira/mira-bridge/data/mira.db"
+      ],
+      "env": {}
+    }
+  }
+}

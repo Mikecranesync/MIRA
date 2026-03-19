@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This device is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and monitor industrial processes.\n\n(2) The most likely cause is a power issue or a PLC not receiving input signals. The input LEDs not lighting suggests no signal is being received.\n\n(3) The tech should check the power supply and ensure all input signals are connected correctly. If the issue persists, a tech should consult the PLC's manual for troubleshooting steps."
+}

@@ -1,0 +1,39 @@
+{
+  "case": "pm_contactor_replace_94",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 78,
+  "elapsed": 5.700430631637573,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "Square D"
+    ],
+    "fault_cause_found": [
+      "likely",
+      "overcurrent",
+      "overload"
+    ],
+    "next_step_found": [
+      "check",
+      "contact",
+      "set"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

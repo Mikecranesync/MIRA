@@ -18,8 +18,8 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from gsd_engine import GSDEngine
-import tts
+from shared.gsd_engine import GSDEngine
+from shared import tts
 
 logging.basicConfig(
     level=logging.INFO,
@@ -86,7 +86,7 @@ def _resize_for_vision(image_bytes: bytes) -> bytes:
 
     Cuts qwen2.5vl:7b encoder latency from ~12s to ~3s on M4 Mini.
     """
-    MAX_PX = int(os.getenv("MAX_VISION_PX", "512"))
+    MAX_PX = int(os.getenv("MAX_VISION_PX", "1024"))
     img = Image.open(_io.BytesIO(image_bytes))
     w, h = img.size
     if max(w, h) <= MAX_PX:
@@ -96,6 +96,23 @@ def _resize_for_vision(image_bytes: bytes) -> bytes:
     buf = _io.BytesIO()
     img.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
+
+
+def _equipment_type_from_doc(filename: str, caption: str) -> str:
+    """Derive equipment type slug from filename, with caption override.
+
+    Caption first word wins: sending 'VFD' as caption → 'vfd'.
+    Fallback: strip doc-type suffixes from filename stem.
+    """
+    if caption and caption.strip():
+        return caption.strip().split()[0].lower()[:40]
+    stem = os.path.splitext(filename)[0].lower()
+    for suffix in ("-manual", "-guide", "-spec", "-datasheet", "-data-sheet",
+                   "_manual", "_guide", "_spec", "_datasheet", "_data_sheet"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    return stem[:40] or "general"
 
 
 async def _ingest_photo_background(photo_bytes: bytes, asset_tag: str) -> None:
@@ -115,6 +132,60 @@ async def _ingest_photo_background(photo_bytes: bytes, asset_tag: str) -> None:
                 logger.warning("Ingest failed %s: %s", resp.status_code, resp.text[:200])
     except Exception as e:
         logger.error("Ingest background error: %s", e)
+
+
+async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Receive PDF documents, index them into the knowledge base via mira-mcp."""
+    chat_id = str(update.effective_chat.id)
+    doc = update.message.document
+    filename = doc.file_name or "upload.pdf"
+    caption = update.message.caption or ""
+
+    if doc.mime_type != "application/pdf":
+        await update.message.reply_text(
+            f"Only PDF files are supported (got {doc.mime_type})."
+        )
+        return
+
+    MB = 1024 * 1024
+    if doc.file_size and doc.file_size > 20 * MB:
+        await update.message.reply_text(
+            f"{filename} is {doc.file_size // MB}MB — Telegram's bot limit is 20MB."
+        )
+        return
+
+    equipment_type = _equipment_type_from_doc(filename, caption)
+    await update.message.reply_text(f"Indexing {filename}...")
+    logger.info("PDF from %s: %s (type=%s)", update.effective_user.first_name,
+                filename, equipment_type)
+
+    async def _do_ingest():
+        try:
+            file = await context.bot.get_file(doc.file_id)
+            pdf_bytes = bytes(await file.download_as_bytearray())
+            headers = {}
+            if MCP_REST_API_KEY:
+                headers["Authorization"] = f"Bearer {MCP_REST_API_KEY}"
+            async with httpx.AsyncClient(timeout=180) as client:
+                resp = await client.post(
+                    f"{MCP_BASE_URL}/ingest/pdf",
+                    headers=headers,
+                    data={"equipment_type": equipment_type},
+                    files={"file": (filename, pdf_bytes, "application/pdf")},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            chunks = data.get("chunks", 0)
+            await update.message.reply_text(
+                f"Indexed {chunks} pages from {filename}\n"
+                f"Type: {data.get('equipment_type', equipment_type)}\n"
+                "Ask me anything about it."
+            )
+        except Exception as exc:
+            logger.error("PDF ingest error: %s", exc)
+            await update.message.reply_text(f"Failed to index {filename}: {exc}")
+
+    asyncio.create_task(_do_ingest())
 
 
 def _get_voice_enabled(chat_id: str) -> bool:
@@ -152,10 +223,7 @@ def _set_voice_enabled(chat_id: str, enabled: bool) -> None:
 async def _maybe_send_voice(
     update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: str, text: str
 ) -> None:
-    """If voice is enabled, synthesize OGG and send as voice message.
-
-    Text reply is always sent first. Voice failure never blocks text.
-    """
+    """If voice is enabled, synthesize OGG and send as voice message."""
     if not _get_voice_enabled(chat_id):
         return
     await context.bot.send_chat_action(
@@ -189,9 +257,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     chat_id = str(update.effective_chat.id)
     logger.info("Received from %s: %s", update.effective_user.first_name, text)
-    # Immediate ack for fault keywords
     if any(kw in text.lower() for kw in FAULT_KEYWORDS):
-        await update.message.reply_text("🔍 Diagnosing...")
+        await update.message.reply_text("Diagnosing...")
     try:
         async with typing_action(context, update.effective_chat.id):
             reply = await engine.process(chat_id, text)
@@ -207,23 +274,34 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     caption = update.message.caption or "Analyze this equipment photo"
     logger.info("Photo from %s: %s", update.effective_user.first_name, caption)
-    await update.message.reply_text("📷 Analyzing equipment...")
+    await update.message.reply_text("Analyzing equipment...")
     try:
-        photo = update.message.photo[-1]  # largest resolution
+        photo = update.message.photo[-1]
         await context.bot.send_chat_action(
             chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_PHOTO
         )
         file = await context.bot.get_file(photo.file_id)
         raw_bytes = bytes(await file.download_as_bytearray())
-        vision_bytes = _resize_for_vision(raw_bytes)  # 512px for fast vision
+        vision_bytes = _resize_for_vision(raw_bytes)
         photo_b64 = base64.b64encode(vision_bytes).decode("utf-8")
         async with typing_action(context, update.effective_chat.id):
-            reply = await engine.process(chat_id, caption, photo_b64=photo_b64)
-        # Fire ingest in background (raw bytes → ingest service resizes to 1024px)
+            process_task = asyncio.create_task(
+                engine.process(chat_id, caption, photo_b64=photo_b64)
+            )
+            try:
+                reply = await asyncio.wait_for(
+                    asyncio.shield(process_task), timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                await update.message.reply_text(
+                    "Processing equipment photo — this may take up to 90 seconds"
+                    " for detailed images..."
+                )
+                reply = await process_task
         if INGEST_SERVICE_URL:
             asset_tag = caption.split()[0] if caption else "UNKNOWN"
             asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
-            reply += "\n\n📁 Photo queued for knowledge base."
+            reply += "\n\nPhoto queued for knowledge base."
     except Exception as e:
         logger.error("Photo handler error: %s", e)
         reply = f"MIRA error: {e}"
@@ -326,6 +404,17 @@ async def faults_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"MIRA error: {e}")
 
 
+async def bad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Flag the last response as unhelpful."""
+    chat_id = str(update.effective_chat.id)
+    reason = " ".join(context.args) if context.args else ""
+    engine.log_feedback(chat_id, "bad", reason)
+    if reason:
+        await update.message.reply_text(f"Logged: {reason}")
+    else:
+        await update.message.reply_text("Logged. What specifically was wrong?\nUse /bad <reason> to explain.")
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Return static command list."""
     await update.message.reply_text(
@@ -334,10 +423,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/faults \u2014 Active fault list (instant)\n"
         "/status \u2014 AI equipment summary\n"
         "/voice on|off \u2014 Enable/disable spoken responses\n"
+        "/bad [reason] \u2014 Flag this response as unhelpful\n"
         "/reset \u2014 Reset conversation state\n"
         "/help \u2014 Show this help\n"
         "Or just type any maintenance question.\n"
-        "Send a photo to identify equipment."
+        "Send a photo to identify equipment.\n"
+        "Send a PDF manual to index it for retrieval."
     )
 
 
@@ -348,7 +439,9 @@ def main():
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("reset", reset_command))
     app.add_handler(CommandHandler("voice", voice_command))
+    app.add_handler(CommandHandler("bad", bad_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     logger.info("MIRA Telegram bot started (polling)")

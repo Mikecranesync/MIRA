@@ -13,6 +13,11 @@ services:
       - MIRA_DB_PATH=/data/mira.db
       - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
       - VISION_MODEL=${VISION_MODEL:-qwen2.5vl:7b}
+      - GLM_OCR_MODEL=${GLM_OCR_MODEL:-glm-ocr:latest}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
     volumes:
       - ../mira-bridge/data:/data:rw
     networks:
@@ -40,6 +45,11 @@ services:
       - MIRA_DB_PATH=/data/mira.db
       - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
       - VISION_MODEL=${VISION_MODEL:-qwen2.5vl:7b}
+      - GLM_OCR_MODEL=${GLM_OCR_MODEL:-glm-ocr:latest}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
     volumes:
       - ../mira-bridge/data:/data:rw
     networks:
@@ -51,6 +61,96 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  teams-bot:
+    build:
+      context: .
+      dockerfile: teams/Dockerfile
+    container_name: mira-bot-teams
+    environment:
+      - TEAMS_APP_ID=${TEAMS_APP_ID:-}
+      - TEAMS_APP_PASSWORD=${TEAMS_APP_PASSWORD:-}
+      - TEAMS_PORT=${TEAMS_PORT:-8020}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      - MIRA_DB_PATH=/data/mira.db
+      - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
+      - VISION_MODEL=${VISION_MODEL:-qwen2.5vl:7b}
+      - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+    volumes:
+      - ../mira-bridge/data:/data:rw
+    ports:
+      - "${TEAMS_PORT:-8020}:8020"
+    networks:
+      - bot-net
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import botbuilder.core; exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  whatsapp-bot:
+    build:
+      context: .
+      dockerfile: whatsapp/Dockerfile
+    container_name: mira-bot-whatsapp
+    environment:
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_WHATSAPP_FROM=${TWILIO_WHATSAPP_FROM:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      - MIRA_DB_PATH=/data/mira.db
+      - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
+      - VISION_MODEL=${VISION_MODEL:-qwen2.5vl:7b}
+      - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+    volumes:
+      - ../mira-bridge/data:/data:rw
+    ports:
+      - "${WHATSAPP_PORT:-8010}:8010"
+    networks:
+      - bot-net
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  telegram-test-runner:
+    build:
+      context: .
+      dockerfile: telegram_test_runner/Dockerfile
+    container_name: mira-telegram-test-runner
+    profiles: ["test"]
+    environment:
+      - TELEGRAM_TEST_API_ID=${TELEGRAM_TEST_API_ID}
+      - TELEGRAM_TEST_API_HASH=${TELEGRAM_TEST_API_HASH}
+      - TELEGRAM_TEST_PHONE=${TELEGRAM_TEST_PHONE}
+      - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-@MIRABot}
+      - TELEGRAM_TEST_SESSION_PATH=/session/test_account.session
+    volumes:
+      - telegram_test_session:/session:rw
+      - ./telegram_test_runner:/app:ro
+      - /Users/bravonode/Mira/MIRA test case 1:/MIRA test case 1:ro
+      - ./artifacts:/artifacts:rw
+    networks:
+      - core-net
+    depends_on:
+      - telegram-bot
+    restart: "no"
+
+volumes:
+  telegram_test_session:
 
 networks:
   bot-net:

@@ -1,0 +1,39 @@
+{
+  "case": "panel_wire_label_missing_70",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 84,
+  "elapsed": 23.515823125839233,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "Square D"
+    ],
+    "fault_cause_found": [
+      "shorted",
+      "damaged",
+      "probable"
+    ],
+    "next_step_found": [
+      "check",
+      "inspect",
+      "replace"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

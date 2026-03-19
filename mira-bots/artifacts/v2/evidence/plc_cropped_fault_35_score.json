@@ -1,0 +1,37 @@
+{
+  "case": "plc_cropped_fault_35",
+  "passed": true,
+  "failure_bucket": "ADVERSARIAL_PARTIAL",
+  "fix_suggestion": "Partial pass on adversarial/degraded case. Expected \u2014 monitor for regression.",
+  "word_count": 66,
+  "elapsed": 7.433720827102661,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [],
+    "fault_cause_found": [
+      "damaged",
+      "probable",
+      "fault"
+    ],
+    "next_step_found": [
+      "check",
+      "replace",
+      "ensure"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 BASE="http://localhost:${MCPO_PORT:-8000}"
-KEY="${MCPO_API_KEY:-mira-mcpo-2026}"
+KEY="${MCPO_API_KEY:?"Error: MCPO_API_KEY not set. Export before running."}"
 AUTH="Authorization: Bearer $KEY"
 PASS=0; FAIL=0
 

@@ -1,0 +1,85 @@
+cases:
+  - name: ab_micro820_tag
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Can you identify this industrial component from the nameplate?"
+    expected:
+      make: Allen-Bradley
+      model: Micro820
+      catalog: 2080-LC20-20QWB
+      component_type: PLC
+    must_contain: [Allen-Bradley, Micro820, PLC]
+    must_not_contain: [Siemens, PowerFlex, VFD]
+    fault_cause_keywords: [I/O, input, output, programming, logic, controller]
+    next_step_keywords: [check I/O, verify program, check power, inspect terminals]
+    max_words: 150
+    speed_timeout: 30
+    intent: "Identify PLC make/model/catalog from nameplate"
+    adversarial: false
+
+  - name: gs10_vfd_tag
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "What is this device and what are its electrical specs?"
+    expected:
+      make: AutomationDirect
+      model: GS10
+      catalog: GS10-20P5
+      component_type: VFD
+    must_contain: [AutomationDirect, GS10, VFD]
+    must_not_contain: [Allen-Bradley, PowerFlex, PLC]
+    fault_cause_keywords: [motor, drive, frequency, speed, load, overload]
+    next_step_keywords: [check motor, reset drive, verify wiring, check connections]
+    max_words: 150
+    speed_timeout: 30
+    intent: "Identify VFD make/model/catalog and electrical specs"
+    adversarial: false
+
+  - name: generic_cabinet_tag
+    image: test-assets/sample_tags/generic_cabinet_tag.jpg
+    caption: "Identify this electrical panel."
+    expected:
+      make: Square D
+      model: MCC-003
+      catalog: MCC-003
+      component_type: Panel
+    must_contain: [Square D, MCC-003, 480VAC]
+    must_not_contain: [Allen-Bradley, Siemens, Schneider]
+    fault_cause_keywords: [breaker, overload, fault, distribution, panel, circuit]
+    next_step_keywords: [check breaker, reset breaker, verify load, inspect panel]
+    max_words: 150
+    speed_timeout: 30
+    intent: "Identify motor control center panel tag"
+    adversarial: false
+
+  - name: bad_glare_tag
+    image: test-assets/sample_tags/bad_glare_tag.jpg
+    caption: "Can you read the nameplate on this device despite the glare?"
+    expected:
+      make: Allen-Bradley
+      model: Micro820
+      catalog: 2080-LC20-20QWB
+      component_type: PLC
+    must_contain: [Allen-Bradley, Micro820]
+    must_not_contain: [Siemens, PowerFlex]
+    fault_cause_keywords: [I/O, input, output, programming, logic]
+    next_step_keywords: [check I/O, verify program, check power]
+    max_words: 150
+    speed_timeout: 30
+    intent: "OCR resilience under glare/overexposure conditions"
+    adversarial: true
+
+  - name: cropped_tight_tag
+    image: test-assets/sample_tags/cropped_tight_tag.jpg
+    caption: "What can you identify from this partial nameplate image?"
+    expected:
+      make: AutomationDirect
+      model: GS10
+      catalog: GS10-20P5
+      component_type: VFD
+    must_contain: [AutomationDirect, GS10]
+    must_not_contain: [Allen-Bradley, PLC]
+    fault_cause_keywords: [motor, drive, frequency, speed, load]
+    next_step_keywords: [check motor, reset drive, verify wiring]
+    max_words: 150
+    speed_timeout: 30
+    intent: "Partial nameplate — top-third crop only"
+    adversarial: true

@@ -1,0 +1,5 @@
+{
+  "asset_tag": "plc_firmware_mismatch_33",
+  "notes": "Replaced PLC with spare unit but program won't download, version mismatch error",
+  "image": "<66920 chars b64>"
+}

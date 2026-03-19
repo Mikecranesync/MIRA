@@ -1,0 +1,40 @@
+{
+  "case": "sensor_level_switch_stuck_78",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 57,
+  "elapsed": 4.2712929248809814,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "Allen-Bradley",
+      "Micro820"
+    ],
+    "fault_cause_found": [
+      "likely",
+      "most likely",
+      "level"
+    ],
+    "next_step_found": [
+      "replace",
+      "clean",
+      "replace"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

@@ -1,6 +1,6 @@
 services:
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:v0.8.10
     container_name: mira-core
     ports:
       - "${WEBUI_PORT:-3000}:8080"
@@ -9,7 +9,9 @@ services:
       - WEBUI_AUTH=true
       - ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}
       - ENABLE_API_KEYS=true
-      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-mira-secret-2026}
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY must be set in .env}
+      - WEBUI_ENABLE_TELEMETRY=false
+      - WEBUI_CHECK_FOR_UPDATES=false
     volumes:
       - open-webui-data:/app/backend/data
     networks:
@@ -48,6 +50,42 @@ services:
       timeout: 10s
       retries: 3
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mira-ingest:
+    build:
+      context: ./mira-ingest
+    container_name: mira-ingest
+    environment:
+      - MIRA_DB_PATH=/app/mira.db
+      - PHOTOS_DIR=/data/photos
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - DESCRIBE_MODEL=${DESCRIBE_MODEL:-qwen2.5vl:7b}
+      - EMBED_VISION_MODEL=${EMBED_VISION_MODEL:-nomic-embed-vision-v1.5}
+      - EMBED_TEXT_MODEL=${EMBED_TEXT_MODEL:-nomic-embed-text-v1.5}
+      - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
+    volumes:
+      - ./data/photos:/data/photos
+      - ./mira.db:/app/mira.db
+    ports:
+      - "${INGEST_PORT:-8002}:8001"
+    networks:
+      - core-net
+    depends_on:
+      open-webui:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   open-webui-data:

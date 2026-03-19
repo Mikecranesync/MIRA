@@ -1,0 +1,5 @@
+{
+  "asset_tag": "sensor_level_switch_stuck_78",
+  "notes": "Float level switch showing full even though tank is empty, switch stuck closed",
+  "image": "<66920 chars b64>"
+}

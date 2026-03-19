@@ -1,0 +1,78 @@
+MIRA Real Photo Test — 2026-03-17 (MIRA Test Case 1)
+Photos dir: /Users/bravonode/Mira/MIRA test case 1/
+Bot: @FactoryLMDiagnose_bot
+======================================================================
+
+## PXL_20260219_043746450.jpg
+
+Caption: Please identify this industrial equipment. Note the make, model, and any issues visible.
+
+I can see a P&ID with 0 labeled elements. Key labels: — SS. What would you like to know about this circuit?
+
+----------------------------------------------------------------------
+
+## PXL_20260219_045141856.MACRO_FOCUS.jpg
+
+Caption: Please identify this industrial equipment. Note the make, model, and any issues visible.
+
+I can see a P&ID with 18 labeled elements. Key labels: 2400WK0266_HDW_AVL_220, 2400WK0266_OPM_Ride_V1, 1280, file C:/Use... What would you like to know about this circuit?
+
+----------------------------------------------------------------------
+
+## PXL_20260219_045632544.MACRO_FOCUS.jpg
+
+Caption: Please identify this industrial equipment. Note the make, model, and any issues visible.
+
+I can see a wiring diagram with 6 labeled elements. Key labels: ZIEHL, PROFESSIONAL, SYSTEM, ZIEHL, PROFESSIONAL, SYSTEM. What would you like to know about this circuit?
+
+----------------------------------------------------------------------
+
+## PXL_20260219_045640877.jpg
+
+Caption: Please identify this industrial equipment. Note the make, model, and any issues visible.
+
+I can see a wiring diagram with 3 labeled elements. Key labels: EMBER, EMBER, EMBER. What would you like to know about this circuit?
+
+----------------------------------------------------------------------
+
+## PXL_20260219_045647225.MACRO_FOCUS.jpg
+
+Caption: Please identify this industrial equipment. Note the make, model, and any issues visible.
+
+I can see a ladder logic diagram with 1 labeled elements. Key labels: A Ask Copilot 1098 of 3742. What would you like to know about this circuit?
+
+----------------------------------------------------------------------
+
+## PXL_20260219_045654220.jpg
+
+Caption: Please identify this industrial equipment. Note the make, model, and any issues visible.
+
+I can see a one-line diagram with 55 labeled elements. Key labels: EMG, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9. What would you like to know about this circuit?
+
+----------------------------------------------------------------------
+
+## PXL_20260219_045719632.jpg
+
+Caption: Please identify this industrial equipment. Note the make, model, and any issues visible.
+
+I can see a panel schedule with 9 labeled elements. Key labels: ```json, {, "Qty": "1",, "Specification": "Plasma Contac... What would you like to know about this circuit?
+
+----------------------------------------------------------------------
+
+## PXL_20260219_045737047.MACRO_FOCUS.jpg
+
+Caption: Please identify this industrial equipment. Note the make, model, and any issues visible.
+
+I can see a panel schedule with 18 labeled elements. Key labels: W-J803.31 S20.20.20 MUJ.184.2012.01, W-J803.31 WAZU1.18... What would you like to know about this circuit?
+
+----------------------------------------------------------------------
+
+## PXL_20260219_045802513.MP.jpg
+
+Caption: Please identify this industrial equipment. Note the make, model, and any issues visible.
+
+I can see a wiring diagram with 2 labeled elements. Key labels: EMIS, EMIS. What would you like to know about this circuit?
+
+----------------------------------------------------------------------
+
+RESULT: 9/9 photos received bot replies. All successful.

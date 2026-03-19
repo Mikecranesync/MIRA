@@ -12,7 +12,7 @@ from PIL import Image
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
-from gsd_engine import GSDEngine
+from shared.gsd_engine import GSDEngine
 from pdf_handler import ingest_pdf
 
 logging.basicConfig(
@@ -29,6 +29,13 @@ MCP_BASE_URL = os.environ.get("MCP_BASE_URL", "http://mira-mcp:8001")
 MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
 KNOWLEDGE_COLLECTION_ID = os.environ.get("KNOWLEDGE_COLLECTION_ID", "")
 
+# Optional channel allowlist — if set, MIRA only responds in listed channel IDs
+ALLOWED_CHANNELS = [
+    c.strip()
+    for c in os.environ.get("SLACK_ALLOWED_CHANNELS", "").split(",")
+    if c.strip()
+]
+
 engine = GSDEngine(
     db_path=os.environ.get("MIRA_DB_PATH", "/data/mira.db"),
     openwebui_url=OPENWEBUI_BASE_URL,
@@ -39,16 +46,11 @@ engine = GSDEngine(
 
 app = AsyncApp(token=SLACK_BOT_TOKEN)
 
-# Image MIME types we handle as vision
 IMAGE_MIMES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp"}
 
 
 def _session_key(event: dict) -> str:
-    """Derive unique session key from Slack event.
-
-    Slack threads share thread_ts; top-level messages use their own ts.
-    Prefix with 'slack:' to avoid collision with Telegram chat IDs.
-    """
+    """Derive unique session key from Slack event."""
     channel = event["channel"]
     thread_ts = event.get("thread_ts", event.get("ts", ""))
     return f"slack:{channel}:{thread_ts}"
@@ -83,10 +85,26 @@ async def _download_slack_file(url: str) -> bytes:
         return resp.content
 
 
+# Dedup set: Slack fires both app_mention and message for @mentions
+_SEEN_EVENTS = set()
+
+
+@app.event("app_mention")
+async def handle_mention(event, say, client):
+    """Handle @FactoryLM mentions in channels."""
+    await handle_message(event, say, client)
+
+
 @app.event("message")
 async def handle_message(event, say, client):
     """Handle all message events — text and file uploads."""
-    # Ignore bot messages and edits
+    ts = event.get("ts", "")
+    if ts in _SEEN_EVENTS:
+        return
+    _SEEN_EVENTS.add(ts)
+    if len(_SEEN_EVENTS) > 200:
+        _SEEN_EVENTS.clear()
+
     if event.get("subtype") in (
         "bot_message", "message_changed", "message_deleted",
     ):
@@ -94,12 +112,15 @@ async def handle_message(event, say, client):
     if event.get("bot_id"):
         return
 
+    if ALLOWED_CHANNELS and event.get("channel") not in ALLOWED_CHANNELS:
+        return  # silently ignore messages outside allowed channels
+
     session = _session_key(event)
     thread = _thread_ts(event)
     text = event.get("text", "")
+    # Mention stripping now handled by engine (guardrails.strip_mentions)
     files = event.get("files", [])
 
-    # Check for image files
     image_files = [f for f in files if f.get("mimetype", "") in IMAGE_MIMES]
     pdf_files = [f for f in files if f.get("mimetype", "") == "application/pdf"]
 

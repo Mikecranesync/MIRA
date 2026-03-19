@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an AutomationDirect GS10 Variable Frequency Drive. It controls motor speed by adjusting voltage and frequency. (2) The most likely cause is a drive resetting to factory defaults after the power outage, which might have caused the motor to run at the wrong speed. (3) The tech should check the drive's settings and ensure they match the motor's requirements."
+}

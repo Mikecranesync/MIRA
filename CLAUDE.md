@@ -1,119 +1,128 @@
-# MIRA — Industrial AI Maintenance Assistant
+# MIRA — Build State
 
-## What This Is
-Mira is a conversational industrial AI assistant for floor-level maintenance technicians.
-Voice interface via Telegram. Visual HMI via Ignition Perspective.
-Target: brownfield plants with Micro820 PLCs and GS10 VFDs.
+**Version:** v0.3.1 — monorepo, PRD v1.0 active, Phase 1 in progress
+**Sprint:** Phase 1 — Security & Stability Hardening
+**Hardware:** Apple Mac Mini M4 16GB (bravonode · 192.168.1.11)
+**Tailscale:** 100.86.236.11
+**Inference:** `INFERENCE_BACKEND=claude` → Anthropic claude-3-5-sonnet-20241022
+               `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
+               GLM-OCR always local regardless of backend
+**Repo root:** ~/Mira/
+**Updated:** 2026-03-18
 
-## End-State Product Architecture
-- Ignition Module (.modl) containing GSD engine, OCR pipeline, FSM logic
-- Telegram bot as voice layer (system.net.httpClient from Ignition scripts)
-- Ollama local models for AI inference (air-gap compatible)
-- Ignition EtherNet/IP driver → Micro820 (replaces Modbus/Node-RED for product)
-- Ignition Perspective for visual HMI dashboard
-- Deployment tiers: cloud-connected / edge / air-gapped
+---
 
-## Current Status -- Last updated 2026-03-16
+## Architecture
 
-### COMPLETED
-- Wiring guide documented
-- MIRA monorepo created at github.com/Mikecranesync/MIRA
-- All gists archived (read-only)
-- Ignition HMI designed
-- CCW variables loaded via populate_variables.py (59 variables)
-- Model corrected: 2080-LC20-20QBB (QWB bug fixed)
-- MODBUS TCP CONFIRMED LIVE at 169.254.32.93:502
-- PLC scan running -- heartbeat toggling, uptime_seconds incrementing
-- E-stop circuit verified healthy (NC closed, NO open)
-- State machine running -- conv_state = 0 (IDLE)
-- test_modbus.py passing all checks
-- Ignition 8.1 Standard Edition (trial mode) installed on PLC laptop
-- Ignition Perspective ConveyorMIRA project files committed: 4 views + tags.json (36 tags)
-- GS10 root cause found: original code used GS1 register map (wrong drive model)
-- GS10 registers corrected: cmd=0x2000, freq=0x2001, reset=0x2002, read=0x2103
-- GS10 command bit-fields corrected: FWD+RUN=18, REV+RUN=20, STOP=1
-- VFD fault reset MSG block added (writes 2 to reg 0x2002)
-- VFD comm watchdog added (5s timeout sets fault_alarm)
-- State machine deadlock fixed (IDLE now catches faults)
-- MSG_MODBUS Channel fixed: 2→0 (built-in serial port per Rockwell docs)
-- v5.0.0 program written with msg_step_timer (2s per-step timeout)
-- VFD keypad set: P09.01=9.6, P09.04=12, P00.21=2
-- vfd_diag.py + vfd_fix_attempts.py diagnostic scripts created
-- Modbus TCP mapping updated with diagnostic variables
-- 110Ω termination resistor installed on RS-485 bus
+- **Ollama** runs on HOST at `localhost:11434` (not Docker — uses Metal GPU)
+- **SQLite DB:** `~/Mira/mira-bridge/data/mira.db` (WAL mode, shared across containers)
+- **Networks:** `core-net` (internal services) · `bot-net` (bot relay)
+- **Monorepo:** All 4 sub-repos consolidated. Root `docker-compose.yml` uses `include:`.
 
-### NEXT STEPS (in order)
-1. **RESOLVE CCW SERIAL PORT SYNC** -- this is the only blocker
-   - CCW shows "embedded serial in the project and controller are out of sync"
-   - TCPIPObject download fails, interrupting serial port config transfer
-   - Try USB cable for download (avoids TCP failure)
-   - After download: Serial Port → Diagnose must show "in sync"
-2. Run `python plc/vfd_diag.py` -- expect vfd_comm_ok=TRUE, ErrorID != 255
-3. If comm fails with ErrorID=55 (timeout): swap D+/D- wires
-4. If CE2 on VFD: toggle P09.04 between 12 (8N1) and 13 (8N2)
-5. First motor run test (FWD + REV)
-6. Connect Ignition Modbus TCP device to PLC
-7. Import tags + deploy ConveyorMIRA Perspective views
-8. MIRA Telegram integration live
+## Container Map (7 containers)
 
-### CONFIRMED NETWORK
-- PLC Micro820: 169.254.32.93 (APIPA, static set in CCW project)
-- PLC Laptop: 192.168.1.10 / 169.254.100.1 (Ethernet), Tailscale: 100.72.2.99
-- Modbus TCP port 502: OPEN
-- Ignition gateway on PLC laptop: http://localhost:8088 (Standard trial)
+| Container         | Host Port(s)    | Network(s)        | Healthcheck                   |
+|-------------------|-----------------|-------------------|-------------------------------|
+| mira-core         | 3000 → 8080     | core-net, bot-net | GET /health                   |
+| mira-mcpo         | 8000            | core-net          | GET /mira-mcp/docs (bearer)   |
+| mira-ingest       | 8002 → 8001     | core-net          | Python urlopen /health        |
+| mira-bridge       | 1880            | core-net          | GET /                         |
+| mira-mcp          | 8000, 8001      | core-net          | Python urlopen /sse           |
+| mira-bot-telegram | —               | bot-net, core-net | import check                  |
+| mira-bot-slack    | —               | bot-net, core-net | import check                  |
 
-### KNOWN ISSUE
-- BLOCKER: CCW "embedded serial in the project and controller are out of sync"
-- TCPIPObject download fails during project download, interrupting serial port config
-- Serial port Modbus RTU driver NEVER reaches PLC -- RS-485 UART does not transmit
-- mb_read_status.ErrorID=255 confirms MSG blocks never complete a real transaction
-- Program v5.0.0 is correct (Channel=0, GS10 registers, COP blocks) -- code is NOT the issue
-- FIX NEEDED: Successful full CCW download where serial config syncs. Try USB if Ethernet fails.
+## Compose Files
 
-### IGNITION PROJECT
-- Edition: Standard trial (resets every 2h, never bricks -- better than Maker for dev)
-- Project name: ConveyorMIRA
-- Device name (must match exactly): Micro820_Conveyor
-- Protocol: Modbus TCP
-- Files: ignition/project/ (4 views) + ignition/tags/tags.json (36 tags)
+- `~/Mira/docker-compose.yml` — **ROOT: starts all services** (use this)
+- `~/Mira/mira-core/docker-compose.yml` — mira-core, mira-mcpo, mira-ingest
+- `~/Mira/mira-bridge/docker-compose.yml` — mira-bridge (Node-RED)
+- `~/Mira/mira-bots/docker-compose.yml` — mira-bot-telegram, mira-bot-slack
+- `~/Mira/mira-mcp/docker-compose.yml` — mira-mcp
 
-## Hardware
-- PLC: Allen-Bradley Micro820 2080-LC20-20QBB (EtherNet/IP + Modbus TCP, port 502)
-- Drive: AutomationDirect GS10 VFD (RS-485 Modbus RTU slave addr 1, 9600/8N2)
-- Modbus Register Map: see plc/GS10_Integration_Guide.md (authoritative)
-- PLC Program: v5.0.0 in CCW Prog2.stf (Channel=0, GS10 correct, msg_step_timer)
-- VFD Diagnostic: plc/vfd_diag.py (reads all Modbus TCP mapped variables, shows comm status)
+**Start command:** `doppler run --project factorylm --config prd -- docker compose up -d`
 
-## Immediate Priorities (do in this order)
-1. **RESOLVE CCW SERIAL PORT SYNC** -- try USB download
-2. Run `python plc/vfd_diag.py` to confirm vfd_comm_ok=TRUE
-3. First motor run test (FWD + REV)
-4. Connect Ignition to live PLC data
-5. Port gsd_engine.py FSM logic into Ignition Gateway scripts
+## NeonDB (v0.3.0+)
 
-## Go-to-Market
-- Sell as Ignition module (.modl) — customers install in one click
-- Three tiers: cloud ($299/mo), edge ($4,999 + $999/yr), air-gapped ($9,999 + $1,999/yr)
-- Channel: Ignition certified integrator partners
-- Competitive position: only conversational AI for floor technicians (not dashboards for managers)
+- **Endpoint:** `ep-purple-hall-ahimeyn0-pooler.c-3.us-east-1.aws.neon.tech/neondb`
+- **Secret:** `NEON_DATABASE_URL` in Doppler `factorylm/prd`
+- **MIRA_TENANT_ID:** `78917b56-f85f-43bb-9a08-1bb98a6cd6c3` (FactoryLM BRAVO — Lake Wales FL)
+- **Module:** `mira-ingest/db/neon.py` — `get_tenant()`, `get_tier_limits()`, `recall_knowledge()`
 
-## Technical Rules
-- Modbus addresses are zero-indexed: register 400001 = address 0
-- REAL (float) values span two consecutive registers
-- Always show me diffs before deploying any code change
-- Deploy via: SCP → docker cp → docker compose restart
-- Check logs after every deploy: docker logs mira-bot-telegram --tail 20
+## Key Files
 
-## Key File Locations (Mac Mini)
-- Project root: ~/Mira/
-- Bot code: ~/Mira/mira-bots/telegram/gsd_engine.py
-- Node-RED: http://localhost:1880
-- Ollama: http://localhost:11434
-- Bot container: mira-bot-telegram
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | Root start — all services |
+| `docs/PRD_v1.0.md` | Config 1 MVP implementation plan |
+| `docs/AUDIT.md` | Baseline state, risk register |
+| `.planning/STATE.md` | Current phase, next task, decisions |
+| `.env.template` | All vars documented, no real values |
+| `mira-bots/shared/inference/router.py` | Dual-backend inference (claude/local) |
+| `mira-ingest/db/neon.py` | NeonDB tenant + RAG module |
+| `mira-bots/prompts/diagnose/active.yaml` | Active system prompt (Phase 3) |
 
-## Milestones (in order)
-1. v1.2.0 tagged, clean build, all debt closed
-2. Live PLC data answering in Telegram
-3. Mira runs inside Ignition, no Docker
-4. First .modl at a customer site
-5. 3 integrator partners certified
+## Hard Constraints (PRD §4 — Non-Negotiable)
+
+1. **Licenses:** Apache 2.0 or MIT ONLY. Flag any other license before installing.
+2. **No cloud except:** Anthropic Claude API + NeonDB (Doppler-managed secrets).
+3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the Claude API call.
+4. **Secrets:** All secrets via Doppler (`factorylm/prd`). Never in `.env` files committed to git.
+5. **Containers:** One service per container. Every container: `restart: unless-stopped` + healthcheck.
+6. **Docker images:** Pinned to exact version SHA or semver tag. Never `:latest` or `:main`.
+7. **Build tool:** Claude Code. All implementation prompts written as Claude Code instructions.
+8. **Commits:** Conventional commit format (`feat/fix/security/docs/refactor/test/chore/BREAKING`).
+9. **Config 4 deferred:** No Modbus, PLC, or VFD code until Config 1 MVP ships.
+
+## Commit Convention
+
+```
+feat: short description of new feature
+fix: short description of bug fix
+security: security hardening
+docs: documentation only
+refactor: code restructuring, no behavior change
+test: tests only
+chore: build system, deps, tooling
+```
+
+## Intentionally Deferred (Do Not Implement)
+
+| Feature | Deferred To | Reason |
+|---------|-------------|--------|
+| Modbus/PLC/VFD (`plc_worker.py`) | Config 4 | Out of scope for Config 1 MVP |
+| NVIDIA NIM / Nemotron | TBD | Not part of MVP |
+| Kokoro TTS | Post-MVP | Nice-to-have |
+| CMMS integration | Config 7 | Enterprise feature |
+
+## Key Env Vars (Doppler: factorylm/prd)
+
+| Var | Used By |
+|-----|---------|
+| `TELEGRAM_BOT_TOKEN` | mira-bot-telegram |
+| `SLACK_BOT_TOKEN` | mira-bot-slack |
+| `SLACK_APP_TOKEN` | mira-bot-slack |
+| `OPENWEBUI_API_KEY` | mira-bots, mira-ingest |
+| `MCP_REST_API_KEY` | mira-mcp (server), mira-bots (client) |
+| `WEBUI_SECRET_KEY` | mira-core — **ROTATE — was in git history** |
+| `MCPO_API_KEY` | mira-core mcpo — **ROTATE — was in git history** |
+| `KNOWLEDGE_COLLECTION_ID` | mira-bots, mira-ingest |
+| `NEON_DATABASE_URL` | mira-ingest (NeonDB) |
+| `MIRA_TENANT_ID` | mira-ingest (tenant scoping) |
+| `INFERENCE_BACKEND` | mira-bots — `"claude"` or `"local"` |
+| `ANTHROPIC_API_KEY` | mira-bots — Claude API key |
+| `CLAUDE_MODEL` | mira-bots — default: claude-3-5-sonnet-20241022 |
+
+## Phase History
+
+- v0.1.0: Initial Telegram bot + Open WebUI
+- v0.2.0: Vision pipeline, SQLite WAL, TTS, mira-ingest, security hardening, 21+ tests
+- v0.2.6: Claude API inference router (INFERENCE_BACKEND)
+- v0.3.0: NeonDB wired in, 5,493 knowledge entries, pgvector recall, tenant registry
+- v0.3.1 (current): Monorepo consolidation, PRD v1.0, Phase 0 complete
+
+## Rollback
+
+```bash
+# All histories archived in archives/ before monorepo consolidation
+# To inspect: unzip archives/mira-bots-pre-monorepo.zip -d /tmp/mira-bots-history
+```

@@ -1,0 +1,39 @@
+{
+  "case": "panel_nuisance_trip_66",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 79,
+  "elapsed": 5.312067031860352,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "Square D"
+    ],
+    "fault_cause_found": [
+      "due to",
+      "likely",
+      "worn"
+    ],
+    "next_step_found": [
+      "check",
+      "test",
+      "check"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

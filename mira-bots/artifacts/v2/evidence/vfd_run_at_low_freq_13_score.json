@@ -1,0 +1,40 @@
+{
+  "case": "vfd_run_at_low_freq_13",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 60,
+  "elapsed": 4.383692026138306,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "AutomationDirect",
+      "GS10"
+    ],
+    "fault_cause_found": [
+      "likely",
+      "overload",
+      "most likely"
+    ],
+    "next_step_found": [
+      "check",
+      "verify",
+      "set"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

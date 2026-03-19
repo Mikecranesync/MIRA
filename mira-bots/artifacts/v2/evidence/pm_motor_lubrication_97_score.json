@@ -1,0 +1,40 @@
+{
+  "case": "pm_motor_lubrication_97",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 89,
+  "elapsed": 15.963105916976929,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "AutomationDirect",
+      "GS10"
+    ],
+    "fault_cause_found": [
+      "likely",
+      "worn",
+      "bearing"
+    ],
+    "next_step_found": [
+      "check",
+      "inspect",
+      "replace"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

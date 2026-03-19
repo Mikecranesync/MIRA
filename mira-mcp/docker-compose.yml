@@ -9,8 +9,12 @@ services:
       - MIRA_DB_PATH=/mira-db/mira.db
       - FASTMCP_HOST=0.0.0.0
       - FASTMCP_PORT=8000
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY}
+      - RETRIEVAL_BACKEND=${RETRIEVAL_BACKEND:-openwebui}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - VIKING_STORE_PATH=/mira-db/viking
     volumes:
-      - ${MIRA_DB_PATH:-../mira-bridge/data}:/mira-db:ro
+      - ${MIRA_DB_PATH:-../mira-bridge/data}:/mira-db
     networks:
       - core-net
     restart: unless-stopped

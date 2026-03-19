@@ -1,0 +1,4752 @@
+{
+  "timestamp": "2026-03-16T14:33:27Z",
+  "version": "v2",
+  "summary": {
+    "total": 120,
+    "passed": 120,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "fix_cycles": 1,
+    "avg_words": 66.0,
+    "avg_elapsed": 9.26,
+    "decision": "REPORT_ONLY",
+    "release_version": "v1.0.1"
+  },
+  "cases": [
+    {
+      "case": "vfd_overcurrent_01",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 47,
+      "elapsed": 13.524683952331543,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "overload",
+          "loose"
+        ],
+        "next_step_found": [
+          "check",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_overvoltage_02",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 73,
+      "elapsed": 5.631548881530762,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "read",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_ground_fault_03",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 65,
+      "elapsed": 4.879377841949463,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "inspect",
+          "reset"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_overtemp_04",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 65,
+      "elapsed": 4.532013893127441,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "overloaded",
+          "overload"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_comm_loss_05",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 86,
+      "elapsed": 5.734125137329102,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_dc_bus_undervolt_06",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 67,
+      "elapsed": 4.592950105667114,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "reset",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_motor_stall_07",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 50,
+      "elapsed": 3.547827959060669,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "stall",
+          "current"
+        ],
+        "next_step_found": [
+          "check",
+          "install",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_output_phase_loss_08",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 56,
+      "elapsed": 4.1325531005859375,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "misalignment",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_keypad_fault_09",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 77,
+      "elapsed": 5.490034818649292,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "keypad"
+        ],
+        "next_step_found": [
+          "check",
+          "reset",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_input_phase_loss_10",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 56,
+      "elapsed": 3.8674020767211914,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "overload",
+          "overheat"
+        ],
+        "next_step_found": [
+          "check",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_decel_fault_11",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 46,
+      "elapsed": 3.5662646293640137,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "overload",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "set",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_external_fault_12",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 59,
+      "elapsed": 4.531525135040283,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_run_at_low_freq_13",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 60,
+      "elapsed": 4.383692026138306,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "overload",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_parameter_lost_14",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 61,
+      "elapsed": 4.275159597396851,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "reset",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_noise_interference_15",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 63,
+      "elapsed": 4.349334001541138,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "damaged",
+          "loose"
+        ],
+        "next_step_found": [
+          "check",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_capacitor_worn_16",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 53,
+      "elapsed": 3.9107120037078857,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "wear",
+          "capacitor"
+        ],
+        "next_step_found": [
+          "check",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_fan_failure_17",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 67,
+      "elapsed": 4.615880966186523,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "failed",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "clear",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_glare_image_18",
+      "passed": true,
+      "failure_bucket": "ADVERSARIAL_PARTIAL",
+      "fix_suggestion": "Partial pass on adversarial/degraded case. Expected \u2014 monitor for regression.",
+      "word_count": 94,
+      "elapsed": 17.122267723083496,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "due to",
+          "suggest",
+          "fault"
+        ],
+        "next_step_found": [
+          "check",
+          "reset",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_cropped_tag_19",
+      "passed": true,
+      "failure_bucket": "ADVERSARIAL_PARTIAL",
+      "fix_suggestion": "Partial pass on adversarial/degraded case. Expected \u2014 monitor for regression.",
+      "word_count": 62,
+      "elapsed": 7.103826999664307,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "set",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "vfd_locked_rotor_20",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 49,
+      "elapsed": 13.950703144073486,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "install",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_io_failure_21",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 73,
+      "elapsed": 15.654736757278442,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "output",
+          "card"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_comms_timeout_22",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 70,
+      "elapsed": 5.1387341022491455,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "loose",
+          "probable",
+          "comms"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_program_fault_23",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 80,
+      "elapsed": 5.722952127456665,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "fault"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_power_loss_24",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 68,
+      "elapsed": 5.134241104125977,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "loose"
+        ],
+        "next_step_found": [
+          "check",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_input_card_failure_25",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 76,
+      "elapsed": 5.4308021068573,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "suggest",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_battery_low_26",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 61,
+      "elapsed": 4.523426055908203,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "battery",
+          "low"
+        ],
+        "next_step_found": [
+          "replace",
+          "ensure",
+          "replace"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_modbus_slave_error_27",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 75,
+      "elapsed": 5.482589960098267,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "exception"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_watchdog_fault_28",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 76,
+      "elapsed": 5.38925576210022,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "watchdog",
+          "scan"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_output_shorted_29",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 94,
+      "elapsed": 6.454149961471558,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "overload"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_ethernet_ip_offline_30",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 65,
+      "elapsed": 4.949994087219238,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "connection"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_analog_drift_31",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 55,
+      "elapsed": 4.269056081771851,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "analog"
+        ],
+        "next_step_found": [
+          "check",
+          "recalibrate",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_ram_fault_32",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 70,
+      "elapsed": 5.043532133102417,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "memory",
+          "ram"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_firmware_mismatch_33",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 57,
+      "elapsed": 4.397384881973267,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "firmware"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "update"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_glare_fault_34",
+      "passed": true,
+      "failure_bucket": "ADVERSARIAL_PARTIAL",
+      "fix_suggestion": "Partial pass on adversarial/degraded case. Expected \u2014 monitor for regression.",
+      "word_count": 91,
+      "elapsed": 16.761007070541382,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "probable",
+          "voltage",
+          "fault"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_cropped_fault_35",
+      "passed": true,
+      "failure_bucket": "ADVERSARIAL_PARTIAL",
+      "fix_suggestion": "Partial pass on adversarial/degraded case. Expected \u2014 monitor for regression.",
+      "word_count": 66,
+      "elapsed": 7.433720827102661,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "damaged",
+          "probable",
+          "fault"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_ground_loop_36",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 80,
+      "elapsed": 16.0434308052063,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_node_address_conflict_37",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 54,
+      "elapsed": 4.185601711273193,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "network"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_no_output_power_38",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 54,
+      "elapsed": 4.253658771514893,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "power"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_dip_switch_wrong_39",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 51,
+      "elapsed": 3.93760085105896,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "plc_online_edit_crash_40",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 59,
+      "elapsed": 4.4353179931640625,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "program",
+          "fault"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "backup"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_overload_trip_41",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 57,
+      "elapsed": 14.013726949691772,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "overload"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_bearing_noise_42",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 75,
+      "elapsed": 5.134932994842529,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "suggest",
+          "damaged",
+          "vibration"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_winding_fault_43",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 56,
+      "elapsed": 4.534215927124023,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "moisture",
+          "contamination"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "clean"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_phase_loss_44",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 68,
+      "elapsed": 4.764127969741821,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "indicates"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_overtemp_sensor_45",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 53,
+      "elapsed": 3.9238338470458984,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "open circuit",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_coupling_failure_46",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 78,
+      "elapsed": 5.133880138397217,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "damaged",
+          "coupling"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "verify"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_cooling_blocked_47",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 65,
+      "elapsed": 4.6621057987213135,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "suggest",
+          "high temp"
+        ],
+        "next_step_found": [
+          "check",
+          "clean",
+          "clean"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_vibration_misalign_48",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 67,
+      "elapsed": 4.734483003616333,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "loose",
+          "vibration"
+        ],
+        "next_step_found": [
+          "check",
+          "test",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_rotor_bar_49",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 53,
+      "elapsed": 3.8701677322387695,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "misalignment",
+          "current",
+          "fluctuating"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_wrong_rotation_50",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 55,
+      "elapsed": 3.9357669353485107,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "wiring"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_locked_bearing_51",
+      "passed": true,
+      "failure_bucket": "ADVERSARIAL_PARTIAL",
+      "fix_suggestion": "Partial pass on adversarial/degraded case. Expected \u2014 monitor for regression.",
+      "word_count": 79,
+      "elapsed": 8.624603271484375,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "overheat"
+        ],
+        "next_step_found": [
+          "check",
+          "set",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_cabinet_generic_52",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 65,
+      "elapsed": 14.882481098175049,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "tripped",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_undersized_53",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 69,
+      "elapsed": 15.37086272239685,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "overload",
+          "imbalance"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_delta_open_54",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 63,
+      "elapsed": 4.553966045379639,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "suggest",
+          "worn"
+        ],
+        "next_step_found": [
+          "check",
+          "inspect",
+          "replace"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "motor_seal_failure_55",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 61,
+      "elapsed": 4.444706201553345,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "suggest",
+          "overload",
+          "overheat"
+        ],
+        "next_step_found": [
+          "check",
+          "clean",
+          "disconnect"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_breaker_trip_56",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 91,
+      "elapsed": 16.793489933013916,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "tripped",
+          "overload"
+        ],
+        "next_step_found": [
+          "check",
+          "test",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_contactor_failure_57",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 59,
+      "elapsed": 4.3324830532073975,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "overheat"
+        ],
+        "next_step_found": [
+          "check",
+          "clean",
+          "contact"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_blown_fuse_58",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 86,
+      "elapsed": 6.154137134552002,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "overheat",
+          "probable",
+          "short"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_loose_connection_59",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 78,
+      "elapsed": 5.329952955245972,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "overcurrent",
+          "overload"
+        ],
+        "next_step_found": [
+          "check",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_phase_reversal_60",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 78,
+      "elapsed": 5.234282970428467,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "tripped"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "read"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_surge_damage_61",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 74,
+      "elapsed": 5.277876853942871,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "suggest",
+          "overcurrent",
+          "overheat"
+        ],
+        "next_step_found": [
+          "check",
+          "inspect",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_ground_fault_interrupter_62",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 76,
+      "elapsed": 5.296406984329224,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "seal",
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "inspect",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_relay_coil_burn_63",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 74,
+      "elapsed": 4.996614933013916,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "overcurrent"
+        ],
+        "next_step_found": [
+          "check",
+          "inspect",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_overloaded_bus_64",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 68,
+      "elapsed": 4.9386749267578125,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "suggest",
+          "overload"
+        ],
+        "next_step_found": [
+          "check",
+          "inspect",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_arc_flash_event_65",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 67,
+      "elapsed": 4.856008768081665,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "arc flash"
+        ],
+        "next_step_found": [
+          "check",
+          "set",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_nuisance_trip_66",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 79,
+      "elapsed": 5.312067031860352,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "worn"
+        ],
+        "next_step_found": [
+          "check",
+          "test",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_no_neutral_67",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 68,
+      "elapsed": 4.769944906234741,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_glare_fault_68",
+      "passed": true,
+      "failure_bucket": "ADVERSARIAL_PARTIAL",
+      "fix_suggestion": "Partial pass on adversarial/degraded case. Expected \u2014 monitor for regression.",
+      "word_count": 54,
+      "elapsed": 14.726712703704834,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "probable",
+          "fault",
+          "power"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_vfd_in_mcc_69",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 62,
+      "elapsed": 14.503206014633179,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "tripped"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "read"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "panel_wire_label_missing_70",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 84,
+      "elapsed": 23.515823125839233,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "shorted",
+          "damaged",
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "inspect",
+          "replace"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "sensor_4_20ma_loss_71",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 57,
+      "elapsed": 14.502665996551514,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "loose",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "sensor_encoder_fault_72",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 55,
+      "elapsed": 4.231636047363281,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "encoder",
+          "wiring"
+        ],
+        "next_step_found": [
+          "check",
+          "read",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "sensor_thermocouple_open_73",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 69,
+      "elapsed": 11.024615049362183,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "damaged",
+          "loose",
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "read"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "sensor_proximity_no_output_74",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 79,
+      "elapsed": 0.0,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "programmable"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [
+          "programmable",
+          "controller",
+          "control",
+          "automate",
+          "industrial",
+          "likely",
+          "faulty",
+          "module",
+          "lighting",
+          "despite",
+          "target",
+          "module",
+          "module",
+          "replace",
+          "programming"
+        ],
+        "next_step": [
+          "programmable",
+          "controller",
+          "control",
+          "automate",
+          "industrial",
+          "likely",
+          "faulty",
+          "module",
+          "lighting",
+          "despite",
+          "target",
+          "module",
+          "module",
+          "replace",
+          "programming"
+        ]
+      }
+    },
+    {
+      "case": "sensor_pressure_drift_75",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 55,
+      "elapsed": 4.247618913650513,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "loose",
+          "probable",
+          "pressure"
+        ],
+        "next_step_found": [
+          "check",
+          "read",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "sensor_photoelectric_false_trigger_76",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 77,
+      "elapsed": 5.747164726257324,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "photoelectric"
+        ],
+        "next_step_found": [
+          "check",
+          "set",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "sensor_rtd_shorted_77",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 54,
+      "elapsed": 4.365103006362915,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "suggest",
+          "rtd",
+          "resistance"
+        ],
+        "next_step_found": [
+          "check",
+          "read",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "sensor_level_switch_stuck_78",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 57,
+      "elapsed": 4.2712929248809814,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "level"
+        ],
+        "next_step_found": [
+          "replace",
+          "clean",
+          "replace"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "sensor_vfd_feedback_lost_79",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 49,
+      "elapsed": 14.326503038406372,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "sensor_cable_damage_80",
+      "passed": true,
+      "failure_bucket": "ADVERSARIAL_PARTIAL",
+      "fix_suggestion": "Partial pass on adversarial/degraded case. Expected \u2014 monitor for regression.",
+      "word_count": 69,
+      "elapsed": 7.477657794952393,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "damaged"
+        ],
+        "next_step_found": [
+          "inspect",
+          "replace",
+          "reconnect"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "startup_first_power_on_81",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 60,
+      "elapsed": 14.82778811454773,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "startup_vfd_first_run_82",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 49,
+      "elapsed": 13.805071115493774,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "startup_panel_energize_83",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 63,
+      "elapsed": 14.44784688949585,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "loose",
+          "probable",
+          "voltage"
+        ],
+        "next_step_found": [
+          "inspect",
+          "ensure",
+          "inspect"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "startup_modbus_config_84",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 75,
+      "elapsed": 15.721928358078003,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "startup_motor_direction_85",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 54,
+      "elapsed": 14.142772912979126,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "rotation",
+          "coupling",
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "startup_ip_address_config_86",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 63,
+      "elapsed": 14.88938307762146,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable"
+        ],
+        "next_step_found": [
+          "set",
+          "set",
+          "connect"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "startup_parameter_backup_87",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 52,
+      "elapsed": 13.909877061843872,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "set",
+          "save"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "startup_acceleration_tuning_88",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 67,
+      "elapsed": 4.49493670463562,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "set",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "startup_overload_set_89",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 63,
+      "elapsed": 4.625355005264282,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "overload",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "set",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "startup_io_check_90",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 93,
+      "elapsed": 16.761588096618652,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "test"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "pm_vfd_annual_91",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 76,
+      "elapsed": 15.384564876556396,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "overheat",
+          "loose"
+        ],
+        "next_step_found": [
+          "check",
+          "inspect",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "pm_plc_annual_92",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 75,
+      "elapsed": 15.910348892211914,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "worn",
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "test",
+          "clean"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "pm_panel_thermal_scan_93",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 80,
+      "elapsed": 15.515248775482178,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "overloaded",
+          "overcurrent",
+          "overload"
+        ],
+        "next_step_found": [
+          "check",
+          "set",
+          "scan"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "pm_contactor_replace_94",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 78,
+      "elapsed": 5.700430631637573,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "overcurrent",
+          "overload"
+        ],
+        "next_step_found": [
+          "check",
+          "contact",
+          "set"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "pm_vfd_capacitor_age_95",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 57,
+      "elapsed": 14.482109308242798,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "wear",
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "replace"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "pm_encoder_cleaning_96",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 52,
+      "elapsed": 14.278129816055298,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable"
+        ],
+        "next_step_found": [
+          "clean",
+          "clean"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "pm_motor_lubrication_97",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 89,
+      "elapsed": 15.963105916976929,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "worn",
+          "bearing"
+        ],
+        "next_step_found": [
+          "check",
+          "inspect",
+          "replace"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "pm_battery_replace_98",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 69,
+      "elapsed": 15.021822214126587,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "pm_panel_cleaning_99",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 40,
+      "elapsed": 13.22653603553772,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Square D"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "overheat"
+        ],
+        "next_step_found": [
+          "clean",
+          "contact",
+          "clean"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "pm_vfd_torque_check_100",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 58,
+      "elapsed": 14.14162826538086,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "loose",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "tighten"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "elec_drawing_ladder_101",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 59,
+      "elapsed": 14.412412881851196,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "rung"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "elec_drawing_oneline_102",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 61,
+      "elapsed": 14.611704111099243,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "tripped",
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "breaker",
+          "panel"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "elec_drawing_pid_103",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 52,
+      "elapsed": 13.6248619556427,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "overload"
+        ],
+        "next_step_found": [
+          "check",
+          "inspect",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "elec_drawing_wiring_104",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 89,
+      "elapsed": 8.77504587173462,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "wire"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "elec_drawing_schematic_105",
+      "passed": true,
+      "failure_bucket": "ADVERSARIAL_PARTIAL",
+      "fix_suggestion": "Partial pass on adversarial/degraded case. Expected \u2014 monitor for regression.",
+      "word_count": 89,
+      "elapsed": 16.630300998687744,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "hydraulic_pressure_drop_106",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 67,
+      "elapsed": 14.647587776184082,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "voltage",
+          "pump"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "hydraulic_cylinder_drift_107",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 77,
+      "elapsed": 15.782509088516235,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "probable",
+          "cylinder"
+        ],
+        "next_step_found": [
+          "check",
+          "test",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "hydraulic_pump_cavitation_108",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 47,
+      "elapsed": 13.651033878326416,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "suggest",
+          "overheat",
+          "foam"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "hydraulic_valve_stuck_109",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 72,
+      "elapsed": 14.912226915359497,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "likely",
+          "phase",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "hydraulic_relief_valve_110",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 83,
+      "elapsed": 15.989575862884521,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "probable",
+          "voltage"
+        ],
+        "next_step_found": [
+          "check",
+          "set",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "process_pump_cavitation_111",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 57,
+      "elapsed": 14.086970090866089,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "due to",
+          "likely",
+          "most likely"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "process_compressor_fault_112",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 76,
+      "elapsed": 15.22118616104126,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "likely",
+          "overload",
+          "loose"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "read"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "process_fan_vibration_113",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 47,
+      "elapsed": 13.475677967071533,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "AutomationDirect",
+          "GS10"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "vibration",
+          "misalignment"
+        ],
+        "next_step_found": [
+          "check",
+          "check",
+          "align"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "process_heat_exchanger_114",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 65,
+      "elapsed": 14.835830211639404,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "temperature"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "ensure"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "process_valve_actuator_115",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 70,
+      "elapsed": 14.744010925292969,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "probable"
+        ],
+        "next_step_found": [
+          "check",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "safety_estop_wiring_116",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 60,
+      "elapsed": 14.659739017486572,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "e-stop"
+        ],
+        "next_step_found": [
+          "check",
+          "reset",
+          "verify"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "safety_light_curtain_117",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 55,
+      "elapsed": 13.860858678817749,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "due to",
+          "muted",
+          "light curtain"
+        ],
+        "next_step_found": [
+          "check",
+          "ensure",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "safety_relay_fault_118",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 66,
+      "elapsed": 15.150592803955078,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "relay"
+        ],
+        "next_step_found": [
+          "check",
+          "replace",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "safety_door_interlock_119",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 50,
+      "elapsed": 13.903409004211426,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [],
+        "fault_cause_found": [
+          "likely",
+          "most likely",
+          "interlock"
+        ],
+        "next_step_found": [
+          "ensure",
+          "restore"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    },
+    {
+      "case": "safety_two_hand_control_120",
+      "passed": true,
+      "failure_bucket": null,
+      "fix_suggestion": "",
+      "word_count": 53,
+      "elapsed": 14.27107310295105,
+      "conditions": {
+        "IDENTIFICATION": true,
+        "FAULT_CAUSE": true,
+        "NEXT_STEP": true,
+        "READABILITY": true,
+        "SPEED": true,
+        "ACTIONABILITY": true
+      },
+      "extracted_facts": {
+        "identification_terms_found": [
+          "Allen-Bradley",
+          "Micro820"
+        ],
+        "fault_cause_found": [
+          "likely",
+          "two-hand"
+        ],
+        "next_step_found": [
+          "check",
+          "verify",
+          "check"
+        ],
+        "must_not_contain_violated": []
+      },
+      "score": 6,
+      "max_score": 6,
+      "confidence": 1.0,
+      "injected_patterns": {
+        "fault_cause": [],
+        "next_step": []
+      }
+    }
+  ],
+  "heal_log": [
+    {
+      "case": "sensor_proximity_no_output_74",
+      "heal_type": "HEALED_JUDGE",
+      "attempts": 1,
+      "original_bucket": "RESPONSE_TOO_GENERIC"
+    }
+  ],
+  "telegram": null
+}

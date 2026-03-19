@@ -1,0 +1,356 @@
+"""MIRA ingest service — photo ingestion, vector search, KB push."""
+
+import base64
+import io
+import json
+import logging
+import os
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+
+import httpx
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from PIL import Image
+
+logger = logging.getLogger("mira-ingest")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+DB_PATH = os.getenv("MIRA_DB_PATH", "/app/mira.db")
+PHOTOS_DIR = Path(os.getenv("PHOTOS_DIR", "/data/photos"))
+OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+DESCRIBE_MODEL = os.getenv("DESCRIBE_MODEL", "qwen2.5vl:7b")
+EMBED_VISION_MODEL = os.getenv("EMBED_VISION_MODEL", "nomic-embed-vision-v1.5")
+EMBED_TEXT_MODEL = os.getenv("EMBED_TEXT_MODEL", "nomic-embed-text-v1.5")
+OPENWEBUI_URL = os.getenv("OPENWEBUI_BASE_URL", "http://mira-core:8080")
+OPENWEBUI_API_KEY = os.getenv("OPENWEBUI_API_KEY", "")
+KNOWLEDGE_COLLECTION_ID = os.getenv("KNOWLEDGE_COLLECTION_ID", "")
+MAX_PX = int(os.getenv("MAX_INGEST_PX", "1024"))
+
+DESCRIBE_SYSTEM = (
+    "You are an industrial maintenance AI helping a technician at a machine. "
+    "When shown an equipment photo, respond in under 100 words using plain language. "
+    "Structure your response as: "
+    "(1) What is this device — name the make, model, and function. "
+    "(2) What likely caused any visible issue — state the most probable fault cause. "
+    "(3) What should the tech do right now — give one specific, concrete next step. "
+    "If the image is a nameplate or tag only, identify the device and give one "
+    "general next step for a tech responding to an unknown fault on this equipment type. "
+    "Never use unexplained acronyms. Do not exceed 100 words."
+)
+
+app = FastAPI(title="mira-ingest")
+
+
+# ---------------------------------------------------------------------------
+# DB helpers
+# ---------------------------------------------------------------------------
+
+def _get_db() -> sqlite3.Connection:
+    db = sqlite3.connect(DB_PATH)
+    db.execute("PRAGMA journal_mode=WAL")
+    db.row_factory = sqlite3.Row
+    return db
+
+
+def _ensure_table() -> None:
+    db = _get_db()
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS equipment_photos (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_tag    TEXT NOT NULL,
+            location     TEXT,
+            notes        TEXT,
+            description  TEXT,
+            photo_path   TEXT,
+            image_vector TEXT,
+            text_vector  TEXT,
+            ingested_at  TEXT
+        )
+    """)
+    db.commit()
+    db.close()
+
+
+# ---------------------------------------------------------------------------
+# Image helpers
+# ---------------------------------------------------------------------------
+
+def _sanitize_image(data: bytes) -> bytes:
+    """Strip EXIF metadata and resize to MAX_PX longest side."""
+    img = Image.open(io.BytesIO(data))
+    img = img.convert("RGB")
+    w, h = img.size
+    if max(w, h) > MAX_PX:
+        scale = MAX_PX / max(w, h)
+        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85, exif=b"")
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Similarity
+# ---------------------------------------------------------------------------
+
+def _cosine_similarity(a: list, b: list) -> float:
+    """Pure-Python cosine similarity between two float vectors."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+# ---------------------------------------------------------------------------
+# Ollama calls
+# ---------------------------------------------------------------------------
+
+async def _describe_photo(image_b64: str, notes: str = "") -> str:
+    user_text = DESCRIBE_SYSTEM
+    if notes:
+        user_text += f"\n\nTechnician's situation: {notes}"
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            f"{OLLAMA_URL}/api/chat",
+            json={
+                "model": DESCRIBE_MODEL,
+                "stream": False,
+                "messages": [{
+                    "role": "user",
+                    "content": user_text,
+                    "images": [image_b64],
+                }],
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()["message"]["content"]
+
+
+async def _embed_image(image_b64: str) -> list:
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            f"{OLLAMA_URL}/api/embed",
+            json={"model": EMBED_VISION_MODEL, "input": image_b64},
+        )
+        resp.raise_for_status()
+        return resp.json()["embeddings"][0]
+
+
+async def _embed_text(text: str) -> list:
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            f"{OLLAMA_URL}/api/embed",
+            json={"model": EMBED_TEXT_MODEL, "input": text},
+        )
+        resp.raise_for_status()
+        return resp.json()["embeddings"][0]
+
+
+# ---------------------------------------------------------------------------
+# Open WebUI KB push (best-effort, never fails ingest)
+# ---------------------------------------------------------------------------
+
+async def _push_to_kb(asset_tag: str, description: str) -> None:
+    if not KNOWLEDGE_COLLECTION_ID or not OPENWEBUI_URL:
+        return
+    headers = {}
+    if OPENWEBUI_API_KEY:
+        headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{OPENWEBUI_URL}/api/v1/files/",
+                headers=headers,
+                files={"file": (f"{asset_tag}.txt", description.encode(), "text/plain")},
+            )
+            if resp.status_code not in (200, 201):
+                logger.warning("KB file upload failed (%s): %s", resp.status_code, resp.text[:200])
+                return
+            file_id = resp.json().get("id")
+            if file_id:
+                await client.post(
+                    f"{OPENWEBUI_URL}/api/v1/knowledge/{KNOWLEDGE_COLLECTION_ID}/file/add",
+                    headers={**headers, "Content-Type": "application/json"},
+                    json={"file_id": file_id},
+                )
+    except Exception as e:
+        logger.warning("KB push failed (non-fatal): %s", e)
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle
+# ---------------------------------------------------------------------------
+
+@app.on_event("startup")
+async def startup():
+    _ensure_table()
+    PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.get("/health/db")
+async def health_db():
+    import sqlite3 as _sqlite3
+    # SQLite check
+    try:
+        db = _get_db()
+        db.execute("SELECT 1")
+        db.close()
+        sqlite_status = "ok"
+    except Exception as exc:
+        sqlite_status = f"error: {exc}"
+
+    # NeonDB check (optional — graceful if NEON_DATABASE_URL not set)
+    neon_result: dict = {"status": "not_configured"}
+    if os.getenv("NEON_DATABASE_URL"):
+        try:
+            from db.neon import health_check as _neon_health
+            neon_result = _neon_health()
+        except Exception as exc:
+            neon_result = {"status": "error", "detail": str(exc)}
+
+    return {
+        "sqlite": sqlite_status,
+        "neondb": neon_result.get("status", "error"),
+        "neondb_tenant_count": neon_result.get("tenant_count"),
+        "neondb_knowledge_entries": neon_result.get("knowledge_entries"),
+    }
+
+
+@app.post("/ingest/photo")
+async def ingest_photo(
+    image: UploadFile = File(...),
+    asset_tag: str = Form(...),
+    location: str = Form(default=""),
+    notes: str = Form(default=""),
+):
+    # Tier limit check — returns HTTP 429 if daily limit exceeded
+    tenant_id = os.getenv("MIRA_TENANT_ID", "")
+    if tenant_id:
+        try:
+            from db.neon import check_tier_limit
+            allowed, reason = check_tier_limit(tenant_id)
+            if not allowed:
+                raise HTTPException(status_code=429, detail=reason)
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # fail open — never block on DB errors
+
+    raw = await image.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="Empty image upload")
+
+    try:
+        clean = _sanitize_image(raw)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Invalid image: {e}")
+
+    # Save sanitized photo to disk
+    asset_dir = PHOTOS_DIR / asset_tag
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+    photo_path = str(asset_dir / f"{timestamp}.jpg")
+    with open(photo_path, "wb") as f:
+        f.write(clean)
+
+    image_b64 = base64.b64encode(clean).decode()
+
+    # Describe via vision model (non-fatal fallback)
+    try:
+        description = await _describe_photo(image_b64, notes=notes)
+    except Exception as e:
+        logger.error("Vision description failed: %s", e)
+        description = notes or "No description available"
+
+    # Embed image vector (non-fatal)
+    try:
+        image_vector = await _embed_image(image_b64)
+    except Exception as e:
+        logger.error("Image embed failed: %s", e)
+        image_vector = []
+
+    # Embed text vector (non-fatal)
+    try:
+        text_vector = await _embed_text(description)
+    except Exception as e:
+        logger.error("Text embed failed: %s", e)
+        text_vector = []
+
+    # Store in DB
+    db = _get_db()
+    cursor = db.execute(
+        """INSERT INTO equipment_photos
+           (asset_tag, location, notes, description, photo_path,
+            image_vector, text_vector, ingested_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            asset_tag, location, notes, description, photo_path,
+            json.dumps(image_vector), json.dumps(text_vector), timestamp,
+        ),
+    )
+    db.commit()
+    photo_id = cursor.lastrowid
+    db.close()
+
+    # Push to Open WebUI KB (best-effort)
+    await _push_to_kb(asset_tag, description)
+
+    return {
+        "id": photo_id,
+        "asset_tag": asset_tag,
+        "description": description,
+        "photo_path": photo_path,
+    }
+
+
+@app.post("/ingest/search")
+async def search_photos(body: dict):
+    query = body.get("query", "")
+    top_k = int(body.get("top_k", 5))
+    if not query:
+        raise HTTPException(status_code=422, detail="query is required")
+
+    try:
+        query_vector = await _embed_text(query)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Embed failed: {e}")
+
+    db = _get_db()
+    rows = db.execute(
+        "SELECT id, asset_tag, location, description, photo_path, text_vector, ingested_at "
+        "FROM equipment_photos"
+    ).fetchall()
+    db.close()
+
+    results = []
+    for row in rows:
+        try:
+            vec = json.loads(row["text_vector"] or "[]")
+        except Exception:
+            vec = []
+        if not vec:
+            continue
+        score = _cosine_similarity(query_vector, vec)
+        results.append({
+            "id": row["id"],
+            "asset_tag": row["asset_tag"],
+            "location": row["location"],
+            "description": row["description"],
+            "photo_path": row["photo_path"],
+            "ingested_at": row["ingested_at"],
+            "score": score,
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return {"results": results[:top_k]}

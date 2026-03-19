@@ -1,0 +1,39 @@
+{
+  "case": "plc_node_address_conflict_37",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 54,
+  "elapsed": 4.185601711273193,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "Allen-Bradley",
+      "Micro820"
+    ],
+    "fault_cause_found": [
+      "due to",
+      "network"
+    ],
+    "next_step_found": [
+      "check",
+      "ensure",
+      "check"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

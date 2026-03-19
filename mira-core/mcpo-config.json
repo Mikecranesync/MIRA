@@ -1,9 +1,7 @@
 {
   "mcpServers": {
     "mira-mcp": {
-      "command": "python",
-      "args": ["/mcp/server.py"],
-      "env": { "MIRA_DB_PATH": "/data/mira.db" }
+      "url": "http://host.docker.internal:8000/sse"
     }
   }
 }
