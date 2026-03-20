@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """MIRA AR HUD Simulator — Phase 1 laptop webcam prototype.
 
-Opens the laptop webcam and composites an AR heads-up display overlay showing
-step-by-step maintenance instructions viewed through smart glasses lenses.
+Opens the laptop webcam (or URL stream, or synthetic test frame) and composites
+an AR heads-up display overlay showing step-by-step maintenance instructions
+viewed through smart glasses lenses.
 
-Controls:
+Display modes:
+    Desktop:   cv2.imshow() window (default)
+    Streaming: --serve flag starts Flask MJPEG server on LAN for phone viewing
+
+Controls (desktop mode):
     SPACE  — advance to next step
     R      — reset to step 1
     G      — generate new procedure via Claude API
@@ -12,11 +17,19 @@ Controls:
     M      — toggle monocular / binocular lens mode
     Q/ESC  — quit
 
+Controls (streaming mode):
+    Tap right half of phone screen — advance step
+    Tap left half — reset
+    Keyboard on browser also works (SPACE, R, M)
+
 Usage:
-    python mira_demo.py                                           # binocular (demo video)
-    python mira_demo.py --monocular                               # single right-eye (Frame accurate)
-    python mira_demo.py --procedure procedures/press_unit_4.json  # load specific procedure
-    python mira_demo.py --generate "Conveyor belt tensioning"     # generate via Claude API
+    python mira_demo.py                                    # webcam + desktop window
+    python mira_demo.py --test                             # synthetic frame, no camera
+    python mira_demo.py --test --serve                     # headless, stream to phone
+    python mira_demo.py --camera 1                         # alternate camera index
+    python mira_demo.py --camera "http://192.168.1.5:8080/video"  # IP camera URL
+    python mira_demo.py --monocular                        # single right-eye lens
+    python mira_demo.py --serve --port 8080                # custom port
 
 Environment:
     ANTHROPIC_API_KEY — required for --generate mode
@@ -24,7 +37,10 @@ Environment:
 
 import argparse
 import json
+import math
+import socket
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -49,6 +65,14 @@ DARK_GRAY = (80, 80, 80)
 ALPHA_OVERLAY = 0.60
 LENS_FEATHER_KERNEL = 31
 LENS_FEATHER_BLUR = 61
+
+# --- Shared state for Flask streaming ---
+output_lock = threading.Lock()
+output_frame: np.ndarray | None = None
+
+# --- Shared state for remote control ---
+control_lock = threading.Lock()
+pending_commands: list[str] = []
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +162,48 @@ def draw_text_pil(
 
 
 # ---------------------------------------------------------------------------
+# Test frame generator
+# ---------------------------------------------------------------------------
+
+def generate_test_frame(width: int, height: int, elapsed: float) -> np.ndarray:
+    """Generate a synthetic frame — animated dark industrial gradient."""
+    frame = np.zeros((height, width, 3), dtype=np.uint8)
+
+    # Slow-moving vertical gradient (dark blue-gray tones)
+    shift = int(elapsed * 8) % height
+    for y in range(height):
+        gy = ((y + shift) % height) / height
+        r = int(20 + 25 * gy)
+        g = int(25 + 30 * gy)
+        b = int(35 + 40 * gy)
+        frame[y, :] = (b, g, r)
+
+    # Horizontal machinery bands
+    band_h = 60
+    for i in range(3):
+        y0 = 120 + i * 180
+        if y0 + band_h < height:
+            brightness = 0.6 + 0.15 * math.sin(elapsed * 0.5 + i)
+            frame[y0:y0 + band_h, :] = (
+                frame[y0:y0 + band_h, :].astype(np.float32) * brightness
+            ).astype(np.uint8)
+
+    # Pulsing indicator light (simulates machine status LED)
+    pulse = int(127 + 127 * math.sin(elapsed * 3))
+    cx, cy = width - 80, 80
+    cv2.circle(frame, (cx, cy), 12, (0, pulse, 0), -1)
+    cv2.circle(frame, (cx, cy), 14, (0, 100, 0), 1)
+
+    # Grid lines (industrial floor / panel look)
+    for x in range(0, width, 160):
+        xoff = x + int(elapsed * 2) % 160
+        if xoff < width:
+            cv2.line(frame, (xoff, 0), (xoff, height), (40, 40, 45), 1)
+
+    return frame
+
+
+# ---------------------------------------------------------------------------
 # Lens mask
 # ---------------------------------------------------------------------------
 
@@ -164,7 +230,6 @@ def draw_lens_mask(frame: np.ndarray, geom: dict) -> np.ndarray:
     h, w = frame.shape[:2]
     mask = np.zeros((h, w), dtype=np.uint8)
 
-    # Draw filled ellipses for each lens
     right = geom["right"]
     cv2.ellipse(mask, right["center"], right["axes"], 0, 0, 360, 255, -1)
 
@@ -172,31 +237,25 @@ def draw_lens_mask(frame: np.ndarray, geom: dict) -> np.ndarray:
         left = geom["left"]
         cv2.ellipse(mask, left["center"], left["axes"], 0, 0, 360, 255, -1)
 
-        # Bridge between lenses
         lx = left["center"][0] + left["axes"][0]
         rx = right["center"][0] - right["axes"][0]
         bridge_y = int(h * 0.50)
         cv2.line(mask, (lx, bridge_y), (rx, bridge_y), 255, 10)
 
-    # Soft feathered edge
     kernel = np.ones((LENS_FEATHER_KERNEL, LENS_FEATHER_KERNEL), np.uint8)
     soft_mask = cv2.erode(mask, kernel, iterations=2)
     soft_mask = cv2.GaussianBlur(soft_mask, (LENS_FEATHER_BLUR, LENS_FEATHER_BLUR), 0)
     norm_mask = soft_mask.astype(np.float32) / 255.0
 
-    # Darken outside the lenses
     for c in range(3):
         frame[:, :, c] = (frame[:, :, c] * norm_mask).astype(np.uint8)
 
-    # Lens rim — thin teal ellipse outline
     cv2.ellipse(frame, right["center"], right["axes"], 0, 0, 360, TEAL, 2)
 
     if geom["mode"] == "binocular":
         cv2.ellipse(frame, left["center"], left["axes"], 0, 0, 360, TEAL, 2)
-        # Bridge line
         cv2.line(frame, (lx, bridge_y), (rx, bridge_y), TEAL_RIM, 1)
     else:
-        # Monocular — thin bridge line extending left from the lens
         bridge_x = right["center"][0] - right["axes"][0]
         cv2.line(frame, (bridge_x - 60, h // 2), (bridge_x, h // 2), TEAL_RIM, 1)
 
@@ -219,17 +278,14 @@ def draw_hud(
     """Composite the AR HUD overlay inside the right lens area."""
     h, w = frame.shape[:2]
 
-    # Right lens bounding box — all HUD elements anchor here
     rc = geom["right"]["center"]
     ra = geom["right"]["axes"]
-    lx = rc[0] - ra[0] + 20   # left edge + padding
-    rx = rc[0] + ra[0] - 20   # right edge - padding
-    ty = rc[1] - ra[1] + 16   # top edge + padding
-    by = rc[1] + ra[1] - 16   # bottom edge - padding
+    lx = rc[0] - ra[0] + 20
+    rx = rc[0] + ra[0] - 20
+    ty = rc[1] - ra[1] + 16
+    by = rc[1] + ra[1] - 16
     lens_w = rx - lx
-    lens_h = by - ty
 
-    # Semi-transparent overlay for HUD panels
     overlay = frame.copy()
     output = frame.copy()
 
@@ -238,20 +294,16 @@ def draw_hud(
     font_small = get_font(12)
     font_large = get_font(24)
 
-    # --- Top bar inside right lens ---
     top_bar_h = 36
     cv2.rectangle(overlay, (lx, ty), (rx, ty + top_bar_h), BLACK, -1)
 
-    # --- Bottom card area inside right lens ---
     card_h = 100
     progress_h = 30
     card_top = by - card_h - progress_h
     cv2.rectangle(overlay, (lx, card_top), (rx, by), BLACK, -1)
 
-    # Blend
     cv2.addWeighted(overlay, ALPHA_OVERLAY, output, 1 - ALPHA_OVERLAY, 0, output)
 
-    # --- Top bar text ---
     minutes = int(elapsed) // 60
     seconds = int(elapsed) % 60
     time_str = f"{minutes:02d}:{seconds:02d}"
@@ -261,10 +313,8 @@ def draw_hud(
     output = draw_text_pil(output, "CRANE SYNC", (lx + 78, ty + 10), font_small, (160, 160, 160))
     output = draw_text_pil(output, time_str, (rx - 55, ty + 10), font_small, (160, 160, 160))
 
-    # Accent line
     cv2.line(output, (lx, ty + top_bar_h), (rx, ty + top_bar_h), TEAL, 1)
 
-    # --- Content area ---
     pad = 12
 
     if completed:
@@ -272,54 +322,37 @@ def draw_hud(
             output, "COMPLETE", (lx + pad, card_top + pad), font_large, (0, 220, 100)
         )
         output = draw_text_pil(
-            output,
-            f"{len(steps)} steps in {time_str}",
-            (lx + pad, card_top + pad + 30),
-            font_body,
-            (160, 160, 160),
+            output, f"{len(steps)} steps in {time_str}",
+            (lx + pad, card_top + pad + 30), font_body, (160, 160, 160),
         )
         output = draw_text_pil(
             output, "[R] Restart  [Q] Quit",
-            (lx + pad, card_top + pad + 52),
-            font_small, (100, 100, 100),
+            (lx + pad, card_top + pad + 52), font_small, (100, 100, 100),
         )
     else:
         step_data = steps[current_step]
         step_num = current_step + 1
         total = len(steps)
 
-        # Step counter
         output = draw_text_pil(
-            output,
-            f"STEP {step_num} OF {total}",
-            (lx + pad, card_top + pad),
-            font_small,
-            (0, 200, 200),
+            output, f"STEP {step_num} OF {total}",
+            (lx + pad, card_top + pad), font_small, (0, 200, 200),
         )
 
-        # Step title
         title = step_data["title"]
         output = draw_text_pil(
-            output,
-            f"> {title}",
-            (lx + pad, card_top + pad + 20),
-            font_title,
-            (255, 255, 255),
+            output, f"> {title}",
+            (lx + pad, card_top + pad + 20), font_title, (255, 255, 255),
         )
 
-        # Step detail — wrap if needed
         detail = step_data["detail"]
         if len(detail) > 45:
             detail = detail[:42] + "..."
         output = draw_text_pil(
-            output,
-            f"  {detail}",
-            (lx + pad, card_top + pad + 46),
-            font_body,
-            (170, 170, 170),
+            output, f"  {detail}",
+            (lx + pad, card_top + pad + 46), font_body, (170, 170, 170),
         )
 
-    # --- Progress bar at bottom of lens ---
     progress_top = by - progress_h
     cv2.line(output, (lx, progress_top), (rx, progress_top), (60, 60, 60), 1)
 
@@ -339,7 +372,6 @@ def draw_hud(
         else:
             cv2.circle(output, (cx, dot_y), 6, GRAY, 1)
 
-    # Hint
     if not completed:
         output = draw_text_pil(
             output, "[SPACE]", (rx - 60, progress_top + 8), font_small, (100, 100, 100)
@@ -349,22 +381,120 @@ def draw_hud(
 
 
 # ---------------------------------------------------------------------------
+# Flask MJPEG streaming server
+# ---------------------------------------------------------------------------
+
+def create_flask_app() -> "Flask":
+    """Create Flask app for wireless AR feed streaming."""
+    from flask import Flask, Response, request
+
+    app = Flask(__name__)
+
+    @app.route("/")
+    def index():
+        return """<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>MIRA AR</title>
+<style>
+  *{margin:0;padding:0}
+  body{background:#000;overflow:hidden;touch-action:none}
+  img{width:100vw;height:100vh;object-fit:contain;display:block}
+</style>
+</head><body>
+<img src="/video" alt="MIRA AR Feed">
+<script>
+document.addEventListener('keydown',function(e){
+  if(e.code==='Space'){e.preventDefault();fetch('/next',{method:'POST'})}
+  if(e.key==='r')fetch('/reset',{method:'POST'});
+  if(e.key==='m')fetch('/toggle-lens',{method:'POST'});
+});
+document.addEventListener('touchstart',function(e){
+  e.preventDefault();
+  var x=e.touches[0].clientX;
+  if(x>window.innerWidth*0.5)fetch('/next',{method:'POST'});
+  else fetch('/reset',{method:'POST'});
+},{passive:false});
+</script>
+</body></html>"""
+
+    def gen_frames():
+        """Yield MJPEG frames from shared output_frame."""
+        while True:
+            with output_lock:
+                frame = output_frame
+            if frame is None:
+                time.sleep(0.05)
+                continue
+            ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            if not ok:
+                continue
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
+            )
+            time.sleep(0.033)  # ~30 fps cap
+
+    @app.route("/video")
+    def video_feed():
+        return Response(gen_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+    @app.route("/next", methods=["POST"])
+    def next_step():
+        with control_lock:
+            pending_commands.append("next")
+        return "", 204
+
+    @app.route("/reset", methods=["POST"])
+    def reset():
+        with control_lock:
+            pending_commands.append("reset")
+        return "", 204
+
+    @app.route("/toggle-lens", methods=["POST"])
+    def toggle_lens():
+        with control_lock:
+            pending_commands.append("toggle-lens")
+        return "", 204
+
+    return app
+
+
+def get_lan_ip() -> str:
+    """Auto-detect LAN IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main():
+    global output_frame
+
     parser = argparse.ArgumentParser(description="MIRA AR HUD Simulator")
     parser.add_argument(
         "--procedure", type=Path, default=DEFAULT_PROCEDURE, help="Path to procedure JSON file"
     )
     parser.add_argument("--generate", type=str, default=None, help="Generate procedure via Claude API")
-    parser.add_argument("--camera", type=int, default=0, help="Camera index (default: 0)")
+    parser.add_argument("--camera", type=str, default="0", help="Camera index (int) or URL (string)")
     parser.add_argument("--width", type=int, default=1280, help="Requested camera width")
     parser.add_argument("--height", type=int, default=720, help="Requested camera height")
     parser.add_argument(
         "--monocular", action="store_true",
         help="Single right-eye lens (Frame hardware accurate). Default: binocular",
     )
+    parser.add_argument("--test", action="store_true", help="Synthetic test frame — no camera needed")
+    parser.add_argument("--serve", action="store_true", help="Start Flask MJPEG server for phone viewing")
+    parser.add_argument("--port", type=int, default=5000, help="Flask server port (default: 5000)")
     args = parser.parse_args()
 
     # Load or generate procedure
@@ -387,23 +517,37 @@ def main():
     task_name = procedure.get("task", "Maintenance Procedure")
     print(f"Loaded: {task_name} ({len(steps)} steps)")
 
-    # Open webcam
-    cap = cv2.VideoCapture(args.camera)
-    if not cap.isOpened():
-        print(f"ERROR: Cannot open camera {args.camera}")
-        sys.exit(1)
+    # Open camera or test mode
+    cap = None
+    if args.test:
+        print(f"Test mode: synthetic {args.width}x{args.height} frame")
+    else:
+        cam = int(args.camera) if args.camera.isdigit() else args.camera
+        cap = cv2.VideoCapture(cam)
+        if not cap.isOpened():
+            print(f"ERROR: Cannot open camera '{args.camera}'")
+            sys.exit(1)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
+        actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f"Camera: {actual_w}x{actual_h}")
 
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
-
-    actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    print(f"Camera: {actual_w}x{actual_h}")
-
-    # Window
-    window_name = "MIRA AR HUD"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(window_name, actual_w, actual_h)
+    # Start Flask server if --serve
+    if args.serve:
+        app = create_flask_app()
+        lan_ip = get_lan_ip()
+        print(f"Serving AR feed -> http://{lan_ip}:{args.port}")
+        flask_thread = threading.Thread(
+            target=app.run,
+            kwargs={"host": "0.0.0.0", "port": args.port, "debug": False, "use_reloader": False},
+            daemon=True,
+        )
+        flask_thread.start()
+    else:
+        window_name = "MIRA AR HUD"
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(window_name, args.width, args.height)
 
     monocular = args.monocular
     current_step = 0
@@ -413,64 +557,101 @@ def main():
 
     mode_str = "monocular (Frame)" if monocular else "binocular (demo)"
     print(f"Lens mode: {mode_str}")
-    print("Controls: SPACE=next  R=reset  M=toggle lens  F=fullscreen  G=generate  Q=quit")
+    if not args.serve:
+        print("Controls: SPACE=next  R=reset  M=toggle lens  F=fullscreen  G=generate  Q=quit")
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("Camera read failed")
-            break
-
-        elapsed = time.time() - start_time
-
-        # Compute lens geometry for current frame size
-        fh, fw = frame.shape[:2]
-        geom = compute_lens_geometry(fw, fh, monocular)
-
-        # Draw HUD anchored inside right lens, then apply lens mask on top
-        output = draw_hud(frame, steps, current_step, elapsed, task_name, completed, geom)
-        output = draw_lens_mask(output, geom)
-
-        cv2.imshow(window_name, output)
-        key = cv2.waitKey(1) & 0xFF
-
-        if key == ord("q") or key == 27:  # Q or ESC
-            break
-        elif key == ord(" "):  # SPACE — advance
-            if not completed:
-                current_step += 1
-                if current_step >= len(steps):
-                    completed = True
-                    print(f"Procedure complete in {int(elapsed)}s")
-        elif key == ord("r"):  # R — reset
-            current_step = 0
-            completed = False
-            start_time = time.time()
-            print("Reset to step 1")
-        elif key == ord("m"):  # M — toggle lens mode
-            monocular = not monocular
-            mode_str = "monocular (Frame)" if monocular else "binocular (demo)"
-            print(f"Lens mode: {mode_str}")
-        elif key == ord("f"):  # F — fullscreen toggle
-            fullscreen = not fullscreen
-            if fullscreen:
-                cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    try:
+        while True:
+            # Get frame
+            if args.test:
+                elapsed = time.time() - start_time
+                frame = generate_test_frame(args.width, args.height, elapsed)
             else:
-                cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
-        elif key == ord("g"):  # G — generate new procedure
-            task = input("Enter task name: ").strip()
-            if task:
-                print(f"Generating: {task}")
-                procedure = generate_procedure_claude(task)
-                steps = procedure["steps"]
-                task_name = procedure.get("task", task)
-                current_step = 0
-                completed = False
-                start_time = time.time()
-                print(f"Loaded: {task_name} ({len(steps)} steps)")
+                ret, frame = cap.read()
+                if not ret:
+                    print("Camera read failed")
+                    break
+                elapsed = time.time() - start_time
 
-    cap.release()
-    cv2.destroyAllWindows()
+            # Compute lens geometry
+            fh, fw = frame.shape[:2]
+            geom = compute_lens_geometry(fw, fh, monocular)
+
+            # Render HUD + lens mask
+            rendered = draw_hud(frame, steps, current_step, elapsed, task_name, completed, geom)
+            rendered = draw_lens_mask(rendered, geom)
+
+            # Process remote commands (from Flask endpoints)
+            with control_lock:
+                cmds = list(pending_commands)
+                pending_commands.clear()
+            for cmd in cmds:
+                if cmd == "next" and not completed:
+                    current_step += 1
+                    if current_step >= len(steps):
+                        completed = True
+                        print(f"Procedure complete in {int(elapsed)}s")
+                elif cmd == "reset":
+                    current_step = 0
+                    completed = False
+                    start_time = time.time()
+                    print("Reset to step 1")
+                elif cmd == "toggle-lens":
+                    monocular = not monocular
+                    print(f"Lens mode: {'monocular' if monocular else 'binocular'}")
+
+            if args.serve:
+                # Write frame for Flask streaming
+                with output_lock:
+                    output_frame = rendered.copy()
+                time.sleep(0.033)  # ~30 fps pacing
+            else:
+                # Desktop display
+                cv2.imshow(window_name, rendered)
+                key = cv2.waitKey(1) & 0xFF
+
+                if key == ord("q") or key == 27:
+                    break
+                elif key == ord(" "):
+                    if not completed:
+                        current_step += 1
+                        if current_step >= len(steps):
+                            completed = True
+                            print(f"Procedure complete in {int(elapsed)}s")
+                elif key == ord("r"):
+                    current_step = 0
+                    completed = False
+                    start_time = time.time()
+                    print("Reset to step 1")
+                elif key == ord("m"):
+                    monocular = not monocular
+                    mode_str = "monocular (Frame)" if monocular else "binocular (demo)"
+                    print(f"Lens mode: {mode_str}")
+                elif key == ord("f"):
+                    fullscreen = not fullscreen
+                    if fullscreen:
+                        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                    else:
+                        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
+                elif key == ord("g"):
+                    task = input("Enter task name: ").strip()
+                    if task:
+                        print(f"Generating: {task}")
+                        procedure = generate_procedure_claude(task)
+                        steps = procedure["steps"]
+                        task_name = procedure.get("task", task)
+                        current_step = 0
+                        completed = False
+                        start_time = time.time()
+                        print(f"Loaded: {task_name} ({len(steps)} steps)")
+
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+
+    if cap is not None:
+        cap.release()
+    if not args.serve:
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
