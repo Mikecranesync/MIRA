@@ -36,6 +36,7 @@ class Supervisor:
         api_key: str,
         collection_id: str,
         vision_model: str = "qwen2.5vl:7b",
+        tenant_id: str = None,
     ):
         self.db_path = db_path
         self.vision_model = vision_model
@@ -49,7 +50,8 @@ class Supervisor:
         # Initialize workers
         self.vision = VisionWorker(openwebui_url, api_key, vision_model)
         self.rag = RAGWorker(openwebui_url, api_key, collection_id,
-                             nemotron=self.nemotron, router=self.router)
+                             nemotron=self.nemotron, router=self.router,
+                             tenant_id=tenant_id)
         self.print_ = PrintWorker(openwebui_url, api_key)
         self.plc = PLCWorker()
 
@@ -82,6 +84,22 @@ class Supervisor:
         }
         next_step = prompts.get(drawing_type, "Ask me what you're trying to find.")
         preview = ", ".join(items_list[:8]) if items_list else "(no text extracted)"
+
+        # Rule 14: proactively surface fault states visible in OCR — do not wait for the tech to ask
+        _FAULT_KEYWORDS = ("stopped", "fault", "alarm", "error", "trip", "warning", "faulted", "tripped")
+        fault_items = [
+            item for item in items_list
+            if any(kw in item.lower() for kw in _FAULT_KEYWORDS)
+        ]
+        if fault_items:
+            # Use fault items as preview to save words
+            preview = ", ".join(fault_items[:4])
+            fault_summary = "; ".join(fault_items[:3])
+            next_step = (
+                f"Active fault states: {fault_summary}. "
+                f"Likely caused by a trip, interlock, or upstream fault. "
+                f"Describe what happened before this, or ask me to trace the fault path."
+            )
 
         return (
             f"{drawing_type.capitalize()} — {quality}{artifact_note}\n"
@@ -488,15 +506,18 @@ class Supervisor:
         if not clean:
             clean = raw_stripped
         logger.warning("_parse_response fallback; raw=%r", raw_stripped[:200])
-        return {"next_state": None, "reply": clean, "options": []}
+        return {"next_state": None, "reply": clean, "options": [], "confidence": "LOW"}
 
     @staticmethod
     def _extract_parsed(parsed: dict) -> dict:
         """Normalize a parsed JSON envelope into standard form."""
+        raw_conf = parsed.get("confidence", "LOW")
+        confidence = raw_conf if raw_conf in ("HIGH", "MEDIUM", "LOW") else "LOW"
         return {
             "next_state": parsed.get("next_state"),
             "reply": parsed["reply"],
             "options": parsed.get("options", []),
+            "confidence": confidence,
         }
 
     # ------------------------------------------------------------------

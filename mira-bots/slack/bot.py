@@ -42,6 +42,7 @@ engine = GSDEngine(
     api_key=OPENWEBUI_API_KEY,
     collection_id=KNOWLEDGE_COLLECTION_ID,
     vision_model=os.environ.get("VISION_MODEL", "qwen2.5vl:7b"),
+    tenant_id=os.environ.get("MIRA_TENANT_ID", ""),
 )
 
 app = AsyncApp(token=SLACK_BOT_TOKEN)
