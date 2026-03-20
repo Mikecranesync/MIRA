@@ -248,10 +248,21 @@ class RAGWorker:
         messages = [{"role": "system", "content": system_content}]
 
         # Conversation history — omit for photo messages (fresh visual context)
+        _SELF_REF_SIGNALS = ["you said", "your response", "earlier", "before", "what you told me"]
         if not photo_b64:
             history = state.get("context", {}).get("history", [])
             for entry in history[-10:]:
                 messages.append({"role": entry["role"], "content": entry["content"]})
+            # Self-reference: inject prior MIRA turns explicitly when technician
+            # asks about something MIRA said earlier
+            if any(s in message.lower() for s in _SELF_REF_SIGNALS):
+                mira_turns = [h for h in history[-10:] if h["role"] == "assistant"][-3:]
+                if mira_turns:
+                    messages.insert(0, {
+                        "role": "system",
+                        "content": "Your previous responses for reference: " +
+                                   " | ".join(t["content"][:200] for t in mira_turns),
+                    })
 
         # Current user message
         if photo_b64:
