@@ -14,12 +14,25 @@ from .guardrails import (
 )
 from .inference.router import InferenceRouter
 from .nemotron import NemotronClient
+from .telemetry import trace as tl_trace, span as tl_span, flush as tl_flush
 from .workers.vision_worker import VisionWorker
 from .workers.rag_worker import RAGWorker
 from .workers.print_worker import PrintWorker
 from .workers.plc_worker import PLCWorker
 
 logger = logging.getLogger("mira-gsd")
+
+# Confidence-inference keyword sets
+_HIGH_CONF_SIGNALS = re.compile(
+    r"(replace|fault code|check wiring|the .+ is .+(failed|tripped|open|shorted|overloaded)"
+    r"|part number|order number|disconnect|de-energize|lockout)",
+    re.IGNORECASE,
+)
+_LOW_CONF_SIGNALS = re.compile(
+    r"(might be|could be|possibly|not sure|uncertain|hard to say"
+    r"|without more info|i'?d need|difficult to determine)",
+    re.IGNORECASE,
+)
 
 _JSON_RE = re.compile(r'\{[^{}]*"reply"[^{}]*\}', re.DOTALL)
 
@@ -89,8 +102,65 @@ class Supervisor:
             f"{next_step}"
         )
 
+    # ------------------------------------------------------------------
+    # Confidence inference
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _infer_confidence(reply: str) -> str:
+        """Infer confidence level from reply text.
+
+        Returns one of: "high", "medium", "low", "none".
+        """
+        if not reply or len(reply) < 20:
+            return "none"
+        has_high = bool(_HIGH_CONF_SIGNALS.search(reply))
+        has_low = bool(_LOW_CONF_SIGNALS.search(reply))
+        if has_high and not has_low:
+            return "high"
+        if has_low and not has_high:
+            return "low"
+        if has_high and has_low:
+            return "medium"
+        # Default: medium for substantive replies, none for short/generic
+        return "medium" if len(reply) > 60 else "none"
+
+    @staticmethod
+    def _make_result(
+        reply: str,
+        confidence: str = "none",
+        trace_id: str | None = None,
+        next_state: str | None = None,
+    ) -> dict:
+        """Build a standard process_full() result dict."""
+        return {
+            "reply": reply,
+            "confidence": confidence,
+            "trace_id": trace_id,
+            "next_state": next_state,
+        }
+
+    # ------------------------------------------------------------------
+    # Entry points
+    # ------------------------------------------------------------------
+
     async def process(self, chat_id: str, message: str, photo_b64: str = None) -> str:
-        """Main entry point. Returns reply string."""
+        """Main entry point. Returns reply string (backward-compatible)."""
+        result = await self.process_full(chat_id, message, photo_b64)
+        return result["reply"]
+
+    async def process_full(
+        self, chat_id: str, message: str, photo_b64: str = None,
+    ) -> dict:
+        """Full entry point. Returns {"reply", "confidence", "trace_id", "next_state"}.
+
+        Same logic as process(), but preserves structured metadata for
+        benchmark and telemetry consumers.
+        """
+        # Telemetry trace
+        t = tl_trace("supervisor.process", user_id=chat_id)
+        trace_id = t.id
+
         # Preprocess: strip Slack mention tags
         message = strip_mentions(message)
 
@@ -105,14 +175,16 @@ class Supervisor:
                     "Do not proceed until the area is safe."
                 )
                 self._record_exchange(chat_id, state, message, reply)
-                return reply
+                tl_flush()
+                return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
             if intent == "off_topic":
                 reply = (
                     "I help maintenance technicians diagnose equipment issues. "
                     "What equipment do you need help with?"
                 )
                 self._record_exchange(chat_id, state, message, reply)
-                return reply
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, state["state"])
 
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
         if (
@@ -127,7 +199,8 @@ class Supervisor:
                     "'OC' or 'F-201', or describe what's happening with your equipment."
                 )
                 self._record_exchange(chat_id, state, message, reply)
-                return reply
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "IDLE")
             if intent == "greeting":
                 reply = (
                     "Hey \u2014 I'm MIRA, your maintenance copilot. "
@@ -135,11 +208,13 @@ class Supervisor:
                     "going on and I'll help you diagnose it."
                 )
                 self._record_exchange(chat_id, state, message, reply)
-                return reply
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "IDLE")
 
         # Photo path: delegate to vision worker, then route
         if photo_b64:
-            vision_data = await self.vision.process(photo_b64, message)
+            with tl_span(t, "vision_worker"):
+                vision_data = await self.vision.process(photo_b64, message)
 
             ctx = state.get("context") or {}
             ctx["ocr_text"] = vision_data["tesseract_text"]
@@ -160,18 +235,23 @@ class Supervisor:
                 state["context"] = ctx
                 state["exchange_count"] += 1
                 self._save_state(chat_id, state)
-                return reply
+                tl_flush()
+                return self._make_result(
+                    reply, self._infer_confidence(reply), trace_id, "ELECTRICAL_PRINT",
+                )
             else:
                 state["state"] = "ASSET_IDENTIFIED"
 
         # Electrical print follow-up (text question in ELECTRICAL_PRINT state)
         if state.get("state") == "ELECTRICAL_PRINT" and not photo_b64:
             try:
-                raw = await self.print_.process(message, state)
+                with tl_span(t, "print_worker"):
+                    raw = await self.print_.process(message, state)
             except Exception as e:
                 logger.error("LLM call failed (print worker): %s", e)
                 self._save_state(chat_id, state)
-                return f"MIRA error: {e}"
+                tl_flush()
+                return self._make_result(f"MIRA error: {e}", "none", trace_id)
             parsed = self._parse_response(raw)
             # Output guardrail for print worker
             print_intent = classify_intent(message)
@@ -186,7 +266,11 @@ class Supervisor:
             ctx["history"] = history
             state["context"] = ctx
             self._save_state(chat_id, state)
-            return self._format_reply(parsed)
+            formatted = self._format_reply(parsed)
+            tl_flush()
+            return self._make_result(
+                formatted, self._infer_confidence(formatted), trace_id, "ELECTRICAL_PRINT",
+            )
 
         # Photo with no specific intent → acknowledge equipment, ask what they need
         if photo_b64 and not any(kw in message.lower() for kw in INTENT_KEYWORDS):
@@ -199,15 +283,18 @@ class Supervisor:
             ctx["history"] = history
             state["context"] = ctx
             self._save_state(chat_id, state)
-            return reply
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, "ASSET_IDENTIFIED")
 
         # RAG worker with self-correction: text queries and photo+intent queries
-        raw, parsed = await self._call_with_correction(
-            message, state, photo_b64,
-        )
+        with tl_span(t, "rag_worker"):
+            raw, parsed = await self._call_with_correction(
+                message, state, photo_b64,
+            )
         if raw is None:
             self._save_state(chat_id, state)
-            return parsed["reply"]  # error message
+            tl_flush()
+            return self._make_result(parsed["reply"], "none", trace_id)
 
         # Output guardrails
         intent = classify_intent(message)
@@ -243,7 +330,14 @@ class Supervisor:
 
         self._save_state(chat_id, state)
 
-        return self._format_reply(parsed)
+        formatted = self._format_reply(parsed)
+        tl_flush()
+        return self._make_result(
+            formatted,
+            self._infer_confidence(formatted),
+            trace_id,
+            state["state"],
+        )
 
     def reset(self, chat_id: str) -> None:
         """Reset conversation to IDLE state."""
