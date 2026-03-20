@@ -11,6 +11,7 @@ from .guardrails import (
     classify_intent,
     check_output,
     strip_mentions,
+    detect_session_followup,
 )
 from .inference.router import InferenceRouter
 from .nemotron import NemotronClient
@@ -24,6 +25,23 @@ logger = logging.getLogger("mira-gsd")
 _JSON_RE = re.compile(r'\{[^{}]*"reply"[^{}]*\}', re.DOTALL)
 
 STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
+
+
+def format_diagnostic_response(equipment_id: str, key_observation: str,
+                                question: str, options: list) -> str:
+    """Format a structured diagnostic reply with equipment header and options."""
+    header = f"📷 {equipment_id} — {key_observation}"
+    opts = "\n".join(f"{i+1}. {opt}" for i, opt in enumerate(options))
+    return f"{header}\n\n{question}\n{opts}"
+
+
+def deduplicate_options(reply_text: str, keyboard_options: list) -> str:
+    """Remove numbered option lines from reply_text that already appear in keyboard_options."""
+    if not keyboard_options:
+        return reply_text
+    for opt in keyboard_options:
+        reply_text = re.sub(rf'\n\d+\.\s+{re.escape(opt)}', '', reply_text)
+    return reply_text.strip()
 
 
 class Supervisor:
@@ -116,6 +134,11 @@ class Supervisor:
 
         # Always-on guardrail: safety and off-topic bypass ALL conversation state
         if not photo_b64:
+            # Session follow-up detection: short-circuit before intent classification
+            sc = state.get("context", {}).get("session_context", {})
+            if detect_session_followup(message, sc, state["state"]):
+                return await self._handle_session_followup(message, state, chat_id)
+
             intent = classify_intent(message)
             if intent == "safety":
                 reply = (
@@ -125,10 +148,17 @@ class Supervisor:
                 self._record_exchange(chat_id, state, message, reply)
                 return reply
             if intent == "off_topic":
-                reply = (
-                    "I help maintenance technicians diagnose equipment issues. "
-                    "What equipment do you need help with?"
-                )
+                sc = state.get("context", {}).get("session_context", {})
+                if state["state"] != "IDLE" and sc.get("last_question"):
+                    reply = (
+                        f"Still working on your {sc.get('equipment_type', 'equipment')}. "
+                        f"To recap: {sc['last_question']}"
+                    )
+                else:
+                    reply = (
+                        "I help maintenance technicians diagnose equipment issues. "
+                        "What equipment do you need help with?"
+                    )
                 self._record_exchange(chat_id, state, message, reply)
                 return reply
 
@@ -181,6 +211,13 @@ class Supervisor:
                 return reply
             else:
                 state["state"] = "ASSET_IDENTIFIED"
+                ctx["session_context"] = {
+                    "equipment_type": str(vision_data["vision_result"])[:80],
+                    "manufacturer": state.get("asset_identified", "Unknown"),
+                    "last_question": None,
+                    "last_options": [],
+                }
+                state["context"] = ctx
 
         # Electrical print follow-up (text question in ELECTRICAL_PRINT state)
         if state.get("state") == "ELECTRICAL_PRINT" and not photo_b64:
@@ -257,6 +294,14 @@ class Supervisor:
         if len(history) > 20:
             history = history[-20:]
         ctx["history"] = history
+
+        # Update session_context with latest question so off-topic replies can recap
+        sc = ctx.get("session_context", {})
+        if sc:
+            sc["last_question"] = parsed["reply"][:200]
+            sc["last_options"] = parsed.get("options", [])
+            ctx["session_context"] = sc
+
         state["context"] = ctx
 
         self._save_state(chat_id, state)
@@ -328,6 +373,34 @@ class Supervisor:
                 )
 
         return raw, parsed
+
+    async def _handle_session_followup(self, message: str, state: dict, chat_id: str) -> str:
+        """Route a session follow-up through the RAG pipeline without intent filtering."""
+        raw, parsed = await self._call_with_correction(message, state)
+        if raw is None:
+            self._save_state(chat_id, state)
+            return parsed["reply"]
+
+        parsed["reply"] = check_output(parsed["reply"], "industrial", has_photo=False)
+        state = self._advance_state(state, parsed)
+
+        ctx = state.get("context") or {}
+        history = ctx.get("history", [])
+        history.append({"role": "user", "content": message})
+        history.append({"role": "assistant", "content": parsed["reply"]})
+        if len(history) > 20:
+            history = history[-20:]
+        ctx["history"] = history
+
+        sc = ctx.get("session_context", {})
+        if sc:
+            sc["last_question"] = parsed["reply"][:200]
+            sc["last_options"] = parsed.get("options", [])
+            ctx["session_context"] = sc
+
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+        return self._format_reply(parsed)
 
     def _is_grounded(self, parsed: dict, sources: list[str]) -> bool:
         """Check if response appears grounded in retrieved sources."""
@@ -406,11 +479,12 @@ class Supervisor:
                 state["context"] = json.loads(state["context"])
             except (json.JSONDecodeError, TypeError):
                 state["context"] = {}
+            state["context"].setdefault("session_context", {})
             return state
         return {
             "chat_id": chat_id,
             "state": "IDLE",
-            "context": {},
+            "context": {"session_context": {}},
             "asset_identified": None,
             "fault_category": None,
             "exchange_count": 0,
@@ -584,6 +658,7 @@ class Supervisor:
         options = parsed.get("options", [])
         meaningful = [o for o in options if len(str(o).strip()) > 2]
         if meaningful and len(meaningful) >= 2:
+            reply = deduplicate_options(reply, meaningful)
             reply += "\n\n" + "\n".join(
                 f"{i + 1}. {opt}" for i, opt in enumerate(meaningful)
             )
