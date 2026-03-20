@@ -31,8 +31,8 @@ artifacts/v2/
 *.db
 *.db-shm
 *.db-wal
-data/
-output/
+/data/
+/output/
 mira-bots/benchmark_results/
 
 # macOS
