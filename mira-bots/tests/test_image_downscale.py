@@ -6,7 +6,8 @@ import os
 
 # Set dummy env vars for bot.py import
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "dummy-token-for-testing")
-os.environ.setdefault("OPENWEBUI_BASE_URL", "http://localhost:8080")
+os.environ.setdefault("OPENWEBUI_BASE_URL",
+    os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":8080")
 os.environ.setdefault("OPENWEBUI_API_KEY", "")
 os.environ.setdefault("KNOWLEDGE_COLLECTION_ID", "dummy-collection")
 os.environ.setdefault("VISION_MODEL", "qwen2.5vl:7b")

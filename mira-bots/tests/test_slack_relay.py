@@ -81,7 +81,8 @@ _gsd.GSDEngine = _FakeGSDEngine
 
 os.environ["SLACK_BOT_TOKEN"] = "xoxb-placeholder"
 os.environ["SLACK_APP_TOKEN"] = "xapp-placeholder"
-os.environ.setdefault("OPENWEBUI_BASE_URL", "http://localhost:8080")
+os.environ.setdefault("OPENWEBUI_BASE_URL",
+    os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":8080")
 os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira-test.db")
 os.environ.setdefault("SLACK_ALLOWED_CHANNELS", "")
 

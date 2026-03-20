@@ -27,7 +27,8 @@ sys.path.insert(0, str(_HERE))
 import judge
 import report as report_module
 
-INGEST_URL = os.getenv("INGEST_URL", "http://localhost:8002/ingest/photo")
+_MIRA_SERVER = os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost")
+INGEST_URL = os.getenv("INGEST_URL", f"{_MIRA_SERVER}:8002/ingest/photo")
 MANIFEST_PATH = _HERE / "test_manifest_100.yaml"
 ARTIFACTS_DIR = str(_HERE.parent / "artifacts")
 

@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # MIRA — Smoke Test
 # Checks all 5 required endpoints.
+# Set MIRA_SERVER_BASE_URL to test against a remote server (e.g. http://192.168.1.11)
 # Exit code: 0 = all pass, 1 = one or more fail
 
 set -uo pipefail
+
+BASE="${MIRA_SERVER_BASE_URL:-http://localhost}"
 
 PASS=0
 FAIL=0
@@ -25,13 +28,14 @@ check() {
 }
 
 echo "=== MIRA Smoke Test ==="
+echo "Target: ${BASE}"
 echo ""
 
-check "open-webui"    "http://localhost:3000/health"
-check "mira-ingest"   "http://localhost:8002/health"
-check "mira-mcp"      "http://localhost:8001/health"
-check "mira-mcpo"     "http://localhost:8003/mira-mcp/docs"
-check "node-red"      "http://localhost:1880/"
+check "open-webui"    "${BASE}:3000/health"
+check "mira-ingest"   "${BASE}:8002/health"
+check "mira-mcp"      "${BASE}:8001/health"
+check "mira-mcpo"     "${BASE}:8003/mira-mcp/docs"
+check "node-red"      "${BASE}:1880/"
 
 echo "Results:"
 for r in "${RESULTS[@]}"; do

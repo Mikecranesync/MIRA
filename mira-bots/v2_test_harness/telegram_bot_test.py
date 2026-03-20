@@ -226,7 +226,8 @@ async def _run_gsd_engine_smoke() -> list[dict]:
     db_path = f"/tmp/mira_tg_smoke_{int(time.time())}.db"
     engine = GSDEngine(
         db_path=db_path,
-        openwebui_url=os.getenv("OPENWEBUI_BASE_URL", "http://localhost:3000"),
+        openwebui_url=os.getenv("OPENWEBUI_BASE_URL",
+            os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":3000"),
         api_key=os.getenv("OPENWEBUI_API_KEY", ""),
         collection_id=os.getenv("KNOWLEDGE_COLLECTION_ID", ""),
         vision_model=os.getenv("VISION_MODEL", "qwen2.5vl:7b"),
