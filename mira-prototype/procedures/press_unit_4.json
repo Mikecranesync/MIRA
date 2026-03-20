@@ -1,0 +1,36 @@
+{
+  "task": "Hydraulic Press Unit 4 \u2014 Monthly PM",
+  "equipment_id": "PRESS-004",
+  "steps": [
+    {
+      "step": 1,
+      "title": "Lockout/Tagout",
+      "detail": "Apply LOTO per SOP-401 \u2014 verify zero energy state"
+    },
+    {
+      "step": 2,
+      "title": "Inspect hydraulic lines",
+      "detail": "Check all fittings for seepage \u2014 replace any cracked hoses"
+    },
+    {
+      "step": 3,
+      "title": "Check fluid level",
+      "detail": "Reservoir sight glass \u2014 level must be between MIN and MAX marks"
+    },
+    {
+      "step": 4,
+      "title": "Replace filter element",
+      "detail": "Remove housing cap, swap 10-micron element \u2014 torque to 25 ft-lbs"
+    },
+    {
+      "step": 5,
+      "title": "Cycle test",
+      "detail": "Remove LOTO, run 5 press cycles \u2014 watch for drift or hesitation"
+    },
+    {
+      "step": 6,
+      "title": "Log completion",
+      "detail": "Record in CMMS \u2014 note any follow-up items"
+    }
+  ]
+}
