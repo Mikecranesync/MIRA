@@ -115,13 +115,18 @@ class InferenceRouter:
         return sanitized
 
     async def complete(
-        self, messages: list[dict], max_tokens: int = 1024
+        self,
+        messages: list[dict],
+        max_tokens: int = 1024,
+        session_id: str = "unknown_unknown_unknown",
     ) -> tuple[str, dict]:
         """POST to Claude Messages API via httpx.
 
         Returns (content_str, usage_dict).
         usage_dict = {"input_tokens": N, "output_tokens": N}
         Returns ("", {}) on any error — caller must handle fallback.
+
+        session_id format: {tenant_id}_{platform}_{user_id} — used for usage logging.
         """
         if not self.enabled:
             return "", {}
@@ -185,6 +190,17 @@ class InferenceRouter:
             "content-type": "application/json",
         }
 
+        # Detect image presence for usage logging
+        has_image = any(
+            isinstance(msg.get("content"), list)
+            and any(
+                b.get("type") in ("image", "image_url")
+                for b in msg["content"]
+                if isinstance(b, dict)
+            )
+            for msg in messages
+        )
+
         try:
             t0 = time.monotonic()
             async with httpx.AsyncClient(timeout=60) as client:
@@ -207,6 +223,16 @@ class InferenceRouter:
                 usage_dict["input_tokens"],
                 usage_dict["output_tokens"],
             )
+
+            # Persist usage row to SQLite (best-effort — never blocks response)
+            self.write_api_usage(
+                session_id=session_id,
+                usage=usage_dict,
+                model=self.model,
+                has_image=has_image,
+                response_time_ms=elapsed_ms,
+            )
+
             return content, usage_dict
 
         except httpx.HTTPStatusError as e:

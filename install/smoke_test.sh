@@ -3,6 +3,10 @@
 # Checks all 5 required endpoints.
 # Set MIRA_SERVER_BASE_URL to test against a remote server (e.g. http://192.168.1.11)
 # Exit code: 0 = all pass, 1 = one or more fail
+#
+# Set MIRA_SERVER_BASE_URL for remote testing, e.g.:
+#   MIRA_SERVER_BASE_URL=http://100.86.236.11 ./smoke_test.sh
+# Defaults to http://localhost when unset.
 
 set -uo pipefail
 
@@ -19,16 +23,16 @@ check() {
 
     status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" 2>/dev/null || echo "000")
     if [ "$status" = "$expected_status" ]; then
-        RESULTS+=("  ✅ $name ($url) → HTTP $status")
+        RESULTS+=("  PASS $name ($url) -> HTTP $status")
         PASS=$((PASS + 1))
     else
-        RESULTS+=("  ❌ $name ($url) → HTTP $status (expected $expected_status)")
+        RESULTS+=("  FAIL $name ($url) -> HTTP $status (expected $expected_status)")
         FAIL=$((FAIL + 1))
     fi
 }
 
 echo "=== MIRA Smoke Test ==="
-echo "Target: ${BASE}"
+echo "Base URL: $BASE"
 echo ""
 
 check "open-webui"    "${BASE}:3000/health"
