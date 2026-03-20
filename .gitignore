@@ -27,7 +27,8 @@ artifacts/v2/
 .pytest_cache/
 *.log
 
-# SQLite WAL files
+# SQLite DB + WAL files
+data/mira.db
 *.db-shm
 *.db-wal
 
