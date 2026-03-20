@@ -27,9 +27,13 @@ artifacts/v2/
 .pytest_cache/
 *.log
 
-# SQLite WAL files
+# SQLite databases + WAL files
+*.db
 *.db-shm
 *.db-wal
+data/
+output/
+mira-bots/benchmark_results/
 
 # macOS
 .DS_Store
