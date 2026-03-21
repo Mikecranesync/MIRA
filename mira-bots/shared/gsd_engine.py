@@ -18,6 +18,7 @@ class GSDEngine:
         api_key: str,
         collection_id: str,
         vision_model: str = "qwen2.5vl:7b",
+        tenant_id: str = None,
     ):
         self._supervisor = Supervisor(
             db_path=db_path,
@@ -25,6 +26,7 @@ class GSDEngine:
             api_key=api_key,
             collection_id=collection_id,
             vision_model=vision_model,
+            tenant_id=tenant_id,
         )
 
     async def process(self, chat_id: str, message: str, photo_b64: str = None) -> str:

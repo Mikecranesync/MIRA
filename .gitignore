@@ -56,3 +56,6 @@ Secrets/
 
 # Archives (large binary blobs)
 archives/
+
+# GitHub Actions cache
+.github/actions-cache/

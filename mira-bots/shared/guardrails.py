@@ -59,6 +59,27 @@ MAINTENANCE_ABBREVIATIONS = {
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>\s*")
 
+SESSION_FOLLOWUP_SIGNALS = [
+    "you said", "you mentioned", "you told me", "link", "url", "website",
+    "manufacturer", "datasheet", "manual", "document", "earlier", "before",
+    "last time", "again", "repeat", "what was", "where did",
+]
+
+
+def detect_session_followup(message: str, session_context: dict, fsm_state: str) -> bool:
+    """Return True if message is a follow-up to an active diagnostic session.
+
+    Fires when: state is not IDLE, session_context exists, and message
+    contains a signal word suggesting the technician is continuing the session
+    (e.g. asking for a link, referencing something MIRA said earlier).
+    """
+    if fsm_state == "IDLE":
+        return False
+    if not session_context:
+        return False
+    msg_lower = message.lower()
+    return any(sig in msg_lower for sig in SESSION_FOLLOWUP_SIGNALS)
+
 
 def strip_mentions(message: str) -> str:
     """Remove Slack-style @mention tags from message text."""

@@ -18,6 +18,11 @@ services:
       - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_PUBLIC_API_KEY=${LANGFUSE_PUBLIC_API_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
     volumes:
       - ../mira-bridge/data:/data:rw
     networks:
@@ -50,6 +55,11 @@ services:
       - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_PUBLIC_API_KEY=${LANGFUSE_PUBLIC_API_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
     volumes:
       - ../mira-bridge/data:/data:rw
     networks:
@@ -70,7 +80,7 @@ services:
     environment:
       - TEAMS_APP_ID=${TEAMS_APP_ID:-}
       - TEAMS_APP_PASSWORD=${TEAMS_APP_PASSWORD:-}
-      - TEAMS_PORT=${TEAMS_PORT:-8020}
+      - TEAMS_PORT=${TEAMS_PORT:-8030}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
@@ -80,10 +90,15 @@ services:
       - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_PUBLIC_API_KEY=${LANGFUSE_PUBLIC_API_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
     volumes:
       - ../mira-bridge/data:/data:rw
     ports:
-      - "${TEAMS_PORT:-8020}:8020"
+      - "${TEAMS_PORT:-8030}:${TEAMS_PORT:-8030}"
     networks:
       - bot-net
       - core-net
@@ -112,6 +127,11 @@ services:
       - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_PUBLIC_API_KEY=${LANGFUSE_PUBLIC_API_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
     volumes:
       - ../mira-bridge/data:/data:rw
     ports:

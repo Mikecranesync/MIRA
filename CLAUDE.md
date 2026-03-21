@@ -112,6 +112,9 @@ chore: build system, deps, tooling
 | `ANTHROPIC_API_KEY` | mira-bots — Claude API key |
 | `CLAUDE_MODEL` | mira-bots — default: claude-3-5-sonnet-20241022 |
 | `MIRA_SERVER_BASE_URL` | Remote clients — BRAVO host, no port (e.g. `http://192.168.1.11`) |
+| `LANGFUSE_SECRET_KEY` | mira-bots — Langfuse tracing (all bots) |
+| `LANGFUSE_PUBLIC_KEY` | mira-bots — Langfuse tracing (all bots) |
+| `LANGFUSE_HOST` | mira-bots — optional, defaults to cloud.langfuse.com |
 
 ## Phase History
 

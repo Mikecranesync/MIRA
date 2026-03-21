@@ -41,12 +41,17 @@ engine = GSDEngine(
     api_key=OPENWEBUI_API_KEY,
     collection_id=KNOWLEDGE_COLLECTION_ID,
     vision_model=os.environ.get("VISION_MODEL", "qwen2.5vl:7b"),
+    tenant_id=os.environ.get("MIRA_TENANT_ID", ""),
 )
 
 FAULT_KEYWORDS = {
     "fault", "error", "fail", "trip", "alarm", "down",
     "not working", "broken", "stopped", "issue", "warning",
 }
+
+# Photo batching: accumulate rapid-fire multi-photo messages before processing
+PHOTO_BUFFER: dict[int, dict] = {}
+PHOTO_BUFFER_WINDOW = 4.0  # seconds to wait for additional photos in same burst
 
 
 class typing_action:
@@ -269,12 +274,77 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _maybe_send_voice(update, context, chat_id, reply)
 
 
-async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Route photos through vision model then GSD engine."""
+async def _process_photo_batch(
+    photos: list,
+    caption: str,
+    raw_bytes_list: list,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Process buffered photos and send a single combined reply."""
     chat_id = str(update.effective_chat.id)
+    await update.message.reply_text("Analyzing equipment...")
+    replies = []
+    async with typing_action(context, update.effective_chat.id):
+        for photo_b64 in photos:
+            try:
+                process_task = asyncio.create_task(
+                    engine.process(chat_id, caption, photo_b64=photo_b64)
+                )
+                try:
+                    reply = await asyncio.wait_for(
+                        asyncio.shield(process_task), timeout=10.0
+                    )
+                except asyncio.TimeoutError:
+                    await update.message.reply_text(
+                        "Processing equipment photo — this may take up to 90 seconds"
+                        " for detailed images..."
+                    )
+                    reply = await process_task
+                if reply:
+                    replies.append(reply)
+            except Exception as e:
+                logger.error("Photo batch processing error: %s", e)
+
+    if not replies:
+        final_reply = "MIRA error: no response from vision pipeline."
+    elif len(replies) == 1:
+        final_reply = replies[0]
+    else:
+        final_reply = replies[0] + f"\n\n({len(replies)} photos analyzed)"
+
+    if INGEST_SERVICE_URL:
+        asset_tag = caption.split()[0] if caption else "UNKNOWN"
+        for raw_bytes in raw_bytes_list:
+            asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
+        final_reply += "\n\nPhoto(s) queued for knowledge base."
+
+    await update.message.reply_text(final_reply)
+    await _maybe_send_voice(update, context, chat_id, final_reply)
+
+
+async def _flush_photos(
+    chat_id_int: int,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Wait for buffer window, then process all buffered photos as a batch."""
+    await asyncio.sleep(PHOTO_BUFFER_WINDOW)
+    buf = PHOTO_BUFFER.pop(chat_id_int, None)
+    if not buf:
+        return
+    await _process_photo_batch(
+        buf["photos"], buf["caption"], buf["raw_bytes_list"], update, context
+    )
+
+
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Buffer photos and process as a batch after PHOTO_BUFFER_WINDOW seconds."""
+    chat_id_int = update.effective_chat.id
     caption = update.message.caption or "Analyze this equipment photo"
     logger.info("Photo from %s: %s", update.effective_user.first_name, caption)
-    await update.message.reply_text("Analyzing equipment...")
+
+    # Download and resize immediately
     try:
         photo = update.message.photo[-1]
         await context.bot.send_chat_action(
@@ -284,29 +354,34 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         raw_bytes = bytes(await file.download_as_bytearray())
         vision_bytes = _resize_for_vision(raw_bytes)
         photo_b64 = base64.b64encode(vision_bytes).decode("utf-8")
-        async with typing_action(context, update.effective_chat.id):
-            process_task = asyncio.create_task(
-                engine.process(chat_id, caption, photo_b64=photo_b64)
-            )
-            try:
-                reply = await asyncio.wait_for(
-                    asyncio.shield(process_task), timeout=10.0
-                )
-            except asyncio.TimeoutError:
-                await update.message.reply_text(
-                    "Processing equipment photo — this may take up to 90 seconds"
-                    " for detailed images..."
-                )
-                reply = await process_task
-        if INGEST_SERVICE_URL:
-            asset_tag = caption.split()[0] if caption else "UNKNOWN"
-            asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
-            reply += "\n\nPhoto queued for knowledge base."
     except Exception as e:
-        logger.error("Photo handler error: %s", e)
-        reply = f"MIRA error: {e}"
-    await update.message.reply_text(reply)
-    await _maybe_send_voice(update, context, chat_id, reply)
+        logger.error("Photo download error: %s", e)
+        await update.message.reply_text(f"MIRA error: {e}")
+        return
+
+    # Add to buffer; cancel and restart the flush timer
+    buf = PHOTO_BUFFER.get(chat_id_int)
+    if buf:
+        existing_task = buf.get("task")
+        if existing_task:
+            existing_task.cancel()
+        buf["photos"].append(photo_b64)
+        buf["raw_bytes_list"].append(raw_bytes)
+        buf["caption"] = caption  # last caption wins
+        buf["update"] = update
+    else:
+        PHOTO_BUFFER[chat_id_int] = {
+            "photos": [photo_b64],
+            "raw_bytes_list": [raw_bytes],
+            "caption": caption,
+            "update": update,
+            "task": None,
+        }
+
+    flush_task = asyncio.create_task(
+        _flush_photos(chat_id_int, update, context)
+    )
+    PHOTO_BUFFER[chat_id_int]["task"] = flush_task
 
 
 async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
