@@ -8,7 +8,9 @@ import re
 SAFETY_KEYWORDS = [
     "exposed wire", "energized conductor", "arc flash", "lockout", "tagout",
     "loto", "smoke", "burn mark", "melted insulation", "electrical fire",
-    "shock hazard",
+    "shock hazard", "rotating hazard", "pinch point", "entanglement",
+    "confined space", "pressurized", "caught in", "crush hazard",
+    "fall hazard", "chemical spill", "gas leak",
 ]
 
 INTENT_KEYWORDS = {
@@ -55,6 +57,15 @@ MAINTENANCE_ABBREVIATIONS = {
     "conv": "conveyor", "comp": "compressor", "gen": "generator", "xfer": "transfer",
     "msg": "message", "pwr": "power", "flt": "fault", "tmp": "temperature",
     "spd": "speed", "freq": "frequency", "ctrl": "control", "sys": "system",
+    "seq": "sequencer", "e-stop": "emergency stop", "estop": "emergency stop",
+    "pneu": "pneumatic", "hyd": "hydraulic", "cont": "contactor", "act": "actuator",
+    "blk": "black", "wht": "white", "red": "red", "grn": "green", "blu": "blue",
+    "prox": "proximity sensor", "sol": "solenoid", "vlv": "valve", "cyl": "cylinder",
+    "brgn": "bearing", "brg": "bearing", "enc": "encoder", "srv": "servo",
+    "io": "input output", "di": "digital input", "do": "digital output",
+    "ai": "analog input", "ao": "analog output", "pid": "proportional integral derivative",
+    "scr": "screen", "disp": "display", "pmp": "pump", "fdr": "feeder",
+    "acc": "accumulator", "dmp": "damper", "exh": "exhaust", "intlk": "interlock",
 }
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>\s*")

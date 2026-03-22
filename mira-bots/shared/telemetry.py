@@ -107,8 +107,8 @@ def span(trace_obj, name: str, **kwargs):
     finally:
         try:
             s.end()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("span.end() failed (non-fatal): %s", e)
 
 
 def flush():
@@ -116,5 +116,5 @@ def flush():
     if _enabled and _langfuse:
         try:
             _langfuse.flush()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Langfuse flush failed (non-fatal): %s", e)

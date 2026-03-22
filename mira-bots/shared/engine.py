@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 import sqlite3
 
@@ -38,6 +39,7 @@ _LOW_CONF_SIGNALS = re.compile(
 _JSON_RE = re.compile(r'\{[^{}]*"reply"[^{}]*\}', re.DOTALL)
 
 STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
+HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 
 
 def format_diagnostic_response(equipment_id: str, key_observation: str,
@@ -219,20 +221,16 @@ class Supervisor:
                 tl_flush()
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
             if intent == "off_topic":
-                sc = state.get("context", {}).get("session_context", {})
-                if state["state"] != "IDLE" and sc.get("last_question"):
-                    reply = (
-                        f"Still working on your {sc.get('equipment_type', 'equipment')}. "
-                        f"To recap: {sc['last_question']}"
-                    )
+                if state["state"] != "IDLE":
+                    pass  # Active session — fall through to RAG worker
                 else:
                     reply = (
                         "I help maintenance technicians diagnose equipment issues. "
                         "What equipment do you need help with?"
                     )
-                self._record_exchange(chat_id, state, message, reply)
-                tl_flush()
-                return self._make_result(reply, "none", trace_id, state["state"])
+                    self._record_exchange(chat_id, state, message, reply)
+                    tl_flush()
+                    return self._make_result(reply, "none", trace_id, state["state"])
 
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
         if (
@@ -316,8 +314,8 @@ class Supervisor:
             history = ctx.get("history", [])
             history.append({"role": "user", "content": message})
             history.append({"role": "assistant", "content": parsed["reply"]})
-            if len(history) > 20:
-                history = history[-20:]
+            if len(history) > HISTORY_LIMIT:
+                history = history[-HISTORY_LIMIT:]
             ctx["history"] = history
             state["context"] = ctx
             self._save_state(chat_id, state)
@@ -336,6 +334,10 @@ class Supervisor:
             history.append({"role": "user", "content": message})
             history.append({"role": "assistant", "content": reply})
             ctx["history"] = history
+            sc = ctx.get("session_context", {})
+            if sc:
+                sc["last_question"] = reply[:200]
+                ctx["session_context"] = sc
             state["context"] = ctx
             self._save_state(chat_id, state)
             tl_flush()
@@ -378,8 +380,8 @@ class Supervisor:
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": parsed["reply"]})
-        if len(history) > 20:
-            history = history[-20:]
+        if len(history) > HISTORY_LIMIT:
+            history = history[-HISTORY_LIMIT:]
         ctx["history"] = history
 
         # Update session_context with latest question so off-topic replies can recap
@@ -482,8 +484,8 @@ class Supervisor:
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": parsed["reply"]})
-        if len(history) > 20:
-            history = history[-20:]
+        if len(history) > HISTORY_LIMIT:
+            history = history[-HISTORY_LIMIT:]
         ctx["history"] = history
 
         sc = ctx.get("session_context", {})
@@ -495,6 +497,20 @@ class Supervisor:
         state["context"] = ctx
         self._save_state(chat_id, state)
         return self._format_reply(parsed)
+
+    _STOP_WORDS = frozenset({
+        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+        "have", "has", "had", "do", "does", "did", "will", "would", "could",
+        "should", "may", "might", "can", "shall", "to", "of", "in", "for",
+        "on", "with", "at", "by", "from", "as", "into", "through", "during",
+        "before", "after", "and", "but", "or", "nor", "not", "so", "yet",
+        "both", "either", "neither", "each", "every", "all", "any", "few",
+        "more", "most", "other", "some", "such", "no", "only", "own", "same",
+        "than", "too", "very", "just", "about", "above", "below", "between",
+        "it", "its", "this", "that", "these", "those", "i", "you", "he", "she",
+        "we", "they", "me", "him", "her", "us", "them", "my", "your", "his",
+        "our", "their", "if", "then", "else", "when", "up", "out", "off",
+    })
 
     def _is_grounded(self, parsed: dict, sources: list[str]) -> bool:
         """Check if response appears grounded in retrieved sources."""
@@ -508,14 +524,14 @@ class Supervisor:
 
         # Check if response references any content from sources
         for source in sources[:3]:
-            # Check if any significant words from source appear in response
-            source_words = set(source.lower().split())
-            reply_words = set(reply.split())
+            source_words = set(source.lower().split()) - self._STOP_WORDS
+            reply_words = set(reply.split()) - self._STOP_WORDS
             overlap = source_words & reply_words
-            # Significant overlap = grounded
-            if len(overlap) > 3:
+            if len(overlap) >= 5:
                 return True
 
+        if not self._is_grounded.__dict__.get("_warned", False):
+            logger.warning("Response may not be grounded in sources (<%d significant word overlap)", 5)
         return False
 
     # ------------------------------------------------------------------
@@ -553,8 +569,8 @@ class Supervisor:
             db.execute(
                 "ALTER TABLE conversation_state ADD COLUMN voice_enabled INTEGER NOT NULL DEFAULT 0"
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("voice_enabled column already exists: %s", e)
         db.commit()
         db.close()
 
@@ -692,6 +708,10 @@ class Supervisor:
     # FSM state machine
     # ------------------------------------------------------------------
 
+    _VALID_STATES = frozenset(
+        STATE_ORDER + ["ASSET_IDENTIFIED", "ELECTRICAL_PRINT", "SAFETY_ALERT"]
+    )
+
     def _advance_state(self, state: dict, parsed: dict) -> dict:
         """Advance FSM state based on parsed LLM response."""
         current = state["state"]
@@ -712,7 +732,14 @@ class Supervisor:
             return state
 
         if parsed.get("next_state"):
-            state["state"] = parsed["next_state"]
+            proposed = parsed["next_state"]
+            if proposed in self._VALID_STATES:
+                state["state"] = proposed
+            else:
+                logger.warning(
+                    "Invalid FSM state '%s' from LLM (current: %s) — holding at %s",
+                    proposed, current, current,
+                )
         else:
             if current == "ASSET_IDENTIFIED":
                 state["state"] = "Q1"

@@ -24,7 +24,8 @@ def _load_prompt_meta() -> dict:
             "codename": data.get("codename", "unknown"),
             "version": str(data.get("version", "unknown")),
         }
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to load prompt metadata from %s: %s", _PROMPT_PATH, e)
         return {"codename": "unknown", "version": "unknown"}
 
 logger = logging.getLogger("mira-gsd")
