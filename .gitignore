@@ -65,5 +65,8 @@ archives/
 # Equipment photos (synced via rclone, never committed)
 mira-core/data/equipment_photos/
 
+# Google Drive ingest staging (downloaded docs, never committed)
+mira-core/data/gdrive_ingest/
+
 # GitHub Actions cache
 .github/actions-cache/
