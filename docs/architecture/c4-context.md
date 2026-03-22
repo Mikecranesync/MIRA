@@ -3,37 +3,50 @@
 MIRA as a black box: who uses it and what external systems it depends on.
 
 ```mermaid
-C4Context
-    title MIRA — System Context
+flowchart TB
+    tech["<b>Field Technician</b><br/>Industrial maintenance tech<br/>Stands at the machine"]
+    admin["<b>FactoryLM Admin</b><br/>Manages knowledge base<br/>Reviews interactions"]
 
-    Person(tech, "Field Technician", "Industrial maintenance tech.\nStands at the machine.")
-    Person(admin, "FactoryLM Admin", "Manages knowledge base,\nreviews interactions.")
+    mira["<b>MIRA</b><br/>AI maintenance co-pilot<br/>Diagnoses faults, retrieves manuals,<br/>guides repair via messaging apps"]
 
-    System(mira, "MIRA", "AI maintenance co-pilot.\nDiagnoses faults, retrieves manuals,\nguides repair via messaging apps.")
+    slack["<b>Slack</b><br/>Team messaging platform"]
+    telegram["<b>Telegram</b><br/>Consumer messaging app"]
+    teams["<b>Microsoft Teams</b><br/>Enterprise messaging"]
+    whatsapp["<b>WhatsApp</b><br/>Mobile messaging via Twilio"]
 
-    System_Ext(slack, "Slack", "Team messaging platform")
-    System_Ext(telegram, "Telegram", "Consumer messaging app")
-    System_Ext(teams, "Microsoft Teams", "Enterprise messaging platform")
-    System_Ext(whatsapp, "WhatsApp (Twilio)", "Mobile messaging platform")
+    claude["<b>Anthropic Claude API</b><br/>LLM inference — reasoning,<br/>diagnosis, GSD dialogue"]
+    neondb[("<b>NeonDB + pgvector</b><br/>Cloud Postgres + vector store<br/>5,493 knowledge entries")]
+    langfuse["<b>Langfuse</b><br/>LLM observability<br/>(optional)"]
+    twilio["<b>Twilio</b><br/>WhatsApp message relay"]
+    azure["<b>Azure Bot Service</b><br/>Teams bot framework relay"]
 
-    System_Ext(claude, "Anthropic Claude API", "LLM inference — reasoning,\ndiagnosis, GSD dialogue")
-    System_Ext(neondb, "NeonDB + PGVector", "Cloud Postgres + vector store.\n5,493 knowledge entries.")
-    System_Ext(twilio, "Twilio", "WhatsApp message relay")
-    System_Ext(azure, "Azure Bot Service", "Teams bot framework relay")
+    tech -- "Sends photo/text" --> slack
+    tech -- "Sends photo/text" --> telegram
+    tech -- "Sends photo/text" --> teams
+    tech -- "Sends photo/text" --> whatsapp
 
-    Rel(tech, slack, "Sends photo/text", "HTTPS")
-    Rel(tech, telegram, "Sends photo/text", "HTTPS")
-    Rel(tech, teams, "Sends photo/text", "HTTPS")
-    Rel(tech, whatsapp, "Sends photo/text", "HTTPS")
+    admin -- "Manages KB, reviews logs" --> mira
 
-    Rel(admin, mira, "Manages KB, reviews logs", "Web UI")
+    slack -- "Socket Mode events" --> mira
+    telegram -- "Polling updates" --> mira
+    azure -- "POST /api/messages" --> mira
+    twilio -- "POST /webhook" --> mira
 
-    Rel(slack, mira, "Socket Mode events", "WSS")
-    Rel(telegram, mira, "Polling updates", "HTTPS")
-    Rel(teams, mira, "POST /api/messages", "HTTPS")
-    Rel(twilio, mira, "POST /webhook", "HTTPS")
+    mira -- "POST /v1/messages" --> claude
+    mira -- "pgvector recall" --> neondb
+    mira -- "Traces + spans" --> langfuse
+    mira -- "Bot Framework auth" --> azure
 
-    Rel(mira, claude, "POST /v1/messages", "HTTPS")
-    Rel(mira, neondb, "pgvector recall", "TCP/TLS")
-    Rel(mira, azure, "Bot Framework auth", "HTTPS")
+    style tech fill:#08427B,color:#fff,stroke:#08427B
+    style admin fill:#08427B,color:#fff,stroke:#08427B
+    style mira fill:#1168BD,color:#fff,stroke:#0B4884
+    style slack fill:#999,color:#fff,stroke:#666
+    style telegram fill:#999,color:#fff,stroke:#666
+    style teams fill:#999,color:#fff,stroke:#666
+    style whatsapp fill:#999,color:#fff,stroke:#666
+    style claude fill:#999,color:#fff,stroke:#666
+    style neondb fill:#999,color:#fff,stroke:#666
+    style langfuse fill:#999,color:#fff,stroke:#666
+    style twilio fill:#999,color:#fff,stroke:#666
+    style azure fill:#999,color:#fff,stroke:#666
 ```

@@ -5,6 +5,36 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-03-21
+
+### Added
+- `interactions` table in SQLite — append-only log of every user/bot exchange with `response_time_ms`
+- `harvest-interactions.py` — automated quality flag pipeline: session resets, slow responses, confusion signals, premature endings, repeated questions
+- Quality flags output to `mira-bots/tools/output/quality-flags.md` + `interaction-log.json`
+- GitHub integration: `--post-github` flag posts summary to issue #18
+- Launchd cron schedule documented for daily harvest on BRAVO (6am)
+
+## [0.5.0] — 2026-03-21
+
+### Fixed
+- **Reset bug** (`engine.py`): active session messages classified as "off_topic" now fall through to RAG worker instead of resetting with "I help maintenance technicians..." — fixes photo → options → "I don't know yet" → reset flow
+- **`last_question` persistence** (`engine.py`): photo-no-intent path now sets `session_context.last_question` so follow-up routing always has context
+- **Grounding validation** (`engine.py`): threshold raised from 3 to 5 significant words, stop-words excluded from overlap calculation
+- **FSM transition validation** (`engine.py`): invalid `next_state` from LLM rejected and logged instead of blindly accepted
+- **Bare except blocks** (`engine.py`, `telemetry.py`, `rag_worker.py`): 4 silent `except Exception: pass` now log before passing
+
+### Added
+- Safety keywords expanded 11 → 21: rotating hazard, pinch point, entanglement, confined space, pressurized, caught in, crush/fall hazard, chemical spill, gas leak
+- Technician abbreviation dictionary expanded 38 → 63 terms: seq, e-stop, pneu, cont, act, prox, sol, vlv, brg, enc, srv, io, di/do/ai/ao, pid, pmp, fdr, intlk, and more
+- `MIRA_HISTORY_LIMIT` env var (default 20) — configurable conversation history limit
+- C4 architecture diagrams rewritten as `flowchart`/`sequenceDiagram` for GitHub rendering
+- Status audit system (`.planning/STATUS_AUDIT.md`)
+- 18 GitHub issues created with labels, milestones (v0.5.0, v1.0.0), and tier classification
+
+### Changed
+- `docs/README.md` — updated container count (7→9), added missing doc links
+- `docs/architecture/*.md` — all 5 diagrams use GitHub-renderable Mermaid syntax
+
 ## [0.4.1] — 2026-03-20
 
 ### Fixed
@@ -20,10 +50,28 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 ## [0.4.0] — 2026-03-20
 
 ### Added
+- Langfuse telemetry wrapper (`shared/telemetry.py`) — graceful no-op when unconfigured
+- `Supervisor._infer_confidence()` — keyword-based reply confidence scoring
+- `Supervisor.process_full()` — structured return with reply, confidence, trace_id, next_state
+- Reddit benchmark agent — harvest real questions, run through Supervisor, report confidence/latency
+- Prejudged multi-turn benchmark — simulate full diagnostic conversations with known answers
+- 10 hand-crafted seed cases (VFD, motor, PLC, compressor, conveyor, hydraulic, sensor, soft starter, chiller)
+- Reddit solved thread parser — extract ground truth from community-verified fixes
+- LLM judge with 5-dimension scoring (evidence utilization, path efficiency, GSD compliance, root cause alignment, expert comparison)
+- FastAPI routes for benchmark agent (`/agents/reddit-benchmark/*`)
+- MIRA AR HUD simulator prototype (`mira-prototype/`)
 - VERSION file tracking at 0.4.0
 - `develop` branch for feature isolation
 - Pre-commit hook blocking direct commits to `main`
-- Git tags `v0.4.0` baseline
+
+### Changed
+- `.gitignore` — exclude `*.db`, `/data/`, `/output/`, `mira-bots/benchmark_results/`
+- `.env.template` — document Langfuse and Reddit benchmark env vars
+- Docker images remain pinned: Open WebUI v0.8.10, Node-RED 4.1.7-22
+
+### Infrastructure
+- 21 unit tests (8 reddit benchmark + 13 prejudged benchmark)
+- Prompt versioning system established (v0.1 baseline)
 
 ## [0.1.0] — 2026-03-18
 

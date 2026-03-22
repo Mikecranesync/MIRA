@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -354,3 +355,112 @@ async def search_photos(body: dict):
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return {"results": results[:top_k]}
+
+
+# ---------------------------------------------------------------------------
+# Reddit Benchmark Agent routes
+# ---------------------------------------------------------------------------
+
+# Feature flag — set REDDIT_BENCHMARK_ENABLED=1 to activate
+_BENCHMARK_ENABLED = os.getenv("REDDIT_BENCHMARK_ENABLED", "0") == "1"
+
+# Lazy imports for benchmark_db — only when needed
+_benchmark_db = None
+
+
+def _get_benchmark_db():
+    global _benchmark_db
+    if _benchmark_db is None:
+        # benchmark_db lives in mira-bots/shared — add to path if needed
+        bots_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "mira-bots",
+        )
+        if bots_path not in sys.path:
+            sys.path.insert(0, bots_path)
+        import shared.benchmark_db as bdb
+        bdb.DB_PATH = DB_PATH
+        bdb.ensure_tables()
+        _benchmark_db = bdb
+    return _benchmark_db
+
+
+def _check_benchmark_flag():
+    if not _BENCHMARK_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Reddit benchmark agent disabled. Set REDDIT_BENCHMARK_ENABLED=1",
+        )
+
+
+@app.post("/agents/reddit-benchmark/harvest")
+async def benchmark_harvest():
+    """Trigger a Reddit harvest. Requires feature flag."""
+    _check_benchmark_flag()
+    # Import harvester at call time
+    scripts_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "scripts",
+    )
+    if scripts_path not in sys.path:
+        sys.path.insert(0, scripts_path)
+    try:
+        from reddit_harvest import harvest
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"Harvest import failed: {exc}")
+    result = harvest(db_path=DB_PATH)
+    if result.get("error"):
+        raise HTTPException(status_code=500, detail=result["error"])
+    return result
+
+
+@app.get("/agents/reddit-benchmark/questions")
+async def benchmark_questions(limit: int = 50, offset: int = 0):
+    """List harvested benchmark questions."""
+    _check_benchmark_flag()
+    bdb = _get_benchmark_db()
+    questions = bdb.list_questions(limit=limit, offset=offset, db_path=DB_PATH)
+    total = bdb.count_questions(db_path=DB_PATH)
+    return {"questions": questions, "total": total}
+
+
+@app.get("/agents/reddit-benchmark/runs")
+async def benchmark_runs(limit: int = 20):
+    """List benchmark runs."""
+    _check_benchmark_flag()
+    bdb = _get_benchmark_db()
+    runs = bdb.list_runs(limit=limit, db_path=DB_PATH)
+    return {"runs": runs}
+
+
+@app.get("/agents/reddit-benchmark/runs/{run_id}/results")
+async def benchmark_results(run_id: int):
+    """Get results for a specific benchmark run."""
+    _check_benchmark_flag()
+    bdb = _get_benchmark_db()
+    run = bdb.get_run(run_id, db_path=DB_PATH)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    results = bdb.list_results(run_id, db_path=DB_PATH)
+    return {"run": run, "results": results}
+
+
+@app.get("/agents/reddit-benchmark/runs/{run_id}/report")
+async def benchmark_report(run_id: int):
+    """Generate a report for a benchmark run."""
+    _check_benchmark_flag()
+    # Import report generator at call time
+    bots_scripts = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "mira-bots", "scripts",
+    )
+    if bots_scripts not in sys.path:
+        sys.path.insert(0, bots_scripts)
+    try:
+        from reddit_benchmark_report import generate_report
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"Report import failed: {exc}")
+    report = generate_report(run_id, db_path=DB_PATH)
+    if "error" in report:
+        raise HTTPException(status_code=404, detail=report["error"])
+    return {"summary": report["summary"], "console": report["console"]}

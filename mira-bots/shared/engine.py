@@ -2,8 +2,10 @@
 
 import json
 import logging
+import os
 import re
 import sqlite3
+import time
 
 from .guardrails import (
     INTENT_KEYWORDS,
@@ -15,6 +17,7 @@ from .guardrails import (
 )
 from .inference.router import InferenceRouter
 from .nemotron import NemotronClient
+from .telemetry import trace as tl_trace, span as tl_span, flush as tl_flush
 from .workers.vision_worker import VisionWorker
 from .workers.rag_worker import RAGWorker
 from .workers.print_worker import PrintWorker
@@ -22,9 +25,22 @@ from .workers.plc_worker import PLCWorker
 
 logger = logging.getLogger("mira-gsd")
 
+# Confidence-inference keyword sets
+_HIGH_CONF_SIGNALS = re.compile(
+    r"(replace|fault code|check wiring|the .+ is .+(failed|tripped|open|shorted|overloaded)"
+    r"|part number|order number|disconnect|de-energize|lockout)",
+    re.IGNORECASE,
+)
+_LOW_CONF_SIGNALS = re.compile(
+    r"(might be|could be|possibly|not sure|uncertain|hard to say"
+    r"|without more info|i'?d need|difficult to determine)",
+    re.IGNORECASE,
+)
+
 _JSON_RE = re.compile(r'\{[^{}]*"reply"[^{}]*\}', re.DOTALL)
 
 STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
+HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 
 
 def format_diagnostic_response(equipment_id: str, key_observation: str,
@@ -125,8 +141,74 @@ class Supervisor:
             f"{next_step}"
         )
 
+    # ------------------------------------------------------------------
+    # Confidence inference
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _infer_confidence(reply: str) -> str:
+        """Infer confidence level from reply text.
+
+        Returns one of: "high", "medium", "low", "none".
+        """
+        if not reply or len(reply) < 20:
+            return "none"
+        has_high = bool(_HIGH_CONF_SIGNALS.search(reply))
+        has_low = bool(_LOW_CONF_SIGNALS.search(reply))
+        if has_high and not has_low:
+            return "high"
+        if has_low and not has_high:
+            return "low"
+        if has_high and has_low:
+            return "medium"
+        # Default: medium for substantive replies, none for short/generic
+        return "medium" if len(reply) > 60 else "none"
+
+    @staticmethod
+    def _make_result(
+        reply: str,
+        confidence: str = "none",
+        trace_id: str | None = None,
+        next_state: str | None = None,
+    ) -> dict:
+        """Build a standard process_full() result dict."""
+        return {
+            "reply": reply,
+            "confidence": confidence,
+            "trace_id": trace_id,
+            "next_state": next_state,
+        }
+
+    # ------------------------------------------------------------------
+    # Entry points
+    # ------------------------------------------------------------------
+
     async def process(self, chat_id: str, message: str, photo_b64: str = None) -> str:
-        """Main entry point. Returns reply string."""
+        """Main entry point. Returns reply string (backward-compatible)."""
+        t0 = time.monotonic()
+        result = await self.process_full(chat_id, message, photo_b64)
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        self._log_interaction(
+            chat_id, message, result["reply"],
+            fsm_state=result.get("next_state", ""),
+            confidence=result.get("confidence", ""),
+            has_photo=bool(photo_b64),
+            response_time_ms=elapsed_ms,
+        )
+        return result["reply"]
+
+    async def process_full(
+        self, chat_id: str, message: str, photo_b64: str = None,
+    ) -> dict:
+        """Full entry point. Returns {"reply", "confidence", "trace_id", "next_state"}.
+
+        Same logic as process(), but preserves structured metadata for
+        benchmark and telemetry consumers.
+        """
+        # Telemetry trace
+        t = tl_trace("supervisor.process", user_id=chat_id)
+        trace_id = t.id
+
         # Preprocess: strip Slack mention tags
         message = strip_mentions(message)
 
@@ -146,21 +228,19 @@ class Supervisor:
                     "Do not proceed until the area is safe."
                 )
                 self._record_exchange(chat_id, state, message, reply)
-                return reply
+                tl_flush()
+                return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
             if intent == "off_topic":
-                sc = state.get("context", {}).get("session_context", {})
-                if state["state"] != "IDLE" and sc.get("last_question"):
-                    reply = (
-                        f"Still working on your {sc.get('equipment_type', 'equipment')}. "
-                        f"To recap: {sc['last_question']}"
-                    )
+                if state["state"] != "IDLE":
+                    pass  # Active session — fall through to RAG worker
                 else:
                     reply = (
                         "I help maintenance technicians diagnose equipment issues. "
                         "What equipment do you need help with?"
                     )
-                self._record_exchange(chat_id, state, message, reply)
-                return reply
+                    self._record_exchange(chat_id, state, message, reply)
+                    tl_flush()
+                    return self._make_result(reply, "none", trace_id, state["state"])
 
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
         if (
@@ -175,7 +255,8 @@ class Supervisor:
                     "'OC' or 'F-201', or describe what's happening with your equipment."
                 )
                 self._record_exchange(chat_id, state, message, reply)
-                return reply
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "IDLE")
             if intent == "greeting":
                 reply = (
                     "Hey \u2014 I'm MIRA, your maintenance copilot. "
@@ -183,11 +264,13 @@ class Supervisor:
                     "going on and I'll help you diagnose it."
                 )
                 self._record_exchange(chat_id, state, message, reply)
-                return reply
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "IDLE")
 
         # Photo path: delegate to vision worker, then route
         if photo_b64:
-            vision_data = await self.vision.process(photo_b64, message)
+            with tl_span(t, "vision_worker"):
+                vision_data = await self.vision.process(photo_b64, message)
 
             ctx = state.get("context") or {}
             ctx["ocr_text"] = vision_data["tesseract_text"]
@@ -208,7 +291,10 @@ class Supervisor:
                 state["context"] = ctx
                 state["exchange_count"] += 1
                 self._save_state(chat_id, state)
-                return reply
+                tl_flush()
+                return self._make_result(
+                    reply, self._infer_confidence(reply), trace_id, "ELECTRICAL_PRINT",
+                )
             else:
                 state["state"] = "ASSET_IDENTIFIED"
                 ctx["session_context"] = {
@@ -222,11 +308,13 @@ class Supervisor:
         # Electrical print follow-up (text question in ELECTRICAL_PRINT state)
         if state.get("state") == "ELECTRICAL_PRINT" and not photo_b64:
             try:
-                raw = await self.print_.process(message, state)
+                with tl_span(t, "print_worker"):
+                    raw = await self.print_.process(message, state)
             except Exception as e:
                 logger.error("LLM call failed (print worker): %s", e)
                 self._save_state(chat_id, state)
-                return f"MIRA error: {e}"
+                tl_flush()
+                return self._make_result(f"MIRA error: {e}", "none", trace_id)
             parsed = self._parse_response(raw)
             # Output guardrail for print worker
             print_intent = classify_intent(message)
@@ -236,12 +324,16 @@ class Supervisor:
             history = ctx.get("history", [])
             history.append({"role": "user", "content": message})
             history.append({"role": "assistant", "content": parsed["reply"]})
-            if len(history) > 20:
-                history = history[-20:]
+            if len(history) > HISTORY_LIMIT:
+                history = history[-HISTORY_LIMIT:]
             ctx["history"] = history
             state["context"] = ctx
             self._save_state(chat_id, state)
-            return self._format_reply(parsed)
+            formatted = self._format_reply(parsed)
+            tl_flush()
+            return self._make_result(
+                formatted, self._infer_confidence(formatted), trace_id, "ELECTRICAL_PRINT",
+            )
 
         # Photo with no specific intent → acknowledge equipment, ask what they need
         if photo_b64 and not any(kw in message.lower() for kw in INTENT_KEYWORDS):
@@ -252,17 +344,24 @@ class Supervisor:
             history.append({"role": "user", "content": message})
             history.append({"role": "assistant", "content": reply})
             ctx["history"] = history
+            sc = ctx.get("session_context", {})
+            if sc:
+                sc["last_question"] = reply[:200]
+                ctx["session_context"] = sc
             state["context"] = ctx
             self._save_state(chat_id, state)
-            return reply
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, "ASSET_IDENTIFIED")
 
         # RAG worker with self-correction: text queries and photo+intent queries
-        raw, parsed = await self._call_with_correction(
-            message, state, photo_b64,
-        )
+        with tl_span(t, "rag_worker"):
+            raw, parsed = await self._call_with_correction(
+                message, state, photo_b64,
+            )
         if raw is None:
             self._save_state(chat_id, state)
-            return parsed["reply"]  # error message
+            tl_flush()
+            return self._make_result(parsed["reply"], "none", trace_id)
 
         # Output guardrails
         intent = classify_intent(message)
@@ -291,8 +390,8 @@ class Supervisor:
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": parsed["reply"]})
-        if len(history) > 20:
-            history = history[-20:]
+        if len(history) > HISTORY_LIMIT:
+            history = history[-HISTORY_LIMIT:]
         ctx["history"] = history
 
         # Update session_context with latest question so off-topic replies can recap
@@ -306,7 +405,14 @@ class Supervisor:
 
         self._save_state(chat_id, state)
 
-        return self._format_reply(parsed)
+        formatted = self._format_reply(parsed)
+        tl_flush()
+        return self._make_result(
+            formatted,
+            self._infer_confidence(formatted),
+            trace_id,
+            state["state"],
+        )
 
     def reset(self, chat_id: str) -> None:
         """Reset conversation to IDLE state."""
@@ -388,8 +494,8 @@ class Supervisor:
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": parsed["reply"]})
-        if len(history) > 20:
-            history = history[-20:]
+        if len(history) > HISTORY_LIMIT:
+            history = history[-HISTORY_LIMIT:]
         ctx["history"] = history
 
         sc = ctx.get("session_context", {})
@@ -401,6 +507,20 @@ class Supervisor:
         state["context"] = ctx
         self._save_state(chat_id, state)
         return self._format_reply(parsed)
+
+    _STOP_WORDS = frozenset({
+        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+        "have", "has", "had", "do", "does", "did", "will", "would", "could",
+        "should", "may", "might", "can", "shall", "to", "of", "in", "for",
+        "on", "with", "at", "by", "from", "as", "into", "through", "during",
+        "before", "after", "and", "but", "or", "nor", "not", "so", "yet",
+        "both", "either", "neither", "each", "every", "all", "any", "few",
+        "more", "most", "other", "some", "such", "no", "only", "own", "same",
+        "than", "too", "very", "just", "about", "above", "below", "between",
+        "it", "its", "this", "that", "these", "those", "i", "you", "he", "she",
+        "we", "they", "me", "him", "her", "us", "them", "my", "your", "his",
+        "our", "their", "if", "then", "else", "when", "up", "out", "off",
+    })
 
     def _is_grounded(self, parsed: dict, sources: list[str]) -> bool:
         """Check if response appears grounded in retrieved sources."""
@@ -414,14 +534,14 @@ class Supervisor:
 
         # Check if response references any content from sources
         for source in sources[:3]:
-            # Check if any significant words from source appear in response
-            source_words = set(source.lower().split())
-            reply_words = set(reply.split())
+            source_words = set(source.lower().split()) - self._STOP_WORDS
+            reply_words = set(reply.split()) - self._STOP_WORDS
             overlap = source_words & reply_words
-            # Significant overlap = grounded
-            if len(overlap) > 3:
+            if len(overlap) >= 5:
                 return True
 
+        if not self._is_grounded.__dict__.get("_warned", False):
+            logger.warning("Response may not be grounded in sources (<%d significant word overlap)", 5)
         return False
 
     # ------------------------------------------------------------------
@@ -455,12 +575,27 @@ class Supervisor:
                 created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS interactions (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id          TEXT NOT NULL,
+                platform         TEXT NOT NULL DEFAULT 'telegram',
+                user_message     TEXT NOT NULL,
+                bot_response     TEXT NOT NULL,
+                fsm_state        TEXT,
+                intent           TEXT,
+                has_photo        INTEGER DEFAULT 0,
+                confidence       TEXT,
+                response_time_ms INTEGER,
+                created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         try:
             db.execute(
                 "ALTER TABLE conversation_state ADD COLUMN voice_enabled INTEGER NOT NULL DEFAULT 0"
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("voice_enabled column already exists: %s", e)
         db.commit()
         db.close()
 
@@ -532,6 +667,28 @@ class Supervisor:
         state["context"] = ctx
         self._save_state(chat_id, state)
 
+    def _log_interaction(
+        self, chat_id: str, message: str, reply: str,
+        *, fsm_state: str = "", intent: str = "", has_photo: bool = False,
+        confidence: str = "", response_time_ms: int = 0, platform: str = "telegram",
+    ):
+        """Append-only log of every user/bot exchange for quality analysis."""
+        try:
+            db = sqlite3.connect(self.db_path)
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute(
+                """INSERT INTO interactions
+                   (chat_id, platform, user_message, bot_response, fsm_state,
+                    intent, has_photo, confidence, response_time_ms)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (chat_id, platform, message, reply, fsm_state,
+                 intent, int(has_photo), confidence, response_time_ms),
+            )
+            db.commit()
+            db.close()
+        except Exception as e:
+            logger.warning("Failed to log interaction: %s", e)
+
     # ------------------------------------------------------------------
     # Response parsing
     # ------------------------------------------------------------------
@@ -598,6 +755,10 @@ class Supervisor:
     # FSM state machine
     # ------------------------------------------------------------------
 
+    _VALID_STATES = frozenset(
+        STATE_ORDER + ["ASSET_IDENTIFIED", "ELECTRICAL_PRINT", "SAFETY_ALERT"]
+    )
+
     def _advance_state(self, state: dict, parsed: dict) -> dict:
         """Advance FSM state based on parsed LLM response."""
         current = state["state"]
@@ -618,7 +779,14 @@ class Supervisor:
             return state
 
         if parsed.get("next_state"):
-            state["state"] = parsed["next_state"]
+            proposed = parsed["next_state"]
+            if proposed in self._VALID_STATES:
+                state["state"] = proposed
+            else:
+                logger.warning(
+                    "Invalid FSM state '%s' from LLM (current: %s) — holding at %s",
+                    proposed, current, current,
+                )
         else:
             if current == "ASSET_IDENTIFIED":
                 state["state"] = "Q1"

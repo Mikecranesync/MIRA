@@ -29,8 +29,14 @@ artifacts/v2/
 
 # SQLite DB + WAL files
 data/mira.db
+# SQLite databases + WAL files
+*.db
 *.db-shm
 *.db-wal
+/data/
+/output/
+mira-bots/benchmark_results/
+mira-bots/tools/output/
 
 # macOS
 .DS_Store

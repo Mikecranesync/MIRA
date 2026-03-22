@@ -1,62 +1,82 @@
 # C4 Container Diagram — MIRA
 
-All 7 Docker containers + Ollama on host.
+All 9 Docker containers, 2 Docker networks, Ollama on host, and external dependencies.
 
 ```mermaid
-C4Container
-    title MIRA — Container View
+flowchart TB
+    tech["<b>Field Technician</b>"]
 
-    Person(tech, "Field Technician")
+    subgraph mac["Mac Mini M4 16 GB — bravonode · 192.168.1.11"]
+        subgraph corenet["core-net · Docker bridge"]
+            webui["<b>mira-core</b><br/>Open WebUI v0.8.10<br/>Chat UI + KB admin<br/>:3000 → 8080"]
+            mcpo["<b>mira-mcpo</b><br/>mcpo v0.0.20 + fastmcp<br/>MCP tool proxy<br/>:8000"]
+            ingest["<b>mira-ingest</b><br/>FastAPI · Python 3.12<br/>Photo/PDF pipeline<br/>:8002 → 8001"]
+            bridge["<b>mira-bridge</b><br/>Node-RED 4.1.7-22<br/>Orchestration + dashboard<br/>:1880"]
+            mcp["<b>mira-mcp</b><br/>FastMCP · Python 3.12<br/>4 MCP tools + REST API<br/>:8009 → 8000 / :8001"]
+        end
 
-    Boundary(mac, "Mac Mini M4 16GB — bravonode (192.168.1.11)") {
-        Boundary(core, "core-net (Docker bridge)") {
-            Container(webui, "mira-core", "Open WebUI v0.8.10", "Chat UI + knowledge base admin\nPort 3000→8080")
-            Container(mcpo, "mira-mcpo", "mcpo v0.0.20", "MCP tool proxy — exposes FastMCP tools\nto Open WebUI\nPort 8000")
-            Container(ingest, "mira-ingest", "FastAPI Python 3.12", "Photo/PDF ingestion pipeline\nVector embedding + NeonDB push\nPort 8002→8001")
-            Container(bridge, "mira-bridge", "Node-RED 4.1.7", "Orchestration flows\nSQLite WAL shared state\nPort 1880")
-            Container(mcp, "mira-mcp", "FastMCP Python 3.12", "SSE MCP server — 4 tools\nPort 8000 (REST) + 8001 (SSE)")
-        }
+        subgraph botnet["bot-net · Docker bridge"]
+            tgbot["<b>mira-bot-telegram</b><br/>python-telegram-bot 21<br/>Polling — no open port"]
+            slbot["<b>mira-bot-slack</b><br/>slack-bolt 1.x<br/>Socket Mode — no open port"]
+            tebot["<b>mira-bot-teams</b><br/>botbuilder 4.17<br/>Webhook :8030"]
+            wabot["<b>mira-bot-whatsapp</b><br/>FastAPI + Twilio 9.x<br/>Webhook :8010"]
+        end
 
-        Boundary(botnet, "bot-net (Docker bridge)") {
-            Container(tgbot, "mira-bot-telegram", "python-telegram-bot 21", "Polling bot handler\n@FactoryLMDiagnose_bot")
-            Container(slbot, "mira-bot-slack", "slack-bolt 1.x", "Socket Mode bot handler")
-            Container(tebot, "mira-bot-teams", "botbuilder 4.17", "Bot Framework webhook\nPort 8020")
-            Container(wabot, "mira-bot-whatsapp", "FastAPI + Twilio 9.x", "WhatsApp Sandbox webhook\nPort 8010")
-        }
+        ollama["<b>Ollama</b><br/>HOST process · Metal GPU<br/>:11434<br/>qwen2.5vl:7b · glm-ocr<br/>nomic-embed-text/vision"]
+        sqlite[("<b>mira.db</b><br/>SQLite WAL<br/>mira-bridge/data/")]
+    end
 
-        Container(ollama, "Ollama", "HOST process (Metal GPU)", "Local model server :11434\nModels: qwen2.5vl:7b, nomic-embed-text")
-        ContainerDb(sqlite, "mira.db", "SQLite (WAL mode)", "Shared state, session history\nmira-bridge/data/mira.db")
-    }
+    claude["<b>Claude API</b><br/>LLM inference"]
+    neon[("<b>NeonDB + pgvector</b><br/>Cloud RAG store")]
+    langfuse["<b>Langfuse</b><br/>Observability · optional"]
+    slack_ext["<b>Slack</b>"]
+    telegram_ext["<b>Telegram</b>"]
+    teams_ext["<b>Teams / Azure</b>"]
+    twilio_ext["<b>WhatsApp / Twilio</b>"]
 
-    System_Ext(claude, "Claude API", "LLM inference")
-    SystemDb_Ext(neon, "NeonDB + PGVector", "Cloud RAG store")
-    System_Ext(slack, "Slack")
-    System_Ext(telegram, "Telegram")
-    System_Ext(teams, "Teams / Azure")
-    System_Ext(twilio, "WhatsApp / Twilio")
+    tech --> slack_ext & telegram_ext & teams_ext & twilio_ext
 
-    Rel(tech, slack, "Messages", "HTTPS")
-    Rel(tech, telegram, "Messages", "HTTPS")
-    Rel(tech, teams, "Messages", "HTTPS")
-    Rel(tech, twilio, "Messages", "HTTPS")
+    slack_ext -- "WebSocket" --> slbot
+    telegram_ext -- "HTTPS polling" --> tgbot
+    teams_ext -- "POST /api/messages" --> tebot
+    twilio_ext -- "POST /webhook" --> wabot
 
-    Rel(slack, slbot, "Events", "WebSocket")
-    Rel(telegram, tgbot, "Updates", "HTTPS polling")
-    Rel(teams, tebot, "POST /api/messages", "HTTPS")
-    Rel(twilio, wabot, "POST /webhook", "HTTPS")
+    tgbot & slbot & tebot & wabot -- "POST /v1/messages" --> claude
+    tgbot & slbot & tebot & wabot -- "Read/write sessions" --> sqlite
+    tgbot & slbot & tebot & wabot -- "Traces" --> langfuse
 
-    Rel(tgbot, ingest, "POST /ingest/photo", "HTTP")
-    Rel(slbot, ingest, "POST /ingest/photo", "HTTP")
-    Rel(tebot, ingest, "POST /ingest/photo", "HTTP")
-    Rel(wabot, ingest, "POST /ingest/photo", "HTTP")
+    tgbot & slbot & tebot & wabot -- "POST /ingest/photo" --> ingest
+    ingest -- "Embed + describe" --> ollama
+    ingest -- "pgvector recall" --> neon
 
-    Rel(tgbot, claude, "POST /v1/messages", "HTTPS")
-    Rel(slbot, claude, "POST /v1/messages", "HTTPS")
+    mcpo -- "SSE" --> mcp
+    mcp -- "Read" --> sqlite
+    bridge -- "Orchestration state" --> sqlite
+    webui -- "Ollama chat" --> ollama
 
-    Rel(ingest, neon, "pgvector recall", "TCP/TLS")
-    Rel(ingest, ollama, "Embed + describe", "HTTP")
-
-    Rel(tgbot, sqlite, "Read/write sessions")
-    Rel(slbot, sqlite, "Read/write sessions")
-    Rel(bridge, sqlite, "Orchestration state")
+    style tech fill:#08427B,color:#fff
+    style webui fill:#1168BD,color:#fff
+    style mcpo fill:#1168BD,color:#fff
+    style ingest fill:#1168BD,color:#fff
+    style bridge fill:#1168BD,color:#fff
+    style mcp fill:#1168BD,color:#fff
+    style tgbot fill:#2694E8,color:#fff
+    style slbot fill:#2694E8,color:#fff
+    style tebot fill:#2694E8,color:#fff
+    style wabot fill:#2694E8,color:#fff
+    style ollama fill:#E87C26,color:#fff
+    style sqlite fill:#438DD5,color:#fff
+    style claude fill:#999,color:#fff
+    style neon fill:#999,color:#fff
+    style langfuse fill:#999,color:#fff
+    style slack_ext fill:#999,color:#fff
+    style telegram_ext fill:#999,color:#fff
+    style teams_ext fill:#999,color:#fff
+    style twilio_ext fill:#999,color:#fff
 ```
+
+**Notes:**
+- All 4 bots are on **both** `core-net` and `bot-net`
+- `mira-core` is on both networks; all other core services are `core-net` only
+- Ollama runs on the Mac Mini host, not inside Docker (Metal GPU acceleration)
+- SQLite in WAL mode is shared via bind-mount to `mira-bridge/data/`

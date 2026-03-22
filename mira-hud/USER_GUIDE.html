@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Charlie HUD — User Guide</title>
+<style>
+  :root {
+    --green: #00ff88;
+    --green-dim: #00cc66;
+    --amber: #ffaa00;
+    --red: #ff4444;
+    --bg: #0a0a0a;
+    --bg2: #111111;
+    --bg3: #1a1a1a;
+    --border: #1e3a2e;
+    --text: #c8ffd8;
+    --text-dim: #557755;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 14px;
+    line-height: 1.7;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  /* ── Header ── */
+  .header {
+    position: relative;
+    overflow: hidden;
+    text-align: center;
+    padding: 48px 24px 36px;
+    margin-bottom: 48px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,255,136,0.03) 2px,
+      rgba(0,255,136,0.03) 4px
+    );
+    pointer-events: none;
+  }
+  .header h1 {
+    font-size: 2.4rem;
+    color: var(--green);
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 20px rgba(0,255,136,0.5);
+    margin-bottom: 8px;
+  }
+  .header .subtitle {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    letter-spacing: 0.12em;
+  }
+  .version-badge {
+    display: inline-block;
+    margin-top: 14px;
+    padding: 3px 12px;
+    border: 1px solid var(--green-dim);
+    color: var(--green-dim);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+  }
+
+  /* ── TOC ── */
+  .toc {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 24px 28px;
+    margin-bottom: 48px;
+  }
+  .toc h2 {
+    color: var(--green);
+    font-size: 0.75rem;
+    letter-spacing: 0.2em;
+    margin-bottom: 16px;
+  }
+  .toc ol {
+    padding-left: 20px;
+  }
+  .toc li {
+    margin-bottom: 6px;
+  }
+  .toc a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 0.85rem;
+    letter-spacing: 0.05em;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--green); }
+
+  /* ── Sections ── */
+  section {
+    margin-bottom: 56px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-num {
+    color: var(--green);
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    min-width: 48px;
+  }
+  h2.section-title {
+    color: var(--green);
+    font-size: 1rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  /* ── Content blocks ── */
+  p { margin-bottom: 14px; color: var(--text); }
+  p:last-child { margin-bottom: 0; }
+
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .card h3 {
+    color: var(--green-dim);
+    font-size: 0.8rem;
+    letter-spacing: 0.15em;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+
+  code {
+    background: #0d2b1a;
+    color: var(--green);
+    padding: 2px 7px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.88em;
+    border: 1px solid #1a4a2a;
+  }
+  pre {
+    background: #080f0c;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--green);
+    padding: 16px 20px;
+    overflow-x: auto;
+    margin-bottom: 20px;
+    color: var(--green);
+    font-size: 0.85rem;
+    line-height: 1.6;
+  }
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+  }
+
+  ul, ol {
+    padding-left: 20px;
+    margin-bottom: 14px;
+  }
+  li { margin-bottom: 6px; }
+
+  .tag {
+    display: inline-block;
+    padding: 1px 8px;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    font-weight: bold;
+    vertical-align: middle;
+    margin-left: 6px;
+  }
+  .tag-ok    { background: rgba(0,255,136,0.15); color: var(--green); border: 1px solid var(--green-dim); }
+  .tag-warn  { background: rgba(255,170,0,0.12); color: var(--amber); border: 1px solid var(--amber); }
+  .tag-error { background: rgba(255,68,68,0.12);  color: var(--red);   border: 1px solid var(--red); }
+  .tag-info  { background: rgba(0,180,255,0.12);  color: #00ccff;      border: 1px solid #0066aa; }
+
+  .step-list {
+    list-style: none;
+    padding: 0;
+    counter-reset: step-counter;
+  }
+  .step-list li {
+    counter-increment: step-counter;
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    align-items: flex-start;
+  }
+  .step-list li::before {
+    content: counter(step-counter, decimal-leading-zero);
+    color: var(--green);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    min-width: 28px;
+    padding-top: 2px;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* ── Status indicators ── */
+  .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot-amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .dot-red   { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+
+  /* ── Quick Reference Card ── */
+  .qr-card {
+    background: var(--bg3);
+    border: 2px solid var(--green);
+    padding: 28px 32px;
+    margin-top: 32px;
+  }
+  .qr-card h2 {
+    color: var(--green);
+    letter-spacing: 0.2em;
+    font-size: 0.85rem;
+    margin-bottom: 24px;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .qr-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 640px) { .qr-grid { grid-template-columns: 1fr; } }
+  .qr-group h3 {
+    color: var(--green-dim);
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+  .qr-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(30,58,46,0.5);
+    font-size: 0.82rem;
+  }
+  .qr-row:last-child { border-bottom: none; }
+  .qr-label { color: var(--text-dim); }
+  .qr-value { color: var(--green); font-size: 0.8rem; }
+
+  /* ── Troubleshooting table ── */
+  .trouble-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-size: 0.85rem;
+  }
+  .trouble-table th {
+    background: var(--bg3);
+    color: var(--green);
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .trouble-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(30,58,46,0.4);
+    vertical-align: top;
+  }
+  .trouble-table tr:last-child td { border-bottom: none; }
+  .trouble-table .symptom { color: var(--amber); }
+  .trouble-table .fix { color: var(--text); }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- HEADER                                                  -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div class="header">
+  <h1>CHARLIE HUD</h1>
+  <div class="subtitle">INDUSTRIAL AI MAINTENANCE ASSISTANT — NODE CHARLIE</div>
+  <div class="version-badge">v1.0.0 · USER GUIDE</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- TABLE OF CONTENTS                                        -->
+<!-- ════════════════════════════════════════════════════════ -->
+<div class="toc">
+  <h2>// CONTENTS</h2>
+  <ol>
+    <li><a href="#overview">System Overview</a></li>
+    <li><a href="#requirements">Requirements</a></li>
+    <li><a href="#install">First-Time Install</a></li>
+    <li><a href="#launch">Daily Launch</a></li>
+    <li><a href="#hud">Using the HUD</a></li>
+    <li><a href="#mira">MIRA AI Panel</a></li>
+    <li><a href="#start-mira">Starting MIRA AI Backend</a></li>
+    <li><a href="#stop">Stopping the HUD</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+    <li><a href="#quickref">Quick Reference</a></li>
+  </ol>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SECTION 1: OVERVIEW                                      -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="overview">
+  <div class="section-header">
+    <span class="section-num">01</span>
+    <h2 class="section-title">System Overview</h2>
+  </div>
+
+  <p>
+    Charlie HUD is a browser-based heads-up display for floor-level maintenance technicians.
+    It provides live webcam monitoring, guided maintenance procedures, step-by-step checklists,
+    and an optional AI assistant panel powered by MIRA.
+  </p>
+
+  <div class="two-col">
+    <div class="card">
+      <h3>HUD Server</h3>
+      <p>A lightweight Node.js process that serves the HUD interface on <code>localhost:3000</code>.
+      Handles webcam relay, procedure loading, and proxying AI queries to the MIRA backend.</p>
+    </div>
+    <div class="card">
+      <h3>MIRA AI (Optional)</h3>
+      <p>A separate Python backend running an LLM via Ollama. Answers maintenance questions
+      in plain language using equipment manuals, fault codes, and procedure knowledge.
+      HUD works fully without it — AI panel shows OFFLINE if not running.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Architecture at a Glance</h3>
+    <pre><code>┌─────────────────────────────────────────────────┐
+│  Your Browser  →  localhost:3000                 │
+│                   (Charlie HUD)                  │
+│                        │                         │
+│              ┌─────────┴──────────┐              │
+│              │   Node.js Server   │              │
+│              │   mira-hud/        │              │
+│              │   server.js        │              │
+│              └─────────┬──────────┘              │
+│                        │  (optional)             │
+│              ┌─────────┴──────────┐              │
+│              │  MIRA AI Backend   │              │
+│              │  localhost:8000    │              │
+│              │  (Python + Ollama) │              │
+│              └────────────────────┘              │
+└─────────────────────────────────────────────────┘</code></pre>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SECTION 2: REQUIREMENTS                                  -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="requirements">
+  <div class="section-header">
+    <span class="section-num">02</span>
+    <h2 class="section-title">Requirements</h2>
+  </div>
+
+  <div class="card">
+    <h3>Required</h3>
+    <ul>
+      <li><strong>macOS 12 or later</strong> (Monterey, Ventura, Sonoma, Sequoia)</li>
+      <li><strong>Node.js via Homebrew</strong> — installed at <code>/opt/homebrew/bin/node</code>
+        <span class="tag tag-ok">ALREADY INSTALLED</span></li>
+      <li><strong>A modern web browser</strong> — Safari, Chrome, Firefox, or Arc</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Optional (for AI answers)</h3>
+    <ul>
+      <li><strong>MIRA AI backend</strong> — Python FastAPI service on <code>localhost:8000</code></li>
+      <li><strong>Ollama</strong> — local LLM inference engine on <code>localhost:11434</code></li>
+    </ul>
+    <p>The HUD runs perfectly without these. The AI panel will show
+    <span class="tag tag-warn">OFFLINE</span> until the backend is started.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SECTION 3: FIRST-TIME INSTALL                            -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="install">
+  <div class="section-header">
+    <span class="section-num">03</span>
+    <h2 class="section-title">First-Time Install</h2>
+  </div>
+
+  <p>Run the installer once — this sets everything up and puts the app icon on your Desktop.</p>
+
+  <ol class="step-list">
+    <li>Open <strong>Terminal</strong> (press ⌘Space, type "Terminal", press Enter)</li>
+    <li>Navigate to the project: <pre><code>cd ~/Documents/GitHub/MIRA/mira-hud</code></pre></li>
+    <li>Run the installer: <pre><code>bash install.sh</code></pre></li>
+    <li>The script will:
+      <ul style="margin-top:8px">
+        <li>Verify Node.js is installed</li>
+        <li>Make the launcher executable</li>
+        <li>Install npm dependencies if missing</li>
+        <li>Copy <code>CharlieHUD.app</code> to your Desktop</li>
+        <li>Optionally install to <code>/Applications</code></li>
+        <li>Offer to launch immediately</li>
+      </ul>
+    </li>
+  </ol>
+
+  <div class="card">
+    <h3>Gatekeeper Warning (first launch only)</h3>
+    <p>macOS may say <em>"CharlieHUD cannot be opened because the developer cannot be verified."</em></p>
+    <p>This is expected for apps not signed with an Apple Developer ID. To allow it:</p>
+    <ol style="margin-top:8px">
+      <li>Go to <strong>System Settings → Privacy &amp; Security</strong></li>
+      <li>Scroll down to the Security section</li>
+      <li>Click <strong>"Open Anyway"</strong> next to the CharlieHUD message</li>
+      <li>You only need to do this once</li>
+    </ol>
+    <p style="margin-top:10px"><em>Alternatively:</em> right-click the app → <strong>Open</strong> → click <strong>Open</strong> in the dialog.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SECTION 4: DAILY LAUNCH                                  -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="launch">
+  <div class="section-header">
+    <span class="section-num">04</span>
+    <h2 class="section-title">Daily Launch</h2>
+  </div>
+
+  <p>After the one-time install, launching is simple:</p>
+
+  <ol class="step-list">
+    <li><strong>Double-click</strong> <code>CharlieHUD</code> on your Desktop (or in <code>/Applications</code>)</li>
+    <li>A macOS notification fires: <em>"Server started on port 3000"</em></li>
+    <li>Your default browser opens automatically to <code>http://localhost:3000</code></li>
+    <li>The HUD boot sequence runs (green text animating in terminal-style)</li>
+    <li>The interface loads — webcam activates, clock starts ticking</li>
+  </ol>
+
+  <div class="card">
+    <h3>What happens under the hood</h3>
+    <ul>
+      <li>Any previous HUD server instance is automatically killed (no "port in use" errors)</li>
+      <li>The Node.js server starts in the background — no terminal window appears</li>
+      <li>Server logs are written to <code>/tmp/charlie-hud.log</code></li>
+      <li>The app icon appears in the Dock while the process is running</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Server stays running</h3>
+    <p>Closing the browser tab does <em>not</em> stop the server. The server continues running
+    until you explicitly stop it (see <a href="#stop">Section 8</a>).
+    You can reopen the HUD anytime by going to <code>http://localhost:3000</code> in your browser.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SECTION 5: USING THE HUD                                 -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="hud">
+  <div class="section-header">
+    <span class="section-num">05</span>
+    <h2 class="section-title">Using the HUD</h2>
+  </div>
+
+  <div class="card">
+    <h3>Webcam Panel</h3>
+    <p>The left panel shows a live webcam feed from your built-in or USB camera.
+    This is intended for visual documentation — point your camera at the equipment
+    you're working on.</p>
+    <ul>
+      <li>Your browser will ask for camera permission the first time — click <strong>Allow</strong></li>
+      <li>If no camera is detected, the panel shows <span class="tag tag-warn">NO SIGNAL</span></li>
+      <li>The feed is local-only — nothing is transmitted or recorded</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Procedure Selector</h3>
+    <p>The top dropdown lets you select a maintenance procedure. Each procedure is
+    a numbered checklist of steps loaded from the server.</p>
+    <ul>
+      <li>Select a procedure from the dropdown to load it</li>
+      <li>The step counter resets to Step 1</li>
+      <li>Steps are shown one at a time in the main panel</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Step Navigation</h3>
+    <p>Navigate through procedure steps using the PREV and NEXT buttons:</p>
+    <ul>
+      <li><strong>NEXT</strong> — advance to the next step</li>
+      <li><strong>PREV</strong> — go back to the previous step</li>
+      <li>The progress bar at the top fills as you advance through the procedure</li>
+      <li>Current step and total count shown as <code>STEP X / Y</code></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Progress Bar</h3>
+    <p>The green progress bar at the top of the procedure panel reflects your position
+    in the current checklist. It fills incrementally with each NEXT press and empties on PREV.
+    Selecting a new procedure resets it to 0%.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SECTION 6: MIRA AI PANEL                                 -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="mira">
+  <div class="section-header">
+    <span class="section-num">06</span>
+    <h2 class="section-title">MIRA AI Panel</h2>
+  </div>
+
+  <p>The right-side panel is the MIRA AI query interface. Type any maintenance question
+  and MIRA will respond using equipment manuals, fault codes, and procedure knowledge.</p>
+
+  <div class="card">
+    <h3>Connection States</h3>
+    <ul>
+      <li><span class="dot dot-green"></span><span class="tag tag-ok">ONLINE</span>
+        — MIRA backend is running and responding</li>
+      <li><span class="dot dot-amber"></span><span class="tag tag-warn">CONNECTING</span>
+        — checking connection to backend</li>
+      <li><span class="dot dot-red"></span><span class="tag tag-error">OFFLINE</span>
+        — backend not running. HUD still works; AI answers unavailable</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Response Tags</h3>
+    <p>AI responses are tagged to indicate confidence and source:</p>
+    <ul>
+      <li><span class="tag tag-ok">VERIFIED</span> — answer drawn from known equipment documentation</li>
+      <li><span class="tag tag-warn">INFERRED</span> — best-match answer, may need field verification</li>
+      <li><span class="tag tag-error">UNCERTAIN</span> — low confidence; escalate to senior tech or OEM support</li>
+      <li><span class="tag tag-info">PROCEDURE</span> — response includes a step-by-step action sequence</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Example Queries</h3>
+    <ul>
+      <li><em>"VFD shows fault code F0001 — what does it mean?"</em></li>
+      <li><em>"Motor won't start after E-stop was released — what do I check?"</em></li>
+      <li><em>"What are the GS10 Modbus RTU parameters for 9600 baud?"</em></li>
+      <li><em>"How do I reset the fault latch on the Micro820?"</em></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SECTION 7: STARTING MIRA AI                              -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="start-mira">
+  <div class="section-header">
+    <span class="section-num">07</span>
+    <h2 class="section-title">Starting MIRA AI Backend</h2>
+  </div>
+
+  <p>The MIRA AI backend is optional and runs separately from the HUD server.
+  Start it when you need AI-assisted answers.</p>
+
+  <div class="card">
+    <h3>Prerequisites</h3>
+    <ul>
+      <li>Ollama installed and running: <code>ollama serve</code></li>
+      <li>A model pulled, e.g.: <code>ollama pull llama3.2</code></li>
+      <li>Python dependencies installed in the MIRA project</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Start the Backend</h3>
+    <pre><code>cd ~/Documents/GitHub/MIRA
+python -m uvicorn mira.main:app --port 8000 --reload</code></pre>
+    <p>Once running, the MIRA panel in the HUD will switch from
+    <span class="tag tag-error">OFFLINE</span> to <span class="tag tag-ok">ONLINE</span>
+    within a few seconds (the HUD polls automatically).</p>
+  </div>
+
+  <div class="card">
+    <h3>Using the SCADA Stack (Docker)</h3>
+    <p>If you need the full SCADA stack (Modbus sim, PLC API, diagnosis service):</p>
+    <pre><code>cd ~/factorylm
+docker compose up -d --build</code></pre>
+    <p>Health check: <code>curl localhost:8001/api/health</code></p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SECTION 8: STOPPING THE HUD                              -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="stop">
+  <div class="section-header">
+    <span class="section-num">08</span>
+    <h2 class="section-title">Stopping the HUD</h2>
+  </div>
+
+  <p>The HUD server runs as a background process. Here are your options to stop it:</p>
+
+  <div class="card">
+    <h3>Option A — Relaunch (auto-kills prior instance)</h3>
+    <p>Double-clicking <code>CharlieHUD</code> again will automatically kill the running instance
+    before starting a fresh one. No manual steps needed.</p>
+  </div>
+
+  <div class="card">
+    <h3>Option B — Terminal kill command</h3>
+    <pre><code>pkill -f "node server.js"</code></pre>
+    <p>This stops the server immediately. The browser tab will show a connection error,
+    which you can close.</p>
+  </div>
+
+  <div class="card">
+    <h3>Option C — Kill by port</h3>
+    <pre><code># Find what's on port 3000
+lsof -ti :3000
+
+# Kill it
+lsof -ti :3000 | xargs kill</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>Checking server logs</h3>
+    <pre><code>cat /tmp/charlie-hud.log</code></pre>
+    <p>Logs are overwritten each time the server starts. Useful for diagnosing startup errors.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SECTION 9: TROUBLESHOOTING                               -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="troubleshooting">
+  <div class="section-header">
+    <span class="section-num">09</span>
+    <h2 class="section-title">Troubleshooting</h2>
+  </div>
+
+  <table class="trouble-table">
+    <thead>
+      <tr>
+        <th>Symptom</th>
+        <th>Likely Cause</th>
+        <th>Fix</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="symptom">Browser shows "This site can't be reached"</td>
+        <td>Server not started or crashed on startup</td>
+        <td class="fix">Check <code>cat /tmp/charlie-hud.log</code> for errors. Try relaunching the app.</td>
+      </tr>
+      <tr>
+        <td class="symptom">"Port 3000 already in use" (in log)</td>
+        <td>Stale server process from a previous session</td>
+        <td class="fix">Run <code>pkill -f "node server.js"</code> then relaunch. Or just double-click the app — it auto-kills.</td>
+      </tr>
+      <tr>
+        <td class="symptom">Camera shows black / "NO SIGNAL"</td>
+        <td>Camera permission denied or no camera connected</td>
+        <td class="fix">Go to <strong>System Settings → Privacy &amp; Security → Camera</strong> and enable access for your browser.</td>
+      </tr>
+      <tr>
+        <td class="symptom">"Developer cannot be verified" on first launch</td>
+        <td>App not signed with Apple Developer ID (expected)</td>
+        <td class="fix"><strong>System Settings → Privacy &amp; Security → Open Anyway</strong>, or right-click → Open.</td>
+      </tr>
+      <tr>
+        <td class="symptom">Node.js not found error in install.sh</td>
+        <td>Node.js not installed at <code>/opt/homebrew/bin/node</code></td>
+        <td class="fix">Run <code>brew install node</code> in Terminal. If brew is missing, install Homebrew first.</td>
+      </tr>
+      <tr>
+        <td class="symptom">MIRA AI panel shows OFFLINE permanently</td>
+        <td>MIRA backend not running</td>
+        <td class="fix">Start the backend (see Section 7). HUD works fine without it.</td>
+      </tr>
+      <tr>
+        <td class="symptom">HUD boots but shows no procedures</td>
+        <td>Procedure files missing or server startup error</td>
+        <td class="fix">Check <code>/tmp/charlie-hud.log</code>. Verify <code>mira-hud/</code> directory is intact with <code>server.js</code> and <code>hud.html</code>.</td>
+      </tr>
+      <tr>
+        <td class="symptom">Double-clicking app does nothing</td>
+        <td>Launcher not executable (permissions issue)</td>
+        <td class="fix">Run <code>bash install.sh</code> again from Terminal — it re-applies <code>chmod +x</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="card">
+    <h3>Getting more debug info</h3>
+    <pre><code># Check if server is running
+ps aux | grep "node server.js"
+
+# Check what's listening on port 3000
+lsof -i :3000
+
+# Full server log
+cat /tmp/charlie-hud.log
+
+# Test server responds
+curl -s http://localhost:3000 | head -5</code></pre>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- SECTION 10: QUICK REFERENCE                              -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="quickref">
+  <div class="section-header">
+    <span class="section-num">10</span>
+    <h2 class="section-title">Quick Reference</h2>
+  </div>
+
+  <div class="qr-card">
+    <h2>// CHARLIE HUD — CHEAT SHEET</h2>
+    <div class="qr-grid">
+      <div class="qr-group">
+        <h3>Endpoints</h3>
+        <div class="qr-row"><span class="qr-label">HUD Interface</span><span class="qr-value">localhost:3000</span></div>
+        <div class="qr-row"><span class="qr-label">MIRA AI Backend</span><span class="qr-value">localhost:8000</span></div>
+        <div class="qr-row"><span class="qr-label">Ollama LLM</span><span class="qr-value">localhost:11434</span></div>
+        <div class="qr-row"><span class="qr-label">PLC Modbus TCP</span><span class="qr-value">169.254.32.93:502</span></div>
+      </div>
+      <div class="qr-group">
+        <h3>Launch / Stop</h3>
+        <div class="qr-row"><span class="qr-label">Launch HUD</span><span class="qr-value">Double-click Desktop icon</span></div>
+        <div class="qr-row"><span class="qr-label">Stop server</span><span class="qr-value">pkill -f "node server.js"</span></div>
+        <div class="qr-row"><span class="qr-label">View logs</span><span class="qr-value">cat /tmp/charlie-hud.log</span></div>
+        <div class="qr-row"><span class="qr-label">Reinstall icon</span><span class="qr-value">bash mira-hud/install.sh</span></div>
+      </div>
+      <div class="qr-group">
+        <h3>File Locations</h3>
+        <div class="qr-row"><span class="qr-label">App bundle</span><span class="qr-value">mira-hud/CharlieHUD.app</span></div>
+        <div class="qr-row"><span class="qr-label">Desktop icon</span><span class="qr-value">~/Desktop/CharlieHUD.app</span></div>
+        <div class="qr-row"><span class="qr-label">Server script</span><span class="qr-value">mira-hud/server.js</span></div>
+        <div class="qr-row"><span class="qr-label">HUD interface</span><span class="qr-value">mira-hud/hud.html</span></div>
+      </div>
+      <div class="qr-group">
+        <h3>Diagnostics</h3>
+        <div class="qr-row"><span class="qr-label">Is server running?</span><span class="qr-value">ps aux | grep node</span></div>
+        <div class="qr-row"><span class="qr-label">Port in use?</span><span class="qr-value">lsof -i :3000</span></div>
+        <div class="qr-row"><span class="qr-label">Kill by port</span><span class="qr-value">lsof -ti :3000 | xargs kill</span></div>
+        <div class="qr-row"><span class="qr-label">Test PLC</span><span class="qr-value">python test_modbus.py</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  CHARLIE HUD v1.0.0 · FactoryLM Cluster · Node CHARLIE (192.168.1.12)<br>
+  MIRA — Industrial AI Maintenance Assistant
+</footer>
+
+</body>
+</html>

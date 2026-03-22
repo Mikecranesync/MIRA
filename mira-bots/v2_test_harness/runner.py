@@ -31,7 +31,8 @@ import telegram_probe                        # noqa: E402
 import agent                                 # noqa: E402
 from report_v2 import write_report_v2, _write_evidence  # noqa: E402
 
-INGEST_URL = os.getenv("INGEST_URL", "http://localhost:8002/ingest/photo")
+_MIRA_SERVER = os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost")
+INGEST_URL = os.getenv("INGEST_URL", f"{_MIRA_SERVER}:8002/ingest/photo")
 ARTIFACTS_DIR = str(_ROOT / "artifacts")
 MIRA_BOTS_ROOT = _ROOT
 MIRA_CORE_ROOT = Path.home() / "Mira" / "mira-core"

@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 # MIRA — Smoke Test
 # Checks all 5 required endpoints.
+# Set MIRA_SERVER_BASE_URL to test against a remote server (e.g. http://192.168.1.11)
 # Exit code: 0 = all pass, 1 = one or more fail
+#
+# Set MIRA_SERVER_BASE_URL for remote testing, e.g.:
+#   MIRA_SERVER_BASE_URL=http://100.86.236.11 ./smoke_test.sh
+# Defaults to http://localhost when unset.
 
 set -uo pipefail
+
+BASE="${MIRA_SERVER_BASE_URL:-http://localhost}"
 
 PASS=0
 FAIL=0
@@ -16,23 +23,24 @@ check() {
 
     status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" 2>/dev/null || echo "000")
     if [ "$status" = "$expected_status" ]; then
-        RESULTS+=("  ✅ $name ($url) → HTTP $status")
+        RESULTS+=("  PASS $name ($url) -> HTTP $status")
         PASS=$((PASS + 1))
     else
-        RESULTS+=("  ❌ $name ($url) → HTTP $status (expected $expected_status)")
+        RESULTS+=("  FAIL $name ($url) -> HTTP $status (expected $expected_status)")
         FAIL=$((FAIL + 1))
     fi
 }
 
 echo "=== MIRA Smoke Test ==="
+echo "Base URL: $BASE"
 echo ""
 
-check "open-webui"       "http://localhost:3000/health"
-check "mira-ingest"      "http://localhost:8002/health"
-check "mira-mcp"         "http://localhost:8001/health"
-check "mira-mcpo"        "http://localhost:8003/mira-mcp/docs"
-check "node-red"         "http://localhost:1880/"
-check "test-runner-results" "http://localhost:8021/results" "503"  # 503 = running, no results yet
+check "open-webui"       "${BASE}:3000/health"
+check "mira-ingest"      "${BASE}:8002/health"
+check "mira-mcp"         "${BASE}:8001/health"
+check "mira-mcpo"        "${BASE}:8003/mira-mcp/docs"
+check "node-red"         "${BASE}:1880/"
+check "test-runner-results" "${BASE}:8021/results" "503"  # 503 = running, no results yet
 
 echo "Results:"
 for r in "${RESULTS[@]}"; do

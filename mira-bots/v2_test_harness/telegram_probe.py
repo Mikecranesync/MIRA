@@ -36,7 +36,8 @@ async def probe_cases(cases_10: list[dict], artifacts_dir: str) -> ProbeResult:
         except ImportError as e:
             return ProbeResult(skipped=True, skip_reason=f"GSDEngine import failed: {e}")
 
-        webui_url = os.getenv("PROBE_OPENWEBUI_URL", "http://localhost:3000")
+        webui_url = os.getenv("PROBE_OPENWEBUI_URL",
+            os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":3000")
         reachable = await _check_webui_reachable(webui_url)
         if not reachable:
             return ProbeResult(skipped=True, skip_reason=f"OpenWebUI not reachable at {webui_url}")
@@ -96,7 +97,8 @@ async def _probe_via_gsd_engine(cases: list[dict]) -> ProbeResult:
     db_path = f"/tmp/mira_probe_{int(time.time())}.db"
     engine = GSDEngine(
         db_path=db_path,
-        openwebui_url=os.getenv("PROBE_OPENWEBUI_URL", "http://localhost:3000"),
+        openwebui_url=os.getenv("PROBE_OPENWEBUI_URL",
+            os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":3000"),
         api_key=os.getenv("OPENWEBUI_API_KEY", ""),
         collection_id="",
         vision_model=os.getenv("VISION_MODEL", "qwen2.5vl:7b"),

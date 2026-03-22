@@ -43,7 +43,8 @@ async def run_ingest_fallback():
             async with httpx.AsyncClient(timeout=60) as client:
                 with open(image_path, "rb") as img:
                     resp = await client.post(
-                        "http://localhost:8002/ingest/photo",
+                        os.environ.get("INGEST_URL",
+                            os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":8002/ingest/photo"),
                         files={"image": (os.path.basename(image_path), img, "image/jpeg")},
                         data={"asset_tag": f"TEST-{case['name']}", "caption": caption}
                     )

@@ -1,0 +1,25 @@
+#!/bin/bash
+# CharlieHUD Launcher
+# Ensures Homebrew node is in PATH and launches the HUD server
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+# Resolve project root (3 dirs up from MacOS/)
+PROJ="$(cd "$(dirname "$0")/../../.." && pwd)"
+
+# Kill any stale instance on port 3000
+pkill -f "node $PROJ/server.js" 2>/dev/null
+sleep 0.3
+
+# Start HUD server in background, log to /tmp
+cd "$PROJ"
+node server.js > /tmp/charlie-hud.log 2>&1 &
+
+# Wait for server to bind
+sleep 1.2
+
+# Open HUD in default browser
+open "http://localhost:3000"
+
+# macOS notification
+osascript -e 'display notification "Open http://localhost:3000 in your browser" with title "Charlie Node HUD" subtitle "Server started on port 3000"'

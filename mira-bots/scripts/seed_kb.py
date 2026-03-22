@@ -9,7 +9,8 @@ import io
 import json
 import requests
 
-OPENWEBUI_BASE_URL = os.environ.get("OPENWEBUI_BASE_URL", "http://localhost:3000")
+_MIRA_SERVER = os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost")
+OPENWEBUI_BASE_URL = os.environ.get("OPENWEBUI_BASE_URL", f"{_MIRA_SERVER}:3000")
 OPENWEBUI_API_KEY = os.environ.get("OPENWEBUI_API_KEY", "")
 
 HEADERS = {"Authorization": f"Bearer {OPENWEBUI_API_KEY}"} if OPENWEBUI_API_KEY else {}
