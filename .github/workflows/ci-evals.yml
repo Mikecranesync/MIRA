@@ -1,0 +1,80 @@
+name: Evaluations
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # Nightly at 6 AM UTC
+  workflow_dispatch:
+    inputs:
+      regimes:
+        description: 'Comma-separated regimes (1,2,3,4,5 or all)'
+        default: 'all'
+        type: string
+      threshold:
+        description: 'Pass threshold (0.0-1.0)'
+        default: '0.80'
+        type: string
+      mode:
+        description: 'Execution mode'
+        default: 'dry-run'
+        type: choice
+        options:
+          - dry-run
+          - offline
+          - http
+          - telethon
+
+jobs:
+  # Tier A: Fast offline tests — runs on every trigger
+  eval-fast:
+    name: Eval Offline (Scoring + Framework)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio pyyaml
+
+      - name: Run offline eval tests
+        run: |
+          pytest tests/ -v -m "not network and not slow" \
+            --ignore=tests/regime5_nemotron/
+
+  # Tier C: Full evaluation — only on schedule or manual dispatch
+  eval-full:
+    name: Full Evaluation
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: eval-fast
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio pyyaml httpx
+
+      - name: Run synthetic eval
+        env:
+          MIRA_REPLAY_MODE: ${{ inputs.mode || 'dry-run' }}
+        run: |
+          python tests/synthetic_eval.py \
+            --regimes "${{ inputs.regimes || 'all' }}" \
+            --threshold "${{ inputs.threshold || '0.80' }}" \
+            --mode "${{ inputs.mode || 'dry-run' }}" \
+            --output tests/results
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.run_number }}
+          path: tests/results/
+          retention-days: 30

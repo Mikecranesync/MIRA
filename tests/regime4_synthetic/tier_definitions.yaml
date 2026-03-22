@@ -1,0 +1,41 @@
+# Synthetic Question Evolution — Difficulty Tier Definitions
+#
+# Each seed case from seed_cases.json gets 4 question variants (one per tier).
+# The goal is to find the failure tier: highest tier where MIRA's score drops below threshold.
+
+tiers:
+  L1:
+    name: "Basic — Direct fault code query"
+    description: >
+      Well-formed question with specific fault code, equipment model, and clear symptom.
+      A senior tech asking a colleague.
+    example_transform: "Use full equipment name + fault code + clear symptom description"
+    expected_score: ">= 0.90"
+    difficulty: easy
+
+  L2:
+    name: "Abbreviated — Technician shorthand"
+    description: >
+      Abbreviated notation, common industry shorthand, missing context.
+      A busy tech texting from the floor.
+    example_transform: "Drop brand name, use abbreviations (PF525, OC, conv), minimal punctuation"
+    expected_score: ">= 0.75"
+    difficulty: medium
+
+  L3:
+    name: "Ambiguous — Incomplete information"
+    description: >
+      Vague symptoms, no fault code, multiple possible causes.
+      A tech who doesn't know what's wrong yet.
+    example_transform: "Describe only the symptom (noise, heat, stops), no equipment ID, no fault code"
+    expected_score: ">= 0.60"
+    difficulty: hard
+
+  L4:
+    name: "Adversarial — Multi-fault + misspellings"
+    description: >
+      Misspellings, wrong terminology, multiple simultaneous symptoms,
+      mixed equipment references. Stress test for robustness.
+    example_transform: "Add typos, wrong brand names, multiple unrelated symptoms, slang"
+    expected_score: ">= 0.40"
+    difficulty: adversarial

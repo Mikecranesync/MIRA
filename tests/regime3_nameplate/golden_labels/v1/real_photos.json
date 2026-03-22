@@ -1,0 +1,115 @@
+{
+  "description": "Ground truth labels for real factory photos — PENDING Mike's annotation",
+  "source": "MIRA test case 1/",
+  "status": "INCOMPLETE — labels needed from physical inspection",
+  "cases": [
+    {
+      "id": "case1_photo_01",
+      "image": "MIRA test case 1/PXL_20260219_043746450.jpg",
+      "ground_truth": {
+        "classification": null,
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "component_type": null
+      },
+      "notes": "NEEDS ANNOTATION"
+    },
+    {
+      "id": "case1_photo_02",
+      "image": "MIRA test case 1/PXL_20260219_045141856.MACRO_FOCUS.jpg",
+      "ground_truth": {
+        "classification": null,
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "component_type": null
+      },
+      "notes": "NEEDS ANNOTATION — macro close-up"
+    },
+    {
+      "id": "case1_photo_03",
+      "image": "MIRA test case 1/PXL_20260219_045632544.MACRO_FOCUS.jpg",
+      "ground_truth": {
+        "classification": null,
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "component_type": null
+      },
+      "notes": "NEEDS ANNOTATION — macro close-up"
+    },
+    {
+      "id": "case1_photo_04",
+      "image": "MIRA test case 1/PXL_20260219_045640877.jpg",
+      "ground_truth": {
+        "classification": null,
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "component_type": null
+      },
+      "notes": "NEEDS ANNOTATION"
+    },
+    {
+      "id": "case1_photo_05",
+      "image": "MIRA test case 1/PXL_20260219_045647225.MACRO_FOCUS.jpg",
+      "ground_truth": {
+        "classification": null,
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "component_type": null
+      },
+      "notes": "NEEDS ANNOTATION — macro close-up"
+    },
+    {
+      "id": "case1_photo_06",
+      "image": "MIRA test case 1/PXL_20260219_045654220.jpg",
+      "ground_truth": {
+        "classification": null,
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "component_type": null
+      },
+      "notes": "NEEDS ANNOTATION"
+    },
+    {
+      "id": "case1_photo_07",
+      "image": "MIRA test case 1/PXL_20260219_045719632.jpg",
+      "ground_truth": {
+        "classification": null,
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "component_type": null
+      },
+      "notes": "NEEDS ANNOTATION"
+    },
+    {
+      "id": "case1_photo_08",
+      "image": "MIRA test case 1/PXL_20260219_045737047.MACRO_FOCUS.jpg",
+      "ground_truth": {
+        "classification": null,
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "component_type": null
+      },
+      "notes": "NEEDS ANNOTATION — macro close-up"
+    },
+    {
+      "id": "case1_photo_09",
+      "image": "MIRA test case 1/PXL_20260219_045802513.MP.jpg",
+      "ground_truth": {
+        "classification": null,
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "component_type": null
+      },
+      "notes": "NEEDS ANNOTATION"
+    }
+  ]
+}

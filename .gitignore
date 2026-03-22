@@ -26,6 +26,7 @@ artifacts/latest_run/
 artifacts/v2/
 .pytest_cache/
 *.log
+tests/results/
 
 # SQLite databases + WAL files
 *.db
