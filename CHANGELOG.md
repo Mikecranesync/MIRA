@@ -5,6 +5,27 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-03-21
+
+### Fixed
+- **Reset bug** (`engine.py`): active session messages classified as "off_topic" now fall through to RAG worker instead of resetting with "I help maintenance technicians..." — fixes photo → options → "I don't know yet" → reset flow
+- **`last_question` persistence** (`engine.py`): photo-no-intent path now sets `session_context.last_question` so follow-up routing always has context
+- **Grounding validation** (`engine.py`): threshold raised from 3 to 5 significant words, stop-words excluded from overlap calculation
+- **FSM transition validation** (`engine.py`): invalid `next_state` from LLM rejected and logged instead of blindly accepted
+- **Bare except blocks** (`engine.py`, `telemetry.py`, `rag_worker.py`): 4 silent `except Exception: pass` now log before passing
+
+### Added
+- Safety keywords expanded 11 → 21: rotating hazard, pinch point, entanglement, confined space, pressurized, caught in, crush/fall hazard, chemical spill, gas leak
+- Technician abbreviation dictionary expanded 38 → 63 terms: seq, e-stop, pneu, cont, act, prox, sol, vlv, brg, enc, srv, io, di/do/ai/ao, pid, pmp, fdr, intlk, and more
+- `MIRA_HISTORY_LIMIT` env var (default 20) — configurable conversation history limit
+- C4 architecture diagrams rewritten as `flowchart`/`sequenceDiagram` for GitHub rendering
+- Status audit system (`.planning/STATUS_AUDIT.md`)
+- 18 GitHub issues created with labels, milestones (v0.5.0, v1.0.0), and tier classification
+
+### Changed
+- `docs/README.md` — updated container count (7→9), added missing doc links
+- `docs/architecture/*.md` — all 5 diagrams use GitHub-renderable Mermaid syntax
+
 ## [0.4.1] — 2026-03-20
 
 ### Fixed
