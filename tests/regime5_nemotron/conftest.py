@@ -7,8 +7,10 @@ import os
 import pytest
 
 
-@pytest.fixture(autouse=True)
-def _check_nvidia_key():
-    """Skip all Nemotron tests if NVIDIA_API_KEY not available."""
-    if not os.getenv("NVIDIA_API_KEY"):
-        pytest.skip("Nemotron tests require NVIDIA_API_KEY in Doppler")
+@pytest.fixture
+def nvidia_api_key() -> str:
+    """Get NVIDIA API key, skip if not available."""
+    key = os.getenv("NVIDIA_API_KEY", "")
+    if not key:
+        pytest.skip("NVIDIA_API_KEY not set — Nemotron live tests skipped")
+    return key

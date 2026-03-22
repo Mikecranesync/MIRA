@@ -50,11 +50,11 @@ REGIME_MAP = {
 }
 
 
-def _check_prerequisites(regime: str) -> tuple[bool, str]:
+def _check_prerequisites(regime: str, mode: str = "dry-run") -> tuple[bool, str]:
     """Check if a regime's prerequisites are met."""
-    if regime == "regime5_nemotron":
+    if regime == "regime5_nemotron" and mode not in ("dry-run", "offline"):
         if not os.getenv("NVIDIA_API_KEY"):
-            return False, "NVIDIA_API_KEY not set — Regime 5 blocked"
+            return False, "NVIDIA_API_KEY not set — Regime 5 blocked for live mode"
     return True, ""
 
 
@@ -114,7 +114,7 @@ async def run_all(
     runs: list[RunResult] = []
 
     for regime in regimes:
-        ok, msg = _check_prerequisites(regime)
+        ok, msg = _check_prerequisites(regime, mode=mode)
         if not ok:
             logger.warning("Skipping %s: %s", regime, msg)
             continue
