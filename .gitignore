@@ -27,8 +27,6 @@ artifacts/v2/
 .pytest_cache/
 *.log
 
-# SQLite DB + WAL files
-data/mira.db
 # SQLite databases + WAL files
 *.db
 *.db-shm
@@ -56,6 +54,9 @@ node_modules/
 
 # Secrets directory (empty — kept as marker)
 Secrets/
+
+# Backup files
+*.bak
 
 # Archives (large binary blobs)
 archives/
