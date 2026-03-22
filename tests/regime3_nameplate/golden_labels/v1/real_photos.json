@@ -1,115 +1,125 @@
 {
-  "description": "Ground truth labels for real factory photos — PENDING Mike's annotation",
+  "description": "Ground truth labels for real factory photos — annotated from visual inspection",
   "source": "MIRA test case 1/",
-  "status": "INCOMPLETE — labels needed from physical inspection",
+  "status": "ANNOTATED",
+  "project_context": "MACK RIDES 'Racing Coaster' (Stardust Racers) at Universal Orlando — electrical engineering by EMIS, document set 2400WK0266",
   "cases": [
     {
       "id": "case1_photo_01",
       "image": "MIRA test case 1/PXL_20260219_043746450.jpg",
       "ground_truth": {
-        "classification": null,
+        "classification": "EQUIPMENT_PHOTO",
         "make": null,
         "model": null,
         "catalog": null,
-        "component_type": null
+        "serial": null,
+        "component_type": "HMI tablet"
       },
-      "notes": "NEEDS ANNOTATION"
+      "notes": "Rugged HMI tablet showing Stardust Racers ride alarm system — active alarms for GEN-BB, FBH-HH faults. Tablet manufacturer not legible from photo."
     },
     {
       "id": "case1_photo_02",
       "image": "MIRA test case 1/PXL_20260219_045141856.MACRO_FOCUS.jpg",
       "ground_truth": {
-        "classification": null,
-        "make": null,
+        "classification": "ELECTRICAL_PRINT",
+        "make": "MACK RIDES",
         "model": null,
-        "catalog": null,
-        "component_type": null
+        "catalog": "2400WK0266",
+        "serial": null,
+        "component_type": "electrical drawing"
       },
-      "notes": "NEEDS ANNOTATION — macro close-up"
+      "notes": "Macro of laptop screen showing PDF title block. File: 2400WK0266_HDW_AB01_US_250115.pdf. Customer: Universal Orlando. Project: Racing Coaster."
     },
     {
       "id": "case1_photo_03",
       "image": "MIRA test case 1/PXL_20260219_045632544.MACRO_FOCUS.jpg",
       "ground_truth": {
-        "classification": null,
-        "make": null,
+        "classification": "ELECTRICAL_PRINT",
+        "make": "EMIS",
         "model": null,
         "catalog": null,
-        "component_type": null
+        "serial": null,
+        "component_type": "electrical schematic"
       },
-      "notes": "NEEDS ANNOTATION — macro close-up"
+      "notes": "Temperature monitoring schematic. ZIEHL (Ziehl-Abegg) component block visible. PT100 sensor wiring. EMIS logo in title block."
     },
     {
       "id": "case1_photo_04",
       "image": "MIRA test case 1/PXL_20260219_045640877.jpg",
       "ground_truth": {
-        "classification": null,
-        "make": null,
+        "classification": "ELECTRICAL_PRINT",
+        "make": "EMIS",
         "model": null,
         "catalog": null,
-        "component_type": null
+        "serial": null,
+        "component_type": "electrical schematic"
       },
-      "notes": "NEEDS ANNOTATION"
+      "notes": "Power distribution and sensor wiring schematic. Multiple junction boxes with PT100 connections. EMIS title block top and bottom."
     },
     {
       "id": "case1_photo_05",
       "image": "MIRA test case 1/PXL_20260219_045647225.MACRO_FOCUS.jpg",
       "ground_truth": {
-        "classification": null,
-        "make": null,
+        "classification": "ELECTRICAL_PRINT",
+        "make": "EMIS",
         "model": null,
         "catalog": null,
-        "component_type": null
+        "serial": null,
+        "component_type": "electrical schematic"
       },
-      "notes": "NEEDS ANNOTATION — macro close-up"
+      "notes": "Motor circuit schematic, page 1098 of 3742. Macro close-up. EMIS title block at bottom."
     },
     {
       "id": "case1_photo_06",
       "image": "MIRA test case 1/PXL_20260219_045654220.jpg",
       "ground_truth": {
-        "classification": null,
-        "make": null,
+        "classification": "ELECTRICAL_PRINT",
+        "make": "EMIS",
         "model": null,
         "catalog": null,
-        "component_type": null
+        "serial": null,
+        "component_type": "electrical schematic"
       },
-      "notes": "NEEDS ANNOTATION"
+      "notes": "Contactor and safety relay circuit. Components 43.1, 43.2 visible. Shows contactor coil circuits with overload and safety interlocks. EMIS title block."
     },
     {
       "id": "case1_photo_07",
       "image": "MIRA test case 1/PXL_20260219_045719632.jpg",
       "ground_truth": {
-        "classification": null,
-        "make": null,
+        "classification": "ELECTRICAL_PRINT",
+        "make": "MACK RIDES",
         "model": null,
-        "catalog": null,
-        "component_type": null
+        "catalog": "2400WK0266",
+        "serial": null,
+        "component_type": "bill of materials"
       },
-      "notes": "NEEDS ANNOTATION"
+      "notes": "Hardware BOM/parts list. Manufacturers listed: Phoenix Contact, Hager, Lapp, Rittal. File: 2400WK0266_HDW_AB01_US_250115.pdf."
     },
     {
       "id": "case1_photo_08",
       "image": "MIRA test case 1/PXL_20260219_045737047.MACRO_FOCUS.jpg",
       "ground_truth": {
-        "classification": null,
-        "make": null,
+        "classification": "ELECTRICAL_PRINT",
+        "make": "MACK RIDES",
         "model": null,
-        "catalog": null,
-        "component_type": null
+        "catalog": "10172",
+        "serial": null,
+        "component_type": "cable overview"
       },
-      "notes": "NEEDS ANNOTATION — macro close-up"
+      "notes": "Macro close-up of cable overview section. Editor: Raphael Reichenbach. Date: 15.01.2025. Customer: Universal Orlando. Revision AB01. Components: MLM 16, MSR220K6."
     },
     {
       "id": "case1_photo_09",
       "image": "MIRA test case 1/PXL_20260219_045802513.MP.jpg",
       "ground_truth": {
-        "classification": null,
-        "make": null,
+        "classification": "ELECTRICAL_PRINT",
+        "make": "EMIS",
         "model": null,
         "catalog": null,
-        "component_type": null
+        "serial": null,
+        "component_type": "electrical schematic"
       },
-      "notes": "NEEDS ANNOTATION"
+      "notes": "Full schematic page — same layout as photo 04. Multiple junction boxes with PT100 sensors, power distribution. EMIS title blocks top and bottom."
     }
   ]
 }
