@@ -5,6 +5,15 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-03-21
+
+### Added
+- `interactions` table in SQLite — append-only log of every user/bot exchange with `response_time_ms`
+- `harvest-interactions.py` — automated quality flag pipeline: session resets, slow responses, confusion signals, premature endings, repeated questions
+- Quality flags output to `mira-bots/tools/output/quality-flags.md` + `interaction-log.json`
+- GitHub integration: `--post-github` flag posts summary to issue #18
+- Launchd cron schedule documented for daily harvest on BRAVO (6am)
+
 ## [0.5.0] — 2026-03-21
 
 ### Fixed

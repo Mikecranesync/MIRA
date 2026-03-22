@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import sqlite3
+import time
 
 from .guardrails import (
     INTENT_KEYWORDS,
@@ -184,7 +185,16 @@ class Supervisor:
 
     async def process(self, chat_id: str, message: str, photo_b64: str = None) -> str:
         """Main entry point. Returns reply string (backward-compatible)."""
+        t0 = time.monotonic()
         result = await self.process_full(chat_id, message, photo_b64)
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        self._log_interaction(
+            chat_id, message, result["reply"],
+            fsm_state=result.get("next_state", ""),
+            confidence=result.get("confidence", ""),
+            has_photo=bool(photo_b64),
+            response_time_ms=elapsed_ms,
+        )
         return result["reply"]
 
     async def process_full(
@@ -565,6 +575,21 @@ class Supervisor:
                 created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS interactions (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id          TEXT NOT NULL,
+                platform         TEXT NOT NULL DEFAULT 'telegram',
+                user_message     TEXT NOT NULL,
+                bot_response     TEXT NOT NULL,
+                fsm_state        TEXT,
+                intent           TEXT,
+                has_photo        INTEGER DEFAULT 0,
+                confidence       TEXT,
+                response_time_ms INTEGER,
+                created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         try:
             db.execute(
                 "ALTER TABLE conversation_state ADD COLUMN voice_enabled INTEGER NOT NULL DEFAULT 0"
@@ -641,6 +666,28 @@ class Supervisor:
         ctx["history"] = history
         state["context"] = ctx
         self._save_state(chat_id, state)
+
+    def _log_interaction(
+        self, chat_id: str, message: str, reply: str,
+        *, fsm_state: str = "", intent: str = "", has_photo: bool = False,
+        confidence: str = "", response_time_ms: int = 0, platform: str = "telegram",
+    ):
+        """Append-only log of every user/bot exchange for quality analysis."""
+        try:
+            db = sqlite3.connect(self.db_path)
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute(
+                """INSERT INTO interactions
+                   (chat_id, platform, user_message, bot_response, fsm_state,
+                    intent, has_photo, confidence, response_time_ms)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (chat_id, platform, message, reply, fsm_state,
+                 intent, int(has_photo), confidence, response_time_ms),
+            )
+            db.commit()
+            db.close()
+        except Exception as e:
+            logger.warning("Failed to log interaction: %s", e)
 
     # ------------------------------------------------------------------
     # Response parsing
