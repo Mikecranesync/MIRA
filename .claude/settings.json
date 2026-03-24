@@ -28,5 +28,28 @@
       "Bash(echo *)"
     ],
     "deny": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruff check --fix \"$CLAUDE_FILE_PATH\" 2>/dev/null; ruff format \"$CLAUDE_FILE_PATH\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '--- MIRA v2.0 ---' && git log --oneline -5 && echo '--- Skills ---' && ls .claude/skills/*.md 2>/dev/null | xargs -I{} basename {} .md | tr '\\n' ' ' && echo"
+          }
+        ]
+      }
+    ]
   }
 }
