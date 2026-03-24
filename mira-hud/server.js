@@ -18,6 +18,7 @@ function getLanIP() {
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server);
+let pythonBackendActive = false;  // set when mira_core.py registers; gates server.js RAG
 
 // ─── AI SETUP ────────────────────────────────────────────────────────────────
 const DOCS_DIR = path.join(__dirname, 'vision_backend', 'docs');
@@ -36,9 +37,9 @@ const VISION_PROMPT =
   '{"equipment":"type or \'Unknown\'","model":"brand and model if visible or \'Unknown\'","observations":"1-2 sentence description","alerts":["safety concerns — empty array if none"]}\n' +
   'If no industrial equipment is visible set equipment to "General environment".';
 
-function buildRAGPrompt(equipment, model, question) {
-  const equip = [equipment, model].filter(s => s && s !== 'Unknown').join(' ');
-  return `You are MIRA, an industrial maintenance assistant. Answer concisely.\nEquipment: ${equip || 'Unknown'}\nQuestion: ${question}${DOC_CONTEXT ? '\n\nDocumentation:\n' + DOC_CONTEXT : ''}\n\nAnswer in 2-4 sentences. Be specific. Include fault code reset steps if relevant.`;
+function buildRAGPrompt(equipContext, question) {
+  const equip = (equipContext || '').replace(/\s+/g, ' ').trim() || 'Unknown';
+  return `You are MIRA, an industrial maintenance assistant. Answer concisely.\nEquipment: ${equip}\nQuestion: ${question}${DOC_CONTEXT ? '\n\nDocumentation:\n' + DOC_CONTEXT : ''}\n\nAnswer in 2-4 sentences. Be specific. Include fault code reset steps if relevant.`;
 }
 
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
@@ -72,11 +73,11 @@ async function callVision(base64Jpeg) {
   return { result: parseVisionJSON(raw), raw, usage: msg.usage };
 }
 
-async function callRAG(equipment, model, question) {
+async function callRAG(equipContext, question) {
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 400,
-    messages: [{ role: 'user', content: buildRAGPrompt(equipment, model, question) }],
+    messages: [{ role: 'user', content: buildRAGPrompt(equipContext, question) }],
   });
   return { answer: msg.content[0].text.trim(), usage: msg.usage };
 }
@@ -264,6 +265,12 @@ io.on('connection', (socket) => {
     io.emit('mira_insight', data);
   });
 
+  // Python backend registration — disables server.js RAG to prevent duplicate responses
+  socket.on('registerPythonBackend', () => {
+    pythonBackendActive = true;
+    console.log('[backend] Python mira_core connected — server.js RAG disabled');
+  });
+
   // Python backend push paths — re-broadcast to all clients
   socket.on('visionUpdate', (data) => { io.emit('visionUpdate', data); });
   socket.on('miraResponse', (data) => { io.emit('miraResponse', data); });
@@ -312,11 +319,12 @@ io.on('connection', (socket) => {
     const t0 = Date.now();
     const question = 'What should the technician check or know about this equipment right now?';
     try {
-      const { answer, usage } = await callRAG(equipment, model || '', question);
+      const equipContext = `${equipment} ${model || ''}`.trim();
+      const { answer, usage } = await callRAG(equipContext, question);
       io.emit('miraResponse', {
         answer,
         sources: DOC_CONTEXT ? ['docs'] : [],
-        equipment_context: `${equipment} ${model || ''}`.trim(),
+        equipment_context: equipContext,
       });
       logSession('mira_response', {
         equipment, model,
@@ -337,14 +345,13 @@ io.on('connection', (socket) => {
   // Text query from browser query bar — re-broadcast + AI response
   socket.on('techQuery', async (data) => {
     io.emit('techQuery', data);  // re-broadcast for display + Python path
-    if (!anthropic || data.source !== 'text') return;
+    if (!anthropic || data.source !== 'text' || pythonBackendActive) return;
     const question = (data.query || '').trim();
     if (!question) return;
     const t0 = Date.now();
     try {
-      const ctx   = (data.equipment_context || '').trim();
-      const parts = ctx.split(' ');
-      const { answer, usage } = await callRAG(parts[0] || 'Unknown', parts.slice(1).join(' '), question);
+      const ctx = (data.equipment_context || '').trim();
+      const { answer, usage } = await callRAG(ctx || 'Unknown', question);
       io.emit('miraResponse', {
         answer,
         sources: DOC_CONTEXT ? ['docs'] : [],
@@ -372,6 +379,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', (reason) => {
+    if (pythonBackendActive && io.engine.clientsCount === 0) {
+      pythonBackendActive = false;
+      console.log('[backend] Python mira_core disconnected — server.js RAG re-enabled');
+    }
     console.log(`[HUD] client disconnected: ${socket.id}`);
     logSession('client_disconnect', { socket_id: socket.id, reason });
   });

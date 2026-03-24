@@ -46,6 +46,7 @@ _voice_queue: asyncio.Queue = None  # set in main()
 @sio.event
 async def connect():
     print(f"[mira] connected to {SERVER_URL}")
+    await sio.emit("registerPythonBackend", {})
 
 
 @sio.event

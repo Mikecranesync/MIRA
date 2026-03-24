@@ -552,6 +552,7 @@ document.getElementById('mira-input').addEventListener('keydown', (e) => {
 let scanning  = true;
 let analyzing = false;
 let _lastVision = { equipment: '', model: '' };
+let _confirmedEquipment = '';  // set on CONFIRM, survives rescans to 'General environment'
 
 function captureAndAnalyze() {
   if (!scanning || analyzing) return;
@@ -601,6 +602,7 @@ function confirmYes() {
   setScanStatus('');
   document.getElementById('mira-response-text').textContent = 'Asking MIRA...';
   socket.emit('confirmEquipment', _lastVision);
+  _confirmedEquipment = `${_lastVision.equipment} ${_lastVision.model}`.trim();
 }
 
 function confirmNo() {
@@ -670,7 +672,7 @@ function sendQuery() {
   socket.emit('techQuery', {
     query: q,
     source: 'text',
-    equipment_context: `${_lastVision.equipment} ${_lastVision.model}`.trim(),
+    equipment_context: _confirmedEquipment || `${_lastVision.equipment} ${_lastVision.model}`.trim(),
   });
 }
 

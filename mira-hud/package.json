@@ -4,8 +4,9 @@
   "description": "Charlie Node Industrial Tech HUD",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "doppler run --project factorylm --config prd -- node server.js",
+    "dev": "doppler run --project factorylm --config prd -- node server.js",
+    "start:bare": "node server.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
