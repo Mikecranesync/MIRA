@@ -266,6 +266,35 @@ def mark_manual_verified(row_id: str) -> None:
         conn.commit()
 
 
+def manual_exists_for(make: str, model: str, tenant_id: str) -> bool:
+    """Check if we already have manual content for a given make/model in the KB."""
+    try:
+        with _engine().connect() as conn:
+            count = conn.execute(text("""
+                SELECT COUNT(*) FROM knowledge_entries
+                WHERE tenant_id = :tid
+                  AND source_type = 'manual'
+                  AND LOWER(manufacturer) = LOWER(:make)
+                  AND LOWER(model_number) = LOWER(:model)
+            """), {"tid": tenant_id, "make": make, "model": model}).scalar()
+        return (count or 0) > 0
+    except Exception:
+        return False  # fail open — don't block ingest on lookup errors
+
+
+def queue_manual_url(url: str, make: str, model: str, tenant_id: str) -> bool:
+    """Queue a manual URL for the nightly ingest pipeline. Wraps insert_manual_cache_url."""
+    title = f"{make} {model} manual (auto-discovered from equipment photo)"
+    return insert_manual_cache_url(
+        manufacturer=make,
+        model=model,
+        manual_url=url,
+        manual_title=title,
+        source="photo_ingest",
+        confidence=0.6,
+    )
+
+
 def insert_manual_cache_url(
     manufacturer: str,
     model: str | None,
