@@ -129,12 +129,14 @@ def classify_photo(photo_path: Path, client) -> dict:
 # ── NeonDB Knowledge Insert ──────────────────────────────────────────────────
 
 
-def insert_to_neondb(result: dict, photo_path: Path, tenant_id: str) -> str | None:
+def insert_to_neondb(
+    result: dict, photo_path: Path, tenant_id: str, source_prefix: str = "gphotos",
+) -> str | None:
     """Insert a confirmed nameplate into NeonDB knowledge_entries."""
     sys.path.insert(0, str(REPO_ROOT / "mira-core" / "mira-ingest"))
     from db.neon import insert_knowledge_entry, knowledge_entry_exists
 
-    source_url = f"gphotos://{photo_path.name}"
+    source_url = f"{source_prefix}://{photo_path.name}"
 
     if knowledge_entry_exists(tenant_id, source_url, 0):
         logger.info("Already ingested: %s (skipping)", photo_path.name)
@@ -276,6 +278,17 @@ def main():
         default=str(INCOMING),
         help=f"Override incoming directory (default: {INCOMING})",
     )
+    parser.add_argument(
+        "--source-prefix",
+        type=str,
+        default="gphotos",
+        help="Source URL prefix (default: gphotos → gphotos://filename)",
+    )
+    parser.add_argument(
+        "--no-move",
+        action="store_true",
+        help="Don't move files to processed/ (for external pipeline use)",
+    )
     args = parser.parse_args()
 
     incoming = Path(args.incoming_dir)
@@ -318,7 +331,7 @@ def main():
 
         if not result.get("is_nameplate"):
             skipped.append(photo.name)
-            if not args.dry_run:
+            if not args.dry_run and not args.no_move:
                 shutil.move(str(photo), str(PROCESSED / photo.name))
             continue
 
@@ -327,7 +340,7 @@ def main():
         if confidence == "low" and not args.include_low:
             low_confidence.append(photo.name)
             logger.info("  Low confidence — skipping: %s", photo.name)
-            if not args.dry_run:
+            if not args.dry_run and not args.no_move:
                 shutil.move(str(photo), str(PROCESSED / f"low_{photo.name}"))
             continue
 
@@ -340,13 +353,14 @@ def main():
         if not args.dry_run:
             # Insert to NeonDB
             if tenant_id:
-                insert_to_neondb(result, photo, tenant_id)
+                insert_to_neondb(result, photo, tenant_id, args.source_prefix)
 
             # Append to Regime 3 golden labels
             append_golden_label(result, photo)
 
             # Move to processed
-            shutil.move(str(photo), str(PROCESSED / photo.name))
+            if not args.no_move:
+                shutil.move(str(photo), str(PROCESSED / photo.name))
 
         confirmed.append({"name": photo.name, "result": result})
 
