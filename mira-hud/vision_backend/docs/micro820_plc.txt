@@ -1,0 +1,61 @@
+Allen-Bradley Micro820 Programmable Logic Controller
+Maintenance Reference — Field Quick Guide
+
+IDENTIFICATION
+The Micro820 is a compact PLC from Rockwell Automation / Allen-Bradley. It is identified by catalog number on the front face plate: 2080-LC20-20QBB (20 I/O, transistor output), 2080-LC20-20QWB (relay output), etc. The controller features a built-in EtherNet/IP port, USB programming port, and optional embedded serial (RS-232/RS-485). It is programmed using Connected Components Workbench (CCW) software.
+
+POWER AND WIRING
+Supply voltage: 24VDC (2080-LC20 series). Verify 24V present at V+/V- terminals before troubleshooting.
+Digital inputs: 0–13 on base unit. 24VDC sourcing or sinking configurable per group. Input impedance 3kΩ typical.
+Digital outputs: 14–19 on base unit. Transistor (NPN sink) or relay type depending on catalog number. Max load: relay = 2A per point, transistor = 0.5A per point.
+Analog I/O: Available on 2080-IF2 (2 analog inputs) and 2080-OF2 (2 analog outputs) expansion modules.
+Important: Never apply AC voltage to DC input terminals. Reversed polarity on 24VDC supply will not damage unit but will prevent operation.
+
+STATUS INDICATORS
+PWR (green): Power OK. Off = no 24VDC supply or blown fuse.
+RUN (green): Controller in RUN mode executing program. Flashing = program fault.
+FAULT (red): Hardware or program fault active. Solid red = critical fault, requires Clear Faults in CCW.
+LINK (green): EtherNet/IP link active.
+COMM (amber): USB or serial communication active.
+
+FAULT TYPES AND RESET PROCEDURES
+Minor Fault: Program continues to run. Indicated by flashing RUN LED. View in CCW: Controller → Faults tab. Common causes: math overflow, undeclared function block error. Reset: CCW → Clear Minor Faults, or cycle power.
+Major Fault: Program stops executing. RUN LED off, FAULT LED solid red. Controller will not restart without explicit clear. Common causes: watchdog timeout, corrupted task, illegal instruction. Reset: CCW → Controller → Clear Major Faults. If fault repeats, check program for infinite loops or division by zero.
+Hardware Fault: Physical I/O module mismatch or expansion bus error. Verify expansion modules are seated and powered. Check for bent connector pins on expansion bus.
+
+ETHERNETIP CONFIGURATION
+Default IP: Unassigned (DHCP) from factory. Set static IP via USB using CCW: Controller Properties → EtherNet/IP → set IP address, subnet, gateway.
+Port: EtherNet/IP uses port 44818 for explicit messaging, port 2222 for implicit (I/O) messaging.
+To ping controller from laptop: connect via USB first, set IP in CCW, then use standard ping to verify.
+IMPORTANT: After changing IP address, cycle controller power to apply.
+
+EXPANSION MODULES
+Modules plug into right side of base controller. Maximum 4 expansion modules.
+Common modules: 2080-IF2 (2×analog in 0-10V/4-20mA), 2080-OF2 (2×analog out), 2080-IQ4OB4 (4×DI + 4×DO), 2080-SERIALISOL (isolated RS-232/RS-485).
+If a module is removed and re-installed, CCW may show I/O mismatch fault. Clear by downloading program with correct module configuration, or re-verify hardware catalog numbers match CCW project.
+
+COMMON WIRING ISSUES
+Digital input not reading: Check 24VDC common (ground reference for inputs). Check wiring to correct terminal (0-13). Verify input device output voltage is 15-30VDC.
+Digital output not switching: Check output fuse (F1 on relay modules — 2A fast-blow). Verify load wiring polarity for transistor outputs. For relay outputs, verify load voltage present on common terminal.
+Analog input reading 0 or full scale: Verify module type (current loop vs voltage). For 4-20mA: check loop power supply present and verify 250Ω shunt resistor if using voltage-input module in current mode.
+
+MODBUS RTU (via 2080-SERIALISOL module)
+Default settings: 9600 baud, 8-N-1, address configurable in ladder.
+For Modbus RTU to VFD: use MSG instruction in CCW ladder. Service type = Modbus RTU, function code as required.
+RS-485 wiring: A+ to A+, B- to B-, termination resistor 120Ω at each end of cable.
+
+BACKUP AND RESTORE
+Always export project from CCW (File → Export) before any firmware update or hardware replacement.
+Replace controller: install new unit, download project via USB, verify I/O hardware matches.
+SD card slot (if present): Can store program image for automatic download on power-up if controller is blank.
+
+PREVENTIVE MAINTENANCE
+Monthly: Verify all LED indicators normal (PWR green, RUN green, FAULT off). Inspect terminal wiring for loose connections.
+Annually: Check 24VDC power supply voltage under load (should be 24V ±10%). Inspect expansion bus connectors. Back up project from CCW.
+Lifespan: Relay output contacts rated 100,000 operations. Replace controller if relay contact welding becomes frequent.
+
+COMMON FIELD QUESTIONS
+How to enter RUN mode without CCW: Hold Mode key (if present) or use DIP switches per catalog instructions. Most 2080-LC20 have no mode switch — use CCW.
+How to clear program and restart: CCW → Controller → Clear Program. Or cycle power with Mode switch in PROG position if equipped.
+Why is FAULT LED blinking: Blinking FAULT indicates fault has been cleared but controller needs power cycle to fully reset.
+How to check I/O status without CCW: If HMI is present, add I/O status screens. Otherwise, CCW → Go Online → Controller tags show live I/O values.

@@ -236,20 +236,6 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 .dot.green{background:#00ff88}
 .dot.orange{background:#ffaa00}
 .dot.red{background:#ff3333}
-
-/* ─── VOICE STATES ─── */
-@keyframes pulse-border{
-  0%,100%{box-shadow:0 0 0 0 rgba(255,170,0,.6)}
-  50%{box-shadow:0 0 8px 2px rgba(255,170,0,.25)}
-}
-#query-bar.listening #query-input{border-color:#ffaa00;color:#ffaa00;animation:pulse-border 1.2s infinite}
-#query-bar.locked    #query-input{border-color:#00ff88;color:#00ff88}
-#query-bar.sending   #query-input{border-color:#00ff88;color:#5a9977;animation:blink 1s infinite}
-#voice-indicator{
-  font-size:8px;letter-spacing:2px;color:#5a9977;
-  position:absolute;bottom:52px;left:50%;transform:translateX(-50%);
-  width:68%;text-align:right;pointer-events:none
-}
 </style>
 </head>
 <body>
@@ -358,11 +344,9 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 
     <!-- Query bar -->
     <div id="query-bar">
-      <input id="query-input" type="text" placeholder="ASK MIRA... (SPACE = voice | type + Enter)" maxlength="400" autocomplete="off"/>
+      <input id="query-input" type="text" placeholder="ASK MIRA... (SPACE = voice query)" maxlength="400" autocomplete="off"/>
       <button id="query-send">ASK ▶</button>
     </div>
-
-    <div id="voice-indicator"></div>
 
     <!-- Nav -->
     <div id="nav">
@@ -625,135 +609,36 @@ function startScanning() {
   setScanStatus('');
 }
 
+// ─── MIRA RESPONSE ───────────────────────────────────────────
+socket.on('miraResponse', (d) => {
+  document.getElementById('mira-response-text').textContent = d.answer || '';
+  const srcs = d.sources || [];
+  document.getElementById('mira-sources').textContent = srcs.length ? 'SRC: ' + srcs.join(', ') : '';
+  if (d.answer) miraAppendLine(d.answer, 'response');
+});
+
 // ─── TECH QUERY DISPLAY ──────────────────────────────────────
 socket.on('techQuery', (d) => {
   if (d.query) miraAppendLine('▸ ' + d.query, 'query');
 });
 
-// ─── QUERY BAR + VOICE ───────────────────────────────────────
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition = null;
-let voiceState  = 'idle';   // 'idle' | 'listening' | 'locked' | 'sending'
-let voiceMuted  = false;
-
-const queryBar   = document.getElementById('query-bar');
-const queryInput = document.getElementById('query-input');
-const querySend  = document.getElementById('query-send');
-const voiceInd   = document.getElementById('voice-indicator');
-
-function setVoiceState(s) {
-  voiceState = s;
-  queryBar.className = s === 'idle' ? '' : s;
-  voiceInd.textContent = {
-    idle:      SR ? 'SPACE = voice' : '',
-    listening: 'SPACE = stop  |  ESC = cancel',
-    locked:    'SPACE or ENTER = send  |  ESC = cancel',
-    sending:   '',
-  }[s] || '';
-}
-setVoiceState('idle');
-
-function voiceCancel() {
-  if (recognition) { try { recognition.abort(); } catch(e){} recognition = null; }
-  queryInput.value = '';
-  queryInput.placeholder = 'ASK MIRA... (SPACE = voice | type + Enter)';
-  setVoiceState('idle');
-}
-
+// ─── QUERY BAR ───────────────────────────────────────────────
 function sendQuery() {
-  const q = queryInput.value.trim();
+  const input = document.getElementById('query-input');
+  const q = input.value.trim();
   if (!q) return;
-  queryInput.value = 'MIRA PROCESSING...';
-  queryInput.placeholder = '';
-  setVoiceState('sending');
   miraAppendLine('> ' + q, 'query');
   socket.emit('techQuery', {
     query: q,
     source: 'text',
     equipment_context: `${_lastVision.equipment} ${_lastVision.model}`.trim(),
   });
+  input.value = '';
 }
 
-function startListening() {
-  if (!SR) { queryInput.focus(); return; }
-  recognition = new SR();
-  recognition.continuous     = false;
-  recognition.interimResults = true;
-  recognition.lang           = 'en-US';
-
-  recognition.onresult = (e) => {
-    let interim = '', final = '';
-    for (const r of e.results) {
-      if (r.isFinal) final += r[0].transcript;
-      else           interim += r[0].transcript;
-    }
-    if (final) {
-      queryInput.value = final;
-      setVoiceState('locked');
-      recognition = null;
-    } else {
-      queryInput.value = interim;
-    }
-  };
-
-  recognition.onerror = () => voiceCancel();
-  recognition.onend   = () => {
-    if (voiceState === 'listening') setVoiceState('locked');
-  };
-
-  queryInput.value = '';
-  queryInput.placeholder = '● LISTENING...';
-  setVoiceState('listening');
-  recognition.start();
-}
-
-// Spacebar state machine — skip when an input has focus
-document.addEventListener('keydown', (e) => {
-  const tag = document.activeElement.tagName;
-  const inInput = (tag === 'INPUT' || tag === 'TEXTAREA');
-
-  if (e.key === 'Escape') { voiceCancel(); return; }
-
-  if ((e.key === 'm' || e.key === 'M') && !inInput) {
-    voiceMuted = !voiceMuted;
-    voiceInd.textContent = voiceMuted ? 'AUDIO: MUTED  (M = unmute)' : (SR ? 'SPACE = voice' : '');
-    return;
-  }
-
-  if (e.key === ' ' && !inInput) {
-    e.preventDefault();
-    if      (voiceState === 'idle')      startListening();
-    else if (voiceState === 'listening') {
-      if (recognition) { try { recognition.stop(); } catch(x){} }
-      setVoiceState('locked');
-    }
-    else if (voiceState === 'locked')    sendQuery();
-  }
-});
-
-querySend.addEventListener('click', sendQuery);
-queryInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); sendQuery(); }
-});
-
-// ─── MIRA RESPONSE ───────────────────────────────────────────
-socket.on('miraResponse', (d) => {
-  document.getElementById('mira-response-text').textContent = d.answer || '';
-  const srcs = d.sources || [];
-  document.getElementById('mira-sources').textContent = srcs.length ? 'SRC: ' + srcs.join(', ') : '';
-  if (d.answer) {
-    miraAppendLine(d.answer, 'response');
-    if (!voiceMuted && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      const utt = new SpeechSynthesisUtterance(d.answer);
-      utt.rate  = 0.88;
-      utt.pitch = 0.9;
-      window.speechSynthesis.speak(utt);
-    }
-  }
-  queryInput.value = '';
-  queryInput.placeholder = 'ASK MIRA... (SPACE = voice | type + Enter)';
-  setVoiceState('idle');
+document.getElementById('query-send').addEventListener('click', sendQuery);
+document.getElementById('query-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendQuery();
 });
 
 // ─── HARDWARE UPDATE ─────────────────────────────────────────

@@ -1,13 +1,85 @@
 'use strict';
 
-const express  = require('express');
-const http     = require('http');
+const express    = require('express');
+const http       = require('http');
 const { Server } = require('socket.io');
-const path     = require('path');
+const path       = require('path');
+const os         = require('os');
+const fs         = require('fs');
+const Anthropic  = require('@anthropic-ai/sdk');
+
+function getLanIP() {
+  for (const iface of Object.values(os.networkInterfaces()).flat()) {
+    if (iface && iface.family === 'IPv4' && !iface.internal) return iface.address;
+  }
+  return 'localhost';
+}
 
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server);
+
+// ─── AI SETUP ────────────────────────────────────────────────────────────────
+const DOCS_DIR = path.join(__dirname, 'vision_backend', 'docs');
+let DOC_CONTEXT = '';
+if (fs.existsSync(DOCS_DIR)) {
+  const docFiles = fs.readdirSync(DOCS_DIR).filter(f => f.endsWith('.txt'));
+  DOC_CONTEXT = docFiles.map(f =>
+    `=== ${f} ===\n${fs.readFileSync(path.join(DOCS_DIR, f), 'utf8')}`
+  ).join('\n\n');
+  console.log(`[docs] loaded ${docFiles.length} doc(s) from vision_backend/docs/`);
+}
+
+const VISION_PROMPT =
+  'You are an industrial equipment assistant analyzing a camera frame.\n' +
+  'Identify any equipment visible. Return ONLY valid JSON with no markdown:\n' +
+  '{"equipment":"type or \'Unknown\'","model":"brand and model if visible or \'Unknown\'","observations":"1-2 sentence description","alerts":["safety concerns — empty array if none"]}\n' +
+  'If no industrial equipment is visible set equipment to "General environment".';
+
+function buildRAGPrompt(equipment, model, question) {
+  const equip = [equipment, model].filter(s => s && s !== 'Unknown').join(' ');
+  return `You are MIRA, an industrial maintenance assistant. Answer concisely.\nEquipment: ${equip || 'Unknown'}\nQuestion: ${question}${DOC_CONTEXT ? '\n\nDocumentation:\n' + DOC_CONTEXT : ''}\n\nAnswer in 2-4 sentences. Be specific. Include fault code reset steps if relevant.`;
+}
+
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+if (!anthropic) console.warn('[claude] ANTHROPIC_API_KEY not set — vision/RAG disabled');
+
+function parseVisionJSON(text) {
+  let clean = text.trim();
+  if (clean.startsWith('```')) {
+    clean = clean.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
+  }
+  try {
+    return JSON.parse(clean);
+  } catch {
+    return { equipment: 'Unknown', model: 'Unknown', observations: clean.slice(0, 150), alerts: [] };
+  }
+}
+
+async function callVision(base64Jpeg) {
+  const msg = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 400,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Jpeg } },
+        { type: 'text', text: VISION_PROMPT },
+      ],
+    }],
+  });
+  const raw = msg.content[0].text;
+  return { result: parseVisionJSON(raw), raw, usage: msg.usage };
+}
+
+async function callRAG(equipment, model, question) {
+  const msg = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 400,
+    messages: [{ role: 'user', content: buildRAGPrompt(equipment, model, question) }],
+  });
+  return { answer: msg.content[0].text.trim(), usage: msg.usage };
+}
 
 // ─── PROCEDURE DATA ──────────────────────────────────────────────────────────
 const PROCEDURES = {
@@ -41,11 +113,76 @@ const PROCEDURES = {
 let activeProcedure = 'ABB IRB-2600';
 let currentStep     = 0;
 
+const history = [];
+function pushHistory(type, text) {
+  history.push({ type, text, ts: new Date().toISOString() });
+  if (history.length > 100) history.shift();
+}
+
+const LOG_DIR = path.join(__dirname, 'vision_backend', 'logs');
+fs.mkdirSync(LOG_DIR, { recursive: true });
+
+function logSession(type, data) {
+  const entry = { ts: new Date().toISOString(), type, ...data };
+  const date  = entry.ts.slice(0, 10);
+  fs.appendFileSync(
+    path.join(LOG_DIR, `session-${date}.jsonl`),
+    JSON.stringify(entry) + '\n'
+  );
+  pushHistory(type, JSON.stringify(data).slice(0, 120));
+}
+
+// ─── HARDWARE STATE ───────────────────────────────────────────────────────────
+const hwState = {
+  estop:          false,   // true = E-STOP ENGAGED
+  run:            false,   // true = drive running
+  fault:          false,   // true = active fault
+  direction:      'OFF',   // 'FWD' | 'REV' | 'OFF'
+  vfd_hz:         0,       // output frequency Hz
+  vfd_fault_code: 0,       // VFD fault register (0 = no fault)
+};
+
+// ─── HARDWARE POLLING ─────────────────────────────────────────────────────────
+// To wire real hardware:
+//   1. npm install ethernet-ip jsmodbus
+//   2. See HARDWARE_INTEGRATION.md for full code snippets
+//   3. Paste pollPLC() and pollVFD() functions here
+//   4. Uncomment the two lines inside the setInterval below
+//
+// const { Controller, Tag } = require('ethernet-ip');  // Allen-Bradley EtherNet/IP
+// const Modbus = require('jsmodbus');                    // AutomationDirect Modbus TCP
+// const net    = require('net');
+//
+// async function pollPLC() { /* see HARDWARE_INTEGRATION.md */ }
+// async function pollVFD() { /* see HARDWARE_INTEGRATION.md */ }
+//
+setInterval(async () => {
+  // await pollPLC();
+  // await pollVFD();
+  io.emit('hardwareUpdate', hwState);
+}, 500);
+
 // ─── STATIC FILE SERVING ─────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname)));
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'hud.html'));
+});
+
+app.get('/halo_sim', (req, res) => {
+  res.sendFile(path.join(__dirname, 'halo_sim.html'));
+});
+
+app.get('/history', (req, res) => {
+  res.json(history.slice(-50));
+});
+
+app.get('/session-log', (req, res) => {
+  const date = (req.query.date || new Date().toISOString()).slice(0, 10);
+  const file = path.join(LOG_DIR, `session-${date}.jsonl`);
+  if (!fs.existsSync(file)) return res.json([]);
+  const lines = fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean);
+  res.json(lines.map(l => JSON.parse(l)).reverse());
 });
 
 // ─── MIRA-OSS PROXY ──────────────────────────────────────────────────────────
@@ -76,6 +213,7 @@ async function queryMiraOSS(query) {
 // ─── SOCKET.IO EVENTS ────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   console.log(`[HUD] client connected: ${socket.id}`);
+  logSession('client_connect', { socket_id: socket.id, ip: socket.handshake.address });
 
   // Send full state on connect
   socket.emit('init', {
@@ -84,6 +222,7 @@ io.on('connection', (socket) => {
     steps:       PROCEDURES[activeProcedure],
     currentStep,
   });
+  socket.emit('hardwareUpdate', hwState);
 
   // Switch procedure
   socket.on('setProcedure', (name) => {
@@ -102,6 +241,8 @@ io.on('connection', (socket) => {
     const total = PROCEDURES[activeProcedure].length;
     if (dir === 'next' && currentStep < total - 1) currentStep++;
     else if (dir === 'prev' && currentStep > 0)    currentStep--;
+    const step = PROCEDURES[activeProcedure][currentStep];
+    pushHistory('step', `[${activeProcedure}] Step ${step.id}: ${step.action.slice(0, 60)}…`);
     io.emit('stepUpdate', {
       active:      activeProcedure,
       steps:       PROCEDURES[activeProcedure],
@@ -112,7 +253,9 @@ io.on('connection', (socket) => {
   // Proxy mira-OSS query
   socket.on('mira_query', async (query) => {
     console.log(`[MIRA] query: "${query}"`);
+    pushHistory('query', query);
     const result = await queryMiraOSS(query);
+    pushHistory('response', result.text.slice(0, 120));
     io.emit('mira_insight', result);
   });
 
@@ -121,14 +264,127 @@ io.on('connection', (socket) => {
     io.emit('mira_insight', data);
   });
 
-  socket.on('disconnect', () => {
+  // Python backend push paths — re-broadcast to all clients
+  socket.on('visionUpdate', (data) => { io.emit('visionUpdate', data); });
+  socket.on('miraResponse', (data) => { io.emit('miraResponse', data); });
+
+  // Browser sends a base64 JPEG frame for Claude Vision analysis
+  socket.on('analyzeFrame', async (base64Jpeg) => {
+    if (!anthropic) {
+      socket.emit('visionUpdate', {
+        equipment: 'Vision offline', model: '--',
+        observations: 'Set ANTHROPIC_API_KEY env var and restart server.',
+        alerts: [], pendingConfirm: false,
+      });
+      return;
+    }
+    const t0 = Date.now();
+    try {
+      const { result, raw, usage } = await callVision(base64Jpeg);
+      const specific = result.equipment !== 'Unknown' && result.equipment !== 'General environment';
+      result.pendingConfirm = specific;
+      io.emit('visionUpdate', result);
+      logSession('vision_scan', {
+        equipment:       result.equipment,
+        model:           result.model,
+        observations:    result.observations,
+        alerts:          result.alerts,
+        pending_confirm: specific,
+        raw_response:    raw.slice(0, 300),
+        duration_ms:     Date.now() - t0,
+        input_tokens:    usage.input_tokens,
+        output_tokens:   usage.output_tokens,
+      });
+    } catch (err) {
+      console.error('[vision]', err.message);
+      logSession('vision_error', { error: err.message, duration_ms: Date.now() - t0 });
+      socket.emit('visionUpdate', {
+        equipment: 'Vision error', model: '--',
+        observations: err.message.slice(0, 120),
+        alerts: [], pendingConfirm: false,
+      });
+    }
+  });
+
+  // Tech confirmed the identified equipment — run RAG
+  socket.on('confirmEquipment', async ({ equipment, model }) => {
+    if (!anthropic) return;
+    const t0 = Date.now();
+    const question = 'What should the technician check or know about this equipment right now?';
+    try {
+      const { answer, usage } = await callRAG(equipment, model || '', question);
+      io.emit('miraResponse', {
+        answer,
+        sources: DOC_CONTEXT ? ['docs'] : [],
+        equipment_context: `${equipment} ${model || ''}`.trim(),
+      });
+      logSession('mira_response', {
+        equipment, model,
+        question,
+        answer,
+        sources:       DOC_CONTEXT ? ['docs'] : [],
+        duration_ms:   Date.now() - t0,
+        input_tokens:  usage.input_tokens,
+        output_tokens: usage.output_tokens,
+      });
+    } catch (err) {
+      console.error('[rag]', err.message);
+      logSession('mira_error', { equipment, error: err.message, duration_ms: Date.now() - t0 });
+      io.emit('miraResponse', { answer: `Error: ${err.message}`, sources: [], equipment_context: '' });
+    }
+  });
+
+  // Text query from browser query bar — re-broadcast + AI response
+  socket.on('techQuery', async (data) => {
+    io.emit('techQuery', data);  // re-broadcast for display + Python path
+    if (!anthropic || data.source !== 'text') return;
+    const question = (data.query || '').trim();
+    if (!question) return;
+    const t0 = Date.now();
+    try {
+      const ctx   = (data.equipment_context || '').trim();
+      const parts = ctx.split(' ');
+      const { answer, usage } = await callRAG(parts[0] || 'Unknown', parts.slice(1).join(' '), question);
+      io.emit('miraResponse', {
+        answer,
+        sources: DOC_CONTEXT ? ['docs'] : [],
+        equipment_context: ctx,
+      });
+      logSession('tech_query', {
+        query:             question,
+        equipment_context: ctx,
+        answer,
+        duration_ms:   Date.now() - t0,
+        input_tokens:  usage.input_tokens,
+        output_tokens: usage.output_tokens,
+      });
+    } catch (err) {
+      io.emit('miraResponse', { answer: `Error: ${err.message}`, sources: [], equipment_context: '' });
+    }
+  });
+
+  socket.on('rejectEquipment', ({ equipment, model }) => {
+    logSession('vision_reject', { equipment, model });
+  });
+
+  socket.on('scanAgain', () => {
+    logSession('scan_reset', { socket_id: socket.id });
+  });
+
+  socket.on('disconnect', (reason) => {
     console.log(`[HUD] client disconnected: ${socket.id}`);
+    logSession('client_disconnect', { socket_id: socket.id, reason });
   });
 });
 
 // ─── START ───────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[HUD] Charlie Node HUD running at http://localhost:${PORT}`);
-  console.log(`[HUD] mira-OSS target: http://localhost:1993`);
+  const lan = getLanIP();
+  console.log(`\n✅  MIRA CHARLIE NODE SERVER`);
+  console.log(`   Desktop HUD : http://localhost:${PORT}`);
+  console.log(`   Halo Sim    : http://localhost:${PORT}/halo_sim`);
+  console.log(`   Phone (LAN) : http://${lan}:${PORT}/halo_sim`);
+  console.log(`   History     : http://localhost:${PORT}/history`);
+  console.log(`   Session log : http://localhost:${PORT}/session-log\n`);
 });
