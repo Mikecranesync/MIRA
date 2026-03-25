@@ -1,0 +1,213 @@
+{
+  "description": "Ground truth labels for real factory photos \u2014 annotated from visual inspection",
+  "source": "MIRA test case 1/",
+  "status": "ANNOTATED",
+  "project_context": "MACK RIDES 'Racing Coaster' (Stardust Racers) at Universal Orlando \u2014 electrical engineering by EMIS, document set 2400WK0266",
+  "cases": [
+    {
+      "id": "case1_photo_01",
+      "image": "MIRA test case 1/PXL_20260219_043746450.jpg",
+      "ground_truth": {
+        "classification": "EQUIPMENT_PHOTO",
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "component_type": "HMI tablet"
+      },
+      "notes": "Rugged HMI tablet showing Stardust Racers ride alarm system \u2014 active alarms for GEN-BB, FBH-HH faults. Tablet manufacturer not legible from photo."
+    },
+    {
+      "id": "case1_photo_02",
+      "image": "MIRA test case 1/PXL_20260219_045141856.MACRO_FOCUS.jpg",
+      "ground_truth": {
+        "classification": "ELECTRICAL_PRINT",
+        "make": "MACK RIDES",
+        "model": null,
+        "catalog": "2400WK0266",
+        "serial": null,
+        "component_type": "electrical drawing"
+      },
+      "notes": "Macro of laptop screen showing PDF title block. File: 2400WK0266_HDW_AB01_US_250115.pdf. Customer: Universal Orlando. Project: Racing Coaster."
+    },
+    {
+      "id": "case1_photo_03",
+      "image": "MIRA test case 1/PXL_20260219_045632544.MACRO_FOCUS.jpg",
+      "ground_truth": {
+        "classification": "ELECTRICAL_PRINT",
+        "make": "EMIS",
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "component_type": "electrical schematic"
+      },
+      "notes": "Temperature monitoring schematic. ZIEHL (Ziehl-Abegg) component block visible. PT100 sensor wiring. EMIS logo in title block."
+    },
+    {
+      "id": "case1_photo_04",
+      "image": "MIRA test case 1/PXL_20260219_045640877.jpg",
+      "ground_truth": {
+        "classification": "ELECTRICAL_PRINT",
+        "make": "EMIS",
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "component_type": "electrical schematic"
+      },
+      "notes": "Power distribution and sensor wiring schematic. Multiple junction boxes with PT100 connections. EMIS title block top and bottom."
+    },
+    {
+      "id": "case1_photo_05",
+      "image": "MIRA test case 1/PXL_20260219_045647225.MACRO_FOCUS.jpg",
+      "ground_truth": {
+        "classification": "ELECTRICAL_PRINT",
+        "make": "EMIS",
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "component_type": "electrical schematic"
+      },
+      "notes": "Motor circuit schematic, page 1098 of 3742. Macro close-up. EMIS title block at bottom."
+    },
+    {
+      "id": "case1_photo_06",
+      "image": "MIRA test case 1/PXL_20260219_045654220.jpg",
+      "ground_truth": {
+        "classification": "ELECTRICAL_PRINT",
+        "make": "EMIS",
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "component_type": "electrical schematic"
+      },
+      "notes": "Contactor and safety relay circuit. Components 43.1, 43.2 visible. Shows contactor coil circuits with overload and safety interlocks. EMIS title block."
+    },
+    {
+      "id": "case1_photo_07",
+      "image": "MIRA test case 1/PXL_20260219_045719632.jpg",
+      "ground_truth": {
+        "classification": "ELECTRICAL_PRINT",
+        "make": "MACK RIDES",
+        "model": null,
+        "catalog": "2400WK0266",
+        "serial": null,
+        "component_type": "bill of materials"
+      },
+      "notes": "Hardware BOM/parts list. Manufacturers listed: Phoenix Contact, Hager, Lapp, Rittal. File: 2400WK0266_HDW_AB01_US_250115.pdf."
+    },
+    {
+      "id": "case1_photo_08",
+      "image": "MIRA test case 1/PXL_20260219_045737047.MACRO_FOCUS.jpg",
+      "ground_truth": {
+        "classification": "ELECTRICAL_PRINT",
+        "make": "MACK RIDES",
+        "model": null,
+        "catalog": "10172",
+        "serial": null,
+        "component_type": "cable overview"
+      },
+      "notes": "Macro close-up of cable overview section. Editor: Raphael Reichenbach. Date: 15.01.2025. Customer: Universal Orlando. Revision AB01. Components: MLM 16, MSR220K6."
+    },
+    {
+      "id": "case1_photo_09",
+      "image": "MIRA test case 1/PXL_20260219_045802513.MP.jpg",
+      "ground_truth": {
+        "classification": "ELECTRICAL_PRINT",
+        "make": "EMIS",
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "component_type": "electrical schematic"
+      },
+      "notes": "Full schematic page \u2014 same layout as photo 04. Multiple junction boxes with PT100 sensors, power distribution. EMIS title blocks top and bottom."
+    },
+    {
+      "id": "gp_motor_001",
+      "image": "tests/regime3_nameplate/photos/real/gp_motor_001.jpg",
+      "ground_truth": {
+        "classification": "EQUIPMENT_PHOTO",
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "voltage": null,
+        "amperage": null,
+        "rpm": null,
+        "component_type": "motor"
+      },
+      "source": "takeout_ingest",
+      "date_ingested": "2026-03-24",
+      "confidence": "medium",
+      "notes": "Auto-extracted via Claude Vision. Condition: damaged",
+      "extras": {
+        "description": "Electric motor with weathered nameplate that is heavily worn and difficult to read due to age and environmental exposure."
+      }
+    },
+    {
+      "id": "gp_motor_002",
+      "image": "tests/regime3_nameplate/photos/real/gp_motor_002.jpg",
+      "ground_truth": {
+        "classification": "EQUIPMENT_PHOTO",
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "voltage": null,
+        "amperage": null,
+        "rpm": null,
+        "component_type": "motor"
+      },
+      "source": "takeout_ingest",
+      "date_ingested": "2026-03-24",
+      "confidence": "high",
+      "notes": "Auto-extracted via Claude Vision. Condition: damaged",
+      "extras": {
+        "description": "An electric motor with a weathered and corroded nameplate that is partially visible but text is not clearly readable due to age and deterioration."
+      }
+    },
+    {
+      "id": "gp_other_001",
+      "image": "tests/regime3_nameplate/photos/real/gp_other_001.jpg",
+      "ground_truth": {
+        "classification": "EQUIPMENT_PHOTO",
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "voltage": null,
+        "amperage": null,
+        "rpm": null,
+        "component_type": "other"
+      },
+      "source": "takeout_ingest",
+      "date_ingested": "2026-03-24",
+      "confidence": "medium",
+      "notes": "Auto-extracted via Claude Vision. Condition: normal",
+      "extras": {
+        "description": "White industrial control box or electrical enclosure mounted on green structural framework with piping connections and visible nameplate labels."
+      }
+    },
+    {
+      "id": "gp_plc_001",
+      "image": "tests/regime3_nameplate/photos/real/gp_plc_001.jpg",
+      "ground_truth": {
+        "classification": "EQUIPMENT_PHOTO",
+        "make": "PHOROS",
+        "model": null,
+        "catalog": "R32229465",
+        "serial": null,
+        "voltage": null,
+        "amperage": null,
+        "rpm": null,
+        "component_type": "plc"
+      },
+      "source": "takeout_ingest",
+      "date_ingested": "2026-03-24",
+      "confidence": "high",
+      "notes": "Auto-extracted via Claude Vision. Condition: normal",
+      "extras": {
+        "description": "PHOROS industrial control device/PLC with LED status indicators and terminal connections, mounted in what appears to be a control cabinet."
+      }
+    }
+  ]
+}
