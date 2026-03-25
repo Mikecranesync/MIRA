@@ -76,3 +76,7 @@ mira-core/data/gdrive_ingest/
 
 # uv lock file (generated, not committed)
 uv.lock
+
+# ML model weights (downloaded at runtime, never committed)
+yolov8n.pt
+models/*.pt
