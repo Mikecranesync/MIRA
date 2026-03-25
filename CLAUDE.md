@@ -1,7 +1,7 @@
 # MIRA — Build State
 
-**Version:** v0.5.2
-**Updated:** 2026-03-23
+**Version:** v0.5.3
+**Updated:** 2026-03-24
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=claude` → Anthropic API | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
 

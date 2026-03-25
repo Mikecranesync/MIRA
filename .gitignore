@@ -5,6 +5,9 @@ mira-core/.env
 mira-bots/.env
 mira-mcp/.env
 
+# HUD session logs
+mira-hud/vision_backend/logs/
+
 # Telethon sessions
 *.session
 *.session-journal
