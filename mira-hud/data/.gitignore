@@ -1,0 +1,5 @@
+# TM data — downloaded PDFs, extracted images, manifests
+# These are generated/downloaded and should not be committed
+tm_pdfs/
+tm_images/
+tm_manifests/
