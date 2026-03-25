@@ -1,8 +1,8 @@
 {
-  "description": "Ground truth labels for real factory photos — annotated from visual inspection",
+  "description": "Ground truth labels for real factory photos \u2014 annotated from visual inspection",
   "source": "MIRA test case 1/",
   "status": "ANNOTATED",
-  "project_context": "MACK RIDES 'Racing Coaster' (Stardust Racers) at Universal Orlando — electrical engineering by EMIS, document set 2400WK0266",
+  "project_context": "MACK RIDES 'Racing Coaster' (Stardust Racers) at Universal Orlando \u2014 electrical engineering by EMIS, document set 2400WK0266",
   "cases": [
     {
       "id": "case1_photo_01",
@@ -15,7 +15,7 @@
         "serial": null,
         "component_type": "HMI tablet"
       },
-      "notes": "Rugged HMI tablet showing Stardust Racers ride alarm system — active alarms for GEN-BB, FBH-HH faults. Tablet manufacturer not legible from photo."
+      "notes": "Rugged HMI tablet showing Stardust Racers ride alarm system \u2014 active alarms for GEN-BB, FBH-HH faults. Tablet manufacturer not legible from photo."
     },
     {
       "id": "case1_photo_02",
@@ -119,7 +119,95 @@
         "serial": null,
         "component_type": "electrical schematic"
       },
-      "notes": "Full schematic page — same layout as photo 04. Multiple junction boxes with PT100 sensors, power distribution. EMIS title blocks top and bottom."
+      "notes": "Full schematic page \u2014 same layout as photo 04. Multiple junction boxes with PT100 sensors, power distribution. EMIS title blocks top and bottom."
+    },
+    {
+      "id": "gp_motor_001",
+      "image": "tests/regime3_nameplate/photos/real/gp_motor_001.jpg",
+      "ground_truth": {
+        "classification": "EQUIPMENT_PHOTO",
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "voltage": null,
+        "amperage": null,
+        "rpm": null,
+        "component_type": "motor"
+      },
+      "source": "takeout_ingest",
+      "date_ingested": "2026-03-24",
+      "confidence": "medium",
+      "notes": "Auto-extracted via Claude Vision. Condition: damaged",
+      "extras": {
+        "description": "Electric motor with weathered nameplate that is heavily worn and difficult to read due to age and environmental exposure."
+      }
+    },
+    {
+      "id": "gp_motor_002",
+      "image": "tests/regime3_nameplate/photos/real/gp_motor_002.jpg",
+      "ground_truth": {
+        "classification": "EQUIPMENT_PHOTO",
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "voltage": null,
+        "amperage": null,
+        "rpm": null,
+        "component_type": "motor"
+      },
+      "source": "takeout_ingest",
+      "date_ingested": "2026-03-24",
+      "confidence": "high",
+      "notes": "Auto-extracted via Claude Vision. Condition: damaged",
+      "extras": {
+        "description": "An electric motor with a weathered and corroded nameplate that is partially visible but text is not clearly readable due to age and deterioration."
+      }
+    },
+    {
+      "id": "gp_other_001",
+      "image": "tests/regime3_nameplate/photos/real/gp_other_001.jpg",
+      "ground_truth": {
+        "classification": "EQUIPMENT_PHOTO",
+        "make": null,
+        "model": null,
+        "catalog": null,
+        "serial": null,
+        "voltage": null,
+        "amperage": null,
+        "rpm": null,
+        "component_type": "other"
+      },
+      "source": "takeout_ingest",
+      "date_ingested": "2026-03-24",
+      "confidence": "medium",
+      "notes": "Auto-extracted via Claude Vision. Condition: normal",
+      "extras": {
+        "description": "White industrial control box or electrical enclosure mounted on green structural framework with piping connections and visible nameplate labels."
+      }
+    },
+    {
+      "id": "gp_plc_001",
+      "image": "tests/regime3_nameplate/photos/real/gp_plc_001.jpg",
+      "ground_truth": {
+        "classification": "EQUIPMENT_PHOTO",
+        "make": "PHOROS",
+        "model": null,
+        "catalog": "R32229465",
+        "serial": null,
+        "voltage": null,
+        "amperage": null,
+        "rpm": null,
+        "component_type": "plc"
+      },
+      "source": "takeout_ingest",
+      "date_ingested": "2026-03-24",
+      "confidence": "high",
+      "notes": "Auto-extracted via Claude Vision. Condition: normal",
+      "extras": {
+        "description": "PHOROS industrial control device/PLC with LED status indicators and terminal connections, mounted in what appears to be a control cabinet."
+      }
     }
   ]
 }
