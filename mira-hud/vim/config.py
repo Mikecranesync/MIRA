@@ -185,6 +185,13 @@ class ParserConfig:
     # Distribution statement filter — only process "A" (public domain)
     allowed_distribution: str = "A"
 
+    # Knowledge abstraction (Ollama rewrite of theory/general_principle chunks)
+    enable_knowledge_abstraction: bool = True
+    ollama_base_url: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    )
+    abstraction_model: str = "qwen2.5:7b"
+
 
 # ---------------------------------------------------------------------------
 # DB — Vector DB adapter for multimodal chunks

@@ -34,6 +34,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator
 
+import httpx
+
 from .config import ParserConfig
 
 logging.basicConfig(
@@ -69,6 +71,8 @@ class TMChunk:
     table_type: str = ""  # pmcs | callout | generic
     headers: list[str] = field(default_factory=list)
     rows: list[list[str]] = field(default_factory=list)
+    # Abstraction metadata
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -237,6 +241,127 @@ def _extract_safety_blocks(
                 severity=severity,
             )
         )
+
+    return chunks
+
+
+# ---------------------------------------------------------------------------
+# Section heading → chunk_type classifier (MIL-STD-38784 conventions)
+# ---------------------------------------------------------------------------
+
+_SECTION_TYPE_MAP: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"THEORY|PRINCIPLES?\s+OF\s+OPERATION", re.IGNORECASE), "theory"),
+    (
+        re.compile(
+            r"GENERAL\s+(?:INFORMATION|DESCRIPTION)|DESCRIPTION\s+AND\s+DATA|^GENERAL$",
+            re.IGNORECASE,
+        ),
+        "general_principle",
+    ),
+    (
+        re.compile(
+            r"MAINTENANCE|TROUBLESHOOTING|REMOVAL|INSTALLATION|REPAIR"
+            r"|INSPECTION|ASSEMBLY|DISASSEMBLY|ADJUSTMENT|ALIGNMENT",
+            re.IGNORECASE,
+        ),
+        "procedure",
+    ),
+    (re.compile(r"PMCS|PREVENTIVE\s+MAINTENANCE", re.IGNORECASE), "pmcs"),
+    (re.compile(r"PARTS?\s+LIST|COMPONENTS?\s+OF\s+END\s+ITEM", re.IGNORECASE), "parts"),
+]
+
+
+def _classify_section_type(heading: str) -> str:
+    """Classify a section heading into a chunk_type.
+
+    Returns one of: theory, general_principle, procedure, pmcs, parts, text.
+    """
+    if not heading:
+        return "text"
+    for pattern, chunk_type in _SECTION_TYPE_MAP:
+        if pattern.search(heading):
+            return chunk_type
+    return "text"
+
+
+# ---------------------------------------------------------------------------
+# Knowledge abstraction (Ollama rewrite for theory/general_principle chunks)
+# ---------------------------------------------------------------------------
+
+_ABSTRACTION_PROMPT = (
+    "You are a technical knowledge abstraction system. "
+    "Rewrite the following text from a military technical manual to express "
+    "the general engineering principle it describes. Remove all specific part "
+    "numbers, NSN references, equipment model numbers, and military designations. "
+    "Preserve all technical accuracy, physical laws, measurements, tolerances, "
+    "and causal relationships. The result must apply to any similar system, "
+    "not just this specific equipment. Return only the rewritten text, "
+    "no explanation.\n\nOriginal text:\n"
+)
+
+_ABSTRACTABLE_TYPES = frozenset({"theory", "general_principle"})
+
+
+def _call_ollama_abstraction(text: str, config: ParserConfig) -> str | None:
+    """Send text to Ollama for knowledge abstraction.
+
+    Returns the abstracted text on success, None on any error.
+    Uses sync httpx.post matching the pattern in db_adapter.py and
+    tools/ollama_triage_takeout.py.
+    """
+    try:
+        resp = httpx.post(
+            f"{config.ollama_base_url}/api/generate",
+            json={
+                "model": config.abstraction_model,
+                "prompt": _ABSTRACTION_PROMPT + text,
+                "stream": False,
+                "options": {"temperature": 0.1},
+            },
+            timeout=60.0,
+        )
+        resp.raise_for_status()
+        result = resp.json().get("response", "").strip()
+        if result:
+            return result
+        logger.warning("Ollama returned empty response for abstraction")
+        return None
+    except Exception as e:
+        logger.warning("Knowledge abstraction failed (Ollama unreachable): %s", e)
+        return None
+
+
+def _run_knowledge_abstraction(
+    chunks: list[TMChunk], config: ParserConfig
+) -> list[TMChunk]:
+    """Apply knowledge abstraction to theory/general_principle chunks.
+
+    Chunks of other types pass through unchanged.
+    If config.enable_knowledge_abstraction is False, returns chunks as-is.
+    """
+    if not config.enable_knowledge_abstraction:
+        return chunks
+
+    abstracted_count = 0
+    for chunk in chunks:
+        if chunk.chunk_type not in _ABSTRACTABLE_TYPES:
+            continue
+
+        original_text = chunk.content
+        result = _call_ollama_abstraction(original_text, config)
+
+        if result is not None:
+            chunk.content = result
+            chunk.metadata["original_text"] = original_text
+            chunk.metadata["source_anonymized"] = True
+            chunk.char_count = len(result)
+            abstracted_count += 1
+        else:
+            # Ollama failed — keep original text, log already emitted
+            pass
+
+    if abstracted_count:
+        logger.info("  Abstracted %d theory/general_principle chunks", abstracted_count)
 
     return chunks
 
@@ -457,13 +582,15 @@ def _extract_text_chunks(pdf_path: Path, config: ParserConfig, tm_stem: str) -> 
                     if heading.upper() in ("WARNING", "CAUTION", "NOTE"):
                         continue
 
+                    section_type = _classify_section_type(heading)
+
                     if len(body) <= config.chunk_size:
                         if len(body) >= 80:
                             chunks.append(
                                 TMChunk(
                                     chunk_id=f"{tm_stem}_p{page_idx + 1}_c{chunk_counter}",
                                     page_num=page_idx + 1,
-                                    chunk_type="text",
+                                    chunk_type=section_type,
                                     content=body,
                                     section=heading,
                                     char_count=len(body),
@@ -476,7 +603,7 @@ def _extract_text_chunks(pdf_path: Path, config: ParserConfig, tm_stem: str) -> 
                                 TMChunk(
                                     chunk_id=f"{tm_stem}_p{page_idx + 1}_c{chunk_counter}",
                                     page_num=page_idx + 1,
-                                    chunk_type="text",
+                                    chunk_type=section_type,
                                     content=piece,
                                     section=heading,
                                     char_count=len(piece),
@@ -564,6 +691,9 @@ def parse_tm_pdf(pdf_path: Path, config: ParserConfig | None = None) -> TMManife
     # Combine all chunks
     all_chunks = text_chunks + image_chunks + table_chunks
 
+    # Knowledge abstraction pass (theory/general_principle chunks only)
+    all_chunks = _run_knowledge_abstraction(all_chunks, config)
+
     # Build summary
     summary = {
         "text_chunks": sum(1 for c in all_chunks if c.chunk_type == "text"),
@@ -614,7 +744,7 @@ def _manifest_to_dict(manifest: TMManifest) -> dict:
     for chunk in d["chunks"]:
         keys_to_remove = []
         for k, v in chunk.items():
-            if v == "" or v == 0 or v == [] or (k == "char_count" and v == 0):
+            if v in ("", 0, [], {}) or (k == "char_count" and v == 0):
                 if k not in ("chunk_id", "page_num", "chunk_type", "content"):
                     keys_to_remove.append(k)
         for k in keys_to_remove:
