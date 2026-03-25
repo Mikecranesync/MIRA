@@ -112,8 +112,22 @@ io.on('connection', (socket) => {
   // Proxy mira-OSS query
   socket.on('mira_query', async (query) => {
     console.log(`[MIRA] query: "${query}"`);
+    if (process.env.MIRA_PYTHON_RAG === 'true') {
+      io.emit('techQuery', { query_text: query });
+      return;
+    }
     const result = await queryMiraOSS(query);
     io.emit('mira_insight', result);
+  });
+
+  // VIM vision overlay relay — Python → all HUD clients
+  socket.on('vim_overlay', (data) => {
+    io.emit('vim_overlay', data);
+  });
+
+  // VIM manifest update relay — Python → all HUD clients
+  socket.on('visionUpdate', (data) => {
+    io.emit('visionUpdate', data);
   });
 
   // hud_bridge.py push path — re-broadcast to all clients

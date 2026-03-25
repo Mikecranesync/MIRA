@@ -16,6 +16,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 /* ─── LAYOUT ─── */
 #container{position:relative;width:100vw;height:100vh}
 #feed{position:absolute;width:100%;height:100%;object-fit:cover;opacity:.72;filter:saturate(0.6) brightness(0.85)}
+#vim-canvas{position:absolute;width:100%;height:100%;z-index:1;pointer-events:none}
 
 /* ─── SCANLINES ─── */
 #scanlines{
@@ -206,6 +207,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 <!-- MAIN CONTAINER -->
 <div id="container">
   <video id="feed" autoplay playsinline muted></video>
+  <canvas id="vim-canvas"></canvas>
   <div id="scanlines"></div>
   <div id="vignette"></div>
 
@@ -328,6 +330,74 @@ setInterval(() => {
 let fc = 0;
 setInterval(() => document.getElementById('frame-ct').textContent = ++fc, 33);
 
+// ─── VIM OVERLAY ────────────────────────────────────────────
+let lastVisionData = null;
+
+socket.on('vim_overlay', (data) => {
+  lastVisionData = data;
+  renderVIMOverlay(data);
+});
+
+function renderVIMOverlay(data) {
+  const canvas = document.getElementById('vim-canvas');
+  const container = document.getElementById('container');
+  canvas.width = container.offsetWidth;
+  canvas.height = container.offsetHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw bounding boxes
+  if (data.bounding_boxes) {
+    data.bounding_boxes.forEach(bb => {
+      ctx.strokeStyle = bb.color || '#FFFFFF';
+      ctx.lineWidth = bb.selected ? 3 : 1.5;
+      ctx.strokeRect(bb.box.x, bb.box.y, bb.box.w, bb.box.h);
+
+      // Label
+      const label = bb.label + ' ' + Math.round(bb.confidence * 100) + '%';
+      ctx.font = '11px Courier New';
+      ctx.fillStyle = bb.color || '#FFFFFF';
+      ctx.fillText(label, bb.box.x, bb.box.y - 4);
+    });
+  }
+
+  // Update manifest in left panel
+  const lp = document.getElementById('left-panel');
+  if (data.hud_manifest && data.hud_manifest.length > 0) {
+    let mhtml = 'VIM MANIFEST<br><span style="color:rgba(0,255,136,.3)">----------</span><br>';
+    data.hud_manifest.forEach(item => {
+      mhtml += '<span style="color:#00ff88;font-size:9px">' + item + '</span><br>';
+    });
+    lp.innerHTML = mhtml;
+  }
+
+  // Procedure step overlay
+  if (data.mode === 'PROCEDURE' && data.procedure_step) {
+    const sp = document.getElementById('step-text');
+    if (sp) sp.textContent = data.procedure_step;
+    const sl = document.getElementById('step-label');
+    if (sl) sl.textContent = data.procedure_progress || '';
+  }
+
+  // Warnings in red
+  if (data.warnings && data.warnings.length > 0) {
+    const mo = document.getElementById('mira-output');
+    data.warnings.forEach(w => {
+      const line = document.createElement('span');
+      line.className = 'mira-line';
+      line.style.color = '#ff3333';
+      line.textContent = w;
+      mo.insertBefore(line, mo.firstChild);
+    });
+  }
+
+  // Mode indicator in topbar
+  const ap = document.getElementById('active-proc');
+  if (ap && data.mode_indicator) {
+    ap.textContent = 'VIM:' + data.mode_indicator;
+  }
+}
+
 // ─── STATE ───────────────────────────────────────────────────
 let stepsData  = [];
 let stepIdx    = 0;
@@ -445,7 +515,10 @@ function miraSend() {
   if (!q) return;
   miraAppendLine('> ' + q, 'query');
   document.getElementById('mira-send').disabled = true;
-  socket.emit('mira_query', q);
+  const payload = lastVisionData
+    ? q + ' [context:' + (lastVisionData.equipment_context || '') + ']'
+    : q;
+  socket.emit('mira_query', payload);
   input.value = '';
 }
 
