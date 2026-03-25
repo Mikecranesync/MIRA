@@ -70,3 +70,9 @@ mira-core/data/gdrive_ingest/
 
 # GitHub Actions cache
 .github/actions-cache/
+
+# Claude Code runtime files
+.claude/scheduled_tasks.lock
+
+# uv lock file (generated, not committed)
+uv.lock
