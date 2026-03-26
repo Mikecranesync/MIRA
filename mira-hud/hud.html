@@ -80,7 +80,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
   border:1px solid #00ff88;border-radius:2px;
   padding:14px 22px;pointer-events:auto
 }
-#step-label{font-size:9px;letter-spacing:3px;color:#5a9977;margin-bottom:8px}
+#step-label{font-size:10px;letter-spacing:3px;color:#5a9977;margin-bottom:8px}
 #step-text{font-size:16px;letter-spacing:.5px;line-height:1.6;min-height:52px;display:none}
 #step-text.warn-step{color:#ffaa00;border-left:3px solid #ffaa00;padding-left:10px}
 #progress-bar{margin-top:10px;height:2px;background:#0a2218;border-radius:1px;display:none}
@@ -131,6 +131,11 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 #scanning-indicator{font-size:9px;letter-spacing:2px;color:#5a9977;margin-top:6px;min-height:14px}
 
 /* ─── PROCEDURE SELECTOR ─── */
+#proc-label{
+  position:absolute;top:38px;left:50%;transform:translateX(-50%);
+  font-size:8px;letter-spacing:3px;color:#5a9977;
+  text-transform:uppercase;pointer-events:none
+}
 #proc-selector{
   position:absolute;top:52px;left:50%;transform:translateX(-50%);
   display:flex;gap:10px;pointer-events:auto
@@ -161,15 +166,15 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 
 /* ─── MIRA PANEL ─── */
 #mira-panel{
-  position:absolute;top:88px;right:18px;
-  width:280px;
+  position:absolute;top:70px;right:18px;
+  width:400px;
   background:rgba(0,10,6,.88);
   border:1px solid rgba(0,255,136,.5);
   border-right:2px solid #00ff88;
   padding:10px 12px;
   pointer-events:auto;
   z-index:20;
-  font-size:9px;letter-spacing:1.5px
+  font-size:11px;letter-spacing:1.5px
 }
 #mira-header{
   display:flex;justify-content:space-between;align-items:center;
@@ -180,7 +185,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 #mira-status.online{color:#00ff88}
 #mira-status.offline{color:#ff3333}
 #mira-output{
-  height:160px;overflow-y:auto;overflow-x:hidden;
+  height:300px;overflow-y:auto;overflow-x:hidden;
   margin-bottom:8px;line-height:1.9;
   scrollbar-width:thin;scrollbar-color:#00ff88 #0a2218
 }
@@ -203,14 +208,14 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 #mira-input-row{display:flex;gap:6px;align-items:center;margin-top:4px}
 #mira-input{
   flex:1;background:#010f07;border:1px solid rgba(0,255,136,.35);
-  color:#00ff88;font-family:'Courier New',monospace;font-size:9px;
-  letter-spacing:1px;padding:5px 7px;outline:none
+  color:#00ff88;font-family:'Courier New',monospace;font-size:11px;
+  letter-spacing:1px;padding:6px 9px;outline:none
 }
 #mira-input:focus{border-color:#00ff88}
 #mira-input::placeholder{color:#2a5a3a}
 #mira-send{
   background:rgba(0,255,136,.12);border:1px solid #00ff88;
-  color:#00ff88;font-family:'Courier New',monospace;font-size:8px;
+  color:#00ff88;font-family:'Courier New',monospace;font-size:10px;
   letter-spacing:2px;padding:5px 9px;cursor:pointer;text-transform:uppercase;
   white-space:nowrap;transition:background .2s
 }
@@ -286,6 +291,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
     </div>
 
     <!-- Procedure Selector -->
+    <div id="proc-label">SELECT PROCEDURE</div>
     <div id="proc-selector"></div>
 
     <!-- Crosshair -->
@@ -307,11 +313,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
     <div id="right-panel" class="side-panel">
       TECH: LOCAL<br>
       STEP: <span id="step-counter">-/-</span><br>
-      STATUS: RUN<br>
-      <span style="color:rgba(0,255,136,.3)">──────────</span><br>
-      FRAME: <span id="frame-ct">0</span><br>
-      SIGNAL: 100%<br>
-      STREAM: ON
+      STATUS: RUN
     </div>
 
     <!-- MIRA Panel -->
@@ -536,6 +538,7 @@ function renderStep() {
 // ─── SOCKET.IO HANDLERS ──────────────────────────────────────
 socket.on('connect', () => {
   setMiraStatus('online', 'ONLINE');
+  document.getElementById('mira-output').innerHTML = '';
   miraAppendLine('MIRA: CONNECTED TO CHARLIE NODE', 'system');
 });
 
@@ -601,6 +604,17 @@ socket.on('stepUpdate', (data) => {
   renderStep();
 });
 
+// ─── TTS ──────────────────────────────────────────────────────
+function speakResponse(text) {
+  if (!('speechSynthesis' in window)) return;
+  const clean = text.replace(/\*\*/g, '').replace(/#+\s?/g, '').slice(0, 350);
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(clean);
+  utt.rate  = 0.95;
+  utt.pitch = 1.0;
+  window.speechSynthesis.speak(utt);
+}
+
 // ─── MIRA INSIGHT ────────────────────────────────────────────
 socket.on('mira_insight', (data) => {
   const text = data.text || '';
@@ -611,6 +625,7 @@ socket.on('mira_insight', (data) => {
   }
 
   miraAppendLine(text, text.startsWith('MIRA:') ? 'system' : 'response');
+  if (!text.startsWith('MIRA:')) speakResponse(text);
 
   if (tags.length) {
     const tagsDiv = document.createElement('div');

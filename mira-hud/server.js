@@ -42,7 +42,8 @@ function buildRAGPrompt(equipContext, question) {
   return `You are MIRA, an industrial maintenance assistant. Answer concisely.\nEquipment: ${equip}\nQuestion: ${question}${DOC_CONTEXT ? '\n\nDocumentation:\n' + DOC_CONTEXT : ''}\n\nAnswer in 2-4 sentences. Be specific. Include fault code reset steps if relevant.`;
 }
 
-const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+const anthropic    = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 if (!anthropic) console.warn('[claude] ANTHROPIC_API_KEY not set — vision/RAG disabled');
 
 function parseVisionJSON(text) {
@@ -59,7 +60,7 @@ function parseVisionJSON(text) {
 
 async function callVision(base64Jpeg) {
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: CLAUDE_MODEL,
     max_tokens: 400,
     messages: [{
       role: 'user',
@@ -75,7 +76,7 @@ async function callVision(base64Jpeg) {
 
 async function callRAG(equipContext, question) {
   const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: CLAUDE_MODEL,
     max_tokens: 400,
     messages: [{ role: 'user', content: buildRAGPrompt(equipContext, question) }],
   });
@@ -109,66 +110,6 @@ const PROCEDURES = {
     { id: 10, zone: 'B-02', action: 'Restore power and air. Run production sample at 100% speed. Record cycle time and compare to baseline. Sign off maintenance log.', warn: false },
   ],
 };
-
-// ─── DOC CONTEXT ─────────────────────────────────────────────────────────────
-const DOCS_DIR = path.join(__dirname, 'vision_backend', 'docs');
-let DOC_CONTEXT = '';
-if (fs.existsSync(DOCS_DIR)) {
-  const docFiles = fs.readdirSync(DOCS_DIR).filter(f => f.endsWith('.txt'));
-  DOC_CONTEXT = docFiles
-    .map(f => `=== ${f} ===\n${fs.readFileSync(path.join(DOCS_DIR, f), 'utf8')}`)
-    .join('\n\n');
-  if (docFiles.length) console.log(`[docs] loaded ${docFiles.length} doc(s) from vision_backend/docs/`);
-}
-
-// ─── CLAUDE API ───────────────────────────────────────────────────────────────
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
-const anthropic    = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
-if (!anthropic) console.warn('[claude] ANTHROPIC_API_KEY not set — Claude fallback disabled');
-
-function buildRAGPrompt(equipContext, question) {
-  const equip = (equipContext || '').replace(/\s+/g, ' ').trim() || 'Unknown';
-  return `You are MIRA, an industrial maintenance assistant. Answer concisely.\n` +
-         `Equipment: ${equip}\n` +
-         `Question: ${question}` +
-         (DOC_CONTEXT ? `\n\nDocumentation:\n${DOC_CONTEXT}` : '') +
-         `\n\nAnswer in 2-4 sentences. Be specific. Include fault code reset steps if relevant.`;
-}
-
-const VISION_PROMPT =
-  'You are an industrial equipment assistant analyzing a camera frame.\n' +
-  'Identify any equipment visible. Return ONLY valid JSON with no markdown:\n' +
-  '{"equipment":"type or \'Unknown\'","model":"brand and model if visible or \'Unknown\'","observations":"1-2 sentence description","alerts":["safety concerns — empty array if none"]}\n' +
-  'If no industrial equipment is visible set equipment to "General environment".';
-
-function parseVisionJSON(text) {
-  let clean = text.trim();
-  if (clean.startsWith('```')) {
-    clean = clean.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
-  }
-  try {
-    return JSON.parse(clean);
-  } catch {
-    return { equipment: 'Unknown', model: 'Unknown', observations: clean.slice(0, 150), alerts: [] };
-  }
-}
-
-async function callVision(base64Jpeg) {
-  const msg = await anthropic.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 400,
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Jpeg } },
-        { type: 'text', text: VISION_PROMPT },
-      ],
-    }],
-  });
-  const raw = msg.content[0].text;
-  console.log(`[vision] in=${msg.usage.input_tokens} out=${msg.usage.output_tokens}`);
-  return { result: parseVisionJSON(raw), usage: msg.usage };
-}
 
 async function queryClaude(query) {
   try {
