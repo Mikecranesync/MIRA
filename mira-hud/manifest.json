@@ -1,0 +1,13 @@
+{
+  "name": "Charlie HUD",
+  "short_name": "HUD",
+  "description": "MIRA Charlie Node Industrial Tech HUD",
+  "start_url": "/halo_sim",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#00ff41",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "any", "type": "image/x-icon" }
+  ]
+}

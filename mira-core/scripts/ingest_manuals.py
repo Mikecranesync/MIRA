@@ -40,6 +40,23 @@ MAX_PDF_PAGES = 300          # skip runaway PDFs
 MIN_CHUNK_CHARS = 80
 REQUEST_DELAY = 0.5          # seconds between URL downloads (polite crawl)
 
+USE_DOCLING = os.getenv("USE_DOCLING", "false").lower() in ("true", "1", "yes")
+if USE_DOCLING:
+    try:
+        import pathlib as _pathlib
+        import sys as _sys
+        _sys.path.insert(0, str(_pathlib.Path(__file__).parent))
+        from docling_adapter import DoclingAdapter as _DoclingAdapter
+        _docling = _DoclingAdapter(max_pages=MAX_PDF_PAGES)
+        log = logging.getLogger(__name__)
+        log.info("USE_DOCLING=true — Docling extraction active (OCR + semantic chunking)")
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "USE_DOCLING=true but Docling unavailable: %s — fallback to pdfplumber", _e
+        )
+        USE_DOCLING = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -288,7 +305,7 @@ def process_url(record: dict) -> int:
 
     # Extract
     if source_type == "pdf" or resp.headers.get("content-type", "").startswith("application/pdf"):
-        blocks = _extract_from_pdf(data)
+        blocks = _docling.extract_from_pdf(data) if USE_DOCLING else _extract_from_pdf(data)
     else:
         blocks = _extract_from_html(data)
 

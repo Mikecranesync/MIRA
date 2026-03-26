@@ -44,6 +44,22 @@ EMBED_TIMEOUT = 30
 MAX_PDF_PAGES = 300
 MIN_CHUNK_CHARS = 80
 
+USE_DOCLING = os.getenv("USE_DOCLING", "false").lower() in ("true", "1", "yes")
+if USE_DOCLING:
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent))
+        from docling_adapter import DoclingAdapter as _DoclingAdapter
+        _docling = _DoclingAdapter(max_pages=MAX_PDF_PAGES)
+        logging.getLogger(__name__).info(
+            "USE_DOCLING=true — Docling extraction active (OCR + semantic chunking)"
+        )
+    except Exception as _e:
+        logging.getLogger(__name__).warning(
+            "USE_DOCLING=true but Docling unavailable: %s — fallback to pdfplumber", _e
+        )
+        USE_DOCLING = False
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_INGEST_DIR = REPO_ROOT / "mira-core" / "data" / "gdrive_ingest" / "industrial"
 SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".html", ".htm", ".md"}
@@ -288,7 +304,7 @@ def process_file(file_path: Path, dry_run: bool = False) -> tuple[int, int]:
 
     suffix = file_path.suffix.lower()
     if suffix == ".pdf":
-        blocks = _extract_from_pdf(data)
+        blocks = _docling.extract_from_pdf(data) if USE_DOCLING else _extract_from_pdf(data)
     elif suffix in (".txt", ".md"):
         blocks = _extract_from_text(data)
     elif suffix in (".html", ".htm"):

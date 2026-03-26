@@ -1,0 +1,59 @@
+AutomationDirect GS2 / GS10 / GS20 Variable Frequency Drive
+Maintenance Reference — Field Quick Guide
+
+IDENTIFICATION
+The GS2 series VFDs are compact drives by AutomationDirect (formerly Automation Direct / Koyo Electronics). They feature a keypad with numeric display, LED status indicators, and terminal strip connections. Models are identified by horsepower suffix: GS2-10P5 = 0.5HP, GS2-11P0 = 1HP, GS2-12P0 = 2HP, GS2-13P0 = 3HP, GS2-15P0 = 5HP.
+
+POWER WIRING
+Input terminals: L1, L2, L3 (three-phase AC input). Single-phase units use L1 and L3 only.
+Output terminals: T1, T2, T3 connect to motor leads U, V, W respectively.
+Ground terminal: labeled GND or earth symbol.
+Control terminals: +10V reference, AI1/AI2 analog inputs, AO1 analog output, FWD/REV/COM digital inputs, RA/RB/RC relay output.
+WARNING: Never disconnect motor leads while drive is energized. Always verify DC bus voltage below 50V before servicing.
+
+FAULT CODES — GS2 SERIES
+OC (Overcurrent): Motor current exceeded drive rating. Check: motor wiring for short, motor impedance, acceleration time too fast (P4.00), load too heavy. Reset: press STOP/RESET key or cycle power.
+OV (Overvoltage): DC bus voltage too high. Check: deceleration time too short (P4.01), input voltage too high (>264VAC for 240V units), load regenerating energy back. Fix: increase decel time, add braking resistor.
+UV (Undervoltage): DC bus too low. Check: input voltage low (<170VAC for 240V units), loose power connections, blown input fuse. Fix: verify supply voltage.
+OL1 (Drive Overload): Drive internal thermal protection. Check: ambient temperature, cooling fan obstruction, duty cycle too high. Allow drive to cool before reset.
+OL2 (Motor Overload): Motor electronic overload tripped. Check: P2.00 motor FLA setting matches nameplate, motor running hot, excessive load. Fix: verify P2.00 setting.
+OH (Overheat): Heatsink temperature exceeded limit. Check: ambient temperature above 40°C, cooling fan failed, ventilation clearances (minimum 2 inches top/bottom). Clean heatsink fins.
+PF (Power Fault): Input phase loss or voltage imbalance. Check: all three input phases present, fuses, contactor.
+CE (Communication Error): RS-485 Modbus communications fault. Check: baud rate (P9.03), station address (P9.01), wiring polarity (A+/B-).
+EF (External Fault): Digital input terminal set for external fault triggered. Check wiring to FWD/REV/EF terminals.
+bb (Base Block): Drive output disabled by external signal. Normal during controlled stop sequences.
+
+PARAMETER GROUPS
+P0.xx — Basic: P0.00 = source of frequency command, P0.01 = source of run command, P0.02 = stop method, P0.03 = max output frequency, P0.04 = base frequency, P0.05 = max voltage.
+P1.xx — Output settings: P1.00 = V/F curve selection, P1.01 = starting frequency, P1.02 = minimum frequency.
+P2.xx — Motor parameters: P2.00 = motor FLA (full load amps — set to nameplate value), P2.01 = motor no-load current, P2.02 = motor rated speed, P2.03 = motor rated power.
+P3.xx — Speed references: P3.00-P3.06 = multi-step speed frequencies (0-6).
+P4.xx — Acceleration/Deceleration: P4.00 = accel time 1 (seconds), P4.01 = decel time 1 (seconds). Default 10s each. Increase if OC or OV faults on start/stop.
+P9.xx — Special: P9.00 = password, P9.01 = Modbus station address (1-247), P9.03 = baud rate (4=9600, 5=19200, 6=38400), P9.05 = Modbus data format.
+
+MODBUS REGISTER MAP (GS Series)
+Holding Register HR100 (address 0x0064): Output frequency × 10 (e.g., 600 = 60.0 Hz)
+Holding Register HR101 (address 0x0065): Output current × 10 (e.g., 25 = 2.5A)
+Holding Register HR102 (address 0x0066): DC bus voltage
+Holding Register HR103 (address 0x0067): Drive temperature (°C)
+Coil 0 (address 0x0000): Motor run status (1=running)
+Coil 1 (address 0x0001): Motor stop command
+Coil 2 (address 0x0002): Fault status (1=fault active)
+Function code 03 = read holding registers, 01 = read coils, 06 = write single register.
+
+RESET PROCEDURE
+1. Identify fault code on keypad display.
+2. Correct root cause (do not just clear without fixing).
+3. Press STOP/RESET key on keypad, or cycle control power, or send Modbus write 0x2000 to control register.
+4. If fault clears but returns immediately, the root cause was not corrected.
+
+PREVENTIVE MAINTENANCE
+Every 6 months: Clean heatsink fins with compressed air. Inspect power wiring terminals for corrosion. Verify cooling fan rotates freely.
+Annually: Verify DC bus capacitor charge time (should reach rated voltage within 3 seconds of power application). Check terminal torque (input power 35 lb-in, motor leads 12 lb-in).
+Replace cooling fan every 3-5 years or at first sign of noise/reduced airflow.
+
+COMMON FIELD ISSUES
+Drive displays dashes (----): Drive is in base-block or external run interlock open. Check FWD/REV terminal wiring.
+Motor hums but does not rotate: Check P0.00 frequency source — may be set to analog input with no signal. Verify 0-10V or 4-20mA reference present.
+Drive runs but motor does not turn: Check T1/T2/T3 wiring, motor thermal overload reset, motor brake if equipped.
+Motor runs backwards: Swap any two of T1, T2, T3 at drive output (not at motor) — or change P0.02 direction parameter.
