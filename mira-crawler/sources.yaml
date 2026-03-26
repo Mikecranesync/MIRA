@@ -81,13 +81,23 @@ tiers:
 
   # ── TIER 3: Manufacturer Free Docs ──────────────────────────────
   3_manufacturer:
-    automationdirect_manuals:
-      base_url: "https://cdn.automationdirect.com/static/manuals/"
+    automationdirect_gs20:
+      url: "https://cdn.automationdirect.com/static/manuals/gs20m/gs20m.pdf"
       type: equipment_manual
       format: pdf
       manufacturer: AutomationDirect
-      crawl_pattern: index
-      description: "AutomationDirect CDN — all public manuals (~200+)"
+      equipment_id: GS20
+      crawl_pattern: direct
+      description: "GS20 AC Drive user manual — parameters, wiring, fault codes"
+
+    automationdirect_gs10:
+      url: "https://cdn.automationdirect.com/static/manuals/gs10m/gs10m.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: AutomationDirect
+      equipment_id: GS10
+      crawl_pattern: direct
+      description: "GS10 AC Drive user manual — parameters, wiring, fault codes"
 
     # ABB, FANUC, KUKA, Siemens, Rockwell — URLs to be added after
     # verifying public access and robots.txt compliance
