@@ -266,7 +266,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
         <span class="mira-line system">MIRA: CONNECTING...</span>
       </div>
       <div id="mira-input-row">
-        <input id="mira-input" type="text" placeholder="ASK MIRA..." maxlength="400" autocomplete="off"/>
+        <input id="mira-input" type="text" placeholder="ASK MIRA... (SPACE=voice | Enter=send)" maxlength="400" autocomplete="off"/>
         <button id="mira-send" onclick="miraSend()">SEND</button>
       </div>
     </div>
@@ -329,6 +329,26 @@ setInterval(() => {
 // ─── FRAME COUNTER ───────────────────────────────────────────
 let fc = 0;
 setInterval(() => document.getElementById('frame-ct').textContent = ++fc, 33);
+
+// ─── VISION FRAME CAPTURE ────────────────────────────────────
+let _visionScanning = true;
+let _visionBusy     = false;
+
+function captureAndAnalyze() {
+  if (!_visionScanning || _visionBusy) return;
+  const vid = document.getElementById('feed');
+  if (!vid.videoWidth || !vid.videoHeight) return;
+  _visionBusy = true;
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.min(vid.videoWidth, 640);
+  canvas.height = Math.round(canvas.width * vid.videoHeight / vid.videoWidth);
+  canvas.getContext('2d').drawImage(vid, 0, 0, canvas.width, canvas.height);
+  socket.emit('analyzeFrame', canvas.toDataURL('image/jpeg', 0.75).split(',')[1]);
+}
+setInterval(captureAndAnalyze, 3000);
+
+// ─── SOCKET.IO (declare first — used throughout this script) ─
+const socket = io();
 
 // ─── VIM OVERLAY ────────────────────────────────────────────
 let lastVisionData = null;
@@ -418,12 +438,36 @@ function renderStep() {
   document.getElementById('btn-next').disabled = stepIdx === total - 1;
 }
 
-// ─── SOCKET.IO ───────────────────────────────────────────────
-const socket = io();
-
+// ─── SOCKET.IO HANDLERS ──────────────────────────────────────
 socket.on('connect', () => {
   setMiraStatus('online', 'ONLINE');
   miraAppendLine('MIRA: CONNECTED TO CHARLIE NODE', 'system');
+});
+
+socket.on('visionUpdate', (d) => {
+  _visionBusy = false;
+  const isReal = d.equipment &&
+    d.equipment !== 'General environment' &&
+    d.equipment !== 'Vision error' &&
+    d.equipment !== 'Vision offline';
+
+  const sl = document.getElementById('step-label');
+  const st = document.getElementById('step-text');
+  if (sl) sl.textContent = isReal ? 'VISION SCAN — LIVE' : 'SCANNING...';
+  if (st && isReal) {
+    st.textContent = d.equipment + (d.model && d.model !== '--' ? ' — ' + d.model : '');
+    st.className   = '';
+  }
+
+  if (isReal) {
+    document.getElementById('unit-id').textContent     = d.equipment;
+    document.getElementById('active-proc').textContent = 'PROC:' + d.equipment.toUpperCase().slice(0, 14);
+    lastVisionData = { equipment_context: d.equipment_context || d.equipment };
+  }
+
+  if (d.alerts && d.alerts.length) {
+    d.alerts.forEach(a => miraAppendLine('⚠ ' + a, 'system'));
+  }
 });
 
 socket.on('disconnect', () => {
@@ -521,6 +565,60 @@ function miraSend() {
   socket.emit('mira_query', payload);
   input.value = '';
 }
+
+// ─── VOICE INPUT (SPACEBAR) ──────────────────────────────────
+let voiceState = 'idle'; // idle | listening | locked
+const SpeechRecog = window.SpeechRecognition || window.webkitSpeechRecognition;
+const recognition = SpeechRecog ? new SpeechRecog() : null;
+
+if (recognition) {
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (e) => {
+    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+    document.getElementById('mira-input').value = transcript;
+  };
+
+  recognition.onend = () => {
+    if (voiceState === 'listening') setVoiceState('locked');
+  };
+
+  recognition.onerror = (e) => {
+    console.warn('[voice] error:', e.error);
+    setVoiceState('idle');
+  };
+}
+
+function setVoiceState(state) {
+  voiceState = state;
+  const inp = document.getElementById('mira-input');
+  const btn = document.getElementById('mira-send');
+  if (state === 'idle')      { inp.style.borderColor = ''; btn.textContent = 'SEND'; }
+  if (state === 'listening') { inp.style.borderColor = '#ffaa00'; btn.textContent = '● REC'; }
+  if (state === 'locked')    { inp.style.borderColor = '#00ff88'; btn.textContent = 'SEND ▶'; }
+}
+
+document.addEventListener('keydown', (e) => {
+  const tag = document.activeElement.tagName;
+  const inInput = (tag === 'INPUT' || tag === 'TEXTAREA');
+
+  if (e.key === ' ' && !inInput) {
+    e.preventDefault();
+    if (!recognition) return;
+    if      (voiceState === 'idle')      { setVoiceState('listening'); recognition.start(); }
+    else if (voiceState === 'listening') { recognition.stop(); setVoiceState('locked'); }
+    else if (voiceState === 'locked')    { miraSend(); setVoiceState('idle'); }
+    return;
+  }
+
+  if (e.key === 'Escape') {
+    if (recognition && voiceState !== 'idle') recognition.abort();
+    setVoiceState('idle');
+    document.getElementById('mira-input').value = '';
+  }
+});
 
 document.getElementById('mira-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') miraSend();
