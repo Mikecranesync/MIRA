@@ -73,18 +73,62 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
   border:1px solid rgba(0,255,136,.3);opacity:.5
 }
 
-/* ─── INSTRUCTION PANEL ─── */
+/* ─── INSTRUCTION PANEL (procedure manual override — hidden by default) ─── */
 #instruction-panel{
-  position:absolute;bottom:60px;left:50%;transform:translateX(-50%);
+  position:absolute;bottom:112px;left:50%;transform:translateX(-50%);
   width:68%;background:rgba(0,16,8,.82);
   border:1px solid #00ff88;border-radius:2px;
-  padding:14px 22px;text-align:center;pointer-events:auto
+  padding:14px 22px;pointer-events:auto
 }
 #step-label{font-size:9px;letter-spacing:3px;color:#5a9977;margin-bottom:8px}
-#step-text{font-size:16px;letter-spacing:.5px;line-height:1.6;min-height:52px}
-#step-text.warn-step{color:#ffaa00;border-left:3px solid #ffaa00;padding-left:10px;text-align:left}
-#progress-bar{margin-top:10px;height:2px;background:#0a2218;border-radius:1px}
+#step-text{font-size:16px;letter-spacing:.5px;line-height:1.6;min-height:52px;display:none}
+#step-text.warn-step{color:#ffaa00;border-left:3px solid #ffaa00;padding-left:10px}
+#progress-bar{margin-top:10px;height:2px;background:#0a2218;border-radius:1px;display:none}
 #progress-fill{height:100%;background:#00ff88;border-radius:1px;transition:width .45s ease}
+
+/* ─── VISION PANEL ─── */
+#vision-panel{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(0,255,136,.2)}
+.hud-label{font-size:9px;letter-spacing:3px;color:#5a9977;margin-bottom:6px}
+#vision-equipment{font-size:17px;letter-spacing:1.5px;margin-bottom:3px}
+#vision-model{font-size:10px;letter-spacing:2px;color:#5a9977;margin-bottom:6px}
+#vision-observations{font-size:11px;letter-spacing:.3px;line-height:1.7;color:#00cc6a}
+#vision-alerts{font-size:10px;letter-spacing:1px;margin-top:5px;min-height:14px}
+
+/* ─── MIRA RESPONSE PANEL ─── */
+#mira-response-panel{}
+#mira-response-text{font-size:14px;letter-spacing:.4px;line-height:1.7;min-height:42px}
+#mira-sources{font-size:9px;letter-spacing:1px;color:#3a7755;margin-top:5px}
+
+/* ─── QUERY BAR ─── */
+#query-bar{
+  position:absolute;bottom:60px;left:50%;transform:translateX(-50%);
+  width:68%;display:flex;gap:8px;pointer-events:auto
+}
+#query-input{
+  flex:1;background:rgba(0,10,5,.88);border:1px solid rgba(0,255,136,.4);
+  color:#00ff88;font-family:'Courier New',monospace;font-size:11px;
+  letter-spacing:1px;padding:7px 12px;outline:none
+}
+#query-input:focus{border-color:#00ff88}
+#query-input::placeholder{color:#2a5a3a}
+#query-send{
+  background:rgba(0,255,136,.1);border:1px solid #00ff88;
+  color:#00ff88;font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:2px;padding:7px 14px;cursor:pointer;text-transform:uppercase;
+  transition:background .2s;white-space:nowrap
+}
+#query-send:hover{background:rgba(0,255,136,.28)}
+
+/* ─── CONFIRM PROMPT ─── */
+#confirm-prompt{display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,255,136,.3);text-align:center}
+#confirm-question{font-size:11px;letter-spacing:2px;color:#ffaa00;margin-bottom:10px}
+.confirm-btn{background:rgba(0,255,136,.1);border:1px solid #00ff88;color:#00ff88;font-family:'Courier New',monospace;font-size:10px;letter-spacing:2px;padding:7px 18px;cursor:pointer;text-transform:uppercase;transition:background .2s;margin:0 6px}
+.confirm-btn:hover{background:rgba(0,255,136,.28)}
+.confirm-btn.no{border-color:#5a9977;color:#5a9977}
+.confirm-btn.no:hover{border-color:#00ff88;color:#00ff88}
+#scan-again{display:none;font-size:9px;letter-spacing:2px;color:#5a9977;background:none;border:1px solid #2a5a3a;padding:4px 12px;cursor:pointer;font-family:'Courier New',monospace;margin-top:8px;text-transform:uppercase;transition:all .2s}
+#scan-again:hover{color:#00ff88;border-color:#00ff88}
+#scanning-indicator{font-size:9px;letter-spacing:2px;color:#5a9977;margin-top:6px;min-height:14px}
 
 /* ─── PROCEDURE SELECTOR ─── */
 #proc-selector{
@@ -193,6 +237,20 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 .dot.green{background:#00ff88}
 .dot.orange{background:#ffaa00}
 .dot.red{background:#ff3333}
+
+/* ─── VOICE STATES ─── */
+@keyframes pulse-border{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,170,0,.6)}
+  50%{box-shadow:0 0 8px 2px rgba(255,170,0,.25)}
+}
+#query-bar.listening #query-input{border-color:#ffaa00;color:#ffaa00;animation:pulse-border 1.2s infinite}
+#query-bar.locked    #query-input{border-color:#00ff88;color:#00ff88}
+#query-bar.sending   #query-input{border-color:#00ff88;color:#5a9977;animation:blink 1s infinite}
+#voice-indicator{
+  font-size:8px;letter-spacing:2px;color:#5a9977;
+  position:absolute;bottom:52px;left:50%;transform:translateX(-50%);
+  width:68%;text-align:right;pointer-events:none
+}
 </style>
 </head>
 <body>
@@ -240,9 +298,9 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
       ZONE: <span id="zone-id">---</span><br>
       MODE: INSPECT<br>
       <span style="color:rgba(0,255,136,.3)">──────────</span><br>
-      ESTOP: <span style="color:#00ff88">CLEAR</span><br>
-      SERVO: <span style="color:#00ff88">OK</span><br>
-      FAULT: <span style="color:#00ff88">NONE</span>
+      ESTOP: <span id="hw-estop" style="color:#00ff88">CLEAR</span><br>
+      SERVO: <span id="hw-servo" style="color:#00ff88">OK</span><br>
+      FAULT: <span id="hw-fault" style="color:#00ff88">NONE</span>
     </div>
 
     <!-- Right Panel -->
@@ -271,12 +329,42 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
       </div>
     </div>
 
-    <!-- Instruction Panel -->
+    <!-- Center: Vision + MIRA Response -->
     <div id="instruction-panel">
-      <div id="step-label">AWAITING CONNECTION...</div>
-      <div id="step-text">Connecting to Charlie Node server...</div>
+      <!-- Vision identification -->
+      <div id="vision-panel">
+        <div class="hud-label">▸ VISION SCAN</div>
+        <div id="vision-equipment">AWAITING SCAN...</div>
+        <div id="vision-model">--</div>
+        <div id="vision-observations">Point camera at equipment to begin identification.</div>
+        <div id="vision-alerts"></div>
+        <div id="confirm-prompt">
+          <div id="confirm-question">IS THIS WHAT YOU'RE WORKING ON?</div>
+          <button class="confirm-btn yes" onclick="confirmYes()">YES, ASK MIRA</button>
+          <button class="confirm-btn no"  onclick="confirmNo()">NOT THAT</button>
+        </div>
+        <div id="scanning-indicator"></div>
+        <button id="scan-again" onclick="startScanning()">↺ SCAN AGAIN</button>
+      </div>
+      <!-- MIRA RAG response -->
+      <div id="mira-response-panel">
+        <div class="hud-label">▸ MIRA RESPONSE</div>
+        <div id="mira-response-text">Ready. Look at equipment or ask a question.</div>
+        <div id="mira-sources"></div>
+      </div>
+      <!-- Procedure step (hidden — manual override via PREV/NEXT) -->
+      <div id="step-label" style="display:none"></div>
+      <div id="step-text"></div>
       <div id="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
     </div>
+
+    <!-- Query bar -->
+    <div id="query-bar">
+      <input id="query-input" type="text" placeholder="ASK MIRA... (SPACE = voice | type + Enter)" maxlength="400" autocomplete="off"/>
+      <button id="query-send">ASK ▶</button>
+    </div>
+
+    <div id="voice-indicator"></div>
 
     <!-- Nav -->
     <div id="nav">
@@ -406,13 +494,20 @@ function renderStep() {
   if (!stepsData.length) return;
   const s     = stepsData[stepIdx];
   const total = stepsData.length;
-  document.getElementById('step-label').textContent =
-    `STEP ${s.id} OF ${total} — MAINTENANCE PROCEDURE ${s.warn ? '⚠ CAUTION' : ''}`;
-  const st = document.getElementById('step-text');
-  st.textContent = s.action;
-  st.className   = s.warn ? 'warn-step' : '';
-  document.getElementById('step-counter').textContent = `${s.id}/${total}`;
-  document.getElementById('zone-id').textContent      = s.zone;
+
+  // Show step override panels when navigating manually
+  const stepLabelEl = document.getElementById('step-label');
+  const stepTextEl  = document.getElementById('step-text');
+  const progBar     = document.getElementById('progress-bar');
+  stepLabelEl.style.display = '';
+  stepTextEl.style.display  = '';
+  progBar.style.display     = '';
+
+  stepLabelEl.textContent = `STEP ${s.id} OF ${total} — ${s.warn ? '⚠ CAUTION' : 'PROCEDURE'}`;
+  stepTextEl.textContent  = s.action;
+  stepTextEl.className    = s.warn ? 'warn-step' : '';
+  document.getElementById('step-counter').textContent  = `${s.id}/${total}`;
+  document.getElementById('zone-id').textContent       = s.zone;
   document.getElementById('progress-fill').style.width = `${(s.id/total)*100}%`;
   document.getElementById('btn-prev').disabled = stepIdx === 0;
   document.getElementById('btn-next').disabled = stepIdx === total - 1;
@@ -524,6 +619,236 @@ function miraSend() {
 
 document.getElementById('mira-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') miraSend();
+});
+
+// ─── FRAME CAPTURE ───────────────────────────────────────────
+let scanning  = true;
+let analyzing = false;
+let _lastVision = { equipment: '', model: '' };
+let _confirmedEquipment = '';  // set on CONFIRM, survives rescans to 'General environment'
+
+function captureAndAnalyze() {
+  if (!scanning || analyzing) return;
+  if (!video.videoWidth || !video.videoHeight) return;
+  analyzing = true;
+  setScanStatus('SCANNING...');
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.min(video.videoWidth, 640);
+  canvas.height = Math.round(canvas.width * video.videoHeight / video.videoWidth);
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  socket.emit('analyzeFrame', canvas.toDataURL('image/jpeg', 0.75).split(',')[1]);
+}
+setInterval(captureAndAnalyze, 3000);
+
+function setScanStatus(msg) {
+  document.getElementById('scanning-indicator').textContent = msg;
+}
+
+// ─── VISION UPDATE ───────────────────────────────────────────
+socket.on('visionUpdate', (d) => {
+  analyzing = false;
+  _lastVision = { equipment: d.equipment || '', model: d.model || '' };
+
+  document.getElementById('vision-equipment').textContent     = d.equipment    || '--';
+  document.getElementById('vision-model').textContent         = d.model         || '--';
+  document.getElementById('vision-observations').textContent  = d.observations  || '';
+  const alertEl = document.getElementById('vision-alerts');
+  const alerts  = d.alerts || [];
+  alertEl.textContent = alerts.length ? '⚠ ' + alerts.join(' | ') : '';
+  alertEl.style.color = alerts.length ? '#ff3333' : '#00ff88';
+
+  const confirmEl = document.getElementById('confirm-prompt');
+  if (d.pendingConfirm) {
+    confirmEl.style.display = '';
+    setScanStatus('');
+  } else {
+    confirmEl.style.display = 'none';
+    setScanStatus(d.equipment === 'General environment' ? 'No equipment — scanning...' : '');
+  }
+});
+
+// ─── CONFIRM BUTTONS ─────────────────────────────────────────
+function confirmYes() {
+  scanning = false;
+  document.getElementById('confirm-prompt').style.display = 'none';
+  document.getElementById('scan-again').style.display     = '';
+  setScanStatus('');
+  document.getElementById('mira-response-text').textContent = 'Asking MIRA...';
+  socket.emit('confirmEquipment', _lastVision);
+  _confirmedEquipment = `${_lastVision.equipment} ${_lastVision.model}`.trim();
+}
+
+function confirmNo() {
+  socket.emit('rejectEquipment', _lastVision);
+  document.getElementById('confirm-prompt').style.display = 'none';
+  setScanStatus('Scanning...');
+}
+
+function startScanning() {
+  socket.emit('scanAgain');
+  scanning  = true;
+  analyzing = false;
+  _lastVision = { equipment: '', model: '' };
+  document.getElementById('scan-again').style.display          = 'none';
+  document.getElementById('confirm-prompt').style.display      = 'none';
+  document.getElementById('vision-equipment').textContent      = 'AWAITING SCAN...';
+  document.getElementById('vision-model').textContent          = '--';
+  document.getElementById('vision-observations').textContent   = 'Point camera at equipment to begin identification.';
+  document.getElementById('vision-alerts').textContent         = '';
+  document.getElementById('mira-response-text').textContent    = 'Ready.';
+  document.getElementById('mira-sources').textContent          = '';
+  setScanStatus('');
+}
+
+// ─── TECH QUERY DISPLAY ──────────────────────────────────────
+socket.on('techQuery', (d) => {
+  if (d.query) miraAppendLine('▸ ' + d.query, 'query');
+});
+
+// ─── QUERY BAR + VOICE ───────────────────────────────────────
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let voiceState  = 'idle';   // 'idle' | 'listening' | 'locked' | 'sending'
+let voiceMuted  = false;
+
+const queryBar   = document.getElementById('query-bar');
+const queryInput = document.getElementById('query-input');
+const querySend  = document.getElementById('query-send');
+const voiceInd   = document.getElementById('voice-indicator');
+
+function setVoiceState(s) {
+  voiceState = s;
+  queryBar.className = s === 'idle' ? '' : s;
+  voiceInd.textContent = {
+    idle:      SR ? 'SPACE = voice' : '',
+    listening: 'SPACE = stop  |  ESC = cancel',
+    locked:    'SPACE or ENTER = send  |  ESC = cancel',
+    sending:   '',
+  }[s] || '';
+}
+setVoiceState('idle');
+
+function voiceCancel() {
+  if (recognition) { try { recognition.abort(); } catch(e){} recognition = null; }
+  queryInput.value = '';
+  queryInput.placeholder = 'ASK MIRA... (SPACE = voice | type + Enter)';
+  setVoiceState('idle');
+}
+
+function sendQuery() {
+  const q = queryInput.value.trim();
+  if (!q) return;
+  queryInput.value = 'MIRA PROCESSING...';
+  queryInput.placeholder = '';
+  setVoiceState('sending');
+  miraAppendLine('> ' + q, 'query');
+  socket.emit('techQuery', {
+    query: q,
+    source: 'text',
+    equipment_context: _confirmedEquipment || `${_lastVision.equipment} ${_lastVision.model}`.trim(),
+  });
+}
+
+function startListening() {
+  if (!SR) { queryInput.focus(); return; }
+  recognition = new SR();
+  recognition.continuous     = false;
+  recognition.interimResults = true;
+  recognition.lang           = 'en-US';
+
+  recognition.onresult = (e) => {
+    let interim = '', final = '';
+    for (const r of e.results) {
+      if (r.isFinal) final += r[0].transcript;
+      else           interim += r[0].transcript;
+    }
+    if (final) {
+      queryInput.value = final;
+      setVoiceState('locked');
+      recognition = null;
+    } else {
+      queryInput.value = interim;
+    }
+  };
+
+  recognition.onerror = () => voiceCancel();
+  recognition.onend   = () => {
+    if (voiceState === 'listening') setVoiceState('locked');
+  };
+
+  queryInput.value = '';
+  queryInput.placeholder = '● LISTENING...';
+  setVoiceState('listening');
+  recognition.start();
+}
+
+// Spacebar state machine — skip when an input has focus
+document.addEventListener('keydown', (e) => {
+  const tag = document.activeElement.tagName;
+  const inInput = (tag === 'INPUT' || tag === 'TEXTAREA');
+
+  if (e.key === 'Escape') { voiceCancel(); return; }
+
+  if ((e.key === 'm' || e.key === 'M') && !inInput) {
+    voiceMuted = !voiceMuted;
+    voiceInd.textContent = voiceMuted ? 'AUDIO: MUTED  (M = unmute)' : (SR ? 'SPACE = voice' : '');
+    return;
+  }
+
+  if (e.key === ' ' && !inInput) {
+    e.preventDefault();
+    if      (voiceState === 'idle')      startListening();
+    else if (voiceState === 'listening') {
+      if (recognition) { try { recognition.stop(); } catch(x){} }
+      setVoiceState('locked');
+    }
+    else if (voiceState === 'locked')    sendQuery();
+  }
+});
+
+querySend.addEventListener('click', sendQuery);
+queryInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); sendQuery(); }
+});
+
+// ─── MIRA RESPONSE ───────────────────────────────────────────
+socket.on('miraResponse', (d) => {
+  document.getElementById('mira-response-text').textContent = d.answer || '';
+  const srcs = d.sources || [];
+  document.getElementById('mira-sources').textContent = srcs.length ? 'SRC: ' + srcs.join(', ') : '';
+  if (d.answer) {
+    miraAppendLine(d.answer, 'response');
+    if (!voiceMuted && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const utt = new SpeechSynthesisUtterance(d.answer);
+      utt.rate  = 0.88;
+      utt.pitch = 0.9;
+      window.speechSynthesis.speak(utt);
+    }
+  }
+  queryInput.value = '';
+  queryInput.placeholder = 'ASK MIRA... (SPACE = voice | type + Enter)';
+  setVoiceState('idle');
+});
+
+// ─── HARDWARE UPDATE ─────────────────────────────────────────
+socket.on('hardwareUpdate', (hw) => {
+  const estopEl = document.getElementById('hw-estop');
+  estopEl.textContent = hw.estop ? 'ENGAGED' : 'CLEAR';
+  estopEl.style.color  = hw.estop ? '#ff3333' : '#00ff88';
+
+  const servoEl = document.getElementById('hw-servo');
+  servoEl.textContent = hw.run ? 'ON' : 'OK';
+  servoEl.style.color  = hw.run ? '#00ff88' : '#00ff88';
+
+  const faultEl = document.getElementById('hw-fault');
+  if (hw.fault) {
+    faultEl.textContent = hw.vfd_fault_code ? 'F' + hw.vfd_fault_code : 'FAULT';
+    faultEl.style.color  = '#ff3333';
+  } else {
+    faultEl.textContent = 'NONE';
+    faultEl.style.color  = '#00ff88';
+  }
 });
 </script>
 </body>

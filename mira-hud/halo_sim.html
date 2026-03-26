@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#00ff41">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Charlie HUD">
+  <link rel="manifest" href="/manifest.json">
+  <title>CHARLIE // HALO SIM</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green: #00ff41;
+      --dim:   #007a1f;
+      --warn:  #ffcc00;
+      --bg:    #000;
+      --panel: #0a0a0a;
+      --border:#1a3a1a;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--green);
+      font-family: 'Courier New', Courier, monospace;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── LAYOUT ─────────────────────────────────────────────── */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      padding: 0;
+    }
+
+    /* ── TOP BAR ────────────────────────────────────────────── */
+    #topbar {
+      flex: 0 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      background: var(--panel);
+    }
+    #topbar .node { color: var(--dim); }
+    #topbar .proc { color: var(--green); font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45vw; }
+    #topbar .clock { color: var(--dim); white-space: nowrap; }
+
+    /* ── PROCEDURE SELECTOR ─────────────────────────────────── */
+    #proc-tabs {
+      flex: 0 0 auto;
+      display: flex;
+      gap: 6px;
+      padding: 8px 12px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      border-bottom: 1px solid var(--border);
+    }
+    #proc-tabs::-webkit-scrollbar { display: none; }
+    .proc-tab {
+      flex: 0 0 auto;
+      padding: 5px 10px;
+      border: 1px solid var(--dim);
+      background: transparent;
+      color: var(--dim);
+      font-family: inherit;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      white-space: nowrap;
+      border-radius: 2px;
+    }
+    .proc-tab.active {
+      border-color: var(--green);
+      color: var(--green);
+      background: rgba(0,255,65,0.07);
+    }
+
+    /* ── STEP DISPLAY ───────────────────────────────────────── */
+    #step-area {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    #step-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 10px;
+      color: var(--dim);
+    }
+    #step-id { font-size: 13px; color: var(--green); font-weight: bold; }
+    #warn-badge {
+      display: none;
+      padding: 2px 7px;
+      border: 1px solid var(--warn);
+      color: var(--warn);
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      animation: blink 1s step-start infinite;
+    }
+    #warn-badge.show { display: inline-block; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    #step-text {
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      padding: 14px;
+      font-size: 15px;
+      line-height: 1.55;
+      overflow-y: auto;
+      background: var(--panel);
+    }
+
+    /* ── PROGRESS ───────────────────────────────────────────── */
+    #progress-wrap {
+      margin-top: 10px;
+    }
+    #progress-label {
+      font-size: 10px;
+      color: var(--dim);
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+    #progress-bar-bg {
+      height: 3px;
+      background: var(--border);
+    }
+    #progress-bar-fill {
+      height: 100%;
+      background: var(--green);
+      transition: width 0.25s ease;
+    }
+
+    /* ── NAV BUTTONS ────────────────────────────────────────── */
+    #nav {
+      flex: 0 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border-top: 1px solid var(--border);
+    }
+    .nav-btn {
+      padding: 18px 0;
+      background: var(--panel);
+      color: var(--green);
+      border: none;
+      border-right: 1px solid var(--border);
+      font-family: inherit;
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      transition: background 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .nav-btn:last-child { border-right: none; }
+    .nav-btn:active { background: rgba(0,255,65,0.12); }
+    .nav-btn:disabled { color: var(--dim); cursor: default; }
+    .nav-btn:disabled:active { background: var(--panel); }
+
+    /* ── MIRA PANEL ─────────────────────────────────────────── */
+    #mira-toggle {
+      flex: 0 0 auto;
+      width: 100%;
+      padding: 10px 12px;
+      background: #050505;
+      border: none;
+      border-top: 1px solid var(--border);
+      color: var(--dim);
+      font-family: inherit;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-align: left;
+      cursor: pointer;
+    }
+    #mira-toggle .indicator {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--dim);
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    #mira-toggle .indicator.online { background: var(--green); }
+
+    #mira-panel {
+      flex: 0 0 auto;
+      display: none;
+      flex-direction: column;
+      border-top: 1px solid var(--border);
+      background: #050505;
+      max-height: 38vh;
+    }
+    #mira-panel.open { display: flex; }
+
+    #mira-output {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 10px 12px;
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--dim);
+      min-height: 60px;
+    }
+    #mira-output .entry { margin-bottom: 6px; }
+    #mira-output .entry.user { color: var(--green); }
+    #mira-output .entry.ai   { color: #88ff99; }
+    #mira-output .entry.tags { color: var(--dim); font-size: 9px; }
+
+    #mira-input-row {
+      display: flex;
+      border-top: 1px solid var(--border);
+      flex: 0 0 auto;
+    }
+    #mira-input {
+      flex: 1 1 auto;
+      background: transparent;
+      border: none;
+      color: var(--green);
+      font-family: inherit;
+      font-size: 12px;
+      padding: 10px 12px;
+      outline: none;
+    }
+    #mira-input::placeholder { color: var(--dim); }
+    #mira-send {
+      flex: 0 0 auto;
+      padding: 10px 14px;
+      background: transparent;
+      border: none;
+      border-left: 1px solid var(--border);
+      color: var(--green);
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+    }
+    #mira-send:disabled { color: var(--dim); }
+    #mira-send:active { background: rgba(0,255,65,0.1); }
+
+    /* ── BOOT SCREEN ────────────────────────────────────────── */
+    #boot {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 999;
+      gap: 16px;
+    }
+    #boot-title { font-size: 18px; letter-spacing: 0.2em; }
+    #boot-sub   { font-size: 10px; color: var(--dim); letter-spacing: 0.15em; }
+    #boot-bar-bg {
+      width: 200px; height: 2px;
+      background: var(--border);
+    }
+    #boot-bar-fill {
+      height: 100%;
+      background: var(--green);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    #boot-msg { font-size: 9px; color: var(--dim); letter-spacing: 0.1em; height: 12px; }
+  </style>
+</head>
+<body>
+
+<!-- BOOT SCREEN -->
+<div id="boot">
+  <div id="boot-title">CHARLIE NODE</div>
+  <div id="boot-sub">HALO SIM // MOBILE INTERFACE</div>
+  <div id="boot-bar-bg"><div id="boot-bar-fill"></div></div>
+  <div id="boot-msg"></div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <div id="topbar">
+    <span class="node">SYS:CHARLIE</span>
+    <span class="proc" id="tb-proc">—</span>
+    <span class="clock" id="tb-clock">00:00:00</span>
+  </div>
+
+  <div id="proc-tabs"></div>
+
+  <div id="step-area">
+    <div id="step-meta">
+      <span id="step-id">STEP —/—</span>
+      <span id="warn-badge">⚠ CAUTION</span>
+      <span id="step-zone">ZONE: —</span>
+    </div>
+    <div id="step-text">Connecting…</div>
+    <div id="progress-wrap">
+      <div id="progress-label">
+        <span id="prog-text">0 / 0</span>
+        <span id="prog-pct">0%</span>
+      </div>
+      <div id="progress-bar-bg"><div id="progress-bar-fill" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div id="nav">
+    <button class="nav-btn" id="btn-prev" disabled>◀ PREV</button>
+    <button class="nav-btn" id="btn-next" disabled>NEXT ▶</button>
+  </div>
+
+  <button id="mira-toggle">
+    <span class="indicator" id="mira-dot"></span>MIRA AI ▾
+  </button>
+  <div id="mira-panel">
+    <div id="mira-output"><div class="entry" style="color:var(--dim)">MIRA ready. Ask anything about this step.</div></div>
+    <div id="mira-input-row">
+      <input id="mira-input" type="text" placeholder="Ask MIRA…" autocomplete="off" autocorrect="off" autocapitalize="off">
+      <button id="mira-send">SEND</button>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+'use strict';
+
+// ── BOOT ANIMATION ────────────────────────────────────────────
+const bootMsgs = ['CONNECTING…', 'LOADING PROCEDURES…', 'ESTABLISHING SOCKET…', 'READY.'];
+const bootBar  = document.getElementById('boot-bar-fill');
+const bootMsg  = document.getElementById('boot-msg');
+
+let bStep = 0;
+function bootTick() {
+  if (bStep >= bootMsgs.length) {
+    setTimeout(() => {
+      document.getElementById('boot').style.opacity = '0';
+      document.getElementById('boot').style.transition = 'opacity 0.4s';
+      setTimeout(() => document.getElementById('boot').remove(), 400);
+    }, 200);
+    return;
+  }
+  bootMsg.textContent = bootMsgs[bStep];
+  bootBar.style.width = `${((bStep + 1) / bootMsgs.length) * 100}%`;
+  bStep++;
+  setTimeout(bootTick, 320);
+}
+bootTick();
+
+// ── CLOCK ─────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('tb-clock').textContent =
+    now.toTimeString().slice(0, 8);
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ── STATE ─────────────────────────────────────────────────────
+let steps       = [];
+let currentStep = 0;
+
+function renderStep() {
+  if (!steps.length) return;
+  const s     = steps[currentStep];
+  const total = steps.length;
+
+  document.getElementById('step-id').textContent   = `STEP ${s.id} / ${total}`;
+  document.getElementById('step-zone').textContent  = `ZONE: ${s.zone}`;
+  document.getElementById('step-text').textContent  = s.action;
+
+  const warn = document.getElementById('warn-badge');
+  s.warn ? warn.classList.add('show') : warn.classList.remove('show');
+
+  const pct = Math.round(((currentStep + 1) / total) * 100);
+  document.getElementById('prog-text').textContent    = `${currentStep + 1} / ${total}`;
+  document.getElementById('prog-pct').textContent     = `${pct}%`;
+  document.getElementById('progress-bar-fill').style.width = `${pct}%`;
+
+  document.getElementById('btn-prev').disabled = currentStep === 0;
+  document.getElementById('btn-next').disabled = currentStep === total - 1;
+}
+
+// ── SOCKET ────────────────────────────────────────────────────
+const socket = io();
+
+socket.on('init', (data) => {
+  steps       = data.steps;
+  currentStep = data.currentStep;
+  document.getElementById('tb-proc').textContent = data.active;
+  renderProcTabs(data.procedures, data.active);
+  renderStep();
+});
+
+socket.on('stepUpdate', (data) => {
+  steps       = data.steps;
+  currentStep = data.currentStep;
+  document.getElementById('tb-proc').textContent = data.active;
+  renderStep();
+  document.querySelectorAll('.proc-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.name === data.active);
+  });
+});
+
+socket.on('mira_insight', (data) => {
+  const out = document.getElementById('mira-output');
+  const el  = document.createElement('div');
+  el.className = 'entry ai';
+  el.textContent = '» ' + data.text;
+  out.appendChild(el);
+  if (data.tags && data.tags.length) {
+    const tags = document.createElement('div');
+    tags.className = 'entry tags';
+    tags.textContent = data.tags.join(' · ');
+    out.appendChild(tags);
+  }
+  out.scrollTop = out.scrollHeight;
+  document.getElementById('mira-send').disabled = false;
+  document.getElementById('mira-dot').classList.add('online');
+});
+
+// ── PROC TABS ─────────────────────────────────────────────────
+function renderProcTabs(procs, active) {
+  const wrap = document.getElementById('proc-tabs');
+  wrap.innerHTML = '';
+  procs.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className   = 'proc-tab' + (name === active ? ' active' : '');
+    btn.textContent = name;
+    btn.dataset.name = name;
+    btn.addEventListener('click', () => socket.emit('setProcedure', name));
+    wrap.appendChild(btn);
+  });
+}
+
+// ── NAV ───────────────────────────────────────────────────────
+document.getElementById('btn-prev').addEventListener('click', () => socket.emit('step', 'prev'));
+document.getElementById('btn-next').addEventListener('click', () => socket.emit('step', 'next'));
+
+// ── MIRA PANEL TOGGLE ────────────────────────────────────────
+document.getElementById('mira-toggle').addEventListener('click', () => {
+  document.getElementById('mira-panel').classList.toggle('open');
+});
+
+// ── MIRA SEND ─────────────────────────────────────────────────
+function sendMira() {
+  const input = document.getElementById('mira-input');
+  const query = input.value.trim();
+  if (!query) return;
+  input.value = '';
+
+  const out = document.getElementById('mira-output');
+  const el  = document.createElement('div');
+  el.className = 'entry user';
+  el.textContent = '> ' + query;
+  out.appendChild(el);
+  out.scrollTop = out.scrollHeight;
+
+  document.getElementById('mira-send').disabled = true;
+  socket.emit('mira_query', query);
+}
+
+document.getElementById('mira-send').addEventListener('click', sendMira);
+document.getElementById('mira-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendMira();
+});
+</script>
+</body>
+</html>
