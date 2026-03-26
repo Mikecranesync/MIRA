@@ -99,8 +99,25 @@ tiers:
       crawl_pattern: direct
       description: "GS10 AC Drive user manual — parameters, wiring, fault codes"
 
-    # ABB, FANUC, KUKA, Siemens, Rockwell — URLs to be added after
-    # verifying public access and robots.txt compliance
+    wago_topjob_s:
+      url: "https://www.wago.com/global/download/fe_topjob_s_en.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: WAGO
+      equipment_id: TOPJOB-S
+      crawl_pattern: direct
+      description: "WAGO TOPJOB S DIN-rail terminal block installation and wiring guide"
+
+    wago_750_8202:
+      url: "https://www.wago.com/global/download/75008202e.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: WAGO
+      equipment_id: 750-8202
+      crawl_pattern: direct
+      description: "WAGO 750-8202 PFC200 2ETH RS programmable fieldbus controller manual"
+
+    # ABB, FANUC, KUKA, Siemens, Rockwell — URLs to be verified and added
 
   # ── TIER 4: Open Educational ────────────────────────────────────
   4_educational:
