@@ -1,0 +1,101 @@
+# mira-crawler — Crawl Target Manifest
+#
+# Single source of truth for all crawlable URLs.
+# No crawl runs without an entry here.
+#
+# Rules (non-negotiable):
+# - All sources must be publicly accessible (zero login, zero paywall)
+# - robots.txt checked before every domain crawl
+# - Rate limit: minimum 3 seconds between requests per domain
+# - Licenses: Apache 2.0, MIT, CC-BY, CC-BY-SA, or public domain ONLY
+
+tiers:
+
+  # ── TIER 1: Foundational Textbooks (CC-Licensed) ────────────────
+  1_foundational:
+    kuphaldt_liii:
+      url: "https://ibiblio.org/kuphaldt/socratic/sinst/book/liii_2v32.pdf"
+      type: curriculum
+      format: pdf
+      license: CC-BY-4.0
+      description: "Lessons In Industrial Instrumentation v2.32 (~1800 pages)"
+      priority: 1
+
+    kuphaldt_plc:
+      url: "https://ibiblio.org/kuphaldt/socratic/model/index.html"
+      type: curriculum
+      format: html
+      license: CC-BY-4.0
+      description: "ModEL PLC module — ladder logic, FBD, Studio 5000"
+
+    kuphaldt_motors:
+      url: "https://ibiblio.org/kuphaldt/socratic/model/index.html"
+      type: curriculum
+      format: html
+      license: CC-BY-4.0
+      description: "ModEL AC/DC Motors module"
+
+    kuphaldt_safety:
+      url: "https://ibiblio.org/kuphaldt/socratic/model/index.html"
+      type: curriculum
+      format: html
+      license: CC-BY-4.0
+      description: "ModEL Electrical Safety module"
+
+    kuphaldt_fluid_power:
+      url: "https://ibiblio.org/kuphaldt/socratic/model/index.html"
+      type: curriculum
+      format: html
+      license: CC-BY-4.0
+      description: "ModEL Fluid Power module"
+
+  # ── TIER 2: Government / Public Domain ──────────────────────────
+  2_government:
+    osha_1910_147:
+      url: "https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.147"
+      type: standard
+      format: html
+      license: public-domain
+      description: "OSHA Lockout/Tagout (LOTO) standard"
+
+    osha_1910_212:
+      url: "https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.212"
+      type: standard
+      format: html
+      license: public-domain
+      description: "OSHA Machine Guarding standard"
+
+    osha_1910_303:
+      url: "https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.303"
+      type: standard
+      format: html
+      license: public-domain
+      description: "OSHA Electrical — General Requirements"
+
+    osha_etool_electrical:
+      url: "https://www.osha.gov/etools/electrical-contractors"
+      type: standard
+      format: html
+      license: public-domain
+      description: "OSHA eTool — Electrical Safety"
+
+  # ── TIER 3: Manufacturer Free Docs ──────────────────────────────
+  3_manufacturer:
+    automationdirect_manuals:
+      base_url: "https://cdn.automationdirect.com/static/manuals/"
+      type: equipment_manual
+      format: pdf
+      manufacturer: AutomationDirect
+      crawl_pattern: index
+      description: "AutomationDirect CDN — all public manuals (~200+)"
+
+    # ABB, FANUC, KUKA, Siemens, Rockwell — URLs to be added after
+    # verifying public access and robots.txt compliance
+
+  # ── TIER 4: Open Educational ────────────────────────────────────
+  4_educational:
+    # MIT OCW, OER Commons — URLs to be added
+
+  # ── TIER 5: Technical Reference ─────────────────────────────────
+  5_reference:
+    # instrumentationtools.com, plcdev.com — URLs to be added
