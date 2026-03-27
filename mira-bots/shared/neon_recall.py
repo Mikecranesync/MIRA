@@ -98,7 +98,14 @@ def recall_knowledge(
     Returns [] on any failure — never raises.
     """
     url = os.environ.get("NEON_DATABASE_URL")
-    if not url or not embedding or not tenant_id:
+    if not url:
+        if not getattr(recall_knowledge, "_warned_url", False):
+            logger.warning(
+                "NEON_DATABASE_URL not set — NeonDB recall disabled, using Open WebUI only"
+            )
+            recall_knowledge._warned_url = True
+        return []
+    if not embedding or not tenant_id:
         return []
 
     try:

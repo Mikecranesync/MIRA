@@ -72,6 +72,7 @@ def insert_chunk(
     page_num: int | None = None,
     section: str = "",
     chunk_index: int = 0,
+    chunk_type: str = "text",
 ) -> str:
     """Insert a single chunk into knowledge_entries. Returns entry ID or empty string."""
     from sqlalchemy import text
@@ -82,6 +83,7 @@ def insert_chunk(
         "section": section,
         "equipment_id": equipment_id,
         "source": "mira_crawler",
+        "chunk_type": chunk_type,
     }
 
     try:
@@ -91,11 +93,11 @@ def insert_chunk(
                     INSERT INTO knowledge_entries
                         (id, tenant_id, source_type, manufacturer, model_number,
                          content, embedding, source_url, source_page,
-                         metadata, is_private, verified)
+                         metadata, is_private, verified, chunk_type)
                     VALUES
                         (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                          :content, cast(:embedding AS vector), :source_url, :source_page,
-                         cast(:metadata AS jsonb), false, false)
+                         cast(:metadata AS jsonb), false, false, :chunk_type)
                 """),
                 {
                     "id": entry_id,
@@ -108,6 +110,7 @@ def insert_chunk(
                     "source_url": source_url,
                     "source_page": page_num,
                     "metadata": json.dumps(metadata),
+                    "chunk_type": chunk_type,
                 },
             )
             conn.commit()
@@ -150,6 +153,7 @@ def store_chunks(
             page_num=chunk.get("page_num"),
             section=chunk.get("section", ""),
             chunk_index=chunk_index,
+            chunk_type=chunk.get("chunk_type", "text"),
         )
         if entry_id:
             inserted += 1

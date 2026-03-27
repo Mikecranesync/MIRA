@@ -6,6 +6,7 @@ WORKDIR /app
 COPY telegram/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY shared/ ./shared/
+COPY prompts/ ./prompts/
 COPY telegram/bot.py ./
 
 ENV PYTHONUNBUFFERED=1

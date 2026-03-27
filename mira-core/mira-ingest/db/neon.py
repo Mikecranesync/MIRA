@@ -6,11 +6,10 @@ Read-only lookups and manual ingest writes both live here.
 
 from __future__ import annotations
 
-import os
-from typing import Any
-
 import json
+import os
 import uuid
+from typing import Any
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
@@ -206,6 +205,7 @@ def insert_knowledge_entry(
     page_num: int | None,
     section: str | None,
     source_type: str = "manual",
+    chunk_type: str = "text",
 ) -> str:
     """Insert one chunk into knowledge_entries. Returns the new row id."""
     entry_id = str(uuid.uuid4())
@@ -214,17 +214,18 @@ def insert_knowledge_entry(
         "chunk_index": chunk_index,
         "page_num": page_num,
         "section": section,
+        "chunk_type": chunk_type,
     }
     with _engine().connect() as conn:
         conn.execute(text("""
             INSERT INTO knowledge_entries
                 (id, tenant_id, source_type, manufacturer, model_number,
                  content, embedding, source_url, source_page, metadata,
-                 is_private, verified)
+                 is_private, verified, chunk_type)
             VALUES
                 (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                  :content, cast(:embedding AS vector), :source_url, :source_page, cast(:metadata AS jsonb),
-                 false, false)
+                 false, false, :chunk_type)
         """), {
             "id": entry_id,
             "tenant_id": tenant_id,
@@ -236,6 +237,7 @@ def insert_knowledge_entry(
             "source_url": source_url,
             "source_page": chunk_index,
             "metadata": json.dumps(meta),
+            "chunk_type": chunk_type,
         })
         conn.commit()
     return entry_id

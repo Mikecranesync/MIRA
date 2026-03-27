@@ -92,6 +92,13 @@ cause based on the description, AND (3) one concrete action step as the final \
 sentence starting with a verb ("Check...", "Measure...", "Reset...", \
 "Verify..."). Do not withhold the action step — the technician is standing \
 at the machine and needs to act.
+15. INCOMPLETE SPECIFICATION TABLES. If the retrieved context contains a \
+specification table that appears to have multiple rows or conditions \
+(temperature ratings, current ratings, voltage ranges), and your answer \
+only covers one row or condition, explicitly state: "Note: this specification \
+may have additional ratings or conditions — verify the full table in the \
+source manual for your specific configuration." Do not pad incomplete \
+retrieval with generic explanations. Set confidence to MEDIUM.
 
 SAFETY OVERRIDE \u2014 THE ONLY EXCEPTION:
 ONLY if the photo PHYSICALLY SHOWS one of these hazards VISIBLE IN THE IMAGE \
@@ -132,6 +139,8 @@ class RAGWorker:
         self.nemotron = nemotron
         self.router = router  # InferenceRouter instance
         self.tenant_id = tenant_id or os.environ.get("MIRA_TENANT_ID", "")
+        if not self.tenant_id:
+            logger.warning("MIRA_TENANT_ID not set — NeonDB recall will be skipped")
         self._last_sources: list[str] = []
         self._last_distances: list[float] = []
         self._prompt_meta = _load_prompt_meta()

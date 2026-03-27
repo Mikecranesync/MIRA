@@ -99,3 +99,111 @@ class TestChunkBlocks:
     def test_empty_blocks_returns_empty(self):
         """Empty input returns empty output."""
         assert chunk_blocks([]) == []
+
+
+class TestTableDetection:
+    """Table-aware chunking: detect tables, keep intact, split at row boundaries."""
+
+    def test_pipe_table_kept_intact(self):
+        """Pipe-delimited table with header+separator+rows → 1 chunk, chunk_type=table."""
+        table = (
+            "| Parameter | Value | Unit |\n"
+            "|---|---|---|\n"
+            "| Voltage | 480 | VAC |\n"
+            "| Current | 15 | A |\n"
+            "| Frequency | 60 | Hz |"
+        )
+        blocks = [{"text": table, "page_num": 1, "section": "Specs"}]
+        result = chunk_blocks(blocks, max_chars=2000, min_chars=50)
+        assert len(result) == 1
+        assert result[0]["chunk_type"] == "table"
+        assert "480" in result[0]["text"]
+        assert "60" in result[0]["text"]
+
+    def test_large_table_splits_at_rows(self):
+        """Table over 1200 chars splits between rows, all chunk_type=table."""
+        header = "| Parameter | Standard Rating | Derated Rating | Notes |"
+        sep = "|---|---|---|---|"
+        rows = [
+            f"| Parameter {i} | Value {i}A with extra padding text here | "
+            f"Value {i}B with extra padding text here | Note {i} details |"
+            for i in range(30)
+        ]
+        table = "\n".join([header, sep] + rows)
+        assert len(table) > 1200  # confirm it exceeds TABLE_MAX_CHARS
+        blocks = [{"text": table, "page_num": 5, "section": "Ratings"}]
+        result = chunk_blocks(blocks, max_chars=2000, min_chars=50)
+        assert len(result) > 1
+        for chunk in result:
+            assert chunk["chunk_type"] == "table"
+
+    def test_header_prepended_to_splits(self):
+        """Each split chunk starts with the original header + separator."""
+        header = "| Param | Value |"
+        sep = "|---|---|"
+        rows = [f"| Row {i} | {'X' * 80} |" for i in range(30)]
+        table = "\n".join([header, sep] + rows)
+        blocks = [{"text": table, "page_num": 1, "section": "Data"}]
+        result = chunk_blocks(blocks, max_chars=2000, min_chars=50)
+        if len(result) > 1:
+            for chunk in result:
+                assert chunk["text"].startswith(header)
+                assert sep in chunk["text"]
+
+    def test_mixed_prose_and_table(self):
+        """Block with prose + table yields separate text and table chunks when split."""
+        prose = "This is a description of the equipment specifications. " * 20
+        table = (
+            "| Parameter | Value |\n"
+            "|---|---|\n"
+            "| Temp | 40C |\n"
+            "| Voltage | 480V |\n"
+            "| Current | 15A |"
+        )
+        mixed = prose + "\n" + table + "\n" + prose
+        blocks = [{"text": mixed, "page_num": 1, "section": "Overview"}]
+        # Use max_chars smaller than total to force splitting
+        result = chunk_blocks(blocks, max_chars=800, min_chars=50)
+        types = {c["chunk_type"] for c in result}
+        assert "table" in types
+        assert "text" in types
+
+    def test_tab_delimited_table(self):
+        """Tab-separated columnar data (3+ rows, 2+ tabs) → chunk_type=table."""
+        lines = [
+            "Header1\tHeader2\tHeader3",
+            "val1a\tval1b\tval1c",
+            "val2a\tval2b\tval2c",
+            "val3a\tval3b\tval3c",
+            "val4a\tval4b\tval4c",
+        ]
+        table = "\n".join(lines)
+        blocks = [{"text": table, "page_num": 1, "section": "Data"}]
+        result = chunk_blocks(blocks, max_chars=2000, min_chars=50)
+        assert len(result) == 1
+        assert result[0]["chunk_type"] == "table"
+
+    def test_prose_gets_text_type(self):
+        """Regular prose text gets chunk_type=text."""
+        blocks = [{"text": "A" * 300, "page_num": 1, "section": "Intro"}]
+        result = chunk_blocks(blocks, max_chars=2000, min_chars=200)
+        assert len(result) == 1
+        assert result[0]["chunk_type"] == "text"
+
+    def test_powerflex_ambient_temp_scenario(self):
+        """The exact bug: both 40C and 50C must land in the same chunk."""
+        table = (
+            "| Parameter | Rating | Condition |\n"
+            "|---|---|---|\n"
+            "| Ambient Temperature | 40°C (104°F) | Full rated current, no derating |\n"
+            "| Ambient Temperature | 50°C (122°F) | With output current derating |\n"
+            "| Storage Temperature | -40 to 70°C (-40 to 158°F) | |\n"
+            "| Relative Humidity | 0-95% | Non-condensing |"
+        )
+        blocks = [{"text": table, "page_num": 42, "section": "Environmental Specifications"}]
+        result = chunk_blocks(blocks, max_chars=800, min_chars=50)
+        assert len(result) == 1
+        assert "40°C" in result[0]["text"]
+        assert "50°C" in result[0]["text"]
+        assert result[0]["chunk_type"] == "table"
+        assert result[0]["section"] == "Environmental Specifications"
