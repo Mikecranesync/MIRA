@@ -167,14 +167,10 @@ class RAGWorker:
                         embedding = await self.nemotron.embed(rewritten)
                         if embedding:
                             neon_chunks = _neon_recall.recall_knowledge(
-                                embedding, self.tenant_id, query_text=rewritten
+                                embedding,
+                                self.tenant_id,
+                                query_text=message,
                             )
-                elif self.tenant_id and not photo_b64:
-                    # Nemotron unavailable — keyword-only fallback for fault codes
-                    if _neon_recall._FAULT_CODE_RE.search(rewritten):
-                        neon_chunks = _neon_recall.recall_knowledge(
-                            [], self.tenant_id, query_text=rewritten
-                        )
 
             # Stage 2: Retrieve via Open WebUI RAG (NeonDB chunks injected into prompt)
             messages = self._build_prompt(state, rewritten, photo_b64, neon_chunks=neon_chunks)
