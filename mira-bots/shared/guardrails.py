@@ -14,16 +14,47 @@ SAFETY_KEYWORDS = [
 ]
 
 INTENT_KEYWORDS = {
+    # Fault & alarm terms
     "fault", "error", "fail", "trip", "alarm", "down", "not working",
     "broken", "stopped", "issue", "warning", "faulting", "tripping",
     "wrong", "problem", "diagnose", "analyze",
+    # Symptoms
     "vibration", "noise", "leak", "hot", "cold", "smell", "spark",
     "reading", "pressure", "temperature", "speed", "current", "voltage",
+    # Actions
     "nameplate", "model", "serial", "reset", "calibrate", "replace",
     "code", "showing", "display", "mean",
+    # Negation patterns
     "not respond", "not activat", "not working", "not turning", "not start",
     "output", "input", "no power", "no signal", "no output", "no response",
+    # Equipment operation
+    "parameter", "setting", "configure", "mode", "stop", "start", "run",
+    "accel", "decel", "ramp", "frequency", "torque", "overload",
+    # Specifications
+    "spec", "specification", "rating", "rated", "capacity", "range",
+    "limit", "tolerance", "ambient", "altitude", "enclosure", "dimension",
+    # Installation
+    "wire", "wiring", "install", "mount", "connect", "terminal", "cable",
+    "ground", "grounding", "shield", "conduit",
+    # General maintenance
+    "maintenance", "inspect", "lubricate", "procedure", "schedule",
+    "troubleshoot", "repair", "overhaul", "manual",
+    # Equipment types
+    "drive", "motor", "pump", "conveyor", "compressor", "sensor",
+    "switch", "relay", "breaker", "fuse", "transformer", "contactor",
+    "plc", "hmi", "vfd", "servo", "encoder", "actuator",
 }
+
+# Equipment brand/model names — always classify as industrial intent
+_EQUIPMENT_NAME_RE = re.compile(
+    r"\b("
+    r"PowerFlex|CompactLogix|ControlLogix|PanelView|Micro8\d{2}"
+    r"|Allen.?Bradley|Rockwell|Siemens|ABB|AutomationDirect"
+    r"|SINAMICS|SIMATIC|ACS\d{3,4}|GS[12]\d|DURApulse|SMC-?\d"
+    r"|Eaton|Omron|Fanuc|Mitsubishi|Schneider"
+    r")\b",
+    re.IGNORECASE,
+)
 
 # Regex for common fault code patterns (F-201, CE2, OC, OL, etc.)
 _FAULT_CODE_RE = re.compile(
@@ -101,9 +132,13 @@ def classify_intent(message: str) -> str:
     """Classify message intent.
 
     Returns: 'greeting' | 'help' | 'industrial' | 'safety' | 'off_topic'
+
+    Industrial intent is broad — any question about equipment, specifications,
+    installation, maintenance, or fault diagnosis. The default for unrecognized
+    queries is 'industrial' (not 'off_topic') because the cost of blocking a
+    real maintenance question is much higher than running RAG on a greeting.
     """
     msg = strip_mentions(message).lower().strip()
-    # Expand abbreviations so "mtr trpd" → "motor tripped" matches intent keywords
     msg_expanded = expand_abbreviations(msg)
 
     if any(kw in msg for kw in SAFETY_KEYWORDS):
@@ -112,6 +147,11 @@ def classify_intent(message: str) -> str:
     if any(pat in msg for pat in HELP_PATTERNS):
         return "help"
 
+    # Short greetings — check before industrial to avoid "hi" triggering "hmi"
+    words = set(msg.split())
+    if (words & GREETING_PATTERNS and len(msg) < 20) or len(msg) < 4:
+        return "greeting"
+
     if any(kw in msg_expanded for kw in INTENT_KEYWORDS):
         return "industrial"
 
@@ -119,14 +159,12 @@ def classify_intent(message: str) -> str:
     if _FAULT_CODE_RE.search(message):
         return "industrial"
 
-    if len(msg) > 60:
-        return "off_topic"
+    # Equipment brand/model name match (PowerFlex, Micro820, etc.)
+    if _EQUIPMENT_NAME_RE.search(message):
+        return "industrial"
 
-    words = set(msg.split())
-    if words & GREETING_PATTERNS or len(msg) < 4:
-        return "greeting"
-
-    return "off_topic"
+    # Default to industrial — a maintenance bot should attempt to help
+    return "industrial"
 
 
 def check_output(response: str, intent: str, has_photo: bool = False) -> str:
