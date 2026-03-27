@@ -99,6 +99,12 @@ only covers one row or condition, explicitly state: "Note: this specification \
 may have additional ratings or conditions — verify the full table in the \
 source manual for your specific configuration." Do not pad incomplete \
 retrieval with generic explanations. Set confidence to MEDIUM.
+16. CITE YOUR SOURCE. When your answer is based on retrieved documentation, \
+end your reply with the source: "[Source: {manufacturer} {model_number}, \
+{section}]". Use the manufacturer and model_number labels from the retrieved \
+context tags. If no retrieved documents matched, say "Based on general \
+knowledge — no specific documentation found for this equipment." Do not mix \
+sourced and unsourced information without distinguishing them.
 
 SAFETY OVERRIDE \u2014 THE ONLY EXCEPTION:
 ONLY if the photo PHYSICALLY SHOWS one of these hazards VISIBLE IN THE IMAGE \
