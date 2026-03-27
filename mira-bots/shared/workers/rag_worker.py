@@ -168,24 +168,18 @@ class RAGWorker:
         }
 
         async with trace_rag_query(message, metadata=metadata) as spans:
-            # Stage 1: Query rewrite + embed for NeonDB recall (Nemotron Q2E or passthrough)
+            # Stage 1: Embed query via Ollama nomic-embed-text → NeonDB pgvector recall
             rewritten = message
             neon_chunks: list[dict] = []
             async with spans.embed_query(message):
-                if self.nemotron and not photo_b64:
-                    rewritten = await self.nemotron.rewrite_query(
-                        query=message,
-                        context=state.get("asset_identified", ""),
-                    )
-                    # Embed rewritten query → NeonDB pgvector recall
-                    if self.tenant_id:
-                        embedding = await self.nemotron.embed(rewritten)
-                        if embedding:
-                            neon_chunks = _neon_recall.recall_knowledge(
-                                embedding,
-                                self.tenant_id,
-                                query_text=message,
-                            )
+                if self.tenant_id and not photo_b64:
+                    embedding = await self._embed_ollama(message)
+                    if embedding:
+                        neon_chunks = _neon_recall.recall_knowledge(
+                            embedding,
+                            self.tenant_id,
+                            query_text=message,
+                        )
 
             # Stage 2: Retrieve via Open WebUI RAG (NeonDB chunks injected into prompt)
             messages = self._build_prompt(state, rewritten, photo_b64, neon_chunks=neon_chunks)
@@ -338,6 +332,22 @@ class RAGWorker:
             user_msg = rewrite_question(message, state.get("asset_identified"))
             messages.append({"role": "user", "content": user_msg})
         return messages
+
+    async def _embed_ollama(self, text: str) -> list[float] | None:
+        """Embed text via Ollama nomic-embed-text (768-dim, matches NeonDB vectors)."""
+        ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+        embed_model = os.environ.get("EMBED_TEXT_MODEL", "nomic-embed-text:latest")
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{ollama_url}/api/embeddings",
+                    json={"model": embed_model, "prompt": text},
+                )
+                resp.raise_for_status()
+                return resp.json()["embedding"]
+        except Exception as e:
+            logger.warning("Ollama embed failed: %s", e)
+            return None
 
     async def _call_llm(self, messages: list[dict], model: str = None) -> str:
         """Call LLM — Claude API if router enabled, else Open WebUI."""
