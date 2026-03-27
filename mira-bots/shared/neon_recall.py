@@ -88,35 +88,43 @@ def _like_search(conn, text_fn, tenant_id: str, codes: list[str], limit: int) ->
     return [dict(r) for r in rows]
 
 
-def _product_search(conn, text_fn, tenant_id: str, products: list[str], limit: int) -> list[dict]:
-    """Search by product name against model_number and content columns."""
+def _product_search(
+    conn, text_fn, tenant_id: str, products: list[str],
+    embedding: list[float], limit: int,
+) -> list[dict]:
+    """Search by product name, reranked by vector similarity to the query.
+
+    Filters to chunks from the product's manual (model_number match), then
+    orders by cosine similarity to the user's query embedding. This surfaces
+    the most RELEVANT chunks from the right manual — not just arbitrary rows.
+    """
     if not products:
         return []
-    conditions = []
-    params: dict = {"tid": tenant_id, "lim": limit}
-    for i, name in enumerate(products[:3]):
-        mk = f"mod{i}"
-        ck = f"con{i}"
-        conditions.append(f"(model_number ILIKE :{mk} OR content ILIKE :{ck})")
-        params[mk] = f"%{name}%"
-        params[ck] = f"%{name}%"
+    results: list[dict] = []
+    seen: set[str] = set()
 
-    where_clause = " OR ".join(conditions)
-    sql = text_fn(f"""
-        SELECT
-            content,
-            manufacturer,
-            model_number,
-            equipment_type,
-            source_type,
-            0.6 AS similarity
-        FROM knowledge_entries
-        WHERE tenant_id = :tid
-          AND ({where_clause})
-        LIMIT :lim
-    """)
-    rows = conn.execute(sql, params).mappings().fetchall()
-    return [dict(r) for r in rows]
+    for name in products[:3]:
+        rows = conn.execute(text_fn(
+            "SELECT content, manufacturer, model_number, equipment_type, "
+            "source_type, "
+            "1 - (embedding <=> cast(:emb AS vector)) AS similarity "
+            "FROM knowledge_entries "
+            "WHERE tenant_id = :tid AND model_number ILIKE :pat "
+            "AND embedding IS NOT NULL "
+            "ORDER BY embedding <=> cast(:emb AS vector) "
+            "LIMIT :lim"
+        ), {
+            "tid": tenant_id, "pat": f"%{name}%",
+            "emb": str(embedding), "lim": limit,
+        }).mappings().fetchall()
+
+        for r in rows:
+            key = r["content"][:100]
+            if key not in seen:
+                results.append(dict(r))
+                seen.add(key)
+
+    return results
 
 
 def _merge_results(
@@ -244,12 +252,12 @@ def recall_knowledge(
             if fault_codes:
                 like_results = _like_search(conn, text, tenant_id, fault_codes, limit)
 
-            # Stage 3: Product name keyword search
+            # Stage 3: Product name search (vector-reranked within product's manual)
             product_names = _extract_product_names(query_text)
             product_results: list[dict] = []
             if product_names:
                 product_results = _product_search(
-                    conn, text, tenant_id, product_names, limit
+                    conn, text, tenant_id, product_names, embedding, limit
                 )
 
         # Merge and determine retrieval path
