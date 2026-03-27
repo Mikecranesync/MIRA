@@ -57,6 +57,7 @@ def _ingest_file(path: Path, config: CrawlerConfig) -> None:
 
         chunks = chunk_blocks(
             blocks,
+            source_url=path.name,
             source_file=path.name,
             source_type="equipment_manual",
             max_chars=config.chunk_max_chars,

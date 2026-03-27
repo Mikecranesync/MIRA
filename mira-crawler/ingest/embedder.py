@@ -20,7 +20,7 @@ logger = logging.getLogger("mira-crawler.embedder")
 def embed_text(
     text: str,
     ollama_url: str = "http://localhost:11434",
-    model: str = "nomic-embed-text:v1.5",
+    model: str = "nomic-embed-text:latest",
     timeout: float = 30.0,
     max_retries: int = 3,
 ) -> list[float] | None:
@@ -50,7 +50,7 @@ def embed_text(
 def embed_batch(
     chunks: list[dict],
     ollama_url: str = "http://localhost:11434",
-    model: str = "nomic-embed-text:v1.5",
+    model: str = "nomic-embed-text:latest",
     batch_size: int = 32,
 ) -> list[tuple[dict, list[float] | None]]:
     """Embed a list of chunk dicts, returning (chunk, embedding) pairs.

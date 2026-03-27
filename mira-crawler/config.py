@@ -24,7 +24,7 @@ class CrawlerConfig:
         default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     )
     embed_model: str = field(
-        default_factory=lambda: os.getenv("EMBED_MODEL", "nomic-embed-text:v1.5")
+        default_factory=lambda: os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
     )
     embed_batch_size: int = 32
 
