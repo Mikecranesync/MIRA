@@ -104,17 +104,24 @@ def _product_search(
     seen: set[str] = set()
 
     for name in products[:3]:
+        # Use word-boundary-safe pattern: "PowerFlex 40" must not match "PowerFlex 400"
+        # Append a non-digit boundary: match "PowerFlex 40" or "PowerFlex 40 " but not "PowerFlex 400"
+        exact_pat = f"%{name}%"
+        exclude_pat = f"%{name}0%"  # crude but effective for model numbers
+
         rows = conn.execute(text_fn(
             "SELECT content, manufacturer, model_number, equipment_type, "
             "source_type, "
             "1 - (embedding <=> cast(:emb AS vector)) AS similarity "
             "FROM knowledge_entries "
-            "WHERE tenant_id = :tid AND model_number ILIKE :pat "
+            "WHERE tenant_id = :tid "
+            "AND model_number ILIKE :pat "
+            "AND model_number NOT ILIKE :exclude "
             "AND embedding IS NOT NULL "
             "ORDER BY embedding <=> cast(:emb AS vector) "
             "LIMIT :lim"
         ), {
-            "tid": tenant_id, "pat": f"%{name}%",
+            "tid": tenant_id, "pat": exact_pat, "exclude": exclude_pat,
             "emb": str(embedding), "lim": limit,
         }).mappings().fetchall()
 
