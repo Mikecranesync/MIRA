@@ -15,13 +15,11 @@ Usage:
 from __future__ import annotations
 
 import io
-import json
 import logging
 import os
 import re
 import sys
 import time
-from typing import Generator
 
 import httpx
 
@@ -40,6 +38,23 @@ MAX_PDF_PAGES = 300          # skip runaway PDFs
 MIN_CHUNK_CHARS = 80
 REQUEST_DELAY = 0.5          # seconds between URL downloads (polite crawl)
 
+USE_DOCLING = os.getenv("USE_DOCLING", "false").lower() in ("true", "1", "yes")
+if USE_DOCLING:
+    try:
+        import pathlib as _pathlib
+        import sys as _sys
+        _sys.path.insert(0, str(_pathlib.Path(__file__).parent))
+        from docling_adapter import DoclingAdapter as _DoclingAdapter
+        _docling = _DoclingAdapter(max_pages=MAX_PDF_PAGES)
+        log = logging.getLogger(__name__)
+        log.info("USE_DOCLING=true — Docling extraction active (OCR + semantic chunking)")
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "USE_DOCLING=true but Docling unavailable: %s — fallback to pdfplumber", _e
+        )
+        USE_DOCLING = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -56,6 +71,10 @@ _INGEST_DIR = os.path.join(os.path.dirname(_SCRIPT_DIR), "mira-ingest")
 if _INGEST_DIR not in sys.path:
     sys.path.insert(0, _INGEST_DIR)
 
+_CRAWLER_DIR = os.path.join(os.path.dirname(os.path.dirname(_SCRIPT_DIR)), "mira-crawler")
+if _CRAWLER_DIR not in sys.path:
+    sys.path.insert(0, _CRAWLER_DIR)
+
 from db.neon import (  # noqa: E402
     get_pending_urls,
     insert_knowledge_entry,
@@ -64,7 +83,7 @@ from db.neon import (  # noqa: E402
     mark_manual_verified,
     mark_source_fingerprint_done,
 )
-
+from ingest.chunker import chunk_blocks  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Text extraction
@@ -178,31 +197,8 @@ def _extract_from_html(data: bytes) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Chunking
+# Chunking — delegated to mira-crawler/ingest/chunker.py (table-aware)
 # ---------------------------------------------------------------------------
-
-def _chunk_text(text: str) -> Generator[str, None, None]:
-    """Yield overlapping ~CHUNK_SIZE chunks."""
-    start = 0
-    while start < len(text):
-        end = start + CHUNK_SIZE
-        chunk = text[start:end].strip()
-        if len(chunk) >= MIN_CHUNK_CHARS:
-            yield chunk
-        start += CHUNK_SIZE - CHUNK_OVERLAP
-
-
-def _blocks_to_chunks(blocks: list[dict]) -> list[dict]:
-    """Expand raw blocks into fixed-size chunks preserving metadata."""
-    chunks: list[dict] = []
-    for block in blocks:
-        text = block["text"]
-        if len(text) <= CHUNK_SIZE:
-            chunks.append(block)
-        else:
-            for piece in _chunk_text(text):
-                chunks.append({"text": piece, "page_num": block["page_num"], "section": block["section"]})
-    return chunks
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +284,7 @@ def process_url(record: dict) -> int:
 
     # Extract
     if source_type == "pdf" or resp.headers.get("content-type", "").startswith("application/pdf"):
-        blocks = _extract_from_pdf(data)
+        blocks = _docling.extract_from_pdf(data) if USE_DOCLING else _extract_from_pdf(data)
     else:
         blocks = _extract_from_html(data)
 
@@ -296,13 +292,18 @@ def process_url(record: dict) -> int:
         log.warning("[SKIP] %s — no extractable text", url)
         return 0
 
-    chunks = _blocks_to_chunks(blocks)
+    chunks = chunk_blocks(
+        blocks,
+        source_url=url,
+        max_chars=CHUNK_SIZE,
+        min_chars=MIN_CHUNK_CHARS,
+        overlap=CHUNK_OVERLAP,
+    )
     inserted = 0
 
-    for chunk_idx, chunk in enumerate(chunks):
+    for chunk in chunks:
         text = chunk["text"]
-        if len(text) < MIN_CHUNK_CHARS:
-            continue
+        chunk_idx = chunk["chunk_index"]
 
         # Dedup check
         if knowledge_entry_exists(MIRA_TENANT_ID, url, chunk_idx):
@@ -321,9 +322,10 @@ def process_url(record: dict) -> int:
                 model_number=model,
                 source_url=url,
                 chunk_index=chunk_idx,
-                page_num=chunk["page_num"],
-                section=chunk["section"],
+                page_num=chunk.get("page_num"),
+                section=chunk.get("section", ""),
                 source_type="manual",
+                chunk_type=chunk.get("chunk_type", "text"),
             )
             inserted += 1
         except Exception as exc:

@@ -9,9 +9,9 @@ from pathlib import Path
 import httpx
 import yaml
 
+from .. import neon_recall as _neon_recall
 from ..guardrails import rewrite_question
 from ..langfuse_setup import trace_rag_query
-from .. import neon_recall as _neon_recall
 
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
 
@@ -27,6 +27,7 @@ def _load_prompt_meta() -> dict:
     except Exception as e:
         logger.warning("Failed to load prompt metadata from %s: %s", _PROMPT_PATH, e)
         return {"codename": "unknown", "version": "unknown"}
+
 
 logger = logging.getLogger("mira-gsd")
 
@@ -91,6 +92,19 @@ cause based on the description, AND (3) one concrete action step as the final \
 sentence starting with a verb ("Check...", "Measure...", "Reset...", \
 "Verify..."). Do not withhold the action step — the technician is standing \
 at the machine and needs to act.
+15. INCOMPLETE SPECIFICATION TABLES. If the retrieved context contains a \
+specification table that appears to have multiple rows or conditions \
+(temperature ratings, current ratings, voltage ranges), and your answer \
+only covers one row or condition, explicitly state: "Note: this specification \
+may have additional ratings or conditions — verify the full table in the \
+source manual for your specific configuration." Do not pad incomplete \
+retrieval with generic explanations. Set confidence to MEDIUM.
+16. CITE YOUR SOURCE. When your answer is based on retrieved documentation, \
+end your reply with the source: "[Source: {manufacturer} {model_number}, \
+{section}]". Use the manufacturer and model_number labels from the retrieved \
+context tags. If no retrieved documents matched, say "Based on general \
+knowledge — no specific documentation found for this equipment." Do not mix \
+sourced and unsourced information without distinguishing them.
 
 SAFETY OVERRIDE \u2014 THE ONLY EXCEPTION:
 ONLY if the photo PHYSICALLY SHOWS one of these hazards VISIBLE IN THE IMAGE \
@@ -116,20 +130,32 @@ class RAGWorker:
     Falls back to single Open WebUI call when NVIDIA_API_KEY is unset.
     """
 
-    def __init__(self, openwebui_url: str, api_key: str, collection_id: str,
-                 nemotron=None, router=None, tenant_id: str = None):
+    def __init__(
+        self,
+        openwebui_url: str,
+        api_key: str,
+        collection_id: str,
+        nemotron=None,
+        router=None,
+        tenant_id: str = None,
+    ):
         self.openwebui_url = openwebui_url.rstrip("/")
         self.api_key = api_key
         self.collection_id = collection_id
         self.nemotron = nemotron
         self.router = router  # InferenceRouter instance
         self.tenant_id = tenant_id or os.environ.get("MIRA_TENANT_ID", "")
+        if not self.tenant_id:
+            logger.warning("MIRA_TENANT_ID not set — NeonDB recall will be skipped")
         self._last_sources: list[str] = []
         self._last_distances: list[float] = []
         self._prompt_meta = _load_prompt_meta()
 
     async def process(
-        self, message: str, state: dict, photo_b64: str = None,
+        self,
+        message: str,
+        state: dict,
+        photo_b64: str = None,
         vision_model: str = None,
     ) -> str:
         """3-stage RAG pipeline. Returns raw LLM response string."""
@@ -142,22 +168,18 @@ class RAGWorker:
         }
 
         async with trace_rag_query(message, metadata=metadata) as spans:
-            # Stage 1: Query rewrite + embed for NeonDB recall (Nemotron Q2E or passthrough)
+            # Stage 1: Embed query via Ollama nomic-embed-text → NeonDB pgvector recall
             rewritten = message
             neon_chunks: list[dict] = []
             async with spans.embed_query(message):
-                if self.nemotron and not photo_b64:
-                    rewritten = await self.nemotron.rewrite_query(
-                        query=message,
-                        context=state.get("asset_identified", ""),
-                    )
-                    # Embed rewritten query → NeonDB pgvector recall
-                    if self.tenant_id:
-                        embedding = await self.nemotron.embed(rewritten)
-                        if embedding:
-                            neon_chunks = _neon_recall.recall_knowledge(
-                                embedding, self.tenant_id
-                            )
+                if self.tenant_id and not photo_b64:
+                    embedding = await self._embed_ollama(message)
+                    if embedding:
+                        neon_chunks = _neon_recall.recall_knowledge(
+                            embedding,
+                            self.tenant_id,
+                            query_text=message,
+                        )
 
             # Stage 2: Retrieve via Open WebUI RAG (NeonDB chunks injected into prompt)
             messages = self._build_prompt(state, rewritten, photo_b64, neon_chunks=neon_chunks)
@@ -166,24 +188,25 @@ class RAGWorker:
             elapsed_ms = int((time.monotonic() - t0) * 1000)
 
             # Record retrieval results (populated by _call_openwebui above)
-            async with spans.vector_search(rewritten, self._last_sources[:5], self._last_distances[:5]):
+            async with spans.vector_search(
+                rewritten, self._last_sources[:5], self._last_distances[:5]
+            ):
                 pass
-            async with spans.context_compose(self._last_sources[:5], "\n".join(self._last_sources[:3])):
+            async with spans.context_compose(
+                self._last_sources[:5], "\n".join(self._last_sources[:3])
+            ):
                 pass
 
             # Stage 2b: Rerank retrieved chunks (if Nemotron enabled + sources available)
-            if (
-                self.nemotron
-                and self.nemotron.enabled
-                and self._last_sources
-                and not photo_b64
-            ):
+            if self.nemotron and self.nemotron.enabled and self._last_sources and not photo_b64:
                 reranked = await self.nemotron.rerank(rewritten, self._last_sources)
                 top_chunks = [r["text"] for r in reranked if r["score"] > 0]
                 if top_chunks:
                     # Rebuild prompt with reranked chunks injected explicitly
                     messages = self._build_prompt_with_chunks(
-                        state, rewritten, top_chunks,
+                        state,
+                        rewritten,
+                        top_chunks,
                     )
                     t0 = time.monotonic()
                     raw = await self._call_llm(messages, model=model)
@@ -195,7 +218,10 @@ class RAGWorker:
             return raw
 
     def _build_prompt_with_chunks(
-        self, state: dict, message: str, chunks: list[str],
+        self,
+        state: dict,
+        message: str,
+        chunks: list[str],
     ) -> list[dict]:
         """Build prompt with explicitly injected reranked chunks."""
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
@@ -223,7 +249,10 @@ class RAGWorker:
         return messages
 
     def _build_prompt(
-        self, state: dict, message: str, photo_b64: str = None,
+        self,
+        state: dict,
+        message: str,
+        photo_b64: str = None,
         neon_chunks: list[dict] = None,
     ) -> list[dict]:
         """Build message list for LLM with GSD system prompt and state context."""
@@ -259,11 +288,14 @@ class RAGWorker:
             if any(s in message.lower() for s in _SELF_REF_SIGNALS):
                 mira_turns = [h for h in history[-10:] if h["role"] == "assistant"][-3:]
                 if mira_turns:
-                    messages.insert(0, {
-                        "role": "system",
-                        "content": "Your previous responses for reference: " +
-                                   " | ".join(t["content"][:200] for t in mira_turns),
-                    })
+                    messages.insert(
+                        0,
+                        {
+                            "role": "system",
+                            "content": "Your previous responses for reference: "
+                            + " | ".join(t["content"][:200] for t in mira_turns),
+                        },
+                    )
 
         # Current user message
         if photo_b64:
@@ -284,20 +316,38 @@ class RAGWorker:
                     "explicitly in your reply. Rule 13 overrides Rule 2 for the device name only."
                 )
             text_parts.append(message)
-            messages.append({
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
-                    },
-                    {"type": "text", "text": "\n".join(text_parts)},
-                ],
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
+                        },
+                        {"type": "text", "text": "\n".join(text_parts)},
+                    ],
+                }
+            )
         else:
             user_msg = rewrite_question(message, state.get("asset_identified"))
             messages.append({"role": "user", "content": user_msg})
         return messages
+
+    async def _embed_ollama(self, text: str) -> list[float] | None:
+        """Embed text via Ollama nomic-embed-text (768-dim, matches NeonDB vectors)."""
+        ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+        embed_model = os.environ.get("EMBED_TEXT_MODEL", "nomic-embed-text:latest")
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{ollama_url}/api/embeddings",
+                    json={"model": embed_model, "prompt": text},
+                )
+                resp.raise_for_status()
+                return resp.json()["embedding"]
+        except Exception as e:
+            logger.warning("Ollama embed failed: %s", e)
+            return None
 
     async def _call_llm(self, messages: list[dict], model: str = None) -> str:
         """Call LLM — Claude API if router enabled, else Open WebUI."""
@@ -352,17 +402,20 @@ class RAGWorker:
 
         # Store for potential reranking
         self._last_sources = source_chunks
-        self._last_distances = [
-            d for src in sources for d in src.get("distances", [])
-        ]
+        self._last_distances = [d for src in sources for d in src.get("distances", [])]
 
-        logger.info("LLM_CALL worker=rag %s", json.dumps({
-            "model": model or "mira:latest",
-            "latency_ms": elapsed_ms,
-            "sources_count": len(source_chunks),
-            "source_docs": source_docs[:5],
-            "collection_id": self.collection_id or None,
-            "response_keys": list(data.keys()),
-        }))
+        logger.info(
+            "LLM_CALL worker=rag %s",
+            json.dumps(
+                {
+                    "model": model or "mira:latest",
+                    "latency_ms": elapsed_ms,
+                    "sources_count": len(source_chunks),
+                    "source_docs": source_docs[:5],
+                    "collection_id": self.collection_id or None,
+                    "response_keys": list(data.keys()),
+                }
+            ),
+        )
 
         return data["choices"][0]["message"]["content"]

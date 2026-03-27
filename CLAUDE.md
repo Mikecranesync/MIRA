@@ -1,7 +1,7 @@
 # MIRA — Build State
 
-**Version:** v0.5.2
-**Updated:** 2026-03-23
+**Version:** v0.5.3
+**Updated:** 2026-03-24
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=claude` → Anthropic API | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
 
@@ -122,9 +122,54 @@ chore: build system, deps, tooling
 
 ---
 
+## Abandoned Approaches
+
+| Approach | Replaced With | Why It Failed |
+|----------|--------------|---------------|
+| NemoClaw / NeMo Guardrails | Custom supervisor/worker | Not production-ready (Mar 17) |
+| PRAW OAuth for Reddit | No-auth public JSON endpoints | Too heavy — credentials, app registration, rate limits |
+| zhangzhengfu nameplate dataset | Own golden set from Google Photos | Empty repo, dead Baidu Pan links, no license |
+| Google Photos API direct | rclone + Ollama triage | OAuth consent screen "Testing" mode returned empty results |
+| GWS CLI for Gmail | IMAP with Doppler app passwords | Scope registration issues on Windows |
+| glm-ocr model | qwen2.5vl handles vision | Consistent 400 errors regardless of image size |
+
+---
+
+## Known Broken / Incomplete
+
+- **Teams + WhatsApp** — Code-complete, pending cloud setup (Azure Bot Service, WhatsApp Business API)
+- **PLC at 192.168.1.100** — Unreachable from PLC laptop; needs physical check (power/switch/cable)
+- **Charlie Doppler keychain** — Same SSH keychain lock as Bravo had; needs `doppler configure set token-storage file`
+- **Charlie HUD** — Needs local terminal session to start (keychain blocks SSH start of Doppler)
+- **Reddit benchmark** — 15/16 questions hit intent guard canned responses, not real inference
+- **No CD pipeline** — CI validates but deploy to Bravo is manual (docker cp or SSH)
+- **NVIDIA NIM / Nemotron** — API key in Doppler but Regime 5 eval tests blocked on it
+
+---
+
+## Gotchas
+
+- **macOS keychain over SSH** — `docker build` and `doppler` both fail on Bravo/Charlie over SSH. Workaround: `docker cp` + `docker commit` + `docker restart`. Bravo fixed with `doppler configure set token-storage file`.
+- **NeonDB SSL from Windows** — `channel_binding` fails. Run NeonDB queries from macOS (Bravo/Charlie) instead.
+- **Intent guard false positives** — `classify_intent()` in guardrails.py catches real maintenance questions as greetings/off-topic. Test with realistic phrasing.
+- **PRD claims vs reality** — v1.0.0 PRD overstated 8 of 13 features as "already built". Always fact-check PRD claims against actual code.
+- **Competing Telegram pollers** — Only one process can poll a bot token. If bot seems dead, check that CHARLIE or another host isn't running a stale poller.
+
+---
+
+## Where to Resume
+
+- **`feature/vim` branch** — VIM phases 1A→4 + mira-crawler phases 1→4 + Docling adapter. 13+ commits ahead of main. Not merged.
+- **Photo pipeline on Bravo** — 3,694 confirmed equipment photos in `~/takeout_staging/ollama_confirmed/`. Ready for KB ingest at scale.
+- **Bot quality tuning** — GitHub issue "Bot response quality tuning (ongoing)". Next: fix intent guard false positives, improve manufacturer-filtered retrieval.
+
+---
+
 ## Pointers
 
 - `.claude/skills/` — domain skills for diagnostic workflow, adapters, inference, HUD, ingest
 - `docs/adr/` — Architecture Decision Records
 - `docs/runbooks/` — operational runbooks
 - `.planning/STATE.md` — current sprint state and next task
+- `KNOWLEDGE.md` — deep institutional knowledge (architecture decisions, abandoned approaches, recurring problems)
+- `DEVLOG.md` — chronological development diary (Mar 11–27, 2026)

@@ -16,6 +16,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 /* ─── LAYOUT ─── */
 #container{position:relative;width:100vw;height:100vh}
 #feed{position:absolute;width:100%;height:100%;object-fit:cover;opacity:.72;filter:saturate(0.6) brightness(0.85)}
+#vim-canvas{position:absolute;width:100%;height:100%;z-index:1;pointer-events:none}
 
 /* ─── SCANLINES ─── */
 #scanlines{
@@ -72,20 +73,69 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
   border:1px solid rgba(0,255,136,.3);opacity:.5
 }
 
-/* ─── INSTRUCTION PANEL ─── */
+/* ─── INSTRUCTION PANEL (procedure manual override — hidden by default) ─── */
 #instruction-panel{
-  position:absolute;bottom:60px;left:50%;transform:translateX(-50%);
+  position:absolute;bottom:112px;left:50%;transform:translateX(-50%);
   width:68%;background:rgba(0,16,8,.82);
   border:1px solid #00ff88;border-radius:2px;
-  padding:14px 22px;text-align:center;pointer-events:auto
+  padding:14px 22px;pointer-events:auto
 }
-#step-label{font-size:9px;letter-spacing:3px;color:#5a9977;margin-bottom:8px}
-#step-text{font-size:16px;letter-spacing:.5px;line-height:1.6;min-height:52px}
-#step-text.warn-step{color:#ffaa00;border-left:3px solid #ffaa00;padding-left:10px;text-align:left}
-#progress-bar{margin-top:10px;height:2px;background:#0a2218;border-radius:1px}
+#step-label{font-size:10px;letter-spacing:3px;color:#5a9977;margin-bottom:8px}
+#step-text{font-size:16px;letter-spacing:.5px;line-height:1.6;min-height:52px;display:none}
+#step-text.warn-step{color:#ffaa00;border-left:3px solid #ffaa00;padding-left:10px}
+#progress-bar{margin-top:10px;height:2px;background:#0a2218;border-radius:1px;display:none}
 #progress-fill{height:100%;background:#00ff88;border-radius:1px;transition:width .45s ease}
 
+/* ─── VISION PANEL ─── */
+#vision-panel{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(0,255,136,.2)}
+.hud-label{font-size:9px;letter-spacing:3px;color:#5a9977;margin-bottom:6px}
+#vision-equipment{font-size:17px;letter-spacing:1.5px;margin-bottom:3px}
+#vision-model{font-size:10px;letter-spacing:2px;color:#5a9977;margin-bottom:6px}
+#vision-observations{font-size:11px;letter-spacing:.3px;line-height:1.7;color:#00cc6a}
+#vision-alerts{font-size:10px;letter-spacing:1px;margin-top:5px;min-height:14px}
+
+/* ─── MIRA RESPONSE PANEL ─── */
+#mira-response-panel{}
+#mira-response-text{font-size:14px;letter-spacing:.4px;line-height:1.7;min-height:42px}
+#mira-sources{font-size:9px;letter-spacing:1px;color:#3a7755;margin-top:5px}
+
+/* ─── QUERY BAR ─── */
+#query-bar{
+  position:absolute;bottom:60px;left:50%;transform:translateX(-50%);
+  width:68%;display:flex;gap:8px;pointer-events:auto
+}
+#query-input{
+  flex:1;background:rgba(0,10,5,.88);border:1px solid rgba(0,255,136,.4);
+  color:#00ff88;font-family:'Courier New',monospace;font-size:11px;
+  letter-spacing:1px;padding:7px 12px;outline:none
+}
+#query-input:focus{border-color:#00ff88}
+#query-input::placeholder{color:#2a5a3a}
+#query-send{
+  background:rgba(0,255,136,.1);border:1px solid #00ff88;
+  color:#00ff88;font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:2px;padding:7px 14px;cursor:pointer;text-transform:uppercase;
+  transition:background .2s;white-space:nowrap
+}
+#query-send:hover{background:rgba(0,255,136,.28)}
+
+/* ─── CONFIRM PROMPT ─── */
+#confirm-prompt{display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,255,136,.3);text-align:center}
+#confirm-question{font-size:11px;letter-spacing:2px;color:#ffaa00;margin-bottom:10px}
+.confirm-btn{background:rgba(0,255,136,.1);border:1px solid #00ff88;color:#00ff88;font-family:'Courier New',monospace;font-size:10px;letter-spacing:2px;padding:7px 18px;cursor:pointer;text-transform:uppercase;transition:background .2s;margin:0 6px}
+.confirm-btn:hover{background:rgba(0,255,136,.28)}
+.confirm-btn.no{border-color:#5a9977;color:#5a9977}
+.confirm-btn.no:hover{border-color:#00ff88;color:#00ff88}
+#scan-again{display:none;font-size:9px;letter-spacing:2px;color:#5a9977;background:none;border:1px solid #2a5a3a;padding:4px 12px;cursor:pointer;font-family:'Courier New',monospace;margin-top:8px;text-transform:uppercase;transition:all .2s}
+#scan-again:hover{color:#00ff88;border-color:#00ff88}
+#scanning-indicator{font-size:9px;letter-spacing:2px;color:#5a9977;margin-top:6px;min-height:14px}
+
 /* ─── PROCEDURE SELECTOR ─── */
+#proc-label{
+  position:absolute;top:38px;left:50%;transform:translateX(-50%);
+  font-size:8px;letter-spacing:3px;color:#5a9977;
+  text-transform:uppercase;pointer-events:none
+}
 #proc-selector{
   position:absolute;top:52px;left:50%;transform:translateX(-50%);
   display:flex;gap:10px;pointer-events:auto
@@ -116,15 +166,15 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 
 /* ─── MIRA PANEL ─── */
 #mira-panel{
-  position:absolute;top:88px;right:18px;
-  width:280px;
+  position:absolute;top:70px;right:18px;
+  width:400px;
   background:rgba(0,10,6,.88);
   border:1px solid rgba(0,255,136,.5);
   border-right:2px solid #00ff88;
   padding:10px 12px;
   pointer-events:auto;
   z-index:20;
-  font-size:9px;letter-spacing:1.5px
+  font-size:11px;letter-spacing:1.5px
 }
 #mira-header{
   display:flex;justify-content:space-between;align-items:center;
@@ -135,7 +185,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 #mira-status.online{color:#00ff88}
 #mira-status.offline{color:#ff3333}
 #mira-output{
-  height:160px;overflow-y:auto;overflow-x:hidden;
+  height:300px;overflow-y:auto;overflow-x:hidden;
   margin-bottom:8px;line-height:1.9;
   scrollbar-width:thin;scrollbar-color:#00ff88 #0a2218
 }
@@ -158,14 +208,14 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 #mira-input-row{display:flex;gap:6px;align-items:center;margin-top:4px}
 #mira-input{
   flex:1;background:#010f07;border:1px solid rgba(0,255,136,.35);
-  color:#00ff88;font-family:'Courier New',monospace;font-size:9px;
-  letter-spacing:1px;padding:5px 7px;outline:none
+  color:#00ff88;font-family:'Courier New',monospace;font-size:11px;
+  letter-spacing:1px;padding:6px 9px;outline:none
 }
 #mira-input:focus{border-color:#00ff88}
 #mira-input::placeholder{color:#2a5a3a}
 #mira-send{
   background:rgba(0,255,136,.12);border:1px solid #00ff88;
-  color:#00ff88;font-family:'Courier New',monospace;font-size:8px;
+  color:#00ff88;font-family:'Courier New',monospace;font-size:10px;
   letter-spacing:2px;padding:5px 9px;cursor:pointer;text-transform:uppercase;
   white-space:nowrap;transition:background .2s
 }
@@ -192,6 +242,20 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 .dot.green{background:#00ff88}
 .dot.orange{background:#ffaa00}
 .dot.red{background:#ff3333}
+
+/* ─── VOICE STATES ─── */
+@keyframes pulse-border{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,170,0,.6)}
+  50%{box-shadow:0 0 8px 2px rgba(255,170,0,.25)}
+}
+#query-bar.listening #query-input{border-color:#ffaa00;color:#ffaa00;animation:pulse-border 1.2s infinite}
+#query-bar.locked    #query-input{border-color:#00ff88;color:#00ff88}
+#query-bar.sending   #query-input{border-color:#00ff88;color:#5a9977;animation:blink 1s infinite}
+#voice-indicator{
+  font-size:8px;letter-spacing:2px;color:#5a9977;
+  position:absolute;bottom:52px;left:50%;transform:translateX(-50%);
+  width:68%;text-align:right;pointer-events:none
+}
 </style>
 </head>
 <body>
@@ -206,6 +270,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 <!-- MAIN CONTAINER -->
 <div id="container">
   <video id="feed" autoplay playsinline muted></video>
+  <canvas id="vim-canvas"></canvas>
   <div id="scanlines"></div>
   <div id="vignette"></div>
 
@@ -226,6 +291,7 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
     </div>
 
     <!-- Procedure Selector -->
+    <div id="proc-label">SELECT PROCEDURE</div>
     <div id="proc-selector"></div>
 
     <!-- Crosshair -->
@@ -238,20 +304,16 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
       ZONE: <span id="zone-id">---</span><br>
       MODE: INSPECT<br>
       <span style="color:rgba(0,255,136,.3)">──────────</span><br>
-      ESTOP: <span style="color:#00ff88">CLEAR</span><br>
-      SERVO: <span style="color:#00ff88">OK</span><br>
-      FAULT: <span style="color:#00ff88">NONE</span>
+      ESTOP: <span id="hw-estop" style="color:#00ff88">CLEAR</span><br>
+      SERVO: <span id="hw-servo" style="color:#00ff88">OK</span><br>
+      FAULT: <span id="hw-fault" style="color:#00ff88">NONE</span>
     </div>
 
     <!-- Right Panel -->
     <div id="right-panel" class="side-panel">
       TECH: LOCAL<br>
       STEP: <span id="step-counter">-/-</span><br>
-      STATUS: RUN<br>
-      <span style="color:rgba(0,255,136,.3)">──────────</span><br>
-      FRAME: <span id="frame-ct">0</span><br>
-      SIGNAL: 100%<br>
-      STREAM: ON
+      STATUS: RUN
     </div>
 
     <!-- MIRA Panel -->
@@ -264,17 +326,47 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
         <span class="mira-line system">MIRA: CONNECTING...</span>
       </div>
       <div id="mira-input-row">
-        <input id="mira-input" type="text" placeholder="ASK MIRA..." maxlength="400" autocomplete="off"/>
+        <input id="mira-input" type="text" placeholder="ASK MIRA... (SPACE=voice | Enter=send)" maxlength="400" autocomplete="off"/>
         <button id="mira-send" onclick="miraSend()">SEND</button>
       </div>
     </div>
 
-    <!-- Instruction Panel -->
+    <!-- Center: Vision + MIRA Response -->
     <div id="instruction-panel">
-      <div id="step-label">AWAITING CONNECTION...</div>
-      <div id="step-text">Connecting to Charlie Node server...</div>
+      <!-- Vision identification -->
+      <div id="vision-panel">
+        <div class="hud-label">▸ VISION SCAN</div>
+        <div id="vision-equipment">AWAITING SCAN...</div>
+        <div id="vision-model">--</div>
+        <div id="vision-observations">Point camera at equipment to begin identification.</div>
+        <div id="vision-alerts"></div>
+        <div id="confirm-prompt">
+          <div id="confirm-question">IS THIS WHAT YOU'RE WORKING ON?</div>
+          <button class="confirm-btn yes" onclick="confirmYes()">YES, ASK MIRA</button>
+          <button class="confirm-btn no"  onclick="confirmNo()">NOT THAT</button>
+        </div>
+        <div id="scanning-indicator"></div>
+        <button id="scan-again" onclick="startScanning()">↺ SCAN AGAIN</button>
+      </div>
+      <!-- MIRA RAG response -->
+      <div id="mira-response-panel">
+        <div class="hud-label">▸ MIRA RESPONSE</div>
+        <div id="mira-response-text">Ready. Look at equipment or ask a question.</div>
+        <div id="mira-sources"></div>
+      </div>
+      <!-- Procedure step (hidden — manual override via PREV/NEXT) -->
+      <div id="step-label" style="display:none"></div>
+      <div id="step-text"></div>
       <div id="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
     </div>
+
+    <!-- Query bar -->
+    <div id="query-bar">
+      <input id="query-input" type="text" placeholder="ASK MIRA... (SPACE = voice | type + Enter)" maxlength="400" autocomplete="off"/>
+      <button id="query-send">ASK ▶</button>
+    </div>
+
+    <div id="voice-indicator"></div>
 
     <!-- Nav -->
     <div id="nav">
@@ -324,9 +416,81 @@ setInterval(() => {
     new Date().toLocaleTimeString('en-US',{hour12:false});
 }, 1000);
 
-// ─── FRAME COUNTER ───────────────────────────────────────────
+// ─── FRAME COUNTER (element removed from HTML — just track internally) ───────
 let fc = 0;
-setInterval(() => document.getElementById('frame-ct').textContent = ++fc, 33);
+setInterval(() => { fc++; }, 33);
+
+
+// ─── SOCKET.IO (declare first — used throughout this script) ─
+const socket = io();
+
+// ─── VIM OVERLAY ────────────────────────────────────────────
+let lastVisionData = null;
+
+socket.on('vim_overlay', (data) => {
+  lastVisionData = data;
+  renderVIMOverlay(data);
+});
+
+function renderVIMOverlay(data) {
+  const canvas = document.getElementById('vim-canvas');
+  const container = document.getElementById('container');
+  canvas.width = container.offsetWidth;
+  canvas.height = container.offsetHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw bounding boxes
+  if (data.bounding_boxes) {
+    data.bounding_boxes.forEach(bb => {
+      ctx.strokeStyle = bb.color || '#FFFFFF';
+      ctx.lineWidth = bb.selected ? 3 : 1.5;
+      ctx.strokeRect(bb.box.x, bb.box.y, bb.box.w, bb.box.h);
+
+      // Label
+      const label = bb.label + ' ' + Math.round(bb.confidence * 100) + '%';
+      ctx.font = '11px Courier New';
+      ctx.fillStyle = bb.color || '#FFFFFF';
+      ctx.fillText(label, bb.box.x, bb.box.y - 4);
+    });
+  }
+
+  // Update manifest in left panel
+  const lp = document.getElementById('left-panel');
+  if (data.hud_manifest && data.hud_manifest.length > 0) {
+    let mhtml = 'VIM MANIFEST<br><span style="color:rgba(0,255,136,.3)">----------</span><br>';
+    data.hud_manifest.forEach(item => {
+      mhtml += '<span style="color:#00ff88;font-size:9px">' + item + '</span><br>';
+    });
+    lp.innerHTML = mhtml;
+  }
+
+  // Procedure step overlay
+  if (data.mode === 'PROCEDURE' && data.procedure_step) {
+    const sp = document.getElementById('step-text');
+    if (sp) sp.textContent = data.procedure_step;
+    const sl = document.getElementById('step-label');
+    if (sl) sl.textContent = data.procedure_progress || '';
+  }
+
+  // Warnings in red
+  if (data.warnings && data.warnings.length > 0) {
+    const mo = document.getElementById('mira-output');
+    data.warnings.forEach(w => {
+      const line = document.createElement('span');
+      line.className = 'mira-line';
+      line.style.color = '#ff3333';
+      line.textContent = w;
+      mo.insertBefore(line, mo.firstChild);
+    });
+  }
+
+  // Mode indicator in topbar
+  const ap = document.getElementById('active-proc');
+  if (ap && data.mode_indicator) {
+    ap.textContent = 'VIM:' + data.mode_indicator;
+  }
+}
 
 // ─── STATE ───────────────────────────────────────────────────
 let stepsData  = [];
@@ -336,24 +500,56 @@ function renderStep() {
   if (!stepsData.length) return;
   const s     = stepsData[stepIdx];
   const total = stepsData.length;
-  document.getElementById('step-label').textContent =
-    `STEP ${s.id} OF ${total} — MAINTENANCE PROCEDURE ${s.warn ? '⚠ CAUTION' : ''}`;
-  const st = document.getElementById('step-text');
-  st.textContent = s.action;
-  st.className   = s.warn ? 'warn-step' : '';
-  document.getElementById('step-counter').textContent = `${s.id}/${total}`;
-  document.getElementById('zone-id').textContent      = s.zone;
+
+  // Show step override panels when navigating manually
+  const stepLabelEl = document.getElementById('step-label');
+  const stepTextEl  = document.getElementById('step-text');
+  const progBar     = document.getElementById('progress-bar');
+  stepLabelEl.style.display = '';
+  stepTextEl.style.display  = '';
+  progBar.style.display     = '';
+
+  stepLabelEl.textContent = `STEP ${s.id} OF ${total} — ${s.warn ? '⚠ CAUTION' : 'PROCEDURE'}`;
+  stepTextEl.textContent  = s.action;
+  stepTextEl.className    = s.warn ? 'warn-step' : '';
+  document.getElementById('step-counter').textContent  = `${s.id}/${total}`;
+  document.getElementById('zone-id').textContent       = s.zone;
   document.getElementById('progress-fill').style.width = `${(s.id/total)*100}%`;
   document.getElementById('btn-prev').disabled = stepIdx === 0;
   document.getElementById('btn-next').disabled = stepIdx === total - 1;
 }
 
-// ─── SOCKET.IO ───────────────────────────────────────────────
-const socket = io();
-
+// ─── SOCKET.IO HANDLERS ──────────────────────────────────────
 socket.on('connect', () => {
   setMiraStatus('online', 'ONLINE');
+  document.getElementById('mira-output').innerHTML = '';
   miraAppendLine('MIRA: CONNECTED TO CHARLIE NODE', 'system');
+});
+
+socket.on('visionUpdate', (d) => {
+  _visionBusy = false;
+  const isReal = d.equipment &&
+    d.equipment !== 'General environment' &&
+    d.equipment !== 'Vision error' &&
+    d.equipment !== 'Vision offline';
+
+  const sl = document.getElementById('step-label');
+  const st = document.getElementById('step-text');
+  if (sl) sl.textContent = isReal ? 'VISION SCAN — LIVE' : 'SCANNING...';
+  if (st && isReal) {
+    st.textContent = d.equipment + (d.model && d.model !== '--' ? ' — ' + d.model : '');
+    st.className   = '';
+  }
+
+  if (isReal) {
+    document.getElementById('unit-id').textContent     = d.equipment;
+    document.getElementById('active-proc').textContent = 'PROC:' + d.equipment.toUpperCase().slice(0, 14);
+    lastVisionData = { equipment_context: d.equipment_context || d.equipment };
+  }
+
+  if (d.alerts && d.alerts.length) {
+    d.alerts.forEach(a => miraAppendLine('⚠ ' + a, 'system'));
+  }
 });
 
 socket.on('disconnect', () => {
@@ -392,6 +588,17 @@ socket.on('stepUpdate', (data) => {
   renderStep();
 });
 
+// ─── TTS ──────────────────────────────────────────────────────
+function speakResponse(text) {
+  if (!('speechSynthesis' in window)) return;
+  const clean = text.replace(/\*\*/g, '').replace(/#+\s?/g, '').slice(0, 350);
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(clean);
+  utt.rate  = 0.95;
+  utt.pitch = 1.0;
+  window.speechSynthesis.speak(utt);
+}
+
 // ─── MIRA INSIGHT ────────────────────────────────────────────
 socket.on('mira_insight', (data) => {
   const text = data.text || '';
@@ -402,6 +609,7 @@ socket.on('mira_insight', (data) => {
   }
 
   miraAppendLine(text, text.startsWith('MIRA:') ? 'system' : 'response');
+  if (!text.startsWith('MIRA:')) speakResponse(text);
 
   if (tags.length) {
     const tagsDiv = document.createElement('div');
@@ -445,12 +653,169 @@ function miraSend() {
   if (!q) return;
   miraAppendLine('> ' + q, 'query');
   document.getElementById('mira-send').disabled = true;
-  socket.emit('mira_query', q);
+  const payload = lastVisionData
+    ? q + ' [context:' + (lastVisionData.equipment_context || '') + ']'
+    : q;
+  socket.emit('mira_query', payload);
   input.value = '';
 }
 
+// ─── VOICE INPUT (SPACEBAR) ──────────────────────────────────
+let voiceState = 'idle'; // idle | listening | locked
+const SpeechRecog = window.SpeechRecognition || window.webkitSpeechRecognition;
+const recognition = SpeechRecog ? new SpeechRecog() : null;
+
+if (recognition) {
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (e) => {
+    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+    document.getElementById('mira-input').value = transcript;
+  };
+
+  recognition.onend = () => {
+    if (voiceState === 'listening') setVoiceState('locked');
+  };
+
+  recognition.onerror = (e) => {
+    console.warn('[voice] error:', e.error);
+    setVoiceState('idle');
+  };
+}
+
+function setVoiceState(state) {
+  voiceState = state;
+  const inp = document.getElementById('mira-input');
+  const btn = document.getElementById('mira-send');
+  if (state === 'idle')      { inp.style.borderColor = ''; btn.textContent = 'SEND'; }
+  if (state === 'listening') { inp.style.borderColor = '#ffaa00'; btn.textContent = '● REC'; }
+  if (state === 'locked')    { inp.style.borderColor = '#00ff88'; btn.textContent = 'SEND ▶'; }
+}
+
+document.addEventListener('keydown', (e) => {
+  const tag = document.activeElement.tagName;
+  const inInput = (tag === 'INPUT' || tag === 'TEXTAREA');
+
+  if (e.key === ' ' && !inInput) {
+    e.preventDefault();
+    if (!recognition) return;
+    if      (voiceState === 'idle')      { setVoiceState('listening'); recognition.start(); }
+    else if (voiceState === 'listening') { recognition.stop(); setVoiceState('locked'); }
+    else if (voiceState === 'locked')    { miraSend(); setVoiceState('idle'); }
+    return;
+  }
+
+  if (e.key === 'Escape') {
+    if (recognition && voiceState !== 'idle') recognition.abort();
+    setVoiceState('idle');
+    document.getElementById('mira-input').value = '';
+  }
+});
+
 document.getElementById('mira-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') miraSend();
+});
+
+// ─── FRAME CAPTURE ───────────────────────────────────────────
+let scanning  = true;
+let analyzing = false;
+let _lastVision = { equipment: '', model: '' };
+let _confirmedEquipment = '';  // set on CONFIRM, survives rescans to 'General environment'
+
+function captureAndAnalyze() {
+  if (!scanning || analyzing) return;
+  if (!video.videoWidth || !video.videoHeight) return;
+  analyzing = true;
+  setScanStatus('SCANNING...');
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.min(video.videoWidth, 640);
+  canvas.height = Math.round(canvas.width * video.videoHeight / video.videoWidth);
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  socket.emit('analyzeFrame', canvas.toDataURL('image/jpeg', 0.75).split(',')[1]);
+}
+setInterval(captureAndAnalyze, 3000);
+
+function setScanStatus(msg) {
+  document.getElementById('scanning-indicator').textContent = msg;
+}
+
+// ─── VISION UPDATE ───────────────────────────────────────────
+socket.on('visionUpdate', (d) => {
+  analyzing = false;
+  _lastVision = { equipment: d.equipment || '', model: d.model || '' };
+
+  document.getElementById('vision-equipment').textContent     = d.equipment    || '--';
+  document.getElementById('vision-model').textContent         = d.model         || '--';
+  document.getElementById('vision-observations').textContent  = d.observations  || '';
+  const alertEl = document.getElementById('vision-alerts');
+  const alerts  = d.alerts || [];
+  alertEl.textContent = alerts.length ? '⚠ ' + alerts.join(' | ') : '';
+  alertEl.style.color = alerts.length ? '#ff3333' : '#00ff88';
+
+  const confirmEl = document.getElementById('confirm-prompt');
+  if (d.pendingConfirm) {
+    confirmEl.style.display = '';
+    setScanStatus('');
+  } else {
+    confirmEl.style.display = 'none';
+    setScanStatus(d.equipment === 'General environment' ? 'No equipment — scanning...' : '');
+  }
+});
+
+// ─── CONFIRM BUTTONS ─────────────────────────────────────────
+function confirmYes() {
+  scanning = false;
+  document.getElementById('confirm-prompt').style.display = 'none';
+  document.getElementById('scan-again').style.display     = '';
+  setScanStatus('');
+  document.getElementById('mira-response-text').textContent = 'Asking MIRA...';
+  socket.emit('confirmEquipment', _lastVision);
+  _confirmedEquipment = `${_lastVision.equipment} ${_lastVision.model}`.trim();
+}
+
+function confirmNo() {
+  socket.emit('rejectEquipment', _lastVision);
+  document.getElementById('confirm-prompt').style.display = 'none';
+  setScanStatus('Scanning...');
+}
+
+function startScanning() {
+  socket.emit('scanAgain');
+  scanning  = true;
+  analyzing = false;
+  _lastVision = { equipment: '', model: '' };
+  document.getElementById('scan-again').style.display          = 'none';
+  document.getElementById('confirm-prompt').style.display      = 'none';
+  document.getElementById('vision-equipment').textContent      = 'AWAITING SCAN...';
+  document.getElementById('vision-model').textContent          = '--';
+  document.getElementById('vision-observations').textContent   = 'Point camera at equipment to begin identification.';
+  document.getElementById('vision-alerts').textContent         = '';
+  document.getElementById('mira-response-text').textContent    = 'Ready.';
+  document.getElementById('mira-sources').textContent          = '';
+  setScanStatus('');
+}
+
+
+// ─── HARDWARE UPDATE ─────────────────────────────────────────
+socket.on('hardwareUpdate', (hw) => {
+  const estopEl = document.getElementById('hw-estop');
+  estopEl.textContent = hw.estop ? 'ENGAGED' : 'CLEAR';
+  estopEl.style.color  = hw.estop ? '#ff3333' : '#00ff88';
+
+  const servoEl = document.getElementById('hw-servo');
+  servoEl.textContent = hw.run ? 'ON' : 'OK';
+  servoEl.style.color  = hw.run ? '#00ff88' : '#00ff88';
+
+  const faultEl = document.getElementById('hw-fault');
+  if (hw.fault) {
+    faultEl.textContent = hw.vfd_fault_code ? 'F' + hw.vfd_fault_code : 'FAULT';
+    faultEl.style.color  = '#ff3333';
+  } else {
+    faultEl.textContent = 'NONE';
+    faultEl.style.color  = '#00ff88';
+  }
 });
 </script>
 </body>

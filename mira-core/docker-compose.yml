@@ -65,6 +65,8 @@ services:
       - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
       - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
     volumes:
       - ./data/photos:/data/photos
       - ./mira.db:/app/mira.db
