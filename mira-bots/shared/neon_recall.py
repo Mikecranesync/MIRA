@@ -126,26 +126,50 @@ def _merge_results(
 ) -> tuple[list[dict], str]:
     """Merge vector, fault-code ILIKE, and product-name ILIKE results.
 
+    Product-name results are ALWAYS promoted to the top — when the user names
+    a specific product, chunks from that product must be the first thing the
+    LLM sees, regardless of vector similarity to other products.
+
+    Fault-code results follow the original logic (augment or force based on
+    vector score threshold).
+
     Returns (merged_list, retrieval_path).
     """
-    all_keyword = like_results + product_results
-    if not all_keyword:
+    if not like_results and not product_results:
         return vector_results, "vector_only"
 
-    # Deduplicate by first 100 chars of content
-    seen = {r["content"][:100] for r in vector_results}
-    unique_kw = [r for r in all_keyword if r["content"][:100] not in seen]
+    seen: set[str] = set()
 
-    top_vector_score = max((r.get("similarity", 0) for r in vector_results), default=0)
+    # Product results go first — user explicitly named the product
+    merged: list[dict] = []
+    for r in product_results:
+        key = r["content"][:100]
+        if key not in seen:
+            merged.append(r)
+            seen.add(key)
 
-    path = "like_augmented" if like_results else "product_augmented"
-    if like_results and product_results:
-        path = "hybrid_augmented"
+    # Then vector results
+    for r in vector_results:
+        key = r["content"][:100]
+        if key not in seen:
+            merged.append(r)
+            seen.add(key)
 
-    if top_vector_score >= 0.75:
-        return vector_results + unique_kw, path
+    # Then fault-code LIKE results
+    for r in like_results:
+        key = r["content"][:100]
+        if key not in seen:
+            merged.append(r)
+            seen.add(key)
+
+    if product_results and like_results:
+        path = "hybrid_promoted"
+    elif product_results:
+        path = "product_promoted"
     else:
-        return unique_kw + vector_results, path.replace("augmented", "forced")
+        path = "like_augmented"
+
+    return merged, path
 
 
 def recall_knowledge(
