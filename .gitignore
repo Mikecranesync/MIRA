@@ -5,6 +5,10 @@ mira-core/.env
 mira-bots/.env
 mira-mcp/.env
 
+# Staging directories (large binaries, local PDFs)
+bravo/Send to Bravo/
+tools/ingest_local_pdfs.py
+
 # HUD session logs
 mira-hud/vision_backend/logs/
 
