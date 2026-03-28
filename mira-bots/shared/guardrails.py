@@ -123,6 +123,21 @@ def detect_session_followup(message: str, session_context: dict, fsm_state: str)
     return any(sig in msg_lower for sig in SESSION_FOLLOWUP_SIGNALS)
 
 
+_SELECTION_RE = re.compile(r"^\s*(\d+)\.?\s*$")
+
+
+def resolve_option_selection(message: str, last_options: list[str]) -> str | None:
+    """If message is a numbered selection (e.g. "1", "1.", "2"), return the
+    matching option text. Returns None if not a valid selection."""
+    m = _SELECTION_RE.match(message)
+    if not m:
+        return None
+    idx = int(m.group(1)) - 1  # 1-indexed to 0-indexed
+    if 0 <= idx < len(last_options):
+        return last_options[idx]
+    return None
+
+
 def strip_mentions(message: str) -> str:
     """Remove Slack-style @mention tags from message text."""
     return _MENTION_RE.sub("", message).strip()

@@ -277,9 +277,12 @@ class RAGWorker:
 
         messages = [{"role": "system", "content": system_content}]
 
-        # Conversation history — omit for photo messages (fresh visual context)
+        # Conversation history — omit for fresh photo entries (new equipment)
+        # but INCLUDE for photos sent during active diagnostic sessions (photo-as-answer)
+        _ACTIVE_DIAG = {"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"}
+        _photo_continues = photo_b64 and state.get("state") in _ACTIVE_DIAG
         _SELF_REF_SIGNALS = ["you said", "your response", "earlier", "before", "what you told me"]
-        if not photo_b64:
+        if not photo_b64 or _photo_continues:
             history = state.get("context", {}).get("history", [])
             for entry in history[-10:]:
                 messages.append({"role": entry["role"], "content": entry["content"]})
@@ -296,6 +299,20 @@ class RAGWorker:
                             + " | ".join(t["content"][:200] for t in mira_turns),
                         },
                     )
+
+        # Photo-as-answer guidance: help LLM interpret photo in diagnostic context
+        if _photo_continues:
+            messages.append({
+                "role": "system",
+                "content": (
+                    "This photo was sent as a response to your previous question. "
+                    "Examine it for information that answers the question. If you "
+                    "can extract the answer, confirm it and continue the diagnostic. "
+                    "If the photo doesn't clearly show the requested information, "
+                    "acknowledge the photo and re-ask the question differently — "
+                    "suggest the technician type the value or take a closer shot."
+                ),
+            })
 
         # Current user message
         if photo_b64:

@@ -10,18 +10,21 @@ import time
 from .guardrails import (
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
-    classify_intent,
     check_output,
-    strip_mentions,
+    classify_intent,
     detect_session_followup,
+    resolve_option_selection,
+    strip_mentions,
 )
 from .inference.router import InferenceRouter
 from .nemotron import NemotronClient
-from .telemetry import trace as tl_trace, span as tl_span, flush as tl_flush
-from .workers.vision_worker import VisionWorker
-from .workers.rag_worker import RAGWorker
-from .workers.print_worker import PrintWorker
+from .telemetry import flush as tl_flush
+from .telemetry import span as tl_span
+from .telemetry import trace as tl_trace
 from .workers.plc_worker import PLCWorker
+from .workers.print_worker import PrintWorker
+from .workers.rag_worker import RAGWorker
+from .workers.vision_worker import VisionWorker
 
 logger = logging.getLogger("mira-gsd")
 
@@ -40,6 +43,7 @@ _LOW_CONF_SIGNALS = re.compile(
 _JSON_RE = re.compile(r'\{[^{}]*"reply"[^{}]*\}', re.DOTALL)
 
 STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
+ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"})
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 
 
@@ -221,6 +225,14 @@ class Supervisor:
             if detect_session_followup(message, sc, state["state"]):
                 return await self._handle_session_followup(message, state, chat_id)
 
+            # Option selection resolution: expand "1" → full option text
+            last_options = sc.get("last_options", [])
+            if last_options:
+                expanded = resolve_option_selection(message, last_options)
+                if expanded:
+                    logger.info("Selection resolved: '%s' → '%s'", message, expanded)
+                    message = expanded
+
             intent = classify_intent(message)
             if intent == "safety":
                 reply = (
@@ -256,6 +268,7 @@ class Supervisor:
                 return self._make_result(reply, "none", trace_id, "IDLE")
 
         # Photo path: delegate to vision worker, then route
+        _photo_continues_session = False
         if photo_b64:
             with tl_span(t, "vision_worker"):
                 vision_data = await self.vision.process(photo_b64, message)
@@ -266,7 +279,22 @@ class Supervisor:
             state["context"] = ctx
             state["asset_identified"] = str(vision_data["vision_result"])
 
-            if vision_data["classification"] == "ELECTRICAL_PRINT":
+            # Active diagnostic: photo is an answer to the pending question
+            if state["state"] in ACTIVE_DIAGNOSTIC_STATES:
+                _photo_continues_session = True
+                sc = ctx.get("session_context", {})
+                last_q = sc.get("last_question", "")
+                default_caption = "Analyze this equipment photo"
+                if last_q and (not message or message == default_caption):
+                    message = f"[Photo answering: {last_q}]"
+                elif last_q:
+                    message = f"[Photo answering: {last_q}] {message}"
+                logger.info(
+                    "Photo-as-answer in %s: %s", state["state"], message[:100]
+                )
+                # Fall through to RAG — preserve state and session_context
+
+            elif vision_data["classification"] == "ELECTRICAL_PRINT":
                 state["state"] = "ELECTRICAL_PRINT"
                 ctx["drawing_type"] = vision_data["drawing_type"]
                 state["context"] = ctx
@@ -324,7 +352,8 @@ class Supervisor:
             )
 
         # Photo with no specific intent → acknowledge equipment, ask what they need
-        if photo_b64 and not any(kw in message.lower() for kw in INTENT_KEYWORDS):
+        # (Skip for photo-as-answer: active session photos go straight to RAG)
+        if photo_b64 and not _photo_continues_session and not any(kw in message.lower() for kw in INTENT_KEYWORDS):
             asset = state.get("asset_identified", "this equipment")
             reply = f"I can see this is {asset}. How can I help you with it?"
             ctx = state.get("context") or {}
