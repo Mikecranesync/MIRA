@@ -230,18 +230,6 @@ class Supervisor:
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
-            if intent == "off_topic":
-                if state["state"] != "IDLE":
-                    pass  # Active session — fall through to RAG worker
-                else:
-                    reply = (
-                        "I help maintenance technicians diagnose equipment issues. "
-                        "What equipment do you need help with?"
-                    )
-                    self._record_exchange(chat_id, state, message, reply)
-                    tl_flush()
-                    return self._make_result(reply, "none", trace_id, state["state"])
-
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
         if (
             not photo_b64
