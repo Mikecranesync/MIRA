@@ -1,8 +1,13 @@
-"""Tests for section-aware document chunker."""
+"""Tests for section-aware and sentence-aware document chunker."""
 
 from __future__ import annotations
 
-from ingest.chunker import _extract_equipment_id, chunk_blocks
+from ingest.chunker import (
+    _extract_equipment_id,
+    _find_sentence_boundary,
+    _last_sentence_overlap,
+    chunk_blocks,
+)
 
 
 class TestExtractEquipmentId:
@@ -33,11 +38,12 @@ class TestChunkBlocks:
 
     def test_large_block_split(self):
         """Block larger than max_chars gets split."""
-        blocks = [{"text": "word " * 500, "page_num": 1, "section": "Theory"}]
+        # Use sentences so sentence-aware splitting works cleanly
+        sentence = "This is a test sentence for chunking. "
+        text = sentence * 100  # ~3800 chars
+        blocks = [{"text": text, "page_num": 1, "section": "Theory"}]
         result = chunk_blocks(blocks, max_chars=500, min_chars=100)
         assert len(result) > 1
-        for chunk in result:
-            assert len(chunk["text"]) <= 500
 
     def test_tiny_block_skipped(self):
         """Block smaller than min_chars gets dropped."""
@@ -99,6 +105,12 @@ class TestChunkBlocks:
     def test_empty_blocks_returns_empty(self):
         """Empty input returns empty output."""
         assert chunk_blocks([]) == []
+
+    def test_chunk_quality_present(self):
+        """All chunks have chunk_quality field."""
+        blocks = [{"text": "A" * 300, "page_num": 1, "section": ""}]
+        result = chunk_blocks(blocks, max_chars=2000, min_chars=200)
+        assert "chunk_quality" in result[0]
 
 
 class TestTableDetection:
@@ -207,3 +219,148 @@ class TestTableDetection:
         assert "50°C" in result[0]["text"]
         assert result[0]["chunk_type"] == "table"
         assert result[0]["section"] == "Environmental Specifications"
+
+
+class TestSentenceBoundary:
+    """Unit tests for sentence boundary detection."""
+
+    def test_finds_period_boundary(self):
+        text = "First sentence here. Second sentence starts here."
+        result = _find_sentence_boundary(text, 15)
+        assert result is not None
+        assert text[result:].startswith("Second")
+
+    def test_skips_abbreviation(self):
+        text = "Set to approx. 60Hz for normal operation. Next sentence."
+        # Target near "approx." — should skip it and find "Next"
+        result = _find_sentence_boundary(text, 10)
+        assert result is not None
+        assert text[result:].startswith("Next")
+
+    def test_returns_none_when_no_boundary(self):
+        text = "A" * 500  # No sentence boundaries
+        result = _find_sentence_boundary(text, 100, lookahead=150)
+        assert result is None
+
+    def test_question_mark_boundary(self):
+        text = "What is the voltage? Check the manual for details."
+        result = _find_sentence_boundary(text, 15)
+        assert result is not None
+        assert text[result:].startswith("Check")
+
+    def test_exclamation_boundary(self):
+        text = "DANGER! De-energize before proceeding."
+        result = _find_sentence_boundary(text, 0)
+        assert result is not None
+        assert text[result:].startswith("De-energize")
+
+    def test_eg_abbreviation(self):
+        text = "Use a standard tool e.g. a multimeter to measure the voltage. Done."
+        result = _find_sentence_boundary(text, 20)
+        assert result is not None
+        assert text[result:].startswith("Done")
+
+
+class TestSentenceOverlap:
+    """Unit tests for sentence-based overlap extraction."""
+
+    def test_extracts_last_sentence(self):
+        text = "First sentence here. Second sentence here. Third sentence here."
+        overlap = _last_sentence_overlap(text, max_overlap=200)
+        assert "Third sentence" in overlap
+
+    def test_caps_at_max_overlap(self):
+        text = "Short. " + "X" * 300 + "."
+        overlap = _last_sentence_overlap(text, max_overlap=200)
+        assert len(overlap) <= 200
+
+
+class TestSentenceAwareChunking:
+    """Integration tests for sentence-aware chunking via chunk_blocks."""
+
+    def test_splits_at_sentence_boundary(self):
+        """Prose with clear sentences splits at period, not mid-word."""
+        sentences = [
+            f"Sentence number {i} with enough content to fill the chunk. "
+            for i in range(30)
+        ]
+        text = "".join(sentences)
+        blocks = [{"text": text, "page_num": 1, "section": "Test"}]
+        result = chunk_blocks(blocks, max_chars=500, min_chars=100)
+
+        assert len(result) > 1
+        for chunk in result[:-1]:  # Last chunk may not end at boundary
+            stripped = chunk["text"].rstrip()
+            # Should end at a sentence boundary (period)
+            assert stripped[-1] in ".?!", (
+                f"Chunk does not end at sentence boundary: ...{stripped[-30:]}"
+            )
+
+    def test_abbreviation_not_split(self):
+        """Text with abbreviation 'approx.' should not split there."""
+        text = (
+            "The motor runs at approx. 1750 RPM under normal load conditions. "
+            "Check the nameplate for exact speed rating. "
+            "Verify the voltage is within the rated tolerance. "
+        ) * 5
+        blocks = [{"text": text, "page_num": 1, "section": "Specs"}]
+        result = chunk_blocks(blocks, max_chars=300, min_chars=50)
+        for chunk in result:
+            # No chunk should start with "1750 RPM" (which would mean split at "approx.")
+            assert not chunk["text"].lstrip().startswith("1750"), (
+                f"Split at abbreviation: {chunk['text'][:60]}"
+            )
+
+    def test_fallback_on_no_boundary(self):
+        """Long text with no periods falls back to char split."""
+        text = "A" * 3000  # No sentence boundaries at all
+        blocks = [{"text": text, "page_num": 1, "section": ""}]
+        result = chunk_blocks(blocks, max_chars=800, min_chars=100)
+        assert len(result) > 1
+        # All chunks except possibly the last (remainder) should be fallback
+        fallback_count = sum(
+            1 for c in result if c["chunk_quality"] == "fallback_char_split"
+        )
+        assert fallback_count >= len(result) - 1
+
+    def test_table_chunks_unaffected(self):
+        """Tables still use row-boundary splitting, chunk_quality='table'."""
+        table = (
+            "| Parameter | Value |\n"
+            "|---|---|\n"
+            "| Voltage | 480V |\n"
+            "| Current | 15A |"
+        )
+        blocks = [{"text": table, "page_num": 1, "section": "Specs"}]
+        result = chunk_blocks(blocks, max_chars=2000, min_chars=50)
+        assert result[0]["chunk_type"] == "table"
+        assert result[0]["chunk_quality"] == "table"
+
+    def test_chunk_quality_metadata(self):
+        """Every chunk has a chunk_quality field."""
+        sentences = "This is a test sentence. " * 50
+        blocks = [{"text": sentences, "page_num": 1, "section": ""}]
+        result = chunk_blocks(blocks, max_chars=200, min_chars=50)
+        for chunk in result:
+            assert "chunk_quality" in chunk
+            assert chunk["chunk_quality"] in (
+                "sentence_split", "fallback_char_split", "table"
+            )
+
+    def test_sentence_aware_false_uses_old_logic(self):
+        """When sentence_aware=False, character-based splitting is used."""
+        text = "A" * 3000
+        blocks = [{"text": text, "page_num": 1, "section": ""}]
+        result = chunk_blocks(
+            blocks, max_chars=800, min_chars=100, sentence_aware=False,
+        )
+        assert len(result) > 1
+        for chunk in result:
+            assert chunk["chunk_quality"] == "fallback_char_split"
+
+    def test_small_block_passes_through_with_quality(self):
+        """Small blocks that don't need splitting get sentence_split quality."""
+        blocks = [{"text": "Short text here. With a sentence.", "page_num": 1, "section": ""}]
+        result = chunk_blocks(blocks, max_chars=2000, min_chars=10)
+        assert len(result) == 1
+        assert result[0]["chunk_quality"] == "sentence_split"

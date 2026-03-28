@@ -30,30 +30,28 @@ import httpx
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
 MIRA_TENANT_ID = os.getenv("MIRA_TENANT_ID")
-CHUNK_SIZE = 800
-CHUNK_OVERLAP = 100
+CHUNK_SIZE = 800             # pdfplumber fallback path
+CHUNK_SIZE_DOCLING = 2500    # Docling path — blocks are pre-chunked semantically
+CHUNK_OVERLAP = 200
 DOWNLOAD_TIMEOUT = 60
 EMBED_TIMEOUT = 30
 MAX_PDF_PAGES = 300          # skip runaway PDFs
 MIN_CHUNK_CHARS = 80
 REQUEST_DELAY = 0.5          # seconds between URL downloads (polite crawl)
 
-USE_DOCLING = os.getenv("USE_DOCLING", "false").lower() in ("true", "1", "yes")
-if USE_DOCLING:
-    try:
-        import pathlib as _pathlib
-        import sys as _sys
-        _sys.path.insert(0, str(_pathlib.Path(__file__).parent))
-        from docling_adapter import DoclingAdapter as _DoclingAdapter
-        _docling = _DoclingAdapter(max_pages=MAX_PDF_PAGES)
-        log = logging.getLogger(__name__)
-        log.info("USE_DOCLING=true — Docling extraction active (OCR + semantic chunking)")
-    except Exception as _e:
-        import logging as _logging
-        _logging.getLogger(__name__).warning(
-            "USE_DOCLING=true but Docling unavailable: %s — fallback to pdfplumber", _e
-        )
-        USE_DOCLING = False
+# Docling is the primary PDF extractor. pdfplumber is the fallback.
+_docling = None
+try:
+    import pathlib as _pathlib
+    import sys as _sys
+    _sys.path.insert(0, str(_pathlib.Path(__file__).parent))
+    from docling_adapter import DoclingAdapter as _DoclingAdapter
+    _docling = _DoclingAdapter(max_pages=MAX_PDF_PAGES)
+except Exception as _e:
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "Docling unavailable: %s — pdfplumber will be used for all PDFs", _e
+    )
 
 logging.basicConfig(
     level=logging.INFO,
@@ -314,9 +312,19 @@ def process_url(record: dict) -> int:
         log.warning("[SKIP] %s — download failed: %s", url, exc)
         return 0
 
-    # Extract
+    # Extract — Docling primary, pdfplumber fallback for PDFs
+    used_docling = False
     if source_type == "pdf" or resp.headers.get("content-type", "").startswith("application/pdf"):
-        blocks = _docling.extract_from_pdf(data) if USE_DOCLING else _extract_from_pdf(data)
+        if _docling is not None:
+            blocks = _docling.extract_from_pdf(data)
+            if blocks:
+                used_docling = True
+                log.info("Extracted %d blocks from %s via docling", len(blocks), url)
+            else:
+                log.warning("Docling returned 0 blocks for %s — falling back to pdfplumber", url)
+                blocks = _extract_from_pdf(data)
+        else:
+            blocks = _extract_from_pdf(data)
     else:
         blocks = _extract_from_html(data)
 
@@ -324,10 +332,14 @@ def process_url(record: dict) -> int:
         log.warning("[SKIP] %s — no extractable text", url)
         return 0
 
+    # Docling blocks are pre-chunked semantically — use larger max_chars to avoid
+    # re-splitting them. pdfplumber blocks need the standard split size.
+    effective_chunk_size = CHUNK_SIZE_DOCLING if used_docling else CHUNK_SIZE
+
     chunks = chunk_blocks(
         blocks,
         source_url=url,
-        max_chars=CHUNK_SIZE,
+        max_chars=effective_chunk_size,
         min_chars=MIN_CHUNK_CHARS,
         overlap=CHUNK_OVERLAP,
     )
@@ -402,8 +414,15 @@ def process_local_pdf(pdf_path: str) -> int:
 
     data = path.read_bytes()
 
-    if USE_DOCLING:
+    used_docling = False
+    if _docling is not None:
         blocks = _docling.extract_from_pdf(data)
+        if blocks:
+            used_docling = True
+            log.info("Extracted %d blocks from %s via docling", len(blocks), filename)
+        else:
+            log.warning("Docling returned 0 blocks for %s — falling back to pdfplumber", filename)
+            blocks = _extract_from_pdf(data)
     else:
         blocks = _extract_from_pdf(data)
 
@@ -411,11 +430,13 @@ def process_local_pdf(pdf_path: str) -> int:
         log.warning("[SKIP] %s — no extractable text", filename)
         return 0
 
+    effective_chunk_size = CHUNK_SIZE_DOCLING if used_docling else CHUNK_SIZE
+
     chunks = chunk_blocks(
         blocks,
         source_url=filename,
         source_file=filename,
-        max_chars=CHUNK_SIZE,
+        max_chars=effective_chunk_size,
         min_chars=MIN_CHUNK_CHARS,
         overlap=CHUNK_OVERLAP,
     )

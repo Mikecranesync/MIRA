@@ -1,8 +1,8 @@
 """Section-aware text chunker for crawled documents.
 
-Splits extracted text blocks into chunks that respect section boundaries.
-Tables are detected and kept intact (or split only at row boundaries).
-Configurable min/max sizes.
+Splits extracted text blocks into chunks that respect section and sentence
+boundaries. Tables are detected and kept intact (or split only at row
+boundaries). Configurable min/max sizes.
 """
 
 from __future__ import annotations
@@ -15,17 +15,82 @@ logger = logging.getLogger("mira-crawler.chunker")
 
 DEFAULT_MIN_CHARS = 200
 DEFAULT_MAX_CHARS = 2000
-DEFAULT_OVERLAP = 100
+DEFAULT_OVERLAP = 200
 TABLE_MAX_CHARS = 1200
 
 _PIPE_TABLE_RE = re.compile(r"^\s*\|.+\|.+\|")
 _SEPARATOR_RE = re.compile(r"^\s*\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$")
 
+# Abbreviations that end in "." but are NOT sentence boundaries.
+# Common in industrial maintenance manuals.
+_ABBREV_EXCEPTIONS = frozenset({
+    "fig.", "no.", "eq.", "pp.", "vol.", "vs.", "approx.",
+    "min.", "max.", "sec.", "ref.", "e.g.", "i.e.", "etc.",
+    "in.", "ft.", "lb.", "hp.", "dr.", "mr.", "mrs.", "st.",
+    "dept.", "inc.", "corp.", "mfr.", "mfg.", "temp.", "qty.",
+    "dia.", "dim.", "tol.", "assy.", "mtg.", "adj.",
+})
+
+# Sentence-ending punctuation followed by whitespace or end of string
+_SENTENCE_END_RE = re.compile(r"[.?!]\s")
+
+
+def _find_sentence_boundary(text: str, target_pos: int, lookahead: int = 150) -> int | None:
+    """Find the nearest sentence boundary at or after target_pos.
+
+    Scans forward from target_pos up to lookahead chars. A boundary is
+    a period, question mark, or exclamation mark followed by whitespace,
+    excluding common abbreviations.
+
+    Returns the position AFTER the whitespace (start of next sentence),
+    or None if no boundary found within lookahead.
+    """
+    end = min(target_pos + lookahead, len(text))
+    search_region = text[target_pos:end]
+
+    for m in _SENTENCE_END_RE.finditer(search_region):
+        # Check if the period is part of an abbreviation
+        dot_pos = target_pos + m.start()
+        # Look back up to 10 chars for the abbreviation
+        lookback_start = max(0, dot_pos - 10)
+        before = text[lookback_start:dot_pos + 1].lower()
+        is_abbrev = any(before.endswith(abbr) for abbr in _ABBREV_EXCEPTIONS)
+        if not is_abbrev:
+            # Return position after the whitespace
+            return target_pos + m.end()
+
+    return None
+
+
+def _last_sentence_overlap(chunk: str, max_overlap: int = 200) -> str:
+    """Extract the last complete sentence from a chunk for overlap.
+
+    Returns the last sentence (up to max_overlap chars). If the last
+    sentence exceeds max_overlap, returns the last max_overlap chars.
+    """
+    # Find the last sentence boundary before the end
+    # Search backwards for sentence-ending punctuation followed by space
+    matches = list(_SENTENCE_END_RE.finditer(chunk))
+    if len(matches) >= 2:
+        # Last match is the end of the last sentence; second-to-last is where
+        # the last sentence starts
+        last_sentence_start = matches[-2].end()
+        overlap = chunk[last_sentence_start:]
+        if len(overlap) <= max_overlap:
+            return overlap
+    # Fallback: last max_overlap chars
+    if len(chunk) > max_overlap:
+        return chunk[-max_overlap:]
+    return chunk
+
 
 def _chunk_text(
     text: str, max_chars: int, overlap: int, min_chars: int
 ) -> Generator[str, None, None]:
-    """Yield overlapping chunks of approximately max_chars characters."""
+    """Yield overlapping chunks of approximately max_chars characters.
+
+    Legacy character-based splitter. Used when sentence_aware=False.
+    """
     start = 0
     while start < len(text):
         end = start + max_chars
@@ -33,6 +98,57 @@ def _chunk_text(
         if len(chunk) >= min_chars:
             yield chunk
         start += max_chars - overlap
+
+
+def _chunk_text_sentence_aware(
+    text: str, max_chars: int, overlap: int, min_chars: int
+) -> Generator[tuple[str, str], None, None]:
+    """Yield (chunk_text, chunk_quality) tuples with sentence-aware splitting.
+
+    Splits at sentence boundaries when possible. Falls back to character
+    split when no boundary is found within the lookahead window.
+    chunk_quality is "sentence_split" or "fallback_char_split".
+    """
+    start = 0
+    while start < len(text):
+        remaining = len(text) - start
+
+        # If remaining text fits in one chunk, emit it
+        if remaining <= max_chars:
+            chunk = text[start:].strip()
+            if len(chunk) >= min_chars:
+                yield (chunk, "sentence_split")
+            break
+
+        # Try to find a sentence boundary near max_chars
+        boundary = _find_sentence_boundary(text, start + max_chars)
+
+        if boundary is not None and boundary <= start + max_chars + 150:
+            chunk = text[start:boundary].strip()
+            quality = "sentence_split"
+        else:
+            # Fallback to hard character split
+            chunk = text[start:start + max_chars].strip()
+            quality = "fallback_char_split"
+            boundary = start + max_chars
+            logger.warning(
+                "No sentence boundary found at pos %d — falling back to char split",
+                start + max_chars,
+            )
+
+        if len(chunk) >= min_chars:
+            yield (chunk, quality)
+
+        # Advance: use sentence-based overlap when possible
+        if quality == "sentence_split":
+            overlap_text = _last_sentence_overlap(chunk, max_overlap=overlap)
+            start = boundary - len(overlap_text)
+        else:
+            start = boundary - overlap
+
+        # Safety: ensure forward progress
+        if start <= (boundary - len(text[start:boundary]) if boundary > start else start):
+            start = boundary
 
 
 def _extract_equipment_id(filename: str) -> str:
@@ -161,18 +277,29 @@ def _split_block_with_tables(
     max_chars: int,
     overlap: int,
     min_chars: int,
-) -> list[tuple[str, str]]:
-    """Split a block into (chunk_text, chunk_type) pairs.
+    sentence_aware: bool = True,
+) -> list[tuple[str, str, str]]:
+    """Split a block into (chunk_text, chunk_type, chunk_quality) triples.
 
     Detects table regions, extracts them as table chunks, runs remaining
-    prose through _chunk_text().
+    prose through sentence-aware or character-based splitting.
     """
     regions = _detect_table_regions(text)
     if not regions:
-        return [(piece, "text") for piece in _chunk_text(text, max_chars, overlap, min_chars)]
+        if sentence_aware:
+            return [
+                (piece, "text", quality)
+                for piece, quality in _chunk_text_sentence_aware(
+                    text, max_chars, overlap, min_chars
+                )
+            ]
+        return [
+            (piece, "text", "fallback_char_split")
+            for piece in _chunk_text(text, max_chars, overlap, min_chars)
+        ]
 
     lines = text.split("\n")
-    results: list[tuple[str, str]] = []
+    results: list[tuple[str, str, str]] = []
     prev_end = 0
 
     for start, end, header, separator in regions:
@@ -180,14 +307,20 @@ def _split_block_with_tables(
         if start > prev_end:
             prose = "\n".join(lines[prev_end:start]).strip()
             if prose:
-                for piece in _chunk_text(prose, max_chars, overlap, min_chars):
-                    results.append((piece, "text"))
+                if sentence_aware:
+                    for piece, quality in _chunk_text_sentence_aware(
+                        prose, max_chars, overlap, min_chars
+                    ):
+                        results.append((piece, "text", quality))
+                else:
+                    for piece in _chunk_text(prose, max_chars, overlap, min_chars):
+                        results.append((piece, "text", "fallback_char_split"))
 
         # Process the table
         table_text = "\n".join(lines[start:end]).strip()
         for piece in _split_table(table_text, header, separator, TABLE_MAX_CHARS):
             if len(piece.strip()) >= min_chars:
-                results.append((piece, "table"))
+                results.append((piece, "table", "table"))
 
         prev_end = end
 
@@ -195,8 +328,14 @@ def _split_block_with_tables(
     if prev_end < len(lines):
         prose = "\n".join(lines[prev_end:]).strip()
         if prose:
-            for piece in _chunk_text(prose, max_chars, overlap, min_chars):
-                results.append((piece, "text"))
+            if sentence_aware:
+                for piece, quality in _chunk_text_sentence_aware(
+                    prose, max_chars, overlap, min_chars
+                ):
+                    results.append((piece, "text", quality))
+            else:
+                for piece in _chunk_text(prose, max_chars, overlap, min_chars):
+                    results.append((piece, "text", "fallback_char_split"))
 
     return results
 
@@ -215,12 +354,17 @@ def chunk_blocks(
     max_chars: int = DEFAULT_MAX_CHARS,
     min_chars: int = DEFAULT_MIN_CHARS,
     overlap: int = DEFAULT_OVERLAP,
+    sentence_aware: bool = True,
 ) -> list[dict]:
     """Expand raw text blocks into sized chunks with full metadata.
 
     Input blocks: list of {text, page_num, section}
     Output chunks: list of {text, page_num, section, source_url, source_file,
-                            source_type, equipment_id, chunk_index, chunk_type}
+                            source_type, equipment_id, chunk_index, chunk_type,
+                            chunk_quality}
+
+    When sentence_aware=True (default), prose is split at sentence boundaries.
+    Tables always split at row boundaries regardless of this setting.
     """
     if not equipment_id and source_file:
         equipment_id = _extract_equipment_id(source_file)
@@ -236,6 +380,7 @@ def chunk_blocks(
         if len(text) <= max_chars:
             if len(text) >= min_chars:
                 chunk_type = "table" if _has_table(text) else "text"
+                chunk_quality = "table" if chunk_type == "table" else "sentence_split"
                 chunks.append({
                     "text": text,
                     "page_num": page_num,
@@ -246,11 +391,12 @@ def chunk_blocks(
                     "equipment_id": equipment_id,
                     "chunk_index": chunk_index,
                     "chunk_type": chunk_type,
+                    "chunk_quality": chunk_quality,
                 })
                 chunk_index += 1
         else:
-            for piece, chunk_type in _split_block_with_tables(
-                text, max_chars, overlap, min_chars
+            for piece, chunk_type, chunk_quality in _split_block_with_tables(
+                text, max_chars, overlap, min_chars, sentence_aware=sentence_aware,
             ):
                 chunks.append({
                     "text": piece,
@@ -262,6 +408,7 @@ def chunk_blocks(
                     "equipment_id": equipment_id,
                     "chunk_index": chunk_index,
                     "chunk_type": chunk_type,
+                    "chunk_quality": chunk_quality,
                 })
                 chunk_index += 1
 
