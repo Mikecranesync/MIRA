@@ -52,6 +52,11 @@ def _sql_fetchall(engine, query: str, params: dict | None = None):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
+    args = parser.parse_args()
+
     # --- Preflight ---
     neon_url = os.environ.get("NEON_DATABASE_URL")
     tenant_id = os.environ.get("MIRA_TENANT_ID")
@@ -107,11 +112,14 @@ def main():
     log.info("Current fault_codes: %s (will NOT be deleted)", current_fc)
 
     # Confirmation
-    print(f"\nWARNING: This will DELETE all {current_ke} knowledge_entries for tenant {tenant_id}.")
-    confirm = input("Type YES to continue or Ctrl+C to abort: ")
-    if confirm != "YES":
-        log.info("Aborted by user")
-        sys.exit(0)
+    if not args.yes:
+        print(f"\nWARNING: This will DELETE all {current_ke} knowledge_entries for tenant {tenant_id}.")
+        confirm = input("Type YES to continue or Ctrl+C to abort: ")
+        if confirm != "YES":
+            log.info("Aborted by user")
+            sys.exit(0)
+    else:
+        log.info("--yes flag set, skipping confirmation for %s entries", current_ke)
 
     # --- Step 3: Purge knowledge_entries ---
     log.info("PURGING knowledge_entries for tenant %s...", tenant_id)
