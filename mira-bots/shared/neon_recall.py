@@ -52,6 +52,54 @@ def _extract_fault_codes(query_text: str) -> list[str]:
     return list({m.upper() for m in _FAULT_CODE_RE.findall(query_text)})
 
 
+def recall_fault_code(
+    code: str, tenant_id: str, model: str | None = None,
+) -> list[dict]:
+    """Deterministic fault code lookup from structured fault_codes table.
+
+    Returns list of matching fault code records (may match multiple equipment).
+    Returns [] on any failure — never raises.
+    """
+    url = os.environ.get("NEON_DATABASE_URL")
+    if not url or not code or not tenant_id:
+        return []
+
+    try:
+        from sqlalchemy import create_engine, text  # noqa: PLC0415
+        from sqlalchemy.pool import NullPool  # noqa: PLC0415
+    except ImportError:
+        return []
+
+    try:
+        engine = create_engine(
+            url, poolclass=NullPool,
+            connect_args={"sslmode": "require"}, pool_pre_ping=True,
+        )
+        sql = (
+            "SELECT code, description, cause, action, severity, "
+            "equipment_model, manufacturer "
+            "FROM fault_codes WHERE tenant_id = :tid AND code = :code"
+        )
+        params: dict = {"tid": tenant_id, "code": code.upper()}
+        if model:
+            sql += " AND equipment_model ILIKE :model"
+            params["model"] = f"%{model}%"
+
+        with engine.connect() as conn:
+            rows = conn.execute(text(sql), params).mappings().fetchall()
+
+        results = [dict(r) for r in rows]
+        if results:
+            logger.info(
+                "FAULT_CODE_LOOKUP code=%s model=%s hits=%d",
+                code, model or "*", len(results),
+            )
+        return results
+    except Exception as exc:
+        logger.warning("Fault code lookup failed: %s", exc)
+        return []
+
+
 def _extract_product_names(query_text: str) -> list[str]:
     """Extract product/equipment names from raw user query."""
     if not query_text:
@@ -261,11 +309,36 @@ def recall_knowledge(
                 dict(r) for r in vector_rows if r["similarity"] >= MIN_SIMILARITY
             ]
 
-            # Stage 2: Fault code keyword fallback
+            # Stage 2: Fault code — structured lookup first, ILIKE fallback
             fault_codes = _extract_fault_codes(query_text)
             like_results: list[dict] = []
+            structured_fault_results: list[dict] = []
             if fault_codes:
-                like_results = _like_search(conn, text, tenant_id, fault_codes, limit)
+                # Try structured fault_codes table first (deterministic, fast)
+                for fc in fault_codes[:3]:
+                    fc_rows = recall_fault_code(fc, tenant_id)
+                    for row in fc_rows:
+                        # Format structured data as a pseudo-chunk for prompt injection
+                        content = (
+                            f"FAULT CODE {row['code']} — {row['description']}\n"
+                            f"Equipment: {row.get('manufacturer', '')} {row.get('equipment_model', '')}\n"
+                            f"Cause: {row.get('cause', 'Not specified')}\n"
+                            f"Action: {row.get('action', 'Not specified')}\n"
+                            f"Severity: {row.get('severity', 'Not specified')}"
+                        )
+                        structured_fault_results.append({
+                            "content": content,
+                            "manufacturer": row.get("manufacturer", ""),
+                            "model_number": row.get("equipment_model", ""),
+                            "equipment_type": "",
+                            "source_type": "fault_code_table",
+                            "similarity": 0.95,  # high confidence — deterministic match
+                        })
+                # ILIKE fallback for codes not in structured table
+                if not structured_fault_results:
+                    like_results = _like_search(
+                        conn, text, tenant_id, fault_codes, limit
+                    )
 
             # Stage 3: Product name search (vector-reranked within product's manual)
             product_names = _extract_product_names(query_text)
@@ -280,13 +353,18 @@ def recall_knowledge(
             vector_results, like_results, product_results
         )
 
+        # Structured fault codes go at the very top (highest confidence)
+        if structured_fault_results:
+            results = structured_fault_results + results
+            retrieval_path = "structured_fault+" + retrieval_path
+
         top_vector_score = max(
             (r.get("similarity", 0) for r in vector_results), default=0
         )
         logger.info(
             "NEON_RECALL tenant=%s hits=%d retrieval_path=%s "
             "fault_codes=%s products=%s top_vector_score=%.3f "
-            "like_hits=%d product_hits=%d",
+            "like_hits=%d product_hits=%d structured_faults=%d",
             tenant_id,
             len(results),
             retrieval_path,
@@ -295,6 +373,7 @@ def recall_knowledge(
             top_vector_score,
             len(like_results),
             len(product_results),
+            len(structured_fault_results),
         )
         return results
     except Exception as exc:
