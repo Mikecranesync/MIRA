@@ -11,7 +11,6 @@ Activated via USE_DOCLING=true env var — never call directly.
 """
 from __future__ import annotations
 
-import io
 import logging
 
 logger = logging.getLogger("docling_adapter")
@@ -67,6 +66,9 @@ class DoclingAdapter:
         Tables are rendered as Markdown and included in text chunks.
         Semantic chunking (HybridChunker) replaces fixed 800-char windows.
         """
+        import tempfile
+        from pathlib import Path
+
         if not data:
             return []
         try:
@@ -75,7 +77,11 @@ class DoclingAdapter:
             logger.warning("DoclingAdapter unavailable: %s", e)
             return []
         try:
-            result = self._converter.convert(io.BytesIO(data))
+            # Docling requires a file path, not BytesIO
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(data)
+                tmp_path = tmp.name
+            result = self._converter.convert(Path(tmp_path))
             doc = result.document
             if len(doc.pages) > self.max_pages:
                 logger.warning(
@@ -108,3 +114,9 @@ class DoclingAdapter:
         except Exception as e:
             logger.warning("docling extraction failed: %s (%s)", e, type(e).__name__)
             return []
+        finally:
+            import os
+            try:
+                os.unlink(tmp_path)
+            except (OSError, UnboundLocalError):
+                pass
