@@ -1,1 +1,6 @@
 langfuse>=2.50.0,<3.0.0
+
+# RAG evaluation (eval-only — not used in production)
+ragas>=0.2.0
+datasets>=2.0.0
+deepeval>=1.0.0
