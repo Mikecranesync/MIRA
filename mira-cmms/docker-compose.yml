@@ -101,7 +101,17 @@ services:
       CLOUD_VERSION: "false"
       NODE_ENV: production
       ENABLE_SSO: "false"
-      GOOGLE_TRACKING_ID: ""
+      GOOGLE_TRACKING_ID: "disabled"
+      GOOGLE_KEY: "disabled"
+      MUI_X_LICENSE: "disabled"
+      OAUTH2_PROVIDER: ""
+      LOGO_PATHS: ""
+      CUSTOM_COLORS: ""
+      BRAND_CONFIG: ""
+      DEMO_LINK: ""
+      PADDLE_SECRET_TOKEN: "disabled"
+      PADDLE_ENVIRONMENT: production
+      RECAPTCHA_SITE_KEY: "disabled"
     ports:
       - "${ATLAS_FRONTEND_PORT:-3100}:3000"
     networks:
