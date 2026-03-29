@@ -74,6 +74,7 @@ services:
       SMTP_USER: ${ATLAS_SMTP_USER:-}
       SMTP_PWD: ${ATLAS_SMTP_PWD:-}
       MAIL_RECIPIENTS: ${ATLAS_MAIL_RECIPIENTS:-}
+      KEYGEN_PRODUCT_TOKEN: ${ATLAS_KEYGEN_TOKEN:-}
       ENABLE_SSO: "false"
     ports:
       - "${ATLAS_API_PORT:-8088}:8080"
