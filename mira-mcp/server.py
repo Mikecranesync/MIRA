@@ -1,8 +1,9 @@
-"""MIRA MCP Server — three tools for equipment diagnostics."""
+"""MIRA MCP Server — equipment diagnostics + Atlas CMMS integration."""
 
 import os
-import sys
 import sqlite3
+import sys
+
 from fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -12,12 +13,20 @@ MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
 RETRIEVAL_BACKEND = os.environ.get("RETRIEVAL_BACKEND", "openwebui")
 MIRA_TENANT_ID = os.environ.get("MIRA_TENANT_ID", "")
 
+# Atlas CMMS — enabled when ATLAS_API_USER is set
+_atlas_ok = bool(os.environ.get("ATLAS_API_USER", ""))
+if _atlas_ok:
+    sys.stderr.write("INFO: Atlas CMMS integration enabled\n")
+else:
+    sys.stderr.write("INFO: Atlas CMMS integration disabled (ATLAS_API_USER not set)\n")
+
 _viking_ok = False
 if RETRIEVAL_BACKEND == "openviking":
     try:
         from context.viking_store import retrieve as _viking_retrieve
+
         _viking_ok = True
-        sys.stderr.write(f"INFO: OpenViking retrieval backend active\n")
+        sys.stderr.write("INFO: OpenViking retrieval backend active\n")
     except Exception as _e:
         sys.stderr.write(f"WARNING: OpenViking import failed: {_e}\n")
 if not MCP_REST_API_KEY:
@@ -40,8 +49,18 @@ def _equipment_type_from_name(filename: str) -> str:
     Strips common doc-type suffixes so the result is an equipment identifier.
     """
     stem = os.path.splitext(filename)[0].lower()
-    for suffix in ("-manual", "-guide", "-spec", "-datasheet", "-data-sheet",
-                   "_manual", "_guide", "_spec", "_datasheet", "_data_sheet"):
+    for suffix in (
+        "-manual",
+        "-guide",
+        "-spec",
+        "-datasheet",
+        "-data-sheet",
+        "_manual",
+        "_guide",
+        "_spec",
+        "_datasheet",
+        "_data_sheet",
+    ):
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
             break
@@ -55,9 +74,7 @@ def get_equipment_status(equipment_id: str = "") -> dict:
     db.row_factory = sqlite3.Row
     cur = db.cursor()
     if equipment_id:
-        cur.execute(
-            "SELECT * FROM equipment_status WHERE equipment_id = ?", (equipment_id,)
-        )
+        cur.execute("SELECT * FROM equipment_status WHERE equipment_id = ?", (equipment_id,))
     else:
         cur.execute("SELECT * FROM equipment_status")
     rows = [dict(r) for r in cur.fetchall()]
@@ -106,7 +123,9 @@ def get_fault_history(equipment_id: str = "", limit: int = 50) -> dict:
 
 
 @mcp.tool()
-def get_maintenance_notes(equipment_id: str = "", category: str = "", limit: int = 50) -> list[dict]:
+def get_maintenance_notes(
+    equipment_id: str = "", category: str = "", limit: int = 50
+) -> list[dict]:
     """Get maintenance notes for equipment. Filter by equipment_id and/or category."""
     db_path = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
     conn = sqlite3.connect(db_path)
@@ -129,9 +148,107 @@ def get_maintenance_notes(equipment_id: str = "", category: str = "", limit: int
         conn.close()
 
 
+# ── Atlas CMMS Tools ──────────────────────────────────────────
+
+
+@mcp.tool()
+async def cmms_list_work_orders(status: str = "", limit: int = 20) -> dict:
+    """List work orders from Atlas CMMS. Filter by status: OPEN, IN_PROGRESS, ON_HOLD, COMPLETE."""
+    if not _atlas_ok:
+        return {"error": "Atlas CMMS not configured"}
+    from atlas_client import list_work_orders
+
+    orders = await list_work_orders(status, limit)
+    return {"work_orders": orders, "count": len(orders)}
+
+
+@mcp.tool()
+async def cmms_create_work_order(
+    title: str,
+    description: str,
+    priority: str = "MEDIUM",
+    asset_id: int = 0,
+    category: str = "CORRECTIVE",
+) -> dict:
+    """Create a work order in Atlas CMMS from a diagnostic finding.
+
+    Args:
+        title: Short summary (e.g. 'VFD overcurrent fault on Pump-001')
+        description: Full diagnostic context from MIRA session
+        priority: NONE, LOW, MEDIUM, HIGH
+        asset_id: Atlas asset ID (0 to skip)
+        category: CORRECTIVE, PREVENTIVE, CONDITION_BASED, EMERGENCY
+    """
+    if not _atlas_ok:
+        return {"error": "Atlas CMMS not configured"}
+    from atlas_client import create_work_order
+
+    return await create_work_order(
+        title,
+        description,
+        priority,
+        asset_id=asset_id if asset_id else None,
+        category=category,
+    )
+
+
+@mcp.tool()
+async def cmms_complete_work_order(work_order_id: int, feedback: str = "") -> dict:
+    """Mark a work order as complete in Atlas CMMS."""
+    if not _atlas_ok:
+        return {"error": "Atlas CMMS not configured"}
+    from atlas_client import complete_work_order
+
+    return await complete_work_order(work_order_id, feedback)
+
+
+@mcp.tool()
+async def cmms_list_assets(limit: int = 50) -> dict:
+    """List equipment assets registered in Atlas CMMS."""
+    if not _atlas_ok:
+        return {"error": "Atlas CMMS not configured"}
+    from atlas_client import list_assets
+
+    assets = await list_assets(limit)
+    return {"assets": assets, "count": len(assets)}
+
+
+@mcp.tool()
+async def cmms_get_asset(asset_id: int) -> dict:
+    """Get details for a specific asset from Atlas CMMS."""
+    if not _atlas_ok:
+        return {"error": "Atlas CMMS not configured"}
+    from atlas_client import get_asset
+
+    return await get_asset(asset_id)
+
+
+@mcp.tool()
+async def cmms_list_pm_schedules(asset_id: int = 0, limit: int = 20) -> dict:
+    """List preventive maintenance schedules from Atlas CMMS."""
+    if not _atlas_ok:
+        return {"error": "Atlas CMMS not configured"}
+    from atlas_client import list_pm_schedules
+
+    schedules = await list_pm_schedules(
+        asset_id=asset_id if asset_id else None,
+        limit=limit,
+    )
+    return {"pm_schedules": schedules, "count": len(schedules)}
+
+
+@mcp.tool()
+async def cmms_health() -> dict:
+    """Check Atlas CMMS API connectivity."""
+    from atlas_client import health_check
+
+    return await health_check()
+
+
 async def _rest_ingest_pdf(request):
     """POST /ingest/pdf — receive a PDF, save it, index into viking store."""
     from context.viking_store import ingest_pdf as _ingest_pdf
+
     try:
         form = await request.form()
         file_field = form.get("file")
@@ -155,12 +272,14 @@ async def _rest_ingest_pdf(request):
             f"INFO: Ingested {chunks} chunks from {filename} "
             f"(type={equipment_type}, tenant={tenant_id})\n"
         )
-        return JSONResponse({
-            "status": "ok",
-            "filename": filename,
-            "chunks": chunks,
-            "equipment_type": equipment_type,
-        })
+        return JSONResponse(
+            {
+                "status": "ok",
+                "filename": filename,
+                "chunks": chunks,
+                "equipment_type": equipment_type,
+            }
+        )
     except Exception as exc:
         sys.stderr.write(f"ERROR: /ingest/pdf failed: {exc}\n")
         return JSONResponse({"error": str(exc)}, status_code=500)
@@ -168,6 +287,7 @@ async def _rest_ingest_pdf(request):
 
 if __name__ == "__main__":
     import asyncio
+
     import uvicorn
     from starlette.applications import Starlette
     from starlette.routing import Route
@@ -195,6 +315,35 @@ if __name__ == "__main__":
         limit = int(request.query_params.get("limit", 50))
         return JSONResponse(get_fault_history(eid, limit))
 
+    async def rest_cmms_work_orders(request):
+        status = request.query_params.get("status", "")
+        limit = int(request.query_params.get("limit", 20))
+        return JSONResponse(await cmms_list_work_orders(status, limit))
+
+    async def rest_cmms_create_work_order(request):
+        body = await request.json()
+        return JSONResponse(
+            await cmms_create_work_order(
+                title=body.get("title", ""),
+                description=body.get("description", ""),
+                priority=body.get("priority", "MEDIUM"),
+                asset_id=body.get("asset_id", 0),
+                category=body.get("category", "CORRECTIVE"),
+            )
+        )
+
+    async def rest_cmms_assets(request):
+        limit = int(request.query_params.get("limit", 50))
+        return JSONResponse(await cmms_list_assets(limit))
+
+    async def rest_cmms_pm_schedules(request):
+        asset_id = int(request.query_params.get("asset_id", 0))
+        limit = int(request.query_params.get("limit", 20))
+        return JSONResponse(await cmms_list_pm_schedules(asset_id, limit))
+
+    async def rest_cmms_health(request):
+        return JSONResponse(await cmms_health())
+
     async def health(request):
         return JSONResponse({"status": "ok"})
 
@@ -207,6 +356,11 @@ if __name__ == "__main__":
             Route("/api/equipment", rest_equipment_status),
             Route("/api/faults/active", rest_active_faults),
             Route("/api/faults/history", rest_fault_history),
+            Route("/api/cmms/work-orders", rest_cmms_work_orders),
+            Route("/api/cmms/work-orders", rest_cmms_create_work_order, methods=["POST"]),
+            Route("/api/cmms/assets", rest_cmms_assets),
+            Route("/api/cmms/pm-schedules", rest_cmms_pm_schedules),
+            Route("/api/cmms/health", rest_cmms_health),
             Route("/ingest/pdf", _rest_ingest_pdf, methods=["POST"]),
         ],
         exception_handlers={404: _not_found},

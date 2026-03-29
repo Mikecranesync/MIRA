@@ -4,6 +4,7 @@
 mira-core/.env
 mira-bots/.env
 mira-mcp/.env
+mira-cmms/.env
 
 # Staging directories (large binaries, local PDFs)
 bravo/Send to Bravo/

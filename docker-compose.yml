@@ -10,3 +10,4 @@ include:
   - mira-bridge/docker-compose.yml
   - mira-bots/docker-compose.yml
   - mira-mcp/docker-compose.yml
+  - mira-cmms/docker-compose.yml

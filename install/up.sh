@@ -6,5 +6,6 @@ set -euo pipefail
 
 docker network create core-net 2>/dev/null || true
 docker network create bot-net 2>/dev/null || true
+docker network create cmms-net 2>/dev/null || true
 
 doppler run -- docker compose up -d "$@"

@@ -15,6 +15,7 @@ MIRA/
 ├── mira-bots/          # Telegram, Slack, Teams, WhatsApp adapters + shared diagnostic engine (4 containers)
 ├── mira-bridge/        # Node-RED orchestration, SQLite WAL shared state (1 container)
 ├── mira-mcp/           # FastMCP server, NeonDB recall, equipment diagnostic tools (1 container)
+├── mira-cmms/          # Atlas CMMS — work orders, PM scheduling, asset registry (4 containers)
 ├── mira-hud/           # AR HUD desktop app (Express + Socket.IO, standalone)
 ├── tests/              # 5-regime testing framework (76 offline tests, 39 golden cases)
 ├── docs/               # PRD, ADRs, architecture C4 diagrams, runbooks
@@ -41,6 +42,10 @@ See local CLAUDE.md in each module for deep context.
 | mira-bot-slack    | —            | bot-net, core-net | import check                |
 | mira-bot-teams    | —            | bot-net, core-net | import check                |
 | mira-bot-whatsapp | —            | bot-net, core-net | import check                |
+| atlas-db          | 5433         | cmms-net          | pg_isready                  |
+| atlas-api         | 8088 → 8080  | cmms-net, core-net| GET /actuator/health        |
+| atlas-frontend    | 3100 → 3000  | cmms-net          | GET /                       |
+| atlas-minio       | 9000, 9001   | cmms-net          | mc ready local              |
 
 ---
 
@@ -108,6 +113,9 @@ chore: build system, deps, tooling
 | `LANGFUSE_SECRET_KEY`| mira-bots (tracing)                  |
 | `LANGFUSE_PUBLIC_KEY`| mira-bots (tracing)                  |
 | `MIRA_SERVER_BASE_URL` | Remote clients (no port)           |
+| `ATLAS_DB_PASSWORD`  | atlas-db (PostgreSQL)                |
+| `ATLAS_JWT_SECRET`   | atlas-api (JWT signing)              |
+| `ATLAS_MINIO_PASSWORD`| atlas-minio (file storage)          |
 
 ---
 
@@ -118,7 +126,7 @@ chore: build system, deps, tooling
 | Modbus / PLC / VFD           | Config 4    | Out of scope for Config 1 MVP |
 | NVIDIA NIM / Nemotron        | TBD         | Not part of MVP             |
 | Kokoro TTS                   | Post-MVP    | Nice-to-have                |
-| CMMS integration             | Config 7    | Enterprise feature          |
+| CMMS integration             | **Active**  | Atlas CMMS (mira-cmms/)     |
 
 ---
 

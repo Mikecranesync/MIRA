@@ -13,6 +13,9 @@ services:
       - RETRIEVAL_BACKEND=${RETRIEVAL_BACKEND:-openwebui}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - VIKING_STORE_PATH=/mira-db/viking
+      - ATLAS_API_URL=${ATLAS_API_URL:-http://atlas-api:8080}
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
     volumes:
       - ${MIRA_DB_PATH:-../mira-bridge/data}:/mira-db
     networks:
