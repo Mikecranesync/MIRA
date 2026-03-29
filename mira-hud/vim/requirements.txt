@@ -15,3 +15,8 @@ numpy>=1.26.0
 
 # Phase 4 — HUD Integration
 python-socketio[asyncio_client]>=5.11.0
+
+# Phase 5 — Capture Ingest (vision_backend/capture_ingest.py)
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
+watchdog>=4.0

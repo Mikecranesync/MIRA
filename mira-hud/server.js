@@ -141,8 +141,50 @@ function pushHistory(type, text) {
   if (history.length > 100) history.shift();
 }
 
-const LOG_DIR = path.join(__dirname, 'vision_backend', 'logs');
-fs.mkdirSync(LOG_DIR, { recursive: true });
+const LOG_DIR      = path.join(__dirname, 'vision_backend', 'logs');
+const CAPTURES_DIR = path.join(__dirname, 'vision_captures');
+fs.mkdirSync(LOG_DIR,      { recursive: true });
+fs.mkdirSync(CAPTURES_DIR, { recursive: true });
+
+// ─── VISION CAPTURE STATE ─────────────────────────────────────────────────────
+const CAPTURE_RATE_MS = 5 * 60 * 1000;   // min gap between saves for same equipment
+let _lastSavedEquip = '';
+const _lastSaveTime = new Map();          // slug → timestamp
+let _lastFrameB64   = null;              // most recent frame, for demand capture
+let _lastVisionRes  = null;              // most recent vision result
+
+function toSlug(str) {
+  return (str || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
+function saveCaptureFrame(base64Jpeg, result, significance) {
+  if (!base64Jpeg) return;
+  try {
+    const now  = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const slug = toSlug(result.equipment);
+    const ts   = now.toISOString().replace(/:/g, '-').replace(/\..+/, '');
+    const dir  = path.join(CAPTURES_DIR, date, slug);
+    fs.mkdirSync(dir, { recursive: true });
+    const relPath = `vision_captures/${date}/${slug}/${ts}.jpg`;
+    fs.writeFileSync(path.join(dir, `${ts}.jpg`), Buffer.from(base64Jpeg, 'base64'));
+    fs.writeFileSync(path.join(dir, `${ts}.json`), JSON.stringify({
+      ts:           now.toISOString(),
+      session_date: date,
+      significance,
+      image_path:   relPath,
+      equipment:    result.equipment,
+      model:        result.model,
+      observations: result.observations,
+      alerts:       result.alerts || [],
+      input_tokens:  result.input_tokens  || 0,
+      output_tokens: result.output_tokens || 0,
+    }, null, 2));
+    console.log(`[capture] ${slug} — ${significance}`);
+  } catch (err) {
+    console.error('[capture] save error:', err.message);
+  }
+}
 
 function logSession(type, data) {
   const entry = { ts: new Date().toISOString(), type, ...data };
@@ -285,30 +327,6 @@ io.on('connection', (socket) => {
     io.emit('mira_insight', result);
   });
 
-  // Vision frame → Claude Vision → visionUpdate
-  socket.on('analyzeFrame', async (base64Jpeg) => {
-    if (!anthropic) {
-      socket.emit('visionUpdate', {
-        equipment: 'Vision offline', model: '--',
-        observations: 'ANTHROPIC_API_KEY not set.',
-        alerts: [], equipment_context: '',
-      });
-      return;
-    }
-    try {
-      const { result } = await callVision(base64Jpeg);
-      const ctx = `${result.equipment} ${result.model || ''}`.trim();
-      io.emit('visionUpdate', { ...result, equipment_context: ctx });
-    } catch (err) {
-      console.error('[vision]', err.message);
-      socket.emit('visionUpdate', {
-        equipment: 'Vision error', model: '--',
-        observations: err.message.slice(0, 120),
-        alerts: [], equipment_context: '',
-      });
-    }
-  });
-
   // VIM vision overlay relay — Python → all HUD clients
   socket.on('vim_overlay', (data) => {
     io.emit('vim_overlay', data);
@@ -361,6 +379,26 @@ io.on('connection', (socket) => {
         input_tokens:    usage.input_tokens,
         output_tokens:   usage.output_tokens,
       });
+
+      // ─── SIGNIFICANCE CAPTURE ─────────────────────────────────────────────
+      _lastFrameB64  = base64Jpeg;
+      _lastVisionRes = { ...result, input_tokens: usage.input_tokens, output_tokens: usage.output_tokens };
+
+      if (specific) {
+        const slug      = toSlug(result.equipment);
+        const hasAlert  = result.alerts && result.alerts.length > 0;
+        const newScene  = result.equipment !== _lastSavedEquip;
+        const rateClear = (Date.now() - (_lastSaveTime.get(slug) || 0)) > CAPTURE_RATE_MS;
+        const sig = hasAlert ? 'alert'
+                  : newScene  ? 'scene_transition'
+                  : rateClear ? 'rate_limit_cleared'
+                  : null;
+        if (sig) {
+          saveCaptureFrame(base64Jpeg, _lastVisionRes, sig);
+          _lastSavedEquip = result.equipment;
+          _lastSaveTime.set(slug, Date.now());
+        }
+      }
     } catch (err) {
       console.error('[vision]', err.message);
       logSession('vision_error', { error: err.message, duration_ms: Date.now() - t0 });
@@ -372,9 +410,19 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Tech confirmed the identified equipment — run RAG
+  // Tech confirmed the identified equipment — demand capture + RAG
   socket.on('confirmEquipment', async ({ equipment, model }) => {
     if (!anthropic) return;
+    // Demand capture: user confirmed — always save, highest confidence
+    if (_lastFrameB64) {
+      saveCaptureFrame(_lastFrameB64, {
+        ..._lastVisionRes,
+        equipment: equipment || _lastVisionRes?.equipment || 'Unknown',
+        model:     model     || _lastVisionRes?.model     || 'Unknown',
+      }, 'user_confirmed');
+      _lastSavedEquip = equipment;
+      _lastSaveTime.set(toSlug(equipment), Date.now());
+    }
     const t0 = Date.now();
     const question = 'What should the technician check or know about this equipment right now?';
     try {
