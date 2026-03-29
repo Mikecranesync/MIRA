@@ -45,7 +45,7 @@ services:
       retries: 5
 
   atlas-api:
-    image: intelloop/atlas-cmms-backend:v1.5.0
+    image: intelloop/atlas-cmms-backend@sha256:21c42377dd758dbc4a9aa1676e62b01a13cf8822b0ecd3019b274b53c2369b1e
     container_name: atlas-api
     restart: unless-stopped
     depends_on:
@@ -89,7 +89,7 @@ services:
       start_period: 30s
 
   atlas-frontend:
-    image: intelloop/atlas-cmms-frontend:v1.5.0
+    image: intelloop/atlas-cmms-frontend@sha256:7e6256462c51ba533fc680740fa70214373e761491e9db0bfc89ca4a9404cd59
     container_name: atlas-frontend
     restart: unless-stopped
     depends_on:
