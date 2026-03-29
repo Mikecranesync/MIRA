@@ -602,14 +602,19 @@ class Supervisor:
     async def _handle_session_followup(
         self, message: str, state: dict, chat_id: str,
         session_photo: str = None,
-    ) -> str:
-        """Route a session follow-up through the RAG pipeline without intent filtering."""
+    ) -> dict:
+        """Route a session follow-up through the RAG pipeline without intent filtering.
+
+        Returns a dict via _make_result() — must match process_full() return type.
+        """
         raw, parsed = await self._call_with_correction(message, state, photo_b64=session_photo)
         if raw is None:
             self._save_state(chat_id, state)
-            return parsed["reply"]
+            return self._make_result(parsed["reply"], "none", None, state["state"])
 
-        parsed["reply"] = check_output(parsed["reply"], "industrial", has_photo=False)
+        parsed["reply"] = check_output(
+            parsed["reply"], "industrial", has_photo=bool(session_photo),
+        )
         state = self._advance_state(state, parsed)
 
         ctx = state.get("context") or {}
@@ -628,7 +633,10 @@ class Supervisor:
 
         state["context"] = ctx
         self._save_state(chat_id, state)
-        return self._format_reply(parsed)
+        formatted = self._format_reply(parsed)
+        return self._make_result(
+            formatted, self._infer_confidence(formatted), None, state["state"],
+        )
 
     _STOP_WORDS = frozenset({
         "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
