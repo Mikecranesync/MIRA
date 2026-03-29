@@ -73,6 +73,7 @@ services:
       SMTP_PORT: ${ATLAS_SMTP_PORT:-587}
       SMTP_USER: ${ATLAS_SMTP_USER:-}
       SMTP_PWD: ${ATLAS_SMTP_PWD:-}
+      MAIL_RECIPIENTS: ${ATLAS_MAIL_RECIPIENTS:-}
       ENABLE_SSO: "false"
     ports:
       - "${ATLAS_API_PORT:-8088}:8080"
