@@ -42,6 +42,8 @@ tests/results/
 *.db-wal
 /data/
 /output/
+# Session photos (transient, saved per-chat for photo memory)
+**/session_photos/
 mira-bots/benchmark_results/
 mira-bots/tools/output/
 

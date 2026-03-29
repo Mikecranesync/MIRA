@@ -45,6 +45,8 @@ _JSON_RE = re.compile(r'\{[^{}]*"reply"[^{}]*\}', re.DOTALL)
 STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
 ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"})
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
+# How many turns the session photo stays available for follow-up questions
+PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
 
 
 def format_diagnostic_response(equipment_id: str, key_observation: str,
@@ -94,6 +96,41 @@ class Supervisor:
         self.plc = PLCWorker()
 
         self._ensure_table()
+
+    # ------------------------------------------------------------------
+    # Photo persistence — save/load session photos for follow-up turns
+    # ------------------------------------------------------------------
+
+    def _save_session_photo(self, chat_id: str, photo_b64: str) -> str:
+        """Save session photo to disk. Returns the file path."""
+        import base64
+        photos_dir = os.path.join(os.path.dirname(self.db_path), "session_photos")
+        os.makedirs(photos_dir, exist_ok=True)
+        path = os.path.join(photos_dir, f"{chat_id}.jpg")
+        with open(path, "wb") as f:
+            f.write(base64.b64decode(photo_b64))
+        logger.info("Session photo saved: %s", path)
+        return path
+
+    def _load_session_photo(self, chat_id: str) -> str | None:
+        """Load session photo as base64 if it exists and is within turn limit."""
+        import base64
+        path = os.path.join(os.path.dirname(self.db_path), "session_photos", f"{chat_id}.jpg")
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "rb") as f:
+                return base64.b64encode(f.read()).decode()
+        except Exception as e:
+            logger.warning("Failed to load session photo: %s", e)
+            return None
+
+    def _clear_session_photo(self, chat_id: str) -> None:
+        """Remove the session photo when it expires or session resets."""
+        path = os.path.join(os.path.dirname(self.db_path), "session_photos", f"{chat_id}.jpg")
+        if os.path.exists(path):
+            os.remove(path)
+            logger.info("Session photo cleared: %s", path)
 
     def _build_print_reply(self, vision_data: dict) -> str:
         items_list = vision_data.get("ocr_items", [])
@@ -218,12 +255,33 @@ class Supervisor:
 
         state = self._load_state(chat_id)
 
+        # Photo persistence: load stored session photo for text follow-ups
+        _session_photo = None
+        if not photo_b64:
+            ctx = state.get("context") or {}
+            photo_turn = ctx.get("photo_turn", 0)
+            if photo_turn > 0 and state["exchange_count"] - photo_turn < PHOTO_MEMORY_TURNS:
+                _session_photo = self._load_session_photo(chat_id)
+                if _session_photo:
+                    logger.info(
+                        "Session photo loaded for turn %d (photo at turn %d, %d turns ago)",
+                        state["exchange_count"], photo_turn,
+                        state["exchange_count"] - photo_turn,
+                    )
+            elif photo_turn > 0:
+                # Photo memory expired
+                self._clear_session_photo(chat_id)
+                ctx.pop("photo_turn", None)
+                state["context"] = ctx
+
         # Always-on guardrail: safety and off-topic bypass ALL conversation state
         if not photo_b64:
             # Session follow-up detection: short-circuit before intent classification
             sc = state.get("context", {}).get("session_context", {})
             if detect_session_followup(message, sc, state["state"]):
-                return await self._handle_session_followup(message, state, chat_id)
+                return await self._handle_session_followup(
+                    message, state, chat_id, session_photo=_session_photo,
+                )
 
             # Option selection resolution: expand "1" → full option text
             last_options = sc.get("last_options", [])
@@ -276,8 +334,13 @@ class Supervisor:
             ctx = state.get("context") or {}
             ctx["ocr_text"] = vision_data["tesseract_text"]
             ctx["ocr_items"] = vision_data["ocr_items"]
+            # Track which turn the photo was sent on
+            ctx["photo_turn"] = state["exchange_count"]
             state["context"] = ctx
             state["asset_identified"] = str(vision_data["vision_result"])
+
+            # Save photo to disk for follow-up turns
+            self._save_session_photo(chat_id, photo_b64)
 
             # Active diagnostic: photo is an answer to the pending question
             if state["state"] in ACTIVE_DIAGNOSTIC_STATES:
@@ -407,9 +470,11 @@ class Supervisor:
                 return self._make_result(reply, "none", trace_id, "ASSET_IDENTIFIED")
 
         # RAG worker with self-correction: text queries and photo+intent queries
+        # Use session photo for follow-up text questions within PHOTO_MEMORY_TURNS
+        effective_photo = photo_b64 or _session_photo
         with tl_span(t, "rag_worker"):
             raw, parsed = await self._call_with_correction(
-                message, state, photo_b64,
+                message, state, effective_photo,
             )
         if raw is None:
             self._save_state(chat_id, state)
@@ -469,6 +534,7 @@ class Supervisor:
 
     def reset(self, chat_id: str) -> None:
         """Reset conversation to IDLE state."""
+        self._clear_session_photo(chat_id)
         db = sqlite3.connect(self.db_path)
         db.execute("PRAGMA journal_mode=WAL")
         db.execute(
@@ -533,9 +599,12 @@ class Supervisor:
 
         return raw, parsed
 
-    async def _handle_session_followup(self, message: str, state: dict, chat_id: str) -> str:
+    async def _handle_session_followup(
+        self, message: str, state: dict, chat_id: str,
+        session_photo: str = None,
+    ) -> str:
         """Route a session follow-up through the RAG pipeline without intent filtering."""
-        raw, parsed = await self._call_with_correction(message, state)
+        raw, parsed = await self._call_with_correction(message, state, photo_b64=session_photo)
         if raw is None:
             self._save_state(chat_id, state)
             return parsed["reply"]
