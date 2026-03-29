@@ -40,10 +40,11 @@ else
     echo "FAIL" && fail=1
 fi
 
-# 2. Check API health
+# 2. Check API health (403 = Spring Security protecting endpoint = server is up)
 echo -n "5. Atlas API health...         "
-if curl -sf "${ATLAS_API_URL}/actuator/health" > /dev/null 2>&1; then
-    echo "OK"
+http_code=$(curl -s -o /dev/null -w "%{http_code}" "${ATLAS_API_URL}/actuator/health" 2>/dev/null)
+if [ -n "$http_code" ] && [ "$http_code" != "000" ]; then
+    echo "OK (HTTP ${http_code})"
 else
     echo "FAIL (${ATLAS_API_URL}/actuator/health)" && fail=1
 fi
