@@ -105,9 +105,9 @@ services:
       GOOGLE_KEY: "disabled"
       MUI_X_LICENSE: "disabled"
       OAUTH2_PROVIDER: "none"
-      LOGO_PATHS: "none"
-      CUSTOM_COLORS: "none"
-      BRAND_CONFIG: "none"
+      LOGO_PATHS: "null"
+      CUSTOM_COLORS: "null"
+      BRAND_CONFIG: "null"
       DEMO_LINK: "none"
       PADDLE_SECRET_TOKEN: "disabled"
       PADDLE_ENVIRONMENT: production
