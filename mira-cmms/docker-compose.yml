@@ -101,12 +101,13 @@ services:
       CLOUD_VERSION: "false"
       NODE_ENV: production
       ENABLE_SSO: "false"
+      GOOGLE_TRACKING_ID: ""
     ports:
       - "${ATLAS_FRONTEND_PORT:-3100}:3000"
     networks:
       - cmms-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3000/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qS -O /dev/null http://localhost:3000/ 2>&1 | grep -q 'HTTP/'"]
       interval: 15s
       timeout: 5s
       retries: 3
