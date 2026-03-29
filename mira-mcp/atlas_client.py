@@ -34,7 +34,7 @@ async def _get_token() -> str:
 
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.post(
-            f"{ATLAS_API_URL}/api/auth/signin",
+            f"{ATLAS_API_URL}/auth/signin",
             json={"email": ATLAS_USER, "password": ATLAS_PASSWORD},
         )
         resp.raise_for_status()
@@ -104,12 +104,12 @@ async def _patch(path: str, payload: dict) -> dict:
 
 async def list_work_orders(status: str = "", limit: int = 20) -> list[dict]:
     """List work orders, optionally filtered by status."""
-    params = {"pageSize": limit}
+    payload: dict = {"pageSize": limit, "pageNum": 0}
     if status:
-        params["status"] = status
+        payload["status"] = status
     try:
-        data = await _get("/api/work-orders", params)
-        return data if isinstance(data, list) else data.get("content", [data])
+        data = await _post("/work-orders/search", payload)
+        return data if isinstance(data, list) else data.get("content", [])
     except httpx.HTTPStatusError as e:
         logger.error("Atlas list_work_orders failed: %s", e)
         return []
@@ -141,7 +141,7 @@ async def create_work_order(
     if asset_id is not None:
         payload["asset"] = {"id": asset_id}
     try:
-        result = await _post("/api/work-orders", payload)
+        result = await _post("/work-orders", payload)
         logger.info("Atlas work order created: id=%s title=%s", result.get("id"), title)
         return result
     except httpx.HTTPStatusError as e:
@@ -157,7 +157,7 @@ async def complete_work_order(work_order_id: int, feedback: str = "") -> dict:
     if feedback:
         payload["feedback"] = feedback
     try:
-        return await _patch(f"/api/work-orders/{work_order_id}", payload)
+        return await _patch(f"/work-orders/{work_order_id}", payload)
     except httpx.HTTPStatusError as e:
         logger.error("Atlas complete_work_order failed: %s", e)
         return {"error": str(e)}
@@ -169,8 +169,8 @@ async def complete_work_order(work_order_id: int, feedback: str = "") -> dict:
 async def list_assets(limit: int = 50) -> list[dict]:
     """List all equipment assets registered in Atlas CMMS."""
     try:
-        data = await _get("/api/assets", {"pageSize": limit})
-        return data if isinstance(data, list) else data.get("content", [data])
+        data = await _post("/assets/search", {"pageSize": limit, "pageNum": 0})
+        return data if isinstance(data, list) else data.get("content", [])
     except httpx.HTTPStatusError as e:
         logger.error("Atlas list_assets failed: %s", e)
         return []
@@ -179,7 +179,7 @@ async def list_assets(limit: int = 50) -> list[dict]:
 async def get_asset(asset_id: int) -> dict:
     """Get a single asset by ID."""
     try:
-        return await _get(f"/api/assets/{asset_id}")
+        return await _get(f"/assets/{asset_id}")
     except httpx.HTTPStatusError as e:
         logger.error("Atlas get_asset(%s) failed: %s", asset_id, e)
         return {"error": str(e)}
@@ -190,12 +190,12 @@ async def get_asset(asset_id: int) -> dict:
 
 async def list_pm_schedules(asset_id: int | None = None, limit: int = 20) -> list[dict]:
     """List preventive maintenance schedules."""
-    params = {"pageSize": limit}
+    payload: dict = {"pageSize": limit, "pageNum": 0}
     if asset_id is not None:
-        params["asset"] = asset_id
+        payload["asset"] = {"id": asset_id}
     try:
-        data = await _get("/api/preventive-maintenances", params)
-        return data if isinstance(data, list) else data.get("content", [data])
+        data = await _post("/preventive-maintenances/search", payload)
+        return data if isinstance(data, list) else data.get("content", [])
     except httpx.HTTPStatusError as e:
         logger.error("Atlas list_pm_schedules failed: %s", e)
         return []
@@ -208,7 +208,7 @@ async def health_check() -> dict:
     """Check Atlas CMMS API availability."""
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get(f"{ATLAS_API_URL}/actuator/health")
+            resp = await client.get(f"{ATLAS_API_URL}/health-check")
             resp.raise_for_status()
             return {"status": "ok", "atlas_url": ATLAS_API_URL}
     except Exception as e:
