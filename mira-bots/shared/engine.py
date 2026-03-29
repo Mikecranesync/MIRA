@@ -351,24 +351,60 @@ class Supervisor:
                 formatted, self._infer_confidence(formatted), trace_id, "ELECTRICAL_PRINT",
             )
 
-        # Photo with no specific intent → acknowledge equipment, ask what they need
+        # Photo with no specific intent → check for visible fault indicators first
         # (Skip for photo-as-answer: active session photos go straight to RAG)
         if photo_b64 and not _photo_continues_session and not any(kw in message.lower() for kw in INTENT_KEYWORDS):
-            asset = state.get("asset_identified", "this equipment")
-            reply = f"I can see this is {asset}. How can I help you with it?"
+            # Check OCR + vision for fault indicators on equipment faceplates
             ctx = state.get("context") or {}
-            history = ctx.get("history", [])
-            history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": reply})
-            ctx["history"] = history
-            sc = ctx.get("session_context", {})
-            if sc:
-                sc["last_question"] = reply[:200]
+            ocr_items = ctx.get("ocr_items", [])
+            ocr_text = " ".join(ocr_items).lower()
+            vision_text = state.get("asset_identified", "").lower()
+            _FAULT_INDICATORS = (
+                "fault", "alarm", "error", "trip", "tripped", "faulted",
+                "overload", "overcurrent", "overvoltage", "warning",
+                "stopped", "off", "fail", "run fault",
+            )
+            has_fault_indicators = any(kw in ocr_text or kw in vision_text for kw in _FAULT_INDICATORS)
+
+            if has_fault_indicators:
+                # Auto-diagnose: inject fault context into message and route to RAG
+                asset = state.get("asset_identified", "this equipment")
+                fault_items = [
+                    item for item in ocr_items
+                    if any(kw in item.lower() for kw in _FAULT_INDICATORS)
+                ]
+                fault_summary = ", ".join(fault_items[:5]) if fault_items else "fault indicator visible"
+                message = (
+                    f"[Equipment photo: {asset}] "
+                    f"Visible indicators: {fault_summary}. "
+                    f"OCR labels: {', '.join(ocr_items[:15])}. "
+                    f"Analyze the indicator states, compare against normal operation, "
+                    f"and propose the most likely cause and fix."
+                )
+                logger.info("Auto-diagnose equipment fault: %s", message[:120])
+                state["state"] = "Q1"
+                sc = ctx.get("session_context", {})
+                sc["equipment_type"] = str(state.get("asset_identified", ""))[:80]
+                sc["last_question"] = None
+                sc["last_options"] = []
                 ctx["session_context"] = sc
-            state["context"] = ctx
-            self._save_state(chat_id, state)
-            tl_flush()
-            return self._make_result(reply, "none", trace_id, "ASSET_IDENTIFIED")
+                state["context"] = ctx
+                # Fall through to RAG worker below
+            else:
+                asset = state.get("asset_identified", "this equipment")
+                reply = f"I can see this is {asset}. How can I help you with it?"
+                history = ctx.get("history", [])
+                history.append({"role": "user", "content": message})
+                history.append({"role": "assistant", "content": reply})
+                ctx["history"] = history
+                sc = ctx.get("session_context", {})
+                if sc:
+                    sc["last_question"] = reply[:200]
+                    ctx["session_context"] = sc
+                state["context"] = ctx
+                self._save_state(chat_id, state)
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "ASSET_IDENTIFIED")
 
         # RAG worker with self-correction: text queries and photo+intent queries
         with tl_span(t, "rag_worker"):
