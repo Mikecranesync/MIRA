@@ -89,7 +89,10 @@ services:
       start_period: 30s
 
   atlas-frontend:
-    image: intelloop/atlas-cmms-frontend@sha256:7e6256462c51ba533fc680740fa70214373e761491e9db0bfc89ca4a9404cd59
+    build:
+      context: /Users/bravonode/factorylm/apps/cmms/frontend
+      dockerfile: Dockerfile
+    image: mira/atlas-cmms-frontend:mobile
     container_name: atlas-frontend
     restart: unless-stopped
     depends_on:

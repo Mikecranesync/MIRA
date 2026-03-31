@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import io
 import logging
 import os
 import re
@@ -44,24 +43,22 @@ EMBED_TIMEOUT = 30
 MAX_PDF_PAGES = 300
 MIN_CHUNK_CHARS = 80
 
-USE_DOCLING = os.getenv("USE_DOCLING", "false").lower() in ("true", "1", "yes")
-if USE_DOCLING:
-    try:
-        import sys as _sys
-        _sys.path.insert(0, str(Path(__file__).parent))
-        from docling_adapter import DoclingAdapter as _DoclingAdapter
-        _docling = _DoclingAdapter(max_pages=MAX_PDF_PAGES)
-        logging.getLogger(__name__).info(
-            "USE_DOCLING=true — Docling extraction active (OCR + semantic chunking)"
-        )
-    except Exception as _e:
-        logging.getLogger(__name__).warning(
-            "USE_DOCLING=true but Docling unavailable: %s — fallback to pdfplumber", _e
-        )
-        USE_DOCLING = False
+# RULE: Docling is the ONLY PDF extractor for this script. pdfplumber is not used.
+# Do not add pdfplumber as a fallback — if Docling is unavailable, the script must fail fast.
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).parent))
+try:
+    from docling_adapter import DoclingAdapter as _DoclingAdapter
+    _docling = _DoclingAdapter(max_pages=MAX_PDF_PAGES)
+    logging.getLogger(__name__).info("Docling extraction active (OCR + semantic chunking)")
+except Exception as _e:
+    logging.getLogger(__name__).error(
+        "Docling unavailable: %s — install docling_adapter before running this script", _e
+    )
+    sys.exit(1)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_INGEST_DIR = REPO_ROOT / "mira-core" / "data" / "gdrive_ingest" / "industrial"
+DEFAULT_INGEST_DIR = REPO_ROOT / "mira-core" / "data" / "manuals"
 SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".html", ".htm", ".md"}
 
 logging.basicConfig(
@@ -139,34 +136,6 @@ def _detect_sections(page_text: str) -> list[tuple[str, str]]:
 
     return sections
 
-
-def _extract_from_pdf(data: bytes) -> list[dict]:
-    try:
-        import pdfplumber
-    except ImportError:
-        log.error("pdfplumber not available — pip install pdfplumber")
-        return []
-
-    blocks: list[dict] = []
-    try:
-        with pdfplumber.open(io.BytesIO(data)) as doc:
-            pages_to_read = min(len(doc.pages), MAX_PDF_PAGES)
-            for page_idx in range(pages_to_read):
-                raw = doc.pages[page_idx].extract_text()
-                if not raw or len(raw.strip()) < 50:
-                    continue
-                text = _clean_text(raw)
-                sections = _detect_sections(text)
-                if not sections:
-                    sections = [("", text)]
-                for heading, body in sections:
-                    if len(body) >= MIN_CHUNK_CHARS:
-                        blocks.append({"text": body, "page_num": page_idx + 1, "section": heading})
-    except Exception as exc:
-        log.warning("Failed to open PDF: %s", exc)
-        return []
-
-    return blocks
 
 
 def _extract_from_text(data: bytes) -> list[dict]:
@@ -304,7 +273,7 @@ def process_file(file_path: Path, dry_run: bool = False) -> tuple[int, int]:
 
     suffix = file_path.suffix.lower()
     if suffix == ".pdf":
-        blocks = _docling.extract_from_pdf(data) if USE_DOCLING else _extract_from_pdf(data)
+        blocks = _docling.extract_from_pdf(data)
     elif suffix in (".txt", ".md"):
         blocks = _extract_from_text(data)
     elif suffix in (".html", ".htm"):

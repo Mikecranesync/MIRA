@@ -125,4 +125,85 @@ tiers:
 
   # ── TIER 5: Technical Reference ─────────────────────────────────
   5_reference:
-    # instrumentationtools.com, plcdev.com — URLs to be added
+    abb_motor_nameplate:
+      url: "https://library.e.abb.com/public/3273bae2fc1e49f080b9bc1f8e242ebb/9AKK108388.pdf"
+      type: reference
+      format: pdf
+      manufacturer: ABB
+      description: "How to Read a NEMA Motor Nameplate — SF, FLA, insulation class, NEMA design letters"
+
+    skf_vibration_cm5003:
+      url: "https://forums.ni.com/attachments/ni/170/107329/1/CM5003%20Vibration%20Guide1.pdf"
+      type: reference
+      format: pdf
+      manufacturer: SKF
+      description: "SKF CM5003 Vibration Diagnostic Guide — spectral signatures, bearing defect frequencies"
+
+    abb_softstarter_handbook:
+      url: "https://library.e.abb.com/public/6b4e1a3530814df0c12579bb0030e58b/1SFC132060M0201.pdf"
+      type: reference
+      format: pdf
+      manufacturer: ABB
+      description: "Softstarter Handbook — starting methods comparison, torque/current ratios"
+
+    rockwell_wye_delta:
+      url: "https://literature.rockwellautomation.com/idc/groups/literature/documents/at/150-at005_-en-p.pdf"
+      type: reference
+      format: pdf
+      manufacturer: Rockwell
+      description: "Wye-Delta and Solid-State Starters application guide"
+
+    abb_motor_starting_solutions:
+      url: "https://library.e.abb.com/public/86d98d43ec394d63841658bf28be428c/1SFC100125C0346_en_A_Solution%20Guide_%20Motor%20Starting%20Solutions.pdf"
+      type: reference
+      format: pdf
+      manufacturer: ABB
+      description: "Motor Starting Solutions Guide — DOL, star-delta, soft starter, VFD comparison"
+
+    abb_vfd_inrush:
+      url: "https://library.e.abb.com/public/71d5526a71b34360bb3a258c950acb8a/LVD-EOTN151U-EN_VFDs_And_Maximum-Inrush-Current.pdf"
+      type: reference
+      format: pdf
+      manufacturer: ABB
+      description: "VFDs and Maximum Inrush Current technical note"
+
+    skf_bearing_motor_handbook:
+      url: "https://cdn.skfmediahub.skf.com/api/public/0901d19680056c36/pdf_preview_medium/0901d19680056c36_pdf_preview_medium.pdf"
+      type: reference
+      format: pdf
+      manufacturer: SKF
+      description: "SKF Bearing Handbook for Electric Motors — relubrication intervals, grease quantities"
+
+    skf_spectrum_analysis:
+      url: "https://cdn.skfmediahub.skf.com/api/public/0901d1968024acef/pdf_preview_medium/0901d1968024acef_pdf_preview_medium.pdf"
+      type: reference
+      format: pdf
+      manufacturer: SKF
+      description: "SKF Spectrum Analysis guide — reading FFT spectra, fault identification"
+
+    stle_grease_volumes:
+      url: "https://www.stle.org/images/pdf/STLE_ORG/BOK/LS/Grease/Lubricant%20Application_Grease%20Volumes%20and%20Frequencies_tlt%20article_April09.pdf"
+      type: reference
+      format: pdf
+      manufacturer: STLE
+      description: "Grease Volumes and Frequencies — re-lubrication calculations, over-greasing data"
+
+    iaeng_starting_methods:
+      url: "https://www.iaeng.org/publication/IMECS2009/IMECS2009_pp1558-1563.pdf"
+      type: reference
+      format: pdf
+      description: "DOL vs Star-Delta vs Autotransformer starting — quantitative inrush/torque comparison"
+
+    nema_mg1_part31:
+      url: "https://www.nema.org/docs/default-source/standards-document-library/mg-1-part-31-watermark.pdf"
+      type: reference
+      format: pdf
+      manufacturer: NEMA
+      description: "NEMA MG-1 Part 31 — insulation class temperature limits, motor design letters"
+
+    emerson_vibration_brochure:
+      url: "https://www.emerson.com/documents/automation/brochure-vibration-analysis-for-machinery-health-diagnosis-ams-en-6652272.pdf"
+      type: reference
+      format: pdf
+      manufacturer: Emerson
+      description: "Vibration Analysis for Machinery Health Diagnosis — fault progression, spectral patterns"

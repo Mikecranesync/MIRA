@@ -331,6 +331,20 @@ class Supervisor:
             with tl_span(t, "vision_worker"):
                 vision_data = await self.vision.process(photo_b64, message)
 
+            # Confidence gate: low-quality photos get a re-send request, not a diagnosis
+            # Safety override: if the vision model saw a hazard, bypass and let it fire below
+            if vision_data.get("confidence") == "low":
+                vision_text = str(vision_data.get("vision_result", "")).lower()
+                if not any(kw in vision_text for kw in SAFETY_KEYWORDS):
+                    self._save_state(chat_id, state)
+                    tl_flush()
+                    return self._make_result(
+                        "I can see something but the photo is too dark or blurry for a "
+                        "reliable diagnosis. Can you send a clearer photo — ideally with "
+                        "the nameplate or fault display visible?",
+                        "low", trace_id, state["state"],
+                    )
+
             ctx = state.get("context") or {}
             ctx["ocr_text"] = vision_data["tesseract_text"]
             ctx["ocr_items"] = vision_data["ocr_items"]

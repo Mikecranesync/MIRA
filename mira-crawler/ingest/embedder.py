@@ -47,6 +47,51 @@ def embed_text(
                 return None
 
 
+def embed_image(
+    image_b64: str,
+    ollama_url: str = "http://localhost:11434",
+    model: str = "nomic-embed-vision:v1.5",
+    timeout: float = 60.0,
+    max_retries: int = 3,
+) -> list[float] | None:
+    """Embed an image (base64) via Ollama nomic-embed-vision. Returns 768-dim vector or None."""
+    for attempt in range(max_retries):
+        try:
+            resp = httpx.post(
+                f"{ollama_url}/api/embed",
+                json={"model": model, "input": image_b64},
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            return resp.json()["embeddings"][0]
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code < 500:
+                # 4xx = model not found or bad request — not worth retrying
+                logger.warning("Image embed skipped (HTTP %s): %s", e.response.status_code, e)
+                return None
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt
+                logger.warning(
+                    "Image embed attempt %d/%d failed: %s — retrying in %ds",
+                    attempt + 1, max_retries, e, wait,
+                )
+                time.sleep(wait)
+            else:
+                logger.error("Image embed failed after %d attempts: %s", max_retries, e)
+                return None
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt
+                logger.warning(
+                    "Image embed attempt %d/%d failed: %s — retrying in %ds",
+                    attempt + 1, max_retries, e, wait,
+                )
+                time.sleep(wait)
+            else:
+                logger.error("Image embed failed after %d attempts: %s", max_retries, e)
+                return None
+
+
 def embed_batch(
     chunks: list[dict],
     ollama_url: str = "http://localhost:11434",

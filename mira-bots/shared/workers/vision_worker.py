@@ -74,8 +74,10 @@ class VisionWorker:
         tesseract_text = self._ocr_extract(photo_b64)
 
         classification = self._classify_photo(str(vision_result), ocr_items)
+        confidence = self._extract_confidence(str(vision_result))
         logger.info(
-            "Photo classified as %s (%d OCR items)", classification, len(ocr_items)
+            "Photo classified as %s confidence=%s (%d OCR items)",
+            classification, confidence, len(ocr_items),
         )
 
         drawing_type = None
@@ -84,6 +86,7 @@ class VisionWorker:
 
         return {
             "classification": classification,
+            "confidence": confidence,
             "vision_result": vision_result,
             "ocr_items": ocr_items if isinstance(ocr_items, list) else [],
             "tesseract_text": tesseract_text,
@@ -256,6 +259,16 @@ class VisionWorker:
             return "ELECTRICAL_PRINT"
 
         return "EQUIPMENT_PHOTO"
+
+    def _extract_confidence(self, vision_result: str) -> str:
+        """Extract confidence level from vision model output. Defaults to 'medium'."""
+        vr = vision_result.lower()
+        # Explicit confidence mentions
+        if "low confidence" in vr or "confidence: low" in vr or "unclear" in vr or "blurry" in vr or "dark" in vr:
+            return "low"
+        if "high confidence" in vr or "confidence: high" in vr or "clearly" in vr:
+            return "high"
+        return "medium"
 
     def _detect_drawing_type(self, vision_result: str) -> str:
         """Detect the type of electrical drawing from vision result."""

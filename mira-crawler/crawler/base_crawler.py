@@ -8,17 +8,16 @@ ingest pipeline.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
-
 from config import CrawlerConfig
 from ingest.chunker import chunk_blocks
-from ingest.converter import extract_from_html, extract_from_pdf
+from ingest.converter import extract_from_docling, extract_from_html, extract_from_pdf
 from ingest.dedup import DedupStore
 from ingest.embedder import embed_batch
 from ingest.store import store_chunks
+
 from crawler.rate_limiter import RateLimiter
 from crawler.robots_checker import RobotsChecker
 
@@ -106,6 +105,10 @@ class BaseCrawler:
         # Convert
         if fmt == "html":
             blocks = extract_from_html(data, min_chars=self.config.chunk_min_chars)
+        elif self.config.use_docling:
+            blocks = extract_from_docling(data, min_chars=self.config.chunk_min_chars)
+            if not blocks:
+                blocks = extract_from_pdf(data, min_chars=self.config.chunk_min_chars)
         else:
             blocks = extract_from_pdf(data, min_chars=self.config.chunk_min_chars)
 

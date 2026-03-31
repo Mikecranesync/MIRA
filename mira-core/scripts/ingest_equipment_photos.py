@@ -44,6 +44,10 @@ logging.basicConfig(
 logger = logging.getLogger("equipment-ingest")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "mira-crawler"))
+from ingest.embedder import embed_image as _crawler_embed_image  # noqa: E402
+from ingest.embedder import embed_text as _crawler_embed_text  # noqa: E402
+from ingest.store import chunk_exists, store_chunks  # noqa: E402
 INCOMING = REPO_ROOT / "mira-core" / "data" / "equipment_photos" / "incoming"
 PROCESSED = REPO_ROOT / "mira-core" / "data" / "equipment_photos" / "processed"
 REGIME3_DIR = REPO_ROOT / "tests" / "regime3_nameplate"
@@ -51,6 +55,12 @@ PHOTOS_DIR = REGIME3_DIR / "photos" / "real"
 LABELS_PATH = REGIME3_DIR / "golden_labels" / "v1" / "real_photos.json"
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic"}
+SCRAPE_TARGETS_CSV = REPO_ROOT / "mira-crawler" / "manual_scrape_targets.csv"
+SCRAPE_CSV_HEADER = [
+    "row_id", "manufacturer", "model_number", "equipment_type", "condition",
+    "has_nameplate", "priority", "search_query", "url_hint", "sources_yaml_key",
+    "status", "notes",
+]
 
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -215,114 +225,120 @@ def verify_classification(result: dict, client) -> str:
 
 
 # ── Embeddings ───────────────────────────────────────────────────────────────
-
-def _embed_text(text: str) -> list[float]:
-    """Generate real embedding via Ollama nomic-embed-text."""
-    try:
-        resp = httpx.post(
-            f"{OLLAMA_URL}/api/embeddings",
-            json={"model": EMBED_MODEL, "prompt": text},
-            timeout=30.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        # Ollama /api/embeddings returns {"embedding": [...]}
-        return data["embedding"]
-    except Exception as e:
-        logger.warning("Embedding failed (using placeholder): %s", e)
-        return [0.0] * 768  # nomic-embed-text is 768-dim
+# _crawler_embed_text imported at module level from mira-crawler/ingest/embedder.py
+# Returns list[float] | None — callers must handle None (skip insert)
 
 
-def _build_content_text(result: dict) -> str:
-    """Build rich text content for NeonDB from classification result."""
-    parts = []
+def _build_content_text(result: dict, survey: dict | None = None) -> str:
+    """Build rich text content for NeonDB from classification result and optional survey data.
+
+    survey: optional dict with extra fields from survey_results.csv
+            (severity, fault_codes, photo_type, etc.)
+    """
+    lines = []
+    sv = survey or {}
 
     eq_type = result.get("equipment_type", "equipment")
-    make = result.get("make")
-    model = result.get("model")
+    make = result.get("make") or sv.get("make")
+    model = result.get("model") or sv.get("model")
 
-    # Header
+    # Header line
     header = eq_type.replace("_", " ").title()
     if make:
         header = f"{make} {header}"
     if model:
         header += f" {model}"
-    parts.append(header)
+    lines.append(header)
 
     # Description
-    desc = result.get("description")
+    desc = result.get("description") or sv.get("description")
     if desc:
-        parts.append(desc)
+        lines.append(desc)
 
-    # Nameplate fields
-    if result.get("has_nameplate"):
-        np = result.get("nameplate_fields", {})
-        np_parts = []
-        for key in ("voltage", "amperage", "rpm", "hz", "hp"):
-            val = np.get(key)
-            if val:
-                np_parts.append(f"{key}: {val}")
-        if np_parts:
-            parts.append("Nameplate: " + ", ".join(np_parts))
+    # Nameplate — labeled units on one line
+    np = result.get("nameplate_fields") or {}
+    np_parts = []
+    for key, unit in (("voltage", "V"), ("amperage", "A"), ("rpm", "rpm"), ("hz", "Hz"), ("hp", "HP")):
+        val = np.get(key) or sv.get(key)
+        if val:
+            np_parts.append(f"{val}{unit}")
+    if np_parts:
+        lines.append("Nameplate: " + " ".join(np_parts))
 
     # Catalog / serial
-    for key in ("catalog", "serial"):
-        val = result.get(key)
-        if val:
-            parts.append(f"{key}: {val}")
+    catalog = result.get("catalog") or sv.get("catalog")
+    serial = result.get("serial") or sv.get("serial")
+    if catalog or serial:
+        id_parts = []
+        if catalog:
+            id_parts.append(f"Catalog: {catalog}")
+        if serial:
+            id_parts.append(f"Serial: {serial}")
+        lines.append("  ".join(id_parts))
 
-    # Condition
-    condition = result.get("condition")
+    # Condition and severity
+    condition = result.get("condition") or sv.get("condition")
+    severity = sv.get("severity")
     if condition and condition != "unknown":
-        parts.append(f"Condition: {condition}")
+        cond_str = f"Condition: {condition}"
+        if severity:
+            cond_str += f"  Severity: {severity}"
+        lines.append(cond_str)
 
-    return ". ".join(parts)
+    # Fault codes (survey only)
+    fault_codes = sv.get("fault_codes")
+    if fault_codes:
+        lines.append(f"Fault codes: {fault_codes}")
+
+    # Photo type (survey only)
+    photo_type = sv.get("photo_type")
+    if photo_type:
+        lines.append(f"Photo type: {photo_type}")
+
+    return "\n".join(lines)
 
 
 # ── NeonDB Insert ────────────────────────────────────────────────────────────
+# store_chunks / chunk_exists imported at module level from mira-crawler/ingest/store.py
+
 
 def insert_to_neondb(
     result: dict, photo_path: Path, tenant_id: str,
+    embedding: list[float],
     source_prefix: str = "equipment_photo",
+    image_embedding: list[float] | None = None,
+    survey: dict | None = None,
 ) -> str | None:
-    """Insert equipment photo knowledge entry with real embedding."""
-    sys.path.insert(0, str(REPO_ROOT / "mira-core" / "mira-ingest"))
-    from db.neon import insert_knowledge_entry, knowledge_entry_exists
-
+    """Insert equipment photo knowledge entry via the canonical crawler store path."""
     source_url = f"{source_prefix}://{photo_path.name}"
 
-    if knowledge_entry_exists(tenant_id, source_url, 0):
+    if chunk_exists(tenant_id, source_url, 0):
         logger.info("Already ingested: %s (skipping)", photo_path.name)
         return None
 
-    content = _build_content_text(result)
-    embedding = _embed_text(content)
-
-    equipment_type = result.get("equipment_type", "other")
-
-    metadata = {
-        "has_nameplate": result.get("has_nameplate", False),
-        "condition": result.get("condition", "unknown"),
-        "confidence": result.get("confidence", "low"),
+    content = _build_content_text(result, survey=survey)
+    chunk = {
+        "text": content,
+        "page_num": None,
+        "section": result.get("equipment_type", "other"),
+        "source_url": source_url,
+        "source_file": photo_path.name,
+        "source_type": "equipment_photo",
+        "equipment_id": result.get("model") or "",
+        "chunk_index": 0,
+        "chunk_type": "text",
     }
-    if result.get("has_nameplate") and result.get("nameplate_fields"):
-        metadata["nameplate_fields"] = result["nameplate_fields"]
-
-    entry_id = insert_knowledge_entry(
+    stored = store_chunks(
+        [(chunk, embedding)],
         tenant_id=tenant_id,
-        content=content,
-        embedding=embedding,
-        manufacturer=result.get("make"),
-        model_number=result.get("model"),
-        source_url=source_url,
-        chunk_index=0,
-        page_num=None,
-        section=equipment_type,
-        source_type="equipment_photo",
+        manufacturer=result.get("make") or "",
+        model_number=result.get("model") or "",
+        image_embedding=image_embedding,
     )
-
-    logger.info("Inserted knowledge entry %s for %s", entry_id, photo_path.name)
-    return entry_id
+    if stored > 0:
+        logger.info("Inserted knowledge entry for %s", photo_path.name)
+        return source_url
+    return None
 
 
 # ── Manual Discovery ─────────────────────────────────────────────────────────
@@ -343,6 +359,107 @@ MANUFACTURER_MANUAL_URLS: dict[str, str] = {
     "yaskawa": "https://www.yaskawa.com/downloads",
     "danfoss": "https://www.danfoss.com/en/service-and-support",
 }
+
+
+def _slugify(text: str) -> str:
+    """Simple slug: lowercase, keep alphanum and underscores, collapse spaces."""
+    import re
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+
+
+def append_scrape_target(result: dict) -> None:
+    """Append confirmed equipment to manual_scrape_targets.csv if not already present."""
+    make = (result.get("make") or "").strip()
+    model = (result.get("model") or "").strip()
+    eq_type = result.get("equipment_type", "other")
+    condition = result.get("condition", "unknown")
+    has_np = bool(result.get("has_nameplate"))
+
+    # Skip fully unknown entries — no value in the CSV
+    if not make or make == "?":
+        return
+
+    # Build stable row_id
+    make_slug = _slugify(make)
+    model_slug = _slugify(model) if model and model != "?" else ""
+    row_id = f"{make_slug}_{model_slug}" if model_slug else make_slug
+
+    # Priority: damaged/fault first, then named+model, then named only
+    if condition in ("damaged", "fault_visible"):
+        priority = 1
+    elif has_np and model and model != "?":
+        priority = 2
+    else:
+        priority = 3
+
+    # URL hint from known manufacturer map
+    make_lower = make.lower()
+    url_hint = ""
+    for mfr_key, url in MANUFACTURER_MANUAL_URLS.items():
+        if mfr_key in make_lower:
+            url_hint = url
+            break
+
+    # Search query
+    if model and model != "?":
+        search_query = f"{make} {model} {eq_type} manual"
+    else:
+        search_query = f"{make} {eq_type} manual"
+
+    sources_yaml_key = row_id
+
+    # Capture serial, catalog, and nameplate electrical specs into notes
+    note_parts = []
+    serial = (result.get("serial") or "").strip()
+    catalog = (result.get("catalog") or "").strip()
+    if serial and serial != "null":
+        note_parts.append(f"S/N: {serial}")
+    if catalog and catalog != "null":
+        note_parts.append(f"Cat: {catalog}")
+    np = result.get("nameplate_fields") or {}
+    for field, unit in (("voltage", "V"), ("amperage", "A"), ("hp", "HP"), ("rpm", "rpm"), ("hz", "Hz")):
+        val = (np.get(field) or "").strip()
+        if val and val != "null":
+            note_parts.append(f"{val}{unit}")
+    notes = "  ".join(note_parts)
+
+    # Read existing rows to dedup by row_id
+    existing_ids: set[str] = set()
+    write_header = not SCRAPE_TARGETS_CSV.exists()
+    if not write_header:
+        try:
+            with open(SCRAPE_TARGETS_CSV, newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    existing_ids.add(row.get("row_id", ""))
+        except Exception:
+            pass
+
+    if row_id in existing_ids:
+        return
+
+    try:
+        with open(SCRAPE_TARGETS_CSV, "a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=SCRAPE_CSV_HEADER)
+            if write_header:
+                writer.writeheader()
+            writer.writerow({
+                "row_id": row_id,
+                "manufacturer": make,
+                "model_number": model if model and model != "?" else "",
+                "equipment_type": eq_type,
+                "condition": condition,
+                "has_nameplate": str(has_np).lower(),
+                "priority": priority,
+                "search_query": search_query,
+                "url_hint": url_hint,
+                "sources_yaml_key": sources_yaml_key,
+                "status": "to_find",
+                "notes": notes,
+            })
+        logger.info("  SCRAPE TARGET: added %s to manual_scrape_targets.csv", row_id)
+    except Exception as e:
+        logger.warning("Failed to append scrape target %s: %s", row_id, e)
 
 
 def trigger_manual_discovery(
@@ -613,6 +730,35 @@ def main():
         logger.error("MIRA_TENANT_ID not set. Set env var or use Doppler.")
         sys.exit(1)
 
+    # Check if image embedding model is available — skip embed_image() calls if not
+    _image_embed_available = False
+    try:
+        import httpx as _httpx
+        r = _httpx.post(
+            f"{OLLAMA_URL}/api/embed",
+            json={"model": os.getenv("EMBED_VISION_MODEL", "nomic-embed-vision:v1.5"), "input": "test"},
+            timeout=5,
+        )
+        _image_embed_available = r.status_code == 200
+    except Exception:
+        pass
+    if not _image_embed_available:
+        logger.warning(
+            "nomic-embed-vision not available — image_embedding will be NULL. "
+            "To enable: create an Ollama-compatible GGUF from nomic-ai/nomic-embed-vision-v1.5 "
+            "and set EMBED_VISION_MODEL env var."
+        )
+
+    # Ensure NeonDB has image_embedding column (additive migration, safe to run every time)
+    if tenant_id and not args.dry_run:
+        try:
+            sys.path.insert(0, str(REPO_ROOT / "mira-core" / "mira-ingest"))
+            from db.neon import ensure_image_embedding_column
+            ensure_image_embedding_column()
+            logger.info("NeonDB image_embedding column verified.")
+        except Exception as e:
+            logger.warning("Schema migration check failed (non-fatal): %s", e)
+
     # Checkpoint support
     checkpoint_path = None
     already_done: set[str] = set()
@@ -681,6 +827,9 @@ def main():
         logger.info("  CONFIRMED: %s %s (%s) [%s] %s cond=%s",
                      make, model_num, eq_type, confidence, has_np, condition)
 
+        # Auto-populate scrape targets CSV
+        append_scrape_target(result)
+
         # Spot-check verification
         verified = None
         if args.inspect and (i + 1) % args.inspect_every == 0:
@@ -707,7 +856,25 @@ def main():
 
         if not args.dry_run:
             if tenant_id:
-                insert_to_neondb(result_clean, photo, tenant_id, args.source_prefix)
+                content = _build_content_text(result_clean)
+                embedding = _crawler_embed_text(content, ollama_url=OLLAMA_URL, model=EMBED_MODEL)
+                if embedding is None:
+                    logger.warning("Embedding failed for %s — skipping insert", photo.name)
+                else:
+                    # Image embedding (non-blocking — None stored as NULL)
+                    image_embedding = None
+                    if _image_embed_available:
+                        image_embedding = _crawler_embed_image(
+                            result.get("_photo_b64", ""),
+                            ollama_url=OLLAMA_URL,
+                        )
+                        if image_embedding is None:
+                            logger.warning("Image embedding failed for %s — storing NULL", photo.name)
+                    monitor.embeddings_ok += 1
+                    insert_to_neondb(
+                        result_clean, photo, tenant_id, embedding, args.source_prefix,
+                        image_embedding=image_embedding,
+                    )
             append_golden_label(result_clean, photo)
             if not args.no_move:
                 shutil.move(str(photo), str(PROCESSED / photo.name))

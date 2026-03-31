@@ -69,6 +69,46 @@ def recall_knowledge(embedding: list[float], tenant_id: str, limit: int = 5) -> 
     return [dict(r) for r in rows]
 
 
+def recall_by_image(image_vector: list[float], tenant_id: str, limit: int = 5) -> list[dict[str, Any]]:
+    """pgvector cosine similarity search over image_embedding column."""
+    with _engine().connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT
+                    content,
+                    manufacturer,
+                    model_number,
+                    equipment_type,
+                    source_type,
+                    metadata,
+                    1 - (image_embedding <=> cast(:emb AS vector)) AS similarity
+                FROM knowledge_entries
+                WHERE tenant_id = :tid
+                  AND image_embedding IS NOT NULL
+                ORDER BY image_embedding <=> cast(:emb AS vector)
+                LIMIT :lim
+            """),
+            {"emb": str(image_vector), "tid": tenant_id, "lim": limit},
+        ).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def ensure_image_embedding_column() -> None:
+    """Additive migration: add image_embedding vector(768) column if absent."""
+    try:
+        with _engine().connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE knowledge_entries "
+                "ADD COLUMN IF NOT EXISTS image_embedding vector(768)"
+            ))
+            conn.commit()
+    except Exception as exc:
+        import logging
+        logging.getLogger("mira-ingest").warning(
+            "image_embedding column migration failed (non-fatal): %s", exc
+        )
+
+
 def check_tier_limit(tenant_id: str) -> tuple[bool, str]:
     """Check if tenant is within their tier's daily request limit.
 
