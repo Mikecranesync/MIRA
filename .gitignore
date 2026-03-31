@@ -91,3 +91,10 @@ uv.lock
 # ML model weights (downloaded at runtime, never committed)
 yolov8n.pt
 models/*.pt
+
+# MIRA Sidecar runtime data
+mira-sidecar/chroma_data/
+mira-sidecar/docs/
+mira-sidecar/logs/
+mira-sidecar/.venv/
+factorylm.properties
