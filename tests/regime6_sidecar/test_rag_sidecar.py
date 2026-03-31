@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,39 +14,56 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "mira-sidecar"))
 
 
 @pytest.fixture
-def test_client():
-    """Create a FastAPI TestClient for the sidecar app."""
+def test_client(tmp_path):
+    """Create a FastAPI TestClient with mocked providers.
+
+    Instead of fighting with the lifespan, we set the module-level globals
+    directly — this is what the lifespan does anyway.
+    """
     from fastapi.testclient import TestClient
 
-    # Patch providers to avoid needing real API keys
+    mock_llm = MagicMock()
+    mock_llm.model_name = "mock-model"
+    mock_llm.complete = AsyncMock(return_value="Mock answer about VFD faults.")
+    mock_llm.embed = AsyncMock(return_value=[[0.1] * 384])
+
+    mock_embed = MagicMock()
+    mock_embed.model_name = "mock-embed"
+    mock_embed.embed = AsyncMock(return_value=[[0.1] * 384])
+
+    mock_store = MagicMock()
+    mock_store.doc_count.return_value = 5
+    mock_store.query.return_value = [
+        {
+            "text": "Fault code OC means overcurrent",
+            "source_file": "manual.pdf",
+            "page": "3",
+            "asset_id": "conveyor_demo",
+            "chunk_index": 0,
+            "distance": 0.12,
+        }
+    ]
+
+    # Patch heavy initialisers so lifespan doesn't try real ChromaDB / LLM
     with (
-        patch("app.create_providers") as mock_factory,
-        patch("app.MiraVectorStore") as mock_store_cls,
+        patch("app.MiraVectorStore", return_value=mock_store),
+        patch("app.create_providers", return_value=(mock_llm, mock_embed)),
+        patch("app.embed_texts", new=mock_embed.embed),
     ):
-        mock_llm = MagicMock()
-        mock_llm.model_name = "mock-model"
-        mock_llm.complete = AsyncMock(return_value="Mock answer about VFD faults.")
-        mock_llm.embed = AsyncMock(return_value=[[0.1] * 384])
+        import app as app_mod
 
-        mock_embed = MagicMock()
-        mock_embed.embed = AsyncMock(return_value=[[0.1] * 384])
+        # Force-set module globals (same as what lifespan does)
+        app_mod._store = mock_store
+        app_mod._llm = mock_llm
+        app_mod._embedder = mock_embed
 
-        mock_factory.return_value = (mock_llm, mock_embed)
-
-        mock_store = MagicMock()
-        mock_store.doc_count.return_value = 5
-        mock_store.query.return_value = [
-            {
-                "text": "Fault code OC means overcurrent",
-                "metadata": {"source_file": "manual.pdf", "page": "3"},
-            }
-        ]
-        mock_store_cls.return_value = mock_store
-
-        from app import app
-
-        client = TestClient(app)
+        client = TestClient(app_mod.app, raise_server_exceptions=False)
         yield client
+
+        # Cleanup globals
+        app_mod._store = None
+        app_mod._llm = None
+        app_mod._embedder = None
 
 
 class TestStatusEndpoint:
@@ -55,6 +73,7 @@ class TestStatusEndpoint:
         data = resp.json()
         assert data["status"] == "ok"
         assert "version" in data
+        assert "doc_count" in data
 
 
 class TestIngestEndpoint:
@@ -63,8 +82,8 @@ class TestIngestEndpoint:
             "/ingest",
             json={"filename": "test.pdf", "asset_id": "demo", "path": "/nonexistent/file.pdf"},
         )
-        # Should return error for missing file
-        assert resp.status_code in (400, 422, 500)
+        # chunk_document returns [] → 422 "No text could be extracted"
+        assert resp.status_code == 422
 
     def test_ingest_accepts_valid_request(self, test_client, sample_txt_path):
         resp = test_client.post(
@@ -78,7 +97,7 @@ class TestIngestEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert "chunks_added" in data
+        assert data["chunks_added"] > 0
 
 
 class TestRagEndpoint:
@@ -95,14 +114,14 @@ class TestRagEndpoint:
         data = resp.json()
         assert "answer" in data
         assert "sources" in data
+        assert len(data["sources"]) > 0
 
     def test_rag_query_empty_query(self, test_client):
         resp = test_client.post(
             "/rag",
             json={"query": "", "asset_id": "", "tag_snapshot": {}},
         )
-        # Should still work (empty query is valid, just returns generic response)
-        assert resp.status_code in (200, 400)
+        assert resp.status_code == 200
 
 
 class TestBuildFSMEndpoint:
@@ -114,8 +133,8 @@ class TestBuildFSMEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert "transitions" in data
-        assert "asset_id" in data
         assert data["asset_id"] == "conveyor_demo"
+        assert data["cycle_count"] > 0
 
     def test_build_fsm_empty_history(self, test_client):
         resp = test_client.post(
@@ -125,3 +144,4 @@ class TestBuildFSMEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["transitions"] == {}
+        assert data["cycle_count"] == 0

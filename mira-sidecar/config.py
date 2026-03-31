@@ -128,7 +128,7 @@ class Settings(BaseSettings):
         init_settings: PydanticBaseSettingsSource,
         env_settings: PydanticBaseSettingsSource,
         dotenv_settings: PydanticBaseSettingsSource,
-        secrets_dir: PydanticBaseSettingsSource,
+        **kwargs: Any,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         # Priority: init > env vars > properties file > defaults
         return (

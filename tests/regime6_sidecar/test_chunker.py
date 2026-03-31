@@ -61,5 +61,6 @@ class TestChunker:
     def test_chunk_nonexistent_file(self):
         from rag.chunker import chunk_document
 
-        with pytest.raises((FileNotFoundError, OSError)):
-            chunk_document("/nonexistent/file.txt")
+        # Chunker logs error and returns empty list for missing files
+        chunks = chunk_document("/nonexistent/file.txt")
+        assert chunks == []
