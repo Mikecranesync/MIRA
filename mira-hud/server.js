@@ -18,7 +18,8 @@ function getLanIP() {
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server);
-let pythonBackendActive = false;  // set when mira_core.py registers; gates server.js RAG
+let pythonBackendActive = false;
+let pythonSocketId      = null;  // set when mira_core.py registers; gates server.js RAG
 
 // ─── AI SETUP ────────────────────────────────────────────────────────────────
 const DOCS_DIR = path.join(__dirname, 'vision_backend', 'docs');
@@ -345,12 +346,9 @@ io.on('connection', (socket) => {
   // Python backend registration — disables server.js RAG to prevent duplicate responses
   socket.on('registerPythonBackend', () => {
     pythonBackendActive = true;
+    pythonSocketId = socket.id;
     console.log('[backend] Python mira_core connected — server.js RAG disabled');
   });
-
-  // Python backend push paths — re-broadcast to all clients
-  socket.on('visionUpdate', (data) => { io.emit('visionUpdate', data); });
-  socket.on('miraResponse', (data) => { io.emit('miraResponse', data); });
 
   // Browser sends a base64 JPEG frame for Claude Vision analysis
   socket.on('analyzeFrame', async (base64Jpeg) => {
@@ -428,11 +426,7 @@ io.on('connection', (socket) => {
     try {
       const equipContext = `${equipment} ${model || ''}`.trim();
       const { answer, usage } = await callRAG(equipContext, question);
-      io.emit('miraResponse', {
-        answer,
-        sources: DOC_CONTEXT ? ['docs'] : [],
-        equipment_context: equipContext,
-      });
+      io.emit('mira_insight', { text: answer, tags: [] });
       logSession('mira_response', {
         equipment, model,
         question,
@@ -445,7 +439,7 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('[rag]', err.message);
       logSession('mira_error', { equipment, error: err.message, duration_ms: Date.now() - t0 });
-      io.emit('miraResponse', { answer: `Error: ${err.message}`, sources: [], equipment_context: '' });
+      io.emit('mira_insight', { text: `MIRA: ${err.message}`, tags: [] });
     }
   });
 
@@ -459,11 +453,7 @@ io.on('connection', (socket) => {
     try {
       const ctx = (data.equipment_context || '').trim();
       const { answer, usage } = await callRAG(ctx || 'Unknown', question);
-      io.emit('miraResponse', {
-        answer,
-        sources: DOC_CONTEXT ? ['docs'] : [],
-        equipment_context: ctx,
-      });
+      io.emit('mira_insight', { text: answer, tags: [] });
       logSession('tech_query', {
         query:             question,
         equipment_context: ctx,
@@ -486,8 +476,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', (reason) => {
-    if (pythonBackendActive && io.engine.clientsCount === 0) {
+    if (socket.id === pythonSocketId) {
       pythonBackendActive = false;
+      pythonSocketId = null;
       console.log('[backend] Python mira_core disconnected — server.js RAG re-enabled');
     }
     console.log(`[HUD] client disconnected: ${socket.id}`);
