@@ -152,6 +152,50 @@ services:
       timeout: 10s
       retries: 3
 
+  reddit-bot:
+    build:
+      context: .
+      dockerfile: reddit/Dockerfile
+    container_name: mira-bot-reddit
+    environment:
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_USERNAME=${REDDIT_USERNAME}
+      - REDDIT_PASSWORD=${REDDIT_PASSWORD}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-linux:MIRA-RedditBot:0.1.0}
+      - REDDIT_SUBREDDITS=${REDDIT_SUBREDDITS:-IndustrialMaintenance,PLC,electricians,HVAC,AutomationTechnology}
+      - REDDIT_POLL_INTERVAL=${REDDIT_POLL_INTERVAL:-120}
+      - REDDIT_MAX_POST_AGE_HOURS=${REDDIT_MAX_POST_AGE_HOURS:-24}
+      - REDDIT_MAX_EXISTING_COMMENTS=${REDDIT_MAX_EXISTING_COMMENTS:-10}
+      - REDDIT_DRY_RUN=${REDDIT_DRY_RUN:-0}
+      - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      - MCP_BASE_URL=${MCP_BASE_URL:-http://mira-mcp:8001}
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
+      - MIRA_DB_PATH=/data/mira.db
+      - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - VISION_MODEL=${VISION_MODEL:-qwen2.5vl:7b}
+      - INFERENCE_BACKEND=${INFERENCE_BACKEND:-local}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_PUBLIC_API_KEY=${LANGFUSE_PUBLIC_API_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
+    volumes:
+      - ../mira-bridge/data:/data:rw
+    networks:
+      - bot-net
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   telegram-test-runner:
     build:
       context: .

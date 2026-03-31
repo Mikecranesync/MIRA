@@ -224,7 +224,10 @@ class Supervisor:
     # Entry points
     # ------------------------------------------------------------------
 
-    async def process(self, chat_id: str, message: str, photo_b64: str = None) -> str:
+    async def process(
+        self, chat_id: str, message: str, photo_b64: str = None,
+        *, platform: str = "telegram",
+    ) -> str:
         """Main entry point. Returns reply string (backward-compatible)."""
         t0 = time.monotonic()
         result = await self.process_full(chat_id, message, photo_b64)
@@ -235,6 +238,7 @@ class Supervisor:
             confidence=result.get("confidence", ""),
             has_photo=bool(photo_b64),
             response_time_ms=elapsed_ms,
+            platform=platform,
         )
         return result["reply"]
 

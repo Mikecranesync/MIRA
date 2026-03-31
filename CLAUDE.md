@@ -42,6 +42,7 @@ See local CLAUDE.md in each module for deep context.
 | mira-bot-slack    | —            | bot-net, core-net | import check                |
 | mira-bot-teams    | —            | bot-net, core-net | import check                |
 | mira-bot-whatsapp | —            | bot-net, core-net | import check                |
+| mira-bot-reddit   | —            | bot-net, core-net | import check                |
 | atlas-db          | 5433         | cmms-net          | pg_isready                  |
 | atlas-api         | 8088 → 8080  | cmms-net, core-net| GET /actuator/health        |
 | atlas-frontend    | 3100 → 3000  | cmms-net          | GET /                       |

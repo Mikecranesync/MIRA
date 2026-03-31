@@ -168,26 +168,34 @@ class RAGWorker:
         }
 
         async with trace_rag_query(message, metadata=metadata) as spans:
-            # Stage 1: Embed query via Ollama nomic-embed-text → NeonDB pgvector recall
+            # Stage 1: Embed query → NeonDB pgvector recall (single knowledge source)
             rewritten = message
             neon_chunks: list[dict] = []
             async with spans.embed_query(message):
-                if self.tenant_id and not photo_b64:
-                    embedding = await self._embed_ollama(message)
+                if self.tenant_id:
+                    embed_query = message
+                    if photo_b64 and state.get("asset_identified"):
+                        embed_query = f"{state['asset_identified']} {message}"
+                    embedding = await self._embed_ollama(embed_query)
                     if embedding:
                         neon_chunks = _neon_recall.recall_knowledge(
                             embedding,
                             self.tenant_id,
-                            query_text=message,
+                            query_text=embed_query,
                         )
 
-            # Stage 2: Retrieve via Open WebUI RAG (NeonDB chunks injected into prompt)
-            messages = self._build_prompt(state, rewritten, photo_b64, neon_chunks=neon_chunks)
-            t0 = time.monotonic()
-            raw = await self._call_llm(messages, model=model)
-            elapsed_ms = int((time.monotonic() - t0) * 1000)
+            # Extract chunk texts for reranking / telemetry
+            chunk_texts = [c["content"] for c in neon_chunks]
 
-            # Record retrieval results (populated by _call_openwebui above)
+            # Quality gate: only use retrieval when top chunk is genuinely relevant
+            top_score = max((c.get("similarity", 0) for c in neon_chunks), default=0)
+            if neon_chunks and top_score < 0.70:
+                logger.info("RAG_QUALITY_GATE top_score=%.3f — chunks suppressed", top_score)
+                chunk_texts = []
+
+            self._last_sources = chunk_texts
+            self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
+
             async with spans.vector_search(
                 rewritten, self._last_sources[:5], self._last_distances[:5]
             ):
@@ -197,20 +205,27 @@ class RAGWorker:
             ):
                 pass
 
-            # Stage 2b: Rerank retrieved chunks (if Nemotron enabled + sources available)
-            if self.nemotron and self.nemotron.enabled and self._last_sources and not photo_b64:
-                reranked = await self.nemotron.rerank(rewritten, self._last_sources)
+            # Stage 2: Nemotron rerank NeonDB chunks (before LLM call)
+            rerank_query = rewritten
+            if photo_b64 and state.get("asset_identified"):
+                rerank_query = f"{state['asset_identified']} {rewritten}"
+
+            if self.nemotron and self.nemotron.enabled and chunk_texts:
+                reranked = await self.nemotron.rerank(rerank_query, chunk_texts)
                 top_chunks = [r["text"] for r in reranked if r["score"] > 0]
                 if top_chunks:
-                    # Rebuild prompt with reranked chunks injected explicitly
-                    messages = self._build_prompt_with_chunks(
-                        state,
-                        rewritten,
-                        top_chunks,
-                    )
-                    t0 = time.monotonic()
-                    raw = await self._call_llm(messages, model=model)
-                    elapsed_ms = int((time.monotonic() - t0) * 1000)
+                    chunk_texts = top_chunks
+
+            # Stage 3: Build prompt with (reranked) chunks → call LLM
+            if chunk_texts:
+                messages = self._build_prompt_with_chunks(
+                    state, rewritten, chunk_texts, photo_b64=photo_b64,
+                )
+            else:
+                messages = self._build_prompt(state, rewritten, photo_b64)
+            t0 = time.monotonic()
+            raw = await self._call_llm(messages, model=model)
+            elapsed_ms = int((time.monotonic() - t0) * 1000)
 
             async with spans.llm_inference(len(str(messages)) // 4, raw, elapsed_ms):
                 pass
@@ -222,6 +237,7 @@ class RAGWorker:
         state: dict,
         message: str,
         chunks: list[str],
+        photo_b64: str = None,
     ) -> list[dict]:
         """Build prompt with explicitly injected reranked chunks."""
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
@@ -244,8 +260,38 @@ class RAGWorker:
         for entry in history[-10:]:
             messages.append({"role": entry["role"], "content": entry["content"]})
 
-        user_msg = rewrite_question(message, state.get("asset_identified"))
-        messages.append({"role": "user", "content": user_msg})
+        if photo_b64:
+            ctx = state.get("context", {})
+            ocr = ctx.get("ocr_text", "")
+            asset = state.get("asset_identified", "")
+            text_parts = []
+            if ocr:
+                text_parts.append(f"[OCR text extracted from screen: {ocr}]")
+                text_parts.append(
+                    "The OCR text above is the ground truth. "
+                    "Report ONLY codes and text that appear in the OCR output. "
+                    "Do NOT add descriptions or meanings from your training data."
+                )
+            if asset:
+                text_parts.append(f"[Asset identified from nameplate: {asset}]")
+                text_parts.append(
+                    f"REQUIRED: Name the specific device ('{asset.split(',')[0].strip()}') "
+                    "explicitly in your reply. Rule 13 overrides Rule 2 for the device name only."
+                )
+            text_parts.append(message)
+            messages.append({
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
+                    },
+                    {"type": "text", "text": "\n".join(text_parts)},
+                ],
+            })
+        else:
+            user_msg = rewrite_question(message, state.get("asset_identified"))
+            messages.append({"role": "user", "content": user_msg})
         return messages
 
     def _build_prompt(
@@ -389,8 +435,8 @@ class RAGWorker:
             "messages": messages,
             "options": {"temperature": 0.1},
         }
-        if self.collection_id:
-            payload["files"] = [{"type": "collection", "id": self.collection_id}]
+        # NeonDB is the single knowledge source — Open WebUI is a pure LLM proxy.
+        # Do NOT pass collection_id here; retrieval is handled by neon_recall.
 
         t0 = time.monotonic()
         async with httpx.AsyncClient(timeout=60) as client:
@@ -403,33 +449,13 @@ class RAGWorker:
             data = resp.json()
         elapsed_ms = int((time.monotonic() - t0) * 1000)
 
-        # Open WebUI returns retrieved chunks under "sources", not "citations"
-        sources = data.get("sources", [])
-        source_docs = []
-        source_chunks = []
-        for src in sources:
-            docs = src.get("document", [])
-            metas = src.get("metadata", [])
-            distances = src.get("distances", [])
-            for i, doc in enumerate(docs):
-                name = metas[i].get("source", metas[i].get("name", "")) if i < len(metas) else ""
-                dist = distances[i] if i < len(distances) else 0.0
-                source_docs.append(f"{name}:{dist:.3f}")
-                source_chunks.append(doc)
-
-        # Store for potential reranking
-        self._last_sources = source_chunks
-        self._last_distances = [d for src in sources for d in src.get("distances", [])]
-
         logger.info(
             "LLM_CALL worker=rag %s",
             json.dumps(
                 {
                     "model": model or "mira:latest",
                     "latency_ms": elapsed_ms,
-                    "sources_count": len(source_chunks),
-                    "source_docs": source_docs[:5],
-                    "collection_id": self.collection_id or None,
+                    "neon_chunks": len(self._last_sources),
                     "response_keys": list(data.keys()),
                 }
             ),
