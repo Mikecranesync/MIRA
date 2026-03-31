@@ -184,6 +184,7 @@ def _call_claude(
     model: str,
     system_content: str,
     user_content: str,
+    max_tokens: int = 300,
 ) -> str:
     """Call Claude API directly via httpx. Returns response text."""
     resp = client.post(
@@ -195,7 +196,7 @@ def _call_claude(
         },
         json={
             "model": model,
-            "max_tokens": 300,
+            "max_tokens": max_tokens,
             "system": system_content,
             "messages": [{"role": "user", "content": user_content}],
         },
@@ -270,7 +271,10 @@ def evaluate_question(
     t0 = time.monotonic()
     try:
         if use_claude:
-            response_text = _call_claude(client, api_key, model, system_content, user_content)
+            tokens = 800 if is_calc else 300
+            response_text = _call_claude(
+                client, api_key, model, system_content, user_content, max_tokens=tokens,
+            )
         else:
             response_text = _call_openwebui(client, url, api_key, model, system_content, user_content)
         result["response_raw"] = response_text
