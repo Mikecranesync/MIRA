@@ -57,10 +57,10 @@ class TeamsAdapter(MIRAAdapter):
     ) -> str:
         resized = _resize_for_vision(image_bytes)
         photo_b64 = base64.b64encode(resized).decode("utf-8")
-        return await engine.process(session_id, caption or "Analyze this equipment", photo_b64=photo_b64)
+        return await engine.process(session_id, caption or "Analyze this equipment", photo_b64=photo_b64, platform="teams")
 
     async def send_text(self, text: str, session_id: str) -> str:
-        return await engine.process(session_id, text)
+        return await engine.process(session_id, text, platform="teams")
 
     async def format_response(self, raw_response: str) -> str:
         return raw_response  # Teams renders markdown natively

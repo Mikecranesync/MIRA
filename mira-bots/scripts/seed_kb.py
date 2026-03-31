@@ -4,10 +4,10 @@ Run with:
     doppler run --project factorylm --config prd -- python seed_kb.py
 """
 
-import os
 import io
-import json
-import requests
+import os
+
+import httpx
 
 _MIRA_SERVER = os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost")
 OPENWEBUI_BASE_URL = os.environ.get("OPENWEBUI_BASE_URL", f"{_MIRA_SERVER}:3000")
@@ -31,7 +31,7 @@ COLLECTION_NAME = "MIRA Industrial KB"
 
 def get_or_create_collection() -> str:
     """Return the knowledge collection ID, creating it if it doesn't exist."""
-    resp = requests.get(
+    resp = httpx.get(
         f"{OPENWEBUI_BASE_URL}/api/v1/knowledge/",
         headers=HEADERS,
         timeout=15,
@@ -42,7 +42,7 @@ def get_or_create_collection() -> str:
             print(f"Found existing collection: {col['id']}")
             return col["id"]
 
-    resp = requests.post(
+    resp = httpx.post(
         f"{OPENWEBUI_BASE_URL}/api/v1/knowledge/create",
         headers={**HEADERS, "Content-Type": "application/json"},
         json={"name": COLLECTION_NAME, "description": "Industrial maintenance reference — VFDs, motors, PLCs, conveyors"},
@@ -58,7 +58,7 @@ def upload_text_to_collection(collection_id: str, filename: str, content: str):
     """Upload a text document to the knowledge collection."""
     # Step 1: upload file
     file_bytes = content.encode("utf-8")
-    resp = requests.post(
+    resp = httpx.post(
         f"{OPENWEBUI_BASE_URL}/api/v1/files/",
         headers=HEADERS,
         files={"file": (filename, io.BytesIO(file_bytes), "text/plain")},
@@ -69,7 +69,7 @@ def upload_text_to_collection(collection_id: str, filename: str, content: str):
     print(f"  Uploaded file: {filename} → {file_id}")
 
     # Step 2: add file to collection
-    resp = requests.post(
+    resp = httpx.post(
         f"{OPENWEBUI_BASE_URL}/api/v1/knowledge/{collection_id}/file/add",
         headers={**HEADERS, "Content-Type": "application/json"},
         json={"file_id": file_id},
@@ -85,7 +85,7 @@ def upload_text_to_collection(collection_id: str, filename: str, content: str):
 def fetch_wikipedia(topic: str) -> str:
     """Fetch a Wikipedia article summary + content via the REST API."""
     slug = topic.replace(" ", "_")
-    resp = requests.get(
+    resp = httpx.get(
         f"https://en.wikipedia.org/api/rest_v1/page/summary/{slug}",
         headers={"User-Agent": "MIRA-KB-Seeder/1.0 (factorylm industrial maintenance bot; contact@factorylm.com)"},
         timeout=15,

@@ -8,6 +8,7 @@ mira-cmms/.env
 
 # Staging directories (large binaries, local PDFs)
 bravo/Send to Bravo/
+MIRA test case 1/
 tools/ingest_local_pdfs.py
 
 # HUD session logs

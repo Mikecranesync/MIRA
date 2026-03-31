@@ -125,7 +125,7 @@ chore: build system, deps, tooling
 | Feature                      | Deferred To | Reason                      |
 |------------------------------|-------------|-----------------------------|
 | Modbus / PLC / VFD           | Config 4    | Out of scope for Config 1 MVP |
-| NVIDIA NIM / Nemotron        | TBD         | Not part of MVP             |
+| NVIDIA Nemotron reranker     | **Active**  | Enabled when NVIDIA_API_KEY set (feature-flagged) |
 | Kokoro TTS                   | Post-MVP    | Nice-to-have                |
 | CMMS integration             | **Active**  | Atlas CMMS (mira-cmms/)     |
 
@@ -140,7 +140,7 @@ chore: build system, deps, tooling
 | zhangzhengfu nameplate dataset | Own golden set from Google Photos | Empty repo, dead Baidu Pan links, no license |
 | Google Photos API direct | rclone + Ollama triage | OAuth consent screen "Testing" mode returned empty results |
 | GWS CLI for Gmail | IMAP with Doppler app passwords | Scope registration issues on Windows |
-| glm-ocr model | qwen2.5vl handles vision | Consistent 400 errors regardless of image size |
+| glm-ocr model (as primary) | qwen2.5vl handles vision | Consistent 400 errors — retained as optional fallback in vision_worker.py |
 
 ---
 
@@ -168,9 +168,10 @@ chore: build system, deps, tooling
 
 ## Where to Resume
 
-- **`feature/vim` branch** — VIM phases 1A→4 + mira-crawler phases 1→4 + Docling adapter. 13+ commits ahead of main. Not merged.
+- **`feature/vim` branch** — Merged to main. VIM phases 1A→4 + mira-crawler phases 1→4 + Docling adapter all integrated.
 - **Photo pipeline on Bravo** — 3,694 confirmed equipment photos in `~/takeout_staging/ollama_confirmed/`. Ready for KB ingest at scale.
-- **Bot quality tuning** — GitHub issue "Bot response quality tuning (ongoing)". Next: fix intent guard false positives, improve manufacturer-filtered retrieval.
+- **LlamaIndex RAG upgrade** — PRD complete (`MIRA_LlamaIndex_RAG_PRD.docx.md`). Replaces hand-rolled RAG in rag_worker.py with LlamaIndex orchestration. Ready to build.
+- **Bot quality tuning** — RAG quality gate (0.70 threshold), NeonDB-only retrieval, Nemotron reranking active. Next: fix intent guard false positives.
 
 ---
 

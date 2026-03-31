@@ -9,9 +9,10 @@ Run with:
     doppler run --project factorylm --config prd -- python seed_device_kb.py
 """
 
-import os
 import io
-import requests
+import os
+
+import httpx
 
 _MIRA_SERVER = os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost")
 OPENWEBUI_BASE_URL = os.environ.get("OPENWEBUI_BASE_URL", f"{_MIRA_SERVER}:3000")
@@ -25,7 +26,7 @@ REPO_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 
 def get_or_create_collection(name: str, description: str) -> str:
     """Return collection ID, creating if needed."""
-    resp = requests.get(
+    resp = httpx.get(
         f"{OPENWEBUI_BASE_URL}/api/v1/knowledge/",
         headers=HEADERS,
         timeout=15,
@@ -36,7 +37,7 @@ def get_or_create_collection(name: str, description: str) -> str:
             print(f"Found existing collection '{name}': {col['id']}")
             return col["id"]
 
-    resp = requests.post(
+    resp = httpx.post(
         f"{OPENWEBUI_BASE_URL}/api/v1/knowledge/create",
         headers={**HEADERS, "Content-Type": "application/json"},
         json={"name": name, "description": description},
@@ -50,7 +51,7 @@ def get_or_create_collection(name: str, description: str) -> str:
 
 def upload_text(collection_id: str, filename: str, content: str):
     """Upload text document to collection."""
-    resp = requests.post(
+    resp = httpx.post(
         f"{OPENWEBUI_BASE_URL}/api/v1/files/",
         headers=HEADERS,
         files={"file": (filename, io.BytesIO(content.encode("utf-8")), "text/plain")},
@@ -60,7 +61,7 @@ def upload_text(collection_id: str, filename: str, content: str):
     file_id = resp.json()["id"]
     print(f"  Uploaded: {filename} -> {file_id}")
 
-    resp = requests.post(
+    resp = httpx.post(
         f"{OPENWEBUI_BASE_URL}/api/v1/knowledge/{collection_id}/file/add",
         headers={**HEADERS, "Content-Type": "application/json"},
         json={"file_id": file_id},
