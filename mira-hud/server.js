@@ -7,6 +7,17 @@ const path       = require('path');
 const os         = require('os');
 const fs         = require('fs');
 const Anthropic  = require('@anthropic-ai/sdk');
+const { Pool }   = require('pg');
+
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const EMBED_MODEL     = 'nomic-embed-text:v1.5';
+const NEON_URL        = process.env.NEON_DATABASE_URL || '';
+const MIRA_TENANT_ID  = process.env.MIRA_TENANT_ID   || '';
+
+const _neonPool = NEON_URL
+  ? new Pool({ connectionString: NEON_URL, ssl: { rejectUnauthorized: false }, max: 3 })
+  : null;
+if (!_neonPool) console.warn('[kb] NEON_DATABASE_URL not set — KB recall disabled');
 
 function getLanIP() {
   for (const iface of Object.values(os.networkInterfaces()).flat()) {
@@ -38,14 +49,61 @@ const VISION_PROMPT =
   '{"equipment":"type or \'Unknown\'","model":"brand and model if visible or \'Unknown\'","observations":"1-2 sentence description","alerts":["safety concerns — empty array if none"]}\n' +
   'If no industrial equipment is visible set equipment to "General environment".';
 
-function buildRAGPrompt(equipContext, question) {
+function buildRAGPrompt(equipContext, question, kbRows = []) {
   const equip = (equipContext || '').replace(/\s+/g, ' ').trim() || 'Unknown';
-  return `You are MIRA, an industrial maintenance assistant. Answer concisely.\nEquipment: ${equip}\nQuestion: ${question}${DOC_CONTEXT ? '\n\nDocumentation:\n' + DOC_CONTEXT : ''}\n\nAnswer in 2-4 sentences. Be specific. Include fault code reset steps if relevant.`;
+  let kbSection = '';
+  if (kbRows.length) {
+    kbSection = '\n\nKnowledge Base:\n' + kbRows.map((r, i) =>
+      `[${i + 1}] (${r.source_type}) ${r.content.slice(0, 400)}`
+    ).join('\n\n');
+  } else if (DOC_CONTEXT) {
+    kbSection = '\n\nDocumentation:\n' + DOC_CONTEXT;
+  }
+  return `You are MIRA, an industrial maintenance assistant. Answer concisely.\nEquipment: ${equip}\nQuestion: ${question}${kbSection}\n\nAnswer in 2-4 sentences. Be specific. Include fault code reset steps if relevant.`;
 }
 
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 const anthropic    = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 if (!anthropic) console.warn('[claude] ANTHROPIC_API_KEY not set — vision/RAG disabled');
+
+async function embedText(text) {
+  try {
+    const resp = await fetch(`${OLLAMA_BASE_URL}/api/embeddings`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ model: EMBED_MODEL, prompt: text }),
+      signal:  AbortSignal.timeout(10_000),
+    });
+    if (!resp.ok) throw new Error(`Ollama HTTP ${resp.status}`);
+    const data = await resp.json();
+    return data.embedding || null;
+  } catch (err) {
+    console.warn('[kb] embed failed:', err.message);
+    return null;
+  }
+}
+
+async function recallKB(queryText, limit = 5) {
+  if (!_neonPool || !MIRA_TENANT_ID) return [];
+  const embedding = await embedText(queryText);
+  if (!embedding) return [];
+  try {
+    const { rows } = await _neonPool.query(
+      `SELECT content, source_type, manufacturer, model_number, source_url,
+              1 - (embedding <=> $1::vector) AS score
+       FROM knowledge_entries
+       WHERE tenant_id = $2
+         AND embedding IS NOT NULL
+       ORDER BY embedding <=> $1::vector
+       LIMIT $3`,
+      [`[${embedding.join(',')}]`, MIRA_TENANT_ID, limit]
+    );
+    return rows;
+  } catch (err) {
+    console.warn('[kb] recall failed:', err.message);
+    return [];
+  }
+}
 
 function parseVisionJSON(text) {
   let clean = text.trim();
@@ -76,11 +134,13 @@ async function callVision(base64Jpeg) {
 }
 
 async function callRAG(equipContext, question) {
+  const kbRows = await recallKB(`${equipContext} ${question}`);
   const msg = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 400,
-    messages: [{ role: 'user', content: buildRAGPrompt(equipContext, question) }],
+    messages: [{ role: 'user', content: buildRAGPrompt(equipContext, question, kbRows) }],
   });
+  console.log(`[rag] kb=${kbRows.length} in=${msg.usage.input_tokens} out=${msg.usage.output_tokens}`);
   return { answer: msg.content[0].text.trim(), usage: msg.usage };
 }
 
@@ -117,14 +177,16 @@ async function queryClaude(query) {
     const ctxMatch = query.match(/\[context:([^\]]*)\]/);
     const equipCtx = ctxMatch ? ctxMatch[1] : '';
     const cleanQ   = query.replace(/\[context:[^\]]*\]/, '').trim();
-    const prompt   = buildRAGPrompt(equipCtx, cleanQ);
+    const searchText = equipCtx ? `${equipCtx} ${cleanQ}` : cleanQ;
+    const kbRows   = await recallKB(searchText);
+    const prompt   = buildRAGPrompt(equipCtx, cleanQ, kbRows);
     const msg = await anthropic.messages.create({
       model:      CLAUDE_MODEL,
       max_tokens: 512,
       messages:   [{ role: 'user', content: prompt }],
     });
     const text = msg.content[0]?.text || 'MIRA: No response';
-    console.log(`[claude] in=${msg.usage.input_tokens} out=${msg.usage.output_tokens}`);
+    console.log(`[claude] in=${msg.usage.input_tokens} out=${msg.usage.output_tokens} kb=${kbRows.length}`);
     return { text, tags: [] };
   } catch (err) {
     console.error('[claude] error:', err.message);
