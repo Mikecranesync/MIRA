@@ -85,6 +85,9 @@ mira-core/data/gdrive_ingest/
 # Claude Code runtime files
 .claude/scheduled_tasks.lock
 
+# Paperclip runtime artifacts (secrets, local DB)
+paperclip/.env.paperclip
+
 # uv lock file (generated, not committed)
 uv.lock
 
