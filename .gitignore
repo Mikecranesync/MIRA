@@ -85,6 +85,12 @@ mira-core/data/gdrive_ingest/
 # Claude Code runtime files
 .claude/scheduled_tasks.lock
 
+# Cloned SDK repos (have their own .git)
+ignition-sdk-examples/
+
+# Photos directory (local screenshots/images)
+Pics/
+
 # Paperclip runtime artifacts (secrets, local DB)
 paperclip/.env.paperclip
 
