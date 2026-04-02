@@ -6,6 +6,7 @@ services:
     container_name: mira-bot-telegram
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - INGEST_SERVICE_URL=${INGEST_SERVICE_URL:-http://mira-ingest:8001}
       - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
       - MCP_BASE_URL=${MCP_BASE_URL:-http://mira-mcp:8001}
@@ -45,6 +46,7 @@ services:
     environment:
       - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+      - INGEST_SERVICE_URL=${INGEST_SERVICE_URL:-http://mira-ingest:8001}
       - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
       - MCP_BASE_URL=${MCP_BASE_URL:-http://mira-mcp:8001}
@@ -84,6 +86,7 @@ services:
     environment:
       - TEAMS_APP_ID=${TEAMS_APP_ID:-}
       - TEAMS_APP_PASSWORD=${TEAMS_APP_PASSWORD:-}
+      - INGEST_SERVICE_URL=${INGEST_SERVICE_URL:-http://mira-ingest:8001}
       - TEAMS_PORT=${TEAMS_PORT:-8030}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
@@ -121,6 +124,7 @@ services:
     container_name: mira-bot-whatsapp
     environment:
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - INGEST_SERVICE_URL=${INGEST_SERVICE_URL:-http://mira-ingest:8001}
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
       - TWILIO_WHATSAPP_FROM=${TWILIO_WHATSAPP_FROM:-}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
