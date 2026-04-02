@@ -7,7 +7,7 @@
         "-y",
         "@modelcontextprotocol/server-sqlite",
         "--db-path",
-        "/Users/bravonode/Mira/mira-bridge/data/mira.db"
+        "__MIRA_HOME__/mira-bridge/data/mira.db"
       ],
       "env": {}
     },
@@ -20,5 +20,6 @@
       ],
       "env": {}
     }
-  }
+  },
+  "_note": "Replace __MIRA_HOME__ with the actual MIRA repo path. setup.sh does this automatically."
 }

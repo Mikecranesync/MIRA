@@ -1,0 +1,18 @@
+{
+  "name": "mira-test-runner",
+  "description": "Test execution and evaluation. Runs 7-regime test suite, evaluates RAG quality, generates reports.",
+  "adapter": "claude_local",
+  "model": "claude-haiku-4-5",
+  "effort": "medium",
+  "maxTurnsPerRun": 30,
+  "timeoutSec": 300,
+  "graceSec": 20,
+  "cwd": "__MIRA_HOME__",
+  "instructionsFilePath": "__MIRA_HOME__/paperclip/instructions/test-runner.md",
+  "workspaceStrategy": { "type": "none" },
+  "extraArgs": [
+    "--mcp-config", "__MIRA_HOME__/paperclip/mcp-config.json"
+  ],
+  "env": {},
+  "dangerouslySkipPermissions": false
+}

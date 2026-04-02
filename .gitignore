@@ -85,9 +85,25 @@ mira-core/data/gdrive_ingest/
 # Claude Code runtime files
 .claude/scheduled_tasks.lock
 
+# Cloned SDK repos (have their own .git)
+ignition-sdk-examples/
+
+# Photos directory (local screenshots/images)
+Pics/
+
+# Paperclip runtime artifacts (secrets, local DB)
+paperclip/.env.paperclip
+
 # uv lock file (generated, not committed)
 uv.lock
 
 # ML model weights (downloaded at runtime, never committed)
 yolov8n.pt
 models/*.pt
+
+# MIRA Sidecar runtime data
+mira-sidecar/chroma_data/
+mira-sidecar/docs/
+mira-sidecar/logs/
+mira-sidecar/.venv/
+factorylm.properties
