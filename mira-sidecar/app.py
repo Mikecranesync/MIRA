@@ -46,7 +46,8 @@ logger = logging.getLogger("mira-sidecar")
 # Application state (populated in lifespan)
 # ---------------------------------------------------------------------------
 
-_store: MiraVectorStore | None = None
+_store_tenant: MiraVectorStore | None = None  # Brain 2 — per-tenant docs
+_store_shared: MiraVectorStore | None = None  # Brain 1 — shared OEM library
 _llm = None
 _embedder = None
 
@@ -59,7 +60,7 @@ _embedder = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ANN001
     """Initialise ChromaDB and LLM/embedding providers on startup."""
-    global _store, _llm, _embedder  # noqa: PLW0603
+    global _store_tenant, _store_shared, _llm, _embedder  # noqa: PLW0603
 
     logger.info(
         "mira-sidecar v0.1.0 starting — llm_provider=%s embedding_provider=%s",
@@ -67,19 +68,24 @@ async def lifespan(app: FastAPI):  # noqa: ANN001
         settings.embedding_provider,
     )
 
-    # Initialise vector store
-    _store = MiraVectorStore(
+    # Initialise vector stores — Brain 2 (tenant) + Brain 1 (shared OEM)
+    _store_tenant = MiraVectorStore(
         chroma_path=settings.chroma_path,
         collection_name="mira_docs",
+    )
+    _store_shared = MiraVectorStore(
+        chroma_path=settings.chroma_path,
+        collection_name="shared_oem",
     )
 
     # Initialise LLM + embedding providers
     _llm, _embedder = create_providers(settings)
 
     logger.info(
-        "Startup complete — chroma_path=%s doc_count=%d",
+        "Startup complete — chroma_path=%s tenant_docs=%d shared_docs=%d",
         settings.chroma_path,
-        _store.doc_count(),
+        _store_tenant.doc_count(),
+        _store_shared.doc_count(),
     )
 
     yield
@@ -108,6 +114,7 @@ class IngestRequest(BaseModel):
     filename: str
     asset_id: str
     path: str
+    collection: str = "tenant"  # "tenant" → Brain 2, "shared" → Brain 1
 
 
 class IngestResponse(BaseModel):
@@ -135,7 +142,8 @@ class BuildFSMRequest(BaseModel):
 class StatusResponse(BaseModel):
     status: str
     version: str
-    doc_count: int
+    tenant_doc_count: int
+    shared_doc_count: int
     llm_provider: str
     embedding_provider: str
 
@@ -145,10 +153,16 @@ class StatusResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _require_store() -> MiraVectorStore:
-    if _store is None:
-        raise HTTPException(status_code=503, detail="Vector store not initialised")
-    return _store
+def _require_tenant_store() -> MiraVectorStore:
+    if _store_tenant is None:
+        raise HTTPException(status_code=503, detail="Tenant vector store not initialised")
+    return _store_tenant
+
+
+def _require_shared_store() -> MiraVectorStore:
+    if _store_shared is None:
+        raise HTTPException(status_code=503, detail="Shared vector store not initialised")
+    return _store_shared
 
 
 def _require_llm():  # noqa: ANN201
@@ -171,13 +185,15 @@ def _require_embedder():  # noqa: ANN201
 @app.get("/status", response_model=StatusResponse)
 async def status() -> StatusResponse:
     """Health check and provider info."""
-    store = _require_store()
+    tenant_store = _require_tenant_store()
+    shared_store = _require_shared_store()
     llm = _require_llm()
     embedder = _require_embedder()
     return StatusResponse(
         status="ok",
-        version="0.1.0",
-        doc_count=store.doc_count(),
+        version="0.2.0",
+        tenant_doc_count=tenant_store.doc_count(),
+        shared_doc_count=shared_store.doc_count(),
         llm_provider=f"{settings.llm_provider}:{llm.model_name}",
         embedding_provider=f"{settings.embedding_provider}:{embedder.model_name}",
     )
@@ -188,8 +204,9 @@ async def ingest(req: IngestRequest) -> IngestResponse:
     """Parse a document, chunk it, embed chunks, and store in ChromaDB.
 
     The file must already be accessible at req.path on the local filesystem.
+    Use collection="shared" to ingest into Brain 1 (shared OEM library).
     """
-    store = _require_store()
+    store = _require_shared_store() if req.collection == "shared" else _require_tenant_store()
     embedder = _require_embedder()
 
     logger.info(
@@ -229,13 +246,15 @@ async def ingest(req: IngestRequest) -> IngestResponse:
 async def ingest_upload(
     file: UploadFile,
     asset_id: str = Form(...),
+    collection: str = Form("tenant"),
 ) -> IngestResponse:
     """Accept a multipart file upload, save it, and run the ingest pipeline.
 
     This endpoint lets callers (e.g. an Open WebUI Pipe Function) stream a
     file directly without needing a shared Docker volume.
+    Use collection="shared" to ingest into Brain 1 (shared OEM library).
     """
-    store = _require_store()
+    store = _require_shared_store() if collection == "shared" else _require_tenant_store()
     embedder = _require_embedder()
 
     if not file.filename:
@@ -283,8 +302,13 @@ async def ingest_upload(
 
 @app.post("/rag", response_model=RAGResponse)
 async def rag(req: RAGRequest) -> RAGResponse:
-    """Run the RAG pipeline and return an AI-generated answer with citations."""
-    store = _require_store()
+    """Run the dual-brain RAG pipeline and return an AI-generated answer.
+
+    Queries Brain 2 (tenant docs) and Brain 1 (shared OEM library),
+    merges results by cosine distance, and returns the top-5 to the LLM.
+    """
+    tenant_store = _require_tenant_store()
+    shared_store = _require_shared_store()
     llm = _require_llm()
     embedder = _require_embedder()
 
@@ -298,7 +322,8 @@ async def rag(req: RAGRequest) -> RAGResponse:
         query=req.query,
         asset_id=req.asset_id,
         tag_snapshot=req.tag_snapshot,
-        store=store,
+        store=tenant_store,
+        shared_store=shared_store,
         llm=llm,
         embedder=embedder,
     )

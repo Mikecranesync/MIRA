@@ -17,6 +17,7 @@ services:
       - ENABLE_SIGNUP=true
       - ENABLE_API_KEYS=true
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      - WEBUI_NAME=MIRA
       - WEBUI_ENABLE_TELEMETRY=false
       - WEBUI_CHECK_FOR_UPDATES=false
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
