@@ -8,6 +8,8 @@ services:
     depends_on:
       mira-sidecar:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3010:8080"
     environment:
@@ -17,7 +19,7 @@ services:
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
       - WEBUI_ENABLE_TELEMETRY=false
       - WEBUI_CHECK_FOR_UPDATES=false
-      - OLLAMA_BASE_URL=http://172.17.0.1:11434
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
     volumes:
       - mira-webui-data:/app/backend/data
     networks:
@@ -33,13 +35,14 @@ services:
   mira-sidecar:
     build: ./mira-sidecar
     container_name: mira-sidecar
-    # No host port — only reachable via mira-net (containers). Never expose 0.0.0.0.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - LLM_PROVIDER=anthropic
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - LLM_MODEL_ANTHROPIC=claude-sonnet-4-6
       - EMBEDDING_PROVIDER=ollama
-      - OLLAMA_BASE_URL=http://172.17.0.1:11434
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - OLLAMA_EMBED_MODEL=nomic-embed-text
       - HOST=0.0.0.0
       - PORT=5000
@@ -61,6 +64,8 @@ services:
   mira-ingest:
     build: ./mira-core/mira-ingest
     container_name: mira-ingest-saas
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8002:8001"
     environment:
@@ -69,7 +74,7 @@ services:
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY}
       - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID}
-      - OLLAMA_BASE_URL=http://172.17.0.1:11434
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - EMBED_TEXT_MODEL=nomic-embed-text
     networks:
       - mira-net
