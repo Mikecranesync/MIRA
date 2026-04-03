@@ -12,7 +12,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /usr/local/bin/uv
 
 # Copy dependency files first (layer caching)
 COPY pyproject.toml ./
-RUN uv sync --frozen --no-dev 2>/dev/null || uv sync --no-dev
+RUN uv lock --no-cache && uv sync --frozen --no-dev
 
 # Copy application code
 COPY app.py config.py ./

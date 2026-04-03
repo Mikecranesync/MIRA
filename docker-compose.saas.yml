@@ -33,8 +33,7 @@ services:
   mira-sidecar:
     build: ./mira-sidecar
     container_name: mira-sidecar
-    ports:
-      - "5000:5000"
+    # No host port — only reachable via mira-net (containers). Never expose 0.0.0.0.
     environment:
       - LLM_PROVIDER=anthropic
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
