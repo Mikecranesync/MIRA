@@ -1,12 +1,14 @@
 """MIRA RAG Sidecar — FastAPI application entry point.
 
 Endpoints:
-  GET  /status    — health + provider info
-  POST /ingest    — parse document, embed, store in ChromaDB
-  POST /rag       — RAG query pipeline
-  POST /build_fsm — build FSM model from state history
+  GET  /status         — health + provider info
+  POST /ingest         — parse document, embed, store in ChromaDB
+  POST /ingest/upload  — multipart file upload + ingest pipeline
+  POST /rag            — RAG query pipeline
+  POST /build_fsm      — build FSM model from state history
 
-Binds to 127.0.0.1 only. Never expose to 0.0.0.0.
+SaaS: reachable via Docker network (mira-net). Not exposed on host ports.
+On-prem: bind to 127.0.0.1 via HOST env var for loopback-only access.
 """
 
 from __future__ import annotations
