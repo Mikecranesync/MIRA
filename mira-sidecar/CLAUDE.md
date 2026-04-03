@@ -1,8 +1,10 @@
-# mira-sidecar — RAG + FSM Sidecar
+# mira-sidecar — RAG + FSM Sidecar (v0.2.0)
 
 CPython 3.12 FastAPI application that provides document-grounded question answering
-and finite-state machine learning for MIRA. Runs locally alongside the main MIRA
-stack; never exposed to the public internet.
+and finite-state machine learning for MIRA.
+
+**SaaS:** Runs on Docker network (mira-net), not exposed on host ports.
+**On-prem:** Bind to 127.0.0.1 via `HOST` env var.
 
 ---
 
@@ -20,12 +22,13 @@ uv run uvicorn app:app --host 127.0.0.1 --port 5000
 
 ## Endpoints
 
-| Method | Path         | Purpose                                          |
-|--------|--------------|--------------------------------------------------|
-| GET    | `/status`    | Health check; returns doc count and provider info |
-| POST   | `/ingest`    | Parse document → chunk → embed → store in Chroma |
-| POST   | `/rag`       | RAG query: embed → retrieve → LLM answer         |
-| POST   | `/build_fsm` | Build FSM model from state history               |
+| Method | Path              | Purpose                                          |
+|--------|-------------------|--------------------------------------------------|
+| GET    | `/status`         | Health check; returns doc counts and provider info |
+| POST   | `/ingest`         | Parse document → chunk → embed → store in Chroma |
+| POST   | `/ingest/upload`  | Multipart file upload + ingest pipeline           |
+| POST   | `/rag`            | Dual-brain RAG query: Brain 2 + Brain 1 → LLM    |
+| POST   | `/build_fsm`      | Build FSM model from state history               |
 
 ### POST /ingest
 
@@ -33,11 +36,19 @@ uv run uvicorn app:app --host 127.0.0.1 --port 5000
 {
   "filename": "VFD_GS20_Manual.pdf",
   "asset_id": "vfd-001",
-  "path": "/abs/path/to/VFD_GS20_Manual.pdf"
+  "path": "/abs/path/to/VFD_GS20_Manual.pdf",
+  "collection": "tenant"
 }
 ```
 
+`collection`: `"tenant"` (default) → Brain 2 per-tenant, `"shared"` → Brain 1 shared OEM.
 Returns `{"status": "ok", "chunks_added": N}`.
+
+### POST /ingest/upload
+
+Multipart form: `file` (binary) + `asset_id` (string) + `collection` (string, default `"tenant"`).
+Saves file to `DOCS_BASE_PATH/{asset_id}/`, then runs chunk → embed → store pipeline.
+Returns same `IngestResponse`.
 
 ### POST /rag
 
@@ -86,6 +97,39 @@ has no embedding API. The factory enforces this automatically.
 **PII sanitization** is applied inside `AnthropicProvider.complete()` before every
 outbound API call. IPv4 addresses, MAC addresses, and serial numbers are replaced
 with `[IP]`, `[MAC]`, `[SN]`. This matches the pattern in `mira-bots/shared/inference/router.py`.
+
+---
+
+## Two-Brain Architecture (PRD v2)
+
+The sidecar maintains two ChromaDB collections:
+
+| Collection   | Name          | Purpose                                   |
+|-------------|---------------|-------------------------------------------|
+| **Brain 1** | `shared_oem`  | Shared OEM manuals — available to ALL users |
+| **Brain 2** | `mira_docs`   | Per-tenant private docs — filtered by `asset_id` |
+
+**Query-time merge:** Brain 2 (n=5) + Brain 1 (n=5) → deduplicate by
+`(source_file, page, chunk_index)` → re-rank by cosine distance → top 5.
+Brain 2 is NOT artificially boosted — wins by relevance only.
+
+**Source labeling:** Each hit carries `_brain` = `"Your docs"` or `"Mira library"`.
+Citations in LLM output use `[Your docs: filename — page N]` vs
+`[Mira library: filename — page N]`.
+
+**Ingestion routing:** Use `collection="shared"` on `/ingest` or `/ingest/upload`
+to target Brain 1. Default `"tenant"` targets Brain 2.
+
+---
+
+## Safety Guardrails (`safety.py`)
+
+`detect_safety(query)` checks for 30 trigger phrases (arc flash, LOTO,
+confined space, etc.) BEFORE the query reaches the LLM. If triggered:
+1. System prompt gets a safety preamble
+2. `SAFETY_BANNER` is prepended to the response
+
+Keywords are phrase-level (not single words) to reduce false positives.
 
 ---
 

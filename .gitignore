@@ -94,8 +94,9 @@ Pics/
 # Paperclip runtime artifacts (secrets, local DB)
 paperclip/.env.paperclip
 
-# uv lock file (generated, not committed)
+# uv lock file (generated, not committed — except for Docker-built services)
 uv.lock
+!mira-sidecar/uv.lock
 
 # ML model weights (downloaded at runtime, never committed)
 yolov8n.pt
