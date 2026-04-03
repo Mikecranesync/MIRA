@@ -147,10 +147,12 @@ The builder is pure Python with no external dependencies beyond stdlib statistic
 
 | Port | Binding       | Purpose          |
 |------|---------------|------------------|
-| 5000 | 127.0.0.1     | FastAPI HTTP      |
+| 5000 | configurable  | FastAPI HTTP      |
 
-Never bind to 0.0.0.0. The sidecar is local-only and communicates with the
-MIRA stack via loopback.
+**SaaS (Docker):** Binds 0.0.0.0 inside the container; not exposed on host ports.
+Reachable only via the Docker network (mira-net).
+
+**On-prem (Ignition):** Set `HOST=127.0.0.1` for loopback-only access.
 
 ---
 
