@@ -15,7 +15,7 @@ COPY pyproject.toml ./
 RUN uv lock --no-cache && uv sync --frozen --no-dev
 
 # Copy application code
-COPY app.py config.py ./
+COPY app.py config.py safety.py ./
 COPY llm/ llm/
 COPY rag/ rag/
 COPY fsm/ fsm/
