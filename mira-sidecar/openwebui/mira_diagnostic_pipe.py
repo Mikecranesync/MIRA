@@ -209,29 +209,16 @@ class Pipe:
         asset_id: str,
         content: str,
     ) -> None:
-        """Ingest pre-parsed text content via the sidecar's /ingest endpoint.
+        """Ingest pre-parsed text content via the sidecar's /ingest/upload endpoint.
 
         Used when Open WebUI has already extracted the document text.
+        Sends it as a .txt file upload to the sidecar (avoids cross-container
+        filesystem path issues with /ingest).
         """
-        # Write content to a temp file so the sidecar can chunk it
-        import tempfile
-
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(content)
-            tmp_path = f.name
-
-        try:
-            async with httpx.AsyncClient(timeout=self.valves.REQUEST_TIMEOUT) as client:
-                resp = await client.post(
-                    f"{self.valves.SIDECAR_URL}/ingest",
-                    json={
-                        "filename": filename,
-                        "asset_id": asset_id,
-                        "path": tmp_path,
-                    },
-                )
-                resp.raise_for_status()
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
+        async with httpx.AsyncClient(timeout=self.valves.REQUEST_TIMEOUT) as client:
+            resp = await client.post(
+                f"{self.valves.SIDECAR_URL}/ingest/upload",
+                files={"file": (filename, content.encode("utf-8"))},
+                data={"asset_id": asset_id},
+            )
+            resp.raise_for_status()
