@@ -39,7 +39,14 @@ class Pipe:
         body: dict,
         __user__: dict | None = None,
         __event_emitter__: Any = None,
-    ) -> str | AsyncGenerator[str, None]:
+        __task__: str | None = None,
+        __files__: list[dict] | None = None,
+    ) -> str | dict | AsyncGenerator[str, None]:
+        # Pass through internal Open WebUI tasks (title/tag/emoji generation)
+        # so they don't hit the sidecar RAG pipeline.
+        if __task__:
+            return body
+
         user_id = __user__["id"] if __user__ else "anonymous"
         asset_id = f"tenant_{user_id}"
         messages = body.get("messages", [])
@@ -49,7 +56,7 @@ class Pipe:
 
         # -- Handle file attachments (ingest into sidecar) --------------------
         last_msg = messages[-1]
-        files = last_msg.get("files", [])
+        files = last_msg.get("files", []) or __files__ or []
         if files and __event_emitter__:
             await self._ingest_files(files, asset_id, __event_emitter__)
 
