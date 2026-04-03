@@ -5,6 +5,9 @@ services:
   mira-core:
     image: ghcr.io/open-webui/open-webui:v0.8.10
     container_name: mira-core-saas
+    depends_on:
+      mira-sidecar:
+        condition: service_healthy
     ports:
       - "3010:8080"
     environment:

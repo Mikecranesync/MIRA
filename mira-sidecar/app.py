@@ -14,10 +14,11 @@ from __future__ import annotations
 import logging
 import logging.config
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from config import settings
@@ -217,6 +218,62 @@ async def ingest(req: IngestRequest) -> IngestResponse:
         "ingest complete: asset_id=%s filename=%s chunks_added=%d",
         req.asset_id,
         req.filename,
+        len(chunks),
+    )
+    return IngestResponse(status="ok", chunks_added=len(chunks))
+
+
+@app.post("/ingest/upload", response_model=IngestResponse)
+async def ingest_upload(
+    file: UploadFile,
+    asset_id: str = Form(...),
+) -> IngestResponse:
+    """Accept a multipart file upload, save it, and run the ingest pipeline.
+
+    This endpoint lets callers (e.g. an Open WebUI Pipe Function) stream a
+    file directly without needing a shared Docker volume.
+    """
+    store = _require_store()
+    embedder = _require_embedder()
+
+    if not file.filename:
+        raise HTTPException(status_code=422, detail="Uploaded file has no filename")
+
+    # Save to DOCS_BASE_PATH/{asset_id}/{filename}
+    dest_dir = Path(settings.docs_base_path) / asset_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / file.filename
+
+    content = await file.read()
+    dest_path.write_bytes(content)
+
+    logger.info(
+        "ingest/upload: asset_id=%s filename=%s size=%d path=%s",
+        asset_id,
+        file.filename,
+        len(content),
+        dest_path,
+    )
+
+    # Chunk, embed, store — same pipeline as /ingest
+    chunks = chunk_document(str(dest_path))
+    if not chunks:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No text could be extracted from '{file.filename}'",
+        )
+
+    texts = [c.text for c in chunks]
+    embeddings = await embed_texts(texts, embedder)
+    if not embeddings:
+        raise HTTPException(status_code=502, detail="Embedding provider returned no vectors")
+
+    store.add(chunks=chunks, embeddings=embeddings, asset_id=asset_id)
+
+    logger.info(
+        "ingest/upload complete: asset_id=%s filename=%s chunks_added=%d",
+        asset_id,
+        file.filename,
         len(chunks),
     )
     return IngestResponse(status="ok", chunks_added=len(chunks))
