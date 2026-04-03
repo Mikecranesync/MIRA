@@ -96,12 +96,12 @@ def _merge_hits(
     merged: list[dict] = []
 
     for hit in tenant_hits:
-        key = (hit.get("source_file", ""), hit.get("page", ""))
+        key = (hit.get("source_file", ""), hit.get("page", ""), hit.get("chunk_index", 0))
         seen.add(key)
         merged.append(hit)
 
     for hit in shared_hits:
-        key = (hit.get("source_file", ""), hit.get("page", ""))
+        key = (hit.get("source_file", ""), hit.get("page", ""), hit.get("chunk_index", 0))
         if key not in seen:
             seen.add(key)
             merged.append(hit)

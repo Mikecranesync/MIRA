@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):  # noqa: ANN001
     global _store_tenant, _store_shared, _llm, _embedder  # noqa: PLW0603
 
     logger.info(
-        "mira-sidecar v0.1.0 starting — llm_provider=%s embedding_provider=%s",
+        "mira-sidecar v0.2.0 starting — llm_provider=%s embedding_provider=%s",
         settings.llm_provider,
         settings.embedding_provider,
     )
@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):  # noqa: ANN001
 
 app = FastAPI(
     title="MIRA RAG Sidecar",
-    version="0.1.0",
+    version="0.2.0",
     description="RAG + FSM sidecar for MIRA industrial maintenance AI",
     lifespan=lifespan,
 )
@@ -356,7 +356,7 @@ async def build_fsm_endpoint(req: BuildFSMRequest) -> FSMModel:
 if __name__ == "__main__":
     uvicorn.run(
         "app:app",
-        host=settings.host,  # always 127.0.0.1 per security policy
+        host=settings.host,  # 0.0.0.0 in Docker, 127.0.0.1 for on-prem
         port=settings.port,
         reload=False,
         log_level="info",
