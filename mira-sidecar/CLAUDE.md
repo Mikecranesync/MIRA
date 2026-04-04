@@ -178,7 +178,10 @@ See `.env.example` for all available variables.
 |-----------|------------|-----------------|----------------------------|
 | ChromaDB  | chromadb   | `./chroma_data` | Vector store for doc chunks |
 
-ChromaDB is persistent (`PersistentClient`). Collection name: `mira_docs`.
+ChromaDB is persistent (`PersistentClient`). Two collections:
+- `mira_docs` — Brain 2 (per-tenant private docs, filtered by `asset_id`)
+- `shared_oem` — Brain 1 (shared OEM library, no asset filter)
+
 Each chunk is stored with metadata: `source_file`, `page`, `asset_id`,
 `chunk_index`, `ingested_at`.
 
@@ -286,3 +289,10 @@ The PII sanitizer only runs inside `AnthropicProvider`. If you use the
 openai or ollama provider, PII (IP addresses, serial numbers, MAC addresses)
 is NOT automatically stripped before sending. Add sanitization at the call
 site if needed.
+
+**PII on Tier 1 via /route**
+When `/route` selects Tier 1 (local Ollama), queries go through
+`OllamaProvider.complete()` which has NO PII sanitization. This is acceptable
+for local-only deployment (data never leaves the machine), but if Tier 1 logs
+are ever shipped to a cloud log aggregator, PII will leak. Add sanitization
+to `OllamaProvider` before enabling remote log shipping.
