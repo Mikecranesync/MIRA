@@ -28,6 +28,7 @@ uv run uvicorn app:app --host 127.0.0.1 --port 5000
 | POST   | `/ingest`         | Parse document → chunk → embed → store in Chroma |
 | POST   | `/ingest/upload`  | Multipart file upload + ingest pipeline           |
 | POST   | `/rag`            | Dual-brain RAG query: Brain 2 + Brain 1 → LLM    |
+| POST   | `/route`          | Tier-routed RAG query (Path B, feature-flagged)   |
 | POST   | `/build_fsm`      | Build FSM model from state history               |
 
 ### POST /ingest
@@ -76,6 +77,29 @@ Returns `{"answer": "...", "sources": [{"file": "...", "page": "3", "excerpt": "
 ```
 
 Returns a full `FSMModel` JSON object.
+
+### POST /route (Path B — feature-flagged)
+
+Requires `TIER_ROUTING_ENABLED=true` and `TIER1_OLLAMA_URL` set. Returns 503 if disabled.
+
+```json
+{
+  "query": "fault code OC on GS20 VFD",
+  "asset_id": "vfd-001",
+  "user_id": "tech-mike",
+  "force_tier": null,
+  "tag_snapshot": {}
+}
+```
+
+Same RAG pipeline as `/rag`, but the tier router selects which LLM provider
+handles the generation step:
+- **Tier 1** (local Ollama on Charlie): simple queries when Charlie is reachable
+- **Tier 3** (Claude API): complex queries, or fallback when Charlie is down
+
+Returns `{"answer": "...", "sources": [...], "tier_used": "tier1", "latency_ms": 1500, "model": "gemma4:e4b", "query": "..."}`.
+
+Use `force_tier` to override routing for testing (e.g., `"tier1"`, `"tier3"`).
 
 ---
 
@@ -213,6 +237,21 @@ Reachable only via the Docker network (mira-net).
 | `DOCS_BASE_PATH`     | `./docs`                  | Document source directory            |
 | `PORT`               | `5000`                    | FastAPI listen port                  |
 | `PROPERTIES_FILE`    | (empty)                   | Optional customer .properties path   |
+
+### Path B Tier Routing Env Vars (feature-flagged, all optional)
+
+| Variable                 | Default           | Purpose                                      |
+|--------------------------|-------------------|----------------------------------------------|
+| `TIER_ROUTING_ENABLED`   | `false`           | Enable tier routing on `/route` endpoint      |
+| `TIER1_OLLAMA_URL`       | (empty)           | Charlie Ollama URL (empty = Tier 1 disabled)  |
+| `TIER1_MODEL`            | `gemma4:e4b`      | Local inference model                         |
+| `TIER1_TIMEOUT`          | `15`              | Max seconds for Tier 1 inference              |
+| `TIER1_MAX_QUERY_WORDS`  | `40`              | Queries above this → COMPLEX → Tier 3         |
+| `TIER2_GPU_URL`          | (empty)           | Cloud GPU URL (empty = Tier 2 disabled)       |
+| `TIER2_MODEL`            | `gemma4:26b`      | Cloud GPU model                               |
+| `TIER2_TIMEOUT`          | `45`              | Max seconds for Tier 2 inference              |
+| `TIER2_API_KEY`          | (empty)           | Cloud GPU API key                             |
+| `HEALTH_PROBE_INTERVAL`  | `30`              | Seconds between Tier 1 health checks          |
 
 ---
 
