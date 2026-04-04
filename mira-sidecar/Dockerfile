@@ -19,6 +19,7 @@ COPY app.py config.py safety.py ./
 COPY llm/ llm/
 COPY rag/ rag/
 COPY fsm/ fsm/
+COPY routing/ routing/
 
 # Runtime directories (mounted as volumes in production)
 RUN mkdir -p /data/chroma /data/docs

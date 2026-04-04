@@ -1,0 +1,53 @@
+# MIRA Path B — Local-first inference on Charlie (100.70.49.126)
+# Deploy on Charlie: docker compose -f docker-compose.pathb.yml up -d --build
+#
+# Path A (SaaS) runs on VPS (factorylm-prod). Path B runs here on Charlie.
+# Ollama must be running on the host (brew services start ollama).
+# No Open WebUI, no bots — just the sidecar for RAG + tier routing.
+#
+# NOTE: ChromaDB on Charlie is independent of VPS ChromaDB.
+# Documents must be ingested separately on each instance.
+# Sync between VPS and Charlie is not yet implemented (deferred).
+
+services:
+  mira-sidecar:
+    build: ./mira-sidecar
+    container_name: mira-sidecar-pathb
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # LLM: Gemma 4 E4B via host Ollama
+      - LLM_PROVIDER=ollama
+      - LLM_MODEL_OLLAMA=gemma4:e4b
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # Embedding: nomic-embed-text via host Ollama (same as Path A)
+      - EMBEDDING_PROVIDER=ollama
+      - OLLAMA_EMBED_MODEL=nomic-embed-text
+      # Tier routing: enabled, this instance IS Tier 1
+      - TIER_ROUTING_ENABLED=true
+      - TIER1_OLLAMA_URL=http://host.docker.internal:11434
+      - TIER1_MODEL=gemma4:e4b
+      # Claude fallback (Tier 3) — set via Doppler or env
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - LLM_MODEL_ANTHROPIC=claude-sonnet-4-6
+      # Sidecar config
+      - HOST=0.0.0.0
+      - PORT=5000
+      - CHROMA_PATH=/data/chroma
+      - DOCS_BASE_PATH=/data/docs
+    ports:
+      - "5000:5000"
+    volumes:
+      - pathb-chroma:/data/chroma
+      - pathb-docs:/data/docs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/status')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  pathb-chroma:
+  pathb-docs:

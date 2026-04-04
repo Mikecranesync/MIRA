@@ -5,6 +5,7 @@ Endpoints:
   POST /ingest         — parse document, embed, store in ChromaDB
   POST /ingest/upload  — multipart file upload + ingest pipeline
   POST /rag            — RAG query pipeline
+  POST /route          — Path B tier-routed query (feature-flagged)
   POST /build_fsm      — build FSM model from state history
 
 SaaS: reachable via Docker network (mira-net). Not exposed on host ports.
@@ -50,6 +51,8 @@ _store_tenant: MiraVectorStore | None = None  # Brain 2 — per-tenant docs
 _store_shared: MiraVectorStore | None = None  # Brain 1 — shared OEM library
 _llm = None
 _embedder = None
+_tier_router = None  # Path B tier router (None when tier_routing_enabled=False)
+_health_probe = None
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +63,7 @@ _embedder = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ANN001
     """Initialise ChromaDB and LLM/embedding providers on startup."""
-    global _store_tenant, _store_shared, _llm, _embedder  # noqa: PLW0603
+    global _store_tenant, _store_shared, _llm, _embedder, _tier_router, _health_probe  # noqa: PLW0603
 
     logger.info(
         "mira-sidecar v0.2.0 starting — llm_provider=%s embedding_provider=%s",
@@ -81,6 +84,59 @@ async def lifespan(app: FastAPI):  # noqa: ANN001
     # Initialise LLM + embedding providers
     _llm, _embedder = create_providers(settings)
 
+    # Initialise Path B tier routing (feature-flagged)
+    if settings.tier_routing_enabled and settings.tier1_ollama_url:
+        from llm.ollama_provider import OllamaProvider
+        from routing.health_probe import HealthProbe
+        from routing.tier_router import TierRouter
+
+        _health_probe = HealthProbe(
+            ollama_url=settings.tier1_ollama_url,
+            interval=settings.health_probe_interval,
+        )
+        _health_probe.start()
+
+        # Tier 1 provider: Ollama on Charlie (Gemma 4 E4B)
+        tier1_provider = OllamaProvider(
+            base_url=settings.tier1_ollama_url,
+            chat_model=settings.tier1_model,
+            embed_model=settings.ollama_embed_model,
+            timeout=float(settings.tier1_timeout),
+        )
+
+        # Tier 3 provider: reuse the already-initialized _llm if it's Anthropic,
+        # otherwise create an Anthropic provider for fallback
+        tier3_provider = _llm
+        if settings.llm_provider != "anthropic" and settings.anthropic_api_key:
+            from llm.anthropic_provider import AnthropicProvider
+
+            tier3_provider = AnthropicProvider(
+                api_key=settings.anthropic_api_key,
+                model=settings.llm_model_anthropic,
+                ollama_base_url=settings.ollama_base_url,
+                ollama_embed_model=settings.ollama_embed_model,
+            )
+
+        _tier_router = TierRouter(
+            health_probe=_health_probe,
+            tier1_provider=tier1_provider,
+            tier3_provider=tier3_provider,
+            tier1_max_query_words=settings.tier1_max_query_words,
+            tier2_gpu_url=settings.tier2_gpu_url,
+        )
+        logger.info(
+            "TIER_ROUTING enabled — tier1=%s model=%s tier3=%s",
+            settings.tier1_ollama_url,
+            settings.tier1_model,
+            tier3_provider.model_name if tier3_provider else "none",
+        )
+    else:
+        logger.info(
+            "TIER_ROUTING disabled — tier_routing_enabled=%s tier1_url=%s",
+            settings.tier_routing_enabled,
+            settings.tier1_ollama_url or "(empty)",
+        )
+
     logger.info(
         "Startup complete — chroma_path=%s tenant_docs=%d shared_docs=%d",
         settings.chroma_path,
@@ -90,6 +146,8 @@ async def lifespan(app: FastAPI):  # noqa: ANN001
 
     yield
 
+    if _health_probe:
+        _health_probe.stop()
     logger.info("mira-sidecar shutting down")
 
 
@@ -139,6 +197,24 @@ class BuildFSMRequest(BaseModel):
     tag_history: list[StateVector]
 
 
+class RouteRequest(BaseModel):
+    query: str
+    asset_id: str = ""
+    user_id: str = ""
+    facility_id: str = "default"
+    force_tier: str | None = None  # Override for testing: "tier1", "tier2", "tier3"
+    tag_snapshot: dict[str, Any] = {}
+
+
+class RouteResponse(BaseModel):
+    answer: str
+    sources: list[dict[str, Any]]
+    tier_used: str
+    latency_ms: int
+    model: str
+    query: str
+
+
 class StatusResponse(BaseModel):
     status: str
     version: str
@@ -146,6 +222,8 @@ class StatusResponse(BaseModel):
     shared_doc_count: int
     llm_provider: str
     embedding_provider: str
+    tier_routing: bool = False
+    tier1_available: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +274,8 @@ async def status() -> StatusResponse:
         shared_doc_count=shared_store.doc_count(),
         llm_provider=f"{settings.llm_provider}:{llm.model_name}",
         embedding_provider=f"{settings.embedding_provider}:{embedder.model_name}",
+        tier_routing=_tier_router is not None,
+        tier1_available=_health_probe.available if _health_probe else False,
     )
 
 
@@ -329,6 +409,64 @@ async def rag(req: RAGRequest) -> RAGResponse:
     )
 
     return RAGResponse(answer=result["answer"], sources=result["sources"])
+
+
+@app.post("/route", response_model=RouteResponse)
+async def route(req: RouteRequest) -> RouteResponse:
+    """Tier-routed RAG query — selects LLM provider based on query complexity.
+
+    Same RAG pipeline as /rag, but the tier router picks which LLM
+    (local Ollama vs Claude) handles the generation step.
+    Requires tier_routing_enabled=True in config. Returns 503 if disabled.
+    Use force_tier to override routing for testing (e.g. "tier1", "tier3").
+    """
+    import time
+
+    if _tier_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Tier routing is disabled (set TIER_ROUTING_ENABLED=true and TIER1_OLLAMA_URL)",
+        )
+
+    tenant_store = _require_tenant_store()
+    shared_store = _require_shared_store()
+    embedder = _require_embedder()
+
+    logger.info(
+        "route: query='%s' user_id=%s force_tier=%s",
+        req.query[:120],
+        req.user_id,
+        req.force_tier,
+    )
+
+    # Select tier and provider
+    selection = _tier_router.select(query=req.query, force_tier=req.force_tier)
+    t0 = time.monotonic()
+
+    # Run the same RAG pipeline as /rag, but with the tier-selected LLM
+    result = await rag_query(
+        query=req.query,
+        asset_id=req.asset_id,
+        tag_snapshot=req.tag_snapshot,
+        store=tenant_store,
+        shared_store=shared_store,
+        llm=selection.llm,
+        embedder=embedder,
+    )
+
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+    # Log the routing decision
+    _tier_router.log_route(req.query, selection, elapsed_ms)
+
+    return RouteResponse(
+        answer=result["answer"],
+        sources=result["sources"],
+        tier_used=selection.tier.value,
+        latency_ms=elapsed_ms,
+        model=selection.model_name,
+        query=req.query,
+    )
 
 
 @app.post("/build_fsm", response_model=FSMModel)
