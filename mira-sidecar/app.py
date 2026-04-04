@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import logging.config
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
@@ -203,7 +204,7 @@ class RouteRequest(BaseModel):
     asset_id: str = ""
     user_id: str = ""
     facility_id: str = "default"
-    force_tier: Literal["tier1", "tier2", "tier3"] | None = None
+    force_tier: Literal["tier1", "tier3"] | None = None
     tag_snapshot: dict[str, Any] = {}
 
 
@@ -290,6 +291,12 @@ async def ingest(req: IngestRequest) -> IngestResponse:
     store = _require_shared_store() if req.collection == "shared" else _require_tenant_store()
     embedder = _require_embedder()
 
+    # X2 fix: restrict path to DOCS_BASE_PATH to prevent arbitrary file read
+    real_path = Path(req.path).resolve()
+    allowed_base = Path(settings.docs_base_path).resolve()
+    if not str(real_path).startswith(str(allowed_base)):
+        raise HTTPException(status_code=403, detail="Path must be within DOCS_BASE_PATH")
+
     logger.info(
         "ingest: asset_id=%s filename=%s path=%s",
         req.asset_id,
@@ -341,18 +348,30 @@ async def ingest_upload(
     if not file.filename:
         raise HTTPException(status_code=422, detail="Uploaded file has no filename")
 
-    # Save to DOCS_BASE_PATH/{asset_id}/{filename}
-    dest_dir = Path(settings.docs_base_path) / asset_id
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = dest_dir / file.filename
+    # X1 fix: sanitize asset_id and filename to prevent path traversal
+    safe_asset = re.sub(r"[^a-zA-Z0-9_\-]", "_", asset_id)
+    safe_name = Path(file.filename).name  # strips directory components
+    if not safe_name or ".." in safe_name:
+        raise HTTPException(status_code=422, detail="Invalid filename")
+
+    # X3 fix: reject uploads over 100MB before reading into memory
+    if file.size and file.size > 100 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 100MB)")
 
     content = await file.read()
+    if len(content) > 100 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 100MB)")
+
+    # Save to DOCS_BASE_PATH/{safe_asset}/{safe_name}
+    dest_dir = Path(settings.docs_base_path) / safe_asset
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / safe_name
     dest_path.write_bytes(content)
 
     logger.info(
         "ingest/upload: asset_id=%s filename=%s size=%d path=%s",
-        asset_id,
-        file.filename,
+        safe_asset,
+        safe_name,
         len(content),
         dest_path,
     )
@@ -370,12 +389,12 @@ async def ingest_upload(
     if not embeddings:
         raise HTTPException(status_code=502, detail="Embedding provider returned no vectors")
 
-    store.add(chunks=chunks, embeddings=embeddings, asset_id=asset_id)
+    store.add(chunks=chunks, embeddings=embeddings, asset_id=safe_asset)
 
     logger.info(
         "ingest/upload complete: asset_id=%s filename=%s chunks_added=%d",
-        asset_id,
-        file.filename,
+        safe_asset,
+        safe_name,
         len(chunks),
     )
     return IngestResponse(status="ok", chunks_added=len(chunks))
@@ -455,10 +474,42 @@ async def route(req: RouteRequest) -> RouteResponse:
         embedder=embedder,
     )
 
+    # H2 fix: if Tier 1 returned empty/canned error, fallback to Tier 3
+    from routing.tier_router import Tier, TierSelection
+
+    answer = result.get("answer", "")
+    tier1_failed = selection.tier == Tier.TIER1 and (
+        not answer or answer.startswith("Unable to generate")
+    )
+    if tier1_failed and _tier_router._tier3:
+        logger.warning("TIER1_FALLBACK: empty response from tier1, retrying with tier3")
+        fallback_llm = _tier_router._tier3
+        result = await rag_query(
+            query=req.query,
+            asset_id=req.asset_id,
+            tag_snapshot=req.tag_snapshot,
+            store=tenant_store,
+            shared_store=shared_store,
+            llm=fallback_llm,
+            embedder=embedder,
+        )
+        selection = TierSelection(
+            tier=Tier.TIER3,
+            complexity=selection.complexity,
+            llm=fallback_llm,
+            model_name=fallback_llm.model_name,
+        )
+
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
     # Log the routing decision
-    _tier_router.log_route(req.query, selection, elapsed_ms)
+    _tier_router.log_route(
+        req.query,
+        selection,
+        elapsed_ms,
+        fallback=tier1_failed,
+        fallback_reason="tier1_empty" if tier1_failed else "",
+    )
 
     return RouteResponse(
         answer=result["answer"],

@@ -85,11 +85,9 @@ def _merge_hits(
     Re-ranking: sort all remaining hits by cosine distance (ascending).
     Brain 2 results are NOT artificially boosted — they win by relevance only.
     """
-    # Tag each hit with its source brain
-    for hit in tenant_hits:
-        hit["_brain"] = _LABEL_FACILITY
-    for hit in shared_hits:
-        hit["_brain"] = _LABEL_SHARED
+    # Tag each hit with its source brain (shallow-copy to avoid mutating caller's data)
+    tenant_hits = [{**h, "_brain": _LABEL_FACILITY} for h in tenant_hits]
+    shared_hits = [{**h, "_brain": _LABEL_SHARED} for h in shared_hits]
 
     # Deduplicate: facility copy wins over shared copy
     seen: set[tuple[str, str]] = set()
