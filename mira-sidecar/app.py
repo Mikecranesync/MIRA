@@ -97,11 +97,12 @@ async def lifespan(app: FastAPI):  # noqa: ANN001
         _health_probe.start()
 
         # Tier 1 provider: Ollama on Charlie (Gemma 4 E4B)
+        # Use default 120s timeout — Gemma 4 E4B inference takes 30-90s for
+        # full responses. tier1_timeout (15s) is for the health probe, not inference.
         tier1_provider = OllamaProvider(
             base_url=settings.tier1_ollama_url,
             chat_model=settings.tier1_model,
             embed_model=settings.ollama_embed_model,
-            timeout=float(settings.tier1_timeout),
         )
 
         # Tier 3 provider: reuse the already-initialized _llm if it's Anthropic,
