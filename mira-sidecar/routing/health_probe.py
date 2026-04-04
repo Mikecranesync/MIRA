@@ -25,6 +25,7 @@ class HealthProbe:
         self._available = False
         self._last_check: float = 0
         self._task: asyncio.Task | None = None
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def available(self) -> bool:
@@ -38,13 +39,16 @@ class HealthProbe:
         """Ping Ollama /api/tags and return True if reachable."""
         if not self._url:
             return False
+        client = self._client or httpx.AsyncClient(timeout=self._timeout)
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.get(f"{self._url}/api/tags")
-                resp.raise_for_status()
-                return True
+            resp = await client.get(f"{self._url}/api/tags")
+            resp.raise_for_status()
+            return True
         except Exception:
             return False
+        finally:
+            if not self._client:
+                await client.aclose()
 
     async def _loop(self) -> None:
         """Background loop that checks Ollama availability.
@@ -71,8 +75,9 @@ class HealthProbe:
             await asyncio.sleep(self._interval)
 
     def start(self) -> None:
-        """Start the background probe task."""
+        """Start the background probe task with a reusable HTTP client."""
         if self._task is None or self._task.done():
+            self._client = httpx.AsyncClient(timeout=self._timeout)
             self._task = asyncio.create_task(self._loop())
             logger.info(
                 "HEALTH_PROBE started — url=%s interval=%ds",
@@ -80,8 +85,21 @@ class HealthProbe:
                 self._interval,
             )
 
-    def stop(self) -> None:
-        """Cancel the background probe task."""
+    async def _stop_async(self) -> None:
+        """Cancel the probe task and close the HTTP client."""
         if self._task and not self._task.done():
             self._task.cancel()
-            logger.info("HEALTH_PROBE stopped")
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+        logger.info("HEALTH_PROBE stopped")
+
+    def stop(self) -> None:
+        """Schedule async cleanup from sync context (lifespan teardown)."""
+        if self._task and not self._task.done():
+            self._task.cancel()
+        if self._client:
+            # Schedule client close — safe from lifespan teardown
+            asyncio.get_event_loop().create_task(self._client.aclose())
+            self._client = None
+        logger.info("HEALTH_PROBE stopped")

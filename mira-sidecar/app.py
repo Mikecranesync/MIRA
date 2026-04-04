@@ -18,7 +18,7 @@ import logging
 import logging.config
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import uvicorn
 from fastapi import FastAPI, Form, HTTPException, UploadFile
@@ -202,7 +202,7 @@ class RouteRequest(BaseModel):
     asset_id: str = ""
     user_id: str = ""
     facility_id: str = "default"
-    force_tier: str | None = None  # Override for testing: "tier1", "tier2", "tier3"
+    force_tier: Literal["tier1", "tier2", "tier3"] | None = None
     tag_snapshot: dict[str, Any] = {}
 
 
