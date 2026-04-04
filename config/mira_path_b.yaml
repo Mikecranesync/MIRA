@@ -1,0 +1,42 @@
+# MIRA Path B — Local-first inference configuration
+# Copy to Charlie and set env vars, or use as reference for docker-compose.pathb.yml
+#
+# Path A (SaaS on VPS) is unaffected by these settings.
+# Path B runs on Charlie (100.70.49.126) with Gemma 4 E4B via Ollama.
+
+# --- Inference ---
+local_model: "gemma4:e4b"          # Change to gemma4:e2b for mobile testing
+embedding_model: "nomic-embed-text" # Shared with Path A — no re-ingest needed
+local_ollama_url: "http://100.70.49.126:11434"  # Charlie Tailscale IP
+
+# --- Vector DB ---
+chroma_path: "/data/chroma"
+collection_tenant: "mira_docs"      # Brain 2 — per-tenant private docs
+collection_shared: "shared_oem"     # Brain 1 — shared OEM library
+
+# --- Claude fallback (Tier 3) ---
+# ANTHROPIC_API_KEY must be set via env var or Doppler
+claude_model: "claude-sonnet-4-6"
+
+# --- Cloud GPU (Tier 2, not activated) ---
+cloud_gpu_url: ""                   # Set to RunPod/Cloud Run URL when ready
+cloud_api_key: ""
+cloud_model: "gemma4:26b"
+
+# --- Routing thresholds ---
+tier_routing_enabled: true
+tier1_max_query_words: 40           # Queries > 40 words → COMPLEX → Tier 3
+tier1_timeout_seconds: 15           # Max wait for Gemma 4 E4B response
+tier2_timeout_seconds: 45           # Max wait for cloud GPU response
+health_probe_interval: 30           # Seconds between Ollama health checks
+
+# --- RAG settings ---
+# Inherited from mira-sidecar defaults:
+#   rag_top_k: 5 (per brain, deduped to 5 total)
+#   chunk_size: 512 tokens
+#   chunk_overlap: 64 tokens
+
+# --- Logging ---
+log_level: "INFO"
+# Tier routing logs every decision as:
+#   TIER_ROUTE query_words=N complexity=SIMPLE|COMPLEX tier=tier1|tier3 latency_ms=N model=...
