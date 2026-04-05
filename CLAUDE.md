@@ -27,6 +27,21 @@ MIRA/
 
 See local CLAUDE.md in each module for deep context.
 
+**Flows & architecture maps:** Persistent copies in `~/.claude/projects/.../memory/flows/` — Tailscale network, ingest pipeline, C4 index, fault diagnosis, photo pipeline.
+
+### Knowledge Ingest Route
+
+```
+Apify/Firecrawl/rclone → manual_cache → ingest_manuals.py (2:15am)
+→ Docling/pdfplumber → chunk_blocks() [mira-crawler/ingest/chunker.py]
+→ TOKEN CAP 2000 (Gemma+nomic safe) → Ollama embed (BRAVO:11434)
+→ NeonDB knowledge_entries (25K rows) → 4-stage retrieval
+```
+
+Endpoints: `mira-ingest :8002 POST /ingest/photo` | `mira-mcp :8009 POST /ingest/pdf`
+Key files: `mira-crawler/ingest/chunker.py` | `mira-core/scripts/ingest_manuals.py` | `mira-core/mira-ingest/db/neon.py`
+Full diagram: `~/.claude/projects/.../memory/flows/knowledge-ingest-pipeline.md`
+
 ---
 
 ## Container Map
