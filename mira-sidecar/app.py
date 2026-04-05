@@ -31,6 +31,7 @@ from fsm.models import FSMModel, StateVector
 from llm.factory import create_providers
 from rag.chunker import chunk_document
 from rag.embedder import embed_texts
+from rag.neon_store import NeonStore
 from rag.query import rag_query
 from rag.store import MiraVectorStore
 
@@ -50,6 +51,7 @@ logger = logging.getLogger("mira-sidecar")
 
 _store_tenant: MiraVectorStore | None = None  # Brain 2 — per-tenant docs
 _store_shared: MiraVectorStore | None = None  # Brain 1 — shared OEM library
+_store_neon: NeonStore | None = None          # Brain 3 — NeonDB cloud KB
 _llm = None
 _embedder = None
 _tier_router = None  # Path B tier router (None when tier_routing_enabled=False)
@@ -64,7 +66,7 @@ _health_probe = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ANN001
     """Initialise ChromaDB and LLM/embedding providers on startup."""
-    global _store_tenant, _store_shared, _llm, _embedder, _tier_router, _health_probe  # noqa: PLW0603
+    global _store_tenant, _store_shared, _store_neon, _llm, _embedder, _tier_router, _health_probe  # noqa: PLW0603
 
     logger.info(
         "mira-sidecar v0.2.0 starting — llm_provider=%s embedding_provider=%s",
@@ -81,6 +83,13 @@ async def lifespan(app: FastAPI):  # noqa: ANN001
         chroma_path=settings.chroma_path,
         collection_name="shared_oem",
     )
+
+    # Initialise Brain 3 — NeonDB cloud knowledge base (feature-flagged)
+    if settings.neon_database_url:
+        _store_neon = NeonStore(database_url=settings.neon_database_url)
+        logger.info("NEON_STORE enabled — Brain 3 active")
+    else:
+        logger.info("NEON_STORE disabled — set NEON_DATABASE_URL to enable Brain 3")
 
     # Initialise LLM + embedding providers
     _llm, _embedder = create_providers(settings)
@@ -262,6 +271,12 @@ def _require_embedder():  # noqa: ANN201
 # ---------------------------------------------------------------------------
 
 
+@app.get("/health")
+async def health() -> dict:
+    """Minimal liveness probe."""
+    return {"status": "ok"}
+
+
 @app.get("/status", response_model=StatusResponse)
 async def status() -> StatusResponse:
     """Health check and provider info."""
@@ -424,6 +439,7 @@ async def rag(req: RAGRequest) -> RAGResponse:
         tag_snapshot=req.tag_snapshot,
         store=tenant_store,
         shared_store=shared_store,
+        neon_store=_store_neon,
         llm=llm,
         embedder=embedder,
     )
@@ -470,6 +486,7 @@ async def route(req: RouteRequest) -> RouteResponse:
         tag_snapshot=req.tag_snapshot,
         store=tenant_store,
         shared_store=shared_store,
+        neon_store=_store_neon,
         llm=selection.llm,
         embedder=embedder,
     )
@@ -490,6 +507,7 @@ async def route(req: RouteRequest) -> RouteResponse:
             tag_snapshot=req.tag_snapshot,
             store=tenant_store,
             shared_store=shared_store,
+            neon_store=_store_neon,
             llm=fallback_llm,
             embedder=embedder,
         )

@@ -119,6 +119,9 @@ class Settings(BaseSettings):
     fsm_rare_threshold: float = 0.005
     fsm_min_baseline_cycles: int = 50
 
+    # NeonDB (Brain 3 — cloud knowledge base)
+    neon_database_url: str = ""  # Postgres URL; empty = Brain 3 disabled
+
     # Properties file path (Java-style .properties for customer sites)
     properties_file: str = ""
 

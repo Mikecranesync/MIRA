@@ -30,6 +30,8 @@ services:
       # Claude fallback (Tier 3) — set via Doppler or env
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - LLM_MODEL_ANTHROPIC=claude-sonnet-4-6
+      # Brain 3 — NeonDB cloud knowledge base
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       # Sidecar config
       - HOST=0.0.0.0
       - PORT=5000

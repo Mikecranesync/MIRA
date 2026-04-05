@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 
 from llm.base import EmbedProvider, LLMProvider
+from rag.neon_store import NeonStore
 from rag.store import MiraVectorStore
 from safety import SAFETY_BANNER, detect_safety
 
@@ -76,21 +77,21 @@ def _format_tag_snapshot(tag_snapshot: dict) -> str:
 def _merge_hits(
     tenant_hits: list[dict],
     shared_hits: list[dict],
+    neon_hits: list[dict] | None = None,
     top_n: int = _N_RESULTS,
 ) -> list[dict]:
-    """Merge hits from Brain 2 and Brain 1, deduplicate, re-rank by distance.
+    """Merge hits from Brain 2, Brain 1, and Brain 3 (NeonDB), deduplicate, re-rank.
 
-    Deduplication: if a chunk exists in both (same source_file + page),
-    keep the Brain 2 (facility) copy and drop the Brain 1 duplicate.
+    Priority for deduplication (highest first):
+      Brain 2 (tenant local docs) > Brain 1 (shared OEM local) > Brain 3 (NeonDB)
     Re-ranking: sort all remaining hits by cosine distance (ascending).
-    Brain 2 results are NOT artificially boosted — they win by relevance only.
+    No source is artificially boosted — wins by relevance only.
     """
     # Tag each hit with its source brain (shallow-copy to avoid mutating caller's data)
     tenant_hits = [{**h, "_brain": _LABEL_FACILITY} for h in tenant_hits]
     shared_hits = [{**h, "_brain": _LABEL_SHARED} for h in shared_hits]
 
-    # Deduplicate: facility copy wins over shared copy
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple] = set()
     merged: list[dict] = []
 
     for hit in tenant_hits:
@@ -99,6 +100,13 @@ def _merge_hits(
         merged.append(hit)
 
     for hit in shared_hits:
+        key = (hit.get("source_file", ""), hit.get("page", ""), hit.get("chunk_index", 0))
+        if key not in seen:
+            seen.add(key)
+            merged.append(hit)
+
+    # Brain 3: NeonDB hits already tagged with _brain by NeonStore
+    for hit in (neon_hits or []):
         key = (hit.get("source_file", ""), hit.get("page", ""), hit.get("chunk_index", 0))
         if key not in seen:
             seen.add(key)
@@ -162,8 +170,9 @@ async def rag_query(
     llm: LLMProvider,
     embedder: EmbedProvider,
     shared_store: MiraVectorStore | None = None,
+    neon_store: NeonStore | None = None,
 ) -> dict:
-    """Execute the dual-brain RAG pipeline and return a structured response.
+    """Execute the tri-brain RAG pipeline and return a structured response.
 
     Args:
         query: The maintenance question from the user.
@@ -173,6 +182,7 @@ async def rag_query(
         llm: LLM provider for final answer generation.
         embedder: Embedding provider for query vectorisation.
         shared_store: Brain 1 (shared OEM) MiraVectorStore. If None, skip Brain 1.
+        neon_store: Brain 3 (NeonDB cloud KB). If None, skip NeonDB retrieval.
 
     Returns:
         Dict with keys:
@@ -199,7 +209,7 @@ async def rag_query(
         asset_id=asset_id if asset_id else None,
     )
 
-    # 4. Query Brain 1 (shared OEM library, no asset_id filter)
+    # 4. Query Brain 1 (shared OEM local library, no asset_id filter)
     shared_hits: list[dict] = []
     if shared_store:
         shared_hits = shared_store.query(
@@ -207,21 +217,30 @@ async def rag_query(
             n_results=_N_RESULTS,
         )
 
+    # 5. Query Brain 3 (NeonDB cloud knowledge base)
+    neon_hits: list[dict] = []
+    if neon_store:
+        neon_hits = await neon_store.query(
+            query_embedding=query_embedding,
+            n_results=_N_RESULTS,
+        )
+
     logger.info(
-        "rag_query: tenant_hits=%d shared_hits=%d asset_id=%s query='%s'",
+        "rag_query: tenant_hits=%d shared_hits=%d neon_hits=%d asset_id=%s query='%s'",
         len(tenant_hits),
         len(shared_hits),
+        len(neon_hits),
         asset_id,
         query[:80],
     )
 
-    # 5. Merge, deduplicate, re-rank by distance, keep top 5
-    hits = _merge_hits(tenant_hits, shared_hits, top_n=_N_RESULTS)
+    # 6. Merge, deduplicate, re-rank by distance, keep top 5
+    hits = _merge_hits(tenant_hits, shared_hits, neon_hits=neon_hits, top_n=_N_RESULTS)
 
-    # 6. Build context block with source labels
+    # 7. Build context block with source labels
     context = _build_context(tag_snapshot, hits)
 
-    # 7. Build system prompt — prepend safety context if needed
+    # 8. Build system prompt — prepend safety context if needed
     system_prompt = _SYSTEM_PROMPT
     if is_safety:
         system_prompt = (
@@ -231,23 +250,23 @@ async def rag_query(
             + system_prompt
         )
 
-    # 8. Construct messages for LLM
+    # 9. Construct messages for LLM
     user_content = f"Context:\n{context}\n\nQuestion: {query}"
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content},
     ]
 
-    # 9. Call LLM
+    # 10. Call LLM
     answer = await llm.complete(messages, max_tokens=1200)
     if not answer:
         answer = "Unable to generate a response at this time. Please check LLM provider settings."
 
-    # 10. Prepend safety banner if safety keywords detected
+    # 11. Prepend safety banner if safety keywords detected
     if is_safety:
         answer = SAFETY_BANNER + "\n\n" + answer
 
-    # 11. Build source citations
+    # 12. Build source citations
     sources = _extract_sources(hits)
 
     return {"answer": answer, "sources": sources}
