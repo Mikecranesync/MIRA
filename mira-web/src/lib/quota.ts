@@ -1,8 +1,9 @@
 /**
  * Tenant & quota management — NeonDB operations.
  *
- * Uses @neondatabase/serverless for edge-compatible Postgres access.
- * Tracks tenants, tiers, and daily query usage.
+ * Uses @neondatabase/serverless tagged template syntax:
+ *   const sql = neon(url);
+ *   const rows = await sql`SELECT * FROM t WHERE id = ${id}`;
  */
 
 import { neon } from "@neondatabase/serverless";
@@ -29,25 +30,17 @@ export interface Tenant {
   created_at: string;
 }
 
-/**
- * Find tenant by email. Returns null if not found.
- */
 export async function findTenantByEmail(
   email: string
 ): Promise<Tenant | null> {
   const db = sql();
-  const rows = await db(
-    `SELECT id, email, company, tier, atlas_password,
-            atlas_company_id, atlas_user_id, created_at
-     FROM plg_tenants WHERE email = $1 LIMIT 1`,
-    [email]
-  );
+  const rows = await db`
+    SELECT id, email, company, tier, atlas_password,
+           atlas_company_id, atlas_user_id, created_at
+    FROM plg_tenants WHERE email = ${email} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
 
-/**
- * Create a new PLG tenant row.
- */
 export async function createTenant(tenant: {
   id: string;
   email: string;
@@ -58,50 +51,33 @@ export async function createTenant(tenant: {
   atlasUserId: number;
 }): Promise<void> {
   const db = sql();
-  await db(
-    `INSERT INTO plg_tenants (id, email, company, tier, atlas_password,
-                              atlas_company_id, atlas_user_id, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-    [
-      tenant.id,
-      tenant.email,
-      tenant.company,
-      tenant.tier,
-      tenant.atlasPassword,
-      tenant.atlasCompanyId,
-      tenant.atlasUserId,
-    ]
-  );
+  await db`
+    INSERT INTO plg_tenants (id, email, company, tier, atlas_password,
+                             atlas_company_id, atlas_user_id, created_at)
+    VALUES (${tenant.id}, ${tenant.email}, ${tenant.company}, ${tenant.tier},
+            ${tenant.atlasPassword}, ${tenant.atlasCompanyId},
+            ${tenant.atlasUserId}, NOW())`;
 }
 
-/**
- * Get today's query count for a tenant.
- */
 export async function getQueriesUsedToday(
   tenantId: string
 ): Promise<number> {
   const db = sql();
-  const rows = await db(
-    `SELECT COUNT(*) as count FROM plg_query_log
-     WHERE tenant_id = $1 AND created_at >= CURRENT_DATE`,
-    [tenantId]
-  );
+  const rows = await db`
+    SELECT COUNT(*) as count FROM plg_query_log
+    WHERE tenant_id = ${tenantId} AND created_at >= CURRENT_DATE`;
   return parseInt(String(rows[0]?.count || "0"), 10);
 }
 
-/**
- * Log a query and return remaining queries for today.
- */
 export async function logQuery(
   tenantId: string,
   query: string
 ): Promise<{ used: number; limit: number; remaining: number }> {
   const db = sql();
-  await db(
-    `INSERT INTO plg_query_log (tenant_id, query, created_at)
-     VALUES ($1, $2, NOW())`,
-    [tenantId, query.substring(0, 500)]
-  );
+  const truncated = query.substring(0, 500);
+  await db`
+    INSERT INTO plg_query_log (tenant_id, query, created_at)
+    VALUES (${tenantId}, ${truncated}, NOW())`;
   const used = await getQueriesUsedToday(tenantId);
   return {
     used,
@@ -110,9 +86,6 @@ export async function logQuery(
   };
 }
 
-/**
- * Check if tenant has remaining queries today.
- */
 export async function hasQuotaRemaining(
   tenantId: string
 ): Promise<boolean> {
@@ -120,9 +93,6 @@ export async function hasQuotaRemaining(
   return used < FREE_DAILY_QUERIES;
 }
 
-/**
- * Get full quota status for a tenant.
- */
 export async function getQuota(
   tenantId: string
 ): Promise<{ queriesUsedToday: number; dailyLimit: number; remaining: number }> {
@@ -134,13 +104,9 @@ export async function getQuota(
   };
 }
 
-/**
- * Run schema migration — creates plg_tenants and plg_query_log if missing.
- * Safe to call on every startup (uses IF NOT EXISTS).
- */
 export async function ensureSchema(): Promise<void> {
   const db = sql();
-  await db(`
+  await db`
     CREATE TABLE IF NOT EXISTS plg_tenants (
       id            TEXT PRIMARY KEY,
       email         TEXT UNIQUE NOT NULL,
@@ -150,18 +116,15 @@ export async function ensureSchema(): Promise<void> {
       atlas_company_id INTEGER NOT NULL DEFAULT 0,
       atlas_user_id INTEGER NOT NULL DEFAULT 0,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await db(`
+    )`;
+  await db`
     CREATE TABLE IF NOT EXISTS plg_query_log (
       id         SERIAL PRIMARY KEY,
       tenant_id  TEXT NOT NULL REFERENCES plg_tenants(id),
       query      TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await db(`
+    )`;
+  await db`
     CREATE INDEX IF NOT EXISTS idx_plg_query_log_tenant_date
-    ON plg_query_log (tenant_id, created_at)
-  `);
+    ON plg_query_log (tenant_id, created_at)`;
 }
