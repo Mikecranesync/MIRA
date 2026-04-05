@@ -84,7 +84,7 @@ class MiraVectorStore:
         if existing_count > 0:
             # Peek at an existing vector to compare dimensions
             sample = self._collection.peek(limit=1)
-            if sample["embeddings"] and sample["embeddings"][0]:
+            if sample["embeddings"] is not None and len(sample["embeddings"]) > 0:
                 existing_dim = len(sample["embeddings"][0])
                 if existing_dim != first_dim:
                     logger.error(

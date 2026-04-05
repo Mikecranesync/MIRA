@@ -101,6 +101,18 @@ class Settings(BaseSettings):
     docs_base_path: str = "./docs"
     chroma_path: str = "./chroma_data"
 
+    # Tier routing
+    tier_routing_enabled: bool = False  # Feature flag — off by default
+    tier1_ollama_url: str = ""  # Charlie Tailscale URL (empty = tier 1 disabled)
+    tier1_model: str = "gemma4:e4b"
+    tier1_timeout: int = 15
+    tier1_max_query_words: int = 40
+    tier2_gpu_url: str = ""  # RunPod/Cloud Run URL (empty = tier 2 disabled)
+    tier2_model: str = "gemma4:26b"
+    tier2_timeout: int = 45
+    tier2_api_key: str = ""
+    health_probe_interval: int = 30  # seconds between Ollama health checks
+
     # FSM thresholds
     fsm_n_sigma: float = 2.5
     fsm_stuck_multiplier: float = 3.0

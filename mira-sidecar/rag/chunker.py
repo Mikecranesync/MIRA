@@ -1,27 +1,29 @@
-"""Document parsing and semantic chunking.
+"""Document parsing and chunking — delegates to mira-crawler's chunker.
 
-Supports PDF (pdfplumber), DOCX (python-docx), and plain TXT.
-Token counting uses tiktoken (cl100k_base) so chunk_size is in tokens,
-not characters. Splits prefer sentence boundaries; falls back to
-whitespace when no sentence boundary is found.
+Handles file extraction (PDF, DOCX, TXT) then passes text blocks to
+mira-crawler/ingest/chunker.chunk_blocks for sentence-aware, table-aware
+splitting with token hard cap for EmbeddingGemma / nomic-embed-text.
 """
 
 from __future__ import annotations
 
 import logging
-import re
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import tiktoken
-
 logger = logging.getLogger("mira-sidecar")
 
-# Shared encoder — cl100k_base covers GPT-4 and most modern models
-_ENCODER = tiktoken.get_encoding("cl100k_base")
+# Make mira-crawler importable
+_CRAWLER_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "mira-crawler",
+)
+if _CRAWLER_DIR not in sys.path:
+    sys.path.insert(0, _CRAWLER_DIR)
 
-# Sentence boundary: end of sentence followed by whitespace and a capital letter
-_SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
+from ingest.chunker import chunk_blocks  # noqa: E402
 
 
 @dataclass
@@ -35,72 +37,12 @@ class Chunk:
 
 
 # ---------------------------------------------------------------------------
-# Token helpers
-# ---------------------------------------------------------------------------
-
-
-def _token_count(text: str) -> int:
-    return len(_ENCODER.encode(text))
-
-
-def _split_to_tokens(text: str, chunk_size: int, overlap: int) -> list[str]:
-    """Split text into token-bounded chunks with overlap.
-
-    Tries to break on sentence boundaries first. Falls back to whitespace.
-    """
-    # Attempt sentence-boundary split first
-    sentences = _SENTENCE_END_RE.split(text)
-    # Re-merge sentences into token-bounded windows
-    chunks: list[str] = []
-    current_tokens: list[int] = []
-    current_text = ""
-
-    for sentence in sentences:
-        sentence = sentence.strip()
-        if not sentence:
-            continue
-        s_tokens = _ENCODER.encode(sentence + " ")
-        if len(current_tokens) + len(s_tokens) > chunk_size and current_tokens:
-            # Flush current window
-            chunks.append(current_text.strip())
-            # Retain overlap tokens at the tail for the next chunk
-            if overlap > 0:
-                overlap_tokens = current_tokens[-overlap:]
-                current_text = _ENCODER.decode(overlap_tokens) + " "
-                current_tokens = overlap_tokens[:]
-            else:
-                current_text = ""
-                current_tokens = []
-        current_tokens.extend(s_tokens)
-        current_text += sentence + " "
-
-    if current_text.strip():
-        chunks.append(current_text.strip())
-
-    # Edge case: a single sentence exceeds chunk_size — hard-split by tokens
-    result: list[str] = []
-    for chunk in chunks:
-        tokens = _ENCODER.encode(chunk)
-        if len(tokens) <= chunk_size:
-            result.append(chunk)
-        else:
-            # Hard-split with overlap
-            start = 0
-            while start < len(tokens):
-                end = min(start + chunk_size, len(tokens))
-                result.append(_ENCODER.decode(tokens[start:end]))
-                start += chunk_size - overlap
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Format-specific text extraction
+# File extraction (kept here — crawler chunker only does chunking)
 # ---------------------------------------------------------------------------
 
 
 def _extract_pdf(file_path: Path) -> list[tuple[int, str]]:
-    """Extract (page_number, text) tuples from a PDF using pdfplumber."""
-    import pdfplumber  # deferred import — optional dependency
+    import pdfplumber
 
     pages: list[tuple[int, str]] = []
     try:
@@ -114,9 +56,8 @@ def _extract_pdf(file_path: Path) -> list[tuple[int, str]]:
     return pages
 
 
-def _extract_docx(file_path: Path) -> list[tuple[int, str]]:
-    """Extract (None, text) from a DOCX. DOCX has no page concept."""
-    from docx import Document  # deferred import — optional dependency
+def _extract_docx(file_path: Path) -> list[tuple[int | None, str]]:
+    from docx import Document
 
     paragraphs: list[str] = []
     try:
@@ -127,21 +68,20 @@ def _extract_docx(file_path: Path) -> list[tuple[int, str]]:
     except Exception as exc:
         logger.error("python-docx failed on %s: %s", file_path, exc)
         return []
-    return [(None, "\n".join(paragraphs))]  # type: ignore[list-item]
+    return [(None, "\n".join(paragraphs))]
 
 
-def _extract_txt(file_path: Path) -> list[tuple[int, str]]:
-    """Read plain text file. No page metadata."""
+def _extract_txt(file_path: Path) -> list[tuple[int | None, str]]:
     try:
         text = file_path.read_text(encoding="utf-8", errors="replace")
-        return [(None, text)]  # type: ignore[list-item]
+        return [(None, text)]
     except OSError as exc:
         logger.error("Failed to read %s: %s", file_path, exc)
         return []
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Public API — same interface as before
 # ---------------------------------------------------------------------------
 
 
@@ -150,60 +90,51 @@ def chunk_document(
     chunk_size: int = 512,
     overlap: int = 64,
 ) -> list[Chunk]:
-    """Parse a document and return a list of token-bounded Chunk objects.
+    """Parse a document and return token-bounded Chunk objects.
 
-    Args:
-        file_path: Absolute or relative path to the document.
-        chunk_size: Maximum number of tokens per chunk.
-        overlap: Number of overlap tokens between consecutive chunks.
-
-    Returns:
-        List of Chunk objects, empty on parse failure.
+    Extracts text from the file, then delegates to mira-crawler's
+    chunk_blocks for sentence-aware, table-aware splitting.
     """
     path = Path(file_path)
     suffix = path.suffix.lower()
-    source_name = path.name
 
     if suffix == ".pdf":
         page_texts = _extract_pdf(path)
     elif suffix in (".docx", ".doc"):
         page_texts = _extract_docx(path)
-    elif suffix in (".txt", ".md", ".log", ".csv"):
-        page_texts = _extract_txt(path)
     else:
-        # Attempt plain text fallback for unknown extensions
-        logger.warning("Unknown extension '%s' for %s — attempting plain text", suffix, path.name)
         page_texts = _extract_txt(path)
 
     if not page_texts:
         logger.warning("No text extracted from %s", file_path)
         return []
 
-    chunks: list[Chunk] = []
-    chunk_index = 0
+    # Convert to blocks format expected by chunk_blocks
+    blocks = [
+        {"text": text, "page_num": page, "section": ""}
+        for page, text in page_texts
+        if text.strip()
+    ]
 
-    for page_num, text in page_texts:
-        if not text.strip():
-            continue
-        sub_chunks = _split_to_tokens(text, chunk_size=chunk_size, overlap=overlap)
-        for sub in sub_chunks:
-            if not sub.strip():
-                continue
-            chunks.append(
-                Chunk(
-                    text=sub,
-                    page=page_num,
-                    chunk_index=chunk_index,
-                    source_file=source_name,
-                )
-            )
-            chunk_index += 1
+    # chunk_size is in tokens (~4 chars/token) — convert to chars for chunk_blocks
+    max_chars = chunk_size * 4
+    overlap_chars = overlap * 4
 
-    logger.info(
-        "Chunked %s → %d chunks (chunk_size=%d, overlap=%d)",
-        source_name,
-        len(chunks),
-        chunk_size,
-        overlap,
+    raw_chunks = chunk_blocks(
+        blocks,
+        source_url=path.name,
+        source_file=path.name,
+        max_chars=max_chars,
+        min_chars=80,
+        overlap=overlap_chars,
     )
-    return chunks
+
+    return [
+        Chunk(
+            text=c["text"],
+            page=c.get("page_num"),
+            chunk_index=c["chunk_index"],
+            source_file=path.name,
+        )
+        for c in raw_chunks
+    ]
