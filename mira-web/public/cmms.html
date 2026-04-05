@@ -11,9 +11,6 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="FactoryLM CMMS">
   <link rel="apple-touch-icon" href="/public/icons/icon-192.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 </head>
 <body>
@@ -374,11 +371,12 @@ function renderKanban(wos) {
     counts[status] = (counts[status] || 0) + 1;
 
     const card = document.createElement('div');
-    card.className = 'wo-card';
+    const pri = (wo.priority || 'MEDIUM').toUpperCase();
+    card.className = `wo-card ${pri === 'HIGH' ? 'priority-high' : pri === 'LOW' ? 'priority-low' : ''}`;
     card.innerHTML = `
       <div class="wo-card-title">${wo.title || wo.name || 'Untitled'}</div>
       <div class="wo-card-meta">
-        <span class="badge ${wo.priority === 'HIGH' ? 'badge-high' : 'badge-medium'}">${wo.priority || 'MEDIUM'}</span>
+        <span class="badge ${pri === 'HIGH' ? 'badge-high' : pri === 'LOW' ? 'badge-low' : 'badge-medium'}">${pri}</span>
         ${wo.aiGenerated ? '<span class="badge badge-ai">AI</span>' : ''}
       </div>`;
     document.getElementById(colId).appendChild(card);
