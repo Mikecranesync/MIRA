@@ -17,8 +17,6 @@ import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { signToken, requireAuth, type MiraTokenPayload } from "./lib/auth.js";
 import {
-  signupUser,
-  signinUser,
   createWorkOrder,
   listWorkOrders,
 } from "./lib/atlas.js";
@@ -166,40 +164,27 @@ app.post("/api/register", async (c) => {
     // Check if tenant already exists
     const existing = await findTenantByEmail(email);
     if (existing) {
-      // Sign in to Atlas and re-issue JWT
-      const atlas = await signinUser(email, existing.atlas_password);
       const token = await signToken({
         tenantId: existing.id,
         email,
         tier: existing.tier,
-        atlasCompanyId: atlas.companyId || existing.atlas_company_id,
-        atlasUserId: atlas.userId || existing.atlas_user_id,
+        atlasCompanyId: 0,
+        atlasUserId: 0,
       });
       return c.json({ success: true, token, tenantId: existing.id });
     }
 
-    // Generate a random password for the Atlas user
-    const atlasPassword = crypto.randomUUID().replace(/-/g, "").slice(0, 24);
     const tenantId = crypto.randomUUID();
 
-    // Create Atlas CMMS user
-    const atlas = await signupUser(
-      email,
-      atlasPassword,
-      firstName || email.split("@")[0],
-      lastName || "",
-      company
-    );
-
-    // Create tenant row in NeonDB
+    // Create tenant row in NeonDB (Atlas WO operations use shared admin token)
     await createTenant({
       id: tenantId,
       email,
       company,
       tier: "free",
-      atlasPassword,
-      atlasCompanyId: atlas.companyId,
-      atlasUserId: atlas.userId,
+      atlasPassword: "",
+      atlasCompanyId: 0,
+      atlasUserId: 0,
     });
 
     // Seed demo data (async, don't block response)
@@ -207,13 +192,13 @@ app.post("/api/register", async (c) => {
       console.error("[register] Demo seed failed:", err)
     );
 
-    // Issue JWT (needed for welcome email magic link)
+    // Issue JWT
     const token = await signToken({
       tenantId,
       email,
       tier: "free",
-      atlasCompanyId: atlas.companyId,
-      atlasUserId: atlas.userId,
+      atlasCompanyId: 0,
+      atlasUserId: 0,
     });
 
     // Send welcome email (async, don't block response)
