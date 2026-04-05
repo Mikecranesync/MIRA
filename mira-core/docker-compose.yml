@@ -77,7 +77,7 @@ services:
       - ./data/photos:/data/photos
       - ./mira.db:/app/mira.db
     ports:
-      - "${INGEST_PORT:-8002}:8001"
+      - "127.0.0.1:${INGEST_PORT:-8002}:8001"
     networks:
       - core-net
     depends_on:
