@@ -40,7 +40,7 @@ MIRA_TENANT_ID = os.getenv("MIRA_TENANT_ID")
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 100
 EMBED_TIMEOUT = 30
-MAX_PDF_PAGES = 300
+MAX_PDF_PAGES = 310
 MIN_CHUNK_CHARS = 80
 
 # RULE: Docling is the ONLY PDF extractor for this script. pdfplumber is not used.
