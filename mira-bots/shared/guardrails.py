@@ -6,11 +6,11 @@ Pure Python, zero external dependencies.
 import re
 
 SAFETY_KEYWORDS = [
-    "exposed wire", "energized conductor", "arc flash", "lockout", "tagout",
-    "loto", "smoke", "burn mark", "melted insulation", "electrical fire",
-    "shock hazard", "rotating hazard", "pinch point", "entanglement",
-    "confined space", "pressurized", "caught in", "crush hazard",
-    "fall hazard", "chemical spill", "gas leak",
+    "exposed wire", "energized conductor", "arc flash", "lockout tagout",
+    "lockout/tagout", "loto", "visible smoke", "smoke from", "burn mark",
+    "melted insulation", "electrical fire", "shock hazard", "rotating hazard",
+    "pinch point", "entanglement", "confined space", "pressurized",
+    "caught in", "crush hazard", "fall hazard", "chemical spill", "gas leak",
 ]
 
 INTENT_KEYWORDS = {

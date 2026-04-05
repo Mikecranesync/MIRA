@@ -11,7 +11,9 @@
 
 services:
   mira-sidecar:
-    build: ./mira-sidecar
+    build:
+      context: .
+      dockerfile: mira-sidecar/Dockerfile
     container_name: mira-sidecar-pathb
     extra_hosts:
       - "host.docker.internal:host-gateway"

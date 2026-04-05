@@ -148,7 +148,7 @@ to target Brain 1. Default `"tenant"` targets Brain 2.
 
 ## Safety Guardrails (`safety.py`)
 
-`detect_safety(query)` checks for 29 trigger phrases (arc flash, LOTO,
+`detect_safety(query)` checks for 28 trigger phrases (arc flash, LOTO,
 confined space, etc.) BEFORE the query reaches the LLM. If triggered:
 1. System prompt gets a safety preamble
 2. `SAFETY_BANNER` is prepended to the response
