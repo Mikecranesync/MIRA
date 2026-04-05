@@ -1,0 +1,746 @@
+/* ============================================================
+   MIRA CHAT WIDGET — Design System
+   Fonts: Inter (UI chrome) + IBM Plex Mono (AI output only)
+   Anti-patterns enforced: no gradients, no border-radius >8px
+   on bubbles, no glow shadows, no emoji, no purple/violet
+   ============================================================ */
+
+/* ── Tokens ─────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --mira-bg:        #0a0b0d;
+  --mira-panel:     #0f1114;
+  --mira-msg-area:  #141720;
+  --mira-input-bar: #1b1f2b;
+
+  /* Borders */
+  --mira-border:    rgba(255,255,255,0.07);
+  --mira-border-hi: rgba(255,255,255,0.14);
+
+  /* Text */
+  --mira-text:      #e8eaf0;
+  --mira-muted:     #8a8fa8;
+  --mira-faint:     #4a4f66;
+
+  /* Accents */
+  --mira-amber:     #f0a000;
+  --mira-teal:      #00d4aa;
+  --mira-amber-dim: rgba(240,160,0,0.10);
+  --mira-teal-dim:  rgba(0,212,170,0.08);
+
+  /* Typography */
+  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+  --font-ui:   'Inter', 'Helvetica Neue', sans-serif;
+
+  /* Motion */
+  --ease-out:       cubic-bezier(0.16,1,0.3,1);
+  --dur-fast:       150ms;
+  --dur-mid:        220ms;
+  --dur-slow:       400ms;
+}
+
+/* ── FAB ─────────────────────────────────────────────────── */
+#mira-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--mira-amber);
+  border: none;
+  cursor: pointer;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(240,160,0,0.25);
+  animation: mira-fab-pulse 3s ease-in-out infinite;
+  transition: box-shadow var(--dur-fast) ease, transform var(--dur-fast) ease;
+  -webkit-tap-highlight-color: transparent;
+  font-family: var(--font-ui);
+}
+
+#mira-fab:hover {
+  box-shadow: 0 8px 32px rgba(240,160,0,0.40);
+  transform: translateY(-1px);
+}
+
+#mira-fab:active {
+  transform: translateY(0);
+}
+
+#mira-fab[data-open="true"] {
+  animation: none;
+  box-shadow: 0 4px 16px rgba(240,160,0,0.20);
+}
+
+@keyframes mira-fab-pulse {
+  0%, 100% { box-shadow: 0 8px 24px rgba(240,160,0,0.25); }
+  50%       { box-shadow: 0 8px 36px rgba(240,160,0,0.42); }
+}
+
+#mira-fab svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+/* ── Panel ───────────────────────────────────────────────── */
+#mira-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 440px;
+  background: var(--mira-panel);
+  border-left: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  flex-direction: column;
+  z-index: 9999;
+  transform: translateX(100%);
+  transition: transform var(--dur-mid) var(--ease-out);
+  font-family: var(--font-ui);
+  /* No box-shadow — border does the work (per Linear DNA) */
+}
+
+#mira-panel[data-open="true"] {
+  transform: translateX(0);
+}
+
+/* ── Panel Header ────────────────────────────────────────── */
+#mira-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--mira-border);
+  flex-shrink: 0;
+}
+
+.mira-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mira-logo-mark {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+#mira-panel-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: var(--mira-text);
+  text-transform: uppercase;
+}
+
+.mira-conn-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+}
+
+.mira-conn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mira-teal);
+  animation: mira-dot-pulse 2s ease-in-out infinite;
+}
+
+.mira-conn-dot[data-state="connecting"] {
+  background: var(--mira-amber);
+}
+
+.mira-conn-dot[data-state="error"] {
+  background: #f05050;
+  animation: none;
+}
+
+@keyframes mira-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+.mira-conn-text {
+  font-size: 11px;
+  color: var(--mira-muted);
+  font-family: var(--font-mono);
+}
+
+.mira-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mira-header-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--mira-muted);
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+  font-family: var(--font-ui);
+}
+
+.mira-header-btn:hover {
+  background: rgba(255,255,255,0.06);
+  color: var(--mira-text);
+}
+
+.mira-header-btn[data-active="true"] {
+  color: var(--mira-teal);
+}
+
+/* ── Message list ────────────────────────────────────────── */
+#mira-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--mira-msg-area);
+  scroll-behavior: smooth;
+}
+
+#mira-messages::-webkit-scrollbar { width: 4px; }
+#mira-messages::-webkit-scrollbar-track { background: transparent; }
+#mira-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+/* System message */
+.mira-sys-msg {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mira-faint);
+  padding: 4px 0;
+  user-select: none;
+}
+
+.mira-tier-banner {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mira-amber);
+  background: var(--mira-amber-dim);
+  border: 1px solid rgba(240,160,0,0.2);
+  border-radius: 6px;
+  padding: 8px 12px;
+  text-align: center;
+}
+
+/* User message bubble */
+.mira-msg-user {
+  align-self: flex-end;
+  max-width: 85%;
+  background: var(--mira-amber-dim);
+  border: 1px solid rgba(240,160,0,0.18);
+  border-radius: 8px 8px 2px 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--mira-text);
+  font-family: var(--font-ui);
+  word-break: break-word;
+}
+
+/* User image attachment */
+.mira-msg-user .mira-img-thumb {
+  position: relative;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.mira-msg-user .mira-img-thumb img {
+  width: 200px;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+}
+
+.mira-img-analyzed-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0,212,170,0.85);
+  color: #000;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 2px 5px;
+  border-radius: 3px;
+  display: none;
+}
+
+.mira-img-analyzed-badge[data-show="true"] {
+  display: block;
+}
+
+.mira-img-shimmer {
+  width: 200px;
+  height: 150px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--mira-input-bar) 25%, rgba(255,255,255,0.04) 50%, var(--mira-input-bar) 75%);
+  background-size: 200% 100%;
+  animation: mira-shimmer 1.4s infinite;
+}
+
+@keyframes mira-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Mira message bubble */
+.mira-msg-mira {
+  align-self: flex-start;
+  max-width: 95%;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.mira-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--mira-teal-dim);
+  border: 1px solid rgba(0,212,170,0.25);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.mira-avatar svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Waveform bars shown while TTS is playing */
+.mira-waveform {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  position: absolute;
+  inset: 0;
+  justify-content: center;
+  background: var(--mira-teal-dim);
+}
+
+.mira-waveform[data-active="true"] {
+  display: flex;
+}
+
+.mira-waveform span {
+  width: 3px;
+  background: var(--mira-teal);
+  border-radius: 2px;
+  animation: mira-wave 0.8s ease-in-out infinite;
+}
+.mira-waveform span:nth-child(1) { height: 6px; animation-delay: 0ms; }
+.mira-waveform span:nth-child(2) { height: 10px; animation-delay: 120ms; }
+.mira-waveform span:nth-child(3) { height: 14px; animation-delay: 240ms; }
+.mira-waveform span:nth-child(4) { height: 10px; animation-delay: 120ms; }
+.mira-waveform span:nth-child(5) { height: 6px; animation-delay: 0ms; }
+
+@keyframes mira-wave {
+  0%, 100% { transform: scaleY(0.5); }
+  50%       { transform: scaleY(1); }
+}
+
+.mira-msg-bubble {
+  background: var(--mira-input-bar);
+  border-radius: 8px 8px 8px 2px;
+  padding: 10px 14px;
+  min-width: 40px;
+}
+
+.mira-msg-body {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--mira-text);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* Citation chips */
+.mira-citation-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.mira-citation {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  background: var(--mira-teal-dim);
+  color: var(--mira-teal);
+  border: 1px solid rgba(0,212,170,0.2);
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+.mira-citation:hover {
+  background: rgba(0,212,170,0.14);
+  border-color: rgba(0,212,170,0.35);
+}
+
+.mira-citation[data-type="wo"] {
+  background: var(--mira-amber-dim);
+  color: var(--mira-amber);
+  border-color: rgba(240,160,0,0.2);
+}
+
+.mira-citation[data-type="wo"]:hover {
+  background: rgba(240,160,0,0.16);
+  border-color: rgba(240,160,0,0.35);
+}
+
+/* Citation tooltip */
+.mira-citation-tooltip {
+  position: absolute;
+  z-index: 10000;
+  background: #1e2030;
+  border: 1px solid var(--mira-border-hi);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--mira-text);
+  max-width: 280px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+/* ── Thinking indicator ──────────────────────────────────── */
+#mira-thinking {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 16px 8px 54px; /* aligns with Mira bubble indent */
+}
+
+#mira-thinking[hidden] { display: none; }
+
+#mira-thinking span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mira-amber);
+  animation: mira-think 1.2s ease-in-out infinite;
+}
+#mira-thinking span:nth-child(2) { animation-delay: 200ms; }
+#mira-thinking span:nth-child(3) { animation-delay: 400ms; }
+
+@keyframes mira-think {
+  0%, 60%, 100% { opacity: 0.25; transform: scale(0.8); }
+  30%           { opacity: 1;    transform: scale(1); }
+}
+
+/* ── Quick action chips ──────────────────────────────────── */
+#mira-quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px 6px;
+  border-top: 1px solid var(--mira-border);
+  background: var(--mira-panel);
+}
+
+.mira-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--mira-border-hi);
+  background: var(--mira-input-bar);
+  color: var(--mira-muted);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 28px;
+}
+
+.mira-chip:hover {
+  border-color: rgba(255,255,255,0.25);
+  color: var(--mira-text);
+}
+
+/* ── Input bar ───────────────────────────────────────────── */
+#mira-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  background: var(--mira-input-bar);
+  border-top: 1px solid var(--mira-border);
+  flex-shrink: 0;
+}
+
+#mira-upload-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--mira-muted);
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#mira-upload-btn:hover {
+  color: var(--mira-text);
+  background: rgba(255,255,255,0.06);
+}
+
+#mira-upload-btn input { display: none; }
+
+#mira-text-input {
+  flex: 1;
+  height: 36px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--mira-border);
+  border-radius: 6px;
+  color: var(--mira-text);
+  font-family: var(--font-ui);
+  font-size: 16px; /* 16px min to prevent iOS auto-zoom */
+  padding: 0 10px;
+  outline: none;
+  transition: border-color var(--dur-fast) ease;
+}
+
+#mira-text-input::placeholder { color: var(--mira-faint); }
+
+#mira-text-input:focus {
+  border-color: var(--mira-border-hi);
+}
+
+/* Mic button */
+#mira-mic-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 6px;
+  border: 1px solid var(--mira-border);
+  background: transparent;
+  color: var(--mira-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease, border-color var(--dur-fast) ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#mira-mic-btn:hover {
+  color: var(--mira-text);
+  background: rgba(255,255,255,0.06);
+}
+
+#mira-mic-btn[data-state="recording"] {
+  background: var(--mira-amber);
+  border-color: var(--mira-amber);
+  color: #000;
+  animation: mira-mic-pulse 1s ease-in-out infinite;
+}
+
+#mira-mic-btn[data-state="processing"] {
+  background: rgba(240,160,0,0.15);
+  border-color: var(--mira-amber);
+  color: var(--mira-amber);
+}
+
+#mira-mic-btn[data-state="error"] {
+  color: #f05050;
+  border-color: #f05050;
+}
+
+@keyframes mira-mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(240,160,0,0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(240,160,0,0); }
+}
+
+/* Mic ripple rings */
+.mira-mic-rings {
+  position: absolute;
+  inset: -10px;
+  pointer-events: none;
+  display: none;
+}
+
+#mira-mic-btn[data-state="recording"] .mira-mic-rings {
+  display: block;
+}
+
+.mira-mic-rings span {
+  position: absolute;
+  inset: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(240,160,0,0.4);
+  animation: mira-ring-expand 1.5s ease-out infinite;
+}
+
+.mira-mic-rings span:nth-child(2) { animation-delay: 500ms; }
+.mira-mic-rings span:nth-child(3) { animation-delay: 1000ms; }
+
+@keyframes mira-ring-expand {
+  0%   { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+/* Send button */
+#mira-send-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 6px;
+  border: none;
+  background: var(--mira-amber);
+  color: #000;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity var(--dur-fast) ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#mira-send-btn:hover { opacity: 0.9; }
+#mira-send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Mobile overlay ──────────────────────────────────────── */
+#mira-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 9997;
+  opacity: 0;
+  transition: opacity var(--dur-mid) ease;
+}
+
+#mira-overlay[data-visible="true"] {
+  opacity: 1;
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+
+/* Tablet (768–1023px) */
+@media (max-width: 1023px) {
+  #mira-panel {
+    width: 100%;
+    height: 65vh;
+    top: auto;
+    bottom: 0;
+    border-left: none;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px 12px 0 0;
+    transform: translateY(100%);
+  }
+
+  #mira-panel[data-open="true"] {
+    transform: translateY(0);
+  }
+}
+
+/* Mobile (≤767px) */
+@media (max-width: 767px) {
+  #mira-panel {
+    height: 88vh;
+    border-radius: 12px 12px 0 0;
+  }
+
+  #mira-fab {
+    bottom: max(16px, env(safe-area-inset-bottom));
+    right: 16px;
+  }
+}
+
+/* Small mobile (≤375px) */
+@media (max-width: 375px) {
+  #mira-panel {
+    height: 100dvh;
+    border-radius: 0;
+    border-top: none;
+  }
+}
+
+/* Work Order Button */
+.mira-wo-btn {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 8px;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1.5px solid var(--mira-teal);
+  border-radius: 4px;
+  color: var(--mira-teal);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.mira-wo-btn:hover:not(:disabled) {
+  background: var(--mira-teal);
+  color: #0d0e11;
+}
+.mira-wo-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.mira-wo-btn--done {
+  border-color: #4caf50;
+  color: #4caf50;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  #mira-fab,
+  .mira-conn-dot,
+  .mira-waveform span,
+  #mira-thinking span,
+  .mira-mic-rings span {
+    animation: none;
+  }
+
+  #mira-panel,
+  #mira-overlay {
+    transition: none;
+  }
+}
