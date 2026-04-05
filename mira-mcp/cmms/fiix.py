@@ -106,7 +106,10 @@ class FiixCMMS(CMMSAdapter):
             "intPriorityID": priority_map.get(priority.upper(), 3),
         }
         if asset_id:
-            payload["intAssetID"] = int(asset_id)
+            try:
+                payload["intAssetID"] = int(asset_id)
+            except ValueError:
+                return {"error": f"Invalid asset_id '{asset_id}' — must be numeric for Fiix"}
         try:
             result = await self._post("/work-orders", payload)
             logger.info("Fiix work order created: id=%s title=%s", result.get("id"), title)

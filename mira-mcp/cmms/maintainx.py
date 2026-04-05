@@ -109,7 +109,10 @@ class MaintainXCMMS(CMMSAdapter):
             "categories": [category_map.get(category.upper(), "REACTIVE")],
         }
         if asset_id:
-            payload["assetId"] = int(asset_id)
+            try:
+                payload["assetId"] = int(asset_id)
+            except ValueError:
+                return {"error": f"Invalid asset_id '{asset_id}' — must be numeric for MaintainX"}
         try:
             result = await self._post("/workorders", payload)
             logger.info(

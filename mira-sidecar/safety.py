@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-# 28 safety trigger phrases — match as case-insensitive substrings.
+# 29 safety trigger phrases — match as case-insensitive substrings.
 # Phrases (not single words) to reduce false positives.
 SAFETY_KEYWORDS: list[str] = [
     # Original 21 from mira-bots/shared/guardrails.py

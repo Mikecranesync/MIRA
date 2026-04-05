@@ -126,7 +126,10 @@ class AtlasCMMS(CMMSAdapter):
             "status": "OPEN",
         }
         if asset_id is not None:
-            payload["asset"] = {"id": int(asset_id)}
+            try:
+                payload["asset"] = {"id": int(asset_id)}
+            except ValueError:
+                return {"error": f"Invalid asset_id '{asset_id}' — must be numeric for Atlas"}
         try:
             result = await self._post("/work-orders", payload)
             logger.info("Atlas work order created: id=%s title=%s", result.get("id"), title)
@@ -163,7 +166,10 @@ class AtlasCMMS(CMMSAdapter):
     async def list_pm_schedules(self, asset_id: str | None = None, limit: int = 20) -> list[dict]:
         payload: dict = {"pageSize": limit, "pageNum": 0}
         if asset_id is not None:
-            payload["asset"] = {"id": int(asset_id)}
+            try:
+                payload["asset"] = {"id": int(asset_id)}
+            except ValueError:
+                return []
         try:
             data = await self._post("/preventive-maintenances/search", payload)
             return data if isinstance(data, list) else data.get("content", [])

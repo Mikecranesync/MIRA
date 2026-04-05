@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import logging.config
 import re
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
@@ -33,6 +34,7 @@ from rag.chunker import chunk_document
 from rag.embedder import embed_texts
 from rag.query import rag_query
 from rag.store import MiraVectorStore
+from routing.tier_router import Tier, TierSelection
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -149,7 +151,7 @@ async def lifespan(app: FastAPI):  # noqa: ANN001
     yield
 
     if _health_probe:
-        _health_probe.stop()
+        await _health_probe.astop()
     logger.info("mira-sidecar shutting down")
 
 
@@ -294,7 +296,7 @@ async def ingest(req: IngestRequest) -> IngestResponse:
     # X2 fix: restrict path to DOCS_BASE_PATH to prevent arbitrary file read
     real_path = Path(req.path).resolve()
     allowed_base = Path(settings.docs_base_path).resolve()
-    if not str(real_path).startswith(str(allowed_base)):
+    if not real_path.is_relative_to(allowed_base):
         raise HTTPException(status_code=403, detail="Path must be within DOCS_BASE_PATH")
 
     logger.info(
@@ -440,8 +442,6 @@ async def route(req: RouteRequest) -> RouteResponse:
     Requires tier_routing_enabled=True in config. Returns 503 if disabled.
     Use force_tier to override routing for testing (e.g. "tier1", "tier3").
     """
-    import time
-
     if _tier_router is None:
         raise HTTPException(
             status_code=503,
@@ -475,8 +475,6 @@ async def route(req: RouteRequest) -> RouteResponse:
     )
 
     # H2 fix: if Tier 1 returned empty/canned error, fallback to Tier 3
-    from routing.tier_router import Tier, TierSelection
-
     answer = result.get("answer", "")
     tier1_failed = selection.tier == Tier.TIER1 and (
         not answer or answer.startswith("Unable to generate")

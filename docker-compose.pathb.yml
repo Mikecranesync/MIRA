@@ -36,7 +36,7 @@ services:
       - CHROMA_PATH=/data/chroma
       - DOCS_BASE_PATH=/data/docs
     ports:
-      - "5050:5000"
+      - "127.0.0.1:5050:5000"
     volumes:
       - pathb-chroma:/data/chroma
       - pathb-docs:/data/docs

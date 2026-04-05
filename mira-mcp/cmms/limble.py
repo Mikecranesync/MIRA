@@ -103,7 +103,10 @@ class LimbleCMMS(CMMSAdapter):
             "type": "unplanned" if category.upper() in ("CORRECTIVE", "EMERGENCY") else "planned",
         }
         if asset_id:
-            payload["assetId"] = int(asset_id)
+            try:
+                payload["assetId"] = int(asset_id)
+            except ValueError:
+                return {"error": f"Invalid asset_id '{asset_id}' — must be numeric for Limble"}
         try:
             result = await self._post("/tasks", payload)
             logger.info("Limble work order created: id=%s title=%s", result.get("id"), title)
