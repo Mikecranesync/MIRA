@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>You have {{QUERIES_LEFT}} Mira queries left today</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0d0d0b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0d0d0b;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding-bottom:32px;">
+              <span style="color:#f5a623;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">FactoryLM</span>
+            </td>
+          </tr>
+
+          <!-- Hero -->
+          <tr>
+            <td style="border-left:3px solid #f5a623;padding-left:20px;padding-bottom:32px;">
+              <h1 style="margin:0 0 8px 0;color:#e8e5df;font-size:26px;font-weight:700;line-height:1.2;">{{QUERIES_LEFT}} free queries reset every day.</h1>
+              <p style="margin:0;color:#8a8680;font-size:14px;">You haven't used many of yours yet, {{FIRST_NAME}}.</p>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding-bottom:32px;">
+              <p style="margin:0 0 20px 0;color:#b8b4ae;font-size:16px;line-height:1.6;">
+                Your free queries reset at midnight. Here are three faults worth asking Mira about right now:
+              </p>
+
+              <table cellpadding="0" cellspacing="0" style="width:100%;background-color:#131311;border-radius:6px;">
+                <tr>
+                  <td style="padding:14px 20px;border-bottom:1px solid #1e1e1c;">
+                    <span style="color:#e8e5df;font-size:14px;font-family:monospace;">VFD overcurrent fault F003</span>
+                    <span style="color:#8a8680;font-size:13px;display:block;margin-top:2px;">Common PowerFlex / GS20 scenario</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 20px;border-bottom:1px solid #1e1e1c;">
+                    <span style="color:#e8e5df;font-size:14px;font-family:monospace;">PLC communication timeout on rack 2</span>
+                    <span style="color:#8a8680;font-size:13px;display:block;margin-top:2px;">EtherNet/IP network isolation</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 20px;">
+                    <span style="color:#e8e5df;font-size:14px;font-family:monospace;">Conveyor motor thermal overload trip</span>
+                    <span style="color:#8a8680;font-size:13px;display:block;margin-top:2px;">Root cause and preventive steps</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- CTA -->
+          <tr>
+            <td style="padding-bottom:40px;">
+              <a href="{{CMMS_URL}}" style="display:inline-block;background-color:#f5a623;color:#0d0d0b;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:4px;letter-spacing:0.5px;">Use your free queries</a>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="border-top:1px solid #1e1e1c;padding-top:24px;">
+              <p style="margin:0;color:#4a4843;font-size:12px;line-height:1.6;">
+                FactoryLM &mdash; AI-powered industrial maintenance<br />
+                You're receiving this because you created an account at factorylm.com.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

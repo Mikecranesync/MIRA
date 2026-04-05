@@ -36,6 +36,8 @@ import {
   parseWORecommendation,
 } from "./lib/mira-chat.js";
 import { seedDemoData } from "./seed/demo-data.js";
+import { sendWelcomeEmail } from "./lib/mailer.js";
+import { startDripScheduler } from "./lib/drip.js";
 
 const app = new Hono();
 
@@ -205,7 +207,7 @@ app.post("/api/register", async (c) => {
       console.error("[register] Demo seed failed:", err)
     );
 
-    // Issue JWT
+    // Issue JWT (needed for welcome email magic link)
     const token = await signToken({
       tenantId,
       email,
@@ -213,6 +215,14 @@ app.post("/api/register", async (c) => {
       atlasCompanyId: atlas.companyId,
       atlasUserId: atlas.userId,
     });
+
+    // Send welcome email (async, don't block response)
+    sendWelcomeEmail(
+      email,
+      firstName || email.split("@")[0],
+      company,
+      token
+    ).catch((err) => console.error("[register] Welcome email failed:", err));
 
     return c.json({ success: true, token, tenantId });
   } catch (err) {
@@ -333,6 +343,9 @@ const PORT = parseInt(process.env.PORT || "3000", 10);
 ensureSchema()
   .then(() => console.log("[startup] NeonDB schema verified"))
   .catch((err) => console.warn("[startup] Schema migration skipped:", err));
+
+// Start drip email scheduler
+startDripScheduler();
 
 console.log(`[mira-web] Starting on port ${PORT}`);
 
