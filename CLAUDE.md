@@ -17,6 +17,7 @@ MIRA/
 ├── mira-mcp/           # FastMCP server, NeonDB recall, equipment diagnostic tools (1 container)
 ├── mira-cmms/          # Atlas CMMS — work orders, PM scheduling, asset registry (4 containers)
 ├── mira-hud/           # AR HUD desktop app (Express + Socket.IO, standalone)
+├── mira-web/           # PLG acquisition funnel — Hono/Bun, /cmms landing + Mira AI chat (1 container)
 ├── tests/              # 5-regime testing framework (76 offline tests, 39 golden cases)
 ├── docs/               # PRD, ADRs, architecture C4 diagrams, runbooks
 ├── tools/              # Photo pipeline, Google Drive/Photos ingest scripts
@@ -62,6 +63,7 @@ Full diagram: `~/.claude/projects/.../memory/flows/knowledge-ingest-pipeline.md`
 | atlas-api         | 8088 → 8080  | cmms-net, core-net| GET /actuator/health        |
 | atlas-frontend    | 3100 → 3000  | cmms-net          | GET /                       |
 | atlas-minio       | 9000, 9001   | cmms-net          | mc ready local              |
+| mira-web          | 3200 → 3000  | core-net, cmms-net| curl /api/health            |
 
 ---
 
