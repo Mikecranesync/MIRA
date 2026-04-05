@@ -306,7 +306,12 @@ app.post('/api/mira/work-order', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${MCP_REST_API_KEY}`,
       },
-      body: JSON.stringify({ description: description.trim(), session_id }),
+      body: JSON.stringify({
+        title: description.trim().slice(0, 80),
+        description: description.trim(),
+        priority: req.body.priority || 'MEDIUM',
+        category: 'CORRECTIVE',
+      }),
     });
     const data = await response.json();
     res.status(response.status).json(data);
