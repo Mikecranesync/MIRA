@@ -78,6 +78,22 @@ mira-core/data/equipment_photos/
 # Google Drive ingest staging (downloaded docs, never committed)
 mira-core/data/gdrive_ingest/
 
+# Manual PDFs (stored locally, not committed to git)
+mira-core/data/manuals/
+
+# Crawler runtime data (cache, dedup DBs, logs, incoming docs)
+mira-crawler/data/
+
+# Test photos (real equipment photos, synced separately)
+tests/regime1_telethon/photos/
+tests/regime3_nameplate/photos/real/
+
+# Local backups
+backups/
+
+# Accidental Docker container extraction artifacts
+usr/
+
 # GitHub Actions cache
 .github/actions-cache/
 
