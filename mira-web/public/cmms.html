@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FactoryLM CMMS — AI-Powered Maintenance</title>
+  <link rel="stylesheet" href="/public/cmms.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body>
+<div class="page">
+
+  <!-- Topbar -->
+  <nav class="topbar">
+    <div class="topbar-logo">
+      <i data-lucide="factory" style="width:20px;height:20px"></i>
+      FactoryLM <span>CMMS</span>
+    </div>
+    <div class="topbar-right" id="topbar-right">
+      <span id="topbar-user" style="font-size:var(--text-xs);color:var(--text-muted);display:none"></span>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="main">
+
+    <!-- ── Hero (unauthenticated) ──────────────────────────── -->
+    <section class="hero" id="hero-section">
+      <h1>Stop guessing. <em>Start diagnosing.</em></h1>
+      <p>AI-powered CMMS that tells you what's broken, why, and exactly how to fix it. 5 free Mira AI queries — no credit card.</p>
+
+      <!-- Signup Form -->
+      <div class="signup-card" id="signup-form-wrap">
+        <div class="form-row">
+          <label for="f-email">Work email</label>
+          <input type="email" id="f-email" placeholder="you@yourplant.com" autocomplete="email" required>
+        </div>
+        <div class="form-row">
+          <label for="f-company">Company / Facility name</label>
+          <input type="text" id="f-company" placeholder="Acme Manufacturing" autocomplete="organization" required>
+        </div>
+        <div class="form-row">
+          <label for="f-firstname">First name (optional)</label>
+          <input type="text" id="f-firstname" placeholder="Mike" autocomplete="given-name">
+        </div>
+        <div class="form-row">
+          <label for="f-role">Role (optional)</label>
+          <select id="f-role">
+            <option value="">Select your role</option>
+            <option value="technician">Maintenance Technician</option>
+            <option value="manager">Maintenance Manager</option>
+            <option value="engineer">Reliability Engineer</option>
+            <option value="director">Plant Director</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div id="form-error" class="form-error"></div>
+        <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
+          <i data-lucide="zap" style="width:16px;height:16px"></i>
+          Create Account &amp; Get App
+        </button>
+      </div>
+
+      <!-- Download step (shown after signup) -->
+      <div class="download-step" id="download-step">
+        <p id="download-greeting"></p>
+        <button class="btn-primary" onclick="scrollToDashboard()">
+          <i data-lucide="arrow-down" style="width:16px;height:16px"></i>
+          Go to your CMMS
+        </button>
+      </div>
+    </section>
+
+    <!-- ── Live Ticker ─────────────────────────────────────── -->
+    <section class="ticker-section" id="ticker-section">
+      <div class="ticker-header">
+        <div class="live-dot"></div>
+        Live work orders across the network
+      </div>
+      <div id="hero-wo-list"></div>
+    </section>
+
+    <!-- ── Dashboard (authenticated) ──────────────────────── -->
+    <section class="dashboard" id="dashboard">
+      <div class="board-section">
+        <div class="board-header">
+          <h2>Work Orders</h2>
+          <span style="font-size:var(--text-xs);color:var(--text-muted)" id="wo-count"></span>
+        </div>
+        <div class="kanban" id="kanban">
+          <div class="kanban-col" id="col-open">
+            <div class="kanban-col-header">
+              Open <span class="kanban-col-count" id="count-open">0</span>
+            </div>
+          </div>
+          <div class="kanban-col" id="col-progress">
+            <div class="kanban-col-header">
+              In Progress <span class="kanban-col-count" id="count-progress">0</span>
+            </div>
+          </div>
+          <div class="kanban-col" id="col-complete">
+            <div class="kanban-col-header">
+              Complete <span class="kanban-col-count" id="count-complete">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Panel -->
+      <div class="chat-panel">
+        <div class="chat-header">
+          <h3><div class="status-dot"></div> Mira AI</h3>
+          <span style="font-size:var(--text-xs);color:var(--text-muted)">Maintenance Co-Pilot</span>
+        </div>
+
+        <div class="quota-bar" id="query-quota-bar">
+          <span style="color:var(--text-muted)">Queries today:</span>
+          <div class="quota-track">
+            <div class="quota-fill" id="quota-fill" style="width:100%"></div>
+          </div>
+          <span class="quota-count" id="quota-count">5 / 5</span>
+        </div>
+
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-msg system">
+            Welcome to Mira. Ask me about any equipment fault, error code, or maintenance procedure.
+          </div>
+        </div>
+
+        <div class="chat-input-area">
+          <input type="text" id="chat-input" placeholder="Describe a fault or enter an error code..."
+                 onkeydown="if(event.key==='Enter')submitQuery()">
+          <button id="chat-send" onclick="submitQuery()">Ask Mira</button>
+        </div>
+
+        <!-- Onboarding Checklist -->
+        <div class="checklist" id="checklist-panel">
+          <h4>Getting Started</h4>
+          <div id="checklist-steps"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- WO Toast -->
+<div class="wo-toast" id="wo-toast">
+  <span id="wo-toast-msg"></span>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────
+
+const AUTH = { token: null, user: null, queriesLeft: 5, queriesLimit: 5 };
+
+const CHECKLIST = {
+  'step-account':   { label: 'Create your account',         done: false },
+  'step-ask-mira':  { label: 'Ask Mira your first fault',   done: false },
+  'step-create-wo': { label: 'Create your first work order', done: false },
+};
+
+// ── Init ───────────────────────────────────────────────────────
+
+window.addEventListener('DOMContentLoaded', async () => {
+  const params = new URLSearchParams(location.search);
+  const urlToken = params.get('token');
+
+  if (urlToken) {
+    AUTH.token = urlToken;
+    history.replaceState(null, '', '/cmms');
+    await activateAuth();
+  }
+
+  const stored = sessionStorage.getItem('flm_token');
+  if (stored && !AUTH.token) {
+    AUTH.token = stored;
+    await activateAuth();
+  }
+
+  initTicker();
+  lucide.createIcons();
+});
+
+// ── Auth Activation ────────────────────────────────────────────
+
+async function activateAuth() {
+  sessionStorage.setItem('flm_token', AUTH.token);
+
+  // Fetch user profile
+  try {
+    const res = await fetch('/api/me', { headers: authHeaders() });
+    if (res.ok) {
+      const data = await res.json();
+      AUTH.user = data;
+      AUTH.queriesLeft = data.quota.remaining;
+      AUTH.queriesLimit = data.quota.dailyLimit;
+    }
+  } catch (e) { console.error('Profile fetch failed:', e); }
+
+  // Show dashboard, hide hero
+  document.getElementById('hero-section').style.display = 'none';
+  document.getElementById('ticker-section').style.display = 'none';
+  document.getElementById('dashboard').classList.add('show');
+  document.getElementById('topbar-user').style.display = 'inline';
+  document.getElementById('topbar-user').textContent = AUTH.user?.email || '';
+
+  CHECKLIST['step-account'].done = true;
+  renderChecklist();
+  updateQuotaBar();
+  await fetchTenantWorkOrders();
+  lucide.createIcons();
+}
+
+function authHeaders() {
+  return { 'Authorization': `Bearer ${AUTH.token}`, 'Content-Type': 'application/json' };
+}
+
+// ── Signup ─────────────────────────────────────────────────────
+
+async function handleSignup() {
+  const email = document.getElementById('f-email').value.trim();
+  const company = document.getElementById('f-company').value.trim();
+  const firstName = document.getElementById('f-firstname').value.trim();
+  const role = document.getElementById('f-role').value;
+  const errEl = document.getElementById('form-error');
+  errEl.classList.remove('show');
+
+  if (!email || !company) {
+    errEl.textContent = 'Email and company name are required.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  const btn = document.getElementById('signup-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<svg style="width:16px;height:16px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Creating your account...';
+
+  try {
+    const res = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, company, firstName, role })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Registration failed');
+
+    AUTH.token = data.token;
+    const name = firstName || email.split('@')[0];
+    document.getElementById('signup-form-wrap').classList.add('hidden');
+    document.getElementById('download-step').classList.add('show');
+    document.getElementById('download-greeting').textContent =
+      `Welcome, ${name}. Your CMMS is live with ${AUTH.queriesLimit} free Mira queries per day.`;
+
+    await activateAuth();
+
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.add('show');
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="zap" style="width:16px;height:16px"></i> Create Account & Get App';
+    lucide.createIcons();
+  }
+}
+
+function scrollToDashboard() {
+  document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ── Ticker ─────────────────────────────────────────────────────
+
+async function initTicker() {
+  try {
+    const res = await fetch('/demo/work-orders');
+    const wos = await res.json();
+    const list = document.getElementById('hero-wo-list');
+    list.innerHTML = '';
+    for (let i = 0; i < Math.min(3, wos.length); i++) {
+      list.innerHTML += tickerCardHTML(wos[i]);
+    }
+    lucide.createIcons();
+
+    let idx = 0;
+    setInterval(() => {
+      idx = (idx + 1) % wos.length;
+      const card = document.createElement('div');
+      card.style.cssText = 'opacity:0;transform:translateY(-8px);transition:all 0.4s cubic-bezier(0.16,1,0.3,1)';
+      card.innerHTML = tickerCardHTML(wos[idx]);
+      list.insertBefore(card, list.firstChild);
+      if (list.children.length > 3) {
+        const last = list.lastChild;
+        last.style.cssText += 'opacity:0;transform:translateY(8px)';
+        setTimeout(() => last.remove(), 400);
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        card.style.opacity = '1';
+        card.style.transform = 'translateY(0)';
+      }));
+      lucide.createIcons();
+    }, 6000);
+  } catch (e) { console.error('Ticker init failed:', e); }
+}
+
+function tickerCardHTML(wo) {
+  const time = wo.minutesAgo < 60 ? `${wo.minutesAgo}m ago` : `${Math.floor(wo.minutesAgo / 60)}h ago`;
+  const priBadge = { HIGH: 'badge-high', MEDIUM: 'badge-medium', LOW: 'badge-low' }[wo.priority] || 'badge-low';
+  const aiBadge = wo.ai ? '<span class="badge badge-ai">AI</span>' : '';
+  return `
+    <div class="mini-wo">
+      <span class="mini-wo-id">${wo.id}</span>
+      <div class="mini-wo-content">
+        <div class="mini-wo-title">${wo.title}</div>
+        <div class="mini-wo-asset">${wo.assetName} · ${time}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+        <span class="badge ${priBadge}">${wo.priority}</span>
+        ${aiBadge}
+      </div>
+    </div>`;
+}
+
+// ── Kanban Board ───────────────────────────────────────────────
+
+async function fetchTenantWorkOrders() {
+  try {
+    const res = await fetch('/demo/tenant-work-orders', { headers: authHeaders() });
+    const data = await res.json();
+    const wos = Array.isArray(data) ? data : (data.content || data.results || []);
+    renderKanban(wos);
+  } catch (e) { console.error('WO fetch failed:', e); }
+}
+
+function renderKanban(wos) {
+  const cols = { OPEN: 'col-open', IN_PROGRESS: 'col-progress', COMPLETE: 'col-complete' };
+  const counts = { OPEN: 0, IN_PROGRESS: 0, COMPLETE: 0 };
+
+  // Clear cards (keep headers)
+  for (const colId of Object.values(cols)) {
+    const col = document.getElementById(colId);
+    const cards = col.querySelectorAll('.wo-card');
+    cards.forEach(c => c.remove());
+  }
+
+  for (const wo of wos) {
+    const status = wo.status || 'OPEN';
+    const colId = cols[status] || cols.OPEN;
+    counts[status] = (counts[status] || 0) + 1;
+
+    const card = document.createElement('div');
+    card.className = 'wo-card';
+    card.innerHTML = `
+      <div class="wo-card-title">${wo.title || wo.name || 'Untitled'}</div>
+      <div class="wo-card-meta">
+        <span class="badge ${wo.priority === 'HIGH' ? 'badge-high' : 'badge-medium'}">${wo.priority || 'MEDIUM'}</span>
+        ${wo.aiGenerated ? '<span class="badge badge-ai">AI</span>' : ''}
+      </div>`;
+    document.getElementById(colId).appendChild(card);
+  }
+
+  document.getElementById('count-open').textContent = counts.OPEN;
+  document.getElementById('count-progress').textContent = counts.IN_PROGRESS;
+  document.getElementById('count-complete').textContent = counts.COMPLETE;
+  document.getElementById('wo-count').textContent = `${wos.length} total`;
+}
+
+// ── Mira Chat ──────────────────────────────────────────────────
+
+async function submitQuery() {
+  if (AUTH.queriesLeft <= 0) {
+    addChatMsg('system', 'Daily query limit reached. Queries reset tomorrow, or upgrade for unlimited.');
+    return;
+  }
+
+  const input = document.getElementById('chat-input');
+  const query = input.value.trim();
+  if (!query) return;
+
+  input.value = '';
+  input.disabled = true;
+  document.getElementById('chat-send').disabled = true;
+
+  addChatMsg('user', query);
+  const typingEl = addChatMsg('assistant typing', '');
+
+  try {
+    const res = await fetch('/api/mira/chat', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ query })
+    });
+
+    if (res.status === 429) {
+      typingEl.remove();
+      AUTH.queriesLeft = 0;
+      updateQuotaBar();
+      addChatMsg('system', 'Daily query limit reached. Upgrade for unlimited queries.');
+      return;
+    }
+
+    if (!res.ok) throw new Error('Chat request failed');
+
+    // Read SSE stream
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let answered = false;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Parse SSE events
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const evt of events) {
+        const lines = evt.split('\n');
+        let eventType = '';
+        let eventData = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) eventType = line.slice(7);
+          if (line.startsWith('data: ')) eventData = line.slice(6);
+        }
+
+        if (eventType === 'answer' && eventData) {
+          const data = JSON.parse(eventData);
+          typingEl.classList.remove('typing');
+          typingEl.innerHTML = formatMiraAnswer(data.answer, data.sources);
+          answered = true;
+
+          // Check for WO created
+          const woHeader = res.headers.get('X-WO-Created');
+          if (woHeader) {
+            try {
+              const wo = JSON.parse(woHeader);
+              showWOToast(wo);
+              markChecklist('step-create-wo');
+              fetchTenantWorkOrders();
+            } catch {}
+          }
+
+          markChecklist('step-ask-mira');
+        }
+      }
+    }
+
+    if (!answered) {
+      typingEl.classList.remove('typing');
+      typingEl.textContent = 'No response received. Please try again.';
+    }
+
+    // Update quota
+    AUTH.queriesLeft = Math.max(0, AUTH.queriesLeft - 1);
+    updateQuotaBar();
+
+  } catch (err) {
+    typingEl.remove();
+    addChatMsg('system', 'Connection error. Please try again.');
+    console.error('Chat error:', err);
+  } finally {
+    input.disabled = false;
+    document.getElementById('chat-send').disabled = false;
+    input.focus();
+  }
+}
+
+function addChatMsg(cls, text) {
+  const msgs = document.getElementById('chat-messages');
+  const el = document.createElement('div');
+  el.className = `chat-msg ${cls}`;
+  el.textContent = text;
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+  return el;
+}
+
+function formatMiraAnswer(answer, sources) {
+  // Convert markdown-like formatting
+  let html = answer
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+
+  if (sources && sources.length > 0) {
+    html += '<div class="sources">Sources: ';
+    html += sources.map(s =>
+      `[${s.brain}: ${s.file}${s.page ? ` — p${s.page}` : ''}]`
+    ).join(' ');
+    html += '</div>';
+  }
+  return html;
+}
+
+// ── Quota Bar ──────────────────────────────────────────────────
+
+function updateQuotaBar() {
+  const pct = (AUTH.queriesLeft / AUTH.queriesLimit) * 100;
+  document.getElementById('quota-fill').style.width = `${pct}%`;
+  document.getElementById('quota-count').textContent = `${AUTH.queriesLeft} / ${AUTH.queriesLimit}`;
+}
+
+// ── Checklist ──────────────────────────────────────────────────
+
+function renderChecklist() {
+  const container = document.getElementById('checklist-steps');
+  if (!container) return;
+  container.innerHTML = Object.entries(CHECKLIST).map(([id, step]) => `
+    <div class="checklist-step ${step.done ? 'done' : ''}" id="${id}">
+      <div class="checklist-icon">${step.done ? '&#10003;' : '&#9675;'}</div>
+      <span>${step.label}</span>
+    </div>
+  `).join('');
+}
+
+function markChecklist(stepId) {
+  if (CHECKLIST[stepId] && !CHECKLIST[stepId].done) {
+    CHECKLIST[stepId].done = true;
+    if (stepId === 'step-create-wo') markChecklist('step-ask-mira');
+    renderChecklist();
+  }
+}
+
+// ── WO Toast ───────────────────────────────────────────────────
+
+function showWOToast(wo) {
+  const toast = document.getElementById('wo-toast');
+  document.getElementById('wo-toast-msg').textContent =
+    `Work order ${wo.customId || wo.id || ''} created and added to the board.`;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 5000);
+}
+</script>
+</body>
+</html>

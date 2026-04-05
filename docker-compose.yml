@@ -11,3 +11,4 @@ include:
   - mira-bots/docker-compose.yml
   - mira-mcp/docker-compose.yml
   - mira-cmms/docker-compose.yml
+  - mira-web/docker-compose.yml
