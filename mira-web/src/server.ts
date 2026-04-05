@@ -54,9 +54,6 @@ app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
 // Routes
 // ---------------------------------------------------------------------------
 
-// Root → redirect to /cmms
-app.get("/", (c) => c.redirect("/cmms"));
-
 // Health probe
 app.get("/api/health", (c) =>
   c.json({ status: "ok", service: "mira-web", version: "0.1.0" })
