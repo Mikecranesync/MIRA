@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="AI that actually understands your equipment. Fault diagnosis, work orders, and maintenance knowledge for field technicians.">
+  <meta name="theme-color" content="#f0a000">
+  <meta property="og:title" content="Factory LM — Industrial AI Maintenance">
+  <meta property="og:description" content="AI that actually understands your equipment.">
+  <meta property="og:type" content="website">
+  <title>Factory LM — Industrial AI Maintenance</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <!-- Widget CSS pre-loaded so FAB renders before JS lazy-loads -->
+  <link rel="preload" href="/mira-chat.css" as="style" onload="this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="/mira-chat.css"></noscript>
+
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --page-bg:      #0d0e11;
+      --surface:      #13141a;
+      --border:       rgba(255,255,255,0.07);
+      --border-hi:    rgba(255,255,255,0.12);
+      --text:         #e8eaf0;
+      --text-dim:     rgba(255,255,255,0.5);
+      --text-faint:   rgba(255,255,255,0.28);
+      --text-label:   rgba(255,255,255,0.35);
+      --amber:        #f0a000;
+      --teal:         #00d4aa;
+      --font:         'Inter', 'Helvetica Neue', sans-serif;
+      --max-w:        1080px;
+      --ease-out:     cubic-bezier(0.16,1,0.3,1);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--page-bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* Amber radial gradient — Factory LM brand (replaces Linear's purple tint) */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(240,160,0,0.06) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout helpers ── */
+    .inner {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 0 40px;
+    }
+
+    @media (max-width: 768px) { .inner { padding: 0 24px; } }
+    @media (max-width: 480px) { .inner { padding: 0 16px; } }
+
+    /* ── Scroll animation ── */
+    .fade-in {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 400ms ease, transform 400ms ease;
+    }
+    .fade-in.visible { opacity: 1; transform: translateY(0); }
+    .fade-in:nth-child(2) { transition-delay: 80ms; }
+    .fade-in:nth-child(3) { transition-delay: 160ms; }
+    .fade-in:nth-child(4) { transition-delay: 240ms; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .fade-in { opacity: 1; transform: none; transition: none; }
+    }
+
+    /* ── Navigation ── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 56px;
+      z-index: 100;
+      transition: background 200ms ease, border-color 200ms ease;
+      border-bottom: 1px solid transparent;
+    }
+
+    nav.scrolled {
+      background: rgba(13,14,17,0.85);
+      backdrop-filter: blur(12px) saturate(180%);
+      -webkit-backdrop-filter: blur(12px) saturate(180%);
+      border-bottom-color: rgba(255,255,255,0.06);
+    }
+
+    .nav-inner {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 0 40px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    @media (max-width: 768px) { .nav-inner { padding: 0 24px; } }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 500;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-logo svg {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      letter-spacing: normal;
+      transition: color 150ms ease;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    /* Ghost CTA — NOT a solid amber button (per Linear DNA) */
+    .nav-cta {
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.7);
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 6px;
+      padding: 7px 14px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+      white-space: nowrap;
+    }
+
+    .nav-cta:hover {
+      background: rgba(255,255,255,0.13);
+      border-color: rgba(255,255,255,0.22);
+      color: #fff;
+    }
+
+    @media (max-width: 640px) {
+      .nav-links { display: none; }
+    }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 144px 0 120px;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (max-width: 768px) { .hero { padding: 100px 0 80px; } }
+    @media (max-width: 480px) { .hero { padding: 88px 0 60px; } }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+
+    @media (max-width: 900px) {
+      .hero-grid {
+        grid-template-columns: 1fr;
+        gap: 48px;
+      }
+    }
+
+    .hero-text {
+      max-width: 560px;
+    }
+
+    /* Hero eyebrow */
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-label);
+      margin-bottom: 20px;
+    }
+
+    .hero-eyebrow-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--amber);
+    }
+
+    /* Hero headline — large, left-aligned, regular weight, tight tracking */
+    .hero-h1 {
+      font-size: clamp(36px, 5vw, 56px);
+      font-weight: 400;
+      letter-spacing: -0.04em;
+      line-height: 1.08;
+      color: var(--text);
+      margin-bottom: 20px;
+    }
+
+    .hero-h1 em {
+      font-style: normal;
+      color: var(--amber);
+    }
+
+    /* Sub-headline */
+    .hero-sub {
+      font-size: 18px;
+      line-height: 1.55;
+      color: var(--text-dim);
+      max-width: 480px;
+      margin-bottom: 32px;
+      font-weight: 300;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    /* Primary button — white on black */
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 9px 18px;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      transition: opacity 150ms ease;
+      white-space: nowrap;
+    }
+
+    .btn-primary:hover { opacity: 0.9; }
+
+    /* Ghost button */
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      color: rgba(255,255,255,0.7);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 400;
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color 150ms ease, color 150ms ease;
+    }
+
+    .btn-ghost:hover {
+      border-color: rgba(255,255,255,0.3);
+      color: #fff;
+    }
+
+    /* Hero product frame — right column */
+    .hero-demo {
+      position: relative;
+    }
+
+    .demo-frame {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px 12px 0 0;
+      background: #1a1b1f;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+
+    .demo-frame-bar {
+      height: 36px;
+      background: #13141a;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 6px;
+    }
+
+    .demo-frame-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+    }
+
+    .demo-frame-url {
+      flex: 1;
+      height: 20px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 4px;
+      margin: 0 8px;
+    }
+
+    .demo-frame-content {
+      padding: 16px;
+      min-height: 320px;
+    }
+
+    /* Static chat mockup inside the demo frame */
+    .demo-chat {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .demo-sys {
+      text-align: center;
+      font-size: 10px;
+      color: rgba(255,255,255,0.25);
+      padding: 4px 0;
+    }
+
+    .demo-msg {
+      max-width: 90%;
+      padding: 8px 12px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .demo-msg-user {
+      align-self: flex-end;
+      background: rgba(240,160,0,0.10);
+      border: 1px solid rgba(240,160,0,0.18);
+      border-radius: 8px 8px 2px 8px;
+      color: #e8eaf0;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .demo-msg-mira {
+      align-self: flex-start;
+      background: #1b1f2b;
+      border-radius: 8px 8px 8px 2px;
+      color: #e8eaf0;
+      display: flex;
+      gap: 8px;
+    }
+
+    .demo-avatar {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(0,212,170,0.12);
+      border: 1px solid rgba(0,212,170,0.2);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .demo-citation {
+      display: inline-block;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: rgba(0,212,170,0.08);
+      color: #00d4aa;
+      border: 1px solid rgba(0,212,170,0.18);
+      margin-top: 5px;
+    }
+
+    .demo-cursor {
+      display: inline-block;
+      width: 2px;
+      height: 12px;
+      background: var(--amber);
+      vertical-align: middle;
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    /* ── Feature sections ── */
+    .features {
+      padding: 120px 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (max-width: 768px) { .features { padding: 80px 0; } }
+    @media (max-width: 480px) { .features { padding: 60px 0; } }
+
+    .feature {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+      padding: 64px 0;
+    }
+
+    .feature + .feature {
+      border-top: 1px solid var(--border);
+    }
+
+    .feature.reverse { direction: rtl; }
+    .feature.reverse > * { direction: ltr; }
+
+    @media (max-width: 768px) {
+      .feature,
+      .feature.reverse {
+        grid-template-columns: 1fr;
+        direction: ltr;
+        gap: 36px;
+        padding: 48px 0;
+      }
+    }
+
+    /* Section label */
+    .section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-label);
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+
+    .feature-h2 {
+      font-size: clamp(24px, 3vw, 32px);
+      font-weight: 400;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+
+    .feature-body {
+      font-size: 15px;
+      color: var(--text-dim);
+      line-height: 1.65;
+      max-width: 480px;
+      margin-bottom: 20px;
+      font-weight: 300;
+    }
+
+    /* Feature stat pills */
+    .feature-stats {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .feature-stat {
+      font-size: 12px;
+      color: var(--text-faint);
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    /* Feature mock card */
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+    }
+
+    .feature-card-header {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-faint);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .fc-badge {
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+    }
+
+    .fc-badge-green {
+      background: rgba(0,212,170,0.1);
+      color: var(--teal);
+      border: 1px solid rgba(0,212,170,0.2);
+    }
+
+    .fc-badge-amber {
+      background: rgba(240,160,0,0.1);
+      color: var(--amber);
+      border: 1px solid rgba(240,160,0,0.2);
+    }
+
+    .fc-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      gap: 12px;
+    }
+
+    .fc-row:last-child { border-bottom: none; }
+
+    .fc-label { color: var(--text-dim); font-size: 11px; }
+    .fc-value { font-size: 12px; }
+
+    /* ── CTA section ── */
+    .cta-section {
+      padding: 120px 0;
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+    }
+
+    @media (max-width: 768px) { .cta-section { padding: 80px 0; } }
+
+    .cta-inner {
+      max-width: 520px;
+    }
+
+    .cta-h2 {
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 400;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+
+    .cta-sub {
+      font-size: 16px;
+      color: var(--text-dim);
+      margin-bottom: 28px;
+      font-weight: 300;
+      line-height: 1.6;
+    }
+
+    .cta-note {
+      font-size: 12px;
+      color: var(--text-faint);
+      margin-top: 12px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid var(--border);
+      position: relative;
+      z-index: 1;
+    }
+
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-dim);
+      text-decoration: none;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 20px;
+      list-style: none;
+    }
+
+    .footer-links a {
+      font-size: 13px;
+      color: var(--text-faint);
+      text-decoration: none;
+      transition: color 150ms ease;
+    }
+
+    .footer-links a:hover { color: var(--text-dim); }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── Navigation ── -->
+  <nav id="main-nav" role="navigation" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo" aria-label="Factory LM home">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="24" height="24" rx="5" fill="#f0a000"/>
+          <path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Factory LM
+      </a>
+
+      <ul class="nav-links" role="list">
+        <li><a href="#features">Product</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="/cmms">CMMS Demo</a></li>
+      </ul>
+
+      <a href="#waitlist" class="nav-cta">Join waitlist</a>
+    </div>
+  </nav>
+
+  <!-- ── Hero ── -->
+  <section class="hero" aria-labelledby="hero-heading">
+    <div class="inner">
+      <div class="hero-grid">
+        <div class="hero-text">
+          <div class="hero-eyebrow fade-in">
+            <span class="hero-eyebrow-dot" aria-hidden="true"></span>
+            Industrial AI Maintenance
+          </div>
+
+          <h1 class="hero-h1 fade-in" id="hero-heading">
+            AI that actually<br>
+            understands your<br>
+            <em>equipment</em>
+          </h1>
+
+          <p class="hero-sub fade-in">
+            Stop fighting your CMMS. Factory LM reads fault codes, suggests fixes,
+            and learns from every repair — right from your phone.
+          </p>
+
+          <div class="hero-actions fade-in">
+            <a href="#waitlist" class="btn-primary">
+              Join the waitlist
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </a>
+            <button class="btn-ghost" onclick="document.getElementById('mira-fab').click()" type="button">
+              Try Mira now
+            </button>
+          </div>
+        </div>
+
+        <!-- Product demo frame -->
+        <div class="hero-demo fade-in" aria-hidden="true">
+          <div class="demo-frame" role="img" aria-label="Mira chat interface demo">
+            <div class="demo-frame-bar">
+              <div class="demo-frame-dot"></div>
+              <div class="demo-frame-dot"></div>
+              <div class="demo-frame-dot"></div>
+              <div class="demo-frame-url"></div>
+            </div>
+            <div class="demo-frame-content">
+              <div class="demo-chat">
+                <div class="demo-sys">Session — SIGNAL tier — Public corpus</div>
+
+                <div class="demo-msg demo-msg-user">
+                  Fault E-731 on the FANUC R-30iB, axis 2 following error
+                </div>
+
+                <div class="demo-msg demo-msg-mira">
+                  <div class="demo-avatar"></div>
+                  <div>
+                    Axis 2 following error E-731 typically indicates encoder
+                    feedback loss or excessive position error. Check the
+                    J2 encoder cable at CN2 connector — look for pinch
+                    damage near the J2 axis housing.
+                    <br><br>
+                    If cable is intact, verify pulse coder battery voltage
+                    (should be &gt;3.1V).
+                    <span class="demo-cursor"></span>
+                    <br>
+                    <span class="demo-citation">[§12.4 FANUC R-30iB Maintenance p.284]</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Features ── -->
+  <section class="features" id="features" aria-labelledby="features-heading">
+    <div class="inner">
+      <div class="feature fade-in">
+        <!-- Text left, demo right -->
+        <div class="feature-text">
+          <div class="section-label">Fault Diagnosis</div>
+          <h2 class="feature-h2" id="features-heading">
+            Answers in seconds,<br>not hours
+          </h2>
+          <p class="feature-body">
+            Mira knows your equipment. Send a fault code, describe a symptom,
+            or upload a photo — and get a cited, actionable answer from your
+            specific OEM documentation and field history.
+          </p>
+          <div class="feature-stats">
+            <span class="feature-stat">≤800ms first token</span>
+            <span class="feature-stat">Citation on every answer</span>
+          </div>
+        </div>
+
+        <div class="feature-card fade-in">
+          <div class="feature-card-header">
+            ACTIVE SESSION
+            <span class="fc-badge fc-badge-green">SIGNAL</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Fault</span>
+            <span class="fc-value">VFD Fault F-012 — Overcurrent</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Equipment</span>
+            <span class="fc-value">Allen-Bradley PowerFlex 753</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Root cause</span>
+            <span class="fc-value">Mechanical load spike at startup</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Action</span>
+            <span class="fc-value">Increase accel ramp P042 → 4.5s</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Source</span>
+            <span class="fc-value" style="color:#00d4aa">[§6.2 PF753 Manual p.81]</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature reverse fade-in" id="how-it-works">
+        <!-- Demo left, text right (reversed grid) -->
+        <div class="feature-card">
+          <div class="feature-card-header">
+            WORK ORDER
+            <span class="fc-badge fc-badge-amber">OPEN</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Asset</span>
+            <span class="fc-value">Conveyor Drive #3 — Motor</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Priority</span>
+            <span class="fc-value" style="color:#f0a000">HIGH</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Created by</span>
+            <span class="fc-value">Mira AI (via chat)</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Description</span>
+            <span class="fc-value">Replace J2 encoder cable — CN2 pinch damage</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Parts</span>
+            <span class="fc-value">A06B-6117-K003 encoder cable</span>
+          </div>
+        </div>
+
+        <div class="feature-text">
+          <div class="section-label">CMMS Integration</div>
+          <h2 class="feature-h2">
+            Work orders that<br>write themselves
+          </h2>
+          <p class="feature-body">
+            When Mira identifies a maintenance action, it creates the work order
+            directly in your CMMS — with the asset, fault description, and
+            part numbers already filled in.
+          </p>
+          <div class="feature-stats">
+            <span class="feature-stat">Atlas CMMS built-in</span>
+            <span class="feature-stat">Auto asset lookup</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature fade-in">
+        <div class="feature-text">
+          <div class="section-label">Voice + Vision</div>
+          <h2 class="feature-h2">
+            Hands-free on the<br>shop floor
+          </h2>
+          <p class="feature-body">
+            Talk to Mira hands-free with voice input. Upload a photo of the fault —
+            Mira identifies the component, cross-references your equipment history,
+            and reads the answer back to you out loud.
+          </p>
+          <div class="feature-stats">
+            <span class="feature-stat">Works on iPhone/Android</span>
+            <span class="feature-stat">Offline voice input</span>
+            <span class="feature-stat">Photo analysis</span>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-card-header">PHOTO ANALYSIS</div>
+          <div style="background:#0f1114; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; color:#8a8fa8;">
+            [encoder_cable_j2.jpg — 2.1 MB → compressed 380 KB]
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Identified</span>
+            <span class="fc-value">FANUC J2 encoder cable (A06B series)</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Fault</span>
+            <span class="fc-value" style="color:#f0a000">Bend radius failure at cable clamp</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">Action</span>
+            <span class="fc-value">Replace cable, reroute with 4× dia min bend</span>
+          </div>
+          <div class="fc-row">
+            <span class="fc-label">WO</span>
+            <span class="fc-value" style="color:#00d4aa">RECOMMENDED — created</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA / Waitlist ── -->
+  <section class="cta-section" id="waitlist" aria-labelledby="cta-heading">
+    <div class="inner">
+      <div class="cta-inner">
+        <div class="section-label fade-in">Early Access</div>
+        <h2 class="cta-h2 fade-in" id="cta-heading">
+          First 50 get founding<br>member pricing
+        </h2>
+        <p class="cta-sub fade-in">
+          No demo calls. No enterprise sales process. Open Mira,
+          describe your equipment, and start diagnosing in minutes.
+        </p>
+        <div class="fade-in">
+          <a href="mailto:contact@factorylm.com?subject=Waitlist%20—%20Factory%20LM" class="btn-primary">
+            Request early access
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+          <p class="cta-note">Or tap the Mira button below to try it right now — no account needed.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer role="contentinfo">
+    <div class="inner">
+      <div class="footer-inner">
+        <a href="/" class="footer-logo" aria-label="Factory LM home">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
+            <rect width="24" height="24" rx="5" fill="#f0a000"/>
+            <path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Factory LM
+        </a>
+
+        <ul class="footer-links" role="list">
+          <li><a href="/cmms">CMMS</a></li>
+          <li><a href="mailto:contact@factorylm.com">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ── Mira FAB — the widget trigger ── -->
+  <!-- FAB styled via mira-chat.css, rendered by mira-chat.js on load -->
+  <!-- Inline stub so the button exists before JS loads -->
+  <button id="mira-fab" aria-label="Open Mira chat" aria-expanded="false" data-open="false">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M4 18V7l4 6 4-5 4 5 4-6v11" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <script>
+    // ── Nav scroll effect ──────────────────────────────────────────────
+    (function () {
+      const nav = document.getElementById('main-nav');
+      function update() {
+        nav.classList.toggle('scrolled', window.scrollY > 10);
+      }
+      window.addEventListener('scroll', update, { passive: true });
+      update();
+    })();
+
+    // ── Scroll fade-in observer ────────────────────────────────────────
+    (function () {
+      if (!window.IntersectionObserver) return;
+      const observer = new IntersectionObserver(
+        (entries) => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }),
+        { threshold: 0.08 }
+      );
+      document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+    })();
+
+    // ── Lazy-load the full chat widget on FAB interaction ──────────────
+    (function () {
+      let loaded = false;
+      function loadWidget() {
+        if (loaded) return;
+        loaded = true;
+        const s = document.createElement('script');
+        s.src = '/mira-chat.js';
+        s.defer = true;
+        document.head.appendChild(s);
+      }
+
+      const fab = document.getElementById('mira-fab');
+      fab.addEventListener('mouseenter', loadWidget, { once: true });
+      fab.addEventListener('touchstart', loadWidget, { once: true, passive: true });
+      fab.addEventListener('focus', loadWidget, { once: true });
+
+      // Also load if user scrolls past hero (suggests engagement)
+      window.addEventListener('scroll', function onScroll() {
+        if (window.scrollY > 300) { loadWidget(); window.removeEventListener('scroll', onScroll); }
+      }, { passive: true });
+    })();
+  </script>
+</body>
+</html>
