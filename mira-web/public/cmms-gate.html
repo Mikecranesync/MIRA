@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Factory LM CMMS — Industrial maintenance, AI-powered</title>
+  <meta name="description" content="Set up your AI-backed CMMS in 2 minutes. Works on your phone. Every work order backed by Mira." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/cmms-gate.css" />
+  <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav class="nav" id="nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#f0a000" stroke-width="1.5"/><path d="M8 12h8M12 8v8" stroke="#f0a000" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>Factory LM</span>
+      </a>
+      <div class="nav-links">
+        <a href="/#product">Product</a>
+        <a href="/#how">How it works</a>
+        <a href="/cmms" class="nav-active">CMMS</a>
+      </div>
+      <a href="/cmms/app" class="btn-ghost btn-sm">Open CMMS</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-eyebrow">
+      <span class="dot"></span>Industrial CMMS
+    </div>
+    <h1 class="hero-title">Your CMMS,<br /><span class="amber">backed by AI</span></h1>
+    <p class="hero-sub">Set up in 2 minutes. Works on your phone and desktop. Every work order connected to Mira's diagnostic engine.</p>
+    <div class="hero-chips">
+      <span class="chip">Work orders that write themselves</span>
+      <span class="chip">Asset registry + PM scheduling</span>
+      <span class="chip">Your whole team, one dashboard</span>
+    </div>
+  </section>
+
+  <!-- Signup card -->
+  <section class="gate-section">
+    <div class="gate-card" id="signup-card">
+      <div class="gate-card-header">
+        <span class="gate-step">01</span>
+        <span>Create your account</span>
+      </div>
+
+      <form id="signup-form" novalidate>
+        <div class="field-row">
+          <div class="field">
+            <label for="firstName">First name</label>
+            <input type="text" id="firstName" name="firstName" autocomplete="given-name" placeholder="Mike" required />
+          </div>
+          <div class="field">
+            <label for="lastName">Last name</label>
+            <input type="text" id="lastName" name="lastName" autocomplete="family-name" placeholder="Harper" required />
+          </div>
+        </div>
+        <div class="field">
+          <label for="email">Work email</label>
+          <input type="email" id="email" name="email" autocomplete="email" placeholder="mike@yourcompany.com" required />
+        </div>
+        <div class="field">
+          <label for="company">Company <span class="optional">(optional)</span></label>
+          <input type="text" id="company" name="company" autocomplete="organization" placeholder="Acme Manufacturing" />
+        </div>
+        <div id="form-error" class="form-error" hidden></div>
+        <button type="submit" class="btn-primary btn-full" id="submit-btn">
+          Create my CMMS <span class="arrow">&rarr;</span>
+        </button>
+      </form>
+
+      <p class="gate-login-link">Already have an account? <a href="/cmms/app">Open CMMS</a></p>
+    </div>
+
+    <!-- Success state (hidden until form submits) -->
+    <div class="gate-card gate-success" id="success-card" hidden>
+      <div class="success-icon">&#10003;</div>
+      <h2>Check your email</h2>
+      <p>We sent an invite to <strong id="invited-email"></strong>. Click the link to set your password and access your CMMS.</p>
+
+      <div class="install-callout">
+        <div class="install-callout-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="5" y="2" width="14" height="20" rx="2" stroke="#f0a000" stroke-width="1.5"/><circle cx="12" cy="18" r="1" fill="#f0a000"/></svg>
+          Install on your phone
+        </div>
+        <ol class="install-steps">
+          <li><strong>iPhone:</strong> Open factorylm.com/cmms/app in Safari → tap <strong>Share</strong> → <strong>Add to Home Screen</strong></li>
+          <li><strong>Android:</strong> Open in Chrome → tap menu <strong>&vellip;</strong> → <strong>Add to Home Screen</strong></li>
+        </ol>
+        <a href="/cmms/app" class="btn-primary btn-full" style="margin-top:16px">Open CMMS now</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature strip -->
+  <section class="features-strip">
+    <div class="feature-item">
+      <div class="feature-label">Work Orders</div>
+      <div class="feature-val">AI-generated from fault diagnosis</div>
+    </div>
+    <div class="feature-divider"></div>
+    <div class="feature-item">
+      <div class="feature-label">Assets</div>
+      <div class="feature-val">Equipment registry + history</div>
+    </div>
+    <div class="feature-divider"></div>
+    <div class="feature-item">
+      <div class="feature-label">PM Scheduling</div>
+      <div class="feature-val">Calendar-driven preventive maintenance</div>
+    </div>
+    <div class="feature-divider"></div>
+    <div class="feature-item">
+      <div class="feature-label">Mobile</div>
+      <div class="feature-val">Install as app — no App Store needed</div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <a href="/" class="nav-logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#f0a000" stroke-width="1.5"/><path d="M8 12h8M12 8v8" stroke="#f0a000" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>Factory LM</span>
+      </a>
+      <div class="footer-links">
+        <a href="/cmms">CMMS</a>
+        <a href="mailto:contact@factorylm.com">Contact</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Nav scroll effect
+    window.addEventListener('scroll', function() {
+      document.getElementById('nav').classList.toggle('nav-scrolled', window.scrollY > 20);
+    });
+
+    // Signup form
+    document.getElementById('signup-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      var btn = document.getElementById('submit-btn');
+      var errEl = document.getElementById('form-error');
+      errEl.hidden = true;
+      btn.disabled = true;
+      btn.textContent = 'Creating account\u2026';
+
+      var email = document.getElementById('email').value.trim();
+      var payload = {
+        firstName: document.getElementById('firstName').value.trim(),
+        lastName: document.getElementById('lastName').value.trim(),
+        email: email,
+        company: document.getElementById('company').value.trim(),
+      };
+
+      try {
+        var resp = await fetch('/cmms/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        var data = await resp.json();
+        if (!resp.ok || data.error) {
+          throw new Error(data.error || 'Something went wrong. Try again.');
+        }
+        document.getElementById('invited-email').textContent = email;
+        document.getElementById('signup-card').hidden = true;
+        document.getElementById('success-card').hidden = false;
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.hidden = false;
+        btn.disabled = false;
+        btn.innerHTML = 'Create my CMMS <span class="arrow">&rarr;</span>';
+      }
+    });
+  </script>
+</body>
+</html>

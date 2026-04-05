@@ -99,6 +99,40 @@ function extractCitations(text) {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', model: CHAT_MODEL }));
 
+// GET /cmms — CMMS onboarding gate page
+app.get('/cmms', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'cmms-gate.html'));
+});
+
+// POST /cmms/signup — invite a new user to Atlas CMMS
+app.post('/cmms/signup', async (req, res) => {
+  const { firstName, lastName, email, company } = req.body || {};
+  if (!email || !firstName || !lastName) {
+    return res.status(400).json({ error: 'firstName, lastName, and email are required' });
+  }
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRe.test(email)) {
+    return res.status(400).json({ error: 'Invalid email address' });
+  }
+  if (!MCP_REST_API_KEY) {
+    return res.status(503).json({ error: 'Service not configured' });
+  }
+  try {
+    const response = await fetch(`${MCP_BASE_URL}/api/cmms/invite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${MCP_REST_API_KEY}` },
+      body: JSON.stringify({ emails: [email], role_id: 4 }),
+    });
+    const data = await response.json();
+    if (data.error) return res.status(500).json({ error: 'Could not create account. Try again.' });
+    console.log(`[cmms/signup] invited ${email} (${firstName} ${lastName}, ${company || 'n/a'})`);
+    res.json({ success: true, redirect: '/cmms/app' });
+  } catch (err) {
+    console.error('[cmms/signup] error:', err.message);
+    res.status(502).json({ error: 'Service unavailable' });
+  }
+});
+
 // POST /api/mira/session — create a new anonymous session
 app.post('/api/mira/session', (_req, res) => {
   const session_id = uuidv4();

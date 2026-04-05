@@ -163,6 +163,21 @@ class AtlasCMMS(CMMSAdapter):
             logger.error("Atlas get_asset(%s) failed: %s", asset_id, e)
             return {"error": str(e)}
 
+    async def invite_users(self, emails: list[str], role_id: int = 4) -> dict:
+        """Invite users to Atlas CMMS by email. role_id 4 = Technician."""
+        payload = {"emails": emails, "role": {"id": role_id}}
+        try:
+            result = await self._post("/users/invite", payload)
+            logger.info("Atlas invite sent to %d user(s): %s", len(emails), emails)
+            return result
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "Atlas invite_users failed: %s %s",
+                e.response.status_code,
+                e.response.text[:200],
+            )
+            return {"error": str(e)}
+
     async def list_pm_schedules(self, asset_id: str | None = None, limit: int = 20) -> list[dict]:
         payload: dict = {"pageSize": limit, "pageNum": 0}
         if asset_id is not None:
