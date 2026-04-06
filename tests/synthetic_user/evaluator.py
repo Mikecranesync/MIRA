@@ -27,7 +27,23 @@ class WeaknessCategory(str, Enum):
     OUT_OF_KB_HALLUCINATION = "out_of_kb_hallucination"
     ABBREVIATION_FAILURE = "abbreviation_failure"
     NO_SOURCES = "no_sources"
+    EXCESSIVE_FOLLOWUPS = "excessive_followups"
+    CONTEXT_AMNESIA = "context_amnesia"
+    GRACEFUL_DEGRADATION_FAILURE = "graceful_degradation_failure"
+    RAG_UNFAITHFUL = "rag_unfaithful"
     PASS = "pass"
+
+
+@dataclass
+class ConversationTurn:
+    """One turn in a multi-turn conversation."""
+
+    turn_number: int
+    role: str  # "user" | "bot"
+    text: str
+    timestamp_ms: int  # monotonic, for latency analysis
+    fsm_state: str | None = None
+    sources: list[dict] | None = None
 
 
 @dataclass
@@ -51,6 +67,7 @@ class QuestionResult:
     sources: list[dict] | None  # Sidecar path only [{file, page, excerpt, brain}]
     latency_ms: int
     error: str | None
+    transcript: list[dict] | None = None  # list of ConversationTurn as dicts
 
 
 @dataclass
@@ -60,6 +77,7 @@ class EvaluatedResult:
     ground_truth_score: float  # -1.0 if no GT, else 0.0-1.0
     keyword_matches: list[str] = field(default_factory=list)
     details: str = ""
+    faithfulness_score: float = -1.0  # -1.0 = N/A, else 0.0-1.0
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +251,128 @@ def _check_no_sources(result: QuestionResult) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Multi-turn / conversation-level detectors
+# ---------------------------------------------------------------------------
+
+_QUESTION_PATTERNS: dict[str, list[str]] = {
+    "equipment": [
+        "what equipment", "what device", "what model", "which equipment",
+        "what machine", "what unit", "which model", "which drive",
+    ],
+    "symptom": [
+        "what symptom", "what's happening", "describe the", "what issue",
+        "what problem", "what are you seeing", "what's going on",
+    ],
+}
+
+
+def _check_excessive_followups(result: QuestionResult) -> bool:
+    """Multi-turn: bot asked too many clarifying questions before diagnosis."""
+    if not result.transcript or len(result.transcript) < 2:
+        return False
+    bot_questions = [
+        t for t in result.transcript
+        if t.get("role") == "bot" and "?" in t.get("text", "")
+    ]
+    final_state = result.next_state
+    reached_diagnosis = final_state in ("DIAGNOSIS", "FIX_STEP", "RESOLVED")
+    return len(bot_questions) > 4 and not reached_diagnosis
+
+
+def _check_context_amnesia(result: QuestionResult) -> bool:
+    """Multi-turn: bot re-asked for info the user already provided."""
+    if not result.transcript or len(result.transcript) < 4:
+        return False
+    user_texts = [
+        t["text"].lower() for t in result.transcript if t.get("role") == "user"
+    ]
+    bot_texts = [
+        t["text"].lower() for t in result.transcript if t.get("role") == "bot"
+    ]
+    if len(bot_texts) < 2:
+        return False
+    for category, patterns in _QUESTION_PATTERNS.items():
+        user_mentioned = any(category in ut for ut in user_texts[:2])
+        bot_reasked = any(
+            any(p in bt for p in patterns) for bt in bot_texts[1:]
+        )
+        if user_mentioned and bot_reasked:
+            return True
+    return False
+
+
+def _check_graceful_degradation_failure(result: QuestionResult) -> bool:
+    """Bot gave a confident answer despite low-relevance sources."""
+    if result.adversarial_category == "out_of_kb":
+        return False  # already handled by _check_out_of_kb_hallucination
+    if result.path != "sidecar" or not result.sources:
+        return False
+    question_terms = set(re.findall(r"\b\w{4,}\b", result.question_text.lower()))
+    _STOP = {
+        "this", "that", "with", "from", "have", "been",
+        "will", "should", "about", "which", "what", "does",
+    }
+    question_terms -= _STOP
+    source_relevance = 0
+    for source in result.sources:
+        excerpt = source.get("excerpt", "").lower()
+        overlap = len(question_terms & set(re.findall(r"\b\w{4,}\b", excerpt)))
+        source_relevance += overlap
+    low_relevance = source_relevance < 2
+    confident = not _contains_honesty_signal(result.reply)
+    long_reply = len(result.reply) > 100
+    return low_relevance and confident and long_reply
+
+
+def _decompose_claims(reply: str) -> list[str]:
+    """Split a reply into atomic factual claims (sentence-level)."""
+    sentences = re.split(r"(?<=[.!])\s+", reply)
+    claims = []
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if len(sentence) < 20:
+            continue
+        if _LOW_CONF.search(sentence):
+            continue
+        if sentence.lower().startswith(("check ", "verify ", "ensure ", "always ")):
+            continue
+        claims.append(sentence)
+    return claims
+
+
+def _claim_grounded_in_sources(claim: str, sources: list[dict]) -> bool:
+    """Check if a claim has keyword overlap with any source excerpt."""
+    _STOP = {
+        "this", "that", "with", "from", "have", "been",
+        "will", "should", "about", "which", "what", "does",
+    }
+    claim_words = set(re.findall(r"\b\w{4,}\b", claim.lower())) - _STOP
+    if not claim_words:
+        return True  # no substantive words = vacuously grounded
+    for source in sources:
+        excerpt = source.get("excerpt", "")
+        excerpt_words = set(re.findall(r"\b\w{4,}\b", excerpt.lower()))
+        if len(claim_words & excerpt_words) >= 2:
+            return True
+    return False
+
+
+def _check_rag_unfaithfulness(result: QuestionResult) -> tuple[bool, float]:
+    """Sidecar path: check if answer claims are grounded in source excerpts.
+
+    Returns (is_unfaithful, faithfulness_score).
+    """
+    if result.path != "sidecar" or not result.sources:
+        return False, -1.0
+    claims = _decompose_claims(result.reply)
+    if not claims:
+        return False, -1.0
+    grounded = sum(1 for c in claims if _claim_grounded_in_sources(c, result.sources))
+    score = grounded / len(claims)
+    return score < 0.5, score
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -346,6 +486,50 @@ def evaluate(result: QuestionResult) -> EvaluatedResult:
             ground_truth_score=gt_score,
             keyword_matches=kw_matches,
             details="Sidecar path returned zero source citations",
+        )
+
+    # --- Conversation-level checks (require transcript) ---
+
+    if _check_excessive_followups(result):
+        bot_q_count = sum(
+            1 for t in (result.transcript or [])
+            if t.get("role") == "bot" and "?" in t.get("text", "")
+        )
+        return EvaluatedResult(
+            result=result,
+            weakness=WeaknessCategory.EXCESSIVE_FOLLOWUPS,
+            ground_truth_score=gt_score,
+            keyword_matches=kw_matches,
+            details=f"Bot asked {bot_q_count} follow-up questions without reaching diagnosis",
+        )
+
+    if _check_context_amnesia(result):
+        return EvaluatedResult(
+            result=result,
+            weakness=WeaknessCategory.CONTEXT_AMNESIA,
+            ground_truth_score=gt_score,
+            keyword_matches=kw_matches,
+            details="Bot re-asked for information the user already provided",
+        )
+
+    if _check_graceful_degradation_failure(result):
+        return EvaluatedResult(
+            result=result,
+            weakness=WeaknessCategory.GRACEFUL_DEGRADATION_FAILURE,
+            ground_truth_score=gt_score,
+            keyword_matches=kw_matches,
+            details="Confident reply despite low-relevance sources",
+        )
+
+    unfaithful, faith_score = _check_rag_unfaithfulness(result)
+    if unfaithful:
+        return EvaluatedResult(
+            result=result,
+            weakness=WeaknessCategory.RAG_UNFAITHFUL,
+            ground_truth_score=gt_score,
+            keyword_matches=kw_matches,
+            details=f"Faithfulness score {faith_score:.2f} < 0.50",
+            faithfulness_score=faith_score,
         )
 
     # All checks passed.

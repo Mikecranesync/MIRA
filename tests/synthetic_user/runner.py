@@ -48,6 +48,10 @@ class RunConfig:
     personas: list[str] | None = None
     adversarial_categories: list[str] | None = None
     adversarial_ratio: float = 0.3
+    # Telethon mode settings
+    bot_username: str = ""
+    max_turns: int = 4
+    telethon_timeout: int = 60
     # Internal run ID — set automatically if empty.
     run_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
 
@@ -529,6 +533,48 @@ async def run_synthetic_user(config: RunConfig) -> list[QuestionResult]:
         bot_results = await _run_bot_path(questions, config)
         sidecar_results = await _run_sidecar_path(questions, config)
         return bot_results + sidecar_results
+
+    # ── Telethon (real Telegram bot via Telethon) ───────────────────────────
+    if config.mode == "telethon":
+        from tests.synthetic_user.telegram_bridge import TelegramBridge
+
+        if not config.bot_username:
+            logger.error("Telethon mode requires --bot-username")
+            return []
+        bridge = TelegramBridge(
+            bot_username=config.bot_username,
+            max_turns=config.max_turns,
+            timeout=config.telethon_timeout,
+        )
+        for question in questions:
+            try:
+                result = await bridge.run_conversation(question)
+                results.append(result)
+            except Exception as exc:
+                logger.error("Telethon error for %s: %s", question.id[:8], exc)
+                results.append(
+                    QuestionResult(
+                        question_id=question.id,
+                        question_text=question.text,
+                        persona_id=question.persona_id,
+                        topic_category=question.topic_category,
+                        adversarial_category=question.adversarial_category,
+                        equipment_type=question.equipment_type,
+                        vendor=question.vendor,
+                        expected_intent=question.expected_intent,
+                        expected_weakness=question.expected_weakness,
+                        ground_truth=question.ground_truth,
+                        path="telethon",
+                        reply="",
+                        confidence="none",
+                        next_state=None,
+                        sources=None,
+                        latency_ms=0,
+                        error=str(exc),
+                    )
+                )
+            await asyncio.sleep(3)  # rate limit between conversations
+        return results
 
     logger.error("Unknown mode: %s — returning empty results", config.mode)
     return []

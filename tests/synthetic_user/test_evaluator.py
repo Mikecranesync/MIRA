@@ -36,6 +36,7 @@ def _make_result(
     expected_weakness: str | None = None,
     ground_truth: dict | None = None,
     vendor: str = "Allen-Bradley",
+    transcript: list[dict] | None = None,
     **kwargs,
 ) -> QuestionResult:
     """Return a QuestionResult with all required fields populated."""
@@ -57,6 +58,7 @@ def _make_result(
         sources=sources,
         latency_ms=kwargs.get("latency_ms", 120),
         error=error,
+        transcript=transcript,
     )
 
 
@@ -357,3 +359,159 @@ def test_evaluate_batch() -> None:
     assert all(isinstance(ev, EvaluatedResult) for ev in evaluated)
     # All baseline results should pass
     assert all(ev.weakness == WeaknessCategory.PASS for ev in evaluated)
+
+
+# ---------------------------------------------------------------------------
+# 12. Excessive follow-ups
+# ---------------------------------------------------------------------------
+
+
+def test_excessive_followups_detected() -> None:
+    """5 bot questions without reaching DIAGNOSIS → EXCESSIVE_FOLLOWUPS."""
+    transcript = [
+        {"role": "user", "text": "Motor is making noise", "turn_number": 1, "timestamp_ms": 0},
+        {"role": "bot", "text": "What equipment is this on?", "turn_number": 2, "timestamp_ms": 100},
+        {"role": "user", "text": "It's a conveyor motor", "turn_number": 3, "timestamp_ms": 200},
+        {"role": "bot", "text": "What symptoms are you seeing?", "turn_number": 4, "timestamp_ms": 300},
+        {"role": "user", "text": "Grinding sound", "turn_number": 5, "timestamp_ms": 400},
+        {"role": "bot", "text": "When did it start?", "turn_number": 6, "timestamp_ms": 500},
+        {"role": "user", "text": "Yesterday", "turn_number": 7, "timestamp_ms": 600},
+        {"role": "bot", "text": "Is there vibration?", "turn_number": 8, "timestamp_ms": 700},
+        {"role": "user", "text": "Yes", "turn_number": 9, "timestamp_ms": 800},
+        {"role": "bot", "text": "What speed is it running at?", "turn_number": 10, "timestamp_ms": 900},
+    ]
+    result = _make_result(
+        next_state="Q3",
+        transcript=transcript,
+    )
+    ev = evaluate(result)
+    assert ev.weakness == WeaknessCategory.EXCESSIVE_FOLLOWUPS
+
+
+def test_followups_ok_when_diagnosis_reached() -> None:
+    """Many bot questions are fine if FSM reached DIAGNOSIS."""
+    transcript = [
+        {"role": "user", "text": "Motor noise", "turn_number": 1, "timestamp_ms": 0},
+        {"role": "bot", "text": "What equipment?", "turn_number": 2, "timestamp_ms": 100},
+        {"role": "user", "text": "Conveyor", "turn_number": 3, "timestamp_ms": 200},
+        {"role": "bot", "text": "What symptoms?", "turn_number": 4, "timestamp_ms": 300},
+        {"role": "user", "text": "Grinding", "turn_number": 5, "timestamp_ms": 400},
+        {"role": "bot", "text": "When?", "turn_number": 6, "timestamp_ms": 500},
+        {"role": "user", "text": "Yesterday", "turn_number": 7, "timestamp_ms": 600},
+        {"role": "bot", "text": "Vibration?", "turn_number": 8, "timestamp_ms": 700},
+        {"role": "user", "text": "Yes", "turn_number": 9, "timestamp_ms": 800},
+        {"role": "bot", "text": "Speed?", "turn_number": 10, "timestamp_ms": 900},
+    ]
+    result = _make_result(
+        next_state="DIAGNOSIS",
+        transcript=transcript,
+    )
+    ev = evaluate(result)
+    assert ev.weakness != WeaknessCategory.EXCESSIVE_FOLLOWUPS
+
+
+# ---------------------------------------------------------------------------
+# 13. Context amnesia
+# ---------------------------------------------------------------------------
+
+
+def test_context_amnesia_detected() -> None:
+    """User says 'equipment' info in turn 1, bot re-asks in turn 3 → CONTEXT_AMNESIA."""
+    transcript = [
+        {"role": "user", "text": "My VFD equipment is tripping", "turn_number": 1, "timestamp_ms": 0},
+        {"role": "bot", "text": "What fault code do you see?", "turn_number": 2, "timestamp_ms": 100},
+        {"role": "user", "text": "F004", "turn_number": 3, "timestamp_ms": 200},
+        {"role": "bot", "text": "What equipment are you working on?", "turn_number": 4, "timestamp_ms": 300},
+    ]
+    result = _make_result(transcript=transcript)
+    ev = evaluate(result)
+    assert ev.weakness == WeaknessCategory.CONTEXT_AMNESIA
+
+
+# ---------------------------------------------------------------------------
+# 14. Graceful degradation failure
+# ---------------------------------------------------------------------------
+
+
+def test_graceful_degradation_failure() -> None:
+    """Low-relevance sources + confident long reply = degradation failure."""
+    sources = [
+        {
+            "file": "conveyor_maintenance.pdf",
+            "page": 5,
+            "excerpt": "Lubricate chain every 500 hours of operation.",
+            "brain": "shared_oem",
+        }
+    ]
+    result = _make_result(
+        path="sidecar",
+        sources=sources,
+        question_text="How do I configure PID loop tuning on the Allen-Bradley PLC?",
+        reply=(
+            "To configure PID loop tuning, navigate to the controller properties "
+            "and open the PID instruction block. Set the proportional gain to 2.5 "
+            "and the integral time to 0.5 seconds. The derivative gain should be "
+            "set to 0.1 for stable operation on most conveyor applications."
+        ),
+    )
+    ev = evaluate(result)
+    assert ev.weakness == WeaknessCategory.GRACEFUL_DEGRADATION_FAILURE
+
+
+# ---------------------------------------------------------------------------
+# 15. RAG faithfulness
+# ---------------------------------------------------------------------------
+
+
+def test_rag_unfaithful_detected() -> None:
+    """Reply claims are not grounded in source excerpts → RAG_UNFAITHFUL."""
+    sources = [
+        {
+            "file": "GS20_Manual.pdf",
+            "page": 12,
+            "excerpt": "The GS20 VFD supports Modbus RTU communication on terminals 4 and 5.",
+            "brain": "shared_oem",
+        }
+    ]
+    result = _make_result(
+        path="sidecar",
+        sources=sources,
+        vendor="AutomationDirect",
+        question_text="How do I set up Modbus communication on the GS20 VFD?",
+        reply=(
+            "The unit requires a 24VDC external supply for the control board module. "
+            "Connect the braking resistor to terminals DB+ and DB- with 10 AWG wire. "
+            "The IGBT module should be inspected annually for carbon tracking damage. "
+            "Parameter P049 controls the acceleration ramp time in seconds."
+        ),
+    )
+    ev = evaluate(result)
+    assert ev.weakness == WeaknessCategory.RAG_UNFAITHFUL
+    assert ev.faithfulness_score < 0.5
+
+
+def test_rag_faithful_passes() -> None:
+    """Reply claims match source excerpts → not RAG_UNFAITHFUL."""
+    sources = [
+        {
+            "file": "GS20_Manual.pdf",
+            "page": 12,
+            "excerpt": (
+                "The GS20 supports Modbus RTU communication via terminals 4 and 5. "
+                "Set parameter P4.00 to 5 for Modbus mode. Baud rate is configured "
+                "in P4.01 with default 9600."
+            ),
+            "brain": "shared_oem",
+        }
+    ]
+    result = _make_result(
+        path="sidecar",
+        sources=sources,
+        reply=(
+            "The GS20 supports Modbus RTU communication on terminals 4 and 5. "
+            "Set parameter P4.00 to 5 to enable Modbus mode. "
+            "The baud rate is configured in parameter P4.01, defaulting to 9600."
+        ),
+    )
+    ev = evaluate(result)
+    assert ev.weakness != WeaknessCategory.RAG_UNFAITHFUL
