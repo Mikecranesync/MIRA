@@ -10,7 +10,10 @@ import logging
 import os
 import re
 
-from mira_crawler.celery_app import app
+try:
+    from mira_crawler.celery_app import app
+except ImportError:
+    from celery_app import app
 
 logger = logging.getLogger("mira-crawler.tasks.discover")
 
@@ -112,7 +115,10 @@ def discover_manufacturer(self, manufacturer: str, start_url: str,
     logger.info("Discovered %d PDF URLs for %s", len(pdf_urls), manufacturer)
 
     # Queue ingest task for each URL
-    from mira_crawler.tasks.ingest import ingest_url
+    try:
+        from mira_crawler.tasks.ingest import ingest_url
+    except ImportError:
+        from tasks.ingest import ingest_url
 
     for url in pdf_urls:
         ingest_url.delay(

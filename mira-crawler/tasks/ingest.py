@@ -13,14 +13,15 @@ import logging
 import os
 
 import httpx
-from mira_crawler.celery_app import app
+
+try:
+    from mira_crawler.celery_app import app
+except ImportError:
+    from celery_app import app
 
 logger = logging.getLogger("mira-crawler.tasks.ingest")
 
 DOWNLOAD_TIMEOUT = int(os.getenv("INGEST_DOWNLOAD_TIMEOUT", "60"))
-MIRA_TENANT_ID = os.getenv("MIRA_TENANT_ID", "")
-OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
 
 
 @app.task(bind=True, max_retries=3, default_retry_delay=30)
@@ -35,7 +36,11 @@ def ingest_url(self, url: str, manufacturer: str = "",
     from ingest.embedder import embed_text
     from ingest.store import chunk_exists, insert_chunk
 
-    if not MIRA_TENANT_ID:
+    tenant_id = os.getenv("MIRA_TENANT_ID", "")
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    embed_model = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
+
+    if not tenant_id:
         logger.error("MIRA_TENANT_ID not set — cannot ingest")
         return {"url": url, "inserted": 0, "error": "no_tenant_id"}
 
@@ -84,7 +89,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
         chunk_idx = chunk.get("chunk_index", i)
 
         # Dedup
-        if chunk_exists(MIRA_TENANT_ID, url, chunk_idx):
+        if chunk_exists(tenant_id, url, chunk_idx):
             skipped += 1
             continue
 
@@ -94,14 +99,14 @@ def ingest_url(self, url: str, manufacturer: str = "",
 
         embedding = embed_text(
             chunk["text"],
-            ollama_url=OLLAMA_URL,
-            model=EMBED_MODEL,
+            ollama_url=ollama_url,
+            model=embed_model,
         )
         if embedding is None:
             continue
 
         entry_id = insert_chunk(
-            tenant_id=MIRA_TENANT_ID,
+            tenant_id=tenant_id,
             content=chunk["text"],
             embedding=embedding,
             source_url=url,

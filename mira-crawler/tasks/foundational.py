@@ -17,7 +17,10 @@ from __future__ import annotations
 
 import logging
 
-from mira_crawler.celery_app import app
+try:
+    from mira_crawler.celery_app import app
+except ImportError:
+    from celery_app import app
 
 logger = logging.getLogger("mira-crawler.tasks.foundational")
 
@@ -190,8 +193,12 @@ def ingest_foundational_kb():
     Apify targets are queued as discover_and_ingest tasks (crawl → ingest).
     Safe to re-run — dedup prevents duplicate chunks.
     """
-    from mira_crawler.tasks.discover import discover_manufacturer
-    from mira_crawler.tasks.ingest import ingest_url
+    try:
+        from mira_crawler.tasks.discover import discover_manufacturer
+        from mira_crawler.tasks.ingest import ingest_url
+    except ImportError:
+        from tasks.discover import discover_manufacturer
+        from tasks.ingest import ingest_url
 
     queued_direct = 0
     queued_apify = 0
