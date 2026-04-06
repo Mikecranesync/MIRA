@@ -9,6 +9,7 @@ The Docker image uses mira_crawler.* paths via PYTHONPATH.
 
 from __future__ import annotations
 
+import httpx  # ensure httpx is in sys.modules before any patch.dict(sys.modules) runs
 from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
