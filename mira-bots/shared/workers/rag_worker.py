@@ -147,6 +147,7 @@ class RAGWorker:
         self.tenant_id = tenant_id or os.environ.get("MIRA_TENANT_ID", "")
         if not self.tenant_id:
             logger.warning("MIRA_TENANT_ID not set — NeonDB recall will be skipped")
+        self._ingest_url = os.environ.get("INGEST_BASE_URL", "http://mira-ingest:8001").rstrip("/")
         self._last_sources: list[str] = []
         self._last_distances: list[float] = []
         self._prompt_meta = _load_prompt_meta()
@@ -168,18 +169,21 @@ class RAGWorker:
         }
 
         async with trace_rag_query(message, metadata=metadata) as spans:
-            # Stage 1: Embed query via Ollama nomic-embed-text → NeonDB pgvector recall
+            # Stage 1: Embed query → NeonDB recall (visual for photos, text for text)
             rewritten = message
             neon_chunks: list[dict] = []
             async with spans.embed_query(message):
-                if self.tenant_id and not photo_b64:
-                    embedding = await self._embed_ollama(message)
-                    if embedding:
-                        neon_chunks = _neon_recall.recall_knowledge(
-                            embedding,
-                            self.tenant_id,
-                            query_text=message,
-                        )
+                if self.tenant_id:
+                    if photo_b64 and self._ingest_url:
+                        neon_chunks = await self._visual_search(photo_b64, message)
+                    elif not photo_b64:
+                        embedding = await self._embed_ollama(message)
+                        if embedding:
+                            neon_chunks = _neon_recall.recall_knowledge(
+                                embedding,
+                                self.tenant_id,
+                                query_text=message,
+                            )
 
             # Stage 2: Retrieve via Open WebUI RAG (NeonDB chunks injected into prompt)
             messages = self._build_prompt(state, rewritten, photo_b64, neon_chunks=neon_chunks)
@@ -349,6 +353,22 @@ class RAGWorker:
             user_msg = rewrite_question(message, state.get("asset_identified"))
             messages.append({"role": "user", "content": user_msg})
         return messages
+
+    async def _visual_search(self, photo_b64: str, query_text: str) -> list[dict]:
+        """Call /ingest/search-visual for dual-modality retrieval. Non-blocking."""
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{self._ingest_url}/ingest/search-visual",
+                    json={"query_image_b64": photo_b64, "query_text": query_text, "top_k": 5},
+                )
+                resp.raise_for_status()
+                results = resp.json().get("results", [])
+            logger.info("Visual search returned %d chunks", len(results))
+            return results
+        except Exception as e:
+            logger.warning("Visual search failed (falling back to empty): %s", e)
+            return []
 
     async def _embed_ollama(self, text: str) -> list[float] | None:
         """Embed text via Ollama nomic-embed-text (768-dim, matches NeonDB vectors)."""

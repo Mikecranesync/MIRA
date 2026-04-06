@@ -188,6 +188,21 @@ async def _push_to_kb(asset_tag: str, description: str) -> None:
 async def startup():
     _ensure_table()
     PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+    # Warn if nomic-embed-text is missing from Ollama — RAG will silently fail without it
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{OLLAMA_URL}/api/tags")
+            resp.raise_for_status()
+            models = [m["name"] for m in resp.json().get("models", [])]
+            if not any("nomic-embed-text" in name for name in models):
+                logger.warning(
+                    "nomic-embed-text not found in Ollama. RAG embedding will fail. "
+                    "Run: ollama pull nomic-embed-text on the host, then restart."
+                )
+            else:
+                logger.info("nomic-embed-text confirmed present in Ollama.")
+    except Exception as e:
+        logger.warning("Could not reach Ollama at %s to verify models: %s", OLLAMA_URL, e)
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +328,70 @@ async def ingest_photo(
         "description": description,
         "photo_path": photo_path,
     }
+
+
+@app.post("/ingest/search-visual")
+async def search_visual(body: dict):
+    """Dual-modality search: image embedding + text embedding merged with RRF.
+
+    Body: {query_image_b64?, query_text?, top_k?}
+    Returns: {results: [{...score...}]}
+    """
+    query_image_b64 = body.get("query_image_b64", "")
+    query_text = body.get("query_text", "")
+    top_k = int(body.get("top_k", 5))
+
+    if not query_image_b64 and not query_text:
+        raise HTTPException(status_code=422, detail="query_image_b64 or query_text required")
+
+    tenant_id = os.getenv("MIRA_TENANT_ID", "")
+    if not tenant_id:
+        raise HTTPException(status_code=503, detail="MIRA_TENANT_ID not configured")
+
+    try:
+        from db.neon import recall_by_image, recall_knowledge
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"NeonDB not available: {e}")
+
+    image_results: list[dict] = []
+    text_results: list[dict] = []
+
+    if query_image_b64:
+        try:
+            img_vec = await _embed_image(query_image_b64)
+            image_results = recall_by_image(img_vec, tenant_id, limit=top_k * 2)
+        except Exception as e:
+            logger.warning("Visual search embed/recall failed: %s", e)
+
+    if query_text:
+        try:
+            txt_vec = await _embed_text(query_text)
+            text_results = recall_knowledge(txt_vec, tenant_id, limit=top_k * 2)
+        except Exception as e:
+            logger.warning("Text search embed/recall failed: %s", e)
+
+    # Reciprocal Rank Fusion: score = 1/(60+rank_text) + 1/(60+rank_image)
+    RRF_K = 60
+    scores: dict[str, float] = {}
+    entries: dict[str, dict] = {}
+
+    for rank, r in enumerate(text_results):
+        key = r.get("content", "")[:200]
+        scores[key] = scores.get(key, 0.0) + 1.0 / (RRF_K + rank)
+        entries[key] = r
+
+    for rank, r in enumerate(image_results):
+        key = r.get("content", "")[:200]
+        scores[key] = scores.get(key, 0.0) + 1.0 / (RRF_K + rank)
+        if key not in entries:
+            entries[key] = r
+
+    merged = sorted(
+        [{"rrf_score": scores[k], **entries[k]} for k in scores],
+        key=lambda x: x["rrf_score"],
+        reverse=True,
+    )
+    return {"results": merged[:top_k]}
 
 
 @app.post("/ingest/search")
