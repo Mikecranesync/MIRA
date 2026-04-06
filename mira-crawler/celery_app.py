@@ -38,7 +38,16 @@ app = Celery(
     backend=result_backend,
 )
 app.config_from_object(_config_module)
-app.autodiscover_tasks([_tasks_package])
+
+# Explicit imports ensure task registration in both Docker (mira_crawler.*) and local dev (tasks.*)
+try:
+    import mira_crawler.tasks.discover  # noqa: F401
+    import mira_crawler.tasks.foundational  # noqa: F401
+    import mira_crawler.tasks.ingest  # noqa: F401
+except ImportError:
+    import tasks.discover  # noqa: F401
+    import tasks.foundational  # noqa: F401
+    import tasks.ingest  # noqa: F401
 
 if __name__ == "__main__":
     app.start()
