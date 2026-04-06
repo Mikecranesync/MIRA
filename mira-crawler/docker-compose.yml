@@ -29,7 +29,7 @@ services:
       - APIFY_API_TOKEN=${APIFY_API_KEY}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
-      - OLLAMA_BASE_URL=${OLLAMA_URL:-http://192.168.1.11:11434}
+      - OLLAMA_BASE_URL=http://192.168.1.11:11434
     networks:
       - core-net
     healthcheck:
@@ -54,7 +54,7 @@ services:
       - APIFY_API_TOKEN=${APIFY_API_KEY}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
-      - OLLAMA_BASE_URL=${OLLAMA_URL:-http://192.168.1.11:11434}
+      - OLLAMA_BASE_URL=http://192.168.1.11:11434
     networks:
       - core-net
 
