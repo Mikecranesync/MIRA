@@ -3,3 +3,4 @@ mira/
 *.log
 .DS_Store
 .env
+vision_captures/

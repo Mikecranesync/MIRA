@@ -21,7 +21,7 @@ import os
 import re
 import sys
 import time
-from typing import Generator
+import uuid
 
 import httpx
 
@@ -32,13 +32,28 @@ import httpx
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
 MIRA_TENANT_ID = os.getenv("MIRA_TENANT_ID")
-CHUNK_SIZE = 800
-CHUNK_OVERLAP = 100
+CHUNK_SIZE = 800             # pdfplumber fallback path
+CHUNK_SIZE_DOCLING = 2500    # Docling path — blocks are pre-chunked semantically
+CHUNK_OVERLAP = 200
 DOWNLOAD_TIMEOUT = 60
 EMBED_TIMEOUT = 30
-MAX_PDF_PAGES = 300          # skip runaway PDFs
+MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "1000"))
 MIN_CHUNK_CHARS = 80
 REQUEST_DELAY = 0.5          # seconds between URL downloads (polite crawl)
+
+# Docling is the primary PDF extractor. pdfplumber is the fallback.
+_docling = None
+try:
+    import pathlib as _pathlib
+    import sys as _sys
+    _sys.path.insert(0, str(_pathlib.Path(__file__).parent))
+    from docling_adapter import DoclingAdapter as _DoclingAdapter
+    _docling = _DoclingAdapter(max_pages=MAX_PDF_PAGES)
+except Exception as _e:
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "Docling unavailable: %s — pdfplumber will be used for all PDFs", _e
+    )
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,15 +71,19 @@ _INGEST_DIR = os.path.join(os.path.dirname(_SCRIPT_DIR), "mira-ingest")
 if _INGEST_DIR not in sys.path:
     sys.path.insert(0, _INGEST_DIR)
 
+_CRAWLER_DIR = os.path.join(os.path.dirname(os.path.dirname(_SCRIPT_DIR)), "mira-crawler")
+if _CRAWLER_DIR not in sys.path:
+    sys.path.insert(0, _CRAWLER_DIR)
+
 from db.neon import (  # noqa: E402
     get_pending_urls,
-    insert_knowledge_entry,
+    insert_knowledge_entries_batch,
     knowledge_entry_exists,
     mark_manual_cache_done,
     mark_manual_verified,
     mark_source_fingerprint_done,
 )
-
+from ingest.chunker import chunk_blocks  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Text extraction
@@ -178,31 +197,8 @@ def _extract_from_html(data: bytes) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Chunking
+# Chunking — delegated to mira-crawler/ingest/chunker.py (table-aware)
 # ---------------------------------------------------------------------------
-
-def _chunk_text(text: str) -> Generator[str, None, None]:
-    """Yield overlapping ~CHUNK_SIZE chunks."""
-    start = 0
-    while start < len(text):
-        end = start + CHUNK_SIZE
-        chunk = text[start:end].strip()
-        if len(chunk) >= MIN_CHUNK_CHARS:
-            yield chunk
-        start += CHUNK_SIZE - CHUNK_OVERLAP
-
-
-def _blocks_to_chunks(blocks: list[dict]) -> list[dict]:
-    """Expand raw blocks into fixed-size chunks preserving metadata."""
-    chunks: list[dict] = []
-    for block in blocks:
-        text = block["text"]
-        if len(text) <= CHUNK_SIZE:
-            chunks.append(block)
-        else:
-            for piece in _chunk_text(text):
-                chunks.append({"text": piece, "page_num": block["page_num"], "section": block["section"]})
-    return chunks
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +236,38 @@ _MFR_HINTS: dict[str, str] = {
     "omron": "Omron",
     "fanuc": "Fanuc",
 }
+
+# Rockwell catalog prefix → (manufacturer, product name) for local PDF filenames
+_CATALOG_MAP: dict[str, tuple[str, str]] = {
+    "100": ("Rockwell Automation", "Bulletin 100 Contactor"),
+    "140g": ("Rockwell Automation", "Bulletin 140G Circuit Breaker"),
+    "150": ("Rockwell Automation", "SMC-3 Soft Starter"),
+    "193": ("Rockwell Automation", "Bulletin 193 Overload Relay"),
+    "20a": ("Rockwell Automation", "PowerFlex 70"),
+    "20b": ("Rockwell Automation", "PowerFlex 700"),
+    "2100": ("Rockwell Automation", "CENTERLINE 2100 MCC"),
+    "22a": ("Rockwell Automation", "PowerFlex 70"),
+    "22b": ("Rockwell Automation", "PowerFlex 40"),
+    "22c": ("Rockwell Automation", "PowerFlex 400"),
+    "22comm": ("Rockwell Automation", "PowerFlex Communications"),
+    "22d": ("Rockwell Automation", "PowerFlex 40P"),
+    "22f": ("Rockwell Automation", "PowerFlex 4M"),
+    "520": ("Rockwell Automation", "PowerFlex 525"),
+    "750": ("Rockwell Automation", "PowerMonitor 5000"),
+    "pflex": ("Rockwell Automation", "PowerFlex Reference"),
+    "440c": ("Rockwell Automation", "GuardMaster"),
+    "1756": ("Rockwell Automation", "ControlLogix"),
+    "1769": ("Rockwell Automation", "CompactLogix"),
+}
+
+
+def _catalog_lookup(filename: str) -> tuple[str | None, str | None]:
+    """Extract manufacturer + model from Rockwell catalog filename prefix."""
+    stem = filename.lower().rsplit(".", 1)[0]
+    for prefix, (mfr, model) in sorted(_CATALOG_MAP.items(), key=lambda x: -len(x[0])):
+        if stem.startswith(prefix):
+            return mfr, model
+    return None, None
 
 
 def _extract_mfr_from_url(url: str, hint: str | None = None) -> str | None:
@@ -286,9 +314,19 @@ def process_url(record: dict) -> int:
         log.warning("[SKIP] %s — download failed: %s", url, exc)
         return 0
 
-    # Extract
+    # Extract — Docling primary, pdfplumber fallback for PDFs
+    used_docling = False
     if source_type == "pdf" or resp.headers.get("content-type", "").startswith("application/pdf"):
-        blocks = _extract_from_pdf(data)
+        if _docling is not None:
+            blocks = _docling.extract_from_pdf(data)
+            if blocks:
+                used_docling = True
+                log.info("Extracted %d blocks from %s via docling", len(blocks), url)
+            else:
+                log.warning("Docling returned 0 blocks for %s — falling back to pdfplumber", url)
+                blocks = _extract_from_pdf(data)
+        else:
+            blocks = _extract_from_pdf(data)
     else:
         blocks = _extract_from_html(data)
 
@@ -296,39 +334,77 @@ def process_url(record: dict) -> int:
         log.warning("[SKIP] %s — no extractable text", url)
         return 0
 
-    chunks = _blocks_to_chunks(blocks)
-    inserted = 0
+    # Docling blocks are pre-chunked semantically — use larger max_chars to avoid
+    # re-splitting them. pdfplumber blocks need the standard split size.
+    effective_chunk_size = CHUNK_SIZE_DOCLING if used_docling else CHUNK_SIZE
 
-    for chunk_idx, chunk in enumerate(chunks):
+    chunks = chunk_blocks(
+        blocks,
+        source_url=url,
+        max_chars=effective_chunk_size,
+        min_chars=MIN_CHUNK_CHARS,
+        overlap=CHUNK_OVERLAP,
+    )
+    inserted = 0
+    total_chunks = len(chunks)
+    batch_size = 100
+    buffer: list[dict] = []
+
+    for i, chunk in enumerate(chunks):
         text = chunk["text"]
-        if len(text) < MIN_CHUNK_CHARS:
-            continue
+        chunk_idx = chunk["chunk_index"]
 
         # Dedup check
         if knowledge_entry_exists(MIRA_TENANT_ID, url, chunk_idx):
             continue
 
+        # Progress logging every 50 chunks
+        if (i + 1) % 50 == 0:
+            log.info("Embedding chunk %d/%d for %s...", i + 1, total_chunks, url[:60])
+
         embedding = _embed(text)
         if embedding is None:
             continue
 
-        try:
-            insert_knowledge_entry(
-                tenant_id=MIRA_TENANT_ID,
-                content=text,
-                embedding=embedding,
-                manufacturer=manufacturer,
-                model_number=model,
-                source_url=url,
-                chunk_index=chunk_idx,
-                page_num=chunk["page_num"],
-                section=chunk["section"],
-                source_type="manual",
-            )
-            inserted += 1
-        except Exception as exc:
-            log.warning("[WARN] insert failed chunk %d of %s: %s", chunk_idx, url, exc)
+        meta = {
+            "source_url": url,
+            "chunk_index": chunk_idx,
+            "page_num": chunk.get("page_num"),
+            "section": chunk.get("section", ""),
+            "chunk_type": chunk.get("chunk_type", "text"),
+        }
+        buffer.append({
+            "id": str(uuid.uuid4()),
+            "tenant_id": MIRA_TENANT_ID,
+            "source_type": "manual",
+            "manufacturer": manufacturer,
+            "model_number": model,
+            "content": text,
+            "embedding": str(embedding),
+            "source_url": url,
+            "source_page": chunk_idx,
+            "metadata": json.dumps(meta),
+            "chunk_type": chunk.get("chunk_type", "text"),
+        })
 
+        if len(buffer) >= batch_size:
+            try:
+                insert_knowledge_entries_batch(buffer)
+                inserted += len(buffer)
+                log.info("Inserted %d/%d chunks for %s", inserted, total_chunks, url[:60])
+            except Exception as exc:
+                log.warning("[WARN] batch insert failed at chunk %d of %s: %s", i, url, exc)
+            buffer = []
+
+    # Flush remainder
+    if buffer:
+        try:
+            insert_knowledge_entries_batch(buffer)
+            inserted += len(buffer)
+        except Exception as exc:
+            log.warning("[WARN] final batch insert failed: %s", exc)
+
+    log.info("Completed %s: %d/%d chunks inserted", url[:60], inserted, total_chunks)
     return inserted
 
 
@@ -351,14 +427,153 @@ def _update_tracking(record: dict, inserted: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Local PDF ingest
+# ---------------------------------------------------------------------------
+
+def process_local_pdf(pdf_path: str) -> int:
+    """Extract, chunk, embed, insert one local PDF file. Returns chunks inserted."""
+    from pathlib import Path
+
+    path = Path(pdf_path)
+    filename = path.name
+    mfr, model = _catalog_lookup(filename)
+    if not mfr:
+        mfr = _extract_mfr_from_url(filename, None)
+    if not model:
+        model = _extract_model_from_url(filename, None)
+
+    data = path.read_bytes()
+
+    used_docling = False
+    if _docling is not None:
+        blocks = _docling.extract_from_pdf(data)
+        if blocks:
+            used_docling = True
+            log.info("Extracted %d blocks from %s via docling", len(blocks), filename)
+        else:
+            log.warning("Docling returned 0 blocks for %s — falling back to pdfplumber", filename)
+            blocks = _extract_from_pdf(data)
+    else:
+        blocks = _extract_from_pdf(data)
+
+    if not blocks:
+        log.warning("[SKIP] %s — no extractable text", filename)
+        return 0
+
+    effective_chunk_size = CHUNK_SIZE_DOCLING if used_docling else CHUNK_SIZE
+
+    chunks = chunk_blocks(
+        blocks,
+        source_url=filename,
+        source_file=filename,
+        max_chars=effective_chunk_size,
+        min_chars=MIN_CHUNK_CHARS,
+        overlap=CHUNK_OVERLAP,
+    )
+    log.info("  %s → %d blocks → %d chunks", filename, len(blocks), len(chunks))
+
+    inserted = 0
+    total_chunks = len(chunks)
+    batch_size = 100
+    buffer: list[dict] = []
+
+    for i, chunk in enumerate(chunks):
+        chunk_idx = chunk["chunk_index"]
+
+        if knowledge_entry_exists(MIRA_TENANT_ID, filename, chunk_idx):
+            continue
+
+        if (i + 1) % 50 == 0:
+            log.info("Embedding chunk %d/%d for %s...", i + 1, total_chunks, filename)
+
+        embedding = _embed(chunk["text"])
+        if embedding is None:
+            continue
+
+        meta = {
+            "source_url": filename,
+            "chunk_index": chunk_idx,
+            "page_num": chunk.get("page_num"),
+            "section": chunk.get("section", ""),
+            "chunk_type": chunk.get("chunk_type", "text"),
+        }
+        buffer.append({
+            "id": str(uuid.uuid4()),
+            "tenant_id": MIRA_TENANT_ID,
+            "source_type": "manual",
+            "manufacturer": mfr,
+            "model_number": model,
+            "content": chunk["text"],
+            "embedding": str(embedding),
+            "source_url": filename,
+            "source_page": chunk_idx,
+            "metadata": json.dumps(meta),
+            "chunk_type": chunk.get("chunk_type", "text"),
+        })
+
+        if len(buffer) >= batch_size:
+            try:
+                insert_knowledge_entries_batch(buffer)
+                inserted += len(buffer)
+                log.info("Inserted %d/%d chunks for %s", inserted, total_chunks, filename)
+            except Exception as exc:
+                log.warning("[WARN] batch insert failed at chunk %d of %s: %s", i, filename, exc)
+            buffer = []
+
+    if buffer:
+        try:
+            insert_knowledge_entries_batch(buffer)
+            inserted += len(buffer)
+        except Exception as exc:
+            log.warning("[WARN] final batch insert failed: %s", exc)
+
+    log.info("Completed %s: %d/%d chunks inserted", filename, inserted, total_chunks)
+    return inserted
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="MIRA manual ingest pipeline")
+    parser.add_argument(
+        "--local-dir",
+        help="Ingest all PDFs from a local directory instead of NeonDB URL queue",
+    )
+    args = parser.parse_args()
+
     if not MIRA_TENANT_ID:
         log.error("MIRA_TENANT_ID env var not set — aborting")
         sys.exit(1)
 
+    if args.local_dir:
+        # Local PDF mode
+        pdf_dir = Path(args.local_dir)
+        if not pdf_dir.is_dir():
+            log.error("Directory not found: %s", pdf_dir)
+            sys.exit(1)
+
+        pdf_files = sorted(pdf_dir.glob("*.pdf"))
+        log.info("Found %d PDFs in %s", len(pdf_files), pdf_dir)
+
+        total_inserted = 0
+        for i, pdf_path in enumerate(pdf_files, 1):
+            log.info("[%d/%d] %s", i, len(pdf_files), pdf_path.name)
+            try:
+                inserted = process_local_pdf(str(pdf_path))
+                total_inserted += inserted
+                log.info("  → %d chunks inserted", inserted)
+            except Exception as exc:
+                log.error("[FAIL] %s — %s", pdf_path.name, exc)
+
+        log.info("Done. %d PDFs, %d total chunks inserted.", len(pdf_files), total_inserted)
+        return
+
+    # URL queue mode (existing behavior)
     log.info("Fetching pending URLs from NeonDB...")
     pending = get_pending_urls()
     log.info("Found %d URLs to process", len(pending))

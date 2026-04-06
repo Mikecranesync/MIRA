@@ -1,0 +1,32 @@
+# MIRA RAG Sidecar — systemd unit template
+# Copy to /etc/systemd/system/mira-rag.service and customize paths
+# Or use install_service_linux.sh which generates this automatically
+
+[Unit]
+Description=MIRA RAG Sidecar — FactoryLM
+Documentation=https://github.com/Mikecranesync/MIRA
+After=network.target
+
+[Service]
+Type=simple
+User=mira
+Group=mira
+WorkingDirectory=/opt/mira-sidecar
+ExecStart=/opt/mira-sidecar/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 5000
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mira-rag
+
+# Optional: point to properties file
+# Environment=PROPERTIES_FILE=/usr/local/bin/ignition/data/factorylm/factorylm.properties
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/mira-sidecar
+
+[Install]
+WantedBy=multi-user.target

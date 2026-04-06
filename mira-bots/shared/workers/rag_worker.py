@@ -9,9 +9,9 @@ from pathlib import Path
 import httpx
 import yaml
 
+from .. import neon_recall as _neon_recall
 from ..guardrails import rewrite_question
 from ..langfuse_setup import trace_rag_query
-from .. import neon_recall as _neon_recall
 
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
 
@@ -27,6 +27,7 @@ def _load_prompt_meta() -> dict:
     except Exception as e:
         logger.warning("Failed to load prompt metadata from %s: %s", _PROMPT_PATH, e)
         return {"codename": "unknown", "version": "unknown"}
+
 
 logger = logging.getLogger("mira-gsd")
 
@@ -91,6 +92,19 @@ cause based on the description, AND (3) one concrete action step as the final \
 sentence starting with a verb ("Check...", "Measure...", "Reset...", \
 "Verify..."). Do not withhold the action step — the technician is standing \
 at the machine and needs to act.
+15. INCOMPLETE SPECIFICATION TABLES. If the retrieved context contains a \
+specification table that appears to have multiple rows or conditions \
+(temperature ratings, current ratings, voltage ranges), and your answer \
+only covers one row or condition, explicitly state: "Note: this specification \
+may have additional ratings or conditions — verify the full table in the \
+source manual for your specific configuration." Do not pad incomplete \
+retrieval with generic explanations. Set confidence to MEDIUM.
+16. CITE YOUR SOURCE. When your answer is based on retrieved documentation, \
+end your reply with the source: "[Source: {manufacturer} {model_number}, \
+{section}]". Use the manufacturer and model_number labels from the retrieved \
+context tags. If no retrieved documents matched, say "Based on general \
+knowledge — no specific documentation found for this equipment." Do not mix \
+sourced and unsourced information without distinguishing them.
 
 SAFETY OVERRIDE \u2014 THE ONLY EXCEPTION:
 ONLY if the photo PHYSICALLY SHOWS one of these hazards VISIBLE IN THE IMAGE \
@@ -116,20 +130,33 @@ class RAGWorker:
     Falls back to single Open WebUI call when NVIDIA_API_KEY is unset.
     """
 
-    def __init__(self, openwebui_url: str, api_key: str, collection_id: str,
-                 nemotron=None, router=None, tenant_id: str = None):
+    def __init__(
+        self,
+        openwebui_url: str,
+        api_key: str,
+        collection_id: str,
+        nemotron=None,
+        router=None,
+        tenant_id: str = None,
+    ):
         self.openwebui_url = openwebui_url.rstrip("/")
         self.api_key = api_key
         self.collection_id = collection_id
         self.nemotron = nemotron
         self.router = router  # InferenceRouter instance
         self.tenant_id = tenant_id or os.environ.get("MIRA_TENANT_ID", "")
+        if not self.tenant_id:
+            logger.warning("MIRA_TENANT_ID not set — NeonDB recall will be skipped")
+        self._ingest_url = os.environ.get("INGEST_BASE_URL", "http://mira-ingest:8001").rstrip("/")
         self._last_sources: list[str] = []
         self._last_distances: list[float] = []
         self._prompt_meta = _load_prompt_meta()
 
     async def process(
-        self, message: str, state: dict, photo_b64: str = None,
+        self,
+        message: str,
+        state: dict,
+        photo_b64: str = None,
         vision_model: str = None,
     ) -> str:
         """3-stage RAG pipeline. Returns raw LLM response string."""
@@ -142,52 +169,67 @@ class RAGWorker:
         }
 
         async with trace_rag_query(message, metadata=metadata) as spans:
-            # Stage 1: Query rewrite + embed for NeonDB recall (Nemotron Q2E or passthrough)
+            # Stage 1: Embed query → NeonDB recall (visual for photos, text for text)
             rewritten = message
             neon_chunks: list[dict] = []
             async with spans.embed_query(message):
-                if self.nemotron and not photo_b64:
-                    rewritten = await self.nemotron.rewrite_query(
-                        query=message,
-                        context=state.get("asset_identified", ""),
-                    )
-                    # Embed rewritten query → NeonDB pgvector recall
-                    if self.tenant_id:
-                        embedding = await self.nemotron.embed(rewritten)
+                if self.tenant_id:
+                    if photo_b64 and self._ingest_url:
+                        neon_chunks = await self._visual_search(photo_b64, message)
+                    else:
+                        embed_query = message
+                        if photo_b64 and state.get("asset_identified"):
+                            embed_query = f"{state['asset_identified']} {message}"
+                        embedding = await self._embed_ollama(embed_query)
                         if embedding:
                             neon_chunks = _neon_recall.recall_knowledge(
-                                embedding, self.tenant_id
+                                embedding,
+                                self.tenant_id,
+                                query_text=embed_query,
                             )
 
-            # Stage 2: Retrieve via Open WebUI RAG (NeonDB chunks injected into prompt)
-            messages = self._build_prompt(state, rewritten, photo_b64, neon_chunks=neon_chunks)
+            # Extract chunk texts for reranking / telemetry
+            chunk_texts = [c["content"] for c in neon_chunks]
+
+            # Quality gate: only use retrieval when top chunk is genuinely relevant
+            top_score = max((c.get("similarity", 0) for c in neon_chunks), default=0)
+            if neon_chunks and top_score < 0.70:
+                logger.info("RAG_QUALITY_GATE top_score=%.3f — chunks suppressed", top_score)
+                chunk_texts = []
+
+            self._last_sources = chunk_texts
+            self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
+
+            async with spans.vector_search(
+                rewritten, self._last_sources[:5], self._last_distances[:5]
+            ):
+                pass
+            async with spans.context_compose(
+                self._last_sources[:5], "\n".join(self._last_sources[:3])
+            ):
+                pass
+
+            # Stage 2: Nemotron rerank NeonDB chunks (before LLM call)
+            rerank_query = rewritten
+            if photo_b64 and state.get("asset_identified"):
+                rerank_query = f"{state['asset_identified']} {rewritten}"
+
+            if self.nemotron and self.nemotron.enabled and chunk_texts:
+                reranked = await self.nemotron.rerank(rerank_query, chunk_texts)
+                top_chunks = [r["text"] for r in reranked if r["score"] > 0]
+                if top_chunks:
+                    chunk_texts = top_chunks
+
+            # Stage 3: Build prompt with (reranked) chunks → call LLM
+            if chunk_texts:
+                messages = self._build_prompt_with_chunks(
+                    state, rewritten, chunk_texts, photo_b64=photo_b64,
+                )
+            else:
+                messages = self._build_prompt(state, rewritten, photo_b64)
             t0 = time.monotonic()
             raw = await self._call_llm(messages, model=model)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
-
-            # Record retrieval results (populated by _call_openwebui above)
-            async with spans.vector_search(rewritten, self._last_sources[:5], self._last_distances[:5]):
-                pass
-            async with spans.context_compose(self._last_sources[:5], "\n".join(self._last_sources[:3])):
-                pass
-
-            # Stage 2b: Rerank retrieved chunks (if Nemotron enabled + sources available)
-            if (
-                self.nemotron
-                and self.nemotron.enabled
-                and self._last_sources
-                and not photo_b64
-            ):
-                reranked = await self.nemotron.rerank(rewritten, self._last_sources)
-                top_chunks = [r["text"] for r in reranked if r["score"] > 0]
-                if top_chunks:
-                    # Rebuild prompt with reranked chunks injected explicitly
-                    messages = self._build_prompt_with_chunks(
-                        state, rewritten, top_chunks,
-                    )
-                    t0 = time.monotonic()
-                    raw = await self._call_llm(messages, model=model)
-                    elapsed_ms = int((time.monotonic() - t0) * 1000)
 
             async with spans.llm_inference(len(str(messages)) // 4, raw, elapsed_ms):
                 pass
@@ -195,7 +237,11 @@ class RAGWorker:
             return raw
 
     def _build_prompt_with_chunks(
-        self, state: dict, message: str, chunks: list[str],
+        self,
+        state: dict,
+        message: str,
+        chunks: list[str],
+        photo_b64: str = None,
     ) -> list[dict]:
         """Build prompt with explicitly injected reranked chunks."""
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
@@ -218,56 +264,9 @@ class RAGWorker:
         for entry in history[-10:]:
             messages.append({"role": entry["role"], "content": entry["content"]})
 
-        user_msg = rewrite_question(message, state.get("asset_identified"))
-        messages.append({"role": "user", "content": user_msg})
-        return messages
-
-    def _build_prompt(
-        self, state: dict, message: str, photo_b64: str = None,
-        neon_chunks: list[dict] = None,
-    ) -> list[dict]:
-        """Build message list for LLM with GSD system prompt and state context."""
-        system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
-        system_content += f"FSM state: {state['state']}\n"
-        system_content += f"Exchange count: {state['exchange_count']}\n"
-        if state.get("asset_identified"):
-            system_content += f"Asset identified: {state['asset_identified']}\n"
-        if state.get("fault_category"):
-            system_content += f"Fault category: {state['fault_category']}\n"
-
-        # Inject NeonDB knowledge base chunks when available
-        if neon_chunks:
-            system_content += "\n--- NEONDB KNOWLEDGE BASE (retrieved) ---\n"
-            for i, chunk in enumerate(neon_chunks, 1):
-                mfr = chunk.get("manufacturer") or ""
-                model = chunk.get("model_number") or ""
-                score = chunk.get("similarity") or 0.0
-                label = f"{mfr} {model}".strip() or chunk.get("equipment_type") or "unknown"
-                system_content += f"[{i}] [{label}] (score={score:.3f})\n{chunk['content']}\n\n"
-            system_content += "--- END NEONDB CONTEXT ---\n"
-
-        messages = [{"role": "system", "content": system_content}]
-
-        # Conversation history — omit for photo messages (fresh visual context)
-        _SELF_REF_SIGNALS = ["you said", "your response", "earlier", "before", "what you told me"]
-        if not photo_b64:
-            history = state.get("context", {}).get("history", [])
-            for entry in history[-10:]:
-                messages.append({"role": entry["role"], "content": entry["content"]})
-            # Self-reference: inject prior MIRA turns explicitly when technician
-            # asks about something MIRA said earlier
-            if any(s in message.lower() for s in _SELF_REF_SIGNALS):
-                mira_turns = [h for h in history[-10:] if h["role"] == "assistant"][-3:]
-                if mira_turns:
-                    messages.insert(0, {
-                        "role": "system",
-                        "content": "Your previous responses for reference: " +
-                                   " | ".join(t["content"][:200] for t in mira_turns),
-                    })
-
-        # Current user message
         if photo_b64:
-            ocr = state.get("context", {}).get("ocr_text", "")
+            ctx = state.get("context", {})
+            ocr = ctx.get("ocr_text", "")
             asset = state.get("asset_identified", "")
             text_parts = []
             if ocr:
@@ -299,6 +298,140 @@ class RAGWorker:
             messages.append({"role": "user", "content": user_msg})
         return messages
 
+    def _build_prompt(
+        self,
+        state: dict,
+        message: str,
+        photo_b64: str = None,
+        neon_chunks: list[dict] = None,
+    ) -> list[dict]:
+        """Build message list for LLM with GSD system prompt and state context."""
+        system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
+        system_content += f"FSM state: {state['state']}\n"
+        system_content += f"Exchange count: {state['exchange_count']}\n"
+        if state.get("asset_identified"):
+            system_content += f"Asset identified: {state['asset_identified']}\n"
+        if state.get("fault_category"):
+            system_content += f"Fault category: {state['fault_category']}\n"
+
+        # Inject NeonDB knowledge base chunks when available
+        if neon_chunks:
+            system_content += "\n--- NEONDB KNOWLEDGE BASE (retrieved) ---\n"
+            for i, chunk in enumerate(neon_chunks, 1):
+                mfr = chunk.get("manufacturer") or ""
+                model = chunk.get("model_number") or ""
+                score = chunk.get("similarity") or 0.0
+                label = f"{mfr} {model}".strip() or chunk.get("equipment_type") or "unknown"
+                system_content += f"[{i}] [{label}] (score={score:.3f})\n{chunk['content']}\n\n"
+            system_content += "--- END NEONDB CONTEXT ---\n"
+
+        messages = [{"role": "system", "content": system_content}]
+
+        # Conversation history — omit for fresh photo entries (new equipment)
+        # but INCLUDE for photos sent during active diagnostic sessions (photo-as-answer)
+        _ACTIVE_DIAG = {"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"}
+        _photo_continues = photo_b64 and state.get("state") in _ACTIVE_DIAG
+        _SELF_REF_SIGNALS = ["you said", "your response", "earlier", "before", "what you told me"]
+        if not photo_b64 or _photo_continues:
+            history = state.get("context", {}).get("history", [])
+            for entry in history[-10:]:
+                messages.append({"role": entry["role"], "content": entry["content"]})
+            # Self-reference: inject prior MIRA turns explicitly when technician
+            # asks about something MIRA said earlier
+            if any(s in message.lower() for s in _SELF_REF_SIGNALS):
+                mira_turns = [h for h in history[-10:] if h["role"] == "assistant"][-3:]
+                if mira_turns:
+                    messages.insert(
+                        0,
+                        {
+                            "role": "system",
+                            "content": "Your previous responses for reference: "
+                            + " | ".join(t["content"][:200] for t in mira_turns),
+                        },
+                    )
+
+        # Photo-as-answer guidance: help LLM interpret photo in diagnostic context
+        if _photo_continues:
+            messages.append({
+                "role": "system",
+                "content": (
+                    "This photo was sent as a response to your previous question. "
+                    "Examine it for information that answers the question. If you "
+                    "can extract the answer, confirm it and continue the diagnostic. "
+                    "If the photo doesn't clearly show the requested information, "
+                    "acknowledge the photo and re-ask the question differently — "
+                    "suggest the technician type the value or take a closer shot."
+                ),
+            })
+
+        # Current user message
+        if photo_b64:
+            ocr = state.get("context", {}).get("ocr_text", "")
+            asset = state.get("asset_identified", "")
+            text_parts = []
+            if ocr:
+                text_parts.append(f"[OCR text extracted from screen: {ocr}]")
+                text_parts.append(
+                    "The OCR text above is the ground truth. "
+                    "Report ONLY codes and text that appear in the OCR output. "
+                    "Do NOT add descriptions or meanings from your training data."
+                )
+            if asset:
+                text_parts.append(f"[Asset identified from nameplate: {asset}]")
+                text_parts.append(
+                    f"REQUIRED: Name the specific device ('{asset.split(',')[0].strip()}') "
+                    "explicitly in your reply. Rule 13 overrides Rule 2 for the device name only."
+                )
+            text_parts.append(message)
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
+                        },
+                        {"type": "text", "text": "\n".join(text_parts)},
+                    ],
+                }
+            )
+        else:
+            user_msg = rewrite_question(message, state.get("asset_identified"))
+            messages.append({"role": "user", "content": user_msg})
+        return messages
+
+    async def _visual_search(self, photo_b64: str, query_text: str) -> list[dict]:
+        """Call /ingest/search-visual for dual-modality retrieval. Non-blocking."""
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{self._ingest_url}/ingest/search-visual",
+                    json={"query_image_b64": photo_b64, "query_text": query_text, "top_k": 5},
+                )
+                resp.raise_for_status()
+                results = resp.json().get("results", [])
+            logger.info("Visual search returned %d chunks", len(results))
+            return results
+        except Exception as e:
+            logger.warning("Visual search failed (falling back to empty): %s", e)
+            return []
+
+    async def _embed_ollama(self, text: str) -> list[float] | None:
+        """Embed text via Ollama nomic-embed-text (768-dim, matches NeonDB vectors)."""
+        ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+        embed_model = os.environ.get("EMBED_TEXT_MODEL", "nomic-embed-text:latest")
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{ollama_url}/api/embeddings",
+                    json={"model": embed_model, "prompt": text},
+                )
+                resp.raise_for_status()
+                return resp.json()["embedding"]
+        except Exception as e:
+            logger.warning("Ollama embed failed: %s", e)
+            return None
+
     async def _call_llm(self, messages: list[dict], model: str = None) -> str:
         """Call LLM — Claude API if router enabled, else Open WebUI."""
         if self.router and self.router.enabled:
@@ -322,8 +455,8 @@ class RAGWorker:
             "messages": messages,
             "options": {"temperature": 0.1},
         }
-        if self.collection_id:
-            payload["files"] = [{"type": "collection", "id": self.collection_id}]
+        # NeonDB is the single knowledge source — Open WebUI is a pure LLM proxy.
+        # Do NOT pass collection_id here; retrieval is handled by neon_recall.
 
         t0 = time.monotonic()
         async with httpx.AsyncClient(timeout=60) as client:
@@ -336,33 +469,16 @@ class RAGWorker:
             data = resp.json()
         elapsed_ms = int((time.monotonic() - t0) * 1000)
 
-        # Open WebUI returns retrieved chunks under "sources", not "citations"
-        sources = data.get("sources", [])
-        source_docs = []
-        source_chunks = []
-        for src in sources:
-            docs = src.get("document", [])
-            metas = src.get("metadata", [])
-            distances = src.get("distances", [])
-            for i, doc in enumerate(docs):
-                name = metas[i].get("source", metas[i].get("name", "")) if i < len(metas) else ""
-                dist = distances[i] if i < len(distances) else 0.0
-                source_docs.append(f"{name}:{dist:.3f}")
-                source_chunks.append(doc)
-
-        # Store for potential reranking
-        self._last_sources = source_chunks
-        self._last_distances = [
-            d for src in sources for d in src.get("distances", [])
-        ]
-
-        logger.info("LLM_CALL worker=rag %s", json.dumps({
-            "model": model or "mira:latest",
-            "latency_ms": elapsed_ms,
-            "sources_count": len(source_chunks),
-            "source_docs": source_docs[:5],
-            "collection_id": self.collection_id or None,
-            "response_keys": list(data.keys()),
-        }))
+        logger.info(
+            "LLM_CALL worker=rag %s",
+            json.dumps(
+                {
+                    "model": model or "mira:latest",
+                    "latency_ms": elapsed_ms,
+                    "neon_chunks": len(self._last_sources),
+                    "response_keys": list(data.keys()),
+                }
+            ),
+        )
 
         return data["choices"][0]["message"]["content"]

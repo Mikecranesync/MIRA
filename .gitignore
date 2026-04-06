@@ -4,6 +4,15 @@
 mira-core/.env
 mira-bots/.env
 mira-mcp/.env
+mira-cmms/.env
+
+# Staging directories (large binaries, local PDFs)
+bravo/Send to Bravo/
+MIRA test case 1/
+tools/ingest_local_pdfs.py
+
+# HUD session logs
+mira-hud/vision_backend/logs/
 
 # Telethon sessions
 *.session
@@ -26,15 +35,16 @@ artifacts/latest_run/
 artifacts/v2/
 .pytest_cache/
 *.log
+tests/results/
 
-# SQLite DB + WAL files
-data/mira.db
 # SQLite databases + WAL files
 *.db
 *.db-shm
 *.db-wal
 /data/
 /output/
+# Session photos (transient, saved per-chat for photo memory)
+**/session_photos/
 mira-bots/benchmark_results/
 mira-bots/tools/output/
 
@@ -57,8 +67,60 @@ node_modules/
 # Secrets directory (empty — kept as marker)
 Secrets/
 
+# Backup files
+*.bak
+
 # Archives (large binary blobs)
 archives/
 
+# Equipment photos (synced via rclone, never committed)
+mira-core/data/equipment_photos/
+
+# Google Drive ingest staging (downloaded docs, never committed)
+mira-core/data/gdrive_ingest/
+
+# Manual PDFs (stored locally, not committed to git)
+mira-core/data/manuals/
+
+# Crawler runtime data (cache, dedup DBs, logs, incoming docs)
+mira-crawler/data/
+
+# Test photos (real equipment photos, synced separately)
+tests/regime1_telethon/photos/
+tests/regime3_nameplate/photos/real/
+
+# Local backups
+backups/
+
+# Accidental Docker container extraction artifacts
+usr/
+
 # GitHub Actions cache
 .github/actions-cache/
+
+# Claude Code runtime files
+.claude/scheduled_tasks.lock
+
+# Cloned SDK repos (have their own .git)
+ignition-sdk-examples/
+
+# Photos directory (local screenshots/images)
+Pics/
+
+# Paperclip runtime artifacts (secrets, local DB)
+paperclip/.env.paperclip
+
+# uv lock file (generated, not committed — except for Docker-built services)
+uv.lock
+!mira-sidecar/uv.lock
+
+# ML model weights (downloaded at runtime, never committed)
+yolov8n.pt
+models/*.pt
+
+# MIRA Sidecar runtime data
+mira-sidecar/chroma_data/
+mira-sidecar/docs/
+mira-sidecar/logs/
+mira-sidecar/.venv/
+factorylm.properties

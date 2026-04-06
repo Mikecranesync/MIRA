@@ -18,7 +18,6 @@ from aiohttp import web
 from botbuilder.core import BotFrameworkAdapter, BotFrameworkAdapterSettings, TurnContext
 from botbuilder.schema import Activity, ActivityTypes
 from PIL import Image
-
 from shared.adapters.base import MIRAAdapter
 from shared.gsd_engine import GSDEngine
 
@@ -57,10 +56,10 @@ class TeamsAdapter(MIRAAdapter):
     ) -> str:
         resized = _resize_for_vision(image_bytes)
         photo_b64 = base64.b64encode(resized).decode("utf-8")
-        return await engine.process(session_id, caption or "Analyze this equipment", photo_b64=photo_b64)
+        return await engine.process(session_id, caption or "Analyze this equipment", photo_b64=photo_b64, platform="teams")
 
     async def send_text(self, text: str, session_id: str) -> str:
-        return await engine.process(session_id, text)
+        return await engine.process(session_id, text, platform="teams")
 
     async def format_response(self, raw_response: str) -> str:
         return raw_response  # Teams renders markdown natively
@@ -81,9 +80,27 @@ def _resize_for_vision(image_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
-async def _download_attachment(url: str, token: str) -> bytes:
+async def _download_attachment(url: str, turn_context: TurnContext) -> bytes:
+    """Download a Teams attachment using the Bot Framework connector token.
+
+    Teams attachments are hosted on Azure and require the bot's OAuth token.
+    The adapter stores credentials that can acquire a token for the service URL.
+    """
+    try:
+        connector = await turn_context.adapter.create_connector_client(
+            turn_context.activity.service_url
+        )
+        token = connector.config.credentials.get_token()
+    except Exception:
+        # Fallback: some attachment URLs (inline data) don't need auth
+        token = ""
+
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+        resp = await client.get(url, headers=headers)
         resp.raise_for_status()
         return resp.content
 
@@ -114,8 +131,7 @@ async def messages_handler(req: web.Request) -> web.Response:
         try:
             if image_attachments:
                 att = image_attachments[0]
-                token = turn_context.activity.service_url  # placeholder — real token from adapter
-                image_bytes = await _download_attachment(att.content_url, "")
+                image_bytes = await _download_attachment(att.content_url, turn_context)
                 reply = await teams_adapter.send_photo(image_bytes, session_id, caption=text)
             else:
                 reply = await teams_adapter.send_text(text or "Hello", session_id)

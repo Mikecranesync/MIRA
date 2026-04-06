@@ -1,0 +1,22 @@
+cases:
+- caption: Electrical contactor with blue and red wire leads being installed or tested
+    in a control panel environment.
+  expected:
+    condition: normal
+    equipment_type: contactor
+    make: null
+    model: null
+  fault_cause_keywords: []
+  image: tests/regime1_telethon/photos/survey/20211009_153416.jpg
+  max_words: 200
+  must_contain:
+  - contactor
+  must_not_contain:
+  - I cannot
+  - I'm unable
+  - no image
+  name: survey_20211009_153416
+  next_step_keywords:
+  - contact
+  source: survey_auto
+  speed_timeout: 60

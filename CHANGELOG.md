@@ -5,6 +5,20 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-03-21
+
+### Fixed
+- **Docker SSH pulls** (BRAVO): disabled `docker-credential-osxkeychain` + `docker-credential-desktop` — `docker pull` now works over SSH without macOS keychain
+- **Doppler SSH access** (BRAVO): service token via `DOPPLER_TOKEN` env var + rewrote `.doppler.yaml` to remove keychain token reference
+- **Container image pinning**: mira-core pinned to `open-webui:v0.8.10`, mira-bridge pinned to `node-red:4.1.7-22` — no more `:latest` or `:main`
+- **Volume migration**: data volumes migrated from `mira-core_*` prefix to `mira_*` prefix (root compose project name)
+- **`.gitignore` cleanup**: added `*.bak`, removed redundant `data/mira.db` entry
+
+### Added
+- Git tags `v0.5.0` and `v0.5.1` created and pushed (were missing)
+- All 5 locally-built Docker images tagged `v0.5.1` on BRAVO
+- `/usr/local/bin` added to BRAVO `~/.zshrc` PATH for SSH sessions
+
 ## [0.5.1] — 2026-03-21
 
 ### Added

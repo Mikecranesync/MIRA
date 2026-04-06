@@ -6,11 +6,10 @@ Read-only lookups and manual ingest writes both live here.
 
 from __future__ import annotations
 
-import os
-from typing import Any
-
 import json
+import os
 import uuid
+from typing import Any
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
@@ -68,6 +67,46 @@ def recall_knowledge(embedding: list[float], tenant_id: str, limit: int = 5) -> 
             {"emb": str(embedding), "tid": tenant_id, "lim": limit},
         ).mappings().fetchall()
     return [dict(r) for r in rows]
+
+
+def recall_by_image(image_vector: list[float], tenant_id: str, limit: int = 5) -> list[dict[str, Any]]:
+    """pgvector cosine similarity search over image_embedding column."""
+    with _engine().connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT
+                    content,
+                    manufacturer,
+                    model_number,
+                    equipment_type,
+                    source_type,
+                    metadata,
+                    1 - (image_embedding <=> cast(:emb AS vector)) AS similarity
+                FROM knowledge_entries
+                WHERE tenant_id = :tid
+                  AND image_embedding IS NOT NULL
+                ORDER BY image_embedding <=> cast(:emb AS vector)
+                LIMIT :lim
+            """),
+            {"emb": str(image_vector), "tid": tenant_id, "lim": limit},
+        ).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def ensure_image_embedding_column() -> None:
+    """Additive migration: add image_embedding vector(768) column if absent."""
+    try:
+        with _engine().connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE knowledge_entries "
+                "ADD COLUMN IF NOT EXISTS image_embedding vector(768)"
+            ))
+            conn.commit()
+    except Exception as exc:
+        import logging
+        logging.getLogger("mira-ingest").warning(
+            "image_embedding column migration failed (non-fatal): %s", exc
+        )
 
 
 def check_tier_limit(tenant_id: str) -> tuple[bool, str]:
@@ -206,6 +245,7 @@ def insert_knowledge_entry(
     page_num: int | None,
     section: str | None,
     source_type: str = "manual",
+    chunk_type: str = "text",
 ) -> str:
     """Insert one chunk into knowledge_entries. Returns the new row id."""
     entry_id = str(uuid.uuid4())
@@ -214,17 +254,18 @@ def insert_knowledge_entry(
         "chunk_index": chunk_index,
         "page_num": page_num,
         "section": section,
+        "chunk_type": chunk_type,
     }
     with _engine().connect() as conn:
         conn.execute(text("""
             INSERT INTO knowledge_entries
                 (id, tenant_id, source_type, manufacturer, model_number,
                  content, embedding, source_url, source_page, metadata,
-                 is_private, verified)
+                 is_private, verified, chunk_type)
             VALUES
                 (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                  :content, cast(:embedding AS vector), :source_url, :source_page, cast(:metadata AS jsonb),
-                 false, false)
+                 false, false, :chunk_type)
         """), {
             "id": entry_id,
             "tenant_id": tenant_id,
@@ -236,9 +277,37 @@ def insert_knowledge_entry(
             "source_url": source_url,
             "source_page": chunk_index,
             "metadata": json.dumps(meta),
+            "chunk_type": chunk_type,
         })
         conn.commit()
     return entry_id
+
+
+def insert_knowledge_entries_batch(entries: list[dict]) -> int:
+    """Batch insert chunks into knowledge_entries in a single transaction.
+
+    Each entry dict must contain: id, tenant_id, source_type, manufacturer,
+    model_number, content, embedding, source_url, source_page, metadata,
+    chunk_type.
+
+    Returns count of rows inserted.
+    """
+    if not entries:
+        return 0
+    with _engine().connect() as conn:
+        for entry in entries:
+            conn.execute(text("""
+                INSERT INTO knowledge_entries
+                    (id, tenant_id, source_type, manufacturer, model_number,
+                     content, embedding, source_url, source_page, metadata,
+                     is_private, verified, chunk_type)
+                VALUES
+                    (:id, :tenant_id, :source_type, :manufacturer, :model_number,
+                     :content, cast(:embedding AS vector), :source_url, :source_page,
+                     cast(:metadata AS jsonb), false, false, :chunk_type)
+            """), entry)
+        conn.commit()
+    return len(entries)
 
 
 def mark_source_fingerprint_done(row_id: int, atoms_created: int) -> None:
@@ -264,6 +333,35 @@ def mark_manual_verified(row_id: str) -> None:
             "WHERE id = cast(:id AS uuid)"
         ), {"id": row_id})
         conn.commit()
+
+
+def manual_exists_for(make: str, model: str, tenant_id: str) -> bool:
+    """Check if we already have manual content for a given make/model in the KB."""
+    try:
+        with _engine().connect() as conn:
+            count = conn.execute(text("""
+                SELECT COUNT(*) FROM knowledge_entries
+                WHERE tenant_id = :tid
+                  AND source_type = 'manual'
+                  AND LOWER(manufacturer) = LOWER(:make)
+                  AND LOWER(model_number) = LOWER(:model)
+            """), {"tid": tenant_id, "make": make, "model": model}).scalar()
+        return (count or 0) > 0
+    except Exception:
+        return False  # fail open — don't block ingest on lookup errors
+
+
+def queue_manual_url(url: str, make: str, model: str, tenant_id: str) -> bool:
+    """Queue a manual URL for the nightly ingest pipeline. Wraps insert_manual_cache_url."""
+    title = f"{make} {model} manual (auto-discovered from equipment photo)"
+    return insert_manual_cache_url(
+        manufacturer=make,
+        model=model,
+        manual_url=url,
+        manual_title=title,
+        source="photo_ingest",
+        confidence=0.6,
+    )
 
 
 def insert_manual_cache_url(

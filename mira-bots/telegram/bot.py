@@ -140,8 +140,7 @@ async def _ingest_photo_background(photo_bytes: bytes, asset_tag: str) -> None:
 
 
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Receive PDF documents, index them into the knowledge base via mira-mcp."""
-    chat_id = str(update.effective_chat.id)
+    """Receive PDF documents, index into Open WebUI KB via mira-ingest."""
     doc = update.message.document
     filename = doc.file_name or "upload.pdf"
     caption = update.message.caption or ""
@@ -155,8 +154,12 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     MB = 1024 * 1024
     if doc.file_size and doc.file_size > 20 * MB:
         await update.message.reply_text(
-            f"{filename} is {doc.file_size // MB}MB — Telegram's bot limit is 20MB."
+            f"{filename} is {doc.file_size // MB}MB — limit is 20MB."
         )
+        return
+
+    if not INGEST_SERVICE_URL:
+        await update.message.reply_text("Ingest service not configured.")
         return
 
     equipment_type = _equipment_type_from_doc(filename, caption)
@@ -164,33 +167,48 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("PDF from %s: %s (type=%s)", update.effective_user.first_name,
                 filename, equipment_type)
 
-    async def _do_ingest():
+    async def _do_ingest_doc():
         try:
-            file = await context.bot.get_file(doc.file_id)
-            pdf_bytes = bytes(await file.download_as_bytearray())
-            headers = {}
-            if MCP_REST_API_KEY:
-                headers["Authorization"] = f"Bearer {MCP_REST_API_KEY}"
-            async with httpx.AsyncClient(timeout=180) as client:
+            tg_file = await context.bot.get_file(doc.file_id)
+            pdf_bytes = bytes(await tg_file.download_as_bytearray())
+            async with httpx.AsyncClient(timeout=360) as client:
                 resp = await client.post(
-                    f"{MCP_BASE_URL}/ingest/pdf",
-                    headers=headers,
-                    data={"equipment_type": equipment_type},
+                    f"{INGEST_SERVICE_URL}/ingest/document-kb",
+                    data={"filename": filename, "equipment_type": equipment_type or ""},
                     files={"file": (filename, pdf_bytes, "application/pdf")},
                 )
                 resp.raise_for_status()
                 data = resp.json()
-            chunks = data.get("chunks", 0)
-            await update.message.reply_text(
-                f"Indexed {chunks} pages from {filename}\n"
-                f"Type: {data.get('equipment_type', equipment_type)}\n"
-                "Ask me anything about it."
-            )
+            col = data.get("collection_name", "Knowledge Base")
+            proc = data.get("processing_status", "completed")
+            if proc == "completed":
+                reply = (
+                    f"Indexed *{filename}* into *{col}* collection.\n"
+                    "Ask me anything about it."
+                )
+            else:
+                reply = (
+                    f"*{filename}* uploaded to *{col}*.\n"
+                    "Extraction is still processing — RAG will be available shortly."
+                )
+            await update.message.reply_text(reply, parse_mode="Markdown")
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            if code == 429:
+                msg = "Daily ingest limit reached. Try again tomorrow."
+            elif code == 413:
+                msg = f"{filename} is too large (limit 20MB)."
+            elif code == 422:
+                msg = f"Could not process {filename}: {e.response.text[:120]}"
+            else:
+                msg = f"Indexing failed ({code}). Try again later."
+            logger.error("doc ingest HTTP %s: %s", code, e.response.text[:200])
+            await update.message.reply_text(msg)
         except Exception as exc:
-            logger.error("PDF ingest error: %s", exc)
-            await update.message.reply_text(f"Failed to index {filename}: {exc}")
+            logger.error("doc ingest error: %s", exc)
+            await update.message.reply_text(f"Indexing {filename} failed. Please try again.")
 
-    asyncio.create_task(_do_ingest())
+    asyncio.create_task(_do_ingest_doc())
 
 
 def _get_voice_enabled(chat_id: str) -> bool:

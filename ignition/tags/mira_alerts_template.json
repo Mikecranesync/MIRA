@@ -1,0 +1,25 @@
+{
+  "name": "default",
+  "tagType": "Provider",
+  "tags": [
+    {
+      "name": "Mira_Alerts",
+      "tagType": "Folder",
+      "tags": [
+        {
+          "name": "conveyor_demo",
+          "tagType": "Folder",
+          "tags": [
+            {
+              "name": "Latest",
+              "tagType": "MemoryTag",
+              "dataType": "String",
+              "value": "",
+              "tooltip": "Latest anomaly event JSON — written by Mira FSM monitor"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

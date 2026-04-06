@@ -25,6 +25,31 @@ bash install/smoke_test.sh
 - [Teams Setup](docs/SETUP_TEAMS.md)
 - [WhatsApp Setup](docs/SETUP_WHATSAPP.md)
 
+## Testing
+
+### Offline Tests (76 tests, runs in <1s)
+```bash
+pytest tests/ -m "not network and not slow"
+```
+
+### Full Eval (requires live services on BRAVO)
+```bash
+doppler run --project factorylm --config prd -- python tests/synthetic_eval.py --regimes all
+```
+
+### CI
+- Every push: offline tests run automatically (`ci.yml`)
+- Nightly: full live eval on BRAVO runner (`ci-evals.yml`)
+
+### Current Status
+| Regime | Status | Score |
+|--------|--------|-------|
+| 1 Telethon Replay | Runner needed | -- |
+| 2 RAG Triplets | Runner needed | -- |
+| 3 Nameplate Vision | Labels needed | -- |
+| 4 Question Evolution | Runner needed | -- |
+| 5 Nemotron Bulk | API key needed | -- |
+
 ## Requirements
 
 - Docker + Docker Compose v2.20+

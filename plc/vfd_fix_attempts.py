@@ -251,7 +251,7 @@ def main():
         try:
             client.write_coil(address=C_FAULT_ALARM, value=False)
             client.write_register(address=HR_BASE + H_ERROR_CODE, value=0)
-        except:
+        except Exception:
             pass
         any_response = False
         max_dc_bus = 0.0

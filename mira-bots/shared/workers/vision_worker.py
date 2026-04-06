@@ -21,6 +21,19 @@ PRINT_KEYWORDS = {
     "ladder logic", "relay logic",
 }
 
+# Keywords that indicate a physical component photo, NOT a drawing —
+# even if the faceplate has many readable text labels (OCR items > threshold)
+EQUIPMENT_FACE_KEYWORDS = {
+    "overload", "relay", "vfd", "drive", "controller", "plc", "display",
+    "indicator", "led", "dial", "faceplate", "nameplate", "breaker",
+    "contactor", "motor starter", "disconnect", "push to reset", "fault",
+    "run", "allen-bradley", "siemens", "eaton", "schneider", "abb",
+    "powerflex", "micro820", "compactlogix", "e1 plus", "e3 plus",
+    "gs10", "gs20", "gs4", "panel meter", "hmi", "touchscreen",
+    "power supply", "terminal block", "sensor", "proximity",
+    "photoelectric", "encoder", "thermocouple", "rtd",
+}
+
 OCR_CLASSIFICATION_THRESHOLD = 10
 
 
@@ -60,21 +73,29 @@ class VisionWorker:
 
         tesseract_text = self._ocr_extract(photo_b64)
 
-        classification = self._classify_photo(str(vision_result), ocr_items)
+        classify_result = self._classify_photo(str(vision_result), ocr_items)
+        classification = classify_result["type"]
+        classify_confidence = classify_result["confidence"]
         logger.info(
-            "Photo classified as %s (%d OCR items)", classification, len(ocr_items)
+            "Photo classified as %s (confidence=%.2f, %d OCR items)",
+            classification, classify_confidence, len(ocr_items),
         )
 
         drawing_type = None
+        drawing_confidence = 0.0
         if classification == "ELECTRICAL_PRINT":
-            drawing_type = self._detect_drawing_type(str(vision_result))
+            dt_result = self._detect_drawing_type(str(vision_result))
+            drawing_type = dt_result["type"]
+            drawing_confidence = dt_result["confidence"]
 
         return {
             "classification": classification,
+            "classification_confidence": classify_confidence,
             "vision_result": vision_result,
             "ocr_items": ocr_items if isinstance(ocr_items, list) else [],
             "tesseract_text": tesseract_text,
             "drawing_type": drawing_type,
+            "drawing_type_confidence": drawing_confidence,
         }
 
     async def _call_vision(self, photo_b64: str, caption: str) -> str:
@@ -91,18 +112,25 @@ class VisionWorker:
                 {
                     "type": "text",
                     "text": (
-                        "What is in this image? If it is a piece of equipment, "
-                        "return: manufacturer, model, and one visible observation. "
-                        "If it is an electrical drawing, schematic, or diagram, "
-                        "say 'electrical drawing' and the type (ladder logic, "
-                        "one-line, wiring, P&ID, panel schedule). "
+                        "What is in this image? "
+                        "If it is a PHYSICAL piece of equipment or component "
+                        "(relay, VFD, drive, PLC, breaker, motor starter, overload, "
+                        "sensor, panel meter, HMI), return: manufacturer, model, "
+                        "and describe the STATE of visible indicators — which LEDs "
+                        "are lit (color and label), dial/potentiometer positions, "
+                        "DIP switch settings, display readings, and any fault or "
+                        "alarm indicators. This is critical for diagnosis. "
+                        "If it is an electrical drawing, schematic, or diagram "
+                        "(printed on paper or a CAD screen), say 'electrical drawing' "
+                        "and the type (ladder logic, one-line, wiring, P&ID, "
+                        "panel schedule). "
                         "If the image shows a computer monitor or laptop screen, "
                         "analyze ONLY the technical content on screen — ignore "
                         "application toolbars, menus, window chrome, and any AI "
                         "assistant UI elements visible in the software. "
                         "If text is small or partially visible, describe what you "
                         "can read and note a closer shot may improve extraction. "
-                        "Keep it under 30 words. Do NOT invent any text."
+                        "Keep it under 50 words. Do NOT invent any text."
                     ),
                 },
             ],
@@ -210,31 +238,70 @@ class VisionWorker:
             logger.warning("OCR extraction failed: %s", e)
             return ""
 
-    def _classify_photo(self, vision_result: str, ocr_items: list) -> str:
-        """Classify photo as ELECTRICAL_PRINT or EQUIPMENT_PHOTO."""
+    def _classify_photo(self, vision_result: str, ocr_items: list) -> dict:
+        """Classify photo as ELECTRICAL_PRINT or EQUIPMENT_PHOTO with confidence.
+
+        Returns {"type": str, "confidence": float}.
+
+        Equipment faceplates (overload relays, VFDs, PLCs) often have 10+ readable
+        labels, so OCR count alone must NOT override the vision model's classification.
+        Vision model identification takes priority — OCR count is only a tiebreaker
+        when the vision model is ambiguous.
+
+        Confidence is based on keyword match density across vision + OCR text.
+        """
         vision_lower = vision_result.lower()
+        ocr_text_lower = " ".join(ocr_items).lower()
+        combined = vision_lower + " " + ocr_text_lower
 
-        if len(ocr_items) >= OCR_CLASSIFICATION_THRESHOLD:
-            return "ELECTRICAL_PRINT"
+        equip_matches = sum(1 for kw in EQUIPMENT_FACE_KEYWORDS if kw in combined)
+        print_matches = sum(1 for kw in PRINT_KEYWORDS if kw in combined)
 
+        # Equipment faceplate keywords override everything — these are never drawings
+        if any(kw in vision_lower for kw in EQUIPMENT_FACE_KEYWORDS):
+            conf = min(1.0, 0.6 + equip_matches * 0.05)
+            return {"type": "EQUIPMENT_PHOTO", "confidence": round(conf, 2)}
+        if any(kw in ocr_text_lower for kw in EQUIPMENT_FACE_KEYWORDS):
+            conf = min(1.0, 0.4 + equip_matches * 0.05)
+            return {"type": "EQUIPMENT_PHOTO", "confidence": round(conf, 2)}
+
+        # Vision model says it's a drawing — trust it
         if any(kw in vision_lower for kw in PRINT_KEYWORDS):
-            return "ELECTRICAL_PRINT"
+            conf = min(1.0, 0.6 + print_matches * 0.08)
+            return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
 
-        return "EQUIPMENT_PHOTO"
+        # High OCR count + no equipment keywords = likely a drawing
+        if len(ocr_items) >= OCR_CLASSIFICATION_THRESHOLD:
+            conf = min(1.0, 0.3 + len(ocr_items) * 0.02)
+            return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
 
-    def _detect_drawing_type(self, vision_result: str) -> str:
-        """Detect the type of electrical drawing from vision result."""
+        # Default: equipment photo with low confidence
+        return {"type": "EQUIPMENT_PHOTO", "confidence": 0.3}
+
+    def _detect_drawing_type(self, vision_result: str) -> dict:
+        """Detect the type of electrical drawing from vision result.
+
+        Returns {"type": str, "confidence": float}.
+        """
         vr = vision_result.lower()
-        if "ladder" in vr or "rung" in vr:
-            return "ladder logic diagram"
-        if "one-line" in vr or "one line" in vr or "single line" in vr:
-            return "one-line diagram"
-        if "p&id" in vr or "piping" in vr:
-            return "P&ID"
-        if "wiring" in vr or "terminal" in vr:
-            return "wiring diagram"
-        if "panel" in vr or "schedule" in vr:
-            return "panel schedule"
-        if "schematic" in vr or "circuit" in vr:
-            return "schematic"
-        return "electrical drawing"
+
+        # Map keyword groups to drawing types with match counting
+        _TYPES = [
+            (["ladder", "rung"], "ladder logic diagram"),
+            (["one-line", "one line", "single line"], "one-line diagram"),
+            (["p&id", "piping"], "P&ID"),
+            (["wiring", "terminal"], "wiring diagram"),
+            (["panel", "schedule"], "panel schedule"),
+            (["schematic", "circuit"], "schematic"),
+        ]
+
+        best_type = "electrical drawing"
+        best_matches = 0
+        for keywords, drawing_type in _TYPES:
+            matches = sum(1 for kw in keywords if kw in vr)
+            if matches > best_matches:
+                best_matches = matches
+                best_type = drawing_type
+
+        conf = min(1.0, 0.4 + best_matches * 0.25) if best_matches > 0 else 0.2
+        return {"type": best_type, "confidence": round(conf, 2)}

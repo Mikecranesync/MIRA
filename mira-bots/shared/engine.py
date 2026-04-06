@@ -10,18 +10,21 @@ import time
 from .guardrails import (
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
-    classify_intent,
     check_output,
-    strip_mentions,
+    classify_intent,
     detect_session_followup,
+    resolve_option_selection,
+    strip_mentions,
 )
 from .inference.router import InferenceRouter
 from .nemotron import NemotronClient
-from .telemetry import trace as tl_trace, span as tl_span, flush as tl_flush
-from .workers.vision_worker import VisionWorker
-from .workers.rag_worker import RAGWorker
-from .workers.print_worker import PrintWorker
+from .telemetry import flush as tl_flush
+from .telemetry import span as tl_span
+from .telemetry import trace as tl_trace
 from .workers.plc_worker import PLCWorker
+from .workers.print_worker import PrintWorker
+from .workers.rag_worker import RAGWorker
+from .workers.vision_worker import VisionWorker
 
 logger = logging.getLogger("mira-gsd")
 
@@ -40,7 +43,10 @@ _LOW_CONF_SIGNALS = re.compile(
 _JSON_RE = re.compile(r'\{[^{}]*"reply"[^{}]*\}', re.DOTALL)
 
 STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
+ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"})
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
+# How many turns the session photo stays available for follow-up questions
+PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
 
 
 def format_diagnostic_response(equipment_id: str, key_observation: str,
@@ -90,6 +96,41 @@ class Supervisor:
         self.plc = PLCWorker()
 
         self._ensure_table()
+
+    # ------------------------------------------------------------------
+    # Photo persistence — save/load session photos for follow-up turns
+    # ------------------------------------------------------------------
+
+    def _save_session_photo(self, chat_id: str, photo_b64: str) -> str:
+        """Save session photo to disk. Returns the file path."""
+        import base64
+        photos_dir = os.path.join(os.path.dirname(self.db_path), "session_photos")
+        os.makedirs(photos_dir, exist_ok=True)
+        path = os.path.join(photos_dir, f"{chat_id}.jpg")
+        with open(path, "wb") as f:
+            f.write(base64.b64decode(photo_b64))
+        logger.info("Session photo saved: %s", path)
+        return path
+
+    def _load_session_photo(self, chat_id: str) -> str | None:
+        """Load session photo as base64 if it exists and is within turn limit."""
+        import base64
+        path = os.path.join(os.path.dirname(self.db_path), "session_photos", f"{chat_id}.jpg")
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "rb") as f:
+                return base64.b64encode(f.read()).decode()
+        except Exception as e:
+            logger.warning("Failed to load session photo: %s", e)
+            return None
+
+    def _clear_session_photo(self, chat_id: str) -> None:
+        """Remove the session photo when it expires or session resets."""
+        path = os.path.join(os.path.dirname(self.db_path), "session_photos", f"{chat_id}.jpg")
+        if os.path.exists(path):
+            os.remove(path)
+            logger.info("Session photo cleared: %s", path)
 
     def _build_print_reply(self, vision_data: dict) -> str:
         items_list = vision_data.get("ocr_items", [])
@@ -183,7 +224,10 @@ class Supervisor:
     # Entry points
     # ------------------------------------------------------------------
 
-    async def process(self, chat_id: str, message: str, photo_b64: str = None) -> str:
+    async def process(
+        self, chat_id: str, message: str, photo_b64: str = None,
+        *, platform: str = "telegram",
+    ) -> str:
         """Main entry point. Returns reply string (backward-compatible)."""
         t0 = time.monotonic()
         result = await self.process_full(chat_id, message, photo_b64)
@@ -194,6 +238,7 @@ class Supervisor:
             confidence=result.get("confidence", ""),
             has_photo=bool(photo_b64),
             response_time_ms=elapsed_ms,
+            platform=platform,
         )
         return result["reply"]
 
@@ -214,12 +259,41 @@ class Supervisor:
 
         state = self._load_state(chat_id)
 
+        # Photo persistence: load stored session photo for text follow-ups
+        _session_photo = None
+        if not photo_b64:
+            ctx = state.get("context") or {}
+            photo_turn = ctx.get("photo_turn", 0)
+            if photo_turn > 0 and state["exchange_count"] - photo_turn < PHOTO_MEMORY_TURNS:
+                _session_photo = self._load_session_photo(chat_id)
+                if _session_photo:
+                    logger.info(
+                        "Session photo loaded for turn %d (photo at turn %d, %d turns ago)",
+                        state["exchange_count"], photo_turn,
+                        state["exchange_count"] - photo_turn,
+                    )
+            elif photo_turn > 0:
+                # Photo memory expired
+                self._clear_session_photo(chat_id)
+                ctx.pop("photo_turn", None)
+                state["context"] = ctx
+
         # Always-on guardrail: safety and off-topic bypass ALL conversation state
         if not photo_b64:
             # Session follow-up detection: short-circuit before intent classification
             sc = state.get("context", {}).get("session_context", {})
             if detect_session_followup(message, sc, state["state"]):
-                return await self._handle_session_followup(message, state, chat_id)
+                return await self._handle_session_followup(
+                    message, state, chat_id, session_photo=_session_photo,
+                )
+
+            # Option selection resolution: expand "1" → full option text
+            last_options = sc.get("last_options", [])
+            if last_options:
+                expanded = resolve_option_selection(message, last_options)
+                if expanded:
+                    logger.info("Selection resolved: '%s' → '%s'", message, expanded)
+                    message = expanded
 
             intent = classify_intent(message)
             if intent == "safety":
@@ -230,18 +304,6 @@ class Supervisor:
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
-            if intent == "off_topic":
-                if state["state"] != "IDLE":
-                    pass  # Active session — fall through to RAG worker
-                else:
-                    reply = (
-                        "I help maintenance technicians diagnose equipment issues. "
-                        "What equipment do you need help with?"
-                    )
-                    self._record_exchange(chat_id, state, message, reply)
-                    tl_flush()
-                    return self._make_result(reply, "none", trace_id, state["state"])
-
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
         if (
             not photo_b64
@@ -268,17 +330,52 @@ class Supervisor:
                 return self._make_result(reply, "none", trace_id, "IDLE")
 
         # Photo path: delegate to vision worker, then route
+        _photo_continues_session = False
         if photo_b64:
             with tl_span(t, "vision_worker"):
                 vision_data = await self.vision.process(photo_b64, message)
 
+            # Confidence gate: low-quality photos get a re-send request, not a diagnosis
+            # Safety override: if the vision model saw a hazard, bypass and let it fire below
+            if vision_data.get("confidence") == "low":
+                vision_text = str(vision_data.get("vision_result", "")).lower()
+                if not any(kw in vision_text for kw in SAFETY_KEYWORDS):
+                    self._save_state(chat_id, state)
+                    tl_flush()
+                    return self._make_result(
+                        "I can see something but the photo is too dark or blurry for a "
+                        "reliable diagnosis. Can you send a clearer photo — ideally with "
+                        "the nameplate or fault display visible?",
+                        "low", trace_id, state["state"],
+                    )
+
             ctx = state.get("context") or {}
             ctx["ocr_text"] = vision_data["tesseract_text"]
             ctx["ocr_items"] = vision_data["ocr_items"]
+            # Track which turn the photo was sent on
+            ctx["photo_turn"] = state["exchange_count"]
             state["context"] = ctx
             state["asset_identified"] = str(vision_data["vision_result"])
 
-            if vision_data["classification"] == "ELECTRICAL_PRINT":
+            # Save photo to disk for follow-up turns
+            self._save_session_photo(chat_id, photo_b64)
+
+            # Active diagnostic: photo is an answer to the pending question
+            if state["state"] in ACTIVE_DIAGNOSTIC_STATES:
+                _photo_continues_session = True
+                sc = ctx.get("session_context", {})
+                last_q = sc.get("last_question", "")
+                default_caption = "Analyze this equipment photo"
+                if last_q and (not message or message == default_caption):
+                    message = f"[Photo answering: {last_q}]"
+                elif last_q:
+                    message = f"[Photo answering: {last_q}] {message}"
+                logger.info(
+                    "Photo-as-answer in %s: %s", state["state"], message[:100]
+                )
+                # Fall through to RAG — preserve state and session_context
+
+            elif vision_data["classification"] == "ELECTRICAL_PRINT":
                 state["state"] = "ELECTRICAL_PRINT"
                 ctx["drawing_type"] = vision_data["drawing_type"]
                 state["context"] = ctx
@@ -335,28 +432,67 @@ class Supervisor:
                 formatted, self._infer_confidence(formatted), trace_id, "ELECTRICAL_PRINT",
             )
 
-        # Photo with no specific intent → acknowledge equipment, ask what they need
-        if photo_b64 and not any(kw in message.lower() for kw in INTENT_KEYWORDS):
-            asset = state.get("asset_identified", "this equipment")
-            reply = f"I can see this is {asset}. How can I help you with it?"
+        # Photo with no specific intent → check for visible fault indicators first
+        # (Skip for photo-as-answer: active session photos go straight to RAG)
+        if photo_b64 and not _photo_continues_session and not any(kw in message.lower() for kw in INTENT_KEYWORDS):
+            # Check OCR + vision for fault indicators on equipment faceplates
             ctx = state.get("context") or {}
-            history = ctx.get("history", [])
-            history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": reply})
-            ctx["history"] = history
-            sc = ctx.get("session_context", {})
-            if sc:
-                sc["last_question"] = reply[:200]
+            ocr_items = ctx.get("ocr_items", [])
+            ocr_text = " ".join(ocr_items).lower()
+            vision_text = state.get("asset_identified", "").lower()
+            _FAULT_INDICATORS = (
+                "fault", "alarm", "error", "trip", "tripped", "faulted",
+                "overload", "overcurrent", "overvoltage", "warning",
+                "stopped", "off", "fail", "run fault",
+            )
+            has_fault_indicators = any(kw in ocr_text or kw in vision_text for kw in _FAULT_INDICATORS)
+
+            if has_fault_indicators:
+                # Auto-diagnose: inject fault context into message and route to RAG
+                asset = state.get("asset_identified", "this equipment")
+                fault_items = [
+                    item for item in ocr_items
+                    if any(kw in item.lower() for kw in _FAULT_INDICATORS)
+                ]
+                fault_summary = ", ".join(fault_items[:5]) if fault_items else "fault indicator visible"
+                message = (
+                    f"[Equipment photo: {asset}] "
+                    f"Visible indicators: {fault_summary}. "
+                    f"OCR labels: {', '.join(ocr_items[:15])}. "
+                    f"Analyze the indicator states, compare against normal operation, "
+                    f"and propose the most likely cause and fix."
+                )
+                logger.info("Auto-diagnose equipment fault: %s", message[:120])
+                state["state"] = "Q1"
+                sc = ctx.get("session_context", {})
+                sc["equipment_type"] = str(state.get("asset_identified", ""))[:80]
+                sc["last_question"] = None
+                sc["last_options"] = []
                 ctx["session_context"] = sc
-            state["context"] = ctx
-            self._save_state(chat_id, state)
-            tl_flush()
-            return self._make_result(reply, "none", trace_id, "ASSET_IDENTIFIED")
+                state["context"] = ctx
+                # Fall through to RAG worker below
+            else:
+                asset = state.get("asset_identified", "this equipment")
+                reply = f"I can see this is {asset}. How can I help you with it?"
+                history = ctx.get("history", [])
+                history.append({"role": "user", "content": message})
+                history.append({"role": "assistant", "content": reply})
+                ctx["history"] = history
+                sc = ctx.get("session_context", {})
+                if sc:
+                    sc["last_question"] = reply[:200]
+                    ctx["session_context"] = sc
+                state["context"] = ctx
+                self._save_state(chat_id, state)
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "ASSET_IDENTIFIED")
 
         # RAG worker with self-correction: text queries and photo+intent queries
+        # Use session photo for follow-up text questions within PHOTO_MEMORY_TURNS
+        effective_photo = photo_b64 or _session_photo
         with tl_span(t, "rag_worker"):
             raw, parsed = await self._call_with_correction(
-                message, state, photo_b64,
+                message, state, effective_photo,
             )
         if raw is None:
             self._save_state(chat_id, state)
@@ -416,6 +552,7 @@ class Supervisor:
 
     def reset(self, chat_id: str) -> None:
         """Reset conversation to IDLE state."""
+        self._clear_session_photo(chat_id)
         db = sqlite3.connect(self.db_path)
         db.execute("PRAGMA journal_mode=WAL")
         db.execute(
@@ -480,14 +617,22 @@ class Supervisor:
 
         return raw, parsed
 
-    async def _handle_session_followup(self, message: str, state: dict, chat_id: str) -> str:
-        """Route a session follow-up through the RAG pipeline without intent filtering."""
-        raw, parsed = await self._call_with_correction(message, state)
+    async def _handle_session_followup(
+        self, message: str, state: dict, chat_id: str,
+        session_photo: str = None,
+    ) -> dict:
+        """Route a session follow-up through the RAG pipeline without intent filtering.
+
+        Returns a dict via _make_result() — must match process_full() return type.
+        """
+        raw, parsed = await self._call_with_correction(message, state, photo_b64=session_photo)
         if raw is None:
             self._save_state(chat_id, state)
-            return parsed["reply"]
+            return self._make_result(parsed["reply"], "none", None, state["state"])
 
-        parsed["reply"] = check_output(parsed["reply"], "industrial", has_photo=False)
+        parsed["reply"] = check_output(
+            parsed["reply"], "industrial", has_photo=bool(session_photo),
+        )
         state = self._advance_state(state, parsed)
 
         ctx = state.get("context") or {}
@@ -506,7 +651,10 @@ class Supervisor:
 
         state["context"] = ctx
         self._save_state(chat_id, state)
-        return self._format_reply(parsed)
+        formatted = self._format_reply(parsed)
+        return self._make_result(
+            formatted, self._infer_confidence(formatted), None, state["state"],
+        )
 
     _STOP_WORDS = frozenset({
         "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",

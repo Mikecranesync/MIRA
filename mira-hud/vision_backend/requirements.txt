@@ -1,0 +1,9 @@
+anthropic>=0.20.0
+opencv-python>=4.9.0
+openai-whisper>=20231117
+python-socketio[asyncio_client]>=5.10.0
+scikit-learn>=1.4.0
+numpy>=1.24.0
+sounddevice>=0.4.6
+scipy>=1.11.0
+pynput>=1.7.6

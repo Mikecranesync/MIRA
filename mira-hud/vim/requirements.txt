@@ -1,0 +1,22 @@
+# VIM — Vision Intelligence Module dependencies
+# Install: cd mira-hud && uv pip install -r vim/requirements.txt
+
+# Phase 1 — Foundation
+PyMuPDF>=1.24.0
+pdfplumber>=0.11.0
+httpx>=0.27.0
+Pillow>=12.0.0
+internetarchive>=4.0.0
+
+# Phase 2 — Vision Detection
+opencv-python-headless>=4.9.0
+ultralytics>=8.1.0
+numpy>=1.26.0
+
+# Phase 4 — HUD Integration
+python-socketio[asyncio_client]>=5.11.0
+
+# Phase 5 — Capture Ingest (vision_backend/capture_ingest.py)
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
+watchdog>=4.0

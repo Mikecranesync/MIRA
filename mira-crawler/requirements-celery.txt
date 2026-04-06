@@ -1,0 +1,19 @@
+# Celery worker dependencies for mira-crawler
+celery==5.4.0
+redis==5.2.1
+
+# Ingest pipeline
+httpx>=0.27.0
+pdfplumber>=0.11.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# NeonDB
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# Apify
+apify-client>=1.7.0
+
+# YAML config
+PyYAML>=6.0.0

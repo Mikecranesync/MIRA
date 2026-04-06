@@ -1,0 +1,16 @@
+# Architecture Decision Records
+
+Architecture Decision Records for MIRA. Format: MADR (Markdown Any Decision Records).
+
+Each ADR captures one significant technical decision: the context that forced the
+decision, the options considered, what was chosen and why, and the consequences.
+
+## Index
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| [0001](0001-plc-protocol-choice.md) | PLC Protocol Choice | Accepted |
+| [0002](0002-bot-adapter-pattern.md) | Bot Adapter Pattern | Accepted |
+| [0003](0003-edge-inference-strategy.md) | Edge Inference Strategy | Accepted |
+| [0004](0004-multi-machine-sync.md) | Multi-Machine Claude Config Sync | Accepted |
+| [0005](0005-ar-hud-architecture.md) | AR HUD Architecture | Accepted |

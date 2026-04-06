@@ -100,6 +100,31 @@
               "text": "FAULTS"
             },
             "type": "ia.input.button"
+          },
+          {
+            "events": {
+              "component": {
+                "onActionPerformed": {
+                  "script": "    system.perspective.navigate('/Mira/MiraPanel')\n"
+                }
+              }
+            },
+            "meta": { "name": "MiraNav" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "backgroundColor": "#00b4a6",
+                "border": "1px solid #00b4a6",
+                "borderRadius": "4px",
+                "color": "#FFFFFF",
+                "fontSize": "14px",
+                "fontWeight": "bold",
+                "margin": "0 4px",
+                "padding": "6px 18px"
+              },
+              "text": "MIRA AI"
+            },
+            "type": "ia.input.button"
           }
         ],
         "meta": { "name": "NavButtons" },

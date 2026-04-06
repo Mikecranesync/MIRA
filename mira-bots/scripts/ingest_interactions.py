@@ -6,12 +6,13 @@ Run with:
     doppler run --project factorylm --config prd -- python ingest_interactions.py
 """
 
-import os
 import io
 import json
-import requests
-from pathlib import Path
+import os
 from datetime import datetime
+from pathlib import Path
+
+import httpx
 
 _MIRA_SERVER = os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost")
 OPENWEBUI_BASE_URL = os.environ.get("OPENWEBUI_BASE_URL", f"{_MIRA_SERVER}:3000")
@@ -27,7 +28,7 @@ MIN_CONTENT_LENGTH = 20
 
 def get_collection_id() -> str:
     """Return the knowledge collection ID. Must exist (created by seed_kb.py)."""
-    resp = requests.get(
+    resp = httpx.get(
         f"{OPENWEBUI_BASE_URL}/api/v1/knowledge",
         headers=HEADERS,
         timeout=15,
@@ -44,7 +45,7 @@ def get_collection_id() -> str:
 def upload_text_to_collection(collection_id: str, filename: str, content: str):
     """Upload a text document to the knowledge collection."""
     file_bytes = content.encode("utf-8")
-    resp = requests.post(
+    resp = httpx.post(
         f"{OPENWEBUI_BASE_URL}/api/v1/files",
         headers=HEADERS,
         files={"file": (filename, io.BytesIO(file_bytes), "text/plain")},
@@ -53,7 +54,7 @@ def upload_text_to_collection(collection_id: str, filename: str, content: str):
     resp.raise_for_status()
     file_id = resp.json()["id"]
 
-    resp = requests.post(
+    resp = httpx.post(
         f"{OPENWEBUI_BASE_URL}/api/v1/knowledge/{collection_id}/file/add",
         headers={**HEADERS, "Content-Type": "application/json"},
         json={"file_id": file_id},

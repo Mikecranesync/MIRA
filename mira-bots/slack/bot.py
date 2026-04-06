@@ -134,7 +134,7 @@ async def handle_message(event, say, client):
             vision_bytes = _resize_for_vision(raw_bytes)
             photo_b64 = base64.b64encode(vision_bytes).decode("utf-8")
             caption = text or "Analyze this equipment photo"
-            reply = await engine.process(session, caption, photo_b64=photo_b64)
+            reply = await engine.process(session, caption, photo_b64=photo_b64, platform="slack")
         except Exception as e:
             logger.error("Photo handler error: %s", e)
             reply = f"MIRA error: {e}"
@@ -155,7 +155,7 @@ async def handle_message(event, say, client):
 
     elif text:
         try:
-            reply = await engine.process(session, text)
+            reply = await engine.process(session, text, platform="slack")
         except Exception as e:
             logger.error("GSD error: %s", e)
             reply = f"MIRA error: {e}"
