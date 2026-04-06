@@ -1,0 +1,21 @@
+FROM python:3.12.8-slim
+
+WORKDIR /app
+
+# System deps for pdfplumber, psycopg2
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Python deps
+COPY mira-crawler/requirements-celery.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Application code
+COPY mira-crawler/ /app/mira_crawler/
+COPY mira-core/mira-ingest/db/ /app/db/
+
+# Ensure mira_crawler is importable
+ENV PYTHONPATH="/app:/app/mira_crawler"
+
+CMD ["celery", "-A", "mira_crawler.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
