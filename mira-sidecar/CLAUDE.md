@@ -285,14 +285,7 @@ If `PROPERTIES_FILE` points to a non-existent path, a WARNING is logged
 and the file is silently ignored. All settings fall back to env vars / defaults.
 
 **PII in logs**
-The PII sanitizer only runs inside `AnthropicProvider`. If you use the
-openai or ollama provider, PII (IP addresses, serial numbers, MAC addresses)
-is NOT automatically stripped before sending. Add sanitization at the call
-site if needed.
-
-**PII on Tier 1 via /route**
-When `/route` selects Tier 1 (local Ollama), queries go through
-`OllamaProvider.complete()` which has NO PII sanitization. This is acceptable
-for local-only deployment (data never leaves the machine), but if Tier 1 logs
-are ever shipped to a cloud log aggregator, PII will leak. Add sanitization
-to `OllamaProvider` before enabling remote log shipping.
+**PII sanitization** is applied in both `AnthropicProvider` and `OllamaProvider`
+via the shared `llm/sanitize.py` module. IPv4, MAC addresses, and serial numbers
+are stripped before every outbound LLM call. The `openai` provider does NOT yet
+have PII sanitization — add it at the call site if needed.
