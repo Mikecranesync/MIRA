@@ -118,9 +118,10 @@ from `LLM_PROVIDER` and `EMBEDDING_PROVIDER` settings:
 **Important:** When `LLM_PROVIDER=anthropic`, embedding is always Ollama — Anthropic
 has no embedding API. The factory enforces this automatically.
 
-**PII sanitization** is applied inside `AnthropicProvider.complete()` before every
-outbound API call. IPv4 addresses, MAC addresses, and serial numbers are replaced
-with `[IP]`, `[MAC]`, `[SN]`. This matches the pattern in `mira-bots/shared/inference/router.py`.
+**PII sanitization** is applied in both `AnthropicProvider` and `OllamaProvider`
+via the shared `llm/sanitize.py` module. IPv4 addresses, MAC addresses, and serial
+numbers are replaced with `[IP]`, `[MAC]`, `[SN]` before every outbound API call.
+This matches the pattern in `mira-bots/shared/inference/router.py`.
 
 ---
 
@@ -192,12 +193,14 @@ Re-ingesting the same document is idempotent — chunk IDs are derived from
 
 ## Document Chunking
 
-`rag/chunker.py` supports PDF (pdfplumber), DOCX (python-docx), and TXT.
-Default chunk size: 512 tokens. Default overlap: 64 tokens.
-Token counting uses tiktoken `cl100k_base` encoding.
+`rag/chunker.py` handles file extraction (PDF via pdfplumber, DOCX via python-docx,
+TXT) then delegates to `mira-crawler/ingest/chunker.chunk_blocks()` for sentence-aware,
+table-aware splitting with a 2000-token hard cap (safe for nomic-embed-text and
+EmbeddingGemma). The crawler chunker is copied into the Docker image at build time
+(see Dockerfile `COPY mira-crawler/ingest/`).
 
-Splits prefer sentence boundaries; falls back to hard token splits for
-pathological inputs (e.g., a single run-on paragraph longer than chunk_size).
+Default chunk size: 512 tokens. Default overlap: 64 tokens.
+Tables are detected and split at row boundaries with header prepended to each split.
 
 ---
 
