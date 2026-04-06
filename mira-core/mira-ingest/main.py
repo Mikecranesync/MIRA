@@ -1,10 +1,12 @@
-"""MIRA ingest service — photo ingestion, vector search, KB push."""
+"""MIRA ingest service — photo ingestion, vector search, KB push, document KB ingest."""
 
+import asyncio
 import base64
 import io
 import json
 import logging
 import os
+import re
 import sqlite3
 import sys
 from datetime import datetime
@@ -27,6 +29,11 @@ OPENWEBUI_URL = os.getenv("OPENWEBUI_BASE_URL", "http://mira-core:8080")
 OPENWEBUI_API_KEY = os.getenv("OPENWEBUI_API_KEY", "")
 KNOWLEDGE_COLLECTION_ID = os.getenv("KNOWLEDGE_COLLECTION_ID", "")
 MAX_PX = int(os.getenv("MAX_INGEST_PX", "1024"))
+MIRA_TENANT_ID = os.getenv("MIRA_TENANT_ID", "")
+
+# Collection routing patterns for document-kb endpoint
+_ELECTRICAL_RE = re.compile(r"wiring|schematic|diagram|electrical|one.?line|ladder", re.I)
+_MANUAL_RE = re.compile(r"manual|vfd|drive|plc|motor|pump|compressor|datasheet", re.I)
 
 DESCRIBE_SYSTEM = (
     "You are an industrial maintenance AI helping a technician at a machine. "
@@ -178,6 +185,94 @@ async def _push_to_kb(asset_tag: str, description: str) -> None:
                 )
     except Exception as e:
         logger.warning("KB push failed (non-fatal): %s", e)
+
+
+# ---------------------------------------------------------------------------
+# Document KB helpers
+# ---------------------------------------------------------------------------
+
+def _route_collection(filename: str, hint: str | None) -> tuple[str, str]:
+    """Map a filename (or explicit hint) to an Open WebUI knowledge collection."""
+    if hint:
+        h = hint.lower()
+        if h == "electrical":
+            return ("Electrical Prints", "Wiring diagrams and schematics.")
+        if h == "manual":
+            return ("Equipment Manuals", "Equipment manuals and datasheets.")
+        return ("Facility Documents", "General facility documents.")
+    if _ELECTRICAL_RE.search(filename):
+        return ("Electrical Prints", "Wiring diagrams and schematics.")
+    if _MANUAL_RE.search(filename):
+        return ("Equipment Manuals", "Equipment manuals and datasheets.")
+    return ("Facility Documents", "General facility documents uploaded by technicians.")
+
+
+async def _get_or_create_kb_collection(name: str, desc: str) -> str:
+    """Return the Open WebUI collection_id for `name`, creating it if needed."""
+    headers: dict[str, str] = {}
+    if OPENWEBUI_API_KEY:
+        headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(f"{OPENWEBUI_URL}/api/v1/knowledge/", headers=headers)
+        resp.raise_for_status()
+        body = resp.json()
+        # Handle both list shape and {items:[]} shape
+        items = body if isinstance(body, list) else (body.get("items") or [])
+        for col in items:
+            if col.get("name") == name:
+                logger.info("KB collection found: %s (%s)", name, col["id"])
+                return col["id"]
+        # Not found — create
+        resp = await client.post(
+            f"{OPENWEBUI_URL}/api/v1/knowledge/create",
+            headers={**headers, "Content-Type": "application/json"},
+            json={"name": name, "description": desc},
+        )
+        resp.raise_for_status()
+        col_id = resp.json()["id"]
+        logger.info("KB collection created: %s (%s)", name, col_id)
+        return col_id
+
+
+async def _poll_file_status(file_id: str, timeout_s: int = 300) -> str:
+    """Poll Open WebUI until file extraction is complete (or timeout/failed)."""
+    headers: dict[str, str] = {}
+    if OPENWEBUI_API_KEY:
+        headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
+    max_polls = timeout_s // 3
+    for i in range(max_polls):
+        await asyncio.sleep(3)
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"{OPENWEBUI_URL}/api/v1/files/{file_id}/process/status",
+                    headers=headers,
+                )
+                if resp.status_code == 404:
+                    # Status endpoint not available in this Open WebUI version.
+                    # Wait a fixed period and return completed optimistically.
+                    logger.info(
+                        "Status endpoint not found (404) for file_id=%s; "
+                        "waiting 25s then proceeding optimistically",
+                        file_id,
+                    )
+                    await asyncio.sleep(25)
+                    return "completed"
+                resp.raise_for_status()
+                body = resp.json()
+                # Status may be top-level or nested under "data"
+                status = body.get("status") or body.get("data", {}).get("status", "")
+                status = (status or "").lower()
+                logger.debug("Poll %d/%d file=%s status=%s", i + 1, max_polls, file_id, status)
+                if status in ("completed", "processed", "done", "ready"):
+                    return "completed"
+                if status in ("failed", "error"):
+                    logger.warning("File processing failed: file_id=%s", file_id)
+                    return "failed"
+        except Exception as e:
+            logger.warning("Poll %d error (continuing): %s", i + 1, e)
+    logger.warning("File status poll timeout after %ds: file_id=%s", timeout_s, file_id)
+    return "timeout"
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +529,138 @@ async def search_photos(body: dict):
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return {"results": results[:top_k]}
+
+
+# ---------------------------------------------------------------------------
+# Document KB ingest — upload original PDF to Open WebUI, let it chunk + embed
+# ---------------------------------------------------------------------------
+
+@app.post("/ingest/document-kb")
+async def ingest_document_kb(
+    file: UploadFile = File(...),
+    filename: str = Form(default=None),
+    collection_hint: str = Form(default=None),
+    equipment_type: str = Form(default=None),
+):
+    """Upload a PDF to Open WebUI Knowledge Base.
+
+    Open WebUI handles text extraction, chunking, and embedding via its
+    configured engine (pypdf default; Docling when DOCLING_SERVER_URL is set).
+    No local parsing is performed here.
+
+    Returns JSON: {status, filename, collection_id, collection_name, file_id, processing_status}
+    """
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="Empty file upload")
+
+    fname = filename or file.filename or "document.pdf"
+
+    # Validate file type — PDF only for MVP
+    ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    mime = (file.content_type or "").lower()
+    if mime != "application/pdf" and ext != "pdf":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only PDF files are supported (got mime={mime or 'unknown'}, ext={ext or 'none'})",
+        )
+
+    # Validate size (20MB Telegram limit, enforced universally)
+    MB = 1024 * 1024
+    if len(raw) > 20 * MB:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds 20MB limit ({len(raw) // MB}MB)",
+        )
+
+    # Tier limit check (fail open on DB errors — never block on infra failures)
+    tenant_id = MIRA_TENANT_ID
+    if tenant_id:
+        try:
+            from db.neon import check_tier_limit
+            allowed, reason = check_tier_limit(tenant_id)
+            if not allowed:
+                raise HTTPException(status_code=429, detail=reason)
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    # Route to the correct collection
+    col_name, col_desc = _route_collection(fname, collection_hint)
+    logger.info("Document KB ingest: %s → collection '%s'", fname, col_name)
+
+    # Get or create the Open WebUI collection
+    try:
+        collection_id = await _get_or_create_kb_collection(col_name, col_desc)
+    except Exception as e:
+        logger.error("Collection create/find failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"KB collection unavailable: {e}")
+
+    # Upload the raw PDF to Open WebUI
+    headers: dict[str, str] = {}
+    if OPENWEBUI_API_KEY:
+        headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{OPENWEBUI_URL}/api/v1/files/",
+                headers=headers,
+                files={"file": (fname, raw, "application/pdf")},
+            )
+            resp.raise_for_status()
+            file_id = resp.json().get("id")
+    except Exception as e:
+        logger.error("Open WebUI file upload failed: %s", e)
+        raise HTTPException(status_code=422, detail=f"File upload failed: {e}")
+
+    if not file_id:
+        raise HTTPException(status_code=422, detail="Open WebUI did not return a file_id")
+
+    logger.info("File uploaded to Open WebUI: file_id=%s, polling for extraction...", file_id)
+
+    # Poll until extraction + embedding complete
+    processing_status = await _poll_file_status(file_id, timeout_s=300)
+
+    if processing_status == "failed":
+        raise HTTPException(
+            status_code=422,
+            detail=f"Open WebUI extraction failed for {fname}. Try re-uploading.",
+        )
+
+    # Attach to knowledge collection (extraction complete or timed-out best-effort)
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{OPENWEBUI_URL}/api/v1/knowledge/{collection_id}/file/add",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"file_id": file_id},
+            )
+            if resp.status_code == 400 and "duplicate" in resp.text.lower():
+                logger.info("File already in KB collection (idempotent): file_id=%s", file_id)
+            elif resp.status_code not in (200, 201):
+                logger.warning(
+                    "KB attach returned %s: %s (non-fatal)",
+                    resp.status_code, resp.text[:200],
+                )
+    except Exception as e:
+        logger.warning("KB attach failed (non-fatal, file is uploaded): %s", e)
+
+    logger.info(
+        "Document KB ingest complete: %s → collection='%s' processing_status=%s",
+        fname, col_name, processing_status,
+    )
+
+    return {
+        "status": "ok",
+        "filename": fname,
+        "collection_id": collection_id,
+        "collection_name": col_name,
+        "file_id": file_id,
+        "processing_status": processing_status,
+        "equipment_type": equipment_type or "",
+    }
 
 
 # ---------------------------------------------------------------------------

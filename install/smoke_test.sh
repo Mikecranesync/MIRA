@@ -40,6 +40,7 @@ check "mira-ingest"      "${BASE}:8002/health"
 check "mira-mcp"         "${BASE}:8001/health"
 check "mira-mcpo"        "${BASE}:8003/mira-mcp/docs"
 check "node-red"         "${BASE}:1880/"
+check "mira-web"         "${BASE}:3200/health"
 check "test-runner-results" "${BASE}:8021/results" "503"  # 503 = running, no results yet
 
 echo "Results:"

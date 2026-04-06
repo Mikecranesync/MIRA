@@ -1,0 +1,36 @@
+{
+  "name": "MIRA Development",
+  "description": "AI-powered industrial maintenance platform — development orchestration",
+  "mission": "Build, test, and maintain MIRA — the AI-powered industrial maintenance diagnostic platform for factory equipment. Ensure all code meets safety standards (NFPA 70E, OSHA 1910), passes the 7-regime test suite, and follows conventional commit format.",
+  "orgChart": {
+    "root": {
+      "agent": "mira-orchestrator",
+      "role": "CTO",
+      "reports": [
+        { "agent": "mira-bots-dev", "role": "Bot Engineer" },
+        { "agent": "mira-ingest-dev", "role": "Pipeline Engineer" },
+        { "agent": "mira-hud-dev", "role": "HUD Engineer" },
+        { "agent": "mira-test-runner", "role": "QA" },
+        { "agent": "mira-docs-writer", "role": "Technical Writer" }
+      ]
+    }
+  },
+  "budget": {
+    "monthlyTokenLimit": 50000000,
+    "dailyTokenLimit": 5000000,
+    "alertThreshold": 0.8,
+    "perAgent": {
+      "mira-orchestrator": { "monthlyLimit": 15000000 },
+      "mira-bots-dev": { "monthlyLimit": 10000000 },
+      "mira-ingest-dev": { "monthlyLimit": 10000000 },
+      "mira-hud-dev": { "monthlyLimit": 8000000 },
+      "mira-test-runner": { "monthlyLimit": 4000000 },
+      "mira-docs-writer": { "monthlyLimit": 3000000 }
+    }
+  },
+  "heartbeat": {
+    "intervalMinutes": 5,
+    "maxMissedBeforeAlert": 3
+  },
+  "_note": "This is a reference template. Create the company via the Paperclip UI at http://<tailscale-ip>:3200, then configure agents with the JSON files in paperclip/agents/. Replace __MIRA_HOME__ in agent configs with the actual MIRA repo path on the Mac Mini."
+}

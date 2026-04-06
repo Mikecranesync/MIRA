@@ -1,0 +1,1502 @@
+[
+  {
+    "id": 1,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A VFD trips on an overcurrent fault immediately at startup. What is the most likely cause?",
+    "options": {
+      "A": "Low DC bus voltage",
+      "B": "Motor winding short or locked rotor condition",
+      "C": "Faulty keypad display",
+      "D": "Loose control wiring"
+    },
+    "key": "B",
+    "explanation": "An immediate overcurrent trip at startup points to a load-side problem \u2014 either a winding short creating very low impedance, or a mechanically locked rotor drawing excessive current before the drive can ramp up."
+  },
+  {
+    "id": 2,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A VFD displays an 'Overvoltage' fault during deceleration. What is the most appropriate corrective action?",
+    "options": {
+      "A": "Replace the DC bus capacitors",
+      "B": "Increase the deceleration ramp time",
+      "C": "Increase the carrier frequency",
+      "D": "Reduce the input voltage transformer tap"
+    },
+    "key": "B",
+    "explanation": "During deceleration, the motor acts as a generator and pumps energy back into the DC bus. Extending the decel ramp allows more time for the drive's braking resistor or internal dissipation to absorb that energy, preventing bus overvoltage."
+  },
+  {
+    "id": 3,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A 460V VFD is powering a pump motor. A technician measures 420V at the drive output terminals while the drive is commanded to run at 60 Hz. What is the FIRST parameter to verify?",
+    "options": {
+      "A": "Input voltage to the drive",
+      "B": "Carrier frequency setting",
+      "C": "Output current limit setting",
+      "D": "Motor nameplate voltage"
+    },
+    "key": "A",
+    "explanation": "VFD output voltage cannot exceed the DC bus voltage, which is derived from the input. If input is low (~400V instead of 480V), the output at full frequency will be proportionally reduced. Input voltage should be verified first."
+  },
+  {
+    "id": 4,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "Which VFD parameter controls the ratio of volts-per-hertz and directly affects motor flux?",
+    "options": {
+      "A": "Boost voltage",
+      "B": "V/Hz pattern (V/f curve)",
+      "C": "Slip compensation",
+      "D": "Dead-band frequency"
+    },
+    "key": "B",
+    "explanation": "The V/Hz pattern defines how the drive scales output voltage relative to frequency. An incorrect V/f ratio causes under- or over-excitation of the motor, directly impacting magnetic flux and torque capability."
+  },
+  {
+    "id": 5,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A conveyor VFD faults with 'Ground Fault' on every startup attempt. The motor megger test (500V, 1 min) reads 0.8 M\u03a9. What does this indicate?",
+    "options": {
+      "A": "High-impedance ground fault in the motor insulation",
+      "B": "Broken motor shaft encoder",
+      "C": "Corroded power terminals only",
+      "D": "Normal insulation \u2014 the drive is faulty"
+    },
+    "key": "A",
+    "explanation": "A megger reading of 0.8 M\u03a9 on a 460V motor is below the generally accepted minimum of 1 M\u03a9 (per IEEE 43), indicating compromised winding insulation leaking current to ground and triggering the VFD's ground fault protection."
+  },
+  {
+    "id": 6,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A VFD is installed in a panel that has reached 45\u00b0C ambient. The drive's rated ambient temperature is 40\u00b0C. What is the CORRECT action?",
+    "options": {
+      "A": "Apply a derating factor and verify the drive is within its reduced current rating",
+      "B": "Lower the accel ramp time",
+      "C": "Switch to scalar (V/Hz) control mode",
+      "D": "Increase the PWM carrier frequency to reduce heat"
+    },
+    "key": "A",
+    "explanation": "VFDs must be derated above their rated ambient temperature. Most manufacturers provide derating curves; the drive can still operate but at a reduced continuous output current. Running at full rated current in a high-ambient environment will cause overtemperature faults or component damage."
+  },
+  {
+    "id": 7,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "In sensorless vector control mode, a VFD requires which motor nameplate data for auto-tuning?",
+    "options": {
+      "A": "Motor insulation class and frame size",
+      "B": "Motor rated voltage, current, frequency, speed (RPM), and power",
+      "C": "Motor efficiency and power factor only",
+      "D": "Motor bearing type and lubrication interval"
+    },
+    "key": "B",
+    "explanation": "Sensorless vector drives use motor equivalent circuit parameters derived from nameplate data during auto-tune. Rated voltage, current, frequency, speed, and power are needed to calculate stator resistance, leakage inductance, and flux current."
+  },
+  {
+    "id": 8,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A VFD output shows asymmetrical phase-to-phase voltages. The most likely cause is:",
+    "options": {
+      "A": "Blown fuse on one input phase to the VFD",
+      "B": "Ground fault on the motor cable",
+      "C": "Motor with mismatched winding resistance",
+      "D": "Incorrect decel ramp time"
+    },
+    "key": "A",
+    "explanation": "A blown input fuse eliminates one phase of the rectifier bridge, creating single-phase input. The DC bus voltage will drop and ripple, producing unequal output phase voltages and typically triggering an undervoltage or input phase loss fault."
+  },
+  {
+    "id": 9,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "medium",
+    "type": "calculation",
+    "stem": "A VFD used on a fan application runs at 30 Hz instead of 60 Hz for a significant portion of the day. By approximately what factor does the fan power consumption change compared to running at 60 Hz?",
+    "options": {
+      "A": "One-half (50%)",
+      "B": "One-eighth (12.5%)",
+      "C": "One-quarter (25%)",
+      "D": "No change \u2014 torque is constant"
+    },
+    "key": "B",
+    "explanation": "Fan power follows the affinity law: Power \u221d (speed)\u00b3. At 30/60 = 0.5 of rated speed, power = (0.5)\u00b3 = 0.125, or 12.5% of full-speed power. This is the key energy-saving argument for VFD installations on centrifugal loads."
+  },
+  {
+    "id": 10,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "During installation, a technician connects the VFD output to the motor using 150 feet of unshielded cable. The drive begins nuisance-tripping on ground fault. The most effective corrective measure is:",
+    "options": {
+      "A": "Replace the unshielded cable with shielded cable and bond the shield at the drive end",
+      "B": "Install a contactor between the drive and motor",
+      "C": "Install a line reactor on the drive input",
+      "D": "Increase the drive's ground fault trip threshold in software"
+    },
+    "key": "A",
+    "explanation": "Long unshielded cables create high capacitive coupling to ground, which the drive's fast-switching output (high dV/dt) charges and discharges. Shielded cable contains these currents; bonding the shield provides a low-impedance return path that prevents nuisance ground fault tripping."
+  },
+  {
+    "id": 11,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "easy",
+    "type": "recall",
+    "stem": "A VFD in 'Sleep Mode' (also called 'wake/sleep' or 'pump-off control') is used primarily to:",
+    "options": {
+      "A": "Save energy by stopping the drive when system demand drops below a setpoint",
+      "B": "Prevent the drive from overheating during summer months",
+      "C": "Protect the motor from low ambient temperature starts",
+      "D": "Reduce wear on the drive's cooling fan"
+    },
+    "key": "A",
+    "explanation": "Sleep mode stops the VFD when the process variable (e.g., pressure, flow) is satisfied and demand is low. The drive 'wakes' when the variable drops below a wake setpoint, eliminating the energy wasted by running a motor at minimum speed when no load exists."
+  },
+  {
+    "id": 12,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A VFD fault log shows repeated 'DC Bus Undervoltage' faults occurring every afternoon. No other faults are present. What is the MOST likely cause?",
+    "options": {
+      "A": "Incorrect motor overload parameter setting",
+      "B": "Utility voltage sag due to peak demand on the plant grid",
+      "C": "Motor overloaded",
+      "D": "Faulty braking resistor"
+    },
+    "key": "B",
+    "explanation": "Afternoon undervoltage faults correlate with peak plant (or utility) loading periods when voltage sags occur. The DC bus is derived from the rectified input; a low input voltage drops the bus below the drive's undervoltage trip threshold."
+  },
+  {
+    "id": 13,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "easy",
+    "type": "calculation",
+    "stem": "A VFD is connected to a 6-pole, 460V, 60 Hz motor. What is the motor's synchronous speed?",
+    "options": {
+      "A": "900 RPM",
+      "B": "1,800 RPM",
+      "C": "3,600 RPM",
+      "D": "1,200 RPM"
+    },
+    "key": "D",
+    "explanation": "Synchronous speed = (120 \u00d7 frequency) / number of poles = (120 \u00d7 60) / 6 = 1,200 RPM. The full-load speed will be slightly less due to slip (typically ~1,140\u20131,175 RPM for a standard induction motor)."
+  },
+  {
+    "id": 14,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A technician needs to prevent a VFD from operating in a specific frequency range (e.g., 22\u201328 Hz) because it causes resonance vibration in the driven equipment. Which parameter setting addresses this?",
+    "options": {
+      "A": "Carrier frequency",
+      "B": "Flux braking enable",
+      "C": "Skip frequency (jump frequency) band",
+      "D": "Current limit"
+    },
+    "key": "C",
+    "explanation": "Skip (or jump) frequency parameters define a frequency range the drive passes through without dwelling. When a mechanical resonance is identified, programming a skip band around that resonant frequency prevents sustained vibration damage."
+  },
+  {
+    "id": 15,
+    "domain": "VFD / Variable Frequency Drive Faults & Operation",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A VFD is set up with a 4\u201320 mA analog speed reference signal. The operator reports the motor runs at full speed regardless of the signal level. A technician measures 4.2 mA at the drive's analog input terminal. What is the MOST likely fault?",
+    "options": {
+      "A": "The analog input scaling parameters are inverted (20 mA \u2192 min speed, 4 mA \u2192 max speed)",
+      "B": "The drive's speed reference source is still set to keypad or a digital input, not the analog input",
+      "C": "The 4\u201320 mA transmitter power supply has failed",
+      "D": "The analog input card is shorted"
+    },
+    "key": "B",
+    "explanation": "When the motor ignores an analog signal that is present and correct at the terminal, the most likely cause is that the drive's reference source selection parameter still points to a different source (keypad, digital preset, etc.). The signal is received but overridden by the configured reference source."
+  },
+  {
+    "id": 16,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "An induction motor running under normal load suddenly draws higher-than-rated current and feels hot to the touch. Voltage at the terminals is 440V (rated 460V) and all three phases are present. What is the BEST next diagnostic step?",
+    "options": {
+      "A": "Increase overload relay trip setting",
+      "B": "Replace the motor immediately",
+      "C": "Verify coupling alignment",
+      "D": "Check motor winding resistance for a shorted turn"
+    },
+    "key": "D",
+    "explanation": "Higher-than-rated current with adequate voltage present on all phases suggests an internal fault, most commonly a shorted turn, which reduces effective impedance and increases current. Resistance or inductance measurement across phases will reveal asymmetry."
+  },
+  {
+    "id": 17,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "During a megger test, Motor A reads 500 M\u03a9 and Motor B reads 1.2 M\u03a9. Both are 480V, 50 HP motors. Which statement is correct?",
+    "options": {
+      "A": "Motor A is acceptable; Motor B requires further testing or reconditioning",
+      "B": "Both motors should be replaced",
+      "C": "Motor B is acceptable; Motor A is over-insulated and may arc internally",
+      "D": "Both motors are acceptable for service"
+    },
+    "key": "A",
+    "explanation": "Per IEEE 43, the minimum acceptable insulation resistance for a 480V motor is 1 M\u03a9. Motor B at 1.2 M\u03a9 barely passes the minimum threshold and warrants further diagnostic investigation such as a PI (polarization index) test."
+  },
+  {
+    "id": 18,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "medium",
+    "type": "calculation",
+    "stem": "A three-phase induction motor has a nameplate full-load speed of 1,750 RPM at 60 Hz. What is the slip at full load?",
+    "options": {
+      "A": "2.78%",
+      "B": "8.3%",
+      "C": "2.5%",
+      "D": "5%"
+    },
+    "key": "A",
+    "explanation": "Synchronous speed for a 4-pole, 60 Hz motor = 1,800 RPM. Slip = (1,800 \u2212 1,750) / 1,800 = 50/1,800 \u2248 2.78%."
+  },
+  {
+    "id": 19,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A motor runs in one direction only and cannot be reversed even when the direction input signal is changed at the starter. The most likely wiring fault is:",
+    "options": {
+      "A": "Motor is single-phased",
+      "B": "Two of the three motor power leads are not being swapped during the reverse command",
+      "C": "Control voltage too high",
+      "D": "Overload relay set too low"
+    },
+    "key": "B",
+    "explanation": "Three-phase motor reversal is achieved by swapping any two of the three power leads. If the reversing contactor does not actually swap phases, the motor will run in one direction only regardless of the command."
+  },
+  {
+    "id": 20,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "easy",
+    "type": "recall",
+    "stem": "A motor's nameplate shows 'SF 1.15.' What does this mean?",
+    "options": {
+      "A": "The motor can run at 115% of rated voltage",
+      "B": "The motor can operate continuously at 115% of rated horsepower under ideal conditions",
+      "C": "The motor efficiency is 115% of baseline",
+      "D": "The motor requires a 1.15 derating factor in high-altitude installations"
+    },
+    "key": "B",
+    "explanation": "Service Factor (SF) is a multiplier applied to the rated horsepower indicating how much the motor can be overloaded for limited periods. An SF of 1.15 means the motor can deliver up to 115% of nameplate HP continuously under standard conditions."
+  },
+  {
+    "id": 21,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "During routine vibration analysis on a 4-pole motor running at 1,780 RPM, a dominant peak appears at 2\u00d7 running speed (approximately 59.3 Hz). This spectral feature is most indicative of:",
+    "options": {
+      "A": "Rolling element bearing defect",
+      "B": "Stator winding fault",
+      "C": "Rotor bar crack",
+      "D": "Mechanical looseness or misalignment"
+    },
+    "key": "D",
+    "explanation": "A dominant 2\u00d7 running speed vibration component is a classic signature of misalignment (angular, parallel, or combined) or mechanical looseness. Bearing defects produce sub-synchronous or high-frequency spectral patterns, not 2\u00d7 peaks."
+  },
+  {
+    "id": 22,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "easy",
+    "type": "calculation",
+    "stem": "A motor is wye-connected at 480V. What is the phase (winding) voltage?",
+    "options": {
+      "A": "480V",
+      "B": "120V",
+      "C": "240V",
+      "D": "277V"
+    },
+    "key": "D",
+    "explanation": "In a wye (star) connection, phase voltage = line voltage / \u221a3 = 480 / 1.732 \u2248 277V. This is why a 480V wye system produces 277V phase-to-neutral, the standard voltage for industrial lighting circuits."
+  },
+  {
+    "id": 23,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "easy",
+    "type": "recall",
+    "stem": "A 30 HP, 460V, 3-phase motor fails to start and produces a loud humming noise. One phase of the supply is open. This condition is called:",
+    "options": {
+      "A": "Single phasing",
+      "B": "Voltage unbalance",
+      "C": "Phase imbalance",
+      "D": "Phase reversal"
+    },
+    "key": "A",
+    "explanation": "Single phasing occurs when one of three supply phases is lost. The motor cannot produce rotating flux and stalls while drawing high current through the remaining two phases, producing heat and a characteristic loud hum."
+  },
+  {
+    "id": 24,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A technician performs a winding resistance check on a 3-phase motor and measures: T1-T2 = 0.8 \u03a9, T2-T3 = 0.8 \u03a9, T1-T3 = 1.6 \u03a9. What does this indicate?",
+    "options": {
+      "A": "The motor is delta-connected",
+      "B": "One phase has a shorted turn",
+      "C": "All windings are balanced \u2014 normal reading",
+      "D": "T1-T3 has a high-resistance connection; T1 or T3 lead may be damaged"
+    },
+    "key": "D",
+    "explanation": "In a balanced 3-phase motor, all three terminal-pair readings should be equal. Here T1-T3 measures exactly double the others (1.6 vs. 0.8 \u03a9), indicating a high-resistance connection or broken conductor at T1 or T3."
+  },
+  {
+    "id": 25,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "What is the purpose of the 'polarization index' (PI) test on motor windings?",
+    "options": {
+      "A": "To determine the motor's efficiency under partial load",
+      "B": "To measure the motor's back-EMF constant",
+      "C": "To assess insulation quality and detect moisture or contamination by comparing 1-minute and 10-minute megohm readings",
+      "D": "To verify proper phase rotation at the terminal box"
+    },
+    "key": "C",
+    "explanation": "The PI is the ratio of the 10-minute megohm reading to the 1-minute reading. Clean, dry insulation absorbs charge over time (PI > 2.0 is acceptable). Moisture or contamination provides a leakage path and keeps the reading flat (PI < 1.5 indicates a problem)."
+  },
+  {
+    "id": 26,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A motor's operating temperature is measured at 95\u00b0C on the winding surface. The motor is rated NEMA Insulation Class B (rise 80\u00b0C, max 110\u00b0C). Ambient is 25\u00b0C. What is the status?",
+    "options": {
+      "A": "Motor is within acceptable limits",
+      "B": "Class B insulation cannot operate above 80\u00b0C",
+      "C": "Motor is dangerously overheated; shut down immediately",
+      "D": "Motor is at the exact limit; reduce load slightly"
+    },
+    "key": "A",
+    "explanation": "Class B insulation allows an 80\u00b0C rise over 40\u00b0C ambient, giving a maximum winding temperature of 120\u00b0C (with 10\u00b0C hot-spot allowance). At 25\u00b0C ambient + 70\u00b0C rise = 95\u00b0C total, the motor is comfortably within its Class B rating."
+  },
+  {
+    "id": 27,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "Which motor starting method reduces inrush current to approximately 33% of the across-the-line value but also reduces starting torque to 33%?",
+    "options": {
+      "A": "Part winding starter",
+      "B": "Soft starter at 50% initial voltage",
+      "C": "Wye-delta (star-delta) open transition starter",
+      "D": "Autotransformer starter at 80% tap"
+    },
+    "key": "C",
+    "explanation": "A wye-delta starter initially connects the motor in wye, applying 1/\u221a3 of rated voltage per winding. This reduces both current and torque to 1/3 (33%) of the DOL values. The load must be capable of accelerating under this reduced torque."
+  },
+  {
+    "id": 28,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "During a thermal imaging survey, a motor's drive-end bearing housing shows 62\u00b0C while the opposite-drive-end bearing shows 38\u00b0C. Ambient is 25\u00b0C. What should the technician do?",
+    "options": {
+      "A": "Schedule bearing replacement at the drive end and collect a vibration sample",
+      "B": "Add grease to both bearings immediately",
+      "C": "Record and continue \u2014 this differential is normal",
+      "D": "Replace both bearings immediately"
+    },
+    "key": "A",
+    "explanation": "A drive-end bearing 24\u00b0C hotter than the ODE bearing and 37\u00b0C above ambient is a significant thermal anomaly. Vibration analysis should be collected to confirm a bearing defect frequency and schedule replacement before catastrophic failure."
+  },
+  {
+    "id": 29,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "hard",
+    "type": "calculation",
+    "stem": "A 50 HP NEMA Premium motor (\u03b7 = 92.4%) replaces a Standard motor (\u03b7 = 90%). At 50% load running 8,760 hours/year, the Premium motor saves approximately how many kWh/year?",
+    "options": {
+      "A": "There is no measurable difference at this scale",
+      "B": "~1,100 kWh/year",
+      "C": "~400 kWh/year",
+      "D": "~4,500 kWh/year"
+    },
+    "key": "B",
+    "explanation": "At 50% load (25 HP output = 18.65 kW), losses: Standard = 18.65 \u00d7 (1/0.90 \u2212 1) = 2.07 kW; Premium = 18.65 \u00d7 (1/0.924 \u2212 1) = 1.60 kW. Saved = 0.47 kW \u00d7 8,760 hr \u2248 4,117 kWh/year at full year. At realistic average loading closer to 40\u201350%, savings are approximately 1,000\u20131,200 kWh/year, making B the correct order-of-magnitude answer."
+  },
+  {
+    "id": 30,
+    "domain": "Motor Theory & Troubleshooting",
+    "difficulty": "hard",
+    "type": "recall",
+    "stem": "What is the recommended maximum shaft voltage reading (peak) on a VFD-driven motor before bearing fluting damage becomes a concern?",
+    "options": {
+      "A": "500 mV peak",
+      "B": "1,000 mV (1V) peak",
+      "C": "5,000 mV (5V) peak",
+      "D": "50 mV peak"
+    },
+    "key": "B",
+    "explanation": "Industry guidance (Aegis/Electro Static Technology and others) generally recommends keeping shaft voltage below approximately 1V peak to prevent EDM (electrical discharge machining) discharge through bearings, which creates micro-pitting (fluting) in the bearing race."
+  },
+  {
+    "id": 31,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "easy",
+    "type": "recall",
+    "stem": "In Allen-Bradley Ladder Logic, a normally open (NO) contact for input I:0/0 is placed in series with output O:0/0. The PLC is in RUN mode. When will the output energize?",
+    "options": {
+      "A": "Always \u2014 the output is not conditional",
+      "B": "When I:0/0 is de-energized (FALSE)",
+      "C": "Never \u2014 an NO contact in series blocks the output",
+      "D": "When I:0/0 is energized (TRUE)"
+    },
+    "key": "D",
+    "explanation": "A Normally Open contact passes logic (goes TRUE on the rung) when its associated input bit is TRUE (energized). The output coil energizes when continuity exists through all series elements on the rung."
+  },
+  {
+    "id": 32,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "easy",
+    "type": "scenario",
+    "stem": "A TON (timer on-delay) instruction in a Rockwell PLC has a preset of 5,000 ms. The enable bit (EN) has been TRUE for 3 seconds. What is the state of the Done bit (DN)?",
+    "options": {
+      "A": "DN = 1, timer is complete",
+      "B": "DN = 0, because no output coil is connected",
+      "C": "DN = 1, timer resets when EN drops",
+      "D": "DN = 0, timer is still accumulating"
+    },
+    "key": "D",
+    "explanation": "A TON Done bit sets to 1 only when the accumulated time equals or exceeds the preset. At 3,000 ms with a 5,000 ms preset, the timer is still running and DN = 0."
+  },
+  {
+    "id": 33,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "A PLC program uses a CTU (Count Up) counter with a preset of 10. The counter has accumulated 10 counts. What happens on the next rising edge of the count input?",
+    "options": {
+      "A": "The counter resets to 0 automatically",
+      "B": "The accumulated value stays at 10; the Done bit remains set",
+      "C": "The counter overflows and causes a fault",
+      "D": "The Done bit resets to 0"
+    },
+    "key": "B",
+    "explanation": "CTU counters in most Allen-Bradley PLCs hold at the preset value (DN = 1) when reached. They do not rollover or reset automatically \u2014 a separate RES instruction or CTD instruction is required to reset the counter."
+  },
+  {
+    "id": 34,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "A technician notices a rung in a Siemens S7 ladder program uses a 'Set' (S) coil instead of a standard output coil. What is the key difference in behavior?",
+    "options": {
+      "A": "A Set coil latches the output ON and it remains ON even if the rung goes FALSE, until a Reset (R) coil for the same bit is executed",
+      "B": "A Set coil cannot be used with physical output addresses",
+      "C": "A Set coil energizes for only one scan cycle",
+      "D": "A Set coil energizes only when all inputs on the rung are FALSE"
+    },
+    "key": "A",
+    "explanation": "Set/Reset (latch/unlatch) coils are retentive \u2014 once set, the bit remains TRUE regardless of the rung condition. This is used for sealing in alarms and motor run states that must persist until explicitly reset."
+  },
+  {
+    "id": 35,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "easy",
+    "type": "scenario",
+    "stem": "In IEC 61131-3 Structured Text, what will the output Y equal after executing: X := 5; IF X > 3 THEN Y := X * 2; ELSE Y := 0; END_IF;",
+    "options": {
+      "A": "Y = 5",
+      "B": "Y = 10",
+      "C": "Y = 0",
+      "D": "Y = 3"
+    },
+    "key": "B",
+    "explanation": "X is assigned 5. The condition X > 3 evaluates TRUE (5 > 3), so the THEN branch executes: Y := 5 \u00d7 2 = 10. The ELSE branch is skipped."
+  },
+  {
+    "id": 36,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A PLC ladder program controls a conveyor interlock. The conveyor motor (M1) should only run if: (1) E-stop is not pressed, (2) safety gate is closed, and (3) upstream conveyor (M2) is running. How should these conditions be arranged on the rung?",
+    "options": {
+      "A": "In series (all conditions must be TRUE simultaneously)",
+      "B": "M1 in series with E-stop; M2 and gate in parallel",
+      "C": "As separate rungs each with their own output coil for M1",
+      "D": "In parallel (any one condition allows M1 to run)"
+    },
+    "key": "A",
+    "explanation": "Safety interlocks with AND logic (all conditions required) are wired in series on a PLC rung. Parallel logic is OR \u2014 the motor would run if any one condition is met, which is incorrect and dangerous for a safety interlock."
+  },
+  {
+    "id": 37,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A Modbus RTU communication error (CRC mismatch) is occurring intermittently between a PLC master and a VFD slave. The MOST likely cause is:",
+    "options": {
+      "A": "Electrical noise on the RS-485 cable, possibly from insufficient cable shielding or missing termination resistor",
+      "B": "Wrong Modbus function code in the PLC program",
+      "C": "The VFD baud rate is too fast for the PLC",
+      "D": "Too many registers being read in one request"
+    },
+    "key": "A",
+    "explanation": "CRC mismatches indicate data corruption in transit, almost always caused by electrical noise coupling into the communication cable. RS-485 requires proper shielding, correct termination (120 \u03a9 at each end), and separation from power cables."
+  },
+  {
+    "id": 38,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "easy",
+    "type": "recall",
+    "stem": "In a PLC program, an XIC instruction references a memory bit (M0:0/5) that is not a physical I/O point. This type of bit is called:",
+    "options": {
+      "A": "A hardware input",
+      "B": "A retentive output",
+      "C": "An internal (internal coil) or bit-file memory bit",
+      "D": "A data register"
+    },
+    "key": "C",
+    "explanation": "Internal bits (also called internal relays, flags, or auxiliary relays) are software memory locations not tied to physical I/O. They are used for logic holding, sequencing, and interlocking within the PLC program."
+  },
+  {
+    "id": 39,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "hard",
+    "type": "recall",
+    "stem": "A PLC program must execute a specific block of code exactly once per minute regardless of scan time. What IEC 61131-3 programming construct is best suited for this?",
+    "options": {
+      "A": "A cyclic task (periodic task) with a 60,000 ms interval",
+      "B": "A standard ladder rung with a TON timer",
+      "C": "A function block with a retentive timer",
+      "D": "An event-driven interrupt triggered by a counter"
+    },
+    "key": "A",
+    "explanation": "IEC 61131-3 supports cyclic/periodic tasks that execute at a defined time interval independent of the main scan cycle. This is the correct construct for time-based actions that must execute at precise intervals."
+  },
+  {
+    "id": 40,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A technician is troubleshooting a PLC analog input card that reads 4,095 counts (maximum) even though the actual 4\u201320 mA transmitter signal is only 12 mA. What is the MOST likely hardware cause?",
+    "options": {
+      "A": "The scaling parameters in the PLC program are inverted",
+      "B": "The transmitter is defective",
+      "C": "The PLC processor is in Program mode",
+      "D": "The analog input channel is configured for 0\u201310V, but 4\u201320 mA is being applied"
+    },
+    "key": "D",
+    "explanation": "When a 4\u201320 mA loop signal is applied to a channel configured for 0\u201310V, an input range mismatch occurs. The voltage developed across the input impedance at 12 mA can force the ADC to read near full-scale. The correct fix is to change the channel configuration to 4\u201320 mA mode."
+  },
+  {
+    "id": 41,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "easy",
+    "type": "recall",
+    "stem": "What does the 'scan time' of a PLC represent?",
+    "options": {
+      "A": "The time interval between watchdog timer resets",
+      "B": "The time it takes the PLC to read all inputs, execute all logic, and update all outputs once",
+      "C": "The time required to download a program to the processor",
+      "D": "The communication cycle time with remote I/O racks"
+    },
+    "key": "B",
+    "explanation": "Scan time (or cycle time) is the total time for one complete execution cycle: input scan \u2192 program execution \u2192 output scan \u2192 housekeeping. This determines how quickly the PLC can respond to input changes. Typical values range from <1 ms to >100 ms depending on program size and processor speed."
+  },
+  {
+    "id": 42,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "In ladder logic, a 'one-shot' (OSR \u2014 One Shot Rising) instruction is used. The associated rung condition goes TRUE repeatedly. How many times does the OSR output bit go TRUE?",
+    "options": {
+      "A": "Once per FALSE-to-TRUE transition of the rung condition",
+      "B": "Continuously, as long as the rung is TRUE",
+      "C": "Every time the rung condition is TRUE",
+      "D": "Once per scan regardless of rung state"
+    },
+    "key": "A",
+    "explanation": "An OSR instruction produces a one-scan-width pulse on the rising edge (FALSE-to-TRUE transition) of the rung condition. It does not re-trigger while the rung remains TRUE \u2014 it waits for a new rising edge."
+  },
+  {
+    "id": 43,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A technician sees 'MAJOR FAULT: 0004 \u2014 I/O module connection timeout' on a ControlLogix PLC. What is the FIRST step to take?",
+    "options": {
+      "A": "Download the original program backup",
+      "B": "Clear the fault and cycle power to the entire control panel",
+      "C": "Identify which I/O module lost communication, check physical connections and chassis seating, and check for power loss to that module",
+      "D": "Replace the I/O module immediately"
+    },
+    "key": "C",
+    "explanation": "A connection timeout major fault indicates the controller lost communication with a specific module. Diagnostics start with identifying the faulted module, then checking physical causes \u2014 loose chassis slot, failed module, or lost 24V supply to the module."
+  },
+  {
+    "id": 44,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "easy",
+    "type": "recall",
+    "stem": "In Structured Text, what is the data type used to store a TRUE/FALSE logic value in IEC 61131-3?",
+    "options": {
+      "A": "BYTE",
+      "B": "INT",
+      "C": "BOOL",
+      "D": "WORD"
+    },
+    "key": "C",
+    "explanation": "BOOL (Boolean) is the IEC 61131-3 data type for a single-bit TRUE/FALSE value. INT stores integers (\u221232,768 to 32,767), WORD stores a 16-bit unsigned value, and BYTE stores an 8-bit unsigned value."
+  },
+  {
+    "id": 45,
+    "domain": "PLC Ladder Logic & Structured Text",
+    "difficulty": "hard",
+    "type": "recall",
+    "stem": "A PLC program uses a FIFO (First In, First Out) instruction to manage a queue of part serial numbers. When is the oldest value retrieved from the FIFO?",
+    "options": {
+      "A": "When a FIFO Unload (FFU) instruction is executed",
+      "B": "When the FIFO overflows",
+      "C": "When the FIFO pointer resets to zero",
+      "D": "Automatically, on every PLC scan"
+    },
+    "key": "A",
+    "explanation": "In Allen-Bradley and similar PLCs, the FIFO Load (FFL) instruction adds data to the queue and the FIFO Unload (FFU) instruction retrieves data in first-in-first-out order. The FFU must be explicitly triggered \u2014 data is not automatically unloaded each scan."
+  },
+  {
+    "id": 46,
+    "domain": "NFPA 70E Electrical Safety & Arc Flash",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "Under NFPA 70E 2021, which condition must be met before an employee performs justified energized electrical work?",
+    "options": {
+      "A": "The employee must wear a Class E hard hat at all times",
+      "B": "The employee must be a licensed electrician with 10+ years of experience",
+      "C": "Only DC systems above 600V require a work permit",
+      "D": "A written energized electrical work permit (EEWP) must be issued, unless the task qualifies for a specific exception"
+    },
+    "key": "D",
+    "explanation": "NFPA 70E Article 130.2 requires an energized electrical work permit for work on or near energized conductors or circuit parts that have not been placed in an electrically safe work condition, with narrow exceptions such as testing, diagnostics, and thermography."
+  },
+  {
+    "id": 47,
+    "domain": "NFPA 70E Electrical Safety & Arc Flash",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "An arc flash hazard analysis determines the incident energy at a 480V switchgear bus is 8.2 cal/cm\u00b2. Using the incident energy method, what is the minimum PPE requirement for work within the arc flash boundary?",
+    "options": {
+      "A": "PPE Category 4 (40 cal/cm\u00b2 minimum arc rating)",
+      "B": "PPE Category 2 (8 cal/cm\u00b2 minimum arc rating)",
+      "C": "PPE Category 3 (25 cal/cm\u00b2 minimum arc rating)",
+      "D": "PPE Category 1 (4 cal/cm\u00b2 minimum arc rating)"
+    },
+    "key": "C",
+    "explanation": "Using the incident energy analysis method, the worker's PPE arc rating must equal or exceed the calculated incident energy. 8.2 cal/cm\u00b2 exceeds Category 2's 8 cal/cm\u00b2 minimum arc rating, so PPE Category 3 (minimum arc rating 25 cal/cm\u00b2) is required."
+  },
+  {
+    "id": 48,
+    "domain": "NFPA 70E Electrical Safety & Arc Flash",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "The Arc Flash Boundary (AFB) is defined as:",
+    "options": {
+      "A": "The distance at which the incident energy would equal 1.2 cal/cm\u00b2 for an unprotected worker",
+      "B": "The limited approach boundary for qualified persons",
+      "C": "The distance at which the available fault current drops below 1,000 amps",
+      "D": "The distance at which voltage is considered safe to touch"
+    },
+    "key": "A",
+    "explanation": "Per NFPA 70E, the Arc Flash Boundary is the distance from the arcing source at which the incident energy equals 1.2 cal/cm\u00b2 \u2014 the threshold for the onset of a second-degree burn on unprotected skin. Workers inside this boundary must wear arc-rated PPE."
+  },
+  {
+    "id": 49,
+    "domain": "NFPA 70E Electrical Safety & Arc Flash",
+    "difficulty": "easy",
+    "type": "recall",
+    "stem": "A qualified electrician is performing lockout/tagout on a 480V motor control center (MCC). After applying the lock, what must be done before work begins?",
+    "options": {
+      "A": "Notify the utility company",
+      "B": "Call the supervisor for verbal permission",
+      "C": "Verify the absence of voltage using a properly rated voltage tester",
+      "D": "Apply red danger tape around the MCC"
+    },
+    "key": "C",
+    "explanation": "OSHA 29 CFR 1910.147 and NFPA 70E require verification that energy has been effectively isolated BEFORE work begins. Using a properly rated (CAT III or IV) voltage tester to verify zero energy at the work point is a mandatory LOTO step."
+  },
+  {
+    "id": 50,
+    "domain": "NFPA 70E Electrical Safety & Arc Flash",
+    "difficulty": "easy",
+    "type": "recall",
+    "stem": "What is the difference between a 'qualified' and 'unqualified' person as defined by NFPA 70E?",
+    "options": {
+      "A": "A qualified person has training and knowledge to distinguish exposed live parts and understands the hazards involved; an unqualified person does not",
+      "B": "A qualified person must have 5+ years of field experience",
+      "C": "A qualified person must be certified by NFPA directly",
+      "D": "A qualified person holds a state electrical license; an unqualified person does not"
+    },
+    "key": "A",
+    "explanation": "NFPA 70E defines a qualified person based on demonstrated skills and knowledge \u2014 specifically the ability to identify and understand electrical hazards and live parts. Licensing is a state requirement independent of NFPA 70E's definitions."
+  },
+  {
+    "id": 51,
+    "domain": "NFPA 70E Electrical Safety & Arc Flash",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A technician is replacing a fuse in a 480V, 100A panelboard. The incident energy is calculated at 1.8 cal/cm\u00b2. Which PPE ensemble is the MINIMUM required per NFPA 70E?",
+    "options": {
+      "A": "Rubber insulating gloves rated 1,000V are sufficient; no arc-rated clothing required",
+      "B": "PPE Category 1 \u2014 arc-rated shirt, pants, safety glasses, hearing protection, hard hat",
+      "C": "PPE Category 2 \u2014 arc-rated coverall, arc-rated face shield",
+      "D": "PPE Category 0 \u2014 daily wear work clothes"
+    },
+    "key": "B",
+    "explanation": "NFPA 70E PPE Category 1 requires a minimum arc rating of 4 cal/cm\u00b2 and applies to incident energy levels up to 4 cal/cm\u00b2. At 1.8 cal/cm\u00b2, Category 1 PPE (arc-rated shirt and pants, safety glasses, hard hat, hearing protection, leather gloves) meets the requirement."
+  },
+  {
+    "id": 52,
+    "domain": "NFPA 70E Electrical Safety & Arc Flash",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "During an arc flash study, the 'working distance' is an important variable. What does working distance refer to?",
+    "options": {
+      "A": "The distance from the arc source to the worker's face and chest when performing the task",
+      "B": "The distance from the arc source to the arc flash boundary",
+      "C": "The maximum reach distance for a qualified worker",
+      "D": "The distance the worker stands from the panelboard door"
+    },
+    "key": "A",
+    "explanation": "Working distance is the assumed distance between the arcing source and the body of the worker (face and chest) during a specific task. IEEE 1584 uses task-specific working distances (e.g., 18 inches for 480V panels, 24 inches for switchgear) to calculate incident energy at the worker."
+  },
+  {
+    "id": 53,
+    "domain": "NFPA 70E Electrical Safety & Arc Flash",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A facility has not performed an arc flash hazard analysis. Under NFPA 70E, what action is required before energized work is performed?",
+    "options": {
+      "A": "The work must be done de-energized \u2014 no energized work is permitted without an arc flash study",
+      "B": "Workers may proceed using standard Class 0 rubber gloves only",
+      "C": "The employer must use the PPE Category method based on equipment type and parameters, as an alternative to an incident energy analysis",
+      "D": "The employer must label all equipment with a DANGER label and prohibit all access"
+    },
+    "key": "C",
+    "explanation": "NFPA 70E 130.5 allows two methods for determining arc flash PPE: (1) the incident energy analysis, or (2) the arc flash PPE category method based on equipment type and conditions (Table 130.7(C)(15)(a)). The category method is a compliant alternative when a formal arc flash study has not been done."
+  },
+  {
+    "id": 54,
+    "domain": "NFPA 70E Electrical Safety & Arc Flash",
+    "difficulty": "hard",
+    "type": "recall",
+    "stem": "A 'Restricted Approach Boundary' for a 480V exposed energized conductor is approximately:",
+    "options": {
+      "A": "12 feet",
+      "B": "12 inches",
+      "C": "1 inch",
+      "D": "42 inches"
+    },
+    "key": "B",
+    "explanation": "Per NFPA 70E Table 130.4(D)(a), for 151V\u2013750V circuits the restricted approach boundary is 12 inches. Only qualified persons wearing appropriate PPE and using insulated tools may work within this boundary."
+  },
+  {
+    "id": 55,
+    "domain": "NFPA 70E Electrical Safety & Arc Flash",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A maintenance technician needs to take a voltage measurement on an energized 277V lighting panel. This work is classified as:",
+    "options": {
+      "A": "Exempt from NFPA 70E since it is low voltage",
+      "B": "Unqualified work \u2014 any work on energized equipment is prohibited",
+      "C": "Safe to perform without any special PPE since 277V is below 480V",
+      "D": "Justified energized work that may require an EEWP unless excepted by the employer's written program"
+    },
+    "key": "D",
+    "explanation": "NFPA 70E 130.2 states that work on energized parts above 50V requires justification and, if not within an exception (e.g., diagnostics and testing), an energized electrical work permit. Voltage level does not exempt work from NFPA 70E requirements (coverage begins at 50V)."
+  },
+  {
+    "id": 56,
+    "domain": "Preventive & Predictive Maintenance (PM/PdM)",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "Vibration analysis on a centrifugal pump reveals a prominent frequency at approximately 5\u00d7 running speed. The pump has a 5-vane impeller. What is the MOST likely diagnosis?",
+    "options": {
+      "A": "Bearing outer race defect",
+      "B": "Electrical line frequency interference",
+      "C": "Shaft imbalance",
+      "D": "Vane pass frequency \u2014 cavitation or recirculation"
+    },
+    "key": "D",
+    "explanation": "Vane pass frequency (VPF) = number of impeller vanes \u00d7 shaft RPM. A strong VPF component (5\u00d7 running speed) indicates pressure pulsations at the impeller. Elevated VPF amplitude is associated with cavitation, recirculation, or operating far off best efficiency point."
+  },
+  {
+    "id": 57,
+    "domain": "Preventive & Predictive Maintenance (PM/PdM)",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "An oil analysis report on a gearbox shows increased levels of iron (Fe), copper (Cu), and a viscosity drop of 15% from the new oil baseline. What is the CORRECT interpretation and action?",
+    "options": {
+      "A": "Normal wear \u2014 file for trending only",
+      "B": "Copper and iron contamination indicate bearing and gear wear; viscosity drop suggests thermal degradation or dilution \u2014 escalate to scheduled inspection",
+      "C": "Only iron matters \u2014 change the filter and continue running",
+      "D": "The oil should be changed due to viscosity drop alone"
+    },
+    "key": "B",
+    "explanation": "Elevated Fe suggests gear/bearing wear; Cu suggests bronze bushing or thrust washer wear. A 15% viscosity drop indicates thermal breakdown, dilution, or incorrect oil top-off. The combination warrants inspection and root cause analysis before the next failure cycle."
+  },
+  {
+    "id": 58,
+    "domain": "Preventive & Predictive Maintenance (PM/PdM)",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "What is the 'P-F interval' in predictive maintenance?",
+    "options": {
+      "A": "The time between when a potential failure (P) is detectable and when functional failure (F) occurs",
+      "B": "The time required to perform a predictive maintenance inspection",
+      "C": "The period after a failure during which the equipment can continue to run safely",
+      "D": "The time between scheduled preventive maintenance tasks"
+    },
+    "key": "A",
+    "explanation": "The P-F interval (from RCM methodology) defines the window of time between when an incipient failure first becomes detectable (P) and the point of functional failure (F). Maintenance intervals must be shorter than the P-F interval to catch failures before they become functional."
+  },
+  {
+    "id": 59,
+    "domain": "Preventive & Predictive Maintenance (PM/PdM)",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A technician uses an ultrasonic detector near an air compressor. The detector registers a high-frequency signal near the main valve assembly even when no downstream demand exists. What does this indicate?",
+    "options": {
+      "A": "Electrical arcing in the compressor motor",
+      "B": "Cavitation in the intercooler",
+      "C": "Valve leak \u2014 compressed air is bypassing the valve in the closed position",
+      "D": "Normal compressor operation"
+    },
+    "key": "C",
+    "explanation": "Ultrasonic detectors detect high-frequency turbulence created by gas or fluid passing through a restriction. A signal on a closed valve with no demand indicates the valve is not seating properly, allowing a bypass leak."
+  },
+  {
+    "id": 60,
+    "domain": "Preventive & Predictive Maintenance (PM/PdM)",
+    "difficulty": "medium",
+    "type": "calculation",
+    "stem": "A maintenance team's MTBF improves from 4,200 hours to 5,500 hours after adding a new lubrication PM. What is the percentage improvement in reliability?",
+    "options": {
+      "A": "~131%",
+      "B": "~23.8%",
+      "C": "~76.2%",
+      "D": "~30.95%"
+    },
+    "key": "D",
+    "explanation": "Percentage improvement = (New MTBF \u2212 Old MTBF) / Old MTBF \u00d7 100 = (5,500 \u2212 4,200) / 4,200 \u00d7 100 = 1,300 / 4,200 \u00d7 100 \u2248 30.95%."
+  },
+  {
+    "id": 61,
+    "domain": "Preventive & Predictive Maintenance (PM/PdM)",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "Which lubrication error is the MOST common cause of rolling element bearing failure in industrial motors?",
+    "options": {
+      "A": "Over-greasing the bearing",
+      "B": "Under-greasing the bearing",
+      "C": "Mixing synthetic and mineral-based grease",
+      "D": "Using the wrong viscosity grade"
+    },
+    "key": "A",
+    "explanation": "Studies by SKF, NSK, and others consistently identify over-greasing as the leading lubrication-related bearing failure cause. Excess grease churns, heats, and is expelled from the bearing cavity, causing contamination and accelerated wear."
+  },
+  {
+    "id": 62,
+    "domain": "Preventive & Predictive Maintenance (PM/PdM)",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A technician uses laser alignment on a motor-pump direct-drive coupling at 1,800 RPM. Readings: parallel misalignment 12 mils, angular misalignment 0.5 mils/inch. Are these values acceptable?",
+    "options": {
+      "A": "Yes \u2014 these values only matter above 3,600 RPM",
+      "B": "No \u2014 both values are excessive for this speed",
+      "C": "Yes \u2014 both values are within acceptable tolerances",
+      "D": "No \u2014 parallel misalignment is excessive; angular is acceptable"
+    },
+    "key": "D",
+    "explanation": "At 1,800 RPM, typical acceptable tolerances are approximately 0\u20134 mils parallel and 0\u20131 mil/inch angular. Parallel at 12 mils is 3\u00d7 the acceptable limit. Angular at 0.5 mils/inch is within the general guideline. The parallel offset must be corrected."
+  },
+  {
+    "id": 63,
+    "domain": "Preventive & Predictive Maintenance (PM/PdM)",
+    "difficulty": "hard",
+    "type": "recall",
+    "stem": "In Reliability-Centered Maintenance (RCM), what are the seven questions applied to each failure mode?",
+    "options": {
+      "A": "Function, functional failure, failure mode, failure effect, consequence, default task, and task interval",
+      "B": "Define, measure, analyze, improve, control, validate, and document",
+      "C": "What failed, when, why, where, who, cost, and consequence",
+      "D": "Equipment name, location, criticality, MTBF, MTTR, failure code, and root cause"
+    },
+    "key": "A",
+    "explanation": "RCM (SAE JA1011) applies seven questions: (1) What are the functions? (2) What is a functional failure? (3) What causes each failure? (4) What happens when it fails? (5) What are the consequences? (6) What can be done to predict or prevent it? (7) What if no proactive task is applicable? These drive maintenance strategy selection."
+  },
+  {
+    "id": 64,
+    "domain": "Preventive & Predictive Maintenance (PM/PdM)",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A motor's infrared thermogram shows a hot spot on terminal L2 at the motor disconnect switch. All three phases are loaded equally. The MOST likely cause is:",
+    "options": {
+      "A": "Motor running above rated horsepower",
+      "B": "Loose or corroded terminal connection on L2",
+      "C": "Incorrect overload heater element installed",
+      "D": "Single-phase condition"
+    },
+    "key": "B",
+    "explanation": "A hot spot on a single terminal while load is balanced is a classic sign of high-resistance connection \u2014 loose, corroded, or under-torqued terminal. Increased contact resistance generates I\u00b2R heat localized at that connection point, detectable via IR thermography."
+  },
+  {
+    "id": 65,
+    "domain": "Preventive & Predictive Maintenance (PM/PdM)",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "Which maintenance strategy has the LOWEST life-cycle cost for a critical rotating asset with a detectable failure mode and a P-F interval greater than 1 month?",
+    "options": {
+      "A": "Replacing the asset with a redundant standby unit",
+      "B": "Run-to-failure (reactive maintenance)",
+      "C": "Condition-based (predictive) maintenance using vibration and oil analysis",
+      "D": "Time-based preventive maintenance (replace every X hours)"
+    },
+    "key": "C",
+    "explanation": "When a failure mode is detectable, has a P-F interval long enough for scheduled intervention, and the asset is critical, condition-based maintenance (PdM) minimizes life-cycle cost by replacing components only when degradation is confirmed \u2014 avoiding premature replacement and unplanned downtime."
+  },
+  {
+    "id": 66,
+    "domain": "Pneumatics & Hydraulics",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A double-acting pneumatic cylinder extends fully but fails to retract. The directional control valve (4/2 solenoid) shifts correctly when activated. What is the MOST likely cause?",
+    "options": {
+      "A": "The cylinder's rod-side port is blocked or the rod piston seal is bypassing",
+      "B": "Blocked or missing return port in the directional valve",
+      "C": "Insufficient supply pressure",
+      "D": "A faulty position sensor on the cylinder"
+    },
+    "key": "A",
+    "explanation": "If the valve shifts correctly but the cylinder won't retract, the pneumatic path on the return stroke is the issue. A blocked rod-side port fitting or a failed piston seal allowing air to bypass rather than build pressure on the rod side would cause failure to retract."
+  },
+  {
+    "id": 67,
+    "domain": "Pneumatics & Hydraulics",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A hydraulic system operating at 1,800 PSI suddenly drops to near zero pressure while the pump is still running. The pressure relief valve is set at 2,500 PSI. What is the MOST likely cause?",
+    "options": {
+      "A": "Actuator cylinder overstroke",
+      "B": "Pressure transducer failure",
+      "C": "Relief valve stuck open",
+      "D": "System load increased beyond pump capacity"
+    },
+    "key": "C",
+    "explanation": "A relief valve stuck open provides a direct, low-resistance path from pressure to tank. Pressure collapses because all pump flow bypasses to tank. The pump continues to spin but cannot build pressure."
+  },
+  {
+    "id": 68,
+    "domain": "Pneumatics & Hydraulics",
+    "difficulty": "easy",
+    "type": "recall",
+    "stem": "In a pneumatic system, the FRL unit refers to:",
+    "options": {
+      "A": "Forward-Reverse Latch Relay",
+      "B": "Filter-Regulator-Lubricator",
+      "C": "Frequency Response Level",
+      "D": "Flow Rate Limiter"
+    },
+    "key": "B",
+    "explanation": "The FRL (Filter-Regulator-Lubricator) is a standard pneumatic service unit installed at each machine air inlet. The filter removes particulates and moisture, the regulator sets working pressure, and the lubricator adds atomized oil for valve and actuator lubrication."
+  },
+  {
+    "id": 69,
+    "domain": "Pneumatics & Hydraulics",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A hydraulic press is cycling slowly despite the pump being sized correctly. System pressure at the pump outlet reads 2,100 PSI (normal). What component should be checked FIRST?",
+    "options": {
+      "A": "The system relief valve",
+      "B": "The pressure gauge calibration",
+      "C": "Flow control valve or counterbalance valve for restriction or incorrect setting",
+      "D": "The hydraulic reservoir temperature"
+    },
+    "key": "C",
+    "explanation": "Slow cycle time at normal system pressure indicates that flow is being restricted downstream \u2014 either a flow control valve set too low or a counterbalance valve set too high. Pressure is normal, so the pump and relief valve are not the primary suspects."
+  },
+  {
+    "id": 70,
+    "domain": "Pneumatics & Hydraulics",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "Hydraulic oil temperature rises steadily over a shift and reaches 180\u00b0F. The recommended maximum operating temperature for most mineral-based hydraulic oils is:",
+    "options": {
+      "A": "160\u00b0F (71\u00b0C)",
+      "B": "140\u00b0F (60\u00b0C)",
+      "C": "200\u00b0F (93\u00b0C)",
+      "D": "220\u00b0F (104\u00b0C)"
+    },
+    "key": "A",
+    "explanation": "Most mineral-based hydraulic fluids have a maximum continuous operating temperature of approximately 140\u2013160\u00b0F (60\u201371\u00b0C). At 180\u00b0F, oil oxidation accelerates, viscosity drops, and seal compatibility degrades, significantly shortening fluid and component life."
+  },
+  {
+    "id": 71,
+    "domain": "Pneumatics & Hydraulics",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A pneumatic cylinder is experiencing 'spongy' or inconsistent extension speed, even though supply pressure is constant. What is the MOST likely cause?",
+    "options": {
+      "A": "The piston seal is leaking",
+      "B": "The supply line is undersized causing pressure drop under flow, or moisture slugs are present in the supply line",
+      "C": "The directional valve flow coefficient (Cv) is too high",
+      "D": "The cylinder bore is worn"
+    },
+    "key": "B",
+    "explanation": "Spongy/inconsistent motion at constant measured pressure typically indicates a supply flow issue \u2014 undersized supply tubing ID creates a pressure drop when flow demand is high, or entrained moisture slugs cause inconsistent air delivery. A failing piston seal would cause drift, not spongy motion."
+  },
+  {
+    "id": 72,
+    "domain": "Pneumatics & Hydraulics",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "In a hydraulic circuit, a 'counterbalance valve' is used primarily to:",
+    "options": {
+      "A": "Prevent uncontrolled lowering or runaway of a vertically suspended load",
+      "B": "Equalize pressure in bidirectional motors",
+      "C": "Balance flow equally between two parallel hydraulic cylinders",
+      "D": "Reduce pump pressure spikes during startup"
+    },
+    "key": "A",
+    "explanation": "A counterbalance valve is set slightly above the load-induced pressure on the holding side of the circuit. It prevents the load from descending faster than incoming flow permits \u2014 the actuator cannot move unless controlled flow enters the opposite port, preventing runaway."
+  },
+  {
+    "id": 73,
+    "domain": "Pneumatics & Hydraulics",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A pneumatic solenoid valve is wired to a PLC output at 24VDC. The valve fails to shift even when the PLC output is verified TRUE (LED on). A voltage measurement at the valve coil terminals reads 0V. What should the technician check NEXT?",
+    "options": {
+      "A": "Reprogram the PLC output logic",
+      "B": "Replace the PLC output module",
+      "C": "Replace the solenoid valve",
+      "D": "Check the wiring between the PLC output terminal and the valve coil for an open circuit (broken wire, loose terminal)"
+    },
+    "key": "D",
+    "explanation": "If the PLC output LED is ON but 0V is measured at the valve coil, the PLC is functioning \u2014 the problem is in the field wiring. A broken wire, disconnected terminal, or blown fuse in the output circuit is the most probable and easiest-to-check cause."
+  },
+  {
+    "id": 74,
+    "domain": "Pneumatics & Hydraulics",
+    "difficulty": "hard",
+    "type": "recall",
+    "stem": "What does the ISO 4406 cleanliness code '18/16/13' on a hydraulic oil sample report represent?",
+    "options": {
+      "A": "Percentage of oxidation, water contamination, and additive depletion",
+      "B": "Oil viscosity grade at three temperature points",
+      "C": "Filter beta rating at three filtration levels",
+      "D": "Particle count ranges at \u22654 \u00b5m, \u22656 \u00b5m, and \u226514 \u00b5m particle sizes per mL"
+    },
+    "key": "D",
+    "explanation": "ISO 4406 uses three range numbers representing particle counts per mL at \u22654 \u00b5m(c), \u22656 \u00b5m(c), and \u226514 \u00b5m(c) size thresholds. Each code number represents a count range (e.g., code 18 = 1,300\u20132,500 particles/mL). Cleaner oil has lower ISO code numbers."
+  },
+  {
+    "id": 75,
+    "domain": "Pneumatics & Hydraulics",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A hydraulic system experiences 'water hammer' \u2014 a banging noise in the lines when a directional valve shifts. The BEST corrective action is:",
+    "options": {
+      "A": "Replace the directional valve with a proportional valve",
+      "B": "Install a larger reservoir",
+      "C": "Add an accumulator near the actuator or reduce valve switching speed",
+      "D": "Increase system operating pressure"
+    },
+    "key": "C",
+    "explanation": "Water hammer (hydraulic shock) in hydraulic lines occurs when flow is rapidly stopped. Installing an accumulator near the actuator absorbs pressure spikes, and slowing the valve shift transition time reduces the rate of flow change. Both are proven solutions."
+  },
+  {
+    "id": 76,
+    "domain": "Industrial Sensors, Instrumentation & Signals",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A 4\u201320 mA level transmitter is connected to a PLC analog input. The PLC reads 0 mA (raw counts = 0). What is the FIRST thing the technician should check?",
+    "options": {
+      "A": "Calibrate the PLC analog input card",
+      "B": "Verify the process level is above the transmitter's range",
+      "C": "Check if the transmitter loop power supply (typically 24VDC) is present and correctly wired",
+      "D": "Replace the transmitter"
+    },
+    "key": "C",
+    "explanation": "A 4\u201320 mA transmitter requires loop power (usually 24VDC) to operate. A reading of 0 mA (below the live-zero of 4 mA) indicates the loop is open or unpowered \u2014 not a transmitter calibration issue. Loss of loop power is the most common cause of a dead (0 mA) reading."
+  },
+  {
+    "id": 77,
+    "domain": "Industrial Sensors, Instrumentation & Signals",
+    "difficulty": "hard",
+    "type": "recall",
+    "stem": "A technician is comparing two RTD sensor types: PT100 and PT1000. What is the primary difference?",
+    "options": {
+      "A": "PT1000 has a base resistance of 1,000 \u03a9 at 0\u00b0C vs. PT100's 100 \u03a9 at 0\u00b0C, making it less susceptible to lead wire resistance errors",
+      "B": "PT1000 requires a different transmitter input range",
+      "C": "PT100 is platinum; PT1000 uses a nickel alloy",
+      "D": "PT1000 measures higher temperatures than PT100"
+    },
+    "key": "A",
+    "explanation": "Both PT100 and PT1000 are platinum RTDs following the same temperature-resistance relationship (IEC 60751 \u03b1 = 0.00385). The PT1000's higher base resistance means lead wire resistance (typically 1\u20135 \u03a9) is a smaller percentage of the total, improving accuracy in long-lead-wire installations."
+  },
+  {
+    "id": 78,
+    "domain": "Industrial Sensors, Instrumentation & Signals",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A proximity sensor is wired NPN (sinking) type and needs to interface with a PLC digital input module. The module is labeled 'sourcing input' type. Which statement is correct about compatibility?",
+    "options": {
+      "A": "NPN (sinking) sensor outputs are compatible with sourcing PLC inputs; the sensor pulls the input low when active",
+      "B": "Reverse the sensor supply polarity to convert it to PNP",
+      "C": "NPN sensors only work with NPN PLC input modules",
+      "D": "Connect NPN sensor output directly to the sourcing PLC input \u2014 they are incompatible and will damage the module"
+    },
+    "key": "A",
+    "explanation": "A sourcing PLC input module supplies current from the common terminal. An NPN sensor sinks current to 0V when active, pulling the input line low \u2014 this is the correct signal for a sourcing input module. NPN sensors are compatible with sourcing PLC inputs."
+  },
+  {
+    "id": 79,
+    "domain": "Industrial Sensors, Instrumentation & Signals",
+    "difficulty": "easy",
+    "type": "calculation",
+    "stem": "An incremental encoder outputs 1,024 pulses per revolution. A PLC high-speed counter reads 61,440 pulses in one minute. What is the shaft speed in RPM?",
+    "options": {
+      "A": "30 RPM",
+      "B": "120 RPM",
+      "C": "60 RPM",
+      "D": "1,024 RPM"
+    },
+    "key": "C",
+    "explanation": "RPM = (pulses per minute) / (pulses per revolution) = 61,440 / 1,024 = 60 RPM."
+  },
+  {
+    "id": 80,
+    "domain": "Industrial Sensors, Instrumentation & Signals",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A Type J thermocouple reads 150\u00b0C but the actual process temperature is known to be 200\u00b0C. Cold junction compensation (CJC) is set for 25\u00b0C but the actual terminal block temperature is 75\u00b0C. What is the MOST likely cause of the 50\u00b0C error?",
+    "options": {
+      "A": "The thermocouple has failed open",
+      "B": "The thermocouple wire is reversed polarity",
+      "C": "Type K thermocouple transmitter connected to Type J thermocouple",
+      "D": "Incorrect cold junction compensation \u2014 the CJC is set for 25\u00b0C but the ambient at the termination point is 75\u00b0C, causing a 50\u00b0C error"
+    },
+    "key": "D",
+    "explanation": "Thermocouples measure the temperature difference between the hot junction (process) and the cold junction (terminal block). If CJC assumes 25\u00b0C but the actual terminal temperature is 75\u00b0C, the transmitter under-compensates by 50\u00b0C, resulting in a reading 50\u00b0C too low (200\u00b0C \u2212 50\u00b0C = 150\u00b0C)."
+  },
+  {
+    "id": 81,
+    "domain": "Industrial Sensors, Instrumentation & Signals",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A magnetic flowmeter (magmeter) is installed on a water line. The operator reports erratic, fluctuating readings even though process flow is steady. What is the MOST likely cause?",
+    "options": {
+      "A": "The signal cable is too long",
+      "B": "The fluid conductivity is too high",
+      "C": "The flow direction arrow on the meter body is incorrect",
+      "D": "The magmeter electrodes are coated with process deposits, or air is entrained in the fluid passing the electrode plane"
+    },
+    "key": "D",
+    "explanation": "Magmeters require continuous, conductive fluid contact with both electrodes. Electrode fouling (scaling, coating) increases contact resistance and creates erratic output. Air bubbles entrained in the liquid cause momentary signal loss or spikes as bubbles pass the electrodes."
+  },
+  {
+    "id": 82,
+    "domain": "Industrial Sensors, Instrumentation & Signals",
+    "difficulty": "hard",
+    "type": "calculation",
+    "stem": "A 4\u201320 mA current loop signal is transmitted over 500 feet of cable with 15 \u03a9 total loop resistance. The PLC input impedance is 250 \u03a9. What minimum transmitter compliance voltage is required for correct operation at 20 mA?",
+    "options": {
+      "A": "3.0V",
+      "B": "12.0V",
+      "C": "5.3V",
+      "D": "24.0V"
+    },
+    "key": "C",
+    "explanation": "Required compliance voltage = I \u00d7 (R_cable + R_input) = 0.020 A \u00d7 (15 + 250) \u03a9 = 0.020 \u00d7 265 = 5.3V. Most 2-wire transmitters operate on a 24V loop supply with 10\u201330V compliance, easily satisfying this requirement."
+  },
+  {
+    "id": 83,
+    "domain": "Industrial Sensors, Instrumentation & Signals",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "An ultrasonic level sensor mounted on top of a tank has a 'dead band' of 12 inches near the transducer face. What does this mean for the installation?",
+    "options": {
+      "A": "The sensor cannot read levels below 12 inches from the tank bottom",
+      "B": "The sensor requires a 12-inch minimum beam path through air",
+      "C": "The sensor cannot accurately measure levels within 12 inches of the sensor face (near the top of the tank)",
+      "D": "The sensor output is 0 mA for any level in the lower 12 inches of the tank"
+    },
+    "key": "C",
+    "explanation": "Ultrasonic sensors have a dead band (blanking zone) directly below the transducer where the emitted pulse is still reverberating. Levels within this zone at the top of the tank cannot be measured, which must be considered during installation and alarm setpoint configuration."
+  },
+  {
+    "id": 84,
+    "domain": "Industrial Sensors, Instrumentation & Signals",
+    "difficulty": "easy",
+    "type": "calculation",
+    "stem": "A PLC analog input is configured for 4\u201320 mA with a 0\u2013100 PSI engineering unit range. The current is 12 mA. What is the equivalent engineering unit value?",
+    "options": {
+      "A": "75 PSI",
+      "B": "40 PSI",
+      "C": "50 PSI",
+      "D": "60 PSI"
+    },
+    "key": "C",
+    "explanation": "The 4\u201320 mA span is 16 mA. At 12 mA, the offset above live zero = 12 \u2212 4 = 8 mA. Percentage of span = 8/16 = 50%. Engineering value = 0 + (50% \u00d7 100 PSI) = 50 PSI."
+  },
+  {
+    "id": 85,
+    "domain": "Industrial Sensors, Instrumentation & Signals",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A safety light curtain is used to guard a punch press. The technician finds the press cycles even when a hand is inside the light curtain beam. The MOST likely cause is:",
+    "options": {
+      "A": "The light curtain emitter wavelength has drifted",
+      "B": "The punch press is operating in manual mode which bypasses the light curtain",
+      "C": "The PLC scan time is too slow to detect the hand",
+      "D": "The safety relay module has failed in the 'always-on' (fail-danger) state or the light curtain safety outputs are bypassed/jumpered"
+    },
+    "key": "D",
+    "explanation": "If the press cycles with an obstruction in the light curtain, the safety function is not working. The most serious cause is that the safety relay or controller has failed in a non-safe state, or safety outputs have been deliberately bypassed. This is a critical safety finding requiring immediate lockout and investigation."
+  },
+  {
+    "id": 86,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "A maintenance planner is creating a preventive maintenance (PM) task in a CMMS for a pump bearing. Which information is ESSENTIAL to include in the task plan?",
+    "options": {
+      "A": "Craft type, estimated labor hours, required tools, parts/materials with quantities, and step-by-step procedure",
+      "B": "The name of the technician who originally installed the pump",
+      "C": "Pump purchase price and vendor contact number",
+      "D": "The asset's depreciation schedule"
+    },
+    "key": "A",
+    "explanation": "An effective PM task must contain all information needed for a craftsperson to execute the task without seeking additional information: who performs it (craft), how long it takes (labor estimate), what tools and parts are needed, and a clear procedure."
+  },
+  {
+    "id": 87,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A corrective maintenance work order is returned with the failure code 'MCF' (Mechanical Component Failure). The planner needs the technician to add additional detail to enable root cause trend analysis. What field should be completed?",
+    "options": {
+      "A": "Asset criticality ranking",
+      "B": "Work order priority",
+      "C": "Failure mode and cause codes (FMEA-based failure code taxonomy)",
+      "D": "Estimated vs. actual cost variance"
+    },
+    "key": "C",
+    "explanation": "Root cause trending in a CMMS requires structured failure data \u2014 specifically failure mode and cause codes based on a standardized taxonomy (e.g., ISO 14224 or SAE JA1012). General codes like 'MCF' don't provide enough granularity. Cause codes (lubrication failure, fatigue, misalignment, etc.) enable Pareto analysis."
+  },
+  {
+    "id": 88,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "medium",
+    "type": "scenario",
+    "stem": "A CMMS work order is in 'Waiting on Parts' status for 12 days. The asset is a critical pump currently bypassed. What is the CORRECT escalation action for the maintenance supervisor?",
+    "options": {
+      "A": "Reclassify the work order as a PM to avoid backlog metrics impact",
+      "B": "Defer the repair until the next planned shutdown",
+      "C": "Escalate to a standing parts expedite order and notify operations of the extended bypass \u2014 document the risk in the work order",
+      "D": "Close the work order and open a new one after parts arrive"
+    },
+    "key": "C",
+    "explanation": "When a critical asset is down and waiting on parts for an extended period, the supervisor's responsibility includes expediting procurement, communicating operational risk to production, and documenting the situation in the work order for traceability."
+  },
+  {
+    "id": 89,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "Which CMMS KPI measures the percentage of maintenance work that is planned and scheduled BEFORE execution?",
+    "options": {
+      "A": "Wrench Time",
+      "B": "Planned Maintenance Percentage (PMP)",
+      "C": "PM Compliance",
+      "D": "Schedule Compliance"
+    },
+    "key": "B",
+    "explanation": "Planned Maintenance Percentage (PMP) = (Planned maintenance labor hours / Total maintenance labor hours) \u00d7 100. World-class PMP targets are typically >85%. PM Compliance measures execution of PMs against due dates; Schedule Compliance measures adherence to the weekly schedule."
+  },
+  {
+    "id": 90,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "easy",
+    "type": "recall",
+    "stem": "A reliability engineer calculates MTTR (Mean Time to Repair) as 6.5 hours for a centrifugal pump. What does this value represent?",
+    "options": {
+      "A": "The maximum time allowed to repair a critical asset",
+      "B": "The average time between pump failures",
+      "C": "The total repair time in a given month divided by the number of PMs",
+      "D": "The average time from failure detection to return-to-service"
+    },
+    "key": "D",
+    "explanation": "MTTR (Mean Time to Repair) is the average elapsed time from when a failure occurs (or is detected) until the asset is returned to normal operating service. It includes diagnosis, parts gathering, repair, testing, and handover."
+  },
+  {
+    "id": 91,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "For a bottling line in a CMMS, which asset hierarchy sequence is CORRECT from top to bottom?",
+    "options": {
+      "A": "Component \u2192 Functional Location \u2192 Equipment \u2192 Plant",
+      "B": "Equipment \u2192 System \u2192 Plant \u2192 Function",
+      "C": "Equipment \u2192 Component \u2192 System \u2192 Plant",
+      "D": "Plant \u2192 Functional Location \u2192 System \u2192 Equipment \u2192 Component"
+    },
+    "key": "D",
+    "explanation": "Standard asset hierarchy (per ISO 14224 and SAE JA1012) flows from top (plant/site) down through functional location (area), system (process function), equipment (asset), and component (part). This hierarchy enables cost roll-up, work order routing, and failure analysis at each level."
+  },
+  {
+    "id": 92,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A technician completes a work order and notes 'no fault found' in the findings field. What is the BEST practice for the planner when reviewing this work order?",
+    "options": {
+      "A": "Flag the original requestor for submitting an inaccurate work request",
+      "B": "Review the initial complaint details and, if symptoms were real, re-open as a diagnostic work order with additional investigation steps",
+      "C": "Reassign the work order to a more experienced technician",
+      "D": "Close it immediately \u2014 no fault found means no further action is needed"
+    },
+    "key": "B",
+    "explanation": "'No fault found' (NFF) can indicate intermittent failures, incorrect diagnosis, or operator error. Best practice is to review the original symptom and either validate the NFF with evidence or re-issue with diagnostic steps. Simply closing NFF work orders inflates MTBF and masks latent defects."
+  },
+  {
+    "id": 93,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "In a CMMS, what is the purpose of a 'standing work order' (SWO)?",
+    "options": {
+      "A": "To document all work performed by outside contractors",
+      "B": "To collect labor and cost charges for repetitive, low-priority tasks (e.g., area walkdowns, lubrication routes) under a single persistent work order",
+      "C": "To capture emergency reactive work that bypasses normal approval",
+      "D": "To pre-approve work that exceeds the maintenance budget"
+    },
+    "key": "B",
+    "explanation": "Standing work orders are used for routine, recurring tasks where individual work order creation would be administratively burdensome (e.g., daily inspection routes, housekeeping). They allow labor and material charges to be captured without creating a new work order each cycle."
+  },
+  {
+    "id": 94,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "A maintenance manager wants to measure 'technician productivity.' Which CMMS-derived metric is the BEST proxy for hands-on productive maintenance time?",
+    "options": {
+      "A": "PM Compliance percentage",
+      "B": "Mean Time Between Failures (MTBF)",
+      "C": "Work order backlog in weeks",
+      "D": "Wrench time (ratio of value-added labor to total paid labor hours)"
+    },
+    "key": "D",
+    "explanation": "Wrench time (tool time or value-added time) is the percentage of total paid labor hours during which a technician is actually performing maintenance activities \u2014 as opposed to traveling, waiting for parts, permits, meetings, etc. Industry average wrench time is 25\u201335%; world-class is 45\u201355%."
+  },
+  {
+    "id": 95,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "easy",
+    "type": "scenario",
+    "stem": "A CMMS has a reorder point of 2 units and an order quantity of 5 units for a spare part. The current stock is 3 units. When will the system trigger a new purchase order?",
+    "options": {
+      "A": "Immediately \u2014 3 units is above reorder point but below optimum stock",
+      "B": "When the stock drops to 5 units",
+      "C": "When the stock drops to 0 units",
+      "D": "When the stock drops to 2 units"
+    },
+    "key": "D",
+    "explanation": "The reorder point defines the stock level at which a new order is triggered. When current stock reaches or drops to 2 units (the reorder point), the CMMS generates a PO for 5 units. This ensures stock is replenished before running out, accounting for lead time."
+  },
+  {
+    "id": 96,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "hard",
+    "type": "recall",
+    "stem": "Which of the following is the CORRECT sequence for writing a maintenance procedure in a CMMS?",
+    "options": {
+      "A": "Identify tools \u2192 Write steps \u2192 Submit for approval \u2192 Execute",
+      "B": "Execute \u2192 Document \u2192 Plan \u2192 Review",
+      "C": "Identify scope \u2192 Develop steps \u2192 Identify hazards/LOTO \u2192 List required tools and parts \u2192 Technical review and approval",
+      "D": "Execute on a sample task \u2192 Document observations \u2192 Formalize as procedure"
+    },
+    "key": "C",
+    "explanation": "A well-structured maintenance procedure development sequence starts with scope definition, followed by step development, hazard/LOTO identification (safety is integrated, not added afterward), resource requirements, and finally technical/safety review and approval."
+  },
+  {
+    "id": 97,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "medium",
+    "type": "calculation",
+    "stem": "A maintenance backlog of 6 weeks is reported at a facility with 10 maintenance technicians averaging 40 hours per week. What is the total backlog in work order hours?",
+    "options": {
+      "A": "2,400 hours",
+      "B": "240 hours",
+      "C": "600 hours",
+      "D": "60 hours"
+    },
+    "key": "A",
+    "explanation": "Backlog (hours) = Backlog weeks \u00d7 Technicians \u00d7 Hours/week = 6 \u00d7 10 \u00d7 40 = 2,400 hours of work in the backlog."
+  },
+  {
+    "id": 98,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "In SAP PM (Plant Maintenance), a notification is created by an operator and then a work order is created from it. What is the relationship between the notification and the work order?",
+    "options": {
+      "A": "The notification documents the problem/request; the work order is the vehicle for planning, executing, and costing the maintenance response",
+      "B": "They are independent documents with no linkage in SAP PM",
+      "C": "The work order automatically creates a notification upon completion",
+      "D": "The notification replaces the work order \u2014 only one is needed"
+    },
+    "key": "A",
+    "explanation": "In SAP PM, the notification captures the malfunction report or maintenance request (what, where, symptoms). The work order is created from the notification and carries the planned work, required resources, cost objects, and execution data \u2014 providing full traceability from report to resolution."
+  },
+  {
+    "id": 99,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "medium",
+    "type": "recall",
+    "stem": "A maintenance planner is prioritizing the backlog. Which framework is MOST commonly used to assign work order priority in a CMMS?",
+    "options": {
+      "A": "By craft type \u2014 electrical work always before mechanical",
+      "B": "Risk matrix scoring combining safety/environmental consequences, production impact, and failure probability",
+      "C": "FIFO (First In, First Out) based on work order creation date",
+      "D": "Alphabetical by asset name"
+    },
+    "key": "B",
+    "explanation": "Best-practice CMMS prioritization uses a risk-based matrix (typically a 3\u00d73 or 5\u00d75 grid) evaluating consequence severity (safety, environmental, production, quality) against likelihood or urgency. This ensures high-consequence, high-probability failures get first access to labor and parts."
+  },
+  {
+    "id": 100,
+    "domain": "CMMS, Work Orders & Maintenance Management",
+    "difficulty": "hard",
+    "type": "scenario",
+    "stem": "A maintenance team's PM compliance rate is 95%, but the corrective maintenance (CM) to PM labor ratio is 3:1 (three hours of reactive work for every one hour of PM). What does this data pattern suggest?",
+    "options": {
+      "A": "The facility is understaffed \u2014 more technicians are needed",
+      "B": "The PM tasks may be incomplete, incorrectly specified, or performed at the wrong interval \u2014 high PM compliance does not necessarily translate to failure prevention",
+      "C": "Corrective maintenance is always higher than PM \u2014 this is a normal ratio",
+      "D": "The PM program is highly effective \u2014 95% compliance means the PMs are working"
+    },
+    "key": "B",
+    "explanation": "PM compliance measures whether PMs are being done on schedule, not whether they are effective at preventing failures. A 3:1 CM:PM ratio despite 95% PM compliance indicates the PM program is not effectively catching or preventing failures \u2014 tasks may be wrong, intervals too long, or quality of PM execution is poor."
+  }
+]

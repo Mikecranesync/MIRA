@@ -341,6 +341,15 @@ if __name__ == "__main__":
         limit = int(request.query_params.get("limit", 20))
         return JSONResponse(await cmms_list_pm_schedules(asset_id, limit))
 
+    async def rest_cmms_invite(request):
+        body = await request.json()
+        emails = body.get("emails", [])
+        role_id = int(body.get("role_id", 4))
+        if not emails or not isinstance(emails, list):
+            return JSONResponse({"error": "emails array required"}, status_code=400)
+        from atlas_client import invite_users
+        return JSONResponse(await invite_users(emails, role_id))
+
     async def rest_cmms_health(request):
         return JSONResponse(await cmms_health())
 
@@ -360,6 +369,7 @@ if __name__ == "__main__":
             Route("/api/cmms/work-orders", rest_cmms_create_work_order, methods=["POST"]),
             Route("/api/cmms/assets", rest_cmms_assets),
             Route("/api/cmms/pm-schedules", rest_cmms_pm_schedules),
+            Route("/api/cmms/invite", rest_cmms_invite, methods=["POST"]),
             Route("/api/cmms/health", rest_cmms_health),
             Route("/ingest/pdf", _rest_ingest_pdf, methods=["POST"]),
         ],

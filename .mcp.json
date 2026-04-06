@@ -10,6 +10,15 @@
         "/Users/bravonode/Mira/mira-bridge/data/mira.db"
       ],
       "env": {}
+    },
+    "sequential-thinking": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ],
+      "env": {}
     }
   }
 }
