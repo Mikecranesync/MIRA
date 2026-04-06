@@ -12,6 +12,12 @@ services:
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY must be set in .env}
       - WEBUI_ENABLE_TELEMETRY=false
       - WEBUI_CHECK_FOR_UPDATES=false
+      # RAG embedding: nomic-embed-text via Ollama (matches mira-ingest NeonDB embeddings)
+      # Default all-MiniLM-L6-v2 truncates at 256 tokens; nomic handles 8192
+      - RAG_EMBEDDING_ENGINE=ollama
+      - RAG_EMBEDDING_MODEL=nomic-embed-text:latest
+      - RAG_CHUNK_SIZE=1000
+      - RAG_CHUNK_OVERLAP=100
     volumes:
       - open-webui-data:/app/backend/data
     networks:
@@ -71,7 +77,7 @@ services:
       - ./data/photos:/data/photos
       - ./mira.db:/app/mira.db
     ports:
-      - "${INGEST_PORT:-8002}:8001"
+      - "127.0.0.1:${INGEST_PORT:-8002}:8001"
     networks:
       - core-net
     depends_on:

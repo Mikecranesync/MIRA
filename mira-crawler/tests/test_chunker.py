@@ -344,7 +344,7 @@ class TestSentenceAwareChunking:
         for chunk in result:
             assert "chunk_quality" in chunk
             assert chunk["chunk_quality"] in (
-                "sentence_split", "fallback_char_split", "table"
+                "sentence_split", "fallback_char_split", "table", "token_truncated"
             )
 
     def test_sentence_aware_false_uses_old_logic(self):

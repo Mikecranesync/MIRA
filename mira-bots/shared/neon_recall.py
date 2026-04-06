@@ -42,7 +42,7 @@ _PRODUCT_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 
-MIN_SIMILARITY = 0.45
+MIN_SIMILARITY = 0.75
 
 
 def _extract_fault_codes(query_text: str) -> list[str]:
@@ -246,7 +246,7 @@ def _merge_results(
 def recall_knowledge(
     embedding: list[float],
     tenant_id: str,
-    limit: int = 5,
+    limit: int = 3,
     query_text: str = "",
 ) -> list[dict]:
     """Three-stage retrieval: vector + fault code ILIKE + product name ILIKE.

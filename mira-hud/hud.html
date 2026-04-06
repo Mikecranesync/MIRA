@@ -94,31 +94,6 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
 #vision-observations{font-size:11px;letter-spacing:.3px;line-height:1.7;color:#00cc6a}
 #vision-alerts{font-size:10px;letter-spacing:1px;margin-top:5px;min-height:14px}
 
-/* ─── MIRA RESPONSE PANEL ─── */
-#mira-response-panel{}
-#mira-response-text{font-size:14px;letter-spacing:.4px;line-height:1.7;min-height:42px}
-#mira-sources{font-size:9px;letter-spacing:1px;color:#3a7755;margin-top:5px}
-
-/* ─── QUERY BAR ─── */
-#query-bar{
-  position:absolute;bottom:60px;left:50%;transform:translateX(-50%);
-  width:68%;display:flex;gap:8px;pointer-events:auto
-}
-#query-input{
-  flex:1;background:rgba(0,10,5,.88);border:1px solid rgba(0,255,136,.4);
-  color:#00ff88;font-family:'Courier New',monospace;font-size:11px;
-  letter-spacing:1px;padding:7px 12px;outline:none
-}
-#query-input:focus{border-color:#00ff88}
-#query-input::placeholder{color:#2a5a3a}
-#query-send{
-  background:rgba(0,255,136,.1);border:1px solid #00ff88;
-  color:#00ff88;font-family:'Courier New',monospace;font-size:9px;
-  letter-spacing:2px;padding:7px 14px;cursor:pointer;text-transform:uppercase;
-  transition:background .2s;white-space:nowrap
-}
-#query-send:hover{background:rgba(0,255,136,.28)}
-
 /* ─── CONFIRM PROMPT ─── */
 #confirm-prompt{display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,255,136,.3);text-align:center}
 #confirm-question{font-size:11px;letter-spacing:2px;color:#ffaa00;margin-bottom:10px}
@@ -248,9 +223,6 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
   0%,100%{box-shadow:0 0 0 0 rgba(255,170,0,.6)}
   50%{box-shadow:0 0 8px 2px rgba(255,170,0,.25)}
 }
-#query-bar.listening #query-input{border-color:#ffaa00;color:#ffaa00;animation:pulse-border 1.2s infinite}
-#query-bar.locked    #query-input{border-color:#00ff88;color:#00ff88}
-#query-bar.sending   #query-input{border-color:#00ff88;color:#5a9977;animation:blink 1s infinite}
 #voice-indicator{
   font-size:8px;letter-spacing:2px;color:#5a9977;
   position:absolute;bottom:52px;left:50%;transform:translateX(-50%);
@@ -348,25 +320,11 @@ body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#
         <div id="scanning-indicator"></div>
         <button id="scan-again" onclick="startScanning()">↺ SCAN AGAIN</button>
       </div>
-      <!-- MIRA RAG response -->
-      <div id="mira-response-panel">
-        <div class="hud-label">▸ MIRA RESPONSE</div>
-        <div id="mira-response-text">Ready. Look at equipment or ask a question.</div>
-        <div id="mira-sources"></div>
-      </div>
       <!-- Procedure step (hidden — manual override via PREV/NEXT) -->
       <div id="step-label" style="display:none"></div>
       <div id="step-text"></div>
       <div id="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
     </div>
-
-    <!-- Query bar -->
-    <div id="query-bar">
-      <input id="query-input" type="text" placeholder="ASK MIRA... (SPACE = voice | type + Enter)" maxlength="400" autocomplete="off"/>
-      <button id="query-send">ASK ▶</button>
-    </div>
-
-    <div id="voice-indicator"></div>
 
     <!-- Nav -->
     <div id="nav">
@@ -527,7 +485,6 @@ socket.on('connect', () => {
 });
 
 socket.on('visionUpdate', (d) => {
-  _visionBusy = false;
   const isReal = d.equipment &&
     d.equipment !== 'General environment' &&
     d.equipment !== 'Vision error' &&
@@ -770,7 +727,6 @@ function confirmYes() {
   document.getElementById('confirm-prompt').style.display = 'none';
   document.getElementById('scan-again').style.display     = '';
   setScanStatus('');
-  document.getElementById('mira-response-text').textContent = 'Asking MIRA...';
   socket.emit('confirmEquipment', _lastVision);
   _confirmedEquipment = `${_lastVision.equipment} ${_lastVision.model}`.trim();
 }
@@ -792,8 +748,6 @@ function startScanning() {
   document.getElementById('vision-model').textContent          = '--';
   document.getElementById('vision-observations').textContent   = 'Point camera at equipment to begin identification.';
   document.getElementById('vision-alerts').textContent         = '';
-  document.getElementById('mira-response-text').textContent    = 'Ready.';
-  document.getElementById('mira-sources').textContent          = '';
   setScanStatus('');
 }
 

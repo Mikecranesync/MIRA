@@ -1,0 +1,180 @@
+# factorylm.properties — MIRA Ignition Integration Configuration
+# =============================================================================
+# LOCATION (copy to one of these paths on the Gateway host):
+#   Windows: C:\Program Files\Inductive Automation\Ignition\data\factorylm\factorylm.properties
+#   Linux:   /usr/local/bin/ignition/data/factorylm/factorylm.properties
+#            /var/lib/ignition/data/factorylm/factorylm.properties
+#
+# HOW TO APPLY CHANGES:
+#   Edit this file, then run any Gateway script that calls getMiraConfig() to
+#   pick up the new values. No Gateway restart is required — the file is read
+#   fresh on each call.
+#
+# FORMAT: standard Java Properties file (key=value, # comments)
+# ENCODING: UTF-8
+# =============================================================================
+
+
+# =============================================================================
+# SECTION 1 — RAG SIDECAR CONNECTION
+# The Jython scripts connect to the CPython sidecar over HTTP on localhost.
+# The sidecar must NEVER be exposed on a public or plant-network interface.
+# =============================================================================
+
+# Base URL for the RAG sidecar.
+# Default: http://localhost:5000
+# Change only if you run the sidecar on a non-standard port.
+SIDECAR_BASE_URL=http://localhost:5000
+
+# Timeout (seconds) for RAG /rag endpoint calls from the chat handler.
+# Increase if your LLM backend is slow (e.g. local GPU with large context).
+# Default: 30
+SIDECAR_RAG_TIMEOUT_SEC=30
+
+# Timeout (seconds) for document ingest calls to /ingest.
+# Increase for large PDFs (> 10 MB) or slow embedding models.
+# Default: 120
+SIDECAR_INGEST_TIMEOUT_SEC=120
+
+# Timeout (seconds) for FSM model builds via /build_fsm.
+# FSM building on long histories can take 30-60 seconds.
+# Default: 120
+SIDECAR_FSM_BUILD_TIMEOUT_SEC=120
+
+# Timeout (seconds) for status health checks via /status.
+# Short — this is used in the UI status panel.
+# Default: 5
+SIDECAR_STATUS_TIMEOUT_SEC=5
+
+
+# =============================================================================
+# SECTION 2 — FSM ANOMALY DETECTION PARAMETERS
+# Controls the sensitivity of the Finite State Machine transition monitor.
+# These values are read by the Gateway Tag Change script on every state change.
+# =============================================================================
+
+# Number of standard deviations from mean_ms before a TIMING_DEVIATION fires.
+# Lower = more sensitive (more alerts). Higher = fewer false positives.
+# Recommended range: 2.0 – 4.0
+# Default: 2.5
+FSM_N_SIGMA=2.5
+
+# Sigma threshold above which a TIMING_DEVIATION is escalated from WARNING
+# to CRITICAL severity.
+# Default: 5.0
+FSM_CRITICAL_SIGMA=5.0
+
+
+# =============================================================================
+# SECTION 3 — STUCK STATE DETECTION PARAMETERS
+# Controls the 10-second timer script that detects assets frozen in one state.
+# =============================================================================
+
+# Multiplier applied to a state's max_ms (from the FSM model) to compute the
+# stuck-state threshold.
+# Example: max_ms=2000, STUCK_MULTIPLIER=3.0 → fires at 6000 ms dwell.
+# Lower = catches stuck states faster. Higher = fewer false positives.
+# Default: 3.0
+STUCK_MULTIPLIER=3.0
+
+# Minimum dwell time (ms) before any stuck-state check runs.
+# Prevents false positives on fast transients during startup.
+# Default: 5000
+STUCK_MIN_MS=5000
+
+
+# =============================================================================
+# SECTION 4 — FSM BASELINE BUILDER PARAMETERS
+# Controls the hourly timer that trains new FSM models from tag history.
+# =============================================================================
+
+# Minimum number of complete state-machine cycles required before building
+# the first FSM model for an asset.
+# Fewer cycles = less accurate model. More cycles = longer wait for first model.
+# Default: 50
+FSM_MIN_CYCLES=50
+
+# Number of NEW cycles (since last model build) before triggering a rebuild.
+# Prevents constant rebuilding on high-frequency machines.
+# Default: 500
+FSM_REBUILD_CYCLES=500
+
+# Hours of tag history to feed into the FSM builder.
+# Longer = more representative model but slower build and larger payload.
+# Default: 168 (7 days)
+FSM_HISTORY_HOURS=168
+
+
+# =============================================================================
+# SECTION 5 — DOCUMENT INGEST SETTINGS
+# Controls file validation in the /api/ingest Web Dev handler.
+# =============================================================================
+
+# Maximum file size accepted for ingest, in megabytes.
+# Files larger than this are rejected with HTTP 413.
+# Default: 50
+INGEST_MAX_FILE_MB=50
+
+# Base directory where Perspective onFileReceived saves documents.
+# The ingest handler verifies the file exists at this path.
+# Subdirectory structure: {INGEST_DOCS_DIR}/{asset_id}/{filename}
+# Default (Windows): C:/Program Files/Inductive Automation/Ignition/data/factorylm/docs
+# Default (Linux):   /usr/local/bin/ignition/data/factorylm/docs
+INGEST_DOCS_DIR=C:/Program Files/Inductive Automation/Ignition/data/factorylm/docs
+
+
+# =============================================================================
+# SECTION 6 — ALERT FEED SETTINGS
+# Controls the /api/alerts Web Dev handler.
+# =============================================================================
+
+# Default number of alerts returned when caller does not specify ?limit=N.
+# Default: 20
+ALERTS_DEFAULT_LIMIT=20
+
+# Hard cap on alerts returned per request.
+# Prevents large payloads from impacting Gateway memory.
+# Default: 200
+ALERTS_MAX_LIMIT=200
+
+
+# =============================================================================
+# SECTION 7 — LOGGING
+# All MIRA gateway scripts log under the "FactoryLM.Mira" namespace.
+# Configure log levels in: Gateway > Config > Logging
+#
+# Logger hierarchy:
+#   FactoryLM.Mira               — root MIRA logger
+#   FactoryLM.Mira.Status        — /api/status handler
+#   FactoryLM.Mira.Chat          — /api/chat handler
+#   FactoryLM.Mira.Ingest        — /api/ingest handler
+#   FactoryLM.Mira.Alerts        — /api/alerts handler
+#   FactoryLM.Mira.Tags          — /api/tags handler
+#   FactoryLM.Mira.FSMMonitor    — tag change FSM monitor
+#   FactoryLM.Mira.StuckState    — stuck-state timer
+#   FactoryLM.Mira.FSMBuilder    — FSM baseline builder timer
+#
+# No properties here — configure in Ignition Gateway web interface.
+# =============================================================================
+
+
+# =============================================================================
+# SECTION 8 — DATABASE
+# MIRA uses the Ignition internal database configured as the default datasource.
+# If your Ignition installation uses a named datasource, you may need to update
+# the system.db calls in gateway scripts to pass the datasource name.
+#
+# Example:
+#   system.db.runPrepQuery(sql, args, "MIRA_DB")
+#
+# No properties are used here — configure via Gateway > Config > Databases.
+# =============================================================================
+
+# Named datasource to use for MIRA tables. Leave blank to use Ignition default.
+# Default: (empty — use Ignition default datasource)
+DB_DATASOURCE=
+
+
+# =============================================================================
+# END OF factorylm.properties
+# =============================================================================

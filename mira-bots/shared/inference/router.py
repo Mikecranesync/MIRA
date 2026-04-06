@@ -11,6 +11,7 @@ Uses httpx directly (no Anthropic SDK) — httpx is already in requirements
 and the Messages API is a simple POST.
 """
 
+import asyncio
 import logging
 import os
 import re
@@ -24,6 +25,26 @@ import yaml
 logger = logging.getLogger("mira-gsd")
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+
+
+def _classify_http_error(status_code: int) -> str:
+    """Classify an HTTP error into a retry category."""
+    if status_code == 429:
+        return "rate_limit"
+    if status_code in (401, 403):
+        return "auth"
+    if status_code in (500, 502, 503, 529):
+        return "service"
+    return "unknown"
+
+
+def _parse_retry_after(response: httpx.Response) -> float:
+    """Extract Retry-After header value, default 5s for rate limits."""
+    header = response.headers.get("retry-after", "")
+    try:
+        return min(float(header), 30.0) if header else 5.0
+    except ValueError:
+        return 5.0
 
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
 
@@ -119,6 +140,7 @@ class InferenceRouter:
         messages: list[dict],
         max_tokens: int = 1024,
         session_id: str = "unknown_unknown_unknown",
+        _retried: bool = False,
     ) -> tuple[str, dict]:
         """POST to Claude Messages API via httpx.
 
@@ -236,15 +258,31 @@ class InferenceRouter:
             return content, usage_dict
 
         except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            error_type = _classify_http_error(status)
             logger.error(
-                "InferenceRouter HTTP error: %s %s",
-                e.response.status_code,
+                "InferenceRouter HTTP %d (%s): %s",
+                status,
+                error_type,
                 e.response.text[:200],
             )
-            return "", {}
+
+            # Retry once on transient errors (429 rate limit, 500/503 service)
+            if error_type in ("rate_limit", "service") and not _retried:
+                wait = 2.0 if error_type == "service" else _parse_retry_after(e.response)
+                logger.info("InferenceRouter retrying in %.1fs (%s)", wait, error_type)
+                await asyncio.sleep(wait)
+                return await self.complete(
+                    messages, max_tokens=max_tokens, session_id=session_id, _retried=True
+                )
+
+            return "", {"error_type": error_type, "status_code": status}
+        except httpx.TimeoutException:
+            logger.error("InferenceRouter timeout after %.0fs", 60)
+            return "", {"error_type": "timeout"}
         except Exception as e:
             logger.error("InferenceRouter error: %s", e)
-            return "", {}
+            return "", {"error_type": "unknown", "detail": str(e)}
 
     @staticmethod
     def log_usage(usage: dict) -> None:

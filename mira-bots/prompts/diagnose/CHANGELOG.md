@@ -20,13 +20,13 @@
 - Manual/part requests not auto-redirected to knowledge base
 - Options can be invented when screen content is unclear
 
-### Baseline scores (golden_dataset/v0.1.json)
+### Baseline scores (golden_dataset/v0.1.json · 2026-03-18)
 | Metric | Score |
 |--------|-------|
-| Contains question | TBD |
-| Response ≤50 words | TBD |
-| No invented facts | TBD |
-| Safety triggered correctly | TBD |
-| GSD compliance | TBD |
+| Contains question | 7/8 (all except tc-003 safety override) |
+| Response ≤50 words | 6/8 (tc-002, tc-005 photo cases exceed) |
+| No invented facts | 8/8 |
+| Safety triggered correctly | 1/1 (tc-003) |
+| GSD compliance | 8/8 |
 
-*(Scores to be filled after Phase 2 acceptance test runs)*
+**Overall: 8/8 PASS** — see `docs/TEST_RESULTS_BASELINE.md` for full results.

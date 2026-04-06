@@ -6,11 +6,11 @@ Pure Python, zero external dependencies.
 import re
 
 SAFETY_KEYWORDS = [
-    "exposed wire", "energized conductor", "arc flash", "lockout", "tagout",
-    "loto", "smoke", "burn mark", "melted insulation", "electrical fire",
-    "shock hazard", "rotating hazard", "pinch point", "entanglement",
-    "confined space", "pressurized", "caught in", "crush hazard",
-    "fall hazard", "chemical spill", "gas leak",
+    "exposed wire", "energized conductor", "arc flash", "lockout tagout",
+    "lockout/tagout", "loto", "visible smoke", "smoke from", "burn mark",
+    "melted insulation", "electrical fire", "shock hazard", "rotating hazard",
+    "pinch point", "entanglement", "confined space", "pressurized",
+    "caught in", "crush hazard", "fall hazard", "chemical spill", "gas leak",
 ]
 
 INTENT_KEYWORDS = {
@@ -162,11 +162,12 @@ def classify_intent(message: str) -> str:
     if any(pat in msg for pat in HELP_PATTERNS):
         return "help"
 
-    # Short greetings — check before industrial to avoid "hi" triggering "hmi"
-    words = set(msg.split())
-    if (words & GREETING_PATTERNS and len(msg) < 20) or len(msg) < 4:
-        return "greeting"
-
+    # Industrial signals — check BEFORE greeting to avoid false positives on
+    # messages like "hi my vfd is down" (17 chars, contains "hi" greeting word
+    # but also has "down" in INTENT_KEYWORDS). The original ordering checked
+    # greetings first to avoid "hi" triggering "hmi", but that's not a real
+    # risk: expand_abbreviations("hi") stays "hi" and substring matching
+    # checks INTENT_KEYWORDS-in-text, not text-in-INTENT_KEYWORDS.
     if any(kw in msg_expanded for kw in INTENT_KEYWORDS):
         return "industrial"
 
@@ -177,6 +178,11 @@ def classify_intent(message: str) -> str:
     # Equipment brand/model name match (PowerFlex, Micro820, etc.)
     if _EQUIPMENT_NAME_RE.search(message):
         return "industrial"
+
+    # Short greetings — only reached if no industrial signal was found
+    words = set(msg.split())
+    if (words & GREETING_PATTERNS and len(msg) < 20) or len(msg) < 4:
+        return "greeting"
 
     # Default to industrial — a maintenance bot should attempt to help
     return "industrial"

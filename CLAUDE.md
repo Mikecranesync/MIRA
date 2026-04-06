@@ -17,6 +17,7 @@ MIRA/
 ├── mira-mcp/           # FastMCP server, NeonDB recall, equipment diagnostic tools (1 container)
 ├── mira-cmms/          # Atlas CMMS — work orders, PM scheduling, asset registry (4 containers)
 ├── mira-hud/           # AR HUD desktop app (Express + Socket.IO, standalone)
+├── mira-web/           # PLG acquisition funnel — Hono/Bun, /cmms landing + Mira AI chat (1 container)
 ├── tests/              # 5-regime testing framework (76 offline tests, 39 golden cases)
 ├── docs/               # PRD, ADRs, architecture C4 diagrams, runbooks
 ├── tools/              # Photo pipeline, Google Drive/Photos ingest scripts
@@ -26,6 +27,21 @@ MIRA/
 ```
 
 See local CLAUDE.md in each module for deep context.
+
+**Flows & architecture maps:** Persistent copies in `~/.claude/projects/.../memory/flows/` — Tailscale network, ingest pipeline, C4 index, fault diagnosis, photo pipeline.
+
+### Knowledge Ingest Route
+
+```
+Apify/Firecrawl/rclone → manual_cache → ingest_manuals.py (2:15am)
+→ Docling/pdfplumber → chunk_blocks() [mira-crawler/ingest/chunker.py]
+→ TOKEN CAP 2000 (Gemma+nomic safe) → Ollama embed (BRAVO:11434)
+→ NeonDB knowledge_entries (25K rows) → 4-stage retrieval
+```
+
+Endpoints: `mira-ingest :8002 POST /ingest/photo` | `mira-mcp :8009 POST /ingest/pdf`
+Key files: `mira-crawler/ingest/chunker.py` | `mira-core/scripts/ingest_manuals.py` | `mira-core/mira-ingest/db/neon.py`
+Full diagram: `~/.claude/projects/.../memory/flows/knowledge-ingest-pipeline.md`
 
 ---
 
@@ -42,10 +58,12 @@ See local CLAUDE.md in each module for deep context.
 | mira-bot-slack    | —            | bot-net, core-net | import check                |
 | mira-bot-teams    | —            | bot-net, core-net | import check                |
 | mira-bot-whatsapp | —            | bot-net, core-net | import check                |
+| mira-bot-reddit   | —            | bot-net, core-net | import check                |
 | atlas-db          | 5433         | cmms-net          | pg_isready                  |
 | atlas-api         | 8088 → 8080  | cmms-net, core-net| GET /actuator/health        |
 | atlas-frontend    | 3100 → 3000  | cmms-net          | GET /                       |
 | atlas-minio       | 9000, 9001   | cmms-net          | mc ready local              |
+| mira-web          | 3200 → 3000  | core-net, cmms-net| curl /api/health            |
 
 ---
 
@@ -124,7 +142,7 @@ chore: build system, deps, tooling
 | Feature                      | Deferred To | Reason                      |
 |------------------------------|-------------|-----------------------------|
 | Modbus / PLC / VFD           | Config 4    | Out of scope for Config 1 MVP |
-| NVIDIA NIM / Nemotron        | TBD         | Not part of MVP             |
+| NVIDIA Nemotron reranker     | **Active**  | Enabled when NVIDIA_API_KEY set (feature-flagged) |
 | Kokoro TTS                   | Post-MVP    | Nice-to-have                |
 | CMMS integration             | **Active**  | Atlas CMMS (mira-cmms/)     |
 
@@ -139,7 +157,7 @@ chore: build system, deps, tooling
 | zhangzhengfu nameplate dataset | Own golden set from Google Photos | Empty repo, dead Baidu Pan links, no license |
 | Google Photos API direct | rclone + Ollama triage | OAuth consent screen "Testing" mode returned empty results |
 | GWS CLI for Gmail | IMAP with Doppler app passwords | Scope registration issues on Windows |
-| glm-ocr model | qwen2.5vl handles vision | Consistent 400 errors regardless of image size |
+| glm-ocr model (as primary) | qwen2.5vl handles vision | Consistent 400 errors — retained as optional fallback in vision_worker.py |
 
 ---
 
@@ -167,9 +185,10 @@ chore: build system, deps, tooling
 
 ## Where to Resume
 
-- **`feature/vim` branch** — VIM phases 1A→4 + mira-crawler phases 1→4 + Docling adapter. 13+ commits ahead of main. Not merged.
+- **`feature/vim` branch** — Merged to main. VIM phases 1A→4 + mira-crawler phases 1→4 + Docling adapter all integrated.
 - **Photo pipeline on Bravo** — 3,694 confirmed equipment photos in `~/takeout_staging/ollama_confirmed/`. Ready for KB ingest at scale.
-- **Bot quality tuning** — GitHub issue "Bot response quality tuning (ongoing)". Next: fix intent guard false positives, improve manufacturer-filtered retrieval.
+- **LlamaIndex RAG upgrade** — PRD complete (`MIRA_LlamaIndex_RAG_PRD.docx.md`). Replaces hand-rolled RAG in rag_worker.py with LlamaIndex orchestration. Ready to build.
+- **Bot quality tuning** — RAG quality gate (0.70 threshold), NeonDB-only retrieval, Nemotron reranking active. Next: fix intent guard false positives.
 
 ---
 

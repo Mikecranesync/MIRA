@@ -29,9 +29,21 @@ class GSDEngine:
             tenant_id=tenant_id,
         )
 
-    async def process(self, chat_id: str, message: str, photo_b64: str = None) -> str:
+    async def process(
+        self,
+        chat_id: str,
+        message: str,
+        photo_b64: str = None,
+        *,
+        platform: str = "telegram",
+    ) -> str:
         """Main entry point. Returns reply string."""
-        return await self._supervisor.process(chat_id, message, photo_b64)
+        return await self._supervisor.process(
+            chat_id,
+            message,
+            photo_b64,
+            platform=platform,
+        )
 
     def reset(self, chat_id: str) -> None:
         """Reset conversation to IDLE state."""
