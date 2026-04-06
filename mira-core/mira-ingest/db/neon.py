@@ -283,6 +283,33 @@ def insert_knowledge_entry(
     return entry_id
 
 
+def insert_knowledge_entries_batch(entries: list[dict]) -> int:
+    """Batch insert chunks into knowledge_entries in a single transaction.
+
+    Each entry dict must contain: id, tenant_id, source_type, manufacturer,
+    model_number, content, embedding, source_url, source_page, metadata,
+    chunk_type.
+
+    Returns count of rows inserted.
+    """
+    if not entries:
+        return 0
+    with _engine().connect() as conn:
+        for entry in entries:
+            conn.execute(text("""
+                INSERT INTO knowledge_entries
+                    (id, tenant_id, source_type, manufacturer, model_number,
+                     content, embedding, source_url, source_page, metadata,
+                     is_private, verified, chunk_type)
+                VALUES
+                    (:id, :tenant_id, :source_type, :manufacturer, :model_number,
+                     :content, cast(:embedding AS vector), :source_url, :source_page,
+                     cast(:metadata AS jsonb), false, false, :chunk_type)
+            """), entry)
+        conn.commit()
+    return len(entries)
+
+
 def mark_source_fingerprint_done(row_id: int, atoms_created: int) -> None:
     with _engine().connect() as conn:
         conn.execute(text(
