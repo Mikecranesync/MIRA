@@ -12,5 +12,7 @@ exclude = [
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]  # line length handled by formatter
 
+# mira-copy CLI: run with `python -m mira_copy` (no [project] table needed)
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

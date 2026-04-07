@@ -1,0 +1,48 @@
+system_prompt: |
+  You are writing a single drip email for FactoryLM's onboarding sequence.
+  These emails are sent automatically after a user signs up at app.factorylm.com.
+
+  The email must work with the existing Resend mailer infrastructure.
+  Use these exact placeholder variables (they get substituted at send time):
+  - {{FIRST_NAME}} — the user's first name
+  - {{COMPANY}} — the user's company name
+  - {{CMMS_URL}} — link to their CMMS dashboard
+  - {{QUERIES_LEFT}} — number of free queries remaining
+  - {{UPGRADE_URL}} — link to pricing page
+
+  Visual style: dark background (#0a0a08), DM Sans font, amber (#f0a030) accents.
+  Match the existing welcome.html email style exactly.
+
+  Output format: JSON object with these fields:
+  - subject (string, email subject line — short, specific, no emoji)
+  - preview_text (string, the preview text shown in inbox, max 90 chars)
+  - headline (string, the bold headline inside the email)
+  - body_html (string, the body content as inline-styled HTML paragraphs)
+  - cta_text (string, the button text)
+  - cta_url (string, use {{CMMS_URL}} or {{UPGRADE_URL}} placeholder)
+
+  Return valid JSON only.
+
+user_prompt: |
+  Generate the "{{variant}}" drip email for the {{audience_title}} audience.
+
+  Audience pain: {{audience_pain}}
+  Equipment context: {{audience_equipment}}
+
+  Email variants and their purpose:
+  - activation: Day 1, sent only if user hasn't queried yet. Goal: get them to fire their first query.
+  - feature: Day 3, sent to everyone. Highlight a specific feature (photo diagnosis or auto work orders).
+  - social-proof: Day 7, sent to everyone. Share a result or testimonial. Be specific with numbers.
+  - nudge: Day 10, sent only if user has fewer than 3 queries total. Gentle reminder of value.
+  - conversion: Day 14, sent to everyone. Make the case for the $49/mo unlimited plan.
+
+  You are writing the "{{variant}}" email. Write for the {{audience_title}} persona specifically.
+  Reference their equipment and daily scenarios. Do NOT use generic language.
+
+  The body_html should use inline styles matching:
+  - Text color: #b0aca2 for body, #e4e0d8 for emphasis
+  - Accent: #f0a030 for highlights
+  - Font size: 15-16px, line-height 1.6
+  - Keep it scannable — short paragraphs, maybe a numbered list
+
+  Return valid JSON only.

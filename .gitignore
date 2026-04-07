@@ -1,3 +1,7 @@
+# Generated marketing content (mira-copy outputs)
+mira_copy/outputs/*
+!mira_copy/outputs/.gitkeep
+
 # Secrets — NEVER commit these
 .env
 *.env.local
