@@ -30,7 +30,7 @@ MANUFACTURER_TARGETS = [
     {
         "manufacturer": "Siemens",
         "start_url": "https://support.industry.siemens.com/cs/ww/en/ps/15338",
-        "crawler_type": "playwright",
+        "crawler_type": "playwright:chrome",
         "max_pages": 150,
     },
     {
@@ -48,7 +48,7 @@ MANUFACTURER_TARGETS = [
     {
         "manufacturer": "Mitsubishi Electric",
         "start_url": "https://dl.mitsubishielectric.com",
-        "crawler_type": "playwright",
+        "crawler_type": "playwright:chrome",
         "max_pages": 150,
     },
 ]

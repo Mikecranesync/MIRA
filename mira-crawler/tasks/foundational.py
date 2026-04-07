@@ -153,7 +153,7 @@ APIFY_TARGETS = [
     {
         "name": "skf_knowledge_centre",
         "start_url": "https://www.skf.com/group/knowledge-centre",
-        "crawler_type": "playwright",
+        "crawler_type": "playwright:chrome",
         "max_pages": 300,
         "source_type": "reference",
         "manufacturer": "SKF",
@@ -171,7 +171,7 @@ APIFY_TARGETS = [
     {
         "name": "emerson_reliability",
         "start_url": "https://www.emerson.com/en-us/automation/measurement-instrumentation",
-        "crawler_type": "playwright",
+        "crawler_type": "playwright:chrome",
         "max_pages": 200,
         "source_type": "reference",
         "manufacturer": "Emerson",
