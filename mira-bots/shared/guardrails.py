@@ -3,6 +3,7 @@
 Pure Python, zero external dependencies.
 """
 
+import random
 import re
 
 SAFETY_KEYWORDS = [
@@ -101,6 +102,44 @@ MAINTENANCE_ABBREVIATIONS = {
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>\s*")
 
+# Signals that the technician is under time or job pressure.
+EMOTIONAL_PRESSURE_SIGNALS = [
+    "days", "hours", "all week", "all month", "third time", "fourth time",
+    "fifth time", "again and again", "keeps faulting", "keeps tripping",
+    "my boss", "the boss", "manager", "write me up", "write up", "fired",
+    "end of shift", "shift ends", "deadline", "losing my job", "my fault",
+    "blamed me", "shutting down", "production down", "line's down", "line is down",
+]
+
+# Signals that the technician is a junior / first-timer.
+JUNIOR_SIGNALS = [
+    "i'm new", "im new", "new to this", "first time", "just started",
+    "don't know much", "not sure what", "i think it might", "learning",
+    "can you explain", "what does that mean", "what is a",
+]
+
+# Signals that the technician is experienced.
+SENIOR_SIGNALS = [
+    "fla", "oc ", "ol ", "gf ", "uvf", "ovf", "loto", "rms", "thd",
+    "svc", "acr", "plc tag", "rung", "ladder logic", "struct text",
+]
+
+# Greeting variants — randomized so repeat users don't see the same string.
+_GREETING_VARIANTS = [
+    (
+        "Hey \u2014 I'm MIRA, your maintenance copilot. "
+        "Send me a photo of equipment, a fault code, or describe what's "
+        "going on and I'll help you diagnose it."
+    ),
+    (
+        "MIRA here. Photo, fault code, or symptom description \u2014 "
+        "tell me what you've got and we'll work through it."
+    ),
+    (
+        "Hey. What's the equipment and what's it doing?"
+    ),
+]
+
 SESSION_FOLLOWUP_SIGNALS = [
     "you said", "you mentioned", "you told me", "link", "url", "website",
     "manufacturer", "datasheet", "manual", "document", "earlier", "before",
@@ -141,6 +180,44 @@ def resolve_option_selection(message: str, last_options: list[str]) -> str | Non
 def strip_mentions(message: str) -> str:
     """Remove Slack-style @mention tags from message text."""
     return _MENTION_RE.sub("", message).strip()
+
+
+def detect_expertise_level(message: str) -> str:
+    """Estimate technician expertise from vocabulary.
+
+    Returns: 'senior' | 'junior' | 'unknown'
+
+    Used by the inference layer to hint the prompt (Rule 17).
+    Not used for routing — only for context enrichment.
+    """
+    msg_lower = message.lower()
+    junior_hits = sum(1 for s in JUNIOR_SIGNALS if s in msg_lower)
+    senior_hits = sum(1 for s in SENIOR_SIGNALS if s in msg_lower)
+
+    # Terse messages with abbreviations lean senior; verbose with uncertainty lean junior
+    word_count = len(message.split())
+    if word_count < 8 and senior_hits > 0:
+        return "senior"
+    if junior_hits >= 2:
+        return "junior"
+    if junior_hits == 1 and senior_hits == 0:
+        return "junior"
+    if senior_hits >= 2:
+        return "senior"
+    return "unknown"
+
+
+def detect_emotional_state(message: str) -> str:
+    """Detect emotional pressure signals in the technician's message.
+
+    Returns: 'pressured' | 'neutral'
+
+    'pressured' covers downtime duration, job threat, repeated failure.
+    Used by inference layer to trigger Rule 18 acknowledgment.
+    """
+    msg_lower = message.lower()
+    hits = sum(1 for s in EMOTIONAL_PRESSURE_SIGNALS if s in msg_lower)
+    return "pressured" if hits >= 1 else "neutral"
 
 
 def classify_intent(message: str) -> str:
@@ -204,23 +281,12 @@ def check_output(response: str, intent: str, has_photo: bool = False) -> str:
         ]
         if any(marker in resp_lower for marker in hallucination_markers):
             if intent == "greeting":
-                return (
-                    "Hey \u2014 I'm MIRA, your maintenance copilot. "
-                    "Send me a photo of equipment, a fault code, or describe what's "
-                    "going on and I'll help you diagnose it."
-                )
-            return (
-                "I help maintenance technicians diagnose equipment issues. "
-                "Send me a photo of a fault screen, a fault code like "
-                "'OC' or 'F-201', or describe what's happening with your equipment."
-            )
+                return random.choice(_GREETING_VARIANTS)
+            return "What equipment or fault code can I help you with?"
 
     # No system prompt leakage
     if intent != "industrial" and "system prompt" in resp_lower:
-        return (
-            "I help maintenance technicians diagnose equipment issues. "
-            "What can I help you with?"
-        )
+        return "What equipment or fault code can I help you with?"
 
     return response
 
