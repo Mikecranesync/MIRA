@@ -3,7 +3,7 @@
 observe:
 	doppler run --project factorylm --config prd -- \
 	  docker compose -f docker-compose.yml -f docker-compose.observability.yml \
-	  up -d flower redisinsight prometheus grafana
+	  up -d --no-deps flower redisinsight prometheus grafana
 	@echo ""
 	@echo "Observability stack running:"
 	@echo "   Flower (Celery)  -> http://localhost:5555  (admin / mira2026)"
