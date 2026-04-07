@@ -7,6 +7,51 @@
 
 ---
 
+## KANBAN Board
+
+**Board:** https://github.com/users/Mikecranesync/projects/4 (project ID: 4, owner: Mikecranesync)
+
+### On Session Start
+Run this to see what's open and in-progress:
+```bash
+gh project item-list 4 --owner Mikecranesync --format json --limit 100 | python3 -c "
+import sys, json
+items = json.load(sys.stdin)['items']
+for s in ['In Progress', 'Todo']:
+    hits = [i for i in items if i.get('status') == s]
+    if hits:
+        print(f'\n## {s} ({len(hits)})')
+        for i in hits: print(f'  {i[\"title\"]}')
+"
+```
+
+### On Every Commit
+After committing, add any new GitHub issues to the board and move resolved issues to Done:
+```bash
+# Add a new issue to the board
+gh project item-add 4 --owner Mikecranesync --url <issue-url>
+
+# Move an item to In Progress
+gh project item-edit --project-id PVT_kwHODSgiRM4BSa9e --id <item-id> --field-id PVTSSF_lAHODSgiRM4BSa9ezg_9d4k --single-select-option-id 47fc9ee4
+
+# Move an item to Done
+gh project item-edit --project-id PVT_kwHODSgiRM4BSa9e --id <item-id> --field-id PVTSSF_lAHODSgiRM4BSa9ezg_9d4k --single-select-option-id 98236657
+
+# Get item IDs
+gh project item-list 4 --owner Mikecranesync --format json --limit 100 | python3 -c "
+import sys, json
+for i in json.load(sys.stdin)['items']:
+    print(i['id'], i.get('status',''), i['title'][:60])
+"
+```
+
+### Rules
+- Every GitHub issue created during a session → add to board immediately
+- Every issue closed by a commit → move to Done on the board
+- Never leave the board stale: if you fix something, update the status
+
+---
+
 ## Repo Map
 
 ```
