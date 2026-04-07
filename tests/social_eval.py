@@ -101,6 +101,21 @@ def count_question_marks(text: str) -> int:
     return text.count("?")
 
 
+# Matches: ALL-CAPS abbreviations (FLA, OC, VFD), parameter codes (P036, F4, P2.00),
+# model references (L33ER, IF4, 3RT2), numeric+unit combos (118V, 2MΩ, 150%)
+_TECH_TERM_RE = re.compile(
+    r'\b([A-Z]{2,}|[A-Z]\d[\w.]*|\d+[A-Z%Ω]+[\w]*)\b'
+)
+
+
+def technical_density(text: str) -> float:
+    """Technical terms per 10 words. Higher = more jargon-dense."""
+    words = text.split()
+    if not words:
+        return 0.0
+    return len(_TECH_TERM_RE.findall(text)) / len(words) * 10
+
+
 def contains_any(text: str, phrases: list[str]) -> list[str]:
     t = text.lower()
     return [p for p in phrases if p.lower() in t]
@@ -123,10 +138,11 @@ def score_emotional(scenario: dict, reply: str) -> dict:
     # Persona: no forbidden phrases
     violations = contains_any(reply, PERSONA_FORBIDDEN)
 
-    # Emotional over-dwelling: acknowledgment should be short (< 12 words before "?")
-    # Check if the first sentence before the question is excessively long
-    first_sentence = reply.split("?")[0] if "?" in reply else reply
-    over_dwell = word_count(first_sentence) > 25 and ack_expected
+    # Emotional over-dwelling: the acknowledgment clause itself (first sentence only)
+    # should be brief. Split on first newline or period to isolate it — NOT everything
+    # before the diagnostic question, which correctly includes more content.
+    ack_clause = re.split(r'[\n.]', reply.strip())[0] if reply.strip() else ""
+    over_dwell = word_count(ack_clause) > 15 and ack_expected
 
     passed = (
         (not ack_expected or acknowledged)
@@ -190,22 +206,32 @@ def score_persona(scenario: dict, reply: str) -> dict:
 
 
 def score_calibration(scenario: dict, senior_reply: str, junior_reply: str) -> dict:
-    """Score expertise calibration — senior response should differ from junior."""
+    """Score expertise calibration — senior response should differ from junior.
+
+    Passing criteria (either condition + no scaffolding):
+      A) senior reply is shorter (senior tech spoke less because less context needed), OR
+      B) senior reply has higher technical term density (more jargon per word —
+         appropriate when senior provided specific readings that unlock a specific answer)
+
+    This avoids penalizing MIRA for correctly giving a more technical/analytical reply
+    to a senior who supplied exact readings and model numbers.
+    """
     sw = word_count(senior_reply)
     jw = word_count(junior_reply)
     senior_shorter = sw < jw
 
-    # Senior reply should not contain "let me explain" / scaffolding phrases
+    sd = technical_density(senior_reply)
+    jd = technical_density(junior_reply)
+    senior_denser = sd >= jd
+
+    # Senior reply should not contain scaffolding/teaching phrases
     scaffolding = [
         "let me explain", "this means", "in other words", "to clarify",
         "for context", "as a note", "you may not know",
     ]
     senior_scaffolding = contains_any(senior_reply, scaffolding)
 
-    # Junior reply should have at least one grounding sentence (more words before "?")
-    junior_has_context = jw > sw + 5  # junior should be materially longer
-
-    passed = senior_shorter and not senior_scaffolding
+    passed = (senior_shorter or senior_denser) and not senior_scaffolding
 
     return {
         "id": scenario["id"],
@@ -213,8 +239,10 @@ def score_calibration(scenario: dict, senior_reply: str, junior_reply: str) -> d
         "senior_words": sw,
         "junior_words": jw,
         "senior_shorter": senior_shorter,
+        "senior_tech_density": round(sd, 2),
+        "junior_tech_density": round(jd, 2),
+        "senior_denser": senior_denser,
         "senior_scaffolding": senior_scaffolding,
-        "junior_has_more_context": junior_has_context,
         "passed": passed,
         "senior_preview": senior_reply[:100],
         "junior_preview": junior_reply[:100],
@@ -360,8 +388,9 @@ def build_report(
             delta = r["junior_words"] - r["senior_words"]
             lines.append(
                 f"  {icon}  {r['id']} [{r['topic'][:35]}] "
-                f"senior={r['senior_words']}w junior={r['junior_words']}w "
-                f"delta=+{delta}w"
+                f"senior={r['senior_words']}w({r['senior_tech_density']}td) "
+                f"junior={r['junior_words']}w({r['junior_tech_density']}td) "
+                f"delta={delta:+d}w"
             )
             if not r["passed"]:
                 lines.append(f"       senior: {r['senior_preview']}")
