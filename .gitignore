@@ -109,6 +109,7 @@ Pics/
 
 # Paperclip runtime artifacts (secrets, local DB)
 paperclip/.env.paperclip
+paperclip/.generated/
 
 # uv lock file (generated, not committed — except for Docker-built services)
 uv.lock

@@ -19,40 +19,37 @@ Paperclip coordinates multiple Claude Code agent sessions working on different M
 | mira-test-runner | claude-haiku-4-5 | tests/, evals/ |
 | mira-docs-writer | claude-sonnet-4-6 | docs/, DEVLOG, CHANGELOG |
 
-## Setup
-
-On the target Mac Mini:
+## Setup (one-time)
 
 ```bash
-# Clone MIRA repo if not present, then:
 cd MIRA
 bash paperclip/setup.sh
 ```
 
-Prerequisites installed by the script: Node.js 20+, pnpm, Claude CLI.
+This installs Node.js, pnpm, Claude CLI, and Paperclip. It also resolves `__MIRA_HOME__` placeholders in all agent configs into `paperclip/.generated/`.
 
-## Usage
+Works on both macOS and Linux.
+
+## Start
 
 ```bash
-# Start Paperclip
-PORT=3200 npx paperclipai start
-
-# Access from any Tailscale device
-# http://100.70.49.126:3200 (Charlie)
+bash paperclip/start.sh
 ```
 
-1. Create a company: "MIRA Development"
-2. Register agents using the JSON configs in `agents/`
-3. Assign tasks and watch agents work
+Access from any Tailscale device: `http://100.70.49.126:3200` (Charlie)
 
 ## File Layout
 
 ```
 paperclip/
-├── setup.sh              # Mac Mini onboarding script
-├── mcp-config.json       # MCP server config for agents
+├── setup.sh              # One-time onboarding (macOS + Linux)
+├── start.sh              # Launch Paperclip with resolved configs
+├── mcp-config.json       # MCP servers: sqlite, sequential-thinking, github
 ├── company-template.json # Company/org definition reference
-├── agents/               # Agent role definitions (6 JSON files)
+├── agents/               # Agent role templates (6 JSON files, __MIRA_HOME__ placeholders)
+├── .generated/           # Resolved configs (gitignored, created by setup.sh)
+│   ├── agents/           # Agent JSONs with real paths
+│   └── mcp-config.json   # MCP config with real paths
 ├── instructions/         # Agent-specific context (6 markdown files)
 └── skills/               # Paperclip-injected skills (3 files)
 ```

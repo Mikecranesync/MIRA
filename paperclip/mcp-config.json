@@ -19,7 +19,18 @@
         "@modelcontextprotocol/server-sequential-thinking"
       ],
       "env": {}
+    },
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": ""
+      }
     }
   },
-  "_note": "Replace __MIRA_HOME__ with the actual MIRA repo path. setup.sh does this automatically."
+  "_note": "Replace __MIRA_HOME__ with the actual MIRA repo path. setup.sh resolves this into .generated/"
 }
