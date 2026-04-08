@@ -86,8 +86,7 @@ async def dashboard(request: Request):
         "SELECT id, content_type, audience, topic, title, status, created_at "
         "FROM content_items ORDER BY created_at DESC LIMIT 10"
     )
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "dashboard.html", {
         "stats": stats,
         "recent": recent,
         "now": datetime.now(timezone.utc),
@@ -106,8 +105,7 @@ async def content_list(request: Request):
         "word_count, created_at, published_at "
         "FROM content_items ORDER BY created_at DESC LIMIT 50"
     )
-    return templates.TemplateResponse("content.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "content.html", {
         "items": items,
     })
 
@@ -160,8 +158,7 @@ async def social_list(request: Request):
         "status, buffer_post_id, scheduled_for, created_at "
         "FROM social_items ORDER BY created_at DESC LIMIT 50"
     )
-    return templates.TemplateResponse("social.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "social.html", {
         "items": items,
     })
 
@@ -226,8 +223,7 @@ async def generate_video(request: Request):
 async def workers_page(request: Request):
     """Celery worker health and queue info."""
     worker_info = _get_worker_info()
-    return templates.TemplateResponse("workers.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "workers.html", {
         "workers": worker_info,
     })
 
