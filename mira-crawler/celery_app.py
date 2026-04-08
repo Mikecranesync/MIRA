@@ -44,10 +44,14 @@ try:
     import mira_crawler.tasks.discover  # noqa: F401
     import mira_crawler.tasks.foundational  # noqa: F401
     import mira_crawler.tasks.ingest  # noqa: F401
+    import mira_crawler.tasks.youtube_tasks  # noqa: F401
+    import mira_crawler.ingest.youtube_pattern  # noqa: F401  (registers regen task)
 except ImportError:
     import tasks.discover  # noqa: F401
     import tasks.foundational  # noqa: F401
     import tasks.ingest  # noqa: F401
+    import tasks.youtube_tasks  # noqa: F401
+    import ingest.youtube_pattern  # noqa: F401
 
 if __name__ == "__main__":
     app.start()

@@ -42,6 +42,11 @@ task_routes = {
     "mira_crawler.tasks.ingest.*": {"queue": "ingest"},
     "mira_crawler.tasks.foundational.*": {"queue": "ingest"},
     "mira_crawler.tasks.report.*": {"queue": "default"},
+    "mira_crawler.tasks.youtube_tasks.discover_youtube_videos": {"queue": "youtube-discovery"},
+    "mira_crawler.tasks.youtube_tasks.backfill_youtube_pending": {"queue": "youtube-discovery"},
+    "mira_crawler.tasks.youtube_tasks.ingest_youtube_transcript": {"queue": "youtube-transcript"},
+    "mira_crawler.tasks.youtube_tasks.extract_youtube_keyframes": {"queue": "youtube-keyframes"},
+    "mira_crawler.tasks.youtube_tasks.analyze_teaching_patterns": {"queue": "youtube-patterns"},
 }
 
 # ---------------------------------------------------------------------------
@@ -51,6 +56,8 @@ task_routes = {
 task_annotations = {
     "mira_crawler.tasks.discover.discover_manufacturer": {"rate_limit": "1/m"},
     "mira_crawler.tasks.ingest.ingest_url": {"rate_limit": "20/m"},
+    # Pattern analysis is throttled — each call hits Claude API
+    "mira_crawler.tasks.youtube_tasks.analyze_teaching_patterns": {"rate_limit": "1/m"},
 }
 
 # ---------------------------------------------------------------------------
@@ -69,6 +76,19 @@ beat_schedule = {
     "ingest-pending-manuals-nightly": {
         "task": "mira_crawler.tasks.ingest.ingest_all_pending",
         "schedule": crontab(hour=2, minute=15),
+    },
+    # YouTube KB — runs 24/7 on BRAVO
+    "youtube-discover-every-15min": {
+        "task": "mira_crawler.tasks.youtube_tasks.discover_youtube_videos",
+        "schedule": crontab(minute="*/15"),
+    },
+    "youtube-backfill-hourly": {
+        "task": "mira_crawler.tasks.youtube_tasks.backfill_youtube_pending",
+        "schedule": crontab(minute=0),
+    },
+    "youtube-regen-style-weekly": {
+        "task": "mira_crawler.tasks.youtube_tasks.regenerate_youtube_style_prompt",
+        "schedule": crontab(day_of_week="sun", hour=4, minute=0),
     },
 }
 

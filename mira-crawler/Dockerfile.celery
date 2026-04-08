@@ -2,9 +2,9 @@ FROM python:3.12.8-slim
 
 WORKDIR /app
 
-# System deps for pdfplumber, psycopg2
+# System deps: pdfplumber, psycopg2, yt-dlp, ffmpeg (keyframe extraction)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev && \
+    gcc libpq-dev ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
 # Python deps

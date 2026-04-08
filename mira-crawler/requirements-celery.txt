@@ -17,3 +17,10 @@ apify-client>=1.7.0
 
 # YAML config
 PyYAML>=6.0.0
+
+# YouTube KB pipeline
+youtube-transcript-api>=0.6.2
+yt-dlp>=2024.1.0
+
+# Chunking token cap
+tiktoken>=0.7.0
