@@ -42,6 +42,8 @@ task_routes = {
     "mira_crawler.tasks.ingest.*": {"queue": "ingest"},
     "mira_crawler.tasks.foundational.*": {"queue": "ingest"},
     "mira_crawler.tasks.report.*": {"queue": "default"},
+    "mira_crawler.tasks.content.*": {"queue": "content"},
+    "mira_crawler.tasks.social.*": {"queue": "social"},
 }
 
 # ---------------------------------------------------------------------------
@@ -69,6 +71,31 @@ beat_schedule = {
     "ingest-pending-manuals-nightly": {
         "task": "mira_crawler.tasks.ingest.ingest_all_pending",
         "schedule": crontab(hour=2, minute=15),
+    },
+    # --- Content Fleet ---
+    "generate-daily-social-content": {
+        "task": "mira_crawler.tasks.content.generate_social_batch",
+        "schedule": crontab(hour=6, minute=0),
+        "args": ["maintenance_tech"],
+    },
+    "generate-weekly-blog-post": {
+        "task": "mira_crawler.tasks.content.generate_blog_post",
+        "schedule": crontab(day_of_week="mon", hour=5, minute=0),
+        "args": ["maintenance_tech"],
+    },
+    "generate-weekly-video-script": {
+        "task": "mira_crawler.tasks.content.generate_weekly_video_script",
+        "schedule": crontab(day_of_week="thu", hour=5, minute=0),
+        "args": ["maintenance_tech"],
+    },
+    # --- Social Fleet ---
+    "schedule-approved-social-posts": {
+        "task": "mira_crawler.tasks.social.schedule_buffer_posts",
+        "schedule": crontab(hour=7, minute=0),
+    },
+    "weekly-social-engagement-report": {
+        "task": "mira_crawler.tasks.social.social_engagement_report",
+        "schedule": crontab(day_of_week="sun", hour=8, minute=0),
     },
 }
 
