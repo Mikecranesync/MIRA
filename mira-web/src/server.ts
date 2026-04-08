@@ -49,6 +49,8 @@ app.use("*", cors());
 app.use("/public/*", serveStatic({ root: "./" }));
 app.use("/manifest.json", serveStatic({ path: "./public/manifest.json" }));
 app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
+app.use("/robots.txt", serveStatic({ path: "./public/robots.txt" }));
+app.use("/sitemap.xml", serveStatic({ path: "./public/sitemap.xml" }));
 
 // ---------------------------------------------------------------------------
 // Routes
