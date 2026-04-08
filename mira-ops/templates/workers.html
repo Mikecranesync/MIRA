@@ -38,7 +38,8 @@
           </tr>
           {% endfor %}
         {% endfor %}
-        {% if not workers.active or not workers.active.values()|sum(start=[]) %}
+        {% set all_active = [] %}{% for w, tasks in workers.active.items() %}{% for t in tasks %}{% if all_active.append(t) %}{% endif %}{% endfor %}{% endfor %}
+        {% if not all_active %}
         <tr>
           <td colspan="4" style="text-align:center;color:#7a766c;padding:24px">
             No tasks currently running.
@@ -90,8 +91,8 @@
       <div style="font-size:13px;color:#7a766c;line-height:1.8;">
         <div>Pool: {{ stat.get('pool', {}).get('implementation', '—') }}</div>
         <div>Concurrency: {{ stat.get('pool', {}).get('max-concurrency', '—') }}</div>
-        <div>Total tasks: {{ stat.get('total', {}).values()|sum if stat.get('total') else 0 }}</div>
-        <div>Uptime: {{ ((stat.get('clock', 0)) / 3600)|round(1) }}h</div>
+        <div>Total tasks: {{ stat.get('total', {})|length if stat.get('total') else 0 }} type(s)</div>
+        <div>Uptime: {% set clk = stat.get('clock', 0) %}{{ (clk|float / 3600)|round(1) if clk else '—' }}h</div>
       </div>
     </div>
     {% endfor %}

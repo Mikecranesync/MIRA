@@ -47,17 +47,12 @@ SOCIAL_THEMES = [
 ]
 
 
-def _run_async(coro):
-    """Run an async function from a sync Celery task."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(asyncio.run, coro).result()
-        return loop.run_until_complete(coro)
-    except RuntimeError:
-        return asyncio.run(coro)
+def _run_async(coro_func, *args, **kwargs):
+    """Run an async function from a sync Celery task.
+
+    Takes the async function and its args — creates a fresh coroutine each time.
+    """
+    return asyncio.run(coro_func(*args, **kwargs))
 
 
 def _insert_content_item(content_type, audience, topic, title, slug, output_path, word_count):
@@ -166,7 +161,7 @@ def generate_blog_post(self, audience: str, topic: str | None = None):
     logger.info("Generating blog post: audience=%s topic=%s", audience, topic)
 
     try:
-        result = _run_async(gen("blog-post", audience, topic))
+        result = _run_async(gen, "blog-post", audience, topic)
     except Exception as exc:
         logger.error("Blog post generation failed: %s", exc)
         raise self.retry(exc=exc)
@@ -210,7 +205,7 @@ def generate_social_batch(self, audience: str, theme: str | None = None):
     logger.info("Generating social batch: audience=%s theme=%s", audience, theme)
 
     try:
-        result = _run_async(gen("social-batch", audience, theme))
+        result = _run_async(gen, "social-batch", audience, theme)
     except Exception as exc:
         logger.error("Social batch generation failed: %s", exc)
         raise self.retry(exc=exc)
@@ -252,7 +247,7 @@ def generate_email_variant(self, audience: str, email_type: str, variant_label: 
     logger.info("Generating email variant: audience=%s type=%s label=%s", audience, email_type, variant_label)
 
     try:
-        result = _run_async(gen("drip-email", audience, email_type))
+        result = _run_async(gen, "drip-email", audience, email_type)
     except Exception as exc:
         logger.error("Email variant generation failed: %s", exc)
         raise self.retry(exc=exc)
@@ -291,7 +286,7 @@ def generate_weekly_video_script(self, audience: str, topic: str | None = None):
     logger.info("Generating video script: audience=%s topic=%s", audience, topic)
 
     try:
-        result = _run_async(gen("video-script", audience, topic))
+        result = _run_async(gen, "video-script", audience, topic)
     except Exception as exc:
         logger.error("Video script generation failed: %s", exc)
         raise self.retry(exc=exc)
