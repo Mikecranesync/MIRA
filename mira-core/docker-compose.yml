@@ -93,6 +93,21 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  mira-tika:
+    image: apache/tika:3.1.0.0
+    container_name: mira-tika
+    ports:
+      - "127.0.0.1:${TIKA_PORT:-9998}:9998"
+    networks:
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9998/tika"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
 volumes:
   open-webui-data:
 

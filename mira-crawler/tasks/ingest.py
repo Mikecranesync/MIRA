@@ -32,7 +32,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
     Works with PDFs and HTML pages. Skips already-ingested chunks (dedup).
     """
     from ingest.chunker import chunk_blocks
-    from ingest.converter import extract_from_html, extract_from_pdf
+    from ingest.converter import extract_from_html, extract_from_pdf_with_fallback
     from ingest.embedder import embed_text
     from ingest.store import chunk_exists, insert_chunk
 
@@ -62,7 +62,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
     # 2. Extract text blocks
     is_pdf = url.lower().endswith(".pdf") or "application/pdf" in content_type
     if is_pdf:
-        blocks = extract_from_pdf(data)
+        blocks = extract_from_pdf_with_fallback(data)
     else:
         blocks = extract_from_html(data)
 
