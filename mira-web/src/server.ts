@@ -2,7 +2,12 @@
  * mira-web — PLG acquisition funnel for FactoryLM.
  *
  * Hono on Bun. Routes:
+ *   GET  /                      → Homepage
  *   GET  /cmms                  → Serve gated CMMS landing page
+ *   GET  /blog                  → Blog index (articles + fault codes link)
+ *   GET  /blog/fault-codes      → Fault code library index
+ *   GET  /blog/:slug            → Individual blog post or fault code article
+ *   GET  /sitemap.xml           → Dynamic sitemap
  *   GET  /api/health            → Liveness probe
  *   POST /api/register          → Create tenant + Atlas user + JWT
  *   GET  /api/me                → User profile + quota (auth required)
@@ -36,6 +41,14 @@ import {
 import { seedDemoData } from "./seed/demo-data.js";
 import { sendWelcomeEmail } from "./lib/mailer.js";
 import { startDripScheduler } from "./lib/drip.js";
+import { FAULT_CODES } from "./data/fault-codes.js";
+import { BLOG_POSTS } from "./data/blog-posts.js";
+import {
+  renderBlogPost,
+  renderFaultCodePage,
+  renderBlogIndex,
+  renderFaultCodeIndex,
+} from "./lib/blog-renderer.js";
 
 const app = new Hono();
 
@@ -50,11 +63,60 @@ app.use("/public/*", serveStatic({ root: "./" }));
 app.use("/manifest.json", serveStatic({ path: "./public/manifest.json" }));
 app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
 app.use("/robots.txt", serveStatic({ path: "./public/robots.txt" }));
-app.use("/sitemap.xml", serveStatic({ path: "./public/sitemap.xml" }));
+app.use("/og-image.png", serveStatic({ path: "./public/og-image.png" }));
+
+// Dynamic sitemap (replaces static file)
+app.get("/sitemap.xml", (c) => {
+  const baseUrl = "https://factorylm.com";
+  const today = new Date().toISOString().split("T")[0];
+
+  const pages = [
+    { loc: "/", priority: "1.0", freq: "weekly" },
+    { loc: "/cmms", priority: "1.0", freq: "weekly" },
+    { loc: "/blog", priority: "0.9", freq: "weekly" },
+    { loc: "/blog/fault-codes", priority: "0.8", freq: "weekly" },
+    ...BLOG_POSTS.map((p) => ({
+      loc: `/blog/${p.slug}`,
+      priority: "0.8",
+      freq: "monthly" as const,
+    })),
+    ...FAULT_CODES.map((fc) => ({
+      loc: `/blog/${fc.slug}`,
+      priority: "0.7",
+      freq: "monthly" as const,
+    })),
+  ];
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${pages
+  .map(
+    (p) => `  <url>
+    <loc>${baseUrl}${p.loc}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>${p.freq}</changefreq>
+    <priority>${p.priority}</priority>
+  </url>`,
+  )
+  .join("\n")}
+</urlset>`;
+
+  return new Response(xml, {
+    headers: { "Content-Type": "application/xml; charset=utf-8" },
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
+
+// Homepage
+app.get("/", async (c) => {
+  const file = Bun.file("./public/index.html");
+  return new Response(await file.arrayBuffer(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
 
 // Health probe
 app.get("/api/health", (c) =>
@@ -67,6 +129,35 @@ app.get("/cmms", async (c) => {
   return new Response(await file.arrayBuffer(), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
+});
+
+// ---------------------------------------------------------------------------
+// Blog — Articles + Fault Code Library
+// ---------------------------------------------------------------------------
+
+// Blog index (articles + fault code library link)
+app.get("/blog", (c) =>
+  c.html(renderBlogIndex(BLOG_POSTS, FAULT_CODES.length)),
+);
+
+// Fault code library index
+app.get("/blog/fault-codes", (c) =>
+  c.html(renderFaultCodeIndex(FAULT_CODES)),
+);
+
+// Individual post or fault code article
+app.get("/blog/:slug", (c) => {
+  const slug = c.req.param("slug");
+
+  // Check blog posts first
+  const post = BLOG_POSTS.find((p) => p.slug === slug);
+  if (post) return c.html(renderBlogPost(post, BLOG_POSTS, FAULT_CODES));
+
+  // Then fault codes
+  const fc = FAULT_CODES.find((f) => f.slug === slug);
+  if (fc) return c.html(renderFaultCodePage(fc, FAULT_CODES));
+
+  return c.notFound();
 });
 
 // Static demo work orders for unauthenticated hero ticker
