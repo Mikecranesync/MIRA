@@ -44,6 +44,7 @@ task_routes = {
     "mira_crawler.tasks.report.*": {"queue": "default"},
     "mira_crawler.tasks.content.*": {"queue": "content"},
     "mira_crawler.tasks.social.*": {"queue": "social"},
+    "mira_crawler.tasks.blog.*": {"queue": "blog"},
 }
 
 # ---------------------------------------------------------------------------
@@ -96,6 +97,23 @@ beat_schedule = {
     "weekly-social-engagement-report": {
         "task": "mira_crawler.tasks.social.social_engagement_report",
         "schedule": crontab(day_of_week="sun", hour=8, minute=0),
+    },
+    # --- Blog Fleet ---
+    "mine-kb-fault-codes": {
+        "task": "mira_crawler.tasks.blog.mine_fault_codes",
+        "schedule": crontab(day_of_week="wed", hour=4, minute=0),
+    },
+    "generate-kb-blog-tue": {
+        "task": "mira_crawler.tasks.blog.generate_kb_blog_post",
+        "schedule": crontab(day_of_week="tue", hour=5, minute=0),
+    },
+    "generate-kb-blog-fri": {
+        "task": "mira_crawler.tasks.blog.generate_kb_blog_post",
+        "schedule": crontab(day_of_week="fri", hour=5, minute=0),
+    },
+    "publish-approved-blog-drafts": {
+        "task": "mira_crawler.tasks.blog.publish_approved_drafts",
+        "schedule": crontab(hour=6, minute=30),
     },
 }
 

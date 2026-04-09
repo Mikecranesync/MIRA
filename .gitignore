@@ -105,6 +105,9 @@ usr/
 # Claude Code runtime files
 .claude/scheduled_tasks.lock
 
+# Obsidian vault config (wiki is git-tracked, but Obsidian settings are local)
+wiki/.obsidian/
+
 # Cloned SDK repos (have their own .git)
 ignition-sdk-examples/
 

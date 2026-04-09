@@ -47,6 +47,7 @@ try:
     import mira_crawler.tasks.ingest  # noqa: F401
     import mira_crawler.tasks.report  # noqa: F401
     import mira_crawler.tasks.social  # noqa: F401
+    import mira_crawler.tasks.blog  # noqa: F401
 except ImportError:
     import tasks.content  # noqa: F401
     import tasks.discover  # noqa: F401
@@ -54,6 +55,7 @@ except ImportError:
     import tasks.ingest  # noqa: F401
     import tasks.report  # noqa: F401
     import tasks.social  # noqa: F401
+    import tasks.blog  # noqa: F401
 
 if __name__ == "__main__":
     app.start()

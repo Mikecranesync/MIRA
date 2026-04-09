@@ -18,6 +18,7 @@ MIRA/
 ├── mira-cmms/          # Atlas CMMS — work orders, PM scheduling, asset registry (4 containers)
 ├── mira-hud/           # AR HUD desktop app (Express + Socket.IO, standalone)
 ├── mira-web/           # PLG acquisition funnel — Hono/Bun, /cmms landing + Mira AI chat (1 container)
+├── wiki/               # LLM-maintained ops wiki (Karpathy pattern) — open as Obsidian vault
 ├── tests/              # 5-regime testing framework (76 offline tests, 39 golden cases)
 ├── docs/               # PRD, ADRs, architecture C4 diagrams, runbooks
 ├── tools/              # Photo pipeline, Google Drive/Photos ingest scripts
@@ -197,6 +198,8 @@ chore: build system, deps, tooling
 - `.claude/skills/` — domain skills for diagnostic workflow, adapters, inference, HUD, ingest
 - `docs/adr/` — Architecture Decision Records
 - `docs/runbooks/` — operational runbooks
+- `wiki/` — LLM-maintained ops wiki (Karpathy pattern). **Session start: read `wiki/hot.md`. Session end: update it.**
+- `wiki/SCHEMA.md` — operating instructions for the wiki
 - `.planning/STATE.md` — current sprint state and next task
 - `KNOWLEDGE.md` — deep institutional knowledge (architecture decisions, abandoned approaches, recurring problems)
 - `DEVLOG.md` — chronological development diary (Mar 11–27, 2026)

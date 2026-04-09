@@ -49,6 +49,46 @@ import {
   renderBlogIndex,
   renderFaultCodeIndex,
 } from "./lib/blog-renderer.js";
+import {
+  getLiveFaultCodes,
+  getLiveBlogPosts,
+  invalidateCache,
+} from "./lib/blog-db.js";
+
+// Merged content: static seed + NeonDB live drafts
+let allFaultCodes = [...FAULT_CODES];
+let allBlogPosts = [...BLOG_POSTS];
+
+async function refreshBlogContent() {
+  try {
+    const dbCodes = await getLiveFaultCodes();
+    const dbPosts = await getLiveBlogPosts();
+    const seedSlugs = new Set(FAULT_CODES.map((f) => f.slug));
+    const seedPostSlugs = new Set(BLOG_POSTS.map((p) => p.slug));
+    allFaultCodes = [
+      ...FAULT_CODES,
+      ...dbCodes.filter((c) => !seedSlugs.has(c.slug)),
+    ];
+    allBlogPosts = [
+      ...BLOG_POSTS,
+      ...dbPosts.filter((p) => !seedPostSlugs.has(p.slug)),
+    ];
+    console.log(
+      "[blog] Refreshed: %d fault codes (%d from DB), %d posts (%d from DB)",
+      allFaultCodes.length, dbCodes.length,
+      allBlogPosts.length, dbPosts.length,
+    );
+  } catch (e) {
+    console.warn("[blog] Refresh failed, using cached data:", e);
+  }
+}
+
+// Initial load + refresh every 5 minutes
+refreshBlogContent();
+setInterval(() => {
+  invalidateCache();
+  refreshBlogContent();
+}, 5 * 60 * 1000);
 
 const app = new Hono();
 
@@ -75,12 +115,12 @@ app.get("/sitemap.xml", (c) => {
     { loc: "/cmms", priority: "1.0", freq: "weekly" },
     { loc: "/blog", priority: "0.9", freq: "weekly" },
     { loc: "/blog/fault-codes", priority: "0.8", freq: "weekly" },
-    ...BLOG_POSTS.map((p) => ({
+    ...allBlogPosts.map((p) => ({
       loc: `/blog/${p.slug}`,
       priority: "0.8",
       freq: "monthly" as const,
     })),
-    ...FAULT_CODES.map((fc) => ({
+    ...allFaultCodes.map((fc) => ({
       loc: `/blog/${fc.slug}`,
       priority: "0.7",
       freq: "monthly" as const,
@@ -137,12 +177,12 @@ app.get("/cmms", async (c) => {
 
 // Blog index (articles + fault code library link)
 app.get("/blog", (c) =>
-  c.html(renderBlogIndex(BLOG_POSTS, FAULT_CODES.length)),
+  c.html(renderBlogIndex(allBlogPosts, allFaultCodes.length)),
 );
 
 // Fault code library index
 app.get("/blog/fault-codes", (c) =>
-  c.html(renderFaultCodeIndex(FAULT_CODES)),
+  c.html(renderFaultCodeIndex(allFaultCodes)),
 );
 
 // Individual post or fault code article
@@ -150,12 +190,12 @@ app.get("/blog/:slug", (c) => {
   const slug = c.req.param("slug");
 
   // Check blog posts first
-  const post = BLOG_POSTS.find((p) => p.slug === slug);
-  if (post) return c.html(renderBlogPost(post, BLOG_POSTS, FAULT_CODES));
+  const post = allBlogPosts.find((p) => p.slug === slug);
+  if (post) return c.html(renderBlogPost(post, allBlogPosts, allFaultCodes));
 
   // Then fault codes
-  const fc = FAULT_CODES.find((f) => f.slug === slug);
-  if (fc) return c.html(renderFaultCodePage(fc, FAULT_CODES));
+  const fc = allFaultCodes.find((f) => f.slug === slug);
+  if (fc) return c.html(renderFaultCodePage(fc, allFaultCodes));
 
   return c.notFound();
 });
