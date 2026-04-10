@@ -11,10 +11,12 @@ connection is required.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from ingest.quality import _cosine_sim, quality_gate
+from ingest.quality import _cosine_sim, _load_anchors, quality_gate
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -172,19 +174,17 @@ class TestSemanticDedup:
 
 class TestFailOpen:
     def test_relevance_exception_fails_open(self):
-        """If _relevance_score raises, gate should still pass (fail open)."""
+        """If _relevance_score raises, quality_gate catches it and fails open."""
         chunk = _make_chunk(GOOD_MAINTENANCE_TEXT)
         with (
             patch("ingest.quality._relevance_score", side_effect=RuntimeError("Ollama down")),
             patch("ingest.quality._semantic_dedup_score", return_value=0.0),
         ):
-            # quality_gate wraps stages in try/except at the call site — but
-            # _relevance_score is called directly inside quality_gate.
-            # The outer try/except in tasks/ingest.py handles the gate itself;
-            # here we verify the gate propagates the error so the caller can
-            # catch it and fail open.  This test documents that behaviour.
-            with pytest.raises(RuntimeError):
-                quality_gate(chunk, _good_embedding(), "tenant-1")
+            # quality_gate now has a top-level try/except (M11 fix) — it must
+            # return (True, "error_fail_open:...") rather than propagating the error.
+            passed, reason = quality_gate(chunk, _good_embedding(), "tenant-1")
+        assert passed, "Gate should fail open when an unexpected exception occurs"
+        assert reason.startswith("error_fail_open:"), f"Unexpected reason: {reason}"
 
     def test_dedup_returns_zero_on_db_error(self):
         """_semantic_dedup_score returns 0.0 on DB error — gate doesn't block."""
@@ -225,3 +225,130 @@ class TestCosineSim:
 
     def test_empty_vectors_returns_zero(self):
         assert _cosine_sim([], []) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Anchor cache validation (C2/C5 fixes)
+# ---------------------------------------------------------------------------
+
+_ANCHOR_TEXTS = [
+    "Check the fault code on the VFD display.",
+    "Before performing any maintenance on electrical equipment, follow LOTO.",
+]
+
+_VALID_VEC = [0.1] * 768
+
+
+def _write_anchors_json(path: Path, embeddings: list) -> None:
+    data = {"anchors": _ANCHOR_TEXTS, "anchor_embeddings": embeddings}
+    path.write_text(json.dumps(data))
+
+
+class TestAnchorCacheValidation:
+    def _reset_module_cache(self):
+        """Reset the module-level _anchor_embeddings cache between tests."""
+        import ingest.quality as q
+        q._anchor_embeddings = None
+
+    def test_empty_vectors_in_cache_triggers_regeneration(self, tmp_path, monkeypatch):
+        """anchors.json with an empty vector must cause regeneration, not silent use."""
+        anchors_file = tmp_path / "anchors.json"
+        # One of the two cached vectors is empty — poisoned cache.
+        _write_anchors_json(anchors_file, [_VALID_VEC, []])
+
+        self._reset_module_cache()
+        monkeypatch.setattr("ingest.quality._ANCHORS_PATH", anchors_file)
+
+        call_count = {"n": 0}
+
+        def counting_embed(text):  # noqa: ANN001
+            call_count["n"] += 1
+            return _VALID_VEC
+
+        import sys
+        fake_embedder = type(sys)("ingest.embedder")
+        fake_embedder.embed_text = counting_embed
+        monkeypatch.setitem(sys.modules, "ingest.embedder", fake_embedder)
+
+        result = _load_anchors()
+
+        # embed_text must have been called — the poisoned cache must not be trusted.
+        assert call_count["n"] > 0, "embed_text was not called — cache was trusted despite empty vector"
+        # Result should have only valid (non-empty) vectors after regeneration.
+        assert all(v for v in result), "Regenerated anchors should all be non-empty"
+
+    def test_partial_embedding_failure_not_persisted(self, tmp_path, monkeypatch):
+        """When embed_text fails for at least one anchor, anchors.json must NOT be updated."""
+        anchors_file = tmp_path / "anchors.json"
+        # Start with no cached embeddings so regeneration is attempted.
+        _write_anchors_json(anchors_file, [])
+        original_mtime = anchors_file.stat().st_mtime
+
+        self._reset_module_cache()
+        monkeypatch.setattr("ingest.quality._ANCHORS_PATH", anchors_file)
+
+        call_count = {"n": 0}
+
+        def failing_then_succeeding(text):  # noqa: ANN001
+            call_count["n"] += 1
+            # First anchor fails, rest succeed.
+            if call_count["n"] == 1:
+                return None
+            return _VALID_VEC
+
+        import sys
+        fake_embedder = type(sys)("ingest.embedder")
+        fake_embedder.embed_text = failing_then_succeeding
+        monkeypatch.setitem(sys.modules, "ingest.embedder", fake_embedder)
+
+        _load_anchors()
+
+        # File must NOT have been updated.
+        new_mtime = anchors_file.stat().st_mtime
+        assert new_mtime == original_mtime, (
+            "anchors.json was written even though an embedding failed — cache poisoning risk"
+        )
+
+        # Disk content must still be the original empty embeddings.
+        on_disk = json.loads(anchors_file.read_text())
+        assert on_disk["anchor_embeddings"] == [], (
+            "anchors.json on disk should still have empty embeddings after partial failure"
+        )
+
+    def test_all_embeddings_succeed_persisted(self, tmp_path, monkeypatch):
+        """When all embed_text calls succeed, anchors.json must be updated with the new vectors."""
+        anchors_file = tmp_path / "anchors.json"
+        _write_anchors_json(anchors_file, [])  # No cached embeddings.
+
+        self._reset_module_cache()
+        monkeypatch.setattr("ingest.quality._ANCHORS_PATH", anchors_file)
+
+        import sys
+        fake_embedder = type(sys)("ingest.embedder")
+        fake_embedder.embed_text = lambda text: _VALID_VEC  # noqa: E731
+        monkeypatch.setitem(sys.modules, "ingest.embedder", fake_embedder)
+
+        _load_anchors()
+
+        on_disk = json.loads(anchors_file.read_text())
+        assert len(on_disk["anchor_embeddings"]) == len(_ANCHOR_TEXTS), (
+            "All anchor embeddings should have been persisted to disk"
+        )
+        assert all(v for v in on_disk["anchor_embeddings"]), (
+            "No empty vectors should be present in the persisted cache"
+        )
+
+    def test_quality_gate_top_level_fail_open(self):
+        """Unexpected exception inside quality_gate must return (True, error_fail_open:...)."""
+        chunk = _make_chunk(GOOD_MAINTENANCE_TEXT)
+
+        with patch(
+            "ingest.quality._relevance_score",
+            side_effect=ValueError("unexpected internal error"),
+        ):
+            passed, reason = quality_gate(chunk, _good_embedding(), "tenant-1")
+
+        assert passed, "quality_gate must fail open on unexpected exceptions"
+        assert reason == "error_fail_open:ValueError", (
+            f"Expected 'error_fail_open:ValueError', got '{reason}'"
+        )

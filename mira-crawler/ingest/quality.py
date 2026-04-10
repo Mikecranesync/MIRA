@@ -77,9 +77,17 @@ def _load_anchors() -> list[list[float]]:
     cached = data.get("anchor_embeddings", [])
     anchors = data.get("anchors", [])
 
-    if cached and len(cached) == len(anchors):
+    # Validate that every cached vector is non-empty before trusting the cache.
+    # An empty vector signals a previous run where Ollama was down; we must
+    # regenerate rather than silently poisoning every relevance score with 0.0.
+    if cached and len(cached) == len(anchors) and all(v for v in cached):
         _anchor_embeddings = cached
         return _anchor_embeddings
+
+    if cached and not all(v for v in cached):
+        logger.warning(
+            "anchors.json contains empty vectors — cache invalid, regenerating embeddings"
+        )
 
     # Generate embeddings for any anchors that don't have one yet
     logger.info("Generating %d anchor embeddings (one-time setup)...", len(anchors))
@@ -91,25 +99,37 @@ def _load_anchors() -> list[list[float]]:
         return _anchor_embeddings
 
     embeddings: list[list[float]] = []
-    for text in anchors:
+    failed = 0
+    for i, text in enumerate(anchors):
         vec = embed_text(text)
-        if vec is not None:
+        if vec:
             embeddings.append(vec)
         else:
             logger.warning("Anchor embedding failed for: %s...", text[:60])
-            # Append a zero vector as placeholder so indices remain aligned
+            failed += 1
+            # Keep a placeholder so indices stay aligned for in-memory use,
+            # but this run's embeddings will NOT be persisted (see below).
             embeddings.append([])
 
+    # Always update the in-memory cache so this run can use whatever succeeded.
     _anchor_embeddings = embeddings
 
-    # Persist back to anchors.json for future runs
-    try:
-        data["anchor_embeddings"] = embeddings
-        with open(_ANCHORS_PATH, "w") as fh:
-            json.dump(data, fh, indent=2)
-        logger.info("Anchor embeddings saved to anchors.json")
-    except Exception as exc:
-        logger.warning("Could not persist anchor embeddings: %s", exc)
+    if failed:
+        # Partial failure: do NOT write to disk.  Next run will retry.
+        logger.warning(
+            "Ollama embedding failed for %d/%d anchors — cache not persisted, will retry next run",
+            failed,
+            len(anchors),
+        )
+    else:
+        # All embeddings succeeded — safe to persist.
+        try:
+            data["anchor_embeddings"] = embeddings
+            with open(_ANCHORS_PATH, "w") as fh:
+                json.dump(data, fh, indent=2)
+            logger.info("Anchor embeddings saved to anchors.json")
+        except Exception as exc:
+            logger.warning("Could not persist anchor embeddings: %s", exc)
 
     return _anchor_embeddings
 
@@ -182,38 +202,49 @@ def quality_gate(
         tenant_id: Tenant scope for semantic dedup query.
 
     Returns:
-        (True, "")           — chunk passes all stages
-        (False, reason_str)  — chunk rejected; reason encodes which stage failed
+        (True, "")                         — chunk passes all stages
+        (False, reason_str)                — chunk rejected; reason encodes which stage failed
+        (True, "error_fail_open:{exc_type}") — unexpected exception; ingest is never blocked
+
+    Always fails open: if any stage raises an unexpected exception the gate
+    returns (True, "error_fail_open:{exc_type}") so ingest is never blocked by
+    gate failures.  Defence-in-depth: the caller (tasks/ingest.py) also wraps
+    the call in try/except, but this guard ensures the gate is safe regardless.
     """
-    text = chunk.get("text", "")
+    try:
+        text = chunk.get("text", "")
 
-    # ------------------------------------------------------------------
-    # Stage 1: Content filter (heuristic, no LLM, no network)
-    # ------------------------------------------------------------------
-    if len(text) < 80:
-        return False, "too_short"
+        # ------------------------------------------------------------------
+        # Stage 1: Content filter (heuristic, no LLM, no network)
+        # ------------------------------------------------------------------
+        if len(text) < 80:
+            return False, "too_short"
 
-    alpha_chars = sum(1 for c in text if c.isalpha())
-    ratio = alpha_chars / len(text)
-    if ratio < 0.5:
-        return False, f"low_alpha:{ratio:.2f}"
+        alpha_chars = sum(1 for c in text if c.isalpha())
+        ratio = alpha_chars / len(text)
+        if ratio < 0.5:
+            return False, f"low_alpha:{ratio:.2f}"
 
-    sentence_endings = sum(1 for c in text if c in ".!?")
-    if sentence_endings < 2:
-        return False, "too_few_sentences"
+        sentence_endings = sum(1 for c in text if c in ".!?")
+        if sentence_endings < 2:
+            return False, "too_few_sentences"
 
-    # ------------------------------------------------------------------
-    # Stage 2: Relevance (cosine sim vs anchor embeddings)
-    # ------------------------------------------------------------------
-    rel_score = _relevance_score(embedding)
-    if rel_score < _RELEVANCE_THRESHOLD:
-        return False, f"low_relevance:{rel_score:.3f}"
+        # ------------------------------------------------------------------
+        # Stage 2: Relevance (cosine sim vs anchor embeddings)
+        # ------------------------------------------------------------------
+        rel_score = _relevance_score(embedding)
+        if rel_score < _RELEVANCE_THRESHOLD:
+            return False, f"low_relevance:{rel_score:.3f}"
 
-    # ------------------------------------------------------------------
-    # Stage 3: Semantic dedup (pgvector nearest neighbor)
-    # ------------------------------------------------------------------
-    dedup_score = _semantic_dedup_score(embedding, tenant_id)
-    if dedup_score > _DEDUP_THRESHOLD:
-        return False, f"near_duplicate:{dedup_score:.3f}"
+        # ------------------------------------------------------------------
+        # Stage 3: Semantic dedup (pgvector nearest neighbor)
+        # ------------------------------------------------------------------
+        dedup_score = _semantic_dedup_score(embedding, tenant_id)
+        if dedup_score > _DEDUP_THRESHOLD:
+            return False, f"near_duplicate:{dedup_score:.3f}"
 
-    return True, ""
+        return True, ""
+
+    except Exception as exc:
+        logger.warning("quality_gate unexpected error, failing open: %s", exc)
+        return True, f"error_fail_open:{type(exc).__name__}"
