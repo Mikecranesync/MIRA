@@ -19,7 +19,7 @@ services:
       dockerfile: mira-crawler/Dockerfile.celery
     container_name: mira-celery-worker
     restart: unless-stopped
-    command: celery -A mira_crawler.celery_app worker --concurrency=2 -Q ingest,discovery,celery --loglevel=info
+    command: celery -A mira_crawler.celery_app worker --concurrency=2 -Q ingest,discovery,celery,youtube-discovery,youtube-transcript,youtube-keyframes,youtube-patterns --loglevel=info
     depends_on:
       mira-redis:
         condition: service_healthy
@@ -30,6 +30,8 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
       - OLLAMA_BASE_URL=http://192.168.1.11:11434
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - YOUTUBE_DATA_API_KEY=${YOUTUBE_DATA_API_KEY}
     networks:
       - core-net
     healthcheck:
