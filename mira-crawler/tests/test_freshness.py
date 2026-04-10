@@ -130,3 +130,149 @@ class TestAllDefinedTtls:
             assert _TTL_DAYS.get(source_type) is None, (
                 f"{source_type} should have TTL=None but got {_TTL_DAYS.get(source_type)}"
             )
+
+
+# ---------------------------------------------------------------------------
+# 5. SQL parameterization — C3 security fix
+# ---------------------------------------------------------------------------
+
+
+class TestFindStaleEntriesParamsBoundNotInterpolated:
+    """Verify _find_stale_entries uses bound params, not f-string SQL injection."""
+
+    def test_find_stale_entries_uses_bound_params(self, monkeypatch):
+        """Query passed to conn.execute must use :st_finite_ / :st_never_ placeholders."""
+        import unittest.mock as mock
+
+        captured: list[tuple] = []
+
+        def fake_execute(query, params=None):
+            captured.append((str(query), params))
+            result = mock.MagicMock()
+            result.fetchall.return_value = []
+            return result
+
+        fake_conn = mock.MagicMock()
+        fake_conn.__enter__ = lambda s: s
+        fake_conn.__exit__ = mock.MagicMock(return_value=False)
+        fake_conn.execute = fake_execute
+
+        fake_engine = mock.MagicMock()
+        fake_engine.connect.return_value = fake_conn
+
+        import tasks.freshness as freshness_mod
+
+        monkeypatch.setattr(freshness_mod, "_engine", lambda: fake_engine)
+
+        freshness_mod._find_stale_entries("test-tenant-id")
+
+        assert len(captured) == 1, "Expected exactly one query execution"
+        sql_text, params = captured[0]
+
+        # Bound param names must appear in the SQL string
+        assert ":st_finite_" in sql_text, "CASE clause must use :st_finite_N bound params"
+        assert ":st_never_" in sql_text, "NOT IN clause must use :st_never_N bound params"
+
+        # Values must be in the params dict, not embedded in SQL
+        assert params is not None
+        finite_keys = [k for k in params if k.startswith("st_finite_")]
+        never_keys = [k for k in params if k.startswith("st_never_")]
+        assert len(finite_keys) > 0, "Expected st_finite_N params in params dict"
+        assert len(never_keys) > 0, "Expected st_never_N params in params dict"
+
+    def test_sql_no_fstring_interpolation(self):
+        """Source-level check: CASE clause must not interpolate source_type directly."""
+        import inspect
+
+        from tasks.freshness import _find_stale_entries
+
+        src = inspect.getsource(_find_stale_entries)
+        assert "WHEN source_type = '{" not in src, (
+            "CASE clause must not interpolate source_type via f-string"
+        )
+        assert "source_type NOT IN ('{" not in src, (
+            "NOT IN clause must not interpolate source_type via f-string"
+        )
+
+
+class TestNeverExpireTypesExcluded:
+    """Verify never-expire types (curriculum, youtube_transcript, patent) are excluded."""
+
+    def test_never_expire_types_excluded(self, monkeypatch):
+        """Query must exclude curriculum, youtube_transcript, and patent."""
+        import unittest.mock as mock
+
+        captured: list[tuple] = []
+
+        def fake_execute(query, params=None):
+            captured.append((str(query), params))
+            result = mock.MagicMock()
+            result.fetchall.return_value = []
+            return result
+
+        fake_conn = mock.MagicMock()
+        fake_conn.__enter__ = lambda s: s
+        fake_conn.__exit__ = mock.MagicMock(return_value=False)
+        fake_conn.execute = fake_execute
+
+        fake_engine = mock.MagicMock()
+        fake_engine.connect.return_value = fake_conn
+
+        import tasks.freshness as freshness_mod
+
+        monkeypatch.setattr(freshness_mod, "_engine", lambda: fake_engine)
+
+        freshness_mod._find_stale_entries("test-tenant-id")
+
+        assert len(captured) == 1
+        sql_text, params = captured[0]
+
+        # NOT IN clause must be present
+        assert "NOT IN" in sql_text.upper(), "Query must contain NOT IN clause"
+
+        # The never-expire source_type values must be in the params dict
+        assert params is not None
+        never_values = {v for k, v in params.items() if k.startswith("st_never_")}
+        assert "curriculum" in never_values, "curriculum must be in NOT IN params"
+        assert "youtube_transcript" in never_values, "youtube_transcript must be in NOT IN params"
+        assert "patent" in never_values, "patent must be in NOT IN params"
+
+
+class TestFiniteTypesIncluded:
+    """Verify finite TTL types appear in the CASE expression params."""
+
+    def test_finite_types_included(self, monkeypatch):
+        """CASE params must include equipment_manual, knowledge_article, standard, etc."""
+        import unittest.mock as mock
+
+        captured: list[tuple] = []
+
+        def fake_execute(query, params=None):
+            captured.append((str(query), params))
+            result = mock.MagicMock()
+            result.fetchall.return_value = []
+            return result
+
+        fake_conn = mock.MagicMock()
+        fake_conn.__enter__ = lambda s: s
+        fake_conn.__exit__ = mock.MagicMock(return_value=False)
+        fake_conn.execute = fake_execute
+
+        fake_engine = mock.MagicMock()
+        fake_engine.connect.return_value = fake_conn
+
+        import tasks.freshness as freshness_mod
+
+        monkeypatch.setattr(freshness_mod, "_engine", lambda: fake_engine)
+
+        freshness_mod._find_stale_entries("test-tenant-id")
+
+        assert len(captured) == 1
+        _sql_text, params = captured[0]
+
+        # Finite source_type values must appear in the params dict
+        assert params is not None
+        finite_values = {v for k, v in params.items() if k.startswith("st_finite_")}
+        expected_finite = {"equipment_manual", "knowledge_article", "standard", "forum_post", "rss_article"}
+        for expected in expected_finite:
+            assert expected in finite_values, f"{expected} must be in CASE bound params"

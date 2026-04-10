@@ -99,19 +99,31 @@ def _find_stale_entries(tenant_id: str) -> list[dict]:
         logger.error("Cannot connect to NeonDB: %s", exc)
         return stale
 
-    # Build a CASE expression for source_type → TTL days
-    # Unrecognised types get DEFAULT_TTL_DAYS
-    case_parts = " ".join(
-        f"WHEN source_type = '{st}' THEN INTERVAL '{days} days'"
-        for st, days in finite_types.items()
-    )
-    case_expr = f"CASE {case_parts} ELSE INTERVAL '{_DEFAULT_TTL_DAYS} days' END"
+    # Build bound params dict — all values go in here, never interpolated into SQL
+    params: dict[str, object] = {"tenant_id": tenant_id, "default_ttl": _DEFAULT_TTL_DAYS}
 
-    # Exclude never-expiring types
-    never_expire_types = [f"'{k}'" for k, v in _TTL_DAYS.items() if v is None]
+    # Build CASE expression using bound params (:st_finite_N / :days_N).
+    # The placeholder names (:st_finite_0, etc.) are Python-controlled identifiers,
+    # not user input — the VALUES are bound.
+    # PostgreSQL: INTERVAL '1 day' * :days_N multiplies a fixed interval by an integer.
+    case_parts = []
+    for i, (st, days) in enumerate(finite_types.items()):
+        params[f"st_finite_{i}"] = st
+        params[f"days_{i}"] = days
+        case_parts.append(
+            f"WHEN source_type = :st_finite_{i} THEN INTERVAL '1 day' * :days_{i}"
+        )
+    case_expr = "CASE " + " ".join(case_parts) + " ELSE INTERVAL '1 day' * :default_ttl END"
+
+    # Build NOT IN clause using bound params (:st_never_N).
+    never_expire_items = [(k, v) for k, v in _TTL_DAYS.items() if v is None]
     exclude_clause = ""
-    if never_expire_types:
-        exclude_clause = f"AND source_type NOT IN ({', '.join(never_expire_types)})"
+    if never_expire_items:
+        never_names = []
+        for i, (k, _) in enumerate(never_expire_items):
+            params[f"st_never_{i}"] = k
+            never_names.append(f":st_never_{i}")
+        exclude_clause = f"AND source_type NOT IN ({', '.join(never_names)})"
 
     query = text(f"""
         SELECT id, source_url, source_type
@@ -119,13 +131,13 @@ def _find_stale_entries(tenant_id: str) -> list[dict]:
         WHERE tenant_id = :tenant_id
           {exclude_clause}
           AND (metadata->>'is_stale' IS NULL OR metadata->>'is_stale' != 'true')
-          AND created_at < NOW() - {case_expr}
+          AND created_at < NOW() - ({case_expr})
         LIMIT 1000
     """)
 
     try:
         with engine.connect() as conn:
-            rows = conn.execute(query, {"tenant_id": tenant_id}).fetchall()
+            rows = conn.execute(query, params).fetchall()
         for row in rows:
             stale.append(
                 {
