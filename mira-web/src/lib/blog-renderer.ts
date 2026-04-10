@@ -51,8 +51,8 @@ function htmlHead(opts: {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/public/blog.css">
-  <link rel="preload" href="/mira-chat.css" as="style" onload="this.rel='stylesheet'">
-  <noscript><link rel="stylesheet" href="/mira-chat.css"></noscript>
+  <link rel="preload" href="/public/mira-chat.css" as="style" onload="this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="/public/mira-chat.css"></noscript>
   ${opts.jsonLd ?? ""}
 </head>`;
 }
@@ -112,7 +112,7 @@ function scripts(): string {
 <script>
   (function(){var n=document.getElementById('main-nav');function u(){n.classList.toggle('scrolled',window.scrollY>10)}window.addEventListener('scroll',u,{passive:true});u()})();
   (function(){if(!window.IntersectionObserver)return;var o=new IntersectionObserver(function(e){e.forEach(function(x){if(x.isIntersecting)x.target.classList.add('visible')})},{threshold:0.08});document.querySelectorAll('.fade-in').forEach(function(el){o.observe(el)})})();
-  (function(){var l=false;function w(){if(l)return;l=true;var s=document.createElement('script');s.src='/mira-chat.js';s.defer=true;document.head.appendChild(s)}var f=document.getElementById('mira-fab');f.addEventListener('mouseenter',w,{once:true});f.addEventListener('touchstart',w,{once:true,passive:true});f.addEventListener('focus',w,{once:true});window.addEventListener('scroll',function g(){if(window.scrollY>300){w();window.removeEventListener('scroll',g)}},{passive:true})})();
+  (function(){var l=false;function w(){if(l)return;l=true;var s=document.createElement('script');s.src='/public/mira-chat.js';s.defer=true;document.head.appendChild(s)}var f=document.getElementById('mira-fab');f.addEventListener('mouseenter',w,{once:true});f.addEventListener('touchstart',w,{once:true,passive:true});f.addEventListener('focus',w,{once:true});window.addEventListener('scroll',function g(){if(window.scrollY>300){w();window.removeEventListener('scroll',g)}},{passive:true})})();
 </script>`;
 }
 
@@ -157,6 +157,7 @@ export function renderBlogPost(
 <body>
 ${nav()}
 
+<main>
 <article class="article-wrap">
   <div class="breadcrumb">
     <a href="/">Home</a> &rsaquo; <a href="/blog">Blog</a> &rsaquo; ${escHtml(post.category)}
@@ -179,6 +180,8 @@ ${nav()}
     <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
   </div>
 </article>
+
+</main>
 
 ${siteFooter()}
 ${scripts()}
@@ -240,6 +243,7 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
 <body>
 ${nav()}
 
+<main>
 <article class="article-wrap">
   <div class="breadcrumb">
     <a href="/">Home</a> &rsaquo; <a href="/blog">Blog</a> &rsaquo; <a href="/blog/fault-codes">Fault Codes</a> &rsaquo; ${escHtml(fc.faultCode)}
@@ -273,6 +277,8 @@ ${fixSteps}
     <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
   </div>
 </article>
+
+</main>
 
 ${siteFooter()}
 ${scripts()}
@@ -326,6 +332,7 @@ export function renderBlogIndex(
 <body>
 ${nav()}
 
+<main>
 <div class="blog-hero">
   <div class="section-label fade-in">Blog</div>
   <h1 class="fade-in">Maintenance guides from<br>the factory floor</h1>
@@ -359,6 +366,8 @@ ${postCards}
     <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
   </div>
 </div>
+
+</main>
 
 ${siteFooter()}
 ${scripts()}
@@ -421,6 +430,7 @@ ${codes
 <body>
 ${nav()}
 
+<main>
 <div class="blog-hero">
   <div class="section-label fade-in">Reference</div>
   <h1 class="fade-in">Equipment Fault Code Library</h1>
@@ -436,6 +446,8 @@ ${sections}
     <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
   </div>
 </div>
+
+</main>
 
 ${siteFooter()}
 ${scripts()}

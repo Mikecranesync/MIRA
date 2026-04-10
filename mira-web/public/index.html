@@ -41,13 +41,13 @@
   }
   </script>
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <!-- Widget CSS pre-loaded so FAB renders before JS lazy-loads -->
-  <link rel="preload" href="/mira-chat.css" as="style" onload="this.rel='stylesheet'">
-  <noscript><link rel="stylesheet" href="/mira-chat.css"></noscript>
+  <link rel="preload" href="/public/mira-chat.css" as="style" onload="this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="/public/mira-chat.css"></noscript>
 
   <style>
     /* ── Reset & Base ── */
@@ -755,6 +755,8 @@
     </div>
   </nav>
 
+  <main id="main-content">
+
   <!-- ── Hero ── -->
   <section class="hero" aria-labelledby="hero-heading">
     <div class="inner">
@@ -766,9 +768,9 @@
           </div>
 
           <h1 class="hero-h1 fade-in" id="hero-heading">
-            AI that actually<br>
-            understands your<br>
-            <em>equipment</em>
+            Diagnose a fault<br>
+            in 10 seconds.<br>
+            <em>Not 30 minutes.</em>
           </h1>
 
           <p class="hero-sub fade-in">
@@ -1035,6 +1037,8 @@
       </div>
     </div>
   </section>
+
+  </main>
 
   <!-- ── Footer ── -->
   <footer role="contentinfo">
