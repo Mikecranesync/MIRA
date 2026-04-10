@@ -8,12 +8,11 @@ import logging
 import os
 
 import httpx
-from PIL import Image
-from slack_bolt.async_app import AsyncApp
-from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
-
-from shared.gsd_engine import GSDEngine
 from pdf_handler import ingest_pdf
+from PIL import Image
+from shared.gsd_engine import GSDEngine
+from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
+from slack_bolt.async_app import AsyncApp
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,9 +30,7 @@ KNOWLEDGE_COLLECTION_ID = os.environ.get("KNOWLEDGE_COLLECTION_ID", "")
 
 # Optional channel allowlist — if set, MIRA only responds in listed channel IDs
 ALLOWED_CHANNELS = [
-    c.strip()
-    for c in os.environ.get("SLACK_ALLOWED_CHANNELS", "").split(",")
-    if c.strip()
+    c.strip() for c in os.environ.get("SLACK_ALLOWED_CHANNELS", "").split(",") if c.strip()
 ]
 
 engine = GSDEngine(
@@ -79,9 +76,7 @@ def _resize_for_vision(image_bytes: bytes) -> bytes:
 async def _download_slack_file(url: str) -> bytes:
     """Download a file from Slack using the bot token for auth."""
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(
-            url, headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"}
-        )
+        resp = await client.get(url, headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"})
         resp.raise_for_status()
         return resp.content
 
@@ -107,7 +102,9 @@ async def handle_message(event, say, client):
         _SEEN_EVENTS.clear()
 
     if event.get("subtype") in (
-        "bot_message", "message_changed", "message_deleted",
+        "bot_message",
+        "message_changed",
+        "message_deleted",
     ):
         return
     if event.get("bot_id"):
@@ -212,9 +209,7 @@ async def faults_command(ack, command, say):
         headers["Authorization"] = f"Bearer {MCP_REST_API_KEY}"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                f"{MCP_BASE_URL}/api/faults/active", headers=headers
-            )
+            resp = await client.get(f"{MCP_BASE_URL}/api/faults/active", headers=headers)
             resp.raise_for_status()
             faults = resp.json().get("active_faults", [])
         if not faults:
@@ -250,9 +245,7 @@ async def status_command(ack, command, say):
             ],
         }
         if KNOWLEDGE_COLLECTION_ID:
-            payload["files"] = [
-                {"type": "collection", "id": KNOWLEDGE_COLLECTION_ID}
-            ]
+            payload["files"] = [{"type": "collection", "id": KNOWLEDGE_COLLECTION_ID}]
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
                 f"{OPENWEBUI_BASE_URL}/api/chat/completions",

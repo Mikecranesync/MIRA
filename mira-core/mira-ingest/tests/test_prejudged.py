@@ -8,28 +8,30 @@ import pytest
 
 # Add paths before local imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+REPO_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 sys.path.insert(0, os.path.join(REPO_ROOT, "mira-bots"))
 
 from shared.benchmark_db import (  # noqa: E402
-    ensure_tables,
-    insert_prejudged_case,
-    list_prejudged_cases,
     count_prejudged_cases,
-    get_prejudged_case,
     create_prejudged_run,
+    ensure_tables,
     finish_prejudged_run,
+    get_prejudged_case,
     get_prejudged_run,
-    list_prejudged_runs,
+    insert_prejudged_case,
     insert_prejudged_conversation,
-    update_prejudged_judge_scores,
+    list_prejudged_cases,
     list_prejudged_conversations,
+    list_prejudged_runs,
+    update_prejudged_judge_scores,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path):
@@ -49,6 +51,7 @@ SAMPLE_GROUND_TRUTH = {
 # ---------------------------------------------------------------------------
 # 1. Insert + list prejudged cases
 # ---------------------------------------------------------------------------
+
 
 def test_insert_and_list_cases(isolated_db):
     cid = insert_prejudged_case(
@@ -73,15 +76,22 @@ def test_insert_and_list_cases(isolated_db):
 # 2. Duplicate source_id is skipped
 # ---------------------------------------------------------------------------
 
+
 def test_duplicate_source_id_skipped(isolated_db):
     insert_prejudged_case(
-        source="seed", source_id="dup-1", title="Case 1",
-        evidence_packet="test", ground_truth=SAMPLE_GROUND_TRUTH,
+        source="seed",
+        source_id="dup-1",
+        title="Case 1",
+        evidence_packet="test",
+        ground_truth=SAMPLE_GROUND_TRUTH,
         db_path=isolated_db,
     )
     dup_id = insert_prejudged_case(
-        source="seed", source_id="dup-1", title="Case 2",
-        evidence_packet="test2", ground_truth=SAMPLE_GROUND_TRUTH,
+        source="seed",
+        source_id="dup-1",
+        title="Case 2",
+        evidence_packet="test2",
+        ground_truth=SAMPLE_GROUND_TRUTH,
         db_path=isolated_db,
     )
     assert dup_id == -1
@@ -92,15 +102,22 @@ def test_duplicate_source_id_skipped(isolated_db):
 # 3. Count with source filter
 # ---------------------------------------------------------------------------
 
+
 def test_count_with_source_filter(isolated_db):
     insert_prejudged_case(
-        source="seed", source_id="s1", title="Seed case",
-        evidence_packet="test", ground_truth=SAMPLE_GROUND_TRUTH,
+        source="seed",
+        source_id="s1",
+        title="Seed case",
+        evidence_packet="test",
+        ground_truth=SAMPLE_GROUND_TRUTH,
         db_path=isolated_db,
     )
     insert_prejudged_case(
-        source="reddit_solved", source_id="r1", title="Reddit case",
-        evidence_packet="test", ground_truth=SAMPLE_GROUND_TRUTH,
+        source="reddit_solved",
+        source_id="r1",
+        title="Reddit case",
+        evidence_packet="test",
+        ground_truth=SAMPLE_GROUND_TRUTH,
         db_path=isolated_db,
     )
     assert count_prejudged_cases(db_path=isolated_db) == 2
@@ -112,10 +129,14 @@ def test_count_with_source_filter(isolated_db):
 # 4. Get single case
 # ---------------------------------------------------------------------------
 
+
 def test_get_prejudged_case(isolated_db):
     cid = insert_prejudged_case(
-        source="seed", source_id="get-1", title="Test get",
-        evidence_packet="evidence", ground_truth=SAMPLE_GROUND_TRUTH,
+        source="seed",
+        source_id="get-1",
+        title="Test get",
+        evidence_packet="evidence",
+        ground_truth=SAMPLE_GROUND_TRUTH,
         db_path=isolated_db,
     )
     case = get_prejudged_case(cid, isolated_db)
@@ -132,10 +153,14 @@ def test_get_prejudged_case(isolated_db):
 # 5. Ground truth stored as JSON string
 # ---------------------------------------------------------------------------
 
+
 def test_ground_truth_json_storage(isolated_db):
     cid = insert_prejudged_case(
-        source="seed", source_id="gt-1", title="GT test",
-        evidence_packet="test", ground_truth=SAMPLE_GROUND_TRUTH,
+        source="seed",
+        source_id="gt-1",
+        title="GT test",
+        evidence_packet="test",
+        ground_truth=SAMPLE_GROUND_TRUTH,
         db_path=isolated_db,
     )
     case = get_prejudged_case(cid, isolated_db)
@@ -149,9 +174,11 @@ def test_ground_truth_json_storage(isolated_db):
 # 6. Prejudged run lifecycle
 # ---------------------------------------------------------------------------
 
+
 def test_prejudged_run_lifecycle(isolated_db):
     run_id = create_prejudged_run(
-        metadata={"test": True}, db_path=isolated_db,
+        metadata={"test": True},
+        db_path=isolated_db,
     )
     assert run_id > 0
 
@@ -169,6 +196,7 @@ def test_prejudged_run_lifecycle(isolated_db):
 # 7. List runs
 # ---------------------------------------------------------------------------
 
+
 def test_list_prejudged_runs(isolated_db):
     create_prejudged_run(db_path=isolated_db)
     create_prejudged_run(db_path=isolated_db)
@@ -180,10 +208,14 @@ def test_list_prejudged_runs(isolated_db):
 # 8. Insert conversation + update scores
 # ---------------------------------------------------------------------------
 
+
 def test_insert_conversation_and_scores(isolated_db):
     cid = insert_prejudged_case(
-        source="seed", source_id="conv-1", title="Conv test",
-        evidence_packet="test", ground_truth=SAMPLE_GROUND_TRUTH,
+        source="seed",
+        source_id="conv-1",
+        title="Conv test",
+        evidence_packet="test",
+        ground_truth=SAMPLE_GROUND_TRUTH,
         db_path=isolated_db,
     )
     run_id = create_prejudged_run(db_path=isolated_db)
@@ -233,16 +265,23 @@ def test_insert_conversation_and_scores(isolated_db):
 # 9. Composite score calculation
 # ---------------------------------------------------------------------------
 
+
 def test_composite_score_calculation(isolated_db):
     cid = insert_prejudged_case(
-        source="seed", source_id="comp-1", title="Composite test",
-        evidence_packet="test", ground_truth=SAMPLE_GROUND_TRUTH,
+        source="seed",
+        source_id="comp-1",
+        title="Composite test",
+        evidence_packet="test",
+        ground_truth=SAMPLE_GROUND_TRUTH,
         db_path=isolated_db,
     )
     run_id = create_prejudged_run(db_path=isolated_db)
     conv_id = insert_prejudged_conversation(
-        run_id=run_id, case_id=cid, transcript=[],
-        turn_count=3, reached_diagnosis=True,
+        run_id=run_id,
+        case_id=cid,
+        transcript=[],
+        turn_count=3,
+        reached_diagnosis=True,
         db_path=isolated_db,
     )
 
@@ -268,10 +307,14 @@ def test_composite_score_calculation(isolated_db):
 # 10. Transcript stored as JSON array
 # ---------------------------------------------------------------------------
 
+
 def test_transcript_json_storage(isolated_db):
     cid = insert_prejudged_case(
-        source="seed", source_id="tx-1", title="Transcript test",
-        evidence_packet="test", ground_truth=SAMPLE_GROUND_TRUTH,
+        source="seed",
+        source_id="tx-1",
+        title="Transcript test",
+        evidence_packet="test",
+        ground_truth=SAMPLE_GROUND_TRUTH,
         db_path=isolated_db,
     )
     run_id = create_prejudged_run(db_path=isolated_db)
@@ -279,9 +322,12 @@ def test_transcript_json_storage(isolated_db):
         {"role": "mira", "content": "hello", "state": "IDLE"},
         {"role": "technician", "content": "hi"},
     ]
-    conv_id = insert_prejudged_conversation(
-        run_id=run_id, case_id=cid, transcript=transcript,
-        turn_count=1, reached_diagnosis=False,
+    insert_prejudged_conversation(
+        run_id=run_id,
+        case_id=cid,
+        transcript=transcript,
+        turn_count=1,
+        reached_diagnosis=False,
         db_path=isolated_db,
     )
 
@@ -296,6 +342,7 @@ def test_transcript_json_storage(isolated_db):
 # ---------------------------------------------------------------------------
 # 11. Seed cases file parsing
 # ---------------------------------------------------------------------------
+
 
 def test_seed_cases_file_valid():
     """Verify seed_cases.json is valid and has expected structure."""
@@ -326,6 +373,7 @@ def test_seed_cases_file_valid():
 # 12. Verdict thresholds
 # ---------------------------------------------------------------------------
 
+
 def test_verdict_thresholds():
     """Verify verdict computation logic matches spec."""
     # Import from the benchmark runner
@@ -349,10 +397,14 @@ def test_verdict_thresholds():
 # 13. Error conversation record
 # ---------------------------------------------------------------------------
 
+
 def test_error_conversation_record(isolated_db):
     cid = insert_prejudged_case(
-        source="seed", source_id="err-1", title="Error test",
-        evidence_packet="test", ground_truth=SAMPLE_GROUND_TRUTH,
+        source="seed",
+        source_id="err-1",
+        title="Error test",
+        evidence_packet="test",
+        ground_truth=SAMPLE_GROUND_TRUTH,
         db_path=isolated_db,
     )
     run_id = create_prejudged_run(db_path=isolated_db)

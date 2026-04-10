@@ -49,11 +49,12 @@ HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
 
 
-def format_diagnostic_response(equipment_id: str, key_observation: str,
-                                question: str, options: list) -> str:
+def format_diagnostic_response(
+    equipment_id: str, key_observation: str, question: str, options: list
+) -> str:
     """Format a structured diagnostic reply with equipment header and options."""
     header = f"📷 {equipment_id} — {key_observation}"
-    opts = "\n".join(f"{i+1}. {opt}" for i, opt in enumerate(options))
+    opts = "\n".join(f"{i + 1}. {opt}" for i, opt in enumerate(options))
     return f"{header}\n\n{question}\n{opts}"
 
 
@@ -62,7 +63,7 @@ def deduplicate_options(reply_text: str, keyboard_options: list) -> str:
     if not keyboard_options:
         return reply_text
     for opt in keyboard_options:
-        reply_text = re.sub(rf'\n\d+\.\s+{re.escape(opt)}', '', reply_text)
+        reply_text = re.sub(rf"\n\d+\.\s+{re.escape(opt)}", "", reply_text)
     return reply_text.strip()
 
 
@@ -89,9 +90,14 @@ class Supervisor:
 
         # Initialize workers
         self.vision = VisionWorker(openwebui_url, api_key, vision_model)
-        self.rag = RAGWorker(openwebui_url, api_key, collection_id,
-                             nemotron=self.nemotron, router=self.router,
-                             tenant_id=tenant_id)
+        self.rag = RAGWorker(
+            openwebui_url,
+            api_key,
+            collection_id,
+            nemotron=self.nemotron,
+            router=self.router,
+            tenant_id=tenant_id,
+        )
         self.print_ = PrintWorker(openwebui_url, api_key)
         self.plc = PLCWorker()
 
@@ -104,6 +110,7 @@ class Supervisor:
     def _save_session_photo(self, chat_id: str, photo_b64: str) -> str:
         """Save session photo to disk. Returns the file path."""
         import base64
+
         photos_dir = os.path.join(os.path.dirname(self.db_path), "session_photos")
         os.makedirs(photos_dir, exist_ok=True)
         path = os.path.join(photos_dir, f"{chat_id}.jpg")
@@ -115,6 +122,7 @@ class Supervisor:
     def _load_session_photo(self, chat_id: str) -> str | None:
         """Load session photo as base64 if it exists and is within turn limit."""
         import base64
+
         path = os.path.join(os.path.dirname(self.db_path), "session_photos", f"{chat_id}.jpg")
         if not os.path.exists(path):
             return None
@@ -146,9 +154,21 @@ class Supervisor:
         else:
             quality = f"Good read — {n} labels extracted."
 
-        chrome = ["ask copilot", "sharepoint", "file c:/", "c:\\", ".exe", ".dll", "microsoft", "adobe"]
-        artifact_note = " (some labels may be screen UI, not drawing content)" \
-            if any(p in " ".join(items_list).lower() for p in chrome) else ""
+        chrome = [
+            "ask copilot",
+            "sharepoint",
+            "file c:/",
+            "c:\\",
+            ".exe",
+            ".dll",
+            "microsoft",
+            "adobe",
+        ]
+        artifact_note = (
+            " (some labels may be screen UI, not drawing content)"
+            if any(p in " ".join(items_list).lower() for p in chrome)
+            else ""
+        )
 
         prompts = {
             "ladder logic diagram": "Describe a fault symptom or ask what a specific rung does.",
@@ -161,10 +181,18 @@ class Supervisor:
         preview = ", ".join(items_list[:8]) if items_list else "(no text extracted)"
 
         # Rule 14: proactively surface fault states visible in OCR — do not wait for the tech to ask
-        _FAULT_KEYWORDS = ("stopped", "fault", "alarm", "error", "trip", "warning", "faulted", "tripped")
+        _FAULT_KEYWORDS = (
+            "stopped",
+            "fault",
+            "alarm",
+            "error",
+            "trip",
+            "warning",
+            "faulted",
+            "tripped",
+        )
         fault_items = [
-            item for item in items_list
-            if any(kw in item.lower() for kw in _FAULT_KEYWORDS)
+            item for item in items_list if any(kw in item.lower() for kw in _FAULT_KEYWORDS)
         ]
         if fault_items:
             # Use fault items as preview to save words
@@ -225,15 +253,21 @@ class Supervisor:
     # ------------------------------------------------------------------
 
     async def process(
-        self, chat_id: str, message: str, photo_b64: str = None,
-        *, platform: str = "telegram",
+        self,
+        chat_id: str,
+        message: str,
+        photo_b64: str = None,
+        *,
+        platform: str = "telegram",
     ) -> str:
         """Main entry point. Returns reply string (backward-compatible)."""
         t0 = time.monotonic()
         result = await self.process_full(chat_id, message, photo_b64)
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         self._log_interaction(
-            chat_id, message, result["reply"],
+            chat_id,
+            message,
+            result["reply"],
             fsm_state=result.get("next_state", ""),
             confidence=result.get("confidence", ""),
             has_photo=bool(photo_b64),
@@ -243,7 +277,10 @@ class Supervisor:
         return result["reply"]
 
     async def process_full(
-        self, chat_id: str, message: str, photo_b64: str = None,
+        self,
+        chat_id: str,
+        message: str,
+        photo_b64: str = None,
     ) -> dict:
         """Full entry point. Returns {"reply", "confidence", "trace_id", "next_state"}.
 
@@ -269,7 +306,8 @@ class Supervisor:
                 if _session_photo:
                     logger.info(
                         "Session photo loaded for turn %d (photo at turn %d, %d turns ago)",
-                        state["exchange_count"], photo_turn,
+                        state["exchange_count"],
+                        photo_turn,
                         state["exchange_count"] - photo_turn,
                     )
             elif photo_turn > 0:
@@ -284,7 +322,10 @@ class Supervisor:
             sc = state.get("context", {}).get("session_context", {})
             if detect_session_followup(message, sc, state["state"]):
                 return await self._handle_session_followup(
-                    message, state, chat_id, session_photo=_session_photo,
+                    message,
+                    state,
+                    chat_id,
+                    session_photo=_session_photo,
                 )
 
             # Option selection resolution: expand "1" → full option text
@@ -305,11 +346,7 @@ class Supervisor:
                 tl_flush()
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
-        if (
-            not photo_b64
-            and state["state"] == "IDLE"
-            and state["exchange_count"] == 0
-        ):
+        if not photo_b64 and state["state"] == "IDLE" and state["exchange_count"] == 0:
             if intent == "help":
                 reply = (
                     "I help maintenance technicians diagnose equipment issues. "
@@ -346,7 +383,9 @@ class Supervisor:
                         "I can see something but the photo is too dark or blurry for a "
                         "reliable diagnosis. Can you send a clearer photo — ideally with "
                         "the nameplate or fault display visible?",
-                        "low", trace_id, state["state"],
+                        "low",
+                        trace_id,
+                        state["state"],
                     )
 
             ctx = state.get("context") or {}
@@ -370,9 +409,7 @@ class Supervisor:
                     message = f"[Photo answering: {last_q}]"
                 elif last_q:
                     message = f"[Photo answering: {last_q}] {message}"
-                logger.info(
-                    "Photo-as-answer in %s: %s", state["state"], message[:100]
-                )
+                logger.info("Photo-as-answer in %s: %s", state["state"], message[:100])
                 # Fall through to RAG — preserve state and session_context
 
             elif vision_data["classification"] == "ELECTRICAL_PRINT":
@@ -390,7 +427,10 @@ class Supervisor:
                 self._save_state(chat_id, state)
                 tl_flush()
                 return self._make_result(
-                    reply, self._infer_confidence(reply), trace_id, "ELECTRICAL_PRINT",
+                    reply,
+                    self._infer_confidence(reply),
+                    trace_id,
+                    "ELECTRICAL_PRINT",
                 )
             else:
                 state["state"] = "ASSET_IDENTIFIED"
@@ -429,32 +469,55 @@ class Supervisor:
             formatted = self._format_reply(parsed)
             tl_flush()
             return self._make_result(
-                formatted, self._infer_confidence(formatted), trace_id, "ELECTRICAL_PRINT",
+                formatted,
+                self._infer_confidence(formatted),
+                trace_id,
+                "ELECTRICAL_PRINT",
             )
 
         # Photo with no specific intent → check for visible fault indicators first
         # (Skip for photo-as-answer: active session photos go straight to RAG)
-        if photo_b64 and not _photo_continues_session and not any(kw in message.lower() for kw in INTENT_KEYWORDS):
+        if (
+            photo_b64
+            and not _photo_continues_session
+            and not any(kw in message.lower() for kw in INTENT_KEYWORDS)
+        ):
             # Check OCR + vision for fault indicators on equipment faceplates
             ctx = state.get("context") or {}
             ocr_items = ctx.get("ocr_items", [])
             ocr_text = " ".join(ocr_items).lower()
             vision_text = state.get("asset_identified", "").lower()
             _FAULT_INDICATORS = (
-                "fault", "alarm", "error", "trip", "tripped", "faulted",
-                "overload", "overcurrent", "overvoltage", "warning",
-                "stopped", "off", "fail", "run fault",
+                "fault",
+                "alarm",
+                "error",
+                "trip",
+                "tripped",
+                "faulted",
+                "overload",
+                "overcurrent",
+                "overvoltage",
+                "warning",
+                "stopped",
+                "off",
+                "fail",
+                "run fault",
             )
-            has_fault_indicators = any(kw in ocr_text or kw in vision_text for kw in _FAULT_INDICATORS)
+            has_fault_indicators = any(
+                kw in ocr_text or kw in vision_text for kw in _FAULT_INDICATORS
+            )
 
             if has_fault_indicators:
                 # Auto-diagnose: inject fault context into message and route to RAG
                 asset = state.get("asset_identified", "this equipment")
                 fault_items = [
-                    item for item in ocr_items
+                    item
+                    for item in ocr_items
                     if any(kw in item.lower() for kw in _FAULT_INDICATORS)
                 ]
-                fault_summary = ", ".join(fault_items[:5]) if fault_items else "fault indicator visible"
+                fault_summary = (
+                    ", ".join(fault_items[:5]) if fault_items else "fault indicator visible"
+                )
                 message = (
                     f"[Equipment photo: {asset}] "
                     f"Visible indicators: {fault_summary}. "
@@ -492,7 +555,9 @@ class Supervisor:
         effective_photo = photo_b64 or _session_photo
         with tl_span(t, "rag_worker"):
             raw, parsed = await self._call_with_correction(
-                message, state, effective_photo,
+                message,
+                state,
+                effective_photo,
             )
         if raw is None:
             self._save_state(chat_id, state)
@@ -501,16 +566,16 @@ class Supervisor:
 
         # Output guardrails
         intent = classify_intent(message)
-        parsed["reply"] = check_output(
-            parsed["reply"], intent, has_photo=bool(photo_b64)
-        )
+        parsed["reply"] = check_output(parsed["reply"], intent, has_photo=bool(photo_b64))
 
         # Photo device-name guardrail: ensure identified device + fault appear in reply
         if photo_b64 and state.get("asset_identified"):
             asset = state["asset_identified"]
             # Extract first two meaningful segments (strip "Manufacturer:" labels)
-            parts = [p.strip().replace("Manufacturer:", "").replace("Model:", "").strip()
-                     for p in asset.split(",")[:2]]
+            parts = [
+                p.strip().replace("Manufacturer:", "").replace("Model:", "").strip()
+                for p in asset.split(",")[:2]
+            ]
             asset_key = ", ".join(p for p in parts if p)
             if asset_key and asset_key.lower() not in parsed["reply"].lower():
                 # Include fault caption to anchor fault-cause keywords in reply
@@ -555,16 +620,16 @@ class Supervisor:
         self._clear_session_photo(chat_id)
         db = sqlite3.connect(self.db_path)
         db.execute("PRAGMA journal_mode=WAL")
-        db.execute(
-            "DELETE FROM conversation_state WHERE chat_id = ?", (chat_id,)
-        )
+        db.execute("DELETE FROM conversation_state WHERE chat_id = ?", (chat_id,))
         db.commit()
         db.close()
 
     def log_feedback(self, chat_id: str, feedback: str, reason: str = "") -> None:
         state = self._load_state(chat_id)
         history = state.get("context", {}).get("history", [])
-        last_reply = next((e["content"] for e in reversed(history) if e.get("role") == "assistant"), "")
+        last_reply = next(
+            (e["content"] for e in reversed(history) if e.get("role") == "assistant"), ""
+        )
         db = sqlite3.connect(self.db_path)
         db.execute("PRAGMA journal_mode=WAL")
         db.execute(
@@ -580,7 +645,10 @@ class Supervisor:
     # ------------------------------------------------------------------
 
     async def _call_with_correction(
-        self, message: str, state: dict, photo_b64: str = None,
+        self,
+        message: str,
+        state: dict,
+        photo_b64: str = None,
     ) -> tuple:
         """Call RAG worker with self-corrective retry.
 
@@ -594,7 +662,9 @@ class Supervisor:
         for attempt in range(max_attempts):
             try:
                 raw = await self.rag.process(
-                    query, state, photo_b64=photo_b64,
+                    query,
+                    state,
+                    photo_b64=photo_b64,
                     vision_model=self.vision_model,
                 )
             except Exception as e:
@@ -618,7 +688,10 @@ class Supervisor:
         return raw, parsed
 
     async def _handle_session_followup(
-        self, message: str, state: dict, chat_id: str,
+        self,
+        message: str,
+        state: dict,
+        chat_id: str,
         session_photo: str = None,
     ) -> dict:
         """Route a session follow-up through the RAG pipeline without intent filtering.
@@ -631,7 +704,9 @@ class Supervisor:
             return self._make_result(parsed["reply"], "none", None, state["state"])
 
         parsed["reply"] = check_output(
-            parsed["reply"], "industrial", has_photo=bool(session_photo),
+            parsed["reply"],
+            "industrial",
+            has_photo=bool(session_photo),
         )
         state = self._advance_state(state, parsed)
 
@@ -653,22 +728,116 @@ class Supervisor:
         self._save_state(chat_id, state)
         formatted = self._format_reply(parsed)
         return self._make_result(
-            formatted, self._infer_confidence(formatted), None, state["state"],
+            formatted,
+            self._infer_confidence(formatted),
+            None,
+            state["state"],
         )
 
-    _STOP_WORDS = frozenset({
-        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "can", "shall", "to", "of", "in", "for",
-        "on", "with", "at", "by", "from", "as", "into", "through", "during",
-        "before", "after", "and", "but", "or", "nor", "not", "so", "yet",
-        "both", "either", "neither", "each", "every", "all", "any", "few",
-        "more", "most", "other", "some", "such", "no", "only", "own", "same",
-        "than", "too", "very", "just", "about", "above", "below", "between",
-        "it", "its", "this", "that", "these", "those", "i", "you", "he", "she",
-        "we", "they", "me", "him", "her", "us", "them", "my", "your", "his",
-        "our", "their", "if", "then", "else", "when", "up", "out", "off",
-    })
+    _STOP_WORDS = frozenset(
+        {
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "shall",
+            "to",
+            "of",
+            "in",
+            "for",
+            "on",
+            "with",
+            "at",
+            "by",
+            "from",
+            "as",
+            "into",
+            "through",
+            "during",
+            "before",
+            "after",
+            "and",
+            "but",
+            "or",
+            "nor",
+            "not",
+            "so",
+            "yet",
+            "both",
+            "either",
+            "neither",
+            "each",
+            "every",
+            "all",
+            "any",
+            "few",
+            "more",
+            "most",
+            "other",
+            "some",
+            "such",
+            "no",
+            "only",
+            "own",
+            "same",
+            "than",
+            "too",
+            "very",
+            "just",
+            "about",
+            "above",
+            "below",
+            "between",
+            "it",
+            "its",
+            "this",
+            "that",
+            "these",
+            "those",
+            "i",
+            "you",
+            "he",
+            "she",
+            "we",
+            "they",
+            "me",
+            "him",
+            "her",
+            "us",
+            "them",
+            "my",
+            "your",
+            "his",
+            "our",
+            "their",
+            "if",
+            "then",
+            "else",
+            "when",
+            "up",
+            "out",
+            "off",
+        }
+    )
 
     def _is_grounded(self, parsed: dict, sources: list[str]) -> bool:
         """Check if response appears grounded in retrieved sources."""
@@ -689,7 +858,9 @@ class Supervisor:
                 return True
 
         if not self._is_grounded.__dict__.get("_warned", False):
-            logger.warning("Response may not be grounded in sources (<%d significant word overlap)", 5)
+            logger.warning(
+                "Response may not be grounded in sources (<%d significant word overlap)", 5
+            )
         return False
 
     # ------------------------------------------------------------------
@@ -816,9 +987,17 @@ class Supervisor:
         self._save_state(chat_id, state)
 
     def _log_interaction(
-        self, chat_id: str, message: str, reply: str,
-        *, fsm_state: str = "", intent: str = "", has_photo: bool = False,
-        confidence: str = "", response_time_ms: int = 0, platform: str = "telegram",
+        self,
+        chat_id: str,
+        message: str,
+        reply: str,
+        *,
+        fsm_state: str = "",
+        intent: str = "",
+        has_photo: bool = False,
+        confidence: str = "",
+        response_time_ms: int = 0,
+        platform: str = "telegram",
     ):
         """Append-only log of every user/bot exchange for quality analysis."""
         try:
@@ -829,8 +1008,17 @@ class Supervisor:
                    (chat_id, platform, user_message, bot_response, fsm_state,
                     intent, has_photo, confidence, response_time_ms)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (chat_id, platform, message, reply, fsm_state,
-                 intent, int(has_photo), confidence, response_time_ms),
+                (
+                    chat_id,
+                    platform,
+                    message,
+                    reply,
+                    fsm_state,
+                    intent,
+                    int(has_photo),
+                    confidence,
+                    response_time_ms,
+                ),
             )
             db.commit()
             db.close()
@@ -881,7 +1069,7 @@ class Supervisor:
         if brace_idx >= 0:
             close_idx = clean.rfind("}")
             if close_idx > brace_idx:
-                clean = (clean[:brace_idx] + clean[close_idx + 1:]).strip()
+                clean = (clean[:brace_idx] + clean[close_idx + 1 :]).strip()
         if not clean:
             clean = raw_stripped
         logger.warning("_parse_response fallback; raw=%r", raw_stripped[:200])
@@ -933,7 +1121,9 @@ class Supervisor:
             else:
                 logger.warning(
                     "Invalid FSM state '%s' from LLM (current: %s) — holding at %s",
-                    proposed, current, current,
+                    proposed,
+                    current,
+                    current,
                 )
         else:
             if current == "ASSET_IDENTIFIED":
@@ -948,11 +1138,16 @@ class Supervisor:
 
         if not state.get("fault_category"):
             for cat in (
-                "comms", "communication",
-                "power", "electrical",
-                "mechanical", "vibration",
-                "thermal", "temperature",
-                "hydraulic", "pressure",
+                "comms",
+                "communication",
+                "power",
+                "electrical",
+                "mechanical",
+                "vibration",
+                "thermal",
+                "temperature",
+                "hydraulic",
+                "pressure",
             ):
                 if cat in reply_lower:
                     normalized = {
@@ -975,7 +1170,5 @@ class Supervisor:
         meaningful = [o for o in options if len(str(o).strip()) > 2]
         if meaningful and len(meaningful) >= 2:
             reply = deduplicate_options(reply, meaningful)
-            reply += "\n\n" + "\n".join(
-                f"{i + 1}. {opt}" for i, opt in enumerate(meaningful)
-            )
+            reply += "\n\n" + "\n".join(f"{i + 1}. {opt}" for i, opt in enumerate(meaningful))
         return reply
