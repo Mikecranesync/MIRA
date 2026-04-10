@@ -4,8 +4,6 @@ import io
 import os
 import sys
 
-import pytest
-
 # Set dummy env vars for bot.py import
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "dummy-token-for-testing")
 os.environ.setdefault("OPENWEBUI_BASE_URL",
@@ -22,20 +20,19 @@ from bot import _resize_for_vision
 from PIL import Image
 
 
-@pytest.mark.skip(
-    reason="Stale — _resize_for_vision() was retuned to MAX_VISION_PX=1024 "
-    "(see mira-bots/telegram/bot.py:97). Assertion still pins the old 512 "
-    "cap. Skipped to unblock CI as part of the style cleanup; real fix "
-    "updates the assertion to match the current 1024 target."
-)
-def test_large_image_resized_to_512():
-    """1920x1080 image should be downscaled so max side <= 512."""
+def test_large_image_resized_to_vision_max_px():
+    """1920x1080 image should be downscaled so max side <= MAX_VISION_PX.
+
+    Value tracks the MAX_VISION_PX env var (default 1024, see
+    mira-bots/telegram/bot.py:_resize_for_vision).
+    """
+    max_px = int(os.environ.get("MAX_VISION_PX", "1024"))
     img = Image.new("RGB", (1920, 1080), (128, 128, 128))
     buf = io.BytesIO()
     img.save(buf, "JPEG")
     result = _resize_for_vision(buf.getvalue())
     out = Image.open(io.BytesIO(result))
-    assert max(out.size) <= 512
+    assert max(out.size) <= max_px
 
 
 def test_small_image_unchanged():
