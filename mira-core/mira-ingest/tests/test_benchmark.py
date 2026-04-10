@@ -223,6 +223,8 @@ def test_harvest_parses_json_and_filters(isolated_db):
                     "data": {
                         "id": "post1",
                         "title": "How do I troubleshoot a VFD fault code?",
+                        "selftext": "My PowerFlex 525 throws F004 on every startup.",
+                        "is_self": True,
                         "score": 25,
                         "permalink": "/r/PLC/comments/post1/how_do_i/",
                     }
@@ -231,6 +233,8 @@ def test_harvest_parses_json_and_filters(isolated_db):
                     "data": {
                         "id": "post2",
                         "title": "Check out my new workshop",
+                        "selftext": "Just built it last weekend.",
+                        "is_self": True,
                         "score": 100,
                         "permalink": "/r/PLC/comments/post2/check_out/",
                     }
@@ -239,6 +243,8 @@ def test_harvest_parses_json_and_filters(isolated_db):
                     "data": {
                         "id": "post3",
                         "title": "Motor keeps tripping on startup?",
+                        "selftext": "3-phase 5hp, trips thermal overload within seconds.",
+                        "is_self": True,
                         "score": 12,
                         "permalink": "/r/PLC/comments/post3/motor_keeps/",
                     }

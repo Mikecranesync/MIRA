@@ -12,6 +12,7 @@ os.environ.setdefault("OPENWEBUI_API_KEY", "")
 os.environ.setdefault("KNOWLEDGE_COLLECTION_ID", "dummy-collection")
 os.environ.setdefault("VISION_MODEL", "qwen2.5vl:7b")
 os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira_test.db")
+os.environ.setdefault("MAX_VISION_PX", "512")  # test was written against 512 default
 
 # Allow importing from telegram/ directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
