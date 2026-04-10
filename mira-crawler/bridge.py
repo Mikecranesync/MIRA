@@ -58,7 +58,7 @@ TASK_REGISTRY: dict[str, tuple[str, str]] = {
     "patents": ("tasks.patents", "scrape_patents"),
     "gdrive": ("tasks.gdrive", "sync_google_drive"),
     "freshness": ("tasks.freshness", "audit_stale_content"),
-    "photos": ("tasks.foundational", "ingest_foundational_kb"),
+    "photos": ("tasks.foundational", "ingest_equipment_photos"),
     "report": ("tasks.report", "generate_ingest_report"),
 }
 

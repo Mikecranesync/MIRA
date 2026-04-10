@@ -232,3 +232,24 @@ def ingest_foundational_kb():
         "apify_queued": queued_apify,
         "total_targets": len(DIRECT_TARGETS) + len(APIFY_TARGETS),
     }
+
+
+@app.task
+def ingest_equipment_photos() -> dict:
+    """Placeholder task for monthly equipment photo ingest.
+
+    The full photo ingest pipeline lives in mira-core/scripts/ingest_equipment_photos.py
+    and processes the 3,694 confirmed equipment photos on Bravo. Wiring that script
+    into Celery requires access to the NeonDB writer and the Claude vision pipeline —
+    tracked separately. This stub allows Trigger.dev's monthly `monthly-photos` cron to
+    have a valid target until the real implementation lands.
+
+    Returns:
+        A status dict with `status`, `task`, and a pointer to the real script.
+    """
+    logger.info("ingest_equipment_photos called — not yet implemented (returning stub)")
+    return {
+        "status": "not_implemented",
+        "task": "ingest_equipment_photos",
+        "note": "See mira-core/scripts/ingest_equipment_photos.py for the real pipeline",
+    }

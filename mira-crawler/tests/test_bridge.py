@@ -304,6 +304,16 @@ class TestTaskRegistry:
             assert isinstance(module_path, str) and module_path, f"{name}: empty module_path"
             assert isinstance(func_name, str) and func_name, f"{name}: empty func_name"
 
+    def test_photos_route_points_to_correct_task(self) -> None:
+        """photos route must target ingest_equipment_photos, not ingest_foundational_kb."""
+        import importlib
+
+        import bridge as bridge_mod
+
+        importlib.reload(bridge_mod)
+
+        assert bridge_mod.TASK_REGISTRY["photos"] == ("tasks.foundational", "ingest_equipment_photos")
+
 
 # ---------------------------------------------------------------------------
 # C1: hmac.compare_digest auth check
