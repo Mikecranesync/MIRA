@@ -348,6 +348,7 @@ if __name__ == "__main__":
         if not emails or not isinstance(emails, list):
             return JSONResponse({"error": "emails array required"}, status_code=400)
         from atlas_client import invite_users
+
         return JSONResponse(await invite_users(emails, role_id))
 
     async def rest_cmms_health(request):

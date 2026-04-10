@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Make telegram/ importable without installing the package
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
+# Make shared/ importable without installing the package
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "shared"))
 
 import tts
 

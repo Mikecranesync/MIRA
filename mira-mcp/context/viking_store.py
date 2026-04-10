@@ -6,7 +6,6 @@ unavailable, requiring zero additional dependencies beyond stdlib.
 
 import json
 import logging
-import math
 import os
 import sqlite3
 
@@ -16,6 +15,7 @@ VIKING_STORE_PATH = os.environ.get("VIKING_STORE_PATH", "/mira-db/viking")
 
 try:
     import openviking
+
     _USE_OPENVIKING = True
     logger.info("OpenViking backend active (v%s)", getattr(openviking, "__version__", "?"))
 except ImportError:
@@ -26,6 +26,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Fallback: sqlite keyword-cosine store (stdlib only)
 # ---------------------------------------------------------------------------
+
 
 def _fallback_db_path() -> str:
     os.makedirs(VIKING_STORE_PATH, exist_ok=True)
@@ -60,6 +61,7 @@ def _term_score(query: str, content: str) -> float:
 # Public interface
 # ---------------------------------------------------------------------------
 
+
 def ingest_text(text: str, store_key: str, metadata: dict = None) -> int:
     """Store a text chunk under store_key. Returns row id."""
     meta = metadata or {}
@@ -89,6 +91,7 @@ def ingest_pdf(path: str, tenant_id: str, equipment_type: str) -> int:
     store_key = f"viking://{tenant_id}/equipment/{equipment_type}"
     try:
         import pdfplumber
+
         pages = []
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
@@ -101,12 +104,16 @@ def ingest_pdf(path: str, tenant_id: str, equipment_type: str) -> int:
 
     count = 0
     for i, chunk in enumerate(pages):
-        ingest_text(chunk, store_key, metadata={
-            "source": os.path.basename(path),
-            "tenant_id": tenant_id,
-            "equipment_type": equipment_type,
-            "page": i,
-        })
+        ingest_text(
+            chunk,
+            store_key,
+            metadata={
+                "source": os.path.basename(path),
+                "tenant_id": tenant_id,
+                "equipment_type": equipment_type,
+                "page": i,
+            },
+        )
         count += 1
     logger.info("Ingested %d chunks from %s → %s", count, path, store_key)
     return count
@@ -123,8 +130,7 @@ def retrieve(query: str, tenant_id: str, top_k: int = 5) -> list[dict]:
         try:
             store = openviking.open(store_key, create=False)
             results = store.search(query, top_k=top_k)
-            return [{"content": r.text, "score": r.score, "metadata": r.metadata}
-                    for r in results]
+            return [{"content": r.text, "score": r.score, "metadata": r.metadata} for r in results]
         except Exception as e:
             logger.warning("openviking.search failed: %s — falling back to sqlite", e)
 
@@ -143,10 +149,12 @@ def retrieve(query: str, tenant_id: str, top_k: int = 5) -> list[dict]:
     scored = []
     for row in rows:
         score = _term_score(query, row["content"])
-        scored.append({
-            "content": row["content"],
-            "score": round(score, 4),
-            "metadata": json.loads(row["metadata"]),
-        })
+        scored.append(
+            {
+                "content": row["content"],
+                "score": round(score, 4),
+                "metadata": json.loads(row["metadata"]),
+            }
+        )
     scored.sort(key=lambda x: x["score"], reverse=True)
     return scored[:top_k]

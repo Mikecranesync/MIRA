@@ -53,13 +53,15 @@ def get_langfuse():
         return None
 
     secret_key = os.environ.get("LANGFUSE_SECRET_KEY", "")
-    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY") or os.environ.get("LANGFUSE_PUBLIC_API_KEY", "")
-    host = os.environ.get("LANGFUSE_HOST") or os.environ.get("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
+    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY") or os.environ.get(
+        "LANGFUSE_PUBLIC_API_KEY", ""
+    )
+    host = os.environ.get("LANGFUSE_HOST") or os.environ.get(
+        "LANGFUSE_BASE_URL", "https://cloud.langfuse.com"
+    )
 
     if not secret_key or not public_key:
-        logger.warning(
-            "LANGFUSE_SECRET_KEY / LANGFUSE_PUBLIC_KEY not set — tracing disabled"
-        )
+        logger.warning("LANGFUSE_SECRET_KEY / LANGFUSE_PUBLIC_KEY not set — tracing disabled")
         return None
 
     try:
@@ -112,8 +114,9 @@ class _SpanHelper:
                     logger.debug("embed_query span end failed: %s", exc)
 
     @contextlib.asynccontextmanager
-    async def vector_search(self, query: str, chunk_ids: list[str] = None,
-                            scores: list[float] = None):
+    async def vector_search(
+        self, query: str, chunk_ids: list[str] = None, scores: list[float] = None
+    ):
         """span: vector_search
         input  — query string passed to retrieval
         output — list of retrieved chunk IDs and similarity scores
@@ -136,17 +139,18 @@ class _SpanHelper:
                 try:
                     results = []
                     for i, cid in enumerate(chunk_ids or []):
-                        results.append({
-                            "chunk_id": cid,
-                            "score": scores[i] if scores and i < len(scores) else None,
-                        })
+                        results.append(
+                            {
+                                "chunk_id": cid,
+                                "score": scores[i] if scores and i < len(scores) else None,
+                            }
+                        )
                     span.end(output={"retrieved": results, "count": len(results)})
                 except Exception as exc:
                     logger.debug("vector_search span end failed: %s", exc)
 
     @contextlib.asynccontextmanager
-    async def context_compose(self, chunk_ids: list[str] = None,
-                               context: str = ""):
+    async def context_compose(self, chunk_ids: list[str] = None, context: str = ""):
         """span: context_compose
         input  — chunk IDs used to compose context
         output — composed context string (first 500 chars)
@@ -172,8 +176,9 @@ class _SpanHelper:
                     logger.debug("context_compose span end failed: %s", exc)
 
     @contextlib.asynccontextmanager
-    async def llm_inference(self, prompt_token_estimate: int = 0,
-                             response: str = "", latency_ms: int = 0):
+    async def llm_inference(
+        self, prompt_token_estimate: int = 0, response: str = "", latency_ms: int = 0
+    ):
         """span: llm_inference
         input  — full prompt length in tokens (estimated)
         output — response text and latency_ms
@@ -196,17 +201,18 @@ class _SpanHelper:
             if span is not None:
                 try:
                     elapsed = latency_ms or int((time.monotonic() - t0) * 1000)
-                    span.end(output={
-                        "response_preview": response[:200],
-                        "latency_ms": elapsed,
-                    })
+                    span.end(
+                        output={
+                            "response_preview": response[:200],
+                            "latency_ms": elapsed,
+                        }
+                    )
                 except Exception as exc:
                     logger.debug("llm_inference span end failed: %s", exc)
 
 
 @asynccontextmanager
-async def trace_rag_query(query: str, session_id: str = None,
-                           metadata: dict[str, Any] = None):
+async def trace_rag_query(query: str, session_id: str = None, metadata: dict[str, Any] = None):
     """Async context manager: wraps one full RAG query in a Langfuse trace.
 
     Yields a _SpanHelper instance. Use its methods as async context managers

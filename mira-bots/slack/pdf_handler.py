@@ -51,9 +51,7 @@ async def _get_or_create_collection(name: str, description: str) -> str:
         headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
 
     async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            f"{OPENWEBUI_BASE_URL}/api/v1/knowledge/", headers=headers
-        )
+        resp = await client.get(f"{OPENWEBUI_BASE_URL}/api/v1/knowledge/", headers=headers)
         resp.raise_for_status()
         for col in resp.json().get("items", []):
             if col.get("name") == name:
@@ -91,9 +89,7 @@ async def ingest_pdf(file_bytes: bytes, filename: str) -> str:
             resp = await client.post(
                 f"{OPENWEBUI_BASE_URL}/api/v1/files/",
                 headers=headers,
-                files={
-                    "file": (filename, io.BytesIO(file_bytes), "application/pdf")
-                },
+                files={"file": (filename, io.BytesIO(file_bytes), "application/pdf")},
             )
             resp.raise_for_status()
             file_id = resp.json()["id"]
@@ -110,10 +106,7 @@ async def ingest_pdf(file_bytes: bytes, filename: str) -> str:
                 json={"file_id": file_id},
             )
             if resp.status_code == 400 and "Duplicate" in resp.text:
-                return (
-                    f"This PDF was already indexed in *{col_name}*. "
-                    "Ask me anything about it."
-                )
+                return f"This PDF was already indexed in *{col_name}*. Ask me anything about it."
             resp.raise_for_status()
     except Exception as e:
         logger.error("Failed to add PDF to collection: %s", e)
@@ -121,7 +114,9 @@ async def ingest_pdf(file_bytes: bytes, filename: str) -> str:
 
     logger.info(
         "PDF '%s' ingested into collection '%s' (file_id=%s)",
-        filename, col_name, file_id,
+        filename,
+        col_name,
+        file_id,
     )
     return (
         f"Got it — I've indexed *{filename}* into the *{col_name}* collection. "

@@ -2,34 +2,36 @@
 
 import os
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 # Add both paths before any local imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+REPO_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 sys.path.insert(0, os.path.join(REPO_ROOT, "mira-bots"))
 
 import main as ingest_main  # noqa: E402
 from shared.benchmark_db import (  # noqa: E402
-    ensure_tables,
-    insert_question,
-    list_questions,
     count_questions,
     create_run,
+    ensure_tables,
     finish_run,
     get_run,
+    insert_question,
     insert_result,
+    list_questions,
     list_results,
 )
 from shared.engine import Supervisor  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path):
@@ -65,6 +67,7 @@ def client():
 # 1. benchmark_db — insert + list questions
 # ---------------------------------------------------------------------------
 
+
 def test_insert_and_list_questions(isolated_db):
     qid = insert_question(
         title="VFD fault code OC — what to check?",
@@ -86,6 +89,7 @@ def test_insert_and_list_questions(isolated_db):
 # 2. benchmark_db — duplicate post_id is skipped
 # ---------------------------------------------------------------------------
 
+
 def test_duplicate_post_id_skipped(isolated_db):
     insert_question(title="Q1", post_id="dup1", db_path=isolated_db)
     dup_id = insert_question(title="Q2", post_id="dup1", db_path=isolated_db)
@@ -96,6 +100,7 @@ def test_duplicate_post_id_skipped(isolated_db):
 # ---------------------------------------------------------------------------
 # 3. benchmark_db — run lifecycle (create, finish, get)
 # ---------------------------------------------------------------------------
+
 
 def test_run_lifecycle(isolated_db):
     run_id = create_run(metadata={"test": True}, db_path=isolated_db)
@@ -113,6 +118,7 @@ def test_run_lifecycle(isolated_db):
 # ---------------------------------------------------------------------------
 # 4. benchmark_db — insert and list results
 # ---------------------------------------------------------------------------
+
 
 def test_insert_and_list_results(isolated_db):
     qid = insert_question(title="Test Q", post_id="res1", db_path=isolated_db)
@@ -137,24 +143,32 @@ def test_insert_and_list_results(isolated_db):
 # 5. Supervisor._infer_confidence — keyword-based levels
 # ---------------------------------------------------------------------------
 
+
 def test_infer_confidence_levels():
     assert Supervisor._infer_confidence("") == "none"
     assert Supervisor._infer_confidence("hi") == "none"
-    assert Supervisor._infer_confidence(
-        "Replace the contactor. Check wiring on terminal 4."
-    ) == "high"
-    assert Supervisor._infer_confidence(
-        "It might be the drive, could be the motor, hard to say without testing."
-    ) == "low"
-    assert Supervisor._infer_confidence(
-        "The drive fault code indicates overcurrent. It could be a wiring issue. "
-        "Check wiring at the motor junction box."
-    ) == "medium"
+    assert (
+        Supervisor._infer_confidence("Replace the contactor. Check wiring on terminal 4.") == "high"
+    )
+    assert (
+        Supervisor._infer_confidence(
+            "It might be the drive, could be the motor, hard to say without testing."
+        )
+        == "low"
+    )
+    assert (
+        Supervisor._infer_confidence(
+            "The drive fault code indicates overcurrent. It could be a wiring issue. "
+            "Check wiring at the motor junction box."
+        )
+        == "medium"
+    )
 
 
 # ---------------------------------------------------------------------------
 # 6. FastAPI — benchmark disabled returns 503
 # ---------------------------------------------------------------------------
+
 
 def test_benchmark_disabled_returns_503(client):
     with patch.dict(os.environ, {"REDDIT_BENCHMARK_ENABLED": "0"}, clear=False):
@@ -168,6 +182,7 @@ def test_benchmark_disabled_returns_503(client):
 # ---------------------------------------------------------------------------
 # 7. FastAPI — questions endpoint returns data when enabled
 # ---------------------------------------------------------------------------
+
 
 def test_benchmark_questions_endpoint(client, isolated_db):
     # Enable flag
@@ -198,6 +213,7 @@ def test_benchmark_questions_endpoint(client, isolated_db):
 # 8. reddit_harvest — httpx JSON parse + filtering
 # ---------------------------------------------------------------------------
 
+
 def test_harvest_parses_json_and_filters(isolated_db):
     """Mock httpx.Client.get to return fake Reddit JSON, verify harvest logic."""
     fake_response_data = {
@@ -207,6 +223,8 @@ def test_harvest_parses_json_and_filters(isolated_db):
                     "data": {
                         "id": "post1",
                         "title": "How do I troubleshoot a VFD fault code?",
+                        "selftext": "My PowerFlex 525 throws F004 on every startup.",
+                        "is_self": True,
                         "score": 25,
                         "permalink": "/r/PLC/comments/post1/how_do_i/",
                     }
@@ -215,6 +233,8 @@ def test_harvest_parses_json_and_filters(isolated_db):
                     "data": {
                         "id": "post2",
                         "title": "Check out my new workshop",
+                        "selftext": "Just built it last weekend.",
+                        "is_self": True,
                         "score": 100,
                         "permalink": "/r/PLC/comments/post2/check_out/",
                     }
@@ -223,6 +243,8 @@ def test_harvest_parses_json_and_filters(isolated_db):
                     "data": {
                         "id": "post3",
                         "title": "Motor keeps tripping on startup?",
+                        "selftext": "3-phase 5hp, trips thermal overload within seconds.",
+                        "is_self": True,
                         "score": 12,
                         "permalink": "/r/PLC/comments/post3/motor_keeps/",
                     }
