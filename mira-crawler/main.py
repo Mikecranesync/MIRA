@@ -21,7 +21,6 @@ import threading
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from config import CrawlerConfig
 from crawler.csv_crawler import CSVCrawler
 from crawler.curriculum import CurriculumCrawler
 from crawler.manufacturer import ManufacturerCrawler
@@ -32,6 +31,8 @@ from ingest.dedup import DedupStore
 from ingest.embedder import embed_batch
 from ingest.store import store_chunks
 from watcher.folder_watcher import FolderWatcher
+
+from config import CrawlerConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -120,7 +121,7 @@ def _run_report(config: CrawlerConfig) -> None:
 def healthcheck() -> bool:
     """Basic health check — can import and config loads."""
     try:
-        config = CrawlerConfig()
+        CrawlerConfig()
         return True
     except Exception:
         return False

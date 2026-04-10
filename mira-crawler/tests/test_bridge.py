@@ -6,7 +6,6 @@ Tests run fully offline without a running Redis or Celery worker.
 
 from __future__ import annotations
 
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest

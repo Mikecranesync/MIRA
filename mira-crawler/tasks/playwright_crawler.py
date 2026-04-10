@@ -30,7 +30,8 @@ _ARTICLE_PATH_KEYWORDS = frozenset(
 # ---------------------------------------------------------------------------
 
 try:
-    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    from playwright.sync_api import sync_playwright
 
     _PLAYWRIGHT_AVAILABLE = True
 except ImportError:

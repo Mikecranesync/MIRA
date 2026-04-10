@@ -5,7 +5,6 @@ All tests run offline — no NeonDB, no Redis, no Celery broker required.
 
 from __future__ import annotations
 
-
 # ---------------------------------------------------------------------------
 # 1. TTL days — equipment_manual
 # ---------------------------------------------------------------------------

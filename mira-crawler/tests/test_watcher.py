@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 from watcher.folder_watcher import FolderWatcher
 
@@ -56,5 +55,5 @@ class TestFolderWatcher:
     def test_creates_directory(self, tmp_path):
         """Watcher creates the watch directory if it doesn't exist."""
         watch_dir = tmp_path / "nonexistent" / "incoming"
-        watcher = FolderWatcher(watch_dir=watch_dir, on_file=lambda p: None)
+        FolderWatcher(watch_dir=watch_dir, on_file=lambda p: None)
         assert watch_dir.exists()
