@@ -137,7 +137,8 @@ def _download_video(video_id: str, out_dir: Path) -> Path | None:
     out_template = str(out_dir / "video.%(ext)s")
     cmd = [
         "yt-dlp",
-        "--format", "bestvideo[height<=360][ext=mp4]+bestaudio/best[height<=360]/best",
+        # Single pre-merged stream — no ffmpeg needed for download step
+        "--format", "best[height<=360][ext=mp4]/best[height<=360]/best",
         "--output", out_template,
         "--no-playlist",
         "--quiet",
@@ -146,9 +147,10 @@ def _download_video(video_id: str, out_dir: Path) -> Path | None:
     ]
     try:
         subprocess.run(cmd, check=True, timeout=600, capture_output=True)
-        # Find the downloaded file
+        # yt-dlp may append format IDs to the stem (e.g. video.f396.mp4) — find any video file
+        VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".avi", ".mov"}
         for f in out_dir.iterdir():
-            if f.stem == "video":
+            if f.stem.startswith("video") and f.suffix.lower() in VIDEO_EXTS:
                 logger.info("Downloaded %s → %s (%d MB)", video_id, f.name, f.stat().st_size // 1024 // 1024)
                 return f
         logger.warning("yt-dlp succeeded but no file found in %s", out_dir)
@@ -389,6 +391,16 @@ def extract_keyframes(video_id: str, dry_run: bool = False) -> dict:
             return {**stats, "status": "failed"}
 
         # Step 3: Classify + store each frame
+        if dry_run:
+            # Skip Claude API calls in dry-run — just report extraction success
+            logger.info(
+                "[DRY RUN] Extracted %d frames — would classify and keep valuable ones",
+                len(frames),
+            )
+            for frame_path in frames:
+                frame_path.unlink(missing_ok=True)
+            return {**stats, "status": "dry_run"}
+
         for i, frame_path in enumerate(frames):
             classification = _classify_frame(frame_path)
             if not classification:
@@ -396,21 +408,6 @@ def extract_keyframes(video_id: str, dry_run: bool = False) -> dict:
                 continue
 
             category = classification.get("category", "discard")
-
-            if dry_run:
-                logger.info(
-                    "[DRY RUN] frame %d → %s | faults=%s | equipment=%s",
-                    i,
-                    category,
-                    classification.get("fault_codes", []),
-                    classification.get("equipment_visible", "")[:40],
-                )
-                if category in KEEP_CATEGORIES:
-                    stats["frames_kept"] += 1
-                else:
-                    stats["frames_discarded"] += 1
-                frame_path.unlink(missing_ok=True)
-                continue
 
             if category not in KEEP_CATEGORIES:
                 stats["frames_discarded"] += 1

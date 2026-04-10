@@ -83,11 +83,15 @@ def _get_video_meta(video_id: str) -> dict:
 def _fetch_transcript(video_id: str) -> list[dict] | None:
     """Fetch transcript via youtube-transcript-api. Returns list of {text, start, duration}."""
     try:
-        from youtube_transcript_api import (
-            YouTubeTranscriptApi,
-        )
+        from youtube_transcript_api import YouTubeTranscriptApi
 
-        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "en-US"])
+        api = YouTubeTranscriptApi()
+        fetched = api.fetch(video_id, languages=["en", "en-US"])
+        # v1.x returns FetchedTranscriptSnippet objects; normalise to dicts
+        transcript = [
+            {"text": s.text, "start": s.start, "duration": s.duration}
+            for s in fetched
+        ]
         return transcript
     except Exception as e:
         err = str(e)
