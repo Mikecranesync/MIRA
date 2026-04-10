@@ -4,6 +4,7 @@
  * Hono on Bun. Routes:
  *   GET  /                        → Homepage
  *   GET  /cmms                    → Serve CMMS landing / dashboard page
+ *   GET  /activated               → Post-payment single-purpose upload page
  *   GET  /blog                    → Blog index (articles + fault codes link)
  *   GET  /blog/fault-codes        → Fault code library index
  *   GET  /blog/:slug              → Individual blog post or fault code article
@@ -15,6 +16,7 @@
  *   GET  /api/billing-portal      → Stripe Customer Portal redirect
  *   GET  /api/me                  → User profile + quota (active only)
  *   GET  /api/quota               → Daily query quota status (active only)
+ *   POST /api/ingest/manual       → Proxy PDF upload to mira-mcp (active only)
  *   GET  /demo/work-orders        → Static ticker data (no auth)
  *   POST /api/mira/chat           → SSE AI chat via mira-sidecar (active only)
  *   GET  /demo/tenant-work-orders → Real WOs for authenticated user (active only)
@@ -179,6 +181,28 @@ app.get("/api/health", (c) =>
 app.get("/cmms", async (c) => {
   const file = Bun.file("./public/cmms.html");
   return new Response(await file.arrayBuffer(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+// Post-payment single-purpose upload page (activation email lands here).
+// The "moment of highest motivation" — get a manual uploaded before the
+// dashboard is shown. Access-gated client-side (token in ?token= query),
+// the /api/ingest/manual proxy handles server-side tier enforcement.
+//
+// LOOM_UPLOAD_URL normalization: Loom's /share/ URLs set X-Frame-Options=deny
+// and cannot be iframed; only /embed/ URLs work. We auto-convert either form
+// and fall back to a static placeholder block when the env var is unset.
+app.get("/activated", async (c) => {
+  const raw = (process.env.LOOM_UPLOAD_URL || "").trim();
+  const normalized = raw.replace("/share/", "/embed/");
+  const isValidEmbed = /^https:\/\/[^\s"'<>]+$/.test(normalized);
+  const loomContent = isValidEmbed
+    ? `<iframe src="${normalized}" allowfullscreen title="How to upload your first manual"></iframe>`
+    : `<div class="loom-placeholder"><span>Loom feed / awaiting signal</span></div>`;
+  const file = Bun.file("./public/activated.html");
+  const html = (await file.text()).replaceAll("{{LOOM_CONTENT}}", loomContent);
+  return new Response(html, {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 });
@@ -540,6 +564,81 @@ app.get("/demo/tenant-work-orders", requireActive, async (c) => {
   } catch (err) {
     console.error("[tenant-wos] Error:", err);
     return c.json({ error: "Failed to fetch work orders" }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Manual Ingest Proxy — forwards PDF uploads to mira-mcp
+// ---------------------------------------------------------------------------
+
+const INGEST_MAX_BYTES = 50 * 1024 * 1024;
+const MIRA_MCP_URL = () =>
+  process.env.MIRA_MCP_URL || "http://mira-mcp:8001";
+
+app.post("/api/ingest/manual", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  const mcpKey = process.env.MCP_REST_API_KEY || "";
+  if (!mcpKey) {
+    console.error("[ingest-manual] MCP_REST_API_KEY not set");
+    return c.json({ error: "Ingest service not configured" }, 500);
+  }
+
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json({ error: "Invalid multipart body" }, 400);
+  }
+
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    return c.json({ error: "Missing 'file' field" }, 400);
+  }
+  if (file.type && file.type !== "application/pdf") {
+    return c.json({ error: "Only PDF uploads are accepted" }, 415);
+  }
+  if (file.size > INGEST_MAX_BYTES) {
+    return c.json({ error: "File exceeds 50 MB limit" }, 413);
+  }
+  if (file.size === 0) {
+    return c.json({ error: "Empty file" }, 400);
+  }
+
+  const forwarded = new FormData();
+  forwarded.append("file", file, file.name || "upload.pdf");
+  const equipmentType = form.get("equipment_type");
+  if (typeof equipmentType === "string" && equipmentType.trim()) {
+    forwarded.append("equipment_type", equipmentType.trim());
+  }
+
+  const started = Date.now();
+  try {
+    // NOTE: mira-mcp currently derives tenant_id from its own MIRA_TENANT_ID
+    // env var (global), not from the form. Per-tenant isolation for uploads
+    // is a known gap tracked separately from this funnel.
+    const resp = await fetch(`${MIRA_MCP_URL()}/ingest/pdf`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${mcpKey}` },
+      body: forwarded,
+    });
+    const latencyMs = Date.now() - started;
+    const bodyText = await resp.text();
+    console.log(
+      "[ingest-manual] tenant=%s size=%d status=%d latency_ms=%d",
+      user.sub,
+      file.size,
+      resp.status,
+      latencyMs,
+    );
+
+    const contentType = resp.headers.get("content-type") || "application/json";
+    return new Response(bodyText, {
+      status: resp.status,
+      headers: { "Content-Type": contentType },
+    });
+  } catch (err) {
+    console.error("[ingest-manual] Proxy failed:", err);
+    return c.json({ error: "Ingest upstream unreachable" }, 502);
   }
 });
 

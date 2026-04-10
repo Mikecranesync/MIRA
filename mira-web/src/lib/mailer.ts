@@ -12,6 +12,7 @@ const RESEND_API_KEY = () => process.env.RESEND_API_KEY || "";
 const FROM_EMAIL = () =>
   process.env.RESEND_FROM_EMAIL || "noreply@factorylm.com";
 const FROM_NAME = "Mike at FactoryLM";
+const PUBLIC_URL = () => process.env.PUBLIC_URL || "https://factorylm.com";
 
 interface SendEmailOpts {
   to: string;
@@ -109,13 +110,13 @@ export async function sendActivatedEmail(
 ): Promise<boolean> {
   return sendEmail({
     to: email,
-    subject: `You're in, ${firstName} — your CMMS is live`,
+    subject: `You're in, ${firstName} — upload your first manual`,
     templateName: "beta-activated",
     vars: {
       FIRST_NAME: firstName || email.split("@")[0],
       COMPANY: company,
       TOKEN: token,
-      CMMS_URL: `https://factorylm.com/cmms?token=${token}`,
+      ACTIVATED_URL: `${PUBLIC_URL()}/activated?token=${token}`,
     },
   });
 }

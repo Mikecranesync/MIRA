@@ -29,6 +29,8 @@ services:
       - LOOM_URL_3=${LOOM_URL_3:-}
       - LOOM_URL_4=${LOOM_URL_4:-}
       - LOOM_URL_5=${LOOM_URL_5:-}
+      - LOOM_UPLOAD_URL=${LOOM_UPLOAD_URL:-}
+      - MIRA_MCP_URL=${MIRA_MCP_URL:-http://mira-mcp:8001}
     networks:
       - core-net
       - cmms-net
