@@ -283,6 +283,10 @@ def recall_knowledge(
             pool_pre_ping=True,
         )
         with engine.connect() as conn:
+            # HNSW query-time tuning — see docs/HNSW_MIGRATION.md.
+            # Overrides default ef_search=40 for this transaction only.
+            conn.execute(text("SET LOCAL hnsw.ef_search = 100"))
+
             # Stage 1: Dense vector search
             vector_rows = (
                 conn.execute(
