@@ -140,16 +140,15 @@ class TestRerankingIntegration:
         query_arg = worker.nemotron.rerank.call_args[0][0]
         assert "F004" in query_arg
 
-    @pytest.mark.skip(
-        reason="Stale — RAGWorker.process() photo-query path was refactored "
-        "to call _visual_search() when self._ingest_url is set, bypassing the "
-        "text-embed + _neon_recall path this test mocks. Skipped to unblock "
-        "CI as part of the style cleanup; real fix sets worker._ingest_url = "
-        "None to force the text-embed branch."
-    )
     @pytest.mark.asyncio
     async def test_rerank_called_for_photo_query(self):
         worker = _make_rag_worker()
+        # Force the text-embed + _neon_recall branch. When self._ingest_url is
+        # set, RAGWorker.process() routes photo queries through _visual_search()
+        # (dual-modality retrieval via HTTP to mira-ingest/ingest/search-visual)
+        # which bypasses the mock below. Disabling the ingest URL forces the
+        # else branch so the test can verify the rerank path end-to-end.
+        worker._ingest_url = None
         worker._call_llm = AsyncMock(return_value='{"reply": "test", "next_state": "Q1"}')
         worker._embed_ollama = AsyncMock(return_value=[0.1] * 768)
 
@@ -166,16 +165,11 @@ class TestRerankingIntegration:
         query_arg = worker.nemotron.rerank.call_args[0][0]
         assert "PowerFlex 525" in query_arg
 
-    @pytest.mark.skip(
-        reason="Stale — RAGWorker.process() photo-query path was refactored "
-        "to call _visual_search() when self._ingest_url is set, so "
-        "_embed_ollama is never called and worker._embed_ollama.call_args is "
-        "None. Skipped to unblock CI as part of the style cleanup; real fix "
-        "sets worker._ingest_url = None to force the text-embed branch."
-    )
     @pytest.mark.asyncio
     async def test_photo_query_embeds_with_asset_context(self):
         worker = _make_rag_worker()
+        # Force the text-embed branch — see comment in the previous test.
+        worker._ingest_url = None
         worker._call_llm = AsyncMock(return_value='{"reply": "test", "next_state": "Q1"}')
         worker._embed_ollama = AsyncMock(return_value=[0.1] * 768)
 
