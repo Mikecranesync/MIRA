@@ -14,13 +14,15 @@ Usage:
 
 from __future__ import annotations
 
+import hmac
 import importlib
+import json
 import logging
 import os
 
 import redis as redis_lib
 from celery.result import AsyncResult
-from fastapi import Depends, FastAPI, HTTPException, Security, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 try:
@@ -88,7 +90,7 @@ def _require_auth(
             detail="Missing or invalid Authorization header",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if credentials.credentials != TASK_BRIDGE_API_KEY:
+    if not hmac.compare_digest(credentials.credentials, TASK_BRIDGE_API_KEY):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",
@@ -153,10 +155,13 @@ def health() -> dict:
     summary="Trigger a named Celery task",
     dependencies=[Depends(_require_auth)],
 )
-def trigger_task(task_name: str) -> dict:
-    """Looks up task_name in registry, calls .delay(), returns task_id.
+async def trigger_task(task_name: str, request: Request) -> dict:
+    """Looks up task_name in registry, calls .delay(**kwargs), returns task_id.
 
+    Optional JSON object body is forwarded as kwargs to .delay().
     Returns 404 if task_name is unknown.
+    Returns 400 if body is present but not a JSON object.
+    Returns 415 if body is present but not valid JSON.
     Returns 422 if the task module cannot be imported (stub not yet implemented).
     """
     if task_name not in TASK_REGISTRY:
@@ -164,6 +169,21 @@ def trigger_task(task_name: str) -> dict:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Unknown task: {task_name!r}. "
             f"Available: {sorted(TASK_REGISTRY.keys())}",
+        )
+
+    # Parse optional JSON body and forward as kwargs
+    try:
+        body_bytes = await request.body()
+        kwargs = json.loads(body_bytes) if body_bytes else {}
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Invalid JSON body: {exc}",
+        ) from exc
+    if not isinstance(kwargs, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="JSON body must be an object",
         )
 
     module_path, func_name = TASK_REGISTRY[task_name]
@@ -177,7 +197,7 @@ def trigger_task(task_name: str) -> dict:
             detail=f"Task {task_name!r} module could not be imported: {exc}",
         ) from exc
 
-    async_result = task_fn.delay()
+    async_result = task_fn.delay(**kwargs) if kwargs else task_fn.delay()
     task_id = async_result.id
 
     logger.info("Queued task=%s id=%s fn=%s.%s", task_name, task_id, module_path, func_name)

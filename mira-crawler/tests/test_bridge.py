@@ -6,6 +6,7 @@ Tests run fully offline without a running Redis or Celery worker.
 
 from __future__ import annotations
 
+import inspect
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -302,3 +303,83 @@ class TestTaskRegistry:
             module_path, func_name = value
             assert isinstance(module_path, str) and module_path, f"{name}: empty module_path"
             assert isinstance(func_name, str) and func_name, f"{name}: empty func_name"
+
+
+# ---------------------------------------------------------------------------
+# C1: hmac.compare_digest auth check
+# ---------------------------------------------------------------------------
+
+
+class TestHmacAuth:
+    def test_auth_uses_hmac_compare(self) -> None:
+        """_require_auth must use hmac.compare_digest — not plain != comparison."""
+        import importlib
+
+        import bridge as bridge_mod
+
+        importlib.reload(bridge_mod)
+
+        source = inspect.getsource(bridge_mod._require_auth)
+        assert "compare_digest" in source, (
+            "_require_auth must use hmac.compare_digest to prevent timing attacks"
+        )
+
+
+# ---------------------------------------------------------------------------
+# m1: JSON body forwarded as kwargs to .delay()
+# ---------------------------------------------------------------------------
+
+
+class TestTriggerTaskJsonBody:
+    def _mock_task_fn(self) -> MagicMock:
+        mock_async_result = MagicMock()
+        mock_async_result.id = "mock-task-id-body"
+        mock_task = MagicMock()
+        mock_task.delay.return_value = mock_async_result
+        return mock_task
+
+    def test_post_with_json_body_forwards_kwargs(self, client: TestClient) -> None:
+        """POST with JSON object body → kwargs forwarded to .delay()."""
+        mock_task = self._mock_task_fn()
+
+        with patch("bridge._resolve_task", return_value=mock_task):
+            response = client.post(
+                "/tasks/discover",
+                headers=AUTH_HEADER,
+                json={"start_url": "https://example.com"},
+            )
+
+        assert response.status_code == 202
+        mock_task.delay.assert_called_once_with(start_url="https://example.com")
+
+    def test_post_with_empty_body_no_kwargs(self, client: TestClient) -> None:
+        """POST with no body → .delay() called with no kwargs."""
+        mock_task = self._mock_task_fn()
+
+        with patch("bridge._resolve_task", return_value=mock_task):
+            response = client.post("/tasks/discover", headers=AUTH_HEADER)
+
+        assert response.status_code == 202
+        mock_task.delay.assert_called_once_with()
+
+    def test_post_with_invalid_json_returns_415(self, client: TestClient) -> None:
+        """POST with non-JSON body → 415 Unsupported Media Type."""
+        with patch("bridge._resolve_task", return_value=self._mock_task_fn()):
+            response = client.post(
+                "/tasks/discover",
+                headers={**AUTH_HEADER, "Content-Type": "application/json"},
+                content=b"not json",
+            )
+
+        assert response.status_code == 415
+
+    def test_post_with_non_object_json_returns_400(self, client: TestClient) -> None:
+        """POST with JSON array (not object) body → 400 Bad Request."""
+        with patch("bridge._resolve_task", return_value=self._mock_task_fn()):
+            response = client.post(
+                "/tasks/discover",
+                headers=AUTH_HEADER,
+                json=[1, 2, 3],
+            )
+
+        assert response.status_code == 400
