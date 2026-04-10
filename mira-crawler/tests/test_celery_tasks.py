@@ -128,6 +128,7 @@ class TestIngestUrl:
             patch("ingest.store.chunk_exists", return_value=False),
             patch("ingest.embedder.embed_text", return_value=_fake_embedding()),
             patch("ingest.store.insert_chunk", return_value="entry-123"),
+            patch("ingest.quality.quality_gate", return_value=(True, "")),
         ):
             from tasks.ingest import ingest_url
             result = ingest_url("https://example.com/manual.pdf", "ABB", "ACS580")

@@ -105,6 +105,17 @@ def ingest_url(self, url: str, manufacturer: str = "",
         if embedding is None:
             continue
 
+        # Quality gate: content filter → relevance → semantic dedup
+        try:
+            from ingest.quality import quality_gate
+            passed, reason = quality_gate(chunk, embedding, tenant_id)
+            if not passed:
+                logger.debug("Quality gate rejected chunk %d: %s", chunk_idx, reason)
+                skipped += 1
+                continue
+        except Exception as e:
+            logger.warning("Quality gate error (fail open): %s", e)
+
         entry_id = insert_chunk(
             tenant_id=tenant_id,
             content=chunk["text"],
