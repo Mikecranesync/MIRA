@@ -44,20 +44,38 @@ def ingest_url(self, url: str, manufacturer: str = "",
         logger.error("MIRA_TENANT_ID not set — cannot ingest")
         return {"url": url, "inserted": 0, "error": "no_tenant_id"}
 
-    # 1. Download
-    try:
-        resp = httpx.get(
-            url,
-            timeout=DOWNLOAD_TIMEOUT,
-            follow_redirects=True,
-            headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
-        )
-        resp.raise_for_status()
-        data = resp.content
-        content_type = resp.headers.get("content-type", "")
-    except Exception as exc:
-        logger.warning("Download failed for %s: %s — retrying", url[:80], exc)
-        raise self.retry(exc=exc)
+    # 1. Download (supports http(s):// and file:// schemes)
+    if url.startswith("file://"):
+        # Read from local filesystem — GDrive sync and folder-watcher paths.
+        # url2pathname correctly handles file:///C:/... on Windows and
+        # file:///tmp/... on POSIX without manual slash-stripping.
+        from pathlib import Path
+        from urllib.parse import urlparse as _urlparse
+        from urllib.request import url2pathname
+
+        local_path = Path(url2pathname(_urlparse(url).path))
+        try:
+            data = local_path.read_bytes()
+            content_type = (
+                "application/pdf" if local_path.suffix.lower() == ".pdf" else "text/html"
+            )
+        except Exception as exc:
+            logger.warning("Local file read failed for %s: %s", url[:80], exc)
+            return {"url": url, "inserted": 0, "error": f"local_read_failed: {exc}"}
+    else:
+        try:
+            resp = httpx.get(
+                url,
+                timeout=DOWNLOAD_TIMEOUT,
+                follow_redirects=True,
+                headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
+            )
+            resp.raise_for_status()
+            data = resp.content
+            content_type = resp.headers.get("content-type", "")
+        except Exception as exc:
+            logger.warning("Download failed for %s: %s — retrying", url[:80], exc)
+            raise self.retry(exc=exc)
 
     # 2. Extract text blocks
     is_pdf = url.lower().endswith(".pdf") or "application/pdf" in content_type

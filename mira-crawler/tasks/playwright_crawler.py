@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from urllib.parse import urljoin, urlparse
 
 try:
@@ -24,6 +25,44 @@ _PDF_EXTENSIONS = frozenset({".pdf"})
 _ARTICLE_PATH_KEYWORDS = frozenset(
     {"article", "blog", "manual", "guide", "support", "knowledge", "documentation", "docs"}
 )
+
+# Allowlist of domains approved for Playwright crawling.
+# Extend this list deliberately — arbitrary URLs would be an SSRF risk.
+ALLOWED_CRAWL_DOMAINS = {
+    "siemens.com",
+    "support.industry.siemens.com",
+    "skf.com",
+    "www.skf.com",
+    "emerson.com",
+    "www.emerson.com",
+    "automation.com",
+    "new.abb.com",
+    "library.e.abb.com",
+    "rockwellautomation.com",
+    "literature.rockwellautomation.com",
+}
+
+
+def _is_allowed_domain(url: str) -> bool:
+    """Check if a URL's host is in the crawl allowlist.
+
+    Matches exact hostname AND any subdomain of allowlisted parents.
+    """
+    try:
+        host = urlparse(url).hostname or ""
+    except Exception:
+        return False
+    host = host.lower()
+    if not host:
+        return False
+    # Exact match
+    if host in ALLOWED_CRAWL_DOMAINS:
+        return True
+    # Subdomain match — any allowed parent domain
+    for allowed in ALLOWED_CRAWL_DOMAINS:
+        if host.endswith("." + allowed) or host == allowed:
+            return True
+    return False
 
 # ---------------------------------------------------------------------------
 # Playwright availability guard
@@ -148,6 +187,15 @@ def crawl_js_site(start_url: str, max_pages: int = 50) -> dict:
 
     import os
 
+    if not _is_allowed_domain(start_url):
+        logger.warning("Refusing to crawl disallowed domain: %s", start_url)
+        return {
+            "pages_crawled": 0,
+            "urls_queued": 0,
+            "error": "domain_not_allowed",
+            "start_url": start_url,
+        }
+
     if not _PLAYWRIGHT_AVAILABLE:
         logger.warning(
             "Playwright not available — skipping crawl of %s. "
@@ -168,7 +216,7 @@ def crawl_js_site(start_url: str, max_pages: int = 50) -> dict:
     urls_queued = 0
 
     visited: set[str] = set()
-    queue: list[str] = [start_url]
+    queue: deque[str] = deque([start_url])
 
     logger.info("Starting Playwright crawl: %s (max_pages=%d)", start_url, max_pages)
 
@@ -182,7 +230,7 @@ def crawl_js_site(start_url: str, max_pages: int = 50) -> dict:
             page = context.new_page()
 
             while queue and pages_crawled < max_pages:
-                url = queue.pop(0)
+                url = queue.popleft()  # O(1) — deque vs list.pop(0)
                 if url in visited:
                     continue
                 if not _is_same_domain(url, start_url):
@@ -223,12 +271,15 @@ def crawl_js_site(start_url: str, max_pages: int = 50) -> dict:
                     except Exception as exc:
                         logger.warning("Inline ingest failed for %s: %s", url[:80], exc)
 
-                # Discover new links
+                # Discover new links — only enqueue allowlisted domains to prevent
+                # traversal to off-site or disallowed hosts.
                 links = _extract_links(html_content, url)
                 for link in links:
                     if link in visited or link in queue:
                         continue
                     if not _is_same_domain(link, start_url):
+                        continue
+                    if not _is_allowed_domain(link):
                         continue
                     # Queue PDFs for dedicated ingest
                     if _is_pdf_url(link):
