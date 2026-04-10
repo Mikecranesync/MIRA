@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FactoryLM — AI Fault Code Diagnosis for Maintenance Teams | Free CMMS</title>
-  <meta name="description" content="Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. Free CMMS with 5 daily AI queries for maintenance technicians. No credit card required.">
+  <title>FactoryLM — AI Fault Code Diagnosis for Maintenance Teams | Beta</title>
+  <meta name="description" content="Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. AI-powered CMMS for maintenance teams. Join the beta.">
   <link rel="canonical" href="https://factorylm.com/cmms">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="FactoryLM — AI Fault Code Diagnosis for Maintenance Teams">
-  <meta property="og:description" content="Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. Free CMMS with 5 daily AI queries.">
+  <meta property="og:description" content="Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. AI-powered CMMS for maintenance teams.">
   <meta property="og:url" content="https://factorylm.com/cmms">
   <meta property="og:image" content="https://factorylm.com/og-image.png">
   <meta property="og:site_name" content="FactoryLM">
@@ -18,7 +18,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="FactoryLM — AI Fault Code Diagnosis for Maintenance Teams">
-  <meta name="twitter:description" content="Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. Free CMMS with 5 daily AI queries.">
+  <meta name="twitter:description" content="Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. AI-powered CMMS for maintenance teams.">
   <meta name="twitter:image" content="https://factorylm.com/og-image.png">
 
   <!-- Structured Data -->
@@ -31,12 +31,6 @@
     "operatingSystem": "Web, iOS, Android",
     "description": "AI maintenance copilot that answers fault code questions from your equipment manuals. Includes CMMS with work orders, asset registry, and PM scheduling.",
     "url": "https://factorylm.com/cmms",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD",
-      "description": "Free tier: 5 AI queries per day, unlimited CMMS features"
-    },
     "aggregateRating": {
       "@type": "AggregateRating",
       "ratingValue": "4.8",
@@ -64,7 +58,7 @@
         "name": "What is FactoryLM?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "FactoryLM is an AI-powered maintenance assistant that answers equipment fault code questions from your actual OEM manuals in seconds. It includes a free CMMS with work orders, asset tracking, and PM scheduling."
+          "text": "FactoryLM is an AI-powered maintenance assistant that answers equipment fault code questions from your actual OEM manuals in seconds. It includes a CMMS with work orders, asset tracking, and PM scheduling."
         }
       },
       {
@@ -77,10 +71,10 @@
       },
       {
         "@type": "Question",
-        "name": "Is FactoryLM free?",
+        "name": "How do I try FactoryLM?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. The free tier includes 5 Mira AI queries per day and unlimited CMMS features. No credit card required. Unlimited queries are available for $49/month."
+          "text": "Join the beta for a 7-day video walkthrough showing how Mira diagnoses equipment faults from your actual manuals. Then decide if it's right for your team."
         }
       },
       {
@@ -125,8 +119,8 @@
 
     <!-- ── Hero (unauthenticated) ──────────────────────────── -->
     <section class="hero" id="hero-section">
-      <h1>Stop guessing. <em>Start diagnosing.</em></h1>
-      <p>AI-powered CMMS that tells you what's broken, why, and exactly how to fix it. 5 free Mira AI queries — no credit card.</p>
+      <h1>Join the FactoryLM <em>Beta</em></h1>
+      <p>See how AI reads your equipment manuals, diagnoses fault codes, and creates work orders — through a 7-day video walkthrough. Then decide.</p>
 
       <!-- Signup Form -->
       <div class="signup-card" id="signup-form-wrap">
@@ -139,34 +133,30 @@
           <input type="text" id="f-company" placeholder="Acme Manufacturing" autocomplete="organization" required>
         </div>
         <div class="form-row">
-          <label for="f-firstname">First name (optional)</label>
+          <label for="f-firstname">First name</label>
           <input type="text" id="f-firstname" placeholder="Mike" autocomplete="given-name">
-        </div>
-        <div class="form-row">
-          <label for="f-role">Role (optional)</label>
-          <select id="f-role">
-            <option value="">Select your role</option>
-            <option value="technician">Maintenance Technician</option>
-            <option value="manager">Maintenance Manager</option>
-            <option value="engineer">Reliability Engineer</option>
-            <option value="director">Plant Director</option>
-            <option value="other">Other</option>
-          </select>
         </div>
         <div id="form-error" class="form-error"></div>
         <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
           <i data-lucide="zap" style="width:16px;height:16px"></i>
-          Create Account &amp; Get App
+          Join the Beta
         </button>
       </div>
 
-      <!-- Download step (shown after signup) -->
+      <!-- Confirmation (shown after signup) -->
       <div class="download-step" id="download-step">
         <p id="download-greeting"></p>
-        <button class="btn-primary" onclick="scrollToDashboard()">
-          <i data-lucide="arrow-down" style="width:16px;height:16px"></i>
-          Go to your CMMS
-        </button>
+      </div>
+
+      <!-- Payment success (shown via ?payment=success) -->
+      <div class="download-step" id="payment-success" style="display:none;">
+        <p style="color:#f0a030;font-weight:700;font-size:18px;">You're in! Welcome to the beta.</p>
+        <p>Your CMMS is loading below with 3 demo work orders. Upload your first equipment manual to unlock Mira's full power.</p>
+      </div>
+
+      <!-- Payment cancelled -->
+      <div class="download-step" id="payment-cancelled" style="display:none;">
+        <p>No worries — your walkthrough emails will continue. You can join anytime.</p>
       </div>
     </section>
 
@@ -208,20 +198,6 @@
         <li>Motors, pumps, compressors, conveyors</li>
       </ul>
       <p style="margin-top:0.75rem;font-size:var(--text-sm);color:var(--text-muted)">Browse our <a href="/blog/fault-codes" style="color:var(--accent)">Fault Code Library</a> or read our <a href="/blog" style="color:var(--accent)">maintenance blog</a> for free guides.</p>
-    </section>
-
-    <section class="seo-section" id="pricing-section">
-      <h2>Pricing</h2>
-      <div class="seo-grid">
-        <div class="seo-card">
-          <h3>Free</h3>
-          <p><strong>$0/month</strong> — 5 Mira AI queries per day. Unlimited CMMS features: work orders, asset registry, PM scheduling. No credit card required.</p>
-        </div>
-        <div class="seo-card">
-          <h3>Pro</h3>
-          <p><strong>$49/month</strong> — Unlimited Mira AI queries. Priority support. Everything in Free plus no daily query limit.</p>
-        </div>
-      </div>
     </section>
 
     <!-- ── Live Ticker ─────────────────────────────────────── -->
@@ -271,7 +247,7 @@
           <div class="quota-track">
             <div class="quota-fill" id="quota-fill" style="width:100%"></div>
           </div>
-          <span class="quota-count" id="quota-count">5 / 5</span>
+          <span class="quota-count" id="quota-count">Unlimited</span>
         </div>
 
         <div class="chat-messages" id="chat-messages">
@@ -336,13 +312,35 @@ const CHECKLIST = {
 window.addEventListener('DOMContentLoaded', async () => {
   const params = new URLSearchParams(location.search);
   const urlToken = params.get('token');
+  const paymentStatus = params.get('payment');
 
+  // Handle payment return from Stripe
+  if (paymentStatus === 'success') {
+    history.replaceState(null, '', '/cmms');
+    document.getElementById('signup-form-wrap').classList.add('hidden');
+    document.getElementById('payment-success').style.display = 'block';
+    // If there's a token in session, try to activate dashboard
+    const stored = sessionStorage.getItem('flm_token');
+    if (stored) {
+      AUTH.token = stored;
+      // Small delay for webhook to process
+      setTimeout(async () => { await activateAuth(); }, 2000);
+    }
+  } else if (paymentStatus === 'cancelled') {
+    history.replaceState(null, '', '/cmms');
+    document.getElementById('signup-form-wrap').classList.add('hidden');
+    document.getElementById('payment-cancelled').style.display = 'block';
+  }
+
+  // Token in URL (from activation email)
   if (urlToken) {
     AUTH.token = urlToken;
+    sessionStorage.setItem('flm_token', urlToken);
     history.replaceState(null, '', '/cmms');
     await activateAuth();
   }
 
+  // Stored session token
   const stored = sessionStorage.getItem('flm_token');
   if (stored && !AUTH.token) {
     AUTH.token = stored;
@@ -358,9 +356,19 @@ window.addEventListener('DOMContentLoaded', async () => {
 async function activateAuth() {
   sessionStorage.setItem('flm_token', AUTH.token);
 
-  // Fetch user profile
+  // Fetch user profile — may return 403 if not active tier
   try {
     const res = await fetch('/api/me', { headers: authHeaders() });
+    if (res.status === 403) {
+      // Pending or churned — show onboarding message, not dashboard
+      const data = await res.json();
+      document.getElementById('signup-form-wrap').classList.add('hidden');
+      document.getElementById('download-step').classList.add('show');
+      document.getElementById('download-greeting').innerHTML =
+        '<strong style="color:#f0a030;">Your onboarding is in progress.</strong><br>' +
+        'Check your email for your next video walkthrough.';
+      return;
+    }
     if (res.ok) {
       const data = await res.json();
       AUTH.user = data;
@@ -393,7 +401,6 @@ async function handleSignup() {
   const email = document.getElementById('f-email').value.trim();
   const company = document.getElementById('f-company').value.trim();
   const firstName = document.getElementById('f-firstname').value.trim();
-  const role = document.getElementById('f-role').value;
   const errEl = document.getElementById('form-error');
   errEl.classList.remove('show');
 
@@ -405,31 +412,38 @@ async function handleSignup() {
 
   const btn = document.getElementById('signup-btn');
   btn.disabled = true;
-  btn.innerHTML = '<svg style="width:16px;height:16px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Creating your account...';
+  btn.innerHTML = '<svg style="width:16px;height:16px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Joining...';
 
   try {
     const res = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, company, firstName, role })
+      body: JSON.stringify({ email, company, firstName })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');
 
-    AUTH.token = data.token;
+    // Active user returning — has token, show dashboard
+    if (data.token) {
+      AUTH.token = data.token;
+      sessionStorage.setItem('flm_token', data.token);
+      await activateAuth();
+      return;
+    }
+
+    // Pending user — show "check your email"
     const name = firstName || email.split('@')[0];
     document.getElementById('signup-form-wrap').classList.add('hidden');
     document.getElementById('download-step').classList.add('show');
-    document.getElementById('download-greeting').textContent =
-      `Welcome, ${name}. Your CMMS is live with ${AUTH.queriesLimit} free Mira queries per day.`;
-
-    await activateAuth();
+    document.getElementById('download-greeting').innerHTML =
+      `<strong style="color:#f0a030;">Check your email, ${name}.</strong><br>` +
+      `Your first video walkthrough arrives tomorrow. Keep an eye on your inbox.`;
 
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.add('show');
     btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="zap" style="width:16px;height:16px"></i> Create Account & Get App';
+    btn.innerHTML = '<i data-lucide="zap" style="width:16px;height:16px"></i> Join the Beta';
     lucide.createIcons();
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Transactional email via Resend SDK.
+ * Transactional email via Resend HTTP API.
  *
  * Templates live in /emails/*.html with {{VAR}} placeholders.
  * The drip scheduler runs daily to send timed follow-ups.
@@ -11,7 +11,7 @@ import { join } from "path";
 const RESEND_API_KEY = () => process.env.RESEND_API_KEY || "";
 const FROM_EMAIL = () =>
   process.env.RESEND_FROM_EMAIL || "noreply@factorylm.com";
-const FROM_NAME = "Mira at FactoryLM";
+const FROM_NAME = "Mike at FactoryLM";
 
 interface SendEmailOpts {
   to: string;
@@ -78,9 +78,30 @@ export async function sendEmail(opts: SendEmailOpts): Promise<boolean> {
 }
 
 /**
- * Send the welcome email immediately after registration.
+ * Send the beta welcome email immediately after registration.
+ * No token — pending users don't get product access.
  */
-export async function sendWelcomeEmail(
+export async function sendBetaWelcomeEmail(
+  email: string,
+  firstName: string,
+  company: string
+): Promise<boolean> {
+  return sendEmail({
+    to: email,
+    subject: `You're on the list, ${firstName}`,
+    templateName: "beta-welcome",
+    vars: {
+      FIRST_NAME: firstName || email.split("@")[0],
+      COMPANY: company,
+    },
+  });
+}
+
+/**
+ * Send the "you're in" email after successful Stripe payment.
+ * Includes JWT login link for immediate CMMS access.
+ */
+export async function sendActivatedEmail(
   email: string,
   firstName: string,
   company: string,
@@ -88,51 +109,65 @@ export async function sendWelcomeEmail(
 ): Promise<boolean> {
   return sendEmail({
     to: email,
-    subject: "Your FactoryLM CMMS is live — start here",
-    templateName: "welcome",
+    subject: `You're in, ${firstName} — your CMMS is live`,
+    templateName: "beta-activated",
     vars: {
       FIRST_NAME: firstName || email.split("@")[0],
       COMPANY: company,
       TOKEN: token,
       CMMS_URL: `https://factorylm.com/cmms?token=${token}`,
-      QUERIES_LEFT: process.env.PLG_DAILY_FREE_QUERIES || "5",
     },
   });
 }
 
 /**
- * Drip email definitions — day offset from signup + template + subject.
- * Conditional: some only send if user hasn't engaged.
+ * Beta nurture drip schedule — Loom-heavy education → payment at Day 7.
+ *
+ * Conditions:
+ *   "always"   — send to all tenants at day N
+ *   "not_paid" — only send if tenant tier is still 'pending'
  */
 export const DRIP_SCHEDULE = [
   {
     day: 1,
-    templateName: "activation",
-    subject: "30 seconds to try the AI that writes your work orders",
-    condition: "no_query", // only if user hasn't queried yet
+    templateName: "beta-loom-1",
+    subject: "Watch: How Mira diagnoses a VFD fault in 10 seconds",
+    condition: "always",
+  },
+  {
+    day: 2,
+    templateName: "beta-loom-2",
+    subject: "Watch: The CMMS that fills itself out",
+    condition: "always",
   },
   {
     day: 3,
-    templateName: "feature",
-    subject: "How to turn a fault code into a closed WO automatically",
+    templateName: "beta-loom-3",
+    subject: "Watch: Upload a manual, ask Mira anything from it",
+    condition: "always",
+  },
+  {
+    day: 5,
+    templateName: "beta-loom-4",
+    subject: "Watch: Slack + Telegram — Mira where your team already is",
+    condition: "always",
+  },
+  {
+    day: 6,
+    templateName: "beta-social-proof",
+    subject: '"We stopped guessing" — how one team uses FactoryLM',
     condition: "always",
   },
   {
     day: 7,
-    templateName: "social-proof",
-    subject: '"Cut repeat failures 40%" — how one tech used FactoryLM',
-    condition: "always",
+    templateName: "beta-payment",
+    subject: "Your spot is ready — $97/mo to start",
+    condition: "not_paid",
   },
   {
     day: 10,
-    templateName: "nudge",
-    subject: "You have {{QUERIES_LEFT}} Mira queries left today",
-    condition: "low_usage", // only if < 3 queries used total
-  },
-  {
-    day: 14,
-    templateName: "conversion",
-    subject: "Your free queries reset daily — unlimited is $49/mo",
-    condition: "always",
+    templateName: "beta-reminder",
+    subject: "Still thinking about it?",
+    condition: "not_paid",
   },
 ] as const;

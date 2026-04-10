@@ -1,36 +1,43 @@
 /**
- * mira-web — PLG acquisition funnel for FactoryLM.
+ * mira-web — Beta onboarding funnel for FactoryLM.
  *
  * Hono on Bun. Routes:
- *   GET  /                      → Homepage
- *   GET  /cmms                  → Serve gated CMMS landing page
- *   GET  /blog                  → Blog index (articles + fault codes link)
- *   GET  /blog/fault-codes      → Fault code library index
- *   GET  /blog/:slug            → Individual blog post or fault code article
- *   GET  /sitemap.xml           → Dynamic sitemap
- *   GET  /api/health            → Liveness probe
- *   POST /api/register          → Create tenant + Atlas user + JWT
- *   GET  /api/me                → User profile + quota (auth required)
- *   GET  /api/quota             → Daily query quota status (auth required)
- *   GET  /demo/work-orders      → Static ticker data (no auth)
- *   POST /api/mira/chat         → SSE AI chat via mira-sidecar (auth required)
- *   GET  /demo/tenant-work-orders → Real WOs for authenticated user
+ *   GET  /                        → Homepage
+ *   GET  /cmms                    → Serve CMMS landing / dashboard page
+ *   GET  /blog                    → Blog index (articles + fault codes link)
+ *   GET  /blog/fault-codes        → Fault code library index
+ *   GET  /blog/:slug              → Individual blog post or fault code article
+ *   GET  /sitemap.xml             → Dynamic sitemap
+ *   GET  /api/health              → Liveness probe
+ *   POST /api/register            → Create pending tenant + start nurture
+ *   GET  /api/checkout            → Stripe Checkout redirect ($97/mo)
+ *   POST /api/stripe/webhook      → Stripe webhook handler
+ *   GET  /api/billing-portal      → Stripe Customer Portal redirect
+ *   GET  /api/me                  → User profile + quota (active only)
+ *   GET  /api/quota               → Daily query quota status (active only)
+ *   GET  /demo/work-orders        → Static ticker data (no auth)
+ *   POST /api/mira/chat           → SSE AI chat via mira-sidecar (active only)
+ *   GET  /demo/tenant-work-orders → Real WOs for authenticated user (active only)
  */
 
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
-import { signToken, requireAuth, type MiraTokenPayload } from "./lib/auth.js";
+import { signToken, requireAuth, requireActive, type MiraTokenPayload } from "./lib/auth.js";
 import {
   createWorkOrder,
   listWorkOrders,
 } from "./lib/atlas.js";
 import {
   findTenantByEmail,
+  findTenantById,
   createTenant,
   getQuota,
   logQuery,
   hasQuotaRemaining,
+  updateTenantTier,
+  updateTenantStripe,
+  findTenantByStripeCustomerId,
   ensureSchema,
 } from "./lib/quota.js";
 import {
@@ -39,8 +46,13 @@ import {
   parseWORecommendation,
 } from "./lib/mira-chat.js";
 import { seedDemoData } from "./seed/demo-data.js";
-import { sendWelcomeEmail } from "./lib/mailer.js";
+import { sendBetaWelcomeEmail, sendActivatedEmail } from "./lib/mailer.js";
 import { startDripScheduler } from "./lib/drip.js";
+import {
+  createCheckoutSession,
+  createPortalSession,
+  constructWebhookEvent,
+} from "./lib/stripe.js";
 import { FAULT_CODES } from "./data/fault-codes.js";
 import { BLOG_POSTS } from "./data/blog-posts.js";
 import {
@@ -284,7 +296,7 @@ app.get("/demo/work-orders", (c) =>
 
 app.post("/api/register", async (c) => {
   const body = await c.req.json();
-  const { email, company, firstName, lastName, role } = body;
+  const { email, company, firstName } = body;
 
   if (!email || !company) {
     return c.json({ error: "email and company are required" }, 400);
@@ -297,52 +309,43 @@ app.post("/api/register", async (c) => {
     // Check if tenant already exists
     const existing = await findTenantByEmail(email);
     if (existing) {
-      const token = await signToken({
-        tenantId: existing.id,
-        email,
-        tier: existing.tier,
-        atlasCompanyId: 0,
-        atlasUserId: 0,
-      });
-      return c.json({ success: true, token, tenantId: existing.id });
+      // Active user returning — give them a token
+      if (existing.tier === "active") {
+        const token = await signToken({
+          tenantId: existing.id,
+          email,
+          tier: existing.tier,
+          atlasCompanyId: 0,
+          atlasUserId: 0,
+        });
+        return c.json({ success: true, token, tenantId: existing.id });
+      }
+      // Pending/churned — still in nurture or needs to resubscribe
+      return c.json({ success: true, pending: true, message: "Check your email for next steps" });
     }
 
     const tenantId = crypto.randomUUID();
 
-    // Create tenant row in NeonDB (Atlas WO operations use shared admin token)
+    // Create tenant as pending — no product access until payment
     await createTenant({
       id: tenantId,
       email,
       company,
-      tier: "free",
+      firstName: firstName || "",
+      tier: "pending",
       atlasPassword: "",
       atlasCompanyId: 0,
       atlasUserId: 0,
     });
 
-    // Seed demo data (async, don't block response)
-    seedDemoData().catch((err) =>
-      console.error("[register] Demo seed failed:", err)
-    );
-
-    // Issue JWT
-    const token = await signToken({
-      tenantId,
-      email,
-      tier: "free",
-      atlasCompanyId: 0,
-      atlasUserId: 0,
-    });
-
-    // Send welcome email (async, don't block response)
-    sendWelcomeEmail(
+    // Send beta welcome email (async, don't block response)
+    sendBetaWelcomeEmail(
       email,
       firstName || email.split("@")[0],
-      company,
-      token
+      company
     ).catch((err) => console.error("[register] Welcome email failed:", err));
 
-    return c.json({ success: true, token, tenantId });
+    return c.json({ success: true, pending: true, message: "Check your email" });
   } catch (err) {
     console.error("[register] Error:", err);
     return c.json({ error: "Registration failed. Please try again." }, 500);
@@ -350,30 +353,187 @@ app.post("/api/register", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Stripe — Checkout, Webhook, Billing Portal
+// ---------------------------------------------------------------------------
+
+// Checkout redirect (unauthenticated — called from payment email link)
+app.get("/api/checkout", async (c) => {
+  const tid = c.req.query("tid");
+  const email = c.req.query("email");
+
+  if (!tid || !email) {
+    return c.json({ error: "Missing tid or email" }, 400);
+  }
+
+  try {
+    const tenant = await findTenantById(tid);
+    if (!tenant) return c.json({ error: "Tenant not found" }, 404);
+    if (String(tenant.email) !== email) {
+      return c.json({ error: "Email mismatch" }, 400);
+    }
+
+    // Already active — redirect to dashboard
+    if (tenant.tier === "active") {
+      return c.redirect("/cmms?payment=success", 303);
+    }
+
+    const checkoutUrl = await createCheckoutSession(tid, email);
+    return c.redirect(checkoutUrl, 303);
+  } catch (err) {
+    console.error("[checkout] Error:", err);
+    return c.json({ error: "Failed to create checkout session" }, 500);
+  }
+});
+
+// Stripe webhook (unauthenticated — Stripe sends events here)
+app.post("/api/stripe/webhook", async (c) => {
+  const signature = c.req.header("stripe-signature");
+  if (!signature) return c.json({ error: "Missing signature" }, 400);
+
+  let rawBody: string;
+  try {
+    rawBody = await c.req.text();
+  } catch {
+    return c.json({ error: "Failed to read body" }, 400);
+  }
+
+  let event;
+  try {
+    event = constructWebhookEvent(rawBody, signature);
+  } catch (err) {
+    console.error("[stripe-webhook] Signature verification failed:", err);
+    return c.json({ error: "Invalid signature" }, 400);
+  }
+
+  console.log("[stripe-webhook] Event:", event.type, event.id);
+
+  switch (event.type) {
+    case "checkout.session.completed": {
+      const session = event.data.object;
+      const tenantId = session.metadata?.tenant_id;
+      if (!tenantId) {
+        console.error("[stripe-webhook] No tenant_id in session metadata");
+        break;
+      }
+
+      const customerId = typeof session.customer === "string"
+        ? session.customer
+        : session.customer?.id || "";
+      const subscriptionId = typeof session.subscription === "string"
+        ? session.subscription
+        : session.subscription?.id || "";
+
+      // Update tenant with Stripe IDs and activate
+      await updateTenantStripe(tenantId, customerId, subscriptionId);
+      await updateTenantTier(tenantId, "active");
+      console.log("[stripe-webhook] Tenant activated:", tenantId);
+
+      // Seed demo data (async)
+      seedDemoData().catch((err) =>
+        console.error("[stripe-webhook] Demo seed failed:", err)
+      );
+
+      // Send "you're in" email with login link (async)
+      const tenant = await findTenantById(tenantId);
+      if (tenant) {
+        const token = await signToken({
+          tenantId,
+          email: String(tenant.email),
+          tier: "active",
+          atlasCompanyId: 0,
+          atlasUserId: 0,
+        });
+        sendActivatedEmail(
+          String(tenant.email),
+          tenant.first_name || String(tenant.email).split("@")[0],
+          String(tenant.company),
+          token
+        ).catch((err) =>
+          console.error("[stripe-webhook] Activated email failed:", err)
+        );
+      }
+      break;
+    }
+
+    case "customer.subscription.updated": {
+      const sub = event.data.object;
+      const tenantId = sub.metadata?.tenant_id;
+      if (tenantId && (sub.status === "past_due" || sub.status === "unpaid")) {
+        console.warn("[stripe-webhook] Subscription %s for tenant %s", sub.status, tenantId);
+      }
+      break;
+    }
+
+    case "customer.subscription.deleted": {
+      const sub = event.data.object;
+      const tenantId = sub.metadata?.tenant_id;
+      if (tenantId) {
+        await updateTenantTier(tenantId, "churned");
+        console.log("[stripe-webhook] Tenant churned:", tenantId);
+      } else {
+        // Fallback: look up by customer ID
+        const customerId = typeof sub.customer === "string"
+          ? sub.customer
+          : sub.customer?.id || "";
+        if (customerId) {
+          const tenant = await findTenantByStripeCustomerId(customerId);
+          if (tenant) {
+            await updateTenantTier(tenant.id, "churned");
+            console.log("[stripe-webhook] Tenant churned (by customer):", tenant.id);
+          }
+        }
+      }
+      break;
+    }
+  }
+
+  // Always return 200 quickly
+  return c.json({ received: true });
+});
+
+// Billing portal (authenticated, any tier — churned users need this to resubscribe)
+app.get("/api/billing-portal", requireAuth, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  const tenant = await findTenantById(user.sub);
+
+  if (!tenant?.stripe_customer_id) {
+    return c.json({ error: "No billing account found" }, 404);
+  }
+
+  try {
+    const url = await createPortalSession(String(tenant.stripe_customer_id));
+    return c.json({ url });
+  } catch (err) {
+    console.error("[billing-portal] Error:", err);
+    return c.json({ error: "Failed to create portal session" }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Authenticated routes
 // ---------------------------------------------------------------------------
 
-// User profile
-app.get("/api/me", requireAuth, async (c) => {
+// User profile (active subscribers only)
+app.get("/api/me", requireActive, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
-  const quota = await getQuota(user.sub);
+  const quota = await getQuota(user.sub, "active");
   return c.json({
     tenantId: user.sub,
     email: user.email,
-    tier: user.tier,
+    tier: "active",
     quota,
   });
 });
 
-// Query quota
-app.get("/api/quota", requireAuth, async (c) => {
+// Query quota (active subscribers only)
+app.get("/api/quota", requireActive, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
-  const quota = await getQuota(user.sub);
+  const quota = await getQuota(user.sub, "active");
   return c.json(quota);
 });
 
-// Tenant work orders (real data from Atlas)
-app.get("/demo/tenant-work-orders", requireAuth, async (c) => {
+// Tenant work orders (active subscribers only)
+app.get("/demo/tenant-work-orders", requireActive, async (c) => {
   try {
     const wos = await listWorkOrders(undefined, 50);
     return c.json(wos);
@@ -387,25 +547,13 @@ app.get("/demo/tenant-work-orders", requireAuth, async (c) => {
 // Mira AI Chat (SSE)
 // ---------------------------------------------------------------------------
 
-app.post("/api/mira/chat", requireAuth, async (c) => {
+app.post("/api/mira/chat", requireActive, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
   const body = await c.req.json();
   const query = body.query?.trim();
 
   if (!query) {
     return c.json({ error: "query is required" }, 400);
-  }
-
-  // Check quota
-  const canQuery = await hasQuotaRemaining(user.sub);
-  if (!canQuery) {
-    return c.json(
-      {
-        error: "Daily query limit reached",
-        upgradeUrl: "/pricing",
-      },
-      429
-    );
   }
 
   try {

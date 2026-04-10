@@ -182,13 +182,13 @@
 
     .nav-links a:hover { color: var(--text); }
 
-    /* Ghost CTA — NOT a solid amber button (per Linear DNA) */
+    /* Nav CTA — compact amber button */
     .nav-cta {
-      font-size: 14px;
-      font-weight: 500;
-      color: rgba(255,255,255,0.7);
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.14);
+      font-size: 13px;
+      font-weight: 700;
+      color: #0a0a08;
+      background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%);
+      border: 1px solid rgba(255,255,255,0.12);
       border-radius: 6px;
       padding: 7px 14px;
       text-decoration: none;
@@ -198,9 +198,9 @@
     }
 
     .nav-cta:hover {
-      background: rgba(255,255,255,0.13);
-      border-color: rgba(255,255,255,0.22);
-      color: #fff;
+      background: linear-gradient(180deg, #f5b040 0%, #e09510 100%);
+      border-color: rgba(255,255,255,0.20);
+      color: #0a0a08;
     }
 
     @media (max-width: 640px) {
@@ -306,6 +306,78 @@
     }
 
     .btn-primary:hover { opacity: 0.9; }
+
+    /* Industrial CTA — "Start Here" panel button */
+    .cta-start {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%);
+      color: #0a0a08;
+      border: 2px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 14px 32px;
+      text-decoration: none;
+      cursor: pointer;
+      position: relative;
+      box-shadow:
+        0 0 20px rgba(240,160,48,0.10),
+        0 1px 0 rgba(255,255,255,0.15) inset,
+        0 -1px 0 rgba(0,0,0,0.20) inset;
+      transition: transform 150ms var(--ease-out), box-shadow 200ms ease;
+    }
+
+    .cta-start:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 0 30px rgba(240,160,48,0.25),
+        0 4px 16px rgba(240,160,48,0.15),
+        0 1px 0 rgba(255,255,255,0.20) inset,
+        0 -1px 0 rgba(0,0,0,0.20) inset;
+    }
+
+    .cta-start:active {
+      transform: translateY(1px);
+      box-shadow:
+        0 0 10px rgba(240,160,48,0.08),
+        0 2px 4px rgba(0,0,0,0.3) inset;
+    }
+
+    .cta-start-pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #0a0a08;
+      flex-shrink: 0;
+      animation: pulse-dot 2s ease-in-out infinite;
+      box-shadow: 0 0 0 0 rgba(10,10,8,0.4);
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(10,10,8,0.4); }
+      50% { box-shadow: 0 0 0 4px rgba(10,10,8,0.0); }
+    }
+
+    .cta-start-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1;
+    }
+
+    .cta-start-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      opacity: 0.55;
+      margin-bottom: 4px;
+    }
+
+    .cta-start-action {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
 
     /* Ghost button */
     .btn-ghost {
@@ -679,7 +751,7 @@
         <li><a href="/cmms">CMMS Demo</a></li>
       </ul>
 
-      <a href="#waitlist" class="nav-cta">Join waitlist</a>
+      <a href="/cmms" class="nav-cta">Join the Beta</a>
     </div>
   </nav>
 
@@ -705,16 +777,18 @@
           </p>
 
           <div class="hero-actions fade-in">
-            <a href="#waitlist" class="btn-primary">
-              Join the waitlist
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
+            <a href="/cmms" class="cta-start">
+              <span class="cta-start-pulse" aria-hidden="true"></span>
+              <span class="cta-start-text">
+                <span class="cta-start-label">Beta Access — 50 Spots</span>
+                <span class="cta-start-action">Start Here &rarr;</span>
+              </span>
             </a>
-            <button class="btn-ghost" onclick="document.getElementById('mira-fab').click()" type="button">
-              Try Mira now
-            </button>
+            <a href="/blog" class="btn-ghost">
+              Read the blog
+            </a>
           </div>
+          <p style="font-size:12px;color:var(--text-faint);margin-top:12px;" class="fade-in">No credit card to sign up. 7-day video walkthrough.</p>
         </div>
 
         <!-- Product demo frame -->
@@ -936,26 +1010,27 @@
     </div>
   </section>
 
-  <!-- ── CTA / Waitlist ── -->
-  <section class="cta-section" id="waitlist" aria-labelledby="cta-heading">
+  <!-- ── CTA / Beta ── -->
+  <section class="cta-section" id="beta" aria-labelledby="cta-heading">
     <div class="inner">
       <div class="cta-inner">
-        <div class="section-label fade-in">Early Access</div>
+        <div class="section-label fade-in">Beta Access</div>
         <h2 class="cta-h2 fade-in" id="cta-heading">
-          First 50 get founding<br>member pricing
+          Join the FactoryLM<br>beta
         </h2>
         <p class="cta-sub fade-in">
-          No demo calls. No enterprise sales process. Open Mira,
-          describe your equipment, and start diagnosing in minutes.
+          See how Mira works through a 7-day video walkthrough.
+          Watch AI diagnose real equipment faults from your manuals. Then decide.
         </p>
         <div class="fade-in">
-          <a href="mailto:contact@factorylm.com?subject=Waitlist%20—%20Factory%20LM" class="btn-primary">
-            Request early access
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+          <a href="/cmms" class="cta-start">
+            <span class="cta-start-pulse" aria-hidden="true"></span>
+            <span class="cta-start-text">
+              <span class="cta-start-label">Beta Access — 50 Spots</span>
+              <span class="cta-start-action">Start Here &rarr;</span>
+            </span>
           </a>
-          <p class="cta-note">Or tap the Mira button below to try it right now — no account needed.</p>
+          <p class="cta-note">No credit card to sign up. 7-day video walkthrough.</p>
         </div>
       </div>
     </div>
@@ -983,15 +1058,6 @@
     </div>
   </footer>
 
-  <!-- ── Mira FAB — the widget trigger ── -->
-  <!-- FAB styled via mira-chat.css, rendered by mira-chat.js on load -->
-  <!-- Inline stub so the button exists before JS loads -->
-  <button id="mira-fab" aria-label="Open Mira chat" aria-expanded="false" data-open="false">
-    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M4 18V7l4 6 4-5 4 5 4-6v11" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  </button>
-
   <script>
     // ── Nav scroll effect ──────────────────────────────────────────────
     (function () {
@@ -1011,29 +1077,6 @@
         { threshold: 0.08 }
       );
       document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
-    })();
-
-    // ── Lazy-load the full chat widget on FAB interaction ──────────────
-    (function () {
-      let loaded = false;
-      function loadWidget() {
-        if (loaded) return;
-        loaded = true;
-        const s = document.createElement('script');
-        s.src = '/mira-chat.js';
-        s.defer = true;
-        document.head.appendChild(s);
-      }
-
-      const fab = document.getElementById('mira-fab');
-      fab.addEventListener('mouseenter', loadWidget, { once: true });
-      fab.addEventListener('touchstart', loadWidget, { once: true, passive: true });
-      fab.addEventListener('focus', loadWidget, { once: true });
-
-      // Also load if user scrolls past hero (suggests engagement)
-      window.addEventListener('scroll', function onScroll() {
-        if (window.scrollY > 300) { loadWidget(); window.removeEventListener('scroll', onScroll); }
-      }, { passive: true });
     })();
   </script>
 </body>
