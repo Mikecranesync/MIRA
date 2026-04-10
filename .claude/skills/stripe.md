@@ -58,7 +58,7 @@ Create the endpoint pointed at production:
 
 ```
 stripe webhook_endpoints create \
-  --url https://app.factorylm.com/api/stripe/webhook \
+  --url https://factorylm.com/api/stripe/webhook \
   --enabled-events checkout.session.completed \
   --enabled-events customer.subscription.updated \
   --enabled-events customer.subscription.deleted
