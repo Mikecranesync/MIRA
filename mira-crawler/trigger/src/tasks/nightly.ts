@@ -1,15 +1,8 @@
 import { schedules } from "@trigger.dev/sdk";
 import { triggerBridgeTask } from "../lib/bridge";
 
-// 2:15am ET — full nightly manual ingest run (mirrors ingest_manuals.py cron)
-export const nightlyManuals = schedules.task({
-  id: "nightly-manuals",
-  cron: {
-    pattern: "15 2 * * *",
-    timezone: "America/New_York",
-  },
-  run: async () => triggerBridgeTask("ingest"),
-});
+// NOTE: nightly-manuals removed — hourly ingest-pending in hourly.ts covers the same use case.
+//       See docs/superpowers/plans/2026-04-09-24-7-kb-ingest-pipeline.md (Arch-1)
 
 // 3:00am ET — download and embed new YouTube transcript content
 export const nightlyYoutube = schedules.task({
