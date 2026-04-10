@@ -1,0 +1,70 @@
+/* FactoryLM branding overrides for Atlas CMMS — injected via nginx sub_filter */
+
+:root {
+  --primary: #f0a000 !important;
+  --primary-dark: #c47e00 !important;
+  --primary-light: #f5c542 !important;
+  --accent: #00d4aa !important;
+  --color-primary: #f0a000 !important;
+  --color-primary-dark: #c47e00 !important;
+  --color-accent: #00d4aa !important;
+  --btn-primary-bg: #f0a000 !important;
+  --btn-primary-hover: #c47e00 !important;
+  --link-color: #f0a000 !important;
+}
+
+.app-logo img,
+header img[alt*="logo" i],
+.navbar-brand img,
+.sidebar-logo img {
+  content: url("/factorylm-logo.svg") !important;
+}
+
+.powered-by,
+.footer-atlas-link,
+[class*="powered-by"],
+[class*="atlas-brand"] {
+  display: none !important;
+}
+
+button[class*="primary"],
+.btn-primary,
+.button-primary,
+input[type="submit"],
+a[class*="btn-primary"] {
+  background: linear-gradient(180deg, #f5c542 0%, #f0a000 50%, #c47e00 100%) !important;
+  background-color: #f0a000 !important;
+  border-color: #c47e00 !important;
+  color: #0b0c0f !important;
+  font-weight: 600 !important;
+}
+
+button[class*="primary"]:hover,
+.btn-primary:hover,
+.button-primary:hover,
+input[type="submit"]:hover,
+a[class*="btn-primary"]:hover {
+  background: linear-gradient(180deg, #f5c542 0%, #c47e00 50%, #9c6400 100%) !important;
+  background-color: #c47e00 !important;
+  border-color: #9c6400 !important;
+  color: #0b0c0f !important;
+}
+
+a,
+.nav-link,
+.sidebar-link {
+  color: #f0a000 !important;
+}
+
+a:hover,
+.nav-link:hover,
+.sidebar-link:hover {
+  color: #c47e00 !important;
+}
+
+.active > a,
+.nav-item.active .nav-link,
+.sidebar-item.active .sidebar-link {
+  color: #f5c542 !important;
+  border-color: #f0a000 !important;
+}

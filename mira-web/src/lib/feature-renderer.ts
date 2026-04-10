@@ -1254,6 +1254,16 @@ export function renderFeaturePage(feature: Feature): string {
       );
       document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
     })();
+
+    // CMMS CTA swap for active tenants
+    (function () {
+      var token = sessionStorage.getItem('flm_token');
+      if (!token) return;
+      document.querySelectorAll('a.nav-cta').forEach(function (el) {
+        el.href = '/api/cmms/login?token=' + encodeURIComponent(token);
+        el.textContent = 'Open CMMS';
+      });
+    })();
   </script>
 
 </body>

@@ -30,6 +30,7 @@ import {
   createWorkOrder,
   listWorkOrders,
   signupUser,
+  signinUser,
 } from "./lib/atlas.js";
 import { deriveAtlasPassword } from "./lib/crypto.js";
 import {
@@ -571,6 +572,30 @@ app.get("/api/billing-portal", requireAuth, async (c) => {
   } catch (err) {
     console.error("[billing-portal] Error:", err);
     return c.json({ error: "Failed to create portal session" }, 500);
+  }
+});
+
+// CMMS SSO — derive password, sign in to Atlas, redirect with token in fragment
+const CMMS_PUBLIC_URL = process.env.CMMS_PUBLIC_URL || "https://cmms.factorylm.com";
+
+app.get("/api/cmms/login", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  const tenant = await findTenantById(user.sub);
+  if (!tenant) return c.json({ error: "Tenant not found" }, 404);
+
+  if (tenant.atlas_provisioning_status === "failed" || tenant.atlas_company_id === 0) {
+    return c.json({ error: "CMMS account not yet provisioned" }, 503);
+  }
+
+  try {
+    const password = deriveAtlasPassword(tenant.id);
+    const atlas = await signinUser(String(tenant.email), password);
+    const target = new URL(CMMS_PUBLIC_URL);
+    target.hash = `accessToken=${encodeURIComponent(atlas.accessToken)}&companyId=${atlas.companyId}&userId=${atlas.userId}`;
+    return c.redirect(target.toString(), 302);
+  } catch (err) {
+    console.error("[cmms-login] Atlas signin failed:", err);
+    return c.json({ error: "CMMS login failed" }, 502);
   }
 });
 

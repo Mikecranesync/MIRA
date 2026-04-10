@@ -1293,6 +1293,16 @@
       update();
     })();
 
+    // ── CMMS CTA swap for active tenants ──────────────────────────────
+    (function () {
+      const token = sessionStorage.getItem('flm_token');
+      if (!token) return;
+      const cta = document.querySelector('a.nav-cta');
+      if (!cta) return;
+      cta.href = '/api/cmms/login?token=' + encodeURIComponent(token);
+      cta.textContent = 'Open CMMS';
+    })();
+
     // ── Scroll fade-in observer ────────────────────────────────────────
     (function () {
       if (!window.IntersectionObserver) return;

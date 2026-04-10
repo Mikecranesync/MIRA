@@ -117,6 +117,7 @@ export async function sendActivatedEmail(
       COMPANY: company,
       TOKEN: token,
       ACTIVATED_URL: `${PUBLIC_URL()}/activated?token=${token}`,
+      CMMS_URL: `${PUBLIC_URL()}/api/cmms/login?token=${token}`,
     },
   });
 }

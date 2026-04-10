@@ -378,6 +378,33 @@ async function activateAuth() {
   document.getElementById('topbar-user').style.display = 'inline';
   document.getElementById('topbar-user').textContent = AUTH.user?.email || '';
 
+  // Inject "Open FactoryLM CMMS" primary CTA for active tenants
+  const topbarRight = document.getElementById('topbar-right');
+  if (topbarRight && AUTH.token && !document.getElementById('cmms-open-btn')) {
+    const btn = document.createElement('a');
+    btn.id = 'cmms-open-btn';
+    btn.href = `/api/cmms/login?token=${encodeURIComponent(AUTH.token)}`;
+    btn.textContent = 'Open FactoryLM CMMS';
+    btn.style.cssText = [
+      'display:inline-flex',
+      'align-items:center',
+      'gap:6px',
+      'background:linear-gradient(180deg,#f0a030 0%,#d4880a 100%)',
+      'color:#0a0a08',
+      'font-size:13px',
+      'font-weight:700',
+      'border:1px solid rgba(255,255,255,0.12)',
+      'border-radius:6px',
+      'padding:7px 14px',
+      'text-decoration:none',
+      'white-space:nowrap',
+      'transition:background 150ms ease',
+    ].join(';');
+    btn.onmouseover = () => { btn.style.background = 'linear-gradient(180deg,#f5b040 0%,#e09510 100%)'; };
+    btn.onmouseout  = () => { btn.style.background = 'linear-gradient(180deg,#f0a030 0%,#d4880a 100%)'; };
+    topbarRight.insertBefore(btn, topbarRight.firstChild);
+  }
+
   CHECKLIST['step-account'].done = true;
   renderChecklist();
   updateQuotaBar();

@@ -559,7 +559,24 @@
       <div class="status" id="status"></div>
     </section>
 
-    <div class="skip-wrap reveal reveal-5">
+    <section class="upload-panel reveal reveal-5" id="cmms-panel">
+      <div class="upload-header">
+        <div class="label"><span class="led ok"></span><span>CMMS / LIVE</span></div>
+        <div class="channel">ATLAS &middot; v1</div>
+      </div>
+      <div style="padding:32px 28px 36px;">
+        <p style="font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:var(--amber);margin-bottom:16px;">STEP 02 / CMMS</p>
+        <h2 style="font-family:var(--font);font-size:22px;font-weight:600;letter-spacing:-0.02em;margin-bottom:10px;">Your CMMS is live.</h2>
+        <p style="color:var(--text-secondary);font-size:15px;line-height:1.7;margin-bottom:28px;">Work orders, assets, and PM schedules are ready for your equipment. <span style="font-family:var(--serif);font-style:italic;color:var(--text);">Your records wait — no setup required.</span></p>
+        <a href="#" id="cmms-btn" class="cta-start" style="text-decoration:none;">
+          <span class="dot"></span>
+          Open FactoryLM CMMS
+          <span class="arrow">→</span>
+        </a>
+      </div>
+    </section>
+
+    <div class="skip-wrap reveal" style="animation-delay:840ms;">
       <a href="#" class="skip" id="skip-link">Skip to dashboard</a>
     </div>
 
@@ -609,6 +626,9 @@
       const skipLink = document.getElementById('skip-link');
 
       skipLink.href = '/cmms?token=' + encodeURIComponent(token);
+
+      const cmmsBtn = document.getElementById('cmms-btn');
+      if (cmmsBtn) cmmsBtn.href = '/api/cmms/login?token=' + encodeURIComponent(token);
 
       // Build 20 fuel-gauge segments
       const SEG_COUNT = 20;
