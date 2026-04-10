@@ -63,6 +63,7 @@ import {
   renderBlogIndex,
   renderFaultCodeIndex,
 } from "./lib/blog-renderer.js";
+import { FEATURES, renderFeaturePage } from "./lib/feature-renderer.js";
 import {
   getLiveFaultCodes,
   getLiveBlogPosts,
@@ -234,6 +235,17 @@ app.get("/blog/:slug", (c) => {
   if (fc) return c.html(renderFaultCodePage(fc, allFaultCodes));
 
   return c.notFound();
+});
+
+// ---------------------------------------------------------------------------
+// Feature deep-dive pages — /feature/:slug
+// ---------------------------------------------------------------------------
+
+app.get("/feature/:slug", (c) => {
+  const slug = c.req.param("slug");
+  const feature = FEATURES[slug];
+  if (!feature) return c.notFound();
+  return c.html(renderFeaturePage(feature));
 });
 
 // Static demo work orders for unauthenticated hero ticker

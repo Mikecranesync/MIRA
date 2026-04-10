@@ -652,6 +652,117 @@
     .fc-label { color: var(--text-dim); font-size: 11px; }
     .fc-value { font-size: 12px; }
 
+    /* ── Slideshow (feature walkthrough) ── */
+    .slideshow {
+      position: relative;
+      cursor: pointer;
+      outline: none;
+      border-radius: 10px;
+      transition: transform 280ms cubic-bezier(0.16,1,0.3,1);
+    }
+    .slideshow:hover,
+    .slideshow:focus-visible { transform: translateY(-2px); }
+    .slideshow:focus-visible {
+      box-shadow: 0 0 0 2px rgba(240,160,0,0.55);
+    }
+    .slideshow-slides {
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr;
+    }
+    .slideshow-slides > .slide {
+      grid-area: 1 / 1;
+      opacity: 0;
+      transform: translateY(6px) scale(0.992);
+      transition:
+        opacity 500ms cubic-bezier(0.16,1,0.3,1),
+        transform 500ms cubic-bezier(0.16,1,0.3,1);
+      pointer-events: none;
+    }
+    .slideshow-slides > .slide.active {
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .slideshow-slides > .slide { transition: none; }
+    }
+    .slideshow-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 14px;
+      padding: 0 6px;
+      min-height: 22px;
+      gap: 16px;
+    }
+    .slideshow-dots {
+      display: flex;
+      gap: 7px;
+    }
+    .slide-dot {
+      width: 22px;
+      height: 3px;
+      background: rgba(255,255,255,0.13);
+      border: none;
+      padding: 0;
+      border-radius: 2px;
+      cursor: pointer;
+      transition: all 280ms cubic-bezier(0.16,1,0.3,1);
+      outline: none;
+    }
+    .slide-dot:hover { background: rgba(255,255,255,0.28); }
+    .slide-dot.active {
+      background: var(--amber);
+      width: 34px;
+      box-shadow: 0 0 10px rgba(240,160,0,0.35);
+    }
+    .slide-dot:focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 2px;
+    }
+    .slideshow-hint {
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      opacity: 0;
+      transform: translateX(-4px);
+      transition: opacity 280ms ease, transform 280ms ease, color 280ms ease;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .slideshow:hover .slideshow-hint,
+    .slideshow:focus-visible .slideshow-hint {
+      opacity: 1;
+      transform: none;
+      color: var(--amber);
+    }
+    .feature-card-step {
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      color: var(--amber);
+      text-transform: uppercase;
+      margin-right: 10px;
+      padding: 1px 5px;
+      border: 1px solid rgba(240,160,0,0.25);
+      border-radius: 3px;
+      background: rgba(240,160,0,0.05);
+    }
+    /* Slideshow container on hover hints at clickability with amber ring */
+    .slideshow::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      transition: border-color 280ms ease;
+      pointer-events: none;
+    }
+    .slideshow:hover::after { border-color: rgba(240,160,0,0.18); }
+
     /* ── CTA section ── */
     .cta-section {
       padding: 120px 0;
@@ -854,60 +965,130 @@
           </div>
         </div>
 
-        <div class="feature-card fade-in">
-          <div class="feature-card-header">
-            ACTIVE SESSION
-            <span class="fc-badge fc-badge-green">SIGNAL</span>
+        <div class="slideshow fade-in" role="link" tabindex="0" data-href="/feature/fault-diagnosis" aria-label="Fault Diagnosis walkthrough — click for full feature page">
+          <div class="slideshow-slides">
+            <div class="slide active">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">01/04</span>INCOMING — FAULT CODE</span>
+                  <span class="fc-badge fc-badge-green">SIGNAL</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">User</span><span class="fc-value">Line 3 tech — iPhone</span></div>
+                <div class="fc-row"><span class="fc-label">Input</span><span class="fc-value">F-012 on PowerFlex 753</span></div>
+                <div class="fc-row"><span class="fc-label">Context</span><span class="fc-value">Second trip today, same fault</span></div>
+                <div class="fc-row"><span class="fc-label">Mode</span><span class="fc-value">Voice + typed</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">02/04</span>MIRA — SEARCHING</span>
+                  <span class="fc-badge fc-badge-amber">PROCESSING</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Matched</span><span class="fc-value">PF753 Manual §6.2</span></div>
+                <div class="fc-row"><span class="fc-label">Candidates</span><span class="fc-value">4 → 1 ranked</span></div>
+                <div class="fc-row"><span class="fc-label">Confidence</span><span class="fc-value">94% — high</span></div>
+                <div class="fc-row"><span class="fc-label">Latency</span><span class="fc-value" style="color:#00d4aa">612 ms to first token</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">03/04</span>CITED ANSWER</span>
+                  <span class="fc-badge fc-badge-green">DELIVERED</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Fault</span><span class="fc-value">F-012 — Overcurrent</span></div>
+                <div class="fc-row"><span class="fc-label">Root cause</span><span class="fc-value">Mechanical load spike at startup</span></div>
+                <div class="fc-row"><span class="fc-label">Action</span><span class="fc-value">Accel ramp P042 → 4.5s</span></div>
+                <div class="fc-row"><span class="fc-label">Source</span><span class="fc-value" style="color:#00d4aa">[§6.2 PF753 Manual p.81]</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">04/04</span>WORK ORDER — CREATED</span>
+                  <span class="fc-badge fc-badge-amber">AUTO</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Asset</span><span class="fc-value">Line 3 PowerFlex 753</span></div>
+                <div class="fc-row"><span class="fc-label">Priority</span><span class="fc-value" style="color:#f0a000">MEDIUM</span></div>
+                <div class="fc-row"><span class="fc-label">Assigned</span><span class="fc-value">On-call technician</span></div>
+                <div class="fc-row"><span class="fc-label">Logged</span><span class="fc-value" style="color:#00d4aa">14:02 · atlas-cmms</span></div>
+              </div>
+            </div>
           </div>
-          <div class="fc-row">
-            <span class="fc-label">Fault</span>
-            <span class="fc-value">VFD Fault F-012 — Overcurrent</span>
-          </div>
-          <div class="fc-row">
-            <span class="fc-label">Equipment</span>
-            <span class="fc-value">Allen-Bradley PowerFlex 753</span>
-          </div>
-          <div class="fc-row">
-            <span class="fc-label">Root cause</span>
-            <span class="fc-value">Mechanical load spike at startup</span>
-          </div>
-          <div class="fc-row">
-            <span class="fc-label">Action</span>
-            <span class="fc-value">Increase accel ramp P042 → 4.5s</span>
-          </div>
-          <div class="fc-row">
-            <span class="fc-label">Source</span>
-            <span class="fc-value" style="color:#00d4aa">[§6.2 PF753 Manual p.81]</span>
+          <div class="slideshow-controls">
+            <div class="slideshow-dots" role="tablist" aria-label="Fault Diagnosis slide navigation">
+              <button class="slide-dot active" aria-label="Slide 1 of 4: Incoming fault code" data-idx="0"></button>
+              <button class="slide-dot" aria-label="Slide 2 of 4: Mira searching" data-idx="1"></button>
+              <button class="slide-dot" aria-label="Slide 3 of 4: Cited answer" data-idx="2"></button>
+              <button class="slide-dot" aria-label="Slide 4 of 4: Work order created" data-idx="3"></button>
+            </div>
+            <span class="slideshow-hint">Click for walkthrough &rarr;</span>
           </div>
         </div>
       </div>
 
       <div class="feature reverse fade-in" id="how-it-works">
         <!-- Demo left, text right (reversed grid) -->
-        <div class="feature-card">
-          <div class="feature-card-header">
-            WORK ORDER
-            <span class="fc-badge fc-badge-amber">OPEN</span>
+        <div class="slideshow" role="link" tabindex="0" data-href="/feature/cmms-integration" aria-label="CMMS Integration walkthrough — click for full feature page">
+          <div class="slideshow-slides">
+            <div class="slide active">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">01/04</span>ACTION DETECTED</span>
+                  <span class="fc-badge fc-badge-green">SIGNAL</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Source</span><span class="fc-value">Mira chat — Line 3 tech</span></div>
+                <div class="fc-row"><span class="fc-label">Trigger</span><span class="fc-value">"Replace J2 encoder cable"</span></div>
+                <div class="fc-row"><span class="fc-label">Context</span><span class="fc-value">Photo + fault cited</span></div>
+                <div class="fc-row"><span class="fc-label">Severity</span><span class="fc-value" style="color:#ff5d5d">HIGH — downtime risk</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">02/04</span>ASSET LOOKUP</span>
+                  <span class="fc-badge fc-badge-green">MATCHED</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Asset</span><span class="fc-value">Conveyor Drive #3 — Motor</span></div>
+                <div class="fc-row"><span class="fc-label">Last service</span><span class="fc-value">47 days ago</span></div>
+                <div class="fc-row"><span class="fc-label">Uptime</span><span class="fc-value" style="color:#00d4aa">94.2% YTD</span></div>
+                <div class="fc-row"><span class="fc-label">PM due</span><span class="fc-value">In 11 days</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">03/04</span>WORK ORDER DRAFTED</span>
+                  <span class="fc-badge fc-badge-amber">READY</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Parts</span><span class="fc-value">A06B-6117-K003 cable</span></div>
+                <div class="fc-row"><span class="fc-label">Est. time</span><span class="fc-value">45 minutes</span></div>
+                <div class="fc-row"><span class="fc-label">Tools</span><span class="fc-value">M4 hex, zip ties, meter</span></div>
+                <div class="fc-row"><span class="fc-label">Priority</span><span class="fc-value" style="color:#f0a000">HIGH</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">04/04</span>ATLAS CMMS — OPEN</span>
+                  <span class="fc-badge fc-badge-green">LIVE</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Status</span><span class="fc-value" style="color:#f0a000">HIGH PRIORITY</span></div>
+                <div class="fc-row"><span class="fc-label">Kanban</span><span class="fc-value">Today's Queue</span></div>
+                <div class="fc-row"><span class="fc-label">Assigned</span><span class="fc-value">Mike H. — first available</span></div>
+                <div class="fc-row"><span class="fc-label">Notified</span><span class="fc-value" style="color:#00d4aa">iMessage + Atlas push</span></div>
+              </div>
+            </div>
           </div>
-          <div class="fc-row">
-            <span class="fc-label">Asset</span>
-            <span class="fc-value">Conveyor Drive #3 — Motor</span>
-          </div>
-          <div class="fc-row">
-            <span class="fc-label">Priority</span>
-            <span class="fc-value" style="color:#f0a000">HIGH</span>
-          </div>
-          <div class="fc-row">
-            <span class="fc-label">Created by</span>
-            <span class="fc-value">Mira AI (via chat)</span>
-          </div>
-          <div class="fc-row">
-            <span class="fc-label">Description</span>
-            <span class="fc-value">Replace J2 encoder cable — CN2 pinch damage</span>
-          </div>
-          <div class="fc-row">
-            <span class="fc-label">Parts</span>
-            <span class="fc-value">A06B-6117-K003 encoder cable</span>
+          <div class="slideshow-controls">
+            <div class="slideshow-dots" role="tablist" aria-label="CMMS Integration slide navigation">
+              <button class="slide-dot active" aria-label="Slide 1 of 4: Action detected" data-idx="0"></button>
+              <button class="slide-dot" aria-label="Slide 2 of 4: Asset lookup" data-idx="1"></button>
+              <button class="slide-dot" aria-label="Slide 3 of 4: Work order drafted" data-idx="2"></button>
+              <button class="slide-dot" aria-label="Slide 4 of 4: Atlas CMMS open" data-idx="3"></button>
+            </div>
+            <span class="slideshow-hint">Click for walkthrough &rarr;</span>
           </div>
         </div>
 
@@ -946,26 +1127,65 @@
           </div>
         </div>
 
-        <div class="feature-card">
-          <div class="feature-card-header">PHOTO ANALYSIS</div>
-          <div style="background:#0f1114; border-radius:6px; padding:12px; margin-bottom:12px; font-size:11px; color:#8a8fa8;">
-            [encoder_cable_j2.jpg — 2.1 MB → compressed 380 KB]
+        <div class="slideshow" role="link" tabindex="0" data-href="/feature/voice-vision" aria-label="Voice + Vision walkthrough — click for full feature page">
+          <div class="slideshow-slides">
+            <div class="slide active">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">01/04</span>VOICE INPUT — FIELD</span>
+                  <span class="fc-badge fc-badge-green">MIC LIVE</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">User</span><span class="fc-value">"Hey Mira — E-731 on axis 2"</span></div>
+                <div class="fc-row"><span class="fc-label">Language</span><span class="fc-value">en-US · offline STT</span></div>
+                <div class="fc-row"><span class="fc-label">Noise</span><span class="fc-value">72 dBA — shop floor</span></div>
+                <div class="fc-row"><span class="fc-label">Confidence</span><span class="fc-value" style="color:#00d4aa">98% transcription</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">02/04</span>PHOTO — UPLOADED</span>
+                  <span class="fc-badge fc-badge-amber">COMPRESSED</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">File</span><span class="fc-value">encoder_cable_j2.jpg</span></div>
+                <div class="fc-row"><span class="fc-label">Size</span><span class="fc-value">2.1 MB → 380 KB</span></div>
+                <div class="fc-row"><span class="fc-label">Camera</span><span class="fc-value">iPhone 15 · back lens</span></div>
+                <div class="fc-row"><span class="fc-label">Upload</span><span class="fc-value">3 seconds over LTE</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">03/04</span>IDENTIFIED</span>
+                  <span class="fc-badge fc-badge-green">MATCHED</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Component</span><span class="fc-value">FANUC J2 encoder cable</span></div>
+                <div class="fc-row"><span class="fc-label">Series</span><span class="fc-value">A06B-6117 family</span></div>
+                <div class="fc-row"><span class="fc-label">Issue</span><span class="fc-value" style="color:#f0a000">Bend radius failure</span></div>
+                <div class="fc-row"><span class="fc-label">Location</span><span class="fc-value">At cable clamp — CN2 side</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">04/04</span>ANSWER — READ BACK</span>
+                  <span class="fc-badge fc-badge-green">SPEAKING</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Voice</span><span class="fc-value">Kokoro TTS · 180 wpm</span></div>
+                <div class="fc-row"><span class="fc-label">Script</span><span class="fc-value">"Replace cable, reroute 4× dia..."</span></div>
+                <div class="fc-row"><span class="fc-label">Duration</span><span class="fc-value">11 seconds</span></div>
+                <div class="fc-row"><span class="fc-label">Work order</span><span class="fc-value" style="color:#00d4aa">Auto-created</span></div>
+              </div>
+            </div>
           </div>
-          <div class="fc-row">
-            <span class="fc-label">Identified</span>
-            <span class="fc-value">FANUC J2 encoder cable (A06B series)</span>
-          </div>
-          <div class="fc-row">
-            <span class="fc-label">Fault</span>
-            <span class="fc-value" style="color:#f0a000">Bend radius failure at cable clamp</span>
-          </div>
-          <div class="fc-row">
-            <span class="fc-label">Action</span>
-            <span class="fc-value">Replace cable, reroute with 4× dia min bend</span>
-          </div>
-          <div class="fc-row">
-            <span class="fc-label">WO</span>
-            <span class="fc-value" style="color:#00d4aa">RECOMMENDED — created</span>
+          <div class="slideshow-controls">
+            <div class="slideshow-dots" role="tablist" aria-label="Voice and Vision slide navigation">
+              <button class="slide-dot active" aria-label="Slide 1 of 4: Voice input" data-idx="0"></button>
+              <button class="slide-dot" aria-label="Slide 2 of 4: Photo uploaded" data-idx="1"></button>
+              <button class="slide-dot" aria-label="Slide 3 of 4: Identified" data-idx="2"></button>
+              <button class="slide-dot" aria-label="Slide 4 of 4: Answer read back" data-idx="3"></button>
+            </div>
+            <span class="slideshow-hint">Click for walkthrough &rarr;</span>
           </div>
         </div>
       </div>
@@ -1081,6 +1301,86 @@
         { threshold: 0.08 }
       );
       document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+    })();
+
+    // ── Feature slideshow carousels ───────────────────────────────────
+    (function () {
+      const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const INTERVAL_MS = 5500;
+      const RESUME_DELAY_MS = 9000;
+
+      document.querySelectorAll('.slideshow').forEach(show => {
+        const slides = show.querySelectorAll('.slide');
+        const dots = show.querySelectorAll('.slide-dot');
+        if (slides.length === 0) return;
+
+        let idx = 0;
+        let paused = false;
+        let timer = null;
+        let resumeTimer = null;
+
+        function go(n) {
+          idx = ((n % slides.length) + slides.length) % slides.length;
+          slides.forEach((s, j) => s.classList.toggle('active', j === idx));
+          dots.forEach((d, j) => d.classList.toggle('active', j === idx));
+        }
+        function start() {
+          if (REDUCED || timer) return;
+          timer = setInterval(() => { if (!paused) go(idx + 1); }, INTERVAL_MS);
+        }
+        function pause() { paused = true; }
+        function resume() { paused = false; }
+        function pauseThenResume() {
+          pause();
+          clearTimeout(resumeTimer);
+          resumeTimer = setTimeout(resume, RESUME_DELAY_MS);
+        }
+
+        show.addEventListener('mouseenter', pause);
+        show.addEventListener('mouseleave', resume);
+        show.addEventListener('focusin', pause);
+        show.addEventListener('focusout', resume);
+
+        dots.forEach((dot, i) => {
+          dot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            go(i);
+            pauseThenResume();
+          });
+        });
+
+        show.addEventListener('click', (e) => {
+          if (e.target.closest('.slide-dot')) return;
+          const href = show.dataset.href;
+          if (href) window.location.href = href;
+        });
+        show.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            const href = show.dataset.href;
+            if (href) window.location.href = href;
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            go(idx + 1);
+            pauseThenResume();
+          } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            go(idx - 1);
+            pauseThenResume();
+          }
+        });
+
+        start();
+      });
+
+      // Pause all slideshows when tab hidden
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') {
+          document.querySelectorAll('.slideshow').forEach(s => s.dispatchEvent(new Event('mouseenter')));
+        } else {
+          document.querySelectorAll('.slideshow').forEach(s => s.dispatchEvent(new Event('mouseleave')));
+        }
+      });
     })();
   </script>
 </body>
