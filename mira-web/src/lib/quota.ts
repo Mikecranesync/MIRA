@@ -32,6 +32,7 @@ export interface Tenant {
   atlas_password: string;
   atlas_company_id: number;
   atlas_user_id: number;
+  atlas_provisioning_status: string;
   created_at: string;
 }
 
@@ -46,7 +47,8 @@ export async function findTenantByEmail(
   const rows = await db`
     SELECT id, email, company, tier, first_name,
            stripe_customer_id, stripe_subscription_id,
-           atlas_password, atlas_company_id, atlas_user_id, created_at
+           atlas_password, atlas_company_id, atlas_user_id,
+           atlas_provisioning_status, created_at
     FROM plg_tenants WHERE email = ${email} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
@@ -58,7 +60,8 @@ export async function findTenantById(
   const rows = await db`
     SELECT id, email, company, tier, first_name,
            stripe_customer_id, stripe_subscription_id,
-           atlas_password, atlas_company_id, atlas_user_id, created_at
+           atlas_password, atlas_company_id, atlas_user_id,
+           atlas_provisioning_status, created_at
     FROM plg_tenants WHERE id = ${tenantId} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
@@ -70,7 +73,8 @@ export async function findTenantByStripeCustomerId(
   const rows = await db`
     SELECT id, email, company, tier, first_name,
            stripe_customer_id, stripe_subscription_id,
-           atlas_password, atlas_company_id, atlas_user_id, created_at
+           atlas_password, atlas_company_id, atlas_user_id,
+           atlas_provisioning_status, created_at
     FROM plg_tenants WHERE stripe_customer_id = ${stripeCustomerId} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
@@ -118,6 +122,21 @@ export async function updateTenantStripe(
     UPDATE plg_tenants
     SET stripe_customer_id = ${stripeCustomerId},
         stripe_subscription_id = ${stripeSubscriptionId}
+    WHERE id = ${tenantId}`;
+}
+
+export async function updateTenantAtlas(
+  tenantId: string,
+  companyId: number,
+  userId: number,
+  status: "ok" | "failed"
+): Promise<void> {
+  const db = sql();
+  await db`
+    UPDATE plg_tenants
+    SET atlas_company_id = ${companyId},
+        atlas_user_id = ${userId},
+        atlas_provisioning_status = ${status}
     WHERE id = ${tenantId}`;
 }
 
@@ -195,6 +214,7 @@ export async function ensureSchema(): Promise<void> {
       atlas_password TEXT NOT NULL DEFAULT '',
       atlas_company_id INTEGER NOT NULL DEFAULT 0,
       atlas_user_id INTEGER NOT NULL DEFAULT 0,
+      atlas_provisioning_status TEXT NOT NULL DEFAULT 'pending',
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`;
 
@@ -202,6 +222,7 @@ export async function ensureSchema(): Promise<void> {
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS first_name TEXT NOT NULL DEFAULT ''`;
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`;
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS atlas_provisioning_status TEXT NOT NULL DEFAULT 'pending'`;
 
   await db`
     CREATE TABLE IF NOT EXISTS plg_query_log (

@@ -29,7 +29,9 @@ import { signToken, requireAuth, requireActive, type MiraTokenPayload } from "./
 import {
   createWorkOrder,
   listWorkOrders,
+  signupUser,
 } from "./lib/atlas.js";
+import { deriveAtlasPassword } from "./lib/crypto.js";
 import {
   findTenantByEmail,
   findTenantById,
@@ -39,6 +41,7 @@ import {
   hasQuotaRemaining,
   updateTenantTier,
   updateTenantStripe,
+  updateTenantAtlas,
   findTenantByStripeCustomerId,
   ensureSchema,
 } from "./lib/quota.js";
@@ -464,30 +467,56 @@ app.post("/api/stripe/webhook", async (c) => {
       await updateTenantTier(tenantId, "active");
       console.log("[stripe-webhook] Tenant activated:", tenantId);
 
-      // Seed demo data (async)
-      seedDemoData().catch((err) =>
+      const tenant = await findTenantById(tenantId);
+      if (!tenant) {
+        console.error("[stripe-webhook] Tenant not found after activation:", tenantId);
+        break;
+      }
+
+      // Provision Atlas CMMS user
+      let atlasCompanyId = 0;
+      let atlasUserId = 0;
+      let atlasToken = "";
+      try {
+        const password = deriveAtlasPassword(tenantId);
+        const atlas = await signupUser(
+          String(tenant.email),
+          password,
+          tenant.first_name || String(tenant.email).split("@")[0],
+          "",
+          String(tenant.company) || `${String(tenant.email).split("@")[0]}'s Plant`
+        );
+        atlasCompanyId = atlas.companyId;
+        atlasUserId = atlas.userId;
+        atlasToken = atlas.accessToken;
+        await updateTenantAtlas(tenantId, atlasCompanyId, atlasUserId, "ok");
+        console.log("[stripe-webhook] Atlas provisioned: company=%d user=%d", atlasCompanyId, atlasUserId);
+      } catch (err) {
+        console.error("[stripe-webhook] Atlas provisioning failed:", err);
+        await updateTenantAtlas(tenantId, 0, 0, "failed");
+      }
+
+      // Seed demo data scoped to the tenant's Atlas company
+      seedDemoData(atlasToken || undefined).catch((err) =>
         console.error("[stripe-webhook] Demo seed failed:", err)
       );
 
-      // Send "you're in" email with login link (async)
-      const tenant = await findTenantById(tenantId);
-      if (tenant) {
-        const token = await signToken({
-          tenantId,
-          email: String(tenant.email),
-          tier: "active",
-          atlasCompanyId: 0,
-          atlasUserId: 0,
-        });
-        sendActivatedEmail(
-          String(tenant.email),
-          tenant.first_name || String(tenant.email).split("@")[0],
-          String(tenant.company),
-          token
-        ).catch((err) =>
-          console.error("[stripe-webhook] Activated email failed:", err)
-        );
-      }
+      // Send "you're in" email with login link
+      const token = await signToken({
+        tenantId,
+        email: String(tenant.email),
+        tier: "active",
+        atlasCompanyId,
+        atlasUserId,
+      });
+      sendActivatedEmail(
+        String(tenant.email),
+        tenant.first_name || String(tenant.email).split("@")[0],
+        String(tenant.company),
+        token
+      ).catch((err) =>
+        console.error("[stripe-webhook] Activated email failed:", err)
+      );
       break;
     }
 

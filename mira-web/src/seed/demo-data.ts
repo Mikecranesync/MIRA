@@ -46,20 +46,18 @@ const DEMO_WORK_ORDERS = [
   },
 ];
 
-export async function seedDemoData(): Promise<void> {
-  // Seed assets (fire-and-forget, log errors)
+export async function seedDemoData(atlasToken?: string): Promise<void> {
   for (const asset of DEMO_ASSETS) {
     try {
-      await createAsset(asset);
+      await createAsset(asset, atlasToken);
     } catch (err) {
       console.error(`[seed] Failed to create asset "${asset.name}":`, err);
     }
   }
 
-  // Seed work orders
   for (const wo of DEMO_WORK_ORDERS) {
     try {
-      await createWorkOrder(wo);
+      await createWorkOrder(wo, atlasToken);
     } catch (err) {
       console.error(`[seed] Failed to create WO "${wo.title}":`, err);
     }
