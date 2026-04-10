@@ -259,12 +259,13 @@ class TestCeleryConfig:
 
         assert app.main == "mira_crawler"
 
-    def test_beat_schedule(self):
+    def test_beat_schedule_removed(self):
+        """Beat schedule was removed — Trigger.dev Cloud owns all scheduling."""
         import celeryconfig as cfg
 
-        assert "discover-manufacturers-weekly" in cfg.beat_schedule
-        assert "ingest-foundational-kb-monthly" in cfg.beat_schedule
-        assert "ingest-pending-manuals-nightly" in cfg.beat_schedule
+        assert not hasattr(cfg, "beat_schedule"), (
+            "beat_schedule must not exist in celeryconfig — scheduling is owned by Trigger.dev Cloud"
+        )
 
     def test_task_routes(self):
         import celeryconfig as cfg
@@ -275,6 +276,6 @@ class TestCeleryConfig:
     def test_sane_defaults(self):
         import celeryconfig as cfg
 
-        assert cfg.worker_concurrency == 2
+        assert cfg.worker_concurrency == 3
         assert cfg.task_serializer == "json"
         assert cfg.task_acks_late is True

@@ -5,8 +5,6 @@ All settings overridable via environment variables where noted.
 
 from __future__ import annotations
 
-from celery.schedules import crontab
-
 # ---------------------------------------------------------------------------
 # Serialization
 # ---------------------------------------------------------------------------
@@ -21,7 +19,7 @@ enable_utc = True
 # Worker
 # ---------------------------------------------------------------------------
 
-worker_concurrency = 2  # Bravo has 10 cores but Ollama embedding needs headroom
+worker_concurrency = 3  # Bravo has 10 cores; 3 slots balance Ollama embedding headroom with pipeline throughput
 worker_prefetch_multiplier = 1  # one task at a time per worker slot
 task_acks_late = True  # ack after completion, not on receipt (crash-safe)
 task_reject_on_worker_lost = True
@@ -38,6 +36,7 @@ task_max_retries = 3
 # ---------------------------------------------------------------------------
 
 task_routes = {
+    # --- Existing task modules ---
     "mira_crawler.tasks.discover.*": {"queue": "discovery"},
     "mira_crawler.tasks.ingest.*": {"queue": "ingest"},
     "mira_crawler.tasks.foundational.*": {"queue": "ingest"},
@@ -45,6 +44,15 @@ task_routes = {
     "mira_crawler.tasks.content.*": {"queue": "content"},
     "mira_crawler.tasks.social.*": {"queue": "social"},
     "mira_crawler.tasks.blog.*": {"queue": "blog"},
+    # --- 24/7 ingest pipeline — new task modules ---
+    "mira_crawler.tasks.rss.*": {"queue": "discovery"},
+    "mira_crawler.tasks.sitemaps.*": {"queue": "discovery"},
+    "mira_crawler.tasks.reddit.*": {"queue": "discovery"},
+    "mira_crawler.tasks.patents.*": {"queue": "discovery"},
+    "mira_crawler.tasks.playwright_crawler.*": {"queue": "discovery"},
+    "mira_crawler.tasks.youtube.*": {"queue": "ingest"},
+    "mira_crawler.tasks.gdrive.*": {"queue": "ingest"},
+    "mira_crawler.tasks.freshness.*": {"queue": "freshness"},
 }
 
 # ---------------------------------------------------------------------------
@@ -52,70 +60,21 @@ task_routes = {
 # ---------------------------------------------------------------------------
 
 task_annotations = {
+    # Existing tasks
     "mira_crawler.tasks.discover.discover_manufacturer": {"rate_limit": "1/m"},
     "mira_crawler.tasks.ingest.ingest_url": {"rate_limit": "20/m"},
+    # 24/7 ingest pipeline — new tasks
+    "mira_crawler.tasks.rss.poll_rss_feed": {"rate_limit": "30/m"},
+    "mira_crawler.tasks.sitemaps.crawl_sitemap": {"rate_limit": "10/m"},
+    "mira_crawler.tasks.youtube.ingest_youtube_video": {"rate_limit": "5/m"},
+    "mira_crawler.tasks.reddit.poll_subreddit": {"rate_limit": "6/m"},
+    "mira_crawler.tasks.patents.fetch_patent": {"rate_limit": "10/m"},
+    "mira_crawler.tasks.gdrive.sync_gdrive_folder": {"rate_limit": "10/m"},
+    "mira_crawler.tasks.freshness.check_url_freshness": {"rate_limit": "60/m"},
+    "mira_crawler.tasks.playwright_crawler.crawl_page": {"rate_limit": "5/m"},
 }
 
-# ---------------------------------------------------------------------------
-# Beat schedule (periodic tasks)
-# ---------------------------------------------------------------------------
-
-beat_schedule = {
-    "discover-manufacturers-weekly": {
-        "task": "mira_crawler.tasks.discover.discover_all_manufacturers",
-        "schedule": crontab(day_of_week="sun", hour=3, minute=0),
-    },
-    "ingest-foundational-kb-monthly": {
-        "task": "mira_crawler.tasks.foundational.ingest_foundational_kb",
-        "schedule": crontab(day_of_month="1", hour=4, minute=0),
-    },
-    "ingest-pending-manuals-nightly": {
-        "task": "mira_crawler.tasks.ingest.ingest_all_pending",
-        "schedule": crontab(hour=2, minute=15),
-    },
-    # --- Content Fleet ---
-    "generate-daily-social-content": {
-        "task": "mira_crawler.tasks.content.generate_social_batch",
-        "schedule": crontab(hour=6, minute=0),
-        "args": ["maintenance_tech"],
-    },
-    "generate-weekly-blog-post": {
-        "task": "mira_crawler.tasks.content.generate_blog_post",
-        "schedule": crontab(day_of_week="mon", hour=5, minute=0),
-        "args": ["maintenance_tech"],
-    },
-    "generate-weekly-video-script": {
-        "task": "mira_crawler.tasks.content.generate_weekly_video_script",
-        "schedule": crontab(day_of_week="thu", hour=5, minute=0),
-        "args": ["maintenance_tech"],
-    },
-    # --- Social Fleet ---
-    "schedule-approved-social-posts": {
-        "task": "mira_crawler.tasks.social.schedule_buffer_posts",
-        "schedule": crontab(hour=7, minute=0),
-    },
-    "weekly-social-engagement-report": {
-        "task": "mira_crawler.tasks.social.social_engagement_report",
-        "schedule": crontab(day_of_week="sun", hour=8, minute=0),
-    },
-    # --- Blog Fleet ---
-    "mine-kb-fault-codes": {
-        "task": "mira_crawler.tasks.blog.mine_fault_codes",
-        "schedule": crontab(day_of_week="wed", hour=4, minute=0),
-    },
-    "generate-kb-blog-tue": {
-        "task": "mira_crawler.tasks.blog.generate_kb_blog_post",
-        "schedule": crontab(day_of_week="tue", hour=5, minute=0),
-    },
-    "generate-kb-blog-fri": {
-        "task": "mira_crawler.tasks.blog.generate_kb_blog_post",
-        "schedule": crontab(day_of_week="fri", hour=5, minute=0),
-    },
-    "publish-approved-blog-drafts": {
-        "task": "mira_crawler.tasks.blog.publish_approved_drafts",
-        "schedule": crontab(hour=6, minute=30),
-    },
-}
+# Beat schedule removed — Trigger.dev Cloud owns all scheduling. See mira-crawler/trigger/
 
 # ---------------------------------------------------------------------------
 # Result expiry
