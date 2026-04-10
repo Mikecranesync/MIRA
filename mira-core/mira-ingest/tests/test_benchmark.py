@@ -2,7 +2,7 @@
 
 import os
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -214,50 +214,42 @@ def test_benchmark_questions_endpoint(client, isolated_db):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason="Stale mock — reddit_harvest.py was refactored to use "
-    "DIAGNOSTIC_KEYWORDS regex + /search.json endpoint via _fetch_search(). "
-    "This mock targets the old listing shape and silently falls through to "
-    "the live Reddit API. Skipped here to unblock CI as part of the style "
-    "cleanup; tracked for a real rewrite that mocks _fetch_search directly."
-)
 def test_harvest_parses_json_and_filters(isolated_db):
-    """Mock httpx.Client.get to return fake Reddit JSON, verify harvest logic."""
-    fake_response_data = {
-        "data": {
-            "children": [
-                {
-                    "data": {
-                        "id": "post1",
-                        "title": "How do I troubleshoot a VFD fault code?",
-                        "score": 25,
-                        "permalink": "/r/PLC/comments/post1/how_do_i/",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "post2",
-                        "title": "Check out my new workshop",
-                        "score": 100,
-                        "permalink": "/r/PLC/comments/post2/check_out/",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "post3",
-                        "title": "Motor keeps tripping on startup?",
-                        "score": 12,
-                        "permalink": "/r/PLC/comments/post3/motor_keeps/",
-                    }
-                },
-            ],
-            "after": None,
-        }
-    }
-
-    fake_resp = MagicMock()
-    fake_resp.status_code = 200
-    fake_resp.json.return_value = fake_response_data
+    """Mock reddit_harvest._fetch_search to return fake posts; verify filter + dedup."""
+    # Each dict mirrors the `children[i]` shape that _fetch_search() returns:
+    # the raw Reddit `/search.json` child (has a `data` subkey with the post).
+    fake_children = [
+        {
+            "data": {
+                "id": "post1",
+                "title": "How do I troubleshoot a VFD fault code?",
+                "selftext": "Getting F004 on startup, any ideas?",
+                "score": 25,
+                "permalink": "/r/PLC/comments/post1/how_do_i/",
+                "is_self": True,
+            }
+        },
+        {
+            "data": {
+                "id": "post2",
+                "title": "Check out my new workshop",
+                "selftext": "Finally finished the shop.",
+                "score": 100,
+                "permalink": "/r/PLC/comments/post2/check_out/",
+                "is_self": True,
+            }
+        },
+        {
+            "data": {
+                "id": "post3",
+                "title": "Motor keeps tripping on startup?",
+                "selftext": "3-phase motor, trips every time.",
+                "score": 12,
+                "permalink": "/r/PLC/comments/post3/motor_keeps/",
+                "is_self": True,
+            }
+        },
+    ]
 
     # Add scripts path so we can import reddit_harvest
     scripts_path = os.path.join(
@@ -269,9 +261,19 @@ def test_harvest_parses_json_and_filters(isolated_db):
 
     import reddit_harvest
 
-    with patch.object(reddit_harvest.httpx.Client, "get", return_value=fake_resp):
+    # Patch at the seam: _fetch_search() is the single function that talks to Reddit.
+    # Every (sub, query) pair gets the same 3 posts; seen_post_ids dedup guarantees
+    # each is only counted once across the 30 calls (5 subs × 6 queries).
+    # Also stub time.sleep so the 2s-per-call throttle doesn't add 60s to the test.
+    with (
+        patch.object(reddit_harvest, "_fetch_search", return_value=fake_children),
+        patch.object(reddit_harvest.time, "sleep", return_value=None),
+    ):
         result = reddit_harvest.harvest(db_path=isolated_db)
 
-    # post1 matches (ends with ?), post2 filtered out, post3 matches (ends with ?)
+    # post1 → relevant (ends with ?, matches vfd|fault|troubleshoot)
+    # post2 → filtered (no diagnostic keywords, no question shape)
+    # post3 → relevant (ends with ?, matches motor|keeps|trip)
     assert result["harvested"] == 2
+    assert result["total"] == 2
     assert result["total"] >= 2
