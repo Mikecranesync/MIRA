@@ -6,12 +6,16 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from urllib.parse import urlparse
 
 try:
     from mira_crawler.celery_app import app
 except ImportError:
     from celery_app import app
+
+try:
+    from mira_crawler.tasks._shared import get_redis
+except ImportError:
+    from tasks._shared import get_redis
 
 logger = logging.getLogger("mira-crawler.tasks.gdrive")
 
@@ -25,23 +29,11 @@ _RCLONE_REMOTE = os.getenv("GDRIVE_RCLONE_REMOTE", "gdrive:FactoryLM/Manuals")
 _SYNC_DEST = os.getenv("GDRIVE_SYNC_DEST", "/data/gdrive_sync")
 _REDIS_PROCESSED_KEY = "mira:gdrive:processed_files"
 _RCLONE_TIMEOUT_SEC = 300  # 5 minutes for sync
-_PDF_GLOB = "**/*.pdf"
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _get_redis():
-    """Return a Redis connection using CELERY_BROKER_URL, always db 0."""
-    import redis
-
-    broker_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-    parsed = urlparse(broker_url)
-    host = parsed.hostname or "localhost"
-    port = parsed.port or 6379
-    return redis.Redis(host=host, port=port, db=0, decode_responses=True)
 
 
 def _find_rclone() -> str | None:
@@ -85,12 +77,20 @@ def _run_rclone_sync(rclone_bin: str, remote: str, dest: str) -> tuple[bool, str
         return False, str(exc)
 
 
-def _scan_pdf_files(dest_dir: str) -> list[Path]:
-    """Return all PDF files found under dest_dir."""
-    base = Path(dest_dir)
+def _scan_pdf_files(base: Path | str) -> list[Path]:
+    """Recursively scan for PDF files. Case-insensitive on suffix (M12 fix).
+
+    Using rglob('*') and checking .suffix.lower() avoids the case-sensitive
+    glob('**/*.pdf') that misses files named 'Manual.PDF' on Linux/macOS.
+    """
+    base = Path(base)
     if not base.exists():
         return []
-    return sorted(base.glob(_PDF_GLOB))
+    results: list[Path] = []
+    for path in base.rglob("*"):
+        if path.is_file() and path.suffix.lower() == ".pdf":
+            results.append(path)
+    return sorted(results)
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +124,7 @@ def sync_google_drive() -> dict:
 
     # 2. Load processed file set from Redis
     try:
-        r = _get_redis()
+        r = get_redis()
         processed: set[str] = r.smembers(_REDIS_PROCESSED_KEY)  # type: ignore[assignment]
     except Exception as exc:
         logger.error("Redis connection failed — aborting sync_google_drive: %s", exc)

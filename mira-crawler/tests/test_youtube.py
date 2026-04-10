@@ -386,3 +386,49 @@ class TestTsToSeconds:
         yt = _import_youtube()
         # 1:01:01.100 = 3661.1
         assert abs(yt._ts_to_seconds("1", "1", "1", "100") - 3661.1) < 0.001
+
+
+# ---------------------------------------------------------------------------
+# _redis_url_from_broker — M6 regression
+# ---------------------------------------------------------------------------
+
+
+class TestRedisUrlFromBroker:
+    """Verify the broker-URL-to-Redis-URL normalisation helper (M6 fix)."""
+
+    def test_standard_db0_url(self):
+        """redis://localhost:6379/0 maps to redis://localhost:6379/0."""
+        yt = _import_youtube()
+        result = yt._redis_url_from_broker("redis://localhost:6379/0")
+        assert result == "redis://localhost:6379/0"
+
+    def test_db1_replaced_with_db0(self):
+        """A broker URL pointing at db 1 is normalised to db 0."""
+        yt = _import_youtube()
+        result = yt._redis_url_from_broker("redis://localhost:6379/1")
+        assert result.endswith("/0"), f"Expected path /0, got: {result}"
+
+    def test_high_db_number_replaced(self):
+        """A broker URL pointing at db 10 is normalised to db 0 (not mangled)."""
+        yt = _import_youtube()
+        result = yt._redis_url_from_broker("redis://localhost:6379/10")
+        assert result.endswith("/0"), f"Expected path /0, got: {result}"
+        # Old replace('/0', '') would incorrectly strip from '/10' leaving '/1'
+        assert "/1" not in result.split("/")[-1], "Old str.replace bug would leave '/1'"
+
+    def test_hostname_with_zero_in_name_unaffected(self):
+        """A hostname like 'redis-db0' must not be mangled by path normalisation."""
+        yt = _import_youtube()
+        result = yt._redis_url_from_broker("redis://redis-db0:6379/1")
+        assert "redis-db0" in result, f"Hostname mangled: {result}"
+        assert result.endswith("/0"), f"Path not normalised to /0: {result}"
+
+    def test_path_only_changed_not_host(self):
+        """Only the URL path is changed; host, port, and scheme are preserved."""
+        yt = _import_youtube()
+        url = "redis://myredis.internal:6380/3"
+        result = yt._redis_url_from_broker(url)
+        assert "myredis.internal" in result
+        assert "6380" in result
+        assert result.startswith("redis://")
+        assert result.endswith("/0")

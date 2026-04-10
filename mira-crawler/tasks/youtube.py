@@ -19,6 +19,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 try:
     from mira_crawler.celery_app import app
@@ -411,6 +412,22 @@ def _download_vtt(video_url: str, outdir: Path) -> Path | None:
 
 
 # ---------------------------------------------------------------------------
+# Redis URL helpers
+# ---------------------------------------------------------------------------
+
+
+def _redis_url_from_broker(broker_url: str) -> str:
+    """Extract a Redis connection URL from a Celery broker URL.
+
+    Normalises the database path to '/0' using urlparse so that hostnames
+    like 'redis-db0' or high-numbered paths like '/10' are handled correctly
+    (the naive str.replace('/0', '') approach breaks on both — M6 fix).
+    """
+    parsed = urlparse(broker_url)
+    return urlunparse(parsed._replace(path="/0"))
+
+
+# ---------------------------------------------------------------------------
 # Dedup helpers
 # ---------------------------------------------------------------------------
 
@@ -459,8 +476,7 @@ def ingest_youtube_channels() -> dict:
         return {"error": "redis_not_installed"}
 
     broker_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-    # Parse host/port from redis://host:port/db
-    redis_url = broker_url.replace("/0", "").replace("/1", "")
+    redis_url = _redis_url_from_broker(broker_url)
     try:
         r = redis.from_url(redis_url)
         r.ping()

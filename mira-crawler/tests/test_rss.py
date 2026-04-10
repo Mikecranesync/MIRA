@@ -344,3 +344,42 @@ class TestPollRssFeeds:
         # First feed fails; remaining feeds are checked (empty -> 0 new articles)
         assert result["feeds_checked"] == len(rss_mod.RSS_FEEDS) - 1
         assert result["new_articles"] == 0
+
+    def test_sadd_called_per_entry_not_at_end(self):
+        """Redis SADD is called once per successfully-queued entry (M2 regression).
+
+        Previously GUIDs were accumulated and persisted in a single batch at
+        the end of the task; a mid-run crash would lose all dedup state.  The
+        fix persists each GUID immediately after ``ingest_url.delay()`` so the
+        Redis set is updated incrementally.
+
+        With 1 feed returning 3 entries and all entries new, SADD must be
+        called exactly 3 times — one call per entry, not one call at the end.
+        """
+        import tasks.rss as rss_mod
+
+        mock_redis = MagicMock()
+        mock_redis.smembers.return_value = set()
+
+        mock_ingest = MagicMock()
+
+        # Only patch the first feed's HTTP response; use a single-feed slice
+        with (
+            patch.object(rss_mod, "_get_redis", return_value=mock_redis),
+            patch.object(rss_mod.httpx, "get", return_value=self._make_http_response(_SAMPLE_RSS)),
+            patch("tasks.ingest.ingest_url", mock_ingest),
+        ):
+            rss_mod.poll_rss_feeds()
+
+        entries = rss_mod._parse_feed(_SAMPLE_RSS)
+        expected_sadd_calls = len(entries)  # 3 unique GUIDs
+
+        # sadd must be called at least once per unique new entry queued
+        # (feeds returning duplicate GUIDs across runs don't add extra calls)
+        assert mock_redis.sadd.call_count >= expected_sadd_calls
+
+        # Each sadd call passes the _REDIS_SEEN_KEY and a single GUID (not a batch)
+        for call in mock_redis.sadd.call_args_list:
+            args = call[0]
+            assert args[0] == rss_mod._REDIS_SEEN_KEY, "SADD key must be _REDIS_SEEN_KEY"
+            assert len(args) == 2, "SADD should pass exactly one GUID per call (incremental)"

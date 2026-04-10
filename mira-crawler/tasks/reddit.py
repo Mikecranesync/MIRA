@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import os
 import time
-from urllib.parse import urlparse
 
 import httpx
 
@@ -17,6 +16,11 @@ try:
     from mira_crawler.celery_app import app
 except ImportError:
     from celery_app import app
+
+try:
+    from mira_crawler.tasks._shared import get_redis, ingest_text_inline
+except ImportError:
+    from tasks._shared import get_redis, ingest_text_inline
 
 logger = logging.getLogger("mira-crawler.tasks.reddit")
 
@@ -32,7 +36,8 @@ SUBREDDITS: list[str] = [
 
 _REDDIT_BASE = "https://www.reddit.com/r/{sub}/top.json?t=week&limit=50"
 _REDIS_SEEN_KEY = "mira:reddit:seen_posts"
-_USER_AGENT = "MIRA-KB/1.0 (research bot)"
+# Updated User-Agent per Reddit ToS — must include operator contact info (m4).
+_USER_AGENT = "MIRA-KB/1.0 by u/factorylm (ops@factorylm.com)"
 _REQUEST_DELAY_SEC = 2
 _FETCH_TIMEOUT = 30
 _TOP_COMMENTS = 5
@@ -41,17 +46,6 @@ _TOP_COMMENTS = 5
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _get_redis():
-    """Return a Redis connection using CELERY_BROKER_URL, always db 0."""
-    import redis
-
-    broker_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-    parsed = urlparse(broker_url)
-    host = parsed.hostname or "localhost"
-    port = parsed.port or 6379
-    return redis.Redis(host=host, port=port, db=0, decode_responses=True)
 
 
 def _parse_reddit_response(data: dict) -> list[dict]:
@@ -130,57 +124,6 @@ def _build_post_text(post: dict, comments: list[str]) -> str:
     return "\n\n".join(parts)
 
 
-def _ingest_text_inline(
-    text: str,
-    source_url: str,
-    source_type: str,
-    tenant_id: str,
-    ollama_url: str,
-    embed_model: str,
-) -> int:
-    """Chunk, embed, and store a text string directly. Returns number inserted."""
-    try:
-        from ingest.chunker import chunk_blocks
-        from ingest.embedder import embed_text
-        from ingest.store import chunk_exists, insert_chunk
-    except ImportError:
-        from mira_crawler.ingest.chunker import chunk_blocks
-        from mira_crawler.ingest.embedder import embed_text
-        from mira_crawler.ingest.store import chunk_exists, insert_chunk
-
-    blocks = [{"text": text, "page_num": None, "section": ""}]
-    chunks = chunk_blocks(
-        blocks,
-        source_url=source_url,
-        source_type=source_type,
-        max_chars=2000,
-        min_chars=80,
-        overlap=200,
-    )
-
-    inserted = 0
-    for chunk in chunks:
-        chunk_idx = chunk.get("chunk_index", 0)
-        if chunk_exists(tenant_id, source_url, chunk_idx):
-            continue
-        embedding = embed_text(chunk["text"], ollama_url=ollama_url, model=embed_model)
-        if embedding is None:
-            continue
-        entry_id = insert_chunk(
-            tenant_id=tenant_id,
-            content=chunk["text"],
-            embedding=embedding,
-            source_url=source_url,
-            source_type=source_type,
-            chunk_index=chunk_idx,
-            chunk_type=chunk.get("chunk_type", "text"),
-        )
-        if entry_id:
-            inserted += 1
-
-    return inserted
-
-
 # ---------------------------------------------------------------------------
 # Celery task
 # ---------------------------------------------------------------------------
@@ -194,9 +137,9 @@ def scrape_forums() -> dict:
       1. Load seen post IDs from Redis set ``mira:reddit:seen_posts``.
       2. For each subreddit: fetch top weekly posts via public JSON endpoint.
       3. For each new post: fetch top 5 comments, build combined text,
-         chunk + embed + store inline.
-      4. Persist new post IDs back to Redis.
-      5. Return summary counts.
+         chunk + embed + store inline, then immediately persist the post ID
+         to Redis (incremental dedup — M2 fix).
+      4. Return summary counts.
     """
     tenant_id = os.getenv("MIRA_TENANT_ID", "")
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -208,7 +151,7 @@ def scrape_forums() -> dict:
 
     # 1. Load seen post IDs
     try:
-        r = _get_redis()
+        r = get_redis()
         seen_ids: set[str] = r.smembers(_REDIS_SEEN_KEY)  # type: ignore[assignment]
     except Exception as exc:
         logger.error("Redis connection failed — aborting scrape_forums: %s", exc)
@@ -216,7 +159,6 @@ def scrape_forums() -> dict:
 
     subreddits_checked = 0
     posts_ingested = 0
-    new_post_ids: list[str] = []
 
     with httpx.Client(timeout=_FETCH_TIMEOUT) as client:
         for sub in SUBREDDITS:
@@ -238,7 +180,9 @@ def scrape_forums() -> dict:
             new_posts = [p for p in posts if p["post_id"] not in seen_ids]
             logger.info("r/%s: %d posts, %d new", sub, len(posts), len(new_posts))
 
-            # 3. Ingest each new post
+            # 3. Ingest each new post — persist post ID to Redis immediately
+            #    after successful ingest so a mid-run crash does not lose
+            #    dedup state for already-processed posts (M2).
             for post in new_posts:
                 time.sleep(_REQUEST_DELAY_SEC)
 
@@ -247,7 +191,7 @@ def scrape_forums() -> dict:
                 source_url = post["permalink"]
 
                 try:
-                    n = _ingest_text_inline(
+                    n = ingest_text_inline(
                         text=combined_text,
                         source_url=source_url,
                         source_type="forum_post",
@@ -257,8 +201,8 @@ def scrape_forums() -> dict:
                     )
                     if n > 0:
                         posts_ingested += 1
-                        new_post_ids.append(post["post_id"])
-                        seen_ids.add(post["post_id"])
+                    r.sadd(_REDIS_SEEN_KEY, post["post_id"])  # incremental persist
+                    seen_ids.add(post["post_id"])              # within-run dedup
                     logger.debug(
                         "Post %s (%s): %d chunks ingested", post["post_id"], sub, n
                     )
@@ -266,14 +210,6 @@ def scrape_forums() -> dict:
                     logger.warning("Failed to ingest post %s: %s", post["post_id"], exc)
 
             time.sleep(_REQUEST_DELAY_SEC)
-
-    # 4. Persist new post IDs to Redis
-    if new_post_ids:
-        try:
-            r.sadd(_REDIS_SEEN_KEY, *new_post_ids)
-            logger.info("Stored %d new post IDs in Redis", len(new_post_ids))
-        except Exception as exc:
-            logger.error("Failed to persist post IDs to Redis: %s", exc)
 
     logger.info(
         "scrape_forums complete: %d subreddits checked, %d posts ingested",

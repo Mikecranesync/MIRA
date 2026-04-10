@@ -219,3 +219,23 @@ class TestSubredditsConfigured:
         from tasks.reddit import SUBREDDITS
 
         assert len(SUBREDDITS) == len(set(SUBREDDITS))
+
+
+# ---------------------------------------------------------------------------
+# 4. User-Agent and dedup regression tests (m4, M2)
+# ---------------------------------------------------------------------------
+
+
+class TestRedditUserAgent:
+
+    def test_user_agent_includes_contact(self):
+        """User-Agent must include operator contact info per Reddit ToS (m4)."""
+        from tasks.reddit import _USER_AGENT
+
+        assert "factorylm" in _USER_AGENT.lower() or "ops@" in _USER_AGENT, (
+            f"_USER_AGENT must include operator contact: got {_USER_AGENT!r}"
+        )
+        # Must not be the old generic string
+        assert "research bot" not in _USER_AGENT, (
+            "Old generic User-Agent still in use — update to include contact info"
+        )

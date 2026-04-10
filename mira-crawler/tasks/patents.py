@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from urllib.parse import quote_plus
 
 import httpx
 
@@ -12,6 +13,11 @@ try:
     from mira_crawler.celery_app import app
 except ImportError:
     from celery_app import app
+
+try:
+    from mira_crawler.tasks._shared import get_redis, ingest_text_inline
+except ImportError:
+    from tasks._shared import get_redis, ingest_text_inline
 
 logger = logging.getLogger("mira-crawler.tasks.patents")
 
@@ -27,11 +33,12 @@ PATENT_QUERIES: list[str] = [
     "industrial vibration sensor",
 ]
 
-_GOOGLE_PATENTS_SEARCH = "https://patents.google.com/xhr/query?url=q%3D{query}&exp=&download=false"
 _GOOGLE_PATENTS_BASE = "https://patents.google.com"
 _USER_AGENT = "MIRA-KB/1.0 (patent research bot)"
 _REQUEST_DELAY_SEC = 3
 _FETCH_TIMEOUT = 30
+# Redis key for patent deduplication (M5 fix — was missing entirely).
+_REDIS_PATENTS_SEEN_KEY = "mira:patents:seen_ids"
 
 
 # ---------------------------------------------------------------------------
@@ -41,9 +48,10 @@ _FETCH_TIMEOUT = 30
 
 def _build_search_url(query: str) -> str:
     """Build a Google Patents search URL for a given query string."""
-    from urllib.parse import quote_plus
-
-    return f"https://patents.google.com/xhr/query?url=q%3D{quote_plus(query)}&exp=&download=false"
+    return (
+        f"{_GOOGLE_PATENTS_BASE}/xhr/query"
+        f"?url=q%3D{quote_plus(query)}&exp=&download=false"
+    )
 
 
 def _parse_patents_from_response(data: dict) -> list[dict]:
@@ -131,57 +139,6 @@ def _parse_patents_from_html(html_content: str, query: str) -> list[dict]:
     return patents
 
 
-def _ingest_text_inline(
-    text: str,
-    source_url: str,
-    source_type: str,
-    tenant_id: str,
-    ollama_url: str,
-    embed_model: str,
-) -> int:
-    """Chunk, embed, and store a text string. Returns number of chunks inserted."""
-    try:
-        from ingest.chunker import chunk_blocks
-        from ingest.embedder import embed_text
-        from ingest.store import chunk_exists, insert_chunk
-    except ImportError:
-        from mira_crawler.ingest.chunker import chunk_blocks
-        from mira_crawler.ingest.embedder import embed_text
-        from mira_crawler.ingest.store import chunk_exists, insert_chunk
-
-    blocks = [{"text": text, "page_num": None, "section": ""}]
-    chunks = chunk_blocks(
-        blocks,
-        source_url=source_url,
-        source_type=source_type,
-        max_chars=2000,
-        min_chars=80,
-        overlap=200,
-    )
-
-    inserted = 0
-    for chunk in chunks:
-        chunk_idx = chunk.get("chunk_index", 0)
-        if chunk_exists(tenant_id, source_url, chunk_idx):
-            continue
-        embedding = embed_text(chunk["text"], ollama_url=ollama_url, model=embed_model)
-        if embedding is None:
-            continue
-        entry_id = insert_chunk(
-            tenant_id=tenant_id,
-            content=chunk["text"],
-            embedding=embedding,
-            source_url=source_url,
-            source_type=source_type,
-            chunk_index=chunk_idx,
-            chunk_type=chunk.get("chunk_type", "text"),
-        )
-        if entry_id:
-            inserted += 1
-
-    return inserted
-
-
 # ---------------------------------------------------------------------------
 # Celery task
 # ---------------------------------------------------------------------------
@@ -192,10 +149,13 @@ def scrape_patents() -> dict:
     """Search Google Patents for industrial maintenance terms and ingest results.
 
     Steps:
-      1. For each query in PATENT_QUERIES: hit Google Patents search.
-      2. Parse patent title + abstract from the response.
-      3. Build combined text and ingest inline (chunk + embed + store).
-      4. Return summary counts.
+      1. Load seen patent IDs from Redis set ``mira:patents:seen_ids`` (M5 fix).
+      2. For each query in PATENT_QUERIES: hit Google Patents search.
+      3. Parse patent title + abstract from the response.
+      4. Skip already-ingested patents via Redis dedup.
+      5. Build combined text and ingest inline (chunk + embed + store).
+      6. Persist each new patent ID to Redis immediately after ingest.
+      7. Return summary counts.
     """
     tenant_id = os.getenv("MIRA_TENANT_ID", "")
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -204,6 +164,14 @@ def scrape_patents() -> dict:
     if not tenant_id:
         logger.error("MIRA_TENANT_ID not set — cannot ingest patents")
         return {"queries_run": 0, "patents_ingested": 0, "error": "no_tenant_id"}
+
+    # 1. Load seen patent IDs (M5: dedup was missing entirely).
+    try:
+        r = get_redis()
+        seen_ids: set[str] = r.smembers(_REDIS_PATENTS_SEEN_KEY)  # type: ignore[assignment]
+    except Exception as exc:
+        logger.error("Redis connection failed — aborting scrape_patents: %s", exc)
+        return {"queries_run": 0, "patents_ingested": 0, "error": str(exc)}
 
     queries_run = 0
     patents_ingested = 0
@@ -228,8 +196,6 @@ def scrape_patents() -> dict:
                 logger.warning("XHR fetch failed for %r: %s — trying HTML", query, exc)
                 # Fall back to plain search page
                 try:
-                    from urllib.parse import quote_plus
-
                     html_url = f"{_GOOGLE_PATENTS_BASE}/search?q={quote_plus(query)}"
                     time.sleep(_REQUEST_DELAY_SEC)
                     resp = client.get(html_url, headers={"User-Agent": _USER_AGENT})
@@ -250,6 +216,11 @@ def scrape_patents() -> dict:
                 if not title and not abstract:
                     continue
 
+                # Skip patents already ingested (M5 dedup).
+                if patent_id and patent_id in seen_ids:
+                    logger.debug("Patent %s already seen — skipping", patent_id)
+                    continue
+
                 combined_text = f"Patent: {title}\n\nAbstract: {abstract}".strip()
                 source_url = (
                     f"{_GOOGLE_PATENTS_BASE}/patent/{patent_id}/en"
@@ -258,7 +229,7 @@ def scrape_patents() -> dict:
                 )
 
                 try:
-                    n = _ingest_text_inline(
+                    n = ingest_text_inline(
                         text=combined_text,
                         source_url=source_url,
                         source_type="patent",
@@ -268,6 +239,10 @@ def scrape_patents() -> dict:
                     )
                     if n > 0:
                         patents_ingested += 1
+                    # Persist to Redis immediately so a crash won't re-ingest.
+                    if patent_id:
+                        r.sadd(_REDIS_PATENTS_SEEN_KEY, patent_id)
+                        seen_ids.add(patent_id)
                 except Exception as exc:
                     logger.warning(
                         "Failed to ingest patent %s: %s", patent_id or query, exc

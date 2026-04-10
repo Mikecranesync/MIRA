@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
-from urllib.parse import urlparse
 
 import feedparser
 import httpx
@@ -13,7 +11,15 @@ try:
 except ImportError:
     from celery_app import app
 
+try:
+    from mira_crawler.tasks._shared import get_redis
+except ImportError:
+    from tasks._shared import get_redis
+
 logger = logging.getLogger("mira-crawler.tasks.rss")
+
+# Module-level alias so tests can patch via patch.object(rss_mod, "_get_redis", ...)
+_get_redis = get_redis
 
 # ---------------------------------------------------------------------------
 # Feed registry — industrial maintenance sources
@@ -115,23 +121,6 @@ def _filter_new_entries(entries: list[dict], seen_guids: set[str]) -> list[dict]
     return [e for e in entries if e["guid"] not in seen_guids]
 
 
-def _get_redis():
-    """Return a Redis connection using CELERY_BROKER_URL.
-
-    Strips the database index path component so we always connect to db 0
-    for shared state (GUIDs must persist across task runs and restarts).
-    """
-    import redis
-
-    broker_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-    parsed = urlparse(broker_url)
-
-    host = parsed.hostname or "localhost"
-    port = parsed.port or 6379
-    # Always use db 0 for shared GUID state regardless of broker db index
-    return redis.Redis(host=host, port=port, db=0, decode_responses=True)
-
-
 # ---------------------------------------------------------------------------
 # Celery task
 # ---------------------------------------------------------------------------
@@ -144,9 +133,9 @@ def poll_rss_feeds() -> dict:
     Steps:
       1. Load seen GUIDs from Redis set ``mira:rss:seen_guids``.
       2. For each feed: fetch via httpx, parse with feedparser, filter new.
-      3. For each new entry: call ``ingest_url.delay()`` with source_type="rss_article".
-      4. Persist new GUIDs back to Redis.
-      5. Return summary counts.
+      3. For each new entry: call ``ingest_url.delay()`` and immediately
+         persist the GUID to Redis (incremental dedup — M2 fix).
+      4. Return summary counts.
     """
     try:
         from mira_crawler.tasks.ingest import ingest_url
@@ -163,7 +152,6 @@ def poll_rss_feeds() -> dict:
 
     feeds_checked = 0
     new_articles = 0
-    new_guids: list[str] = []
 
     for feed in RSS_FEEDS:
         feed_name = feed["name"]
@@ -196,14 +184,14 @@ def poll_rss_feeds() -> dict:
             len(new_entries),
         )
 
-        # 4. Queue new entries
+        # 4. Queue new entries — persist each GUID to Redis immediately after
+        #    successful queue so a mid-run crash does not lose dedup state (M2).
         for entry in new_entries:
             try:
                 ingest_url.delay(url=entry["url"], source_type="rss_article")
+                r.sadd(_REDIS_SEEN_KEY, entry["guid"])  # incremental persist
+                seen_guids.add(entry["guid"])            # within-run dedup
                 new_articles += 1
-                new_guids.append(entry["guid"])
-                # Update local seen set so duplicates within the same run are skipped
-                seen_guids.add(entry["guid"])
             except Exception as exc:
                 logger.warning(
                     "Failed to queue entry %r from %r: %s",
@@ -211,14 +199,6 @@ def poll_rss_feeds() -> dict:
                     feed_name,
                     exc,
                 )
-
-    # 5. Persist new GUIDs to Redis
-    if new_guids:
-        try:
-            r.sadd(_REDIS_SEEN_KEY, *new_guids)
-            logger.info("Stored %d new GUIDs in Redis", len(new_guids))
-        except Exception as exc:
-            logger.error("Failed to persist GUIDs to Redis: %s", exc)
 
     logger.info(
         "poll_rss_feeds complete: %d feeds checked, %d new articles queued",
