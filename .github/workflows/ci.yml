@@ -135,12 +135,12 @@ jobs:
       - name: Build mira-bot-telegram
         run: |
           docker buildx build \
-            -f mira-bots/telegram/Dockerfile mira-bots/telegram/
+            -f mira-bots/telegram/Dockerfile mira-bots/
 
       - name: Build mira-bot-slack
         run: |
           docker buildx build \
-            -f mira-bots/slack/Dockerfile mira-bots/slack/
+            -f mira-bots/slack/Dockerfile mira-bots/
 
       - name: Build mira-mcp
         run: |
