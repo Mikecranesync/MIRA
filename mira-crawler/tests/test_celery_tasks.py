@@ -280,3 +280,19 @@ class TestCeleryConfig:
         assert cfg.worker_concurrency == 3
         assert cfg.task_serializer == "json"
         assert cfg.task_acks_late is True
+
+    def test_all_rate_limited_tasks_exist(self):
+        """Every task name in celeryconfig.task_annotations must exist in app.tasks.
+
+        Regression test for M3: rate-limit annotations were referencing nonexistent
+        task names, resulting in zero rate limits actually applied.
+        """
+        import celeryconfig
+        from celery_app import app
+
+        registered = set(app.tasks.keys())
+        for task_name in celeryconfig.task_annotations.keys():
+            assert task_name in registered, (
+                f"Task annotation references nonexistent task: {task_name}. "
+                f"Check @app.task decorators in tasks/*.py"
+            )

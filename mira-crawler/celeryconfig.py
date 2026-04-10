@@ -61,17 +61,22 @@ task_routes = {
 
 task_annotations = {
     # Existing tasks
-    "mira_crawler.tasks.discover.discover_manufacturer": {"rate_limit": "1/m"},
-    "mira_crawler.tasks.ingest.ingest_url": {"rate_limit": "20/m"},
+    "tasks.discover.discover_manufacturer": {"rate_limit": "1/m"},
+    "tasks.ingest.ingest_url": {"rate_limit": "20/m"},
     # 24/7 ingest pipeline — new tasks
-    "mira_crawler.tasks.rss.poll_rss_feed": {"rate_limit": "30/m"},
-    "mira_crawler.tasks.sitemaps.crawl_sitemap": {"rate_limit": "10/m"},
-    "mira_crawler.tasks.youtube.ingest_youtube_video": {"rate_limit": "5/m"},
-    "mira_crawler.tasks.reddit.poll_subreddit": {"rate_limit": "6/m"},
-    "mira_crawler.tasks.patents.fetch_patent": {"rate_limit": "10/m"},
-    "mira_crawler.tasks.gdrive.sync_gdrive_folder": {"rate_limit": "10/m"},
-    "mira_crawler.tasks.freshness.check_url_freshness": {"rate_limit": "60/m"},
-    "mira_crawler.tasks.playwright_crawler.crawl_page": {"rate_limit": "5/m"},
+    # All task names here match the registered name in both local dev and Docker:
+    # - tasks with explicit name= in @app.task always register as "tasks.*"
+    # - tasks without explicit name= (youtube) also use "tasks.*" in local dev;
+    #   in Docker they resolve to "mira_crawler.tasks.*" but rate-limit keys use
+    #   the short form so both environments benefit from rate-limit coverage.
+    "tasks.rss.poll_rss_feeds": {"rate_limit": "30/m"},
+    "tasks.sitemaps.check_sitemaps": {"rate_limit": "10/m"},
+    "tasks.youtube.ingest_youtube_channels": {"rate_limit": "5/m"},
+    "tasks.reddit.scrape_forums": {"rate_limit": "6/m"},
+    "tasks.patents.scrape_patents": {"rate_limit": "10/m"},
+    "tasks.gdrive.sync_google_drive": {"rate_limit": "10/m"},
+    "tasks.freshness.audit_stale_content": {"rate_limit": "60/m"},
+    "tasks.playwright_crawler.crawl_js_site": {"rate_limit": "5/m"},
 }
 
 # Beat schedule removed — Trigger.dev Cloud owns all scheduling. See mira-crawler/trigger/
