@@ -46,6 +46,7 @@ def _parse_retry_after(response: httpx.Response) -> float:
     except ValueError:
         return 5.0
 
+
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
 
 
@@ -66,15 +67,15 @@ def get_system_prompt() -> str:
     except Exception as e:
         logger.error("Failed to load active.yaml: %s", e)
         return ""
+
+
 ANTHROPIC_VERSION = "2023-06-01"
 
 # Regex patterns for PII / sensitive data sanitization
 _IPV4_RE = re.compile(
     r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"
 )
-_MAC_RE = re.compile(
-    r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b"
-)
+_MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
 _SERIAL_RE = re.compile(
     r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)[:\s#]*[A-Z0-9\-]{4,20}\b",
     re.IGNORECASE,
@@ -98,9 +99,7 @@ class InferenceRouter:
         self.enabled = self.backend == "claude" and bool(self.api_key)
 
         if self.enabled:
-            logger.info(
-                "InferenceRouter enabled (model=%s)", self.model
-            )
+            logger.info("InferenceRouter enabled (model=%s)", self.model)
         else:
             logger.info(
                 "InferenceRouter disabled — INFERENCE_BACKEND=%s, api_key=%s",
@@ -168,14 +167,16 @@ class InferenceRouter:
                         else:
                             media_type = "image/jpeg"
                             b64 = url
-                        new_blocks.append({
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": b64,
-                            },
-                        })
+                        new_blocks.append(
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": b64,
+                                },
+                            }
+                        )
                     else:
                         new_blocks.append(block)
                 converted.append({**msg, "content": new_blocks})
@@ -187,11 +188,15 @@ class InferenceRouter:
         turns = []
         for msg in converted:
             if msg["role"] == "system":
-                system_prompt = msg["content"] if isinstance(msg["content"], str) \
+                system_prompt = (
+                    msg["content"]
+                    if isinstance(msg["content"], str)
                     else " ".join(
-                        b.get("text", "") for b in msg["content"]
+                        b.get("text", "")
+                        for b in msg["content"]
                         if isinstance(b, dict) and b.get("type") == "text"
                     )
+                )
             else:
                 turns.append(msg)
 
@@ -290,9 +295,7 @@ class InferenceRouter:
         inp = usage.get("input_tokens", 0)
         out = usage.get("output_tokens", 0)
         cost = (inp * 0.000003) + (out * 0.000015)
-        logger.info(
-            "CLAUDE_USAGE: input=%d output=%d est_cost=$%.5f", inp, out, cost
-        )
+        logger.info("CLAUDE_USAGE: input=%d output=%d est_cost=$%.5f", inp, out, cost)
 
     @staticmethod
     def write_api_usage(
@@ -338,7 +341,9 @@ class InferenceRouter:
                     model, has_image, response_time_ms)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    tenant_id, platform, session_id,
+                    tenant_id,
+                    platform,
+                    session_id,
                     usage.get("input_tokens", 0),
                     usage.get("output_tokens", 0),
                     model,

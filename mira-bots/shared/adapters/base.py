@@ -26,9 +26,7 @@ class MIRAAdapter(abc.ABC):
         return f"{tenant_id}_{self.platform}_{user_id}"
 
     @abc.abstractmethod
-    async def send_photo(
-        self, image_bytes: bytes, session_id: str, caption: str = ""
-    ) -> str:
+    async def send_photo(self, image_bytes: bytes, session_id: str, caption: str = "") -> str:
         """Process an incoming photo and return the response text."""
         ...
 

@@ -31,15 +31,19 @@ def create_cmms_adapter(provider: str | None = None) -> CMMSAdapter | None:
     match provider:
         case "atlas":
             from cmms.atlas import AtlasCMMS
+
             return AtlasCMMS()
         case "maintainx":
             from cmms.maintainx import MaintainXCMMS
+
             return MaintainXCMMS()
         case "limble":
             from cmms.limble import LimbleCMMS
+
             return LimbleCMMS()
         case "fiix":
             from cmms.fiix import FiixCMMS
+
             return FiixCMMS()
         case _:
             logger.error("Unknown CMMS_PROVIDER: %s", provider)
