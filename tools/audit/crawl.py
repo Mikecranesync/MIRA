@@ -22,6 +22,10 @@ SEED_URLS = [
     "/blog/how-to-read-vfd-fault-codes",
     "/blog/what-is-cmms",
     "/blog/powerflex-f012-overcurrent",
+    # feature deep-dive pages
+    "/feature/fault-diagnosis",
+    "/feature/cmms-integration",
+    "/feature/voice-vision",
 ]
 
 SKIP_PATH_SUBSTR = ["/api/stripe/webhook", "/api/register", "/api/checkout"]
