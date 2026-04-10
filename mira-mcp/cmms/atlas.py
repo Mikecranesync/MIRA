@@ -135,7 +135,11 @@ class AtlasCMMS(CMMSAdapter):
             logger.info("Atlas work order created: id=%s title=%s", result.get("id"), title)
             return result
         except httpx.HTTPStatusError as e:
-            logger.error("Atlas create_work_order failed: %s %s", e.response.status_code, e.response.text[:200])
+            logger.error(
+                "Atlas create_work_order failed: %s %s",
+                e.response.status_code,
+                e.response.text[:200],
+            )
             return {"error": str(e)}
 
     async def complete_work_order(self, work_order_id: str, feedback: str = "") -> dict:

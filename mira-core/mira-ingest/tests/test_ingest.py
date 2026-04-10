@@ -1,9 +1,7 @@
 """Phase 6 tests — mira-ingest photo pipeline."""
 
 import io
-import json
 import os
-import sqlite3
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -16,10 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import main as ingest_main
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def isolated_storage(tmp_path):
@@ -64,7 +62,13 @@ def _make_jpeg_with_exif(width: int = 100, height: int = 100) -> bytes:
 def _mock_ollama():
     """Return a set of patches that make all Ollama calls return dummy data."""
     return (
-        patch.object(ingest_main, "_describe_photo", new=AsyncMock(return_value="Allen-Bradley 1756 ControlLogix chassis, slot 0 occupied, green RUN LED.")),
+        patch.object(
+            ingest_main,
+            "_describe_photo",
+            new=AsyncMock(
+                return_value="Allen-Bradley 1756 ControlLogix chassis, slot 0 occupied, green RUN LED."
+            ),
+        ),
         patch.object(ingest_main, "_embed_image", new=AsyncMock(return_value=[0.1, 0.2, 0.3])),
         patch.object(ingest_main, "_embed_text", new=AsyncMock(return_value=[0.1, 0.2, 0.3])),
         patch.object(ingest_main, "_push_to_kb", new=AsyncMock()),
@@ -74,6 +78,7 @@ def _mock_ollama():
 # ---------------------------------------------------------------------------
 # 1. EXIF stripped from uploaded image
 # ---------------------------------------------------------------------------
+
 
 def test_exif_stripped_from_uploaded_image():
     jpeg_with_exif = _make_jpeg_with_exif()
@@ -87,6 +92,7 @@ def test_exif_stripped_from_uploaded_image():
 # 2. Image resized to max 1024
 # ---------------------------------------------------------------------------
 
+
 def test_image_resized_to_max_1024():
     large = _make_jpeg(width=2048, height=1536)
     result = ingest_main._sanitize_image(large)
@@ -97,6 +103,7 @@ def test_image_resized_to_max_1024():
 # ---------------------------------------------------------------------------
 # 3. Malformed image returns 422
 # ---------------------------------------------------------------------------
+
 
 def test_malformed_image_returns_422(client):
     response = client.post(
@@ -111,6 +118,7 @@ def test_malformed_image_returns_422(client):
 # 4. Missing asset_tag returns 422
 # ---------------------------------------------------------------------------
 
+
 def test_missing_asset_tag_returns_422(client):
     jpeg = _make_jpeg()
     response = client.post(
@@ -123,6 +131,7 @@ def test_missing_asset_tag_returns_422(client):
 # ---------------------------------------------------------------------------
 # 5. Cosine similarity ranks correctly
 # ---------------------------------------------------------------------------
+
 
 def test_cosine_similarity_ranks_correctly():
     v1 = [1.0, 0.0, 0.0]
@@ -143,6 +152,7 @@ def test_cosine_similarity_ranks_correctly():
 # 6. Photo path written to disk
 # ---------------------------------------------------------------------------
 
+
 def test_photo_path_written_to_disk(client):
     jpeg = _make_jpeg()
     with _mock_ollama()[0], _mock_ollama()[1], _mock_ollama()[2], _mock_ollama()[3]:
@@ -159,6 +169,7 @@ def test_photo_path_written_to_disk(client):
 # ---------------------------------------------------------------------------
 # 7. Health endpoint returns 200
 # ---------------------------------------------------------------------------
+
 
 def test_health_endpoint_returns_200(client):
     response = client.get("/health")

@@ -1,6 +1,5 @@
 """Phase 5 tests — Kokoro TTS voice responses."""
 
-import asyncio
 import os
 import sqlite3
 import sys
@@ -9,11 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Make telegram/ importable without installing the package
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
+# Make shared/ importable — tts.py lives at mira-bots/shared/tts.py,
+# not mira-bots/telegram/ (refactor that predates this commit).
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "shared"))
 
 import tts
-
 
 # ---------------------------------------------------------------------------
 # test_tts_returns_none_on_error
