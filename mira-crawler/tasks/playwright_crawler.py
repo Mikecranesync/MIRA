@@ -12,6 +12,11 @@ try:
 except ImportError:
     from celery_app import app
 
+try:
+    from mira_crawler.tasks._shared import ingest_text_inline
+except ImportError:
+    from tasks._shared import ingest_text_inline
+
 logger = logging.getLogger("mira-crawler.tasks.playwright_crawler")
 
 # ---------------------------------------------------------------------------
@@ -260,7 +265,7 @@ def crawl_js_site(start_url: str, max_pages: int = 50) -> dict:
                 text = _extract_text(html_content)
                 if text and len(text) >= 200:
                     try:
-                        _ingest_text_inline(
+                        ingest_text_inline(
                             text=text,
                             source_url=url,
                             source_type="knowledge_article",
@@ -308,59 +313,3 @@ def crawl_js_site(start_url: str, max_pages: int = 50) -> dict:
         start_url,
     )
     return {"pages_crawled": pages_crawled, "urls_queued": urls_queued}
-
-
-# ---------------------------------------------------------------------------
-# Shared inline ingest helper (also used by reddit and patents tasks)
-# ---------------------------------------------------------------------------
-
-
-def _ingest_text_inline(
-    text: str,
-    source_url: str,
-    source_type: str,
-    tenant_id: str,
-    ollama_url: str,
-    embed_model: str,
-) -> int:
-    """Chunk, embed, and store a text string. Returns number of chunks inserted."""
-    try:
-        from ingest.chunker import chunk_blocks
-        from ingest.embedder import embed_text
-        from ingest.store import chunk_exists, insert_chunk
-    except ImportError:
-        from mira_crawler.ingest.chunker import chunk_blocks
-        from mira_crawler.ingest.embedder import embed_text
-        from mira_crawler.ingest.store import chunk_exists, insert_chunk
-
-    blocks = [{"text": text, "page_num": None, "section": ""}]
-    chunks = chunk_blocks(
-        blocks,
-        source_url=source_url,
-        source_type=source_type,
-        max_chars=2000,
-        min_chars=80,
-        overlap=200,
-    )
-
-    inserted = 0
-    for chunk in chunks:
-        chunk_idx = chunk.get("chunk_index", 0)
-        if chunk_exists(tenant_id, source_url, chunk_idx):
-            continue
-        embedding = embed_text(chunk["text"], ollama_url=ollama_url, model=embed_model)
-        if embedding is None:
-            continue
-        entry_id = insert_chunk(
-            tenant_id=tenant_id,
-            content=chunk["text"],
-            embedding=embedding,
-            source_url=source_url,
-            source_type=source_type,
-            chunk_index=chunk_idx,
-            chunk_type=chunk.get("chunk_type", "text"),
-        )
-        if entry_id:
-            inserted += 1
-
-    return inserted

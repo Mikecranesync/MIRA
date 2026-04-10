@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import logging
-import os
 import xml.etree.ElementTree as ET
-from urllib.parse import urlparse
 
 import httpx
 
@@ -13,6 +11,11 @@ try:
     from mira_crawler.celery_app import app
 except ImportError:
     from celery_app import app
+
+try:
+    from mira_crawler.tasks._shared import get_redis
+except ImportError:
+    from tasks._shared import get_redis
 
 logger = logging.getLogger("mira-crawler.tasks.sitemaps")
 
@@ -116,17 +119,6 @@ def _parse_sitemap(xml_content: str) -> list[dict]:
     return records
 
 
-def _get_redis():
-    """Return a Redis connection using CELERY_BROKER_URL, always db 0."""
-    import redis
-
-    broker_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-    parsed = urlparse(broker_url)
-    host = parsed.hostname or "localhost"
-    port = parsed.port or 6379
-    return redis.Redis(host=host, port=port, db=0, decode_responses=True)
-
-
 # ---------------------------------------------------------------------------
 # Celery task
 # ---------------------------------------------------------------------------
@@ -150,7 +142,7 @@ def check_sitemaps() -> dict:
 
     # 1. Load stored lastmod values
     try:
-        r = _get_redis()
+        r = get_redis()
         stored_lastmod: dict[str, str] = r.hgetall(_REDIS_LASTMOD_KEY)  # type: ignore[assignment]
     except Exception as exc:
         logger.error("Redis connection failed — aborting check_sitemaps: %s", exc)
