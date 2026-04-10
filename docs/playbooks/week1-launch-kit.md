@@ -1,8 +1,19 @@
 # Week 1 Launch Kit — Copy-Paste Ready Content
 
 **Prepared:** 2026-04-07 (dry run)
+**Updated:** 2026-04-10
 **Go-live:** 2026-04-08, 8:00 AM ET
 **Status:** All content ready. Just copy, paste, post.
+
+> **2026-04-10 rewrite** — every public CTA now points at `factorylm.com/cmms`
+> (the beta funnel entry). `app.factorylm.com` is Open WebUI and bypasses the
+> Loom nurture / Stripe / `/activated` flow; it is **not** a user landing page.
+> Dead-tier language ("5 free queries / no credit card") is stripped — the
+> free tier was killed in commit `6bbf5b3` (2026-04-09) and per the Fihn
+> strategy pricing stays hidden until the Day 7 nurture email. Frame the beta
+> as closed and email-gated. One exception: the Day 1 screenshot step still
+> uses `app.factorylm.com` because that's Mike's internal Open WebUI admin
+> instance used to generate content — it is **not** a public CTA.
 
 ---
 
@@ -16,9 +27,9 @@ Building AI maintenance tools for floor technicians | FactoryLM
 ```
 
 **Featured Section:**
-- Add link: `https://app.factorylm.com`
-- Title: "Try Mira — AI fault diagnosis from your own equipment manuals"
-- Description: "5 free queries/day. No credit card. No app install."
+- Add link: `https://factorylm.com/cmms`
+- Title: "Join the FactoryLM beta — AI fault diagnosis from your own manuals"
+- Description: "Closed beta for floor techs. Welcome email has the walkthrough video."
 
 **About Section** (add to top of existing):
 ```
@@ -28,7 +39,7 @@ PowerFlex, Automation Direct, hydraulic systems.
 
 Ask Mira a fault code → get the diagnosis in 10 seconds, not 40 minutes.
 
-Try it free: app.factorylm.com
+Closed beta for floor techs: factorylm.com/cmms
 
 I also run a 3,000-member LinkedIn group for hydraulics and industrial 
 maintenance professionals. Join us: [GROUP URL]
@@ -103,7 +114,12 @@ on these days?
 
 ### 8:30 AM: Screenshot Mira Demo Scenarios
 
-Open app.factorylm.com and run these 5 queries. Screenshot each conversation.
+> **INTERNAL USE ONLY.** This step uses `app.factorylm.com` because that's
+> Mike's Open WebUI admin instance — it's how you generate the screenshots
+> you'll paste into LinkedIn posts. Do **not** share this URL with users;
+> the public beta signup is `factorylm.com/cmms`.
+
+Open `app.factorylm.com` (your Open WebUI admin) and run these 5 queries. Screenshot each conversation.
 
 **Query 1 — Hydraulic:**
 ```
@@ -230,8 +246,11 @@ Building this because I've been that guy on the floor at 2 AM
 trying to find the right page in a manual I can barely read 
 in the dark.
 
-If you work in maintenance and want to try it: app.factorylm.com
-5 free queries/day. No credit card. No app install.
+If you work in maintenance, I'm opening a closed beta for a few
+dozen floor techs. You'll get a walkthrough video series and I'll
+load your equipment manuals for you.
+
+Signup: factorylm.com/cmms
 ```
 
 ### 8:30 AM: Reply to group comments
@@ -307,8 +326,9 @@ What it missed: the ambient temperature derate issue.
 Not perfect. But for a first pass on the floor when you're 
 standing in front of a faulted drive? Pretty solid.
 
-Free to try if you're curious: app.factorylm.com
-5 queries/day, no credit card needed.
+I'm letting a handful of floor techs into a closed beta. You'll
+get a video walkthrough and I'll load your specific equipment
+manuals: factorylm.com/cmms
 
 What fault code should I throw at it next? Drop it below 
 and I'll post the result.
@@ -327,9 +347,10 @@ Quick question — I built an AI tool that answers fault code
 questions from real equipment manuals (Allen-Bradley, PowerFlex, 
 Automation Direct, hydraulic systems). 
 
-Want to try it? I can load any manual you need.
+Want in? I'm running a closed beta for a handful of floor techs
+and I can load any manual you need.
 
-Free, 5 queries/day: app.factorylm.com
+Beta signup: factorylm.com/cmms
 
 No pressure — just thought you might find it useful based on 
 what you were saying about [reference their specific comment].
@@ -344,7 +365,7 @@ I actually built an AI tool that diagnosed that same fault
 from the OEM manual in 10 seconds. If you run into stuff 
 like that on the floor, it might save you some time.
 
-Free to try: app.factorylm.com (5 queries/day, no credit card)
+I'm running a closed beta — signup: factorylm.com/cmms
 
 What equipment are you working on? I can make sure your 
 manuals are loaded.
@@ -367,7 +388,7 @@ Pull these numbers and write them down:
 | Poll votes | 20+ | _____ |
 | DMs sent | 5-10 | _____ |
 | DM reply rate | 30%+ | _____ |
-| app.factorylm.com signups | 1 | _____ |
+| factorylm.com/cmms signups | 1 | _____ |
 | Reddit karma earned | 50+ | _____ |
 
 **Decision tree for Week 2:**

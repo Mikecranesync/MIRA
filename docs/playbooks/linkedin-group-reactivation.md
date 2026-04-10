@@ -1,8 +1,17 @@
 # LinkedIn Hydraulics Group Reactivation — Step-by-Step Playbook
 
+> **Updated 2026-04-10** — all CTAs now point at `factorylm.com/cmms` (the
+> beta funnel entry) instead of `app.factorylm.com` (which is Open WebUI and
+> is **not** connected to the Loom nurture / Stripe / `/activated` flow).
+> Removed "5 free queries / no credit card" language: the free tier was
+> killed in commit `6bbf5b3` (2026-04-09) and per the Fihn strategy
+> (`project_beta_onboarding_strategy.md`) pricing stays hidden until Day 7
+> of the nurture sequence. Frame everything below as a closed beta for
+> floor techs.
+
 ## Context
 
-Mike owns a 3,000-member LinkedIn hydraulics group that's been dormant for years. The GTM marketing plan (committed today as `docs/superpowers/specs/2026-04-07-marketing-first-10-users-design.md`) calls for reactivating this group starting Apr 8 as the primary channel for acquiring the first 10 FactoryLM users. This plan provides the granular, click-by-click instructions to set up, reactivate, and manage the group daily.
+Mike owns a 3,000-member LinkedIn hydraulics group that's been dormant for years. The GTM marketing plan (committed as `docs/superpowers/specs/2026-04-07-marketing-first-10-users-design.md`) calls for reactivating this group as the primary channel for acquiring the first 10 FactoryLM users. This plan provides the granular, click-by-click instructions to set up, reactivate, and manage the group daily.
 
 **This is NOT a code plan — it's an operational playbook.** Output will be a markdown document saved to `docs/playbooks/linkedin-group-reactivation.md`.
 
@@ -53,7 +62,7 @@ Mike owns a 3,000-member LinkedIn hydraulics group that's been dormant for years
 ### Step 4: Prepare Your Profile
 1. Your LinkedIn profile is the landing page for every DM you send
 2. **Headline** should mention what you're building: "Building AI maintenance tools for floor technicians | FactoryLM"
-3. **Featured section:** Pin a link to app.factorylm.com or a Mira demo screenshot
+3. **Featured section:** Pin a link to **factorylm.com/cmms** (the beta signup form — this is where the nurture + Stripe flow starts) or a Mira demo screenshot. Do NOT link to `app.factorylm.com` — that's Open WebUI and bypasses the funnel.
 4. **About section:** 2-3 lines about FactoryLM + the group
 
 ---
@@ -141,7 +150,8 @@ Would have taken me 20 minutes to flip through the PDF.
 
 Still rough. Getting better every day.
 
-If you work in maintenance, I'd love your feedback: app.factorylm.com
+If you work in maintenance, I'm opening a closed beta for a few dozen
+floor techs: factorylm.com/cmms
 ```
 
 Then share this post TO the group with a short intro: "Shared this on my profile — curious what this group thinks."
@@ -196,7 +206,9 @@ Took 10 seconds. Manual lookup would have been 20 minutes.
 Not perfect — it missed the ambient temperature check. But for a 
 first pass on the floor, it gets you 80% there.
 
-Free to try if you're curious: app.factorylm.com
+I'm opening a closed beta for a handful of floor techs who want
+early access. Walkthrough videos and a manual-upload workflow:
+factorylm.com/cmms
 
 What fault code should I throw at it next?
 ```
@@ -212,9 +224,10 @@ Glad you're still around!
 
 I actually built the AI tool I mentioned in the post. 
 It answers fault code questions from real equipment manuals. 
-Want to try it? I can load any manual you need.
+Want in? I'm opening a closed beta and I can load any manual you need.
 
-Here's the link: app.factorylm.com (free, 5 queries/day)
+Signup for the beta: factorylm.com/cmms
+(You'll get a welcome email with a walkthrough video.)
 ```
 
 **Volume:** Send 5-10 DMs. Don't spam — only message people who actively engaged.
@@ -224,7 +237,7 @@ Spend 30 min reviewing:
 - [ ] How many post views did the reactivation post get? (Target: 200+)
 - [ ] How many comments across all posts? (Target: 10+)
 - [ ] How many DM conversations started? (Target: 2-3)
-- [ ] Any app.factorylm.com signups? (Target: 1)
+- [ ] Any factorylm.com/cmms signups? (Target: 1 — check NeonDB `plg_tenants`)
 - [ ] Which post format got the most engagement? (Double down on that next week)
 
 ---
@@ -284,8 +297,8 @@ Here's what they said:
 "[Quote — even something simple like 'saved me 20 minutes 
 on a PowerFlex fault yesterday' works]"
 
-If you want to try it: app.factorylm.com
-5 free queries/day. No credit card.
+Closed beta is still open for a few more floor techs:
+factorylm.com/cmms
 ```
 
 ---
@@ -337,4 +350,4 @@ Track in a simple spreadsheet or in HubSpot:
 - [ ] Reactivation post published and pinned
 - [ ] First poll posted on Day 2
 - [ ] 5+ DMs sent by end of Week 1
-- [ ] 1+ signup at app.factorylm.com by end of Week 1
+- [ ] 1+ signup at factorylm.com/cmms by end of Week 1 (verify via NeonDB `plg_tenants` row with matching email)
