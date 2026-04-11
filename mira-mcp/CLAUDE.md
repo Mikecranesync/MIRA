@@ -57,7 +57,7 @@ Missing key logged as ERROR at startup; SSE port still accepts connections.
 | 8000 (host: `MCP_SSE_PORT`, default 8009) | SSE | MCP client connections |
 | 8001 | HTTP REST | PDF ingest + health |
 
-Healthcheck: `python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/sse')"`
+Healthcheck: `python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"`
 
 ## Key Env Vars
 
