@@ -318,6 +318,45 @@ async def cmms_health() -> dict:
     return result
 
 
+OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+EMBED_MODEL = os.environ.get("EMBED_MODEL", "nomic-embed-text:latest")
+
+
+async def _rest_embed(request):
+    """POST /api/embed — embed text via Ollama. Returns 768-dim vector."""
+    import httpx as _httpx
+
+    body = await request.json()
+    text = body.get("text", "")
+    if not text:
+        return JSONResponse({"error": "missing 'text' field"}, status_code=400)
+    texts = body.get("texts")
+    if texts and isinstance(texts, list):
+        results = []
+        for t in texts[:50]:
+            try:
+                resp = await _httpx.AsyncClient(timeout=30).post(
+                    f"{OLLAMA_URL}/api/embeddings",
+                    json={"model": EMBED_MODEL, "prompt": t},
+                )
+                resp.raise_for_status()
+                results.append(resp.json()["embedding"])
+            except Exception:
+                results.append(None)
+        return JSONResponse({"embeddings": results})
+    try:
+        async with _httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{OLLAMA_URL}/api/embeddings",
+                json={"model": EMBED_MODEL, "prompt": text},
+            )
+            resp.raise_for_status()
+            return JSONResponse({"embedding": resp.json()["embedding"]})
+    except Exception as exc:
+        sys.stderr.write(f"ERROR: /api/embed failed: {exc}\n")
+        return JSONResponse({"error": f"Embedding failed: {exc}"}, status_code=502)
+
+
 async def _rest_ingest_pdf(request):
     """POST /ingest/pdf — receive a PDF, save it, index into viking store."""
     from context.viking_store import ingest_pdf as _ingest_pdf
@@ -474,6 +513,7 @@ if __name__ == "__main__":
             Route("/api/cmms/invite", rest_cmms_invite, methods=["POST"]),
             Route("/api/cmms/health", rest_cmms_health),
             Route("/ingest/pdf", _rest_ingest_pdf, methods=["POST"]),
+            Route("/api/embed", _rest_embed, methods=["POST"]),
         ],
         exception_handlers={404: _not_found},
     )

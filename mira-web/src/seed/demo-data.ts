@@ -12,6 +12,7 @@
  */
 
 import { createWorkOrder, createAsset } from "../lib/atlas.js";
+import { seedAssetKnowledge } from "./knowledge-seed.js";
 
 const DEMO_ASSETS = [
   {
@@ -503,4 +504,14 @@ export async function seedDemoData(atlasToken?: string): Promise<void> {
   }
 
   console.log(`[seed] Demo data seeded: ${DEMO_ASSETS.length} assets, ${created}/${orders.length} work orders`);
+
+  const tenantId = process.env.MIRA_TENANT_ID || "demo";
+  try {
+    const knowledgeResult = await seedAssetKnowledge(DEMO_ASSETS, tenantId);
+    console.log(
+      `[seed] Knowledge seeded: ${knowledgeResult.inserted}/${knowledgeResult.chunked} entries (${knowledgeResult.failed} failed)`,
+    );
+  } catch (err) {
+    console.error("[seed] Knowledge seed failed (non-fatal):", err);
+  }
 }
