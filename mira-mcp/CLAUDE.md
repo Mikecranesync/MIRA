@@ -15,7 +15,7 @@ Claude Desktop (and other MCP clients) connect via SSE on :8000.
 `get_fault_history` appends OpenViking context chunks when `RETRIEVAL_BACKEND=openviking`
 and `MIRA_TENANT_ID` is set. SQLite results are never replaced, only augmented.
 
-## Atlas CMMS Tools (server.py — enabled when ATLAS_API_USER is set)
+## CMMS Tools (server.py — selected via `CMMS_PROVIDER`, supports atlas/maintainx/limble/fiix)
 
 | Tool | Signature | Purpose |
 |------|-----------|---------|
@@ -25,9 +25,9 @@ and `MIRA_TENANT_ID` is set. SQLite results are never replaced, only augmented.
 | `cmms_list_assets` | `(limit=50)` | List registered equipment assets |
 | `cmms_get_asset` | `(asset_id)` | Get single asset details |
 | `cmms_list_pm_schedules` | `(asset_id=0, limit=20)` | List preventive maintenance schedules |
-| `cmms_health` | `()` | Check Atlas API connectivity |
+| `cmms_health` | `()` | Check configured CMMS API connectivity |
 
-Client implementation in `atlas_client.py` — JWT auth, httpx async.
+Adapter dispatch in `cmms/factory.py` → `cmms/{atlas,maintainx,limble,fiix}.py`. The `/api/cmms/invite` REST endpoint is Atlas-only and returns HTTP 501 for other providers.
 
 ## REST Endpoints
 
@@ -67,9 +67,11 @@ Healthcheck: `python -c "import urllib.request; urllib.request.urlopen('http://l
 | `MIRA_DB_PATH` | Path to mira.db (mounted from mira-bridge volume) |
 | `RETRIEVAL_BACKEND` | `openwebui` (default) or `openviking` |
 | `MIRA_TENANT_ID` | Scopes OpenViking retrieval |
+| `CMMS_PROVIDER` | Selects CMMS adapter: `atlas` (default) \| `maintainx` \| `limble` \| `fiix` |
 | `ATLAS_API_URL` | Atlas CMMS API base URL (default: `http://atlas-api:8080`) |
-| `ATLAS_API_USER` | Atlas CMMS login email (enables CMMS integration) |
+| `ATLAS_API_USER` | Atlas CMMS login email (required when `CMMS_PROVIDER=atlas`) |
 | `ATLAS_API_PASSWORD` | Atlas CMMS login password |
+| `MAINTAINX_API_KEY` | MaintainX API key (required when `CMMS_PROVIDER=maintainx`) |
 
 ## Volume
 

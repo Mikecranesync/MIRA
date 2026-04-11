@@ -4,6 +4,8 @@ import os
 import sqlite3
 import sys
 
+from cmms.atlas import AtlasCMMS
+from cmms.factory import create_cmms_adapter
 from fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -13,12 +15,16 @@ MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
 RETRIEVAL_BACKEND = os.environ.get("RETRIEVAL_BACKEND", "openwebui")
 MIRA_TENANT_ID = os.environ.get("MIRA_TENANT_ID", "")
 
-# Atlas CMMS — enabled when ATLAS_API_USER is set
-_atlas_ok = bool(os.environ.get("ATLAS_API_USER", ""))
-if _atlas_ok:
-    sys.stderr.write("INFO: Atlas CMMS integration enabled\n")
+# CMMS adapter — selected by CMMS_PROVIDER (atlas|maintainx|limble|fiix)
+_cmms = create_cmms_adapter()
+if _cmms is not None:
+    sys.stderr.write(
+        f"INFO: CMMS integration enabled (provider={type(_cmms).__name__})\n"
+    )
 else:
-    sys.stderr.write("INFO: Atlas CMMS integration disabled (ATLAS_API_USER not set)\n")
+    sys.stderr.write("INFO: CMMS integration disabled (CMMS_PROVIDER not set)\n")
+
+_CMMS_DISABLED_ERROR = {"error": "CMMS not configured (set CMMS_PROVIDER)"}
 
 _viking_ok = False
 if RETRIEVAL_BACKEND == "openviking":
@@ -153,12 +159,10 @@ def get_maintenance_notes(
 
 @mcp.tool()
 async def cmms_list_work_orders(status: str = "", limit: int = 20) -> dict:
-    """List work orders from Atlas CMMS. Filter by status: OPEN, IN_PROGRESS, ON_HOLD, COMPLETE."""
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import list_work_orders
-
-    orders = await list_work_orders(status, limit)
+    """List work orders from the configured CMMS. Filter by status: OPEN, IN_PROGRESS, ON_HOLD, COMPLETE."""
+    if _cmms is None:
+        return _CMMS_DISABLED_ERROR
+    orders = await _cmms.list_work_orders(status, limit)
     return {"work_orders": orders, "count": len(orders)}
 
 
@@ -170,68 +174,58 @@ async def cmms_create_work_order(
     asset_id: int = 0,
     category: str = "CORRECTIVE",
 ) -> dict:
-    """Create a work order in Atlas CMMS from a diagnostic finding.
+    """Create a work order in the configured CMMS from a diagnostic finding.
 
     Args:
         title: Short summary (e.g. 'VFD overcurrent fault on Pump-001')
         description: Full diagnostic context from MIRA session
         priority: NONE, LOW, MEDIUM, HIGH
-        asset_id: Atlas asset ID (0 to skip)
+        asset_id: CMMS asset ID (0 to skip)
         category: CORRECTIVE, PREVENTIVE, CONDITION_BASED, EMERGENCY
     """
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import create_work_order
-
-    return await create_work_order(
+    if _cmms is None:
+        return _CMMS_DISABLED_ERROR
+    return await _cmms.create_work_order(
         title,
         description,
         priority,
-        asset_id=asset_id if asset_id else None,
+        asset_id=str(asset_id) if asset_id else None,
         category=category,
     )
 
 
 @mcp.tool()
 async def cmms_complete_work_order(work_order_id: int, feedback: str = "") -> dict:
-    """Mark a work order as complete in Atlas CMMS."""
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import complete_work_order
-
-    return await complete_work_order(work_order_id, feedback)
+    """Mark a work order as complete in the configured CMMS."""
+    if _cmms is None:
+        return _CMMS_DISABLED_ERROR
+    return await _cmms.complete_work_order(str(work_order_id), feedback)
 
 
 @mcp.tool()
 async def cmms_list_assets(limit: int = 50) -> dict:
-    """List equipment assets registered in Atlas CMMS."""
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import list_assets
-
-    assets = await list_assets(limit)
+    """List equipment assets registered in the configured CMMS."""
+    if _cmms is None:
+        return _CMMS_DISABLED_ERROR
+    assets = await _cmms.list_assets(limit)
     return {"assets": assets, "count": len(assets)}
 
 
 @mcp.tool()
 async def cmms_get_asset(asset_id: int) -> dict:
-    """Get details for a specific asset from Atlas CMMS."""
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import get_asset
-
-    return await get_asset(asset_id)
+    """Get details for a specific asset from the configured CMMS."""
+    if _cmms is None:
+        return _CMMS_DISABLED_ERROR
+    return await _cmms.get_asset(str(asset_id))
 
 
 @mcp.tool()
 async def cmms_list_pm_schedules(asset_id: int = 0, limit: int = 20) -> dict:
-    """List preventive maintenance schedules from Atlas CMMS."""
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import list_pm_schedules
-
-    schedules = await list_pm_schedules(
-        asset_id=asset_id if asset_id else None,
+    """List preventive maintenance schedules from the configured CMMS."""
+    if _cmms is None:
+        return _CMMS_DISABLED_ERROR
+    schedules = await _cmms.list_pm_schedules(
+        asset_id=str(asset_id) if asset_id else None,
         limit=limit,
     )
     return {"pm_schedules": schedules, "count": len(schedules)}
@@ -239,10 +233,10 @@ async def cmms_list_pm_schedules(asset_id: int = 0, limit: int = 20) -> dict:
 
 @mcp.tool()
 async def cmms_health() -> dict:
-    """Check Atlas CMMS API connectivity."""
-    from atlas_client import health_check
-
-    return await health_check()
+    """Check configured CMMS API connectivity."""
+    if _cmms is None:
+        return {"status": "disabled", "error": "CMMS not configured"}
+    return await _cmms.health_check()
 
 
 async def _rest_ingest_pdf(request):
@@ -347,8 +341,11 @@ if __name__ == "__main__":
         role_id = int(body.get("role_id", 4))
         if not emails or not isinstance(emails, list):
             return JSONResponse({"error": "emails array required"}, status_code=400)
-        from atlas_client import invite_users
-        return JSONResponse(await invite_users(emails, role_id))
+        if not isinstance(_cmms, AtlasCMMS):
+            return JSONResponse(
+                {"error": "invite_users is Atlas-only"}, status_code=501
+            )
+        return JSONResponse(await _cmms.invite_users(emails, role_id))
 
     async def rest_cmms_health(request):
         return JSONResponse(await cmms_health())
