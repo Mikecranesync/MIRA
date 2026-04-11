@@ -68,7 +68,7 @@
         "name": "How do I try FactoryLM?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Start free — 10 queries per month, no credit card required. Upgrade to $97/month for unlimited queries and a site license covering your entire team, or $297/month to add automatic work-order write-back into MaintainX, Limble, or UpKeep."
+          "text": "Sign up for the beta at $97/month — site license covering your entire team, unlimited queries. $297/month adds automatic work-order write-back into MaintainX, Limble, or UpKeep."
         }
       },
       {
@@ -133,9 +133,9 @@
         <div id="form-error" class="form-error"></div>
         <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
           <i data-lucide="zap" style="width:16px;height:16px"></i>
-          Try Free — 10 queries/month
+          Join the Beta — $97/mo
         </button>
-        <p style="margin:8px 0 0;font-size:var(--text-xs);color:var(--text-muted);text-align:center">No credit card required.</p>
+        <p style="margin:8px 0 0;font-size:var(--text-xs);color:var(--text-muted);text-align:center">Site license — unlimited users. Cancel anytime.</p>
       </div>
 
       <!-- Confirmation (shown after signup) -->
@@ -459,13 +459,13 @@ async function handleSignup() {
     document.getElementById('download-step').classList.add('show');
     document.getElementById('download-greeting').innerHTML =
       `<strong style="color:#f0a030;">You're in, ${name}.</strong><br>` +
-      `Check your email — your free access link is on its way. You get 10 queries/month to start, no credit card needed.`;
+      `Check your email — we'll send you a series of short Loom videos showing what MIRA can do. When you're ready, a payment link unlocks everything.`;
 
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.add('show');
     btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="zap" style="width:16px;height:16px"></i> Try Free — 10 queries/month';
+    btn.innerHTML = '<i data-lucide="zap" style="width:16px;height:16px"></i> Join the Beta — $97/mo';
     lucide.createIcons();
   }
 }
@@ -575,7 +575,7 @@ function renderKanban(wos) {
 
 async function submitQuery() {
   if (AUTH.queriesLeft <= 0) {
-    addChatMsg('system', "You've used your 10 free queries this month. Upgrade to $97/month for unlimited queries with a full site license.");
+    addChatMsg('system', "Query limit reached. Subscribe at $97/month for unlimited queries — site license, unlimited users.");
     return;
   }
 
@@ -601,7 +601,7 @@ async function submitQuery() {
       typingEl.remove();
       AUTH.queriesLeft = 0;
       updateQuotaBar();
-      addChatMsg('system', "You've used your 10 free queries this month. Upgrade to $97/month for unlimited queries — site license, unlimited users.");
+      addChatMsg('system', "Query limit reached. Subscribe at $97/month for unlimited queries — site license, unlimited users.");
       return;
     }
 
