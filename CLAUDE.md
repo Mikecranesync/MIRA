@@ -3,7 +3,7 @@
 **Version:** v0.5.3
 **Updated:** 2026-03-24
 **One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=claude` → Anthropic API | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
+**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
 
 ---
 
@@ -122,7 +122,11 @@ chore: build system, deps, tooling
 | `SLACK_BOT_TOKEN`    | mira-bot-slack                       |
 | `SLACK_APP_TOKEN`    | mira-bot-slack (Socket Mode)         |
 | `ANTHROPIC_API_KEY`  | mira-bots (Claude inference)         |
-| `INFERENCE_BACKEND`  | mira-bots — `"claude"` or `"local"` |
+| `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
+| `GROQ_API_KEY`       | mira-bots (Groq — primary free tier) |
+| `GROQ_MODEL`         | mira-bots — default: llama-3.3-70b-versatile |
+| `CEREBRAS_API_KEY`   | mira-bots (Cerebras — secondary free tier) |
+| `CEREBRAS_MODEL`     | mira-bots — default: llama-3.3-70b |
 | `CLAUDE_MODEL`       | mira-bots — default: claude-sonnet-4-6 |
 | `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest               |
 | `MCP_REST_API_KEY`   | mira-mcp (server), mira-bots (client)|

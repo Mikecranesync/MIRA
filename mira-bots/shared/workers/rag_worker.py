@@ -433,14 +433,13 @@ class RAGWorker:
             return None
 
     async def _call_llm(self, messages: list[dict], model: str = None) -> str:
-        """Call LLM — Claude API if router enabled, else Open WebUI."""
+        """Call LLM — cloud cascade (Groq→Cerebras→Claude) then Open WebUI fallback."""
         if self.router and self.router.enabled:
             clean = self.router.sanitize_context(messages)
             content, usage = await self.router.complete(clean)
             if content:
                 self.router.log_usage(usage)
                 return content
-            # Claude call failed — fall through to Open WebUI
 
         return await self._call_openwebui(messages, model=model)
 

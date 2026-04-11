@@ -60,6 +60,12 @@ SYSTEM_PROMPT_COT = (
 CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
 
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+
+CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions"
+DEFAULT_CEREBRAS_MODEL = "llama3.1-8b"
+
 RAG_CONTEXT_HEADER = "\n\n--- REFERENCE DOCUMENTS ---\n"
 RAG_CONTEXT_FOOTER = "--- END REFERENCES ---\n"
 
@@ -206,6 +212,37 @@ def _call_claude(
     return resp.json()["content"][0]["text"]
 
 
+def _call_openai_compat(
+    client: httpx.Client,
+    api_url: str,
+    api_key: str,
+    model: str,
+    system_content: str,
+    user_content: str,
+    max_tokens: int = 300,
+) -> str:
+    """Call an OpenAI-compatible API (Groq, Cerebras). Returns response text."""
+    resp = client.post(
+        api_url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": 0.1,
+            "messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_content},
+            ],
+        },
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+
 def _call_openwebui(
     client: httpx.Client,
     url: str,
@@ -242,7 +279,8 @@ def evaluate_question(
     model: str,
     api_key: str,
     rag_context: str = "",
-    use_claude: bool = False,
+    provider: str = "openwebui",
+    provider_url: str = "",
 ) -> dict:
     """Send one question to the API and score the response."""
     result = {
@@ -260,7 +298,6 @@ def evaluate_question(
         "error": None,
     }
 
-    # Chain-of-thought for calculation questions, standard for others
     is_calc = q.get("type") == "calculation"
     system_content = SYSTEM_PROMPT_COT if is_calc else SYSTEM_PROMPT
     if rag_context:
@@ -270,10 +307,16 @@ def evaluate_question(
 
     t0 = time.monotonic()
     try:
-        if use_claude:
+        if provider == "claude":
             tokens = 800 if is_calc else 300
             response_text = _call_claude(
                 client, api_key, model, system_content, user_content, max_tokens=tokens,
+            )
+        elif provider in ("groq", "cerebras"):
+            tokens = 800 if is_calc else 300
+            response_text = _call_openai_compat(
+                client, provider_url, api_key, model, system_content, user_content,
+                max_tokens=tokens,
             )
         else:
             response_text = _call_openwebui(client, url, api_key, model, system_content, user_content)
@@ -285,7 +328,7 @@ def evaluate_question(
         logger.warning("Q%d: timeout after %ds", q["id"], REQUEST_TIMEOUT)
     except httpx.HTTPStatusError as e:
         result["error"] = f"HTTP {e.response.status_code}"
-        logger.warning("Q%d: HTTP %d", q["id"], e.response.status_code)
+        logger.warning("Q%d: HTTP %d — %s", q["id"], e.response.status_code, e.response.text[:100])
     except Exception as e:
         result["error"] = str(e)[:200]
         logger.warning("Q%d: %s", q["id"], e)
@@ -429,27 +472,44 @@ def main():
     parser.add_argument("--benchmark", type=str, default=None, help="Path to benchmark JSON")
     parser.add_argument("--rag", action="store_true", help="Enable NeonDB RAG retrieval per question")
     parser.add_argument("--claude", action="store_true", help="Use Claude API instead of Open WebUI")
+    parser.add_argument("--groq", action="store_true", help="Use Groq API (Llama 3.3 70B)")
+    parser.add_argument("--cerebras", action="store_true", help="Use Cerebras API (Llama 3.1 8B)")
     parser.add_argument("--ollama-url", type=str, default=None, help="Ollama URL for RAG embeddings")
     args = parser.parse_args()
 
-    use_claude = args.claude
-
-    if use_claude:
+    provider = "openwebui"
+    provider_url = ""
+    if args.groq:
+        provider = "groq"
+        provider_url = GROQ_API_URL
+        api_key = os.environ.get("GROQ_API_KEY", "")
+        if not api_key:
+            logger.error("GROQ_API_KEY not set.")
+            sys.exit(1)
+        model = args.model or os.environ.get("GROQ_MODEL", DEFAULT_GROQ_MODEL)
+    elif args.cerebras:
+        provider = "cerebras"
+        provider_url = CEREBRAS_API_URL
+        api_key = os.environ.get("CEREBRAS_API_KEY", "")
+        if not api_key:
+            logger.error("CEREBRAS_API_KEY not set.")
+            sys.exit(1)
+        model = args.model or os.environ.get("CEREBRAS_MODEL", DEFAULT_CEREBRAS_MODEL)
+    elif args.claude:
+        provider = "claude"
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
-            logger.error("ANTHROPIC_API_KEY not set. Run with Doppler or set env var.")
+            logger.error("ANTHROPIC_API_KEY not set.")
             sys.exit(1)
+        model = args.model or os.environ.get("CLAUDE_MODEL", DEFAULT_CLAUDE_MODEL)
     else:
         api_key = os.environ.get("OPENWEBUI_API_KEY", "")
         if not api_key:
             logger.error("OPENWEBUI_API_KEY not set. Run with Doppler or set env var.")
             sys.exit(1)
+        model = args.model or os.environ.get("MIRA_EVAL_MODEL", DEFAULT_MODEL)
 
     url = (args.url or os.environ.get("OPENWEBUI_URL", DEFAULT_URL)).rstrip("/")
-    if use_claude:
-        model = args.model or os.environ.get("CLAUDE_MODEL", DEFAULT_CLAUDE_MODEL)
-    else:
-        model = args.model or os.environ.get("MIRA_EVAL_MODEL", DEFAULT_MODEL)
     benchmark_path = Path(args.benchmark) if args.benchmark else BENCHMARK_PATH
 
     questions = load_questions(
@@ -465,12 +525,11 @@ def main():
 
     ollama_url = (args.ollama_url or os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
     rag_mode = args.rag
-    backend = "claude" if use_claude else "local"
-    mode_label = f"{backend}+RAG" if rag_mode else backend
+    mode_label = f"{provider}+RAG" if rag_mode else provider
 
     logger.info(
-        "Loaded %d questions | Model: %s | Target: %s | Mode: %s",
-        len(questions), model, url, mode_label,
+        "Loaded %d questions | Model: %s | Provider: %s | Mode: %s",
+        len(questions), model, provider, mode_label,
     )
 
     results: list[dict] = []
@@ -492,7 +551,7 @@ def main():
 
             result = evaluate_question(
                 q, client, url, model, api_key,
-                rag_context=rag_context, use_claude=use_claude,
+                rag_context=rag_context, provider=provider, provider_url=provider_url,
             )
             results.append(result)
 

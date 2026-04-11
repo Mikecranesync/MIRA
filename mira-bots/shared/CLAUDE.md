@@ -58,14 +58,17 @@ normalization before RAG retrieval.
 
 ## Inference Router (inference/router.py)
 
-`InferenceRouter` — feature-flagged Claude API backend.
+`InferenceRouter` — multi-provider LLM cascade with automatic failover.
 
-- Enabled when `INFERENCE_BACKEND=claude` AND `ANTHROPIC_API_KEY` is set
-- Uses `httpx` directly — no Anthropic SDK
-- `complete(messages, max_tokens, session_id)` — returns `(content_str, usage_dict)`
+- Cascade order: Groq → Cerebras → Claude → (caller falls back to Open WebUI)
+- Enabled when `INFERENCE_BACKEND=cloud` (or `claude` legacy alias) AND at least one provider API key is set
+- Provider enablement is key-based: `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `ANTHROPIC_API_KEY`
+- Groq/Cerebras use OpenAI-compatible API; Claude uses Messages API
+- Image requests skip Groq/Cerebras (no vision support) and go directly to Claude
+- `complete(messages, max_tokens, session_id)` — tries each provider, returns first success
 - `sanitize_context(messages)` — strips IPv4, MAC addresses, serial numbers before sending
-- `write_api_usage()` — persists token counts to `api_usage` table in mira.db
-- Falls back gracefully to Open WebUI path on any error (returns `"", {}`)
+- `write_api_usage()` — persists token counts + provider name to `api_usage` table in mira.db
+- Returns `("", {})` only when ALL providers fail — caller then falls back to Open WebUI
 
 System prompt loaded from `prompts/diagnose/active.yaml` on every call (zero-downtime rollout).
 
