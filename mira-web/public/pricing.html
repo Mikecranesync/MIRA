@@ -4,16 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pricing — FactoryLM AI Troubleshooter</title>
-  <meta name="description" content="MIRA pricing: Free trial, $97/mo unlimited, $297/mo with CMMS integration. Flat site license — no per-user fees. Works with MaintainX, Limble, UpKeep.">
+  <meta name="description" content="MIRA pricing: $97/mo unlimited queries with flat site license, $297/mo adds CMMS write-back. 14-day money-back guarantee. Works with MaintainX, Limble, UpKeep.">
   <link rel="canonical" href="https://factorylm.com/pricing">
   <meta property="og:title" content="Pricing — FactoryLM AI Troubleshooter">
-  <meta property="og:description" content="MIRA pricing: Free trial, $97/mo unlimited, $297/mo with CMMS integration. Flat site license — no per-user fees.">
+  <meta property="og:description" content="MIRA pricing: $97/mo unlimited queries with flat site license, $297/mo adds CMMS write-back. 14-day money-back guarantee.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://factorylm.com/pricing">
   <meta property="og:image" content="https://factorylm.com/og-image.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Pricing — FactoryLM AI Troubleshooter">
-  <meta name="twitter:description" content="MIRA pricing: Free trial, $97/mo unlimited, $297/mo with CMMS integration. Flat site license — no per-user fees.">
+  <meta name="twitter:description" content="MIRA pricing: $97/mo unlimited queries with flat site license, $297/mo adds CMMS write-back. 14-day money-back guarantee.">
   <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -99,10 +99,11 @@
 
     /* Pricing cards */
     .pricing-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr);
+      display: grid; grid-template-columns: repeat(2, 1fr);
       gap: 20px; padding: 60px 0 100px;
+      max-width: 720px; margin: 0 auto;
     }
-    @media (max-width: 900px) { .pricing-grid { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; } }
+    @media (max-width: 760px) { .pricing-grid { grid-template-columns: 1fr; max-width: 420px; } }
 
     .pricing-card {
       background: var(--surface);
@@ -168,6 +169,11 @@
     .card-cta-ghost {
       background: transparent; color: var(--text);
       border: 1px solid var(--border-hi);
+    }
+    .card-footnote {
+      text-align: center; font-size: 12px;
+      color: var(--text-faint); margin-top: 12px;
+      font-weight: 400;
     }
 
     /* Comparison note */
@@ -238,7 +244,7 @@
         <li><a href="/blog">Blog</a></li>
         <li><a href="/cmms">Troubleshooter</a></li>
       </ul>
-      <a href="/cmms" class="nav-cta">Try Free</a>
+      <a href="/cmms" class="nav-cta">Get Started</a>
     </div>
   </nav>
 
@@ -255,28 +261,14 @@
       <div class="inner">
         <div class="pricing-grid">
 
-          <!-- Free -->
-          <div class="pricing-card">
-            <div class="card-tier">Try MIRA</div>
-            <div class="card-price">Free</div>
-            <div class="card-desc">10 diagnostic queries per month. No credit card required.</div>
-            <ul class="card-features">
-              <li>AI fault diagnosis via chat</li>
-              <li>Upload equipment manuals</li>
-              <li>Cited answers from your OEM docs</li>
-              <li>Works on any device</li>
-              <li>10 queries/month</li>
-            </ul>
-            <a href="/cmms" class="card-cta card-cta-ghost">Start free</a>
-          </div>
-
           <!-- $97 — featured -->
           <div class="pricing-card featured">
             <div class="card-tier">MIRA Troubleshooter</div>
             <div class="card-price">$97 <span class="unit">/mo</span></div>
             <div class="card-desc">Unlimited queries. Site license — your whole team, one price.</div>
             <ul class="card-features">
-              <li>Everything in Free</li>
+              <li>AI fault diagnosis via chat</li>
+              <li>Upload equipment manuals (cited OEM answers)</li>
               <li>Unlimited diagnostic queries</li>
               <li>Unlimited users (site license)</li>
               <li>Equipment knowledge store</li>
@@ -285,6 +277,7 @@
               <li>Photo-to-diagnosis</li>
             </ul>
             <a href="/cmms" class="card-cta card-cta-primary">Start with MIRA</a>
+            <p class="card-footnote">14-day money-back guarantee</p>
           </div>
 
           <!-- $297 -->
@@ -344,8 +337,8 @@
         <h2>Questions</h2>
 
         <div class="faq-item">
-          <div class="faq-q">What's included in the free tier?</div>
-          <div class="faq-a">10 diagnostic queries per month, manual uploads, and cited answers from your OEM documentation. No credit card required. Enough to see if MIRA is useful for your shop.</div>
+          <div class="faq-q">Is there a money-back guarantee?</div>
+          <div class="faq-a">Yes. 14 days from your first payment. If MIRA can't answer a fault code your team couldn't find on their own, we'll refund you in full — no questions asked.</div>
         </div>
 
         <div class="faq-item">
