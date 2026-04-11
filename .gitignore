@@ -132,3 +132,6 @@ mira-sidecar/docs/
 mira-sidecar/logs/
 mira-sidecar/.venv/
 factorylm.properties
+
+# Observability data volumes (managed by Docker)
+observability/grafana/provisioning/dashboards/celery-tasks.json

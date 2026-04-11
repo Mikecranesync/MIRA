@@ -41,9 +41,7 @@ class CMMSAdapter(ABC):
         """Create a work order from diagnostic findings."""
 
     @abstractmethod
-    async def complete_work_order(
-        self, work_order_id: str, feedback: str = ""
-    ) -> dict:
+    async def complete_work_order(self, work_order_id: str, feedback: str = "") -> dict:
         """Mark a work order as complete."""
 
     @abstractmethod
@@ -55,7 +53,5 @@ class CMMSAdapter(ABC):
         """Get a single asset by ID."""
 
     @abstractmethod
-    async def list_pm_schedules(
-        self, asset_id: str | None = None, limit: int = 20
-    ) -> list[dict]:
+    async def list_pm_schedules(self, asset_id: str | None = None, limit: int = 20) -> list[dict]:
         """List preventive maintenance schedules."""

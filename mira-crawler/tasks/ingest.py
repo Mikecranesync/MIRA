@@ -22,6 +22,7 @@ except ImportError:
 logger = logging.getLogger("mira-crawler.tasks.ingest")
 
 DOWNLOAD_TIMEOUT = int(os.getenv("INGEST_DOWNLOAD_TIMEOUT", "60"))
+MAX_PDF_BYTES = int(os.getenv("INGEST_MAX_PDF_BYTES", str(150 * 1024 * 1024)))  # 150 MB
 
 
 @app.task(bind=True, max_retries=3, default_retry_delay=30)
@@ -45,10 +46,9 @@ def ingest_url(self, url: str, manufacturer: str = "",
         return {"url": url, "inserted": 0, "error": "no_tenant_id"}
 
     # 1. Download (supports http(s):// and file:// schemes)
+    is_pdf_url = url.lower().endswith(".pdf")
+
     if url.startswith("file://"):
-        # Read from local filesystem — GDrive sync and folder-watcher paths.
-        # url2pathname correctly handles file:///C:/... on Windows and
-        # file:///tmp/... on POSIX without manual slash-stripping.
         from pathlib import Path
         from urllib.parse import urlparse as _urlparse
         from urllib.request import url2pathname
@@ -59,10 +59,35 @@ def ingest_url(self, url: str, manufacturer: str = "",
             content_type = (
                 "application/pdf" if local_path.suffix.lower() == ".pdf" else "text/html"
             )
+            if len(data) > MAX_PDF_BYTES and is_pdf_url:
+                logger.warning(
+                    "Skipping %s — %d MB exceeds limit",
+                    url[:80], len(data) // 1024 // 1024,
+                )
+                return {"url": url, "inserted": 0, "error": "file_too_large"}
         except Exception as exc:
             logger.warning("Local file read failed for %s: %s", url[:80], exc)
             return {"url": url, "inserted": 0, "error": f"local_read_failed: {exc}"}
     else:
+        # Pre-flight size check for PDFs — avoids OOM on very large files
+        if is_pdf_url:
+            try:
+                head = httpx.head(
+                    url,
+                    timeout=10,
+                    follow_redirects=True,
+                    headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
+                )
+                content_length = int(head.headers.get("content-length", 0))
+                if content_length > MAX_PDF_BYTES:
+                    logger.warning(
+                        "Skipping %s — too large (%d MB > %d MB limit)",
+                        url[:80], content_length // 1024 // 1024, MAX_PDF_BYTES // 1024 // 1024,
+                    )
+                    return {"url": url, "inserted": 0, "error": "file_too_large"}
+            except Exception:
+                pass
+
         try:
             resp = httpx.get(
                 url,
@@ -73,11 +98,17 @@ def ingest_url(self, url: str, manufacturer: str = "",
             resp.raise_for_status()
             data = resp.content
             content_type = resp.headers.get("content-type", "")
+            if len(data) > MAX_PDF_BYTES and ("application/pdf" in content_type or is_pdf_url):
+                logger.warning(
+                    "Skipping %s — downloaded %d MB exceeds limit",
+                    url[:80], len(data) // 1024 // 1024,
+                )
+                return {"url": url, "inserted": 0, "error": "file_too_large"}
         except Exception as exc:
             logger.warning("Download failed for %s: %s — retrying", url[:80], exc)
             raise self.retry(exc=exc)
 
-    # 2. Extract text blocks
+    # 3. Extract text blocks
     is_pdf = url.lower().endswith(".pdf") or "application/pdf" in content_type
     if is_pdf:
         blocks = extract_from_pdf_with_fallback(data)
@@ -88,7 +119,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
         logger.warning("No extractable text from %s", url[:80])
         return {"url": url, "inserted": 0, "error": "no_content"}
 
-    # 3. Chunk
+    # 4. Chunk
     chunks = chunk_blocks(
         blocks,
         source_url=url,
@@ -99,7 +130,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
     total = len(chunks)
     logger.info("Extracted %d blocks → %d chunks from %s", len(blocks), total, url[:80])
 
-    # 4. Embed + store (with dedup and progress)
+    # 5. Embed + store (with dedup and progress)
     inserted = 0
     skipped = 0
 

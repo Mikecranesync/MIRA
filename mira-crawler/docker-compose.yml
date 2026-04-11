@@ -3,8 +3,6 @@ services:
     image: redis:7.4.2-alpine
     container_name: mira-redis
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:6379:6379"
     networks:
       - core-net
     healthcheck:
@@ -21,12 +19,17 @@ services:
       dockerfile: mira-crawler/Dockerfile.celery
     container_name: mira-celery-worker
     restart: unless-stopped
+    command: celery -A mira_crawler.celery_app worker --concurrency=2 -Q ingest,discovery,celery --loglevel=info
     depends_on:
       mira-redis:
         condition: service_healthy
     environment:
       - CELERY_BROKER_URL=redis://mira-redis:6379/0
       - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - APIFY_API_TOKEN=${APIFY_API_KEY}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      - OLLAMA_BASE_URL=http://192.168.1.11:11434
     networks:
       - core-net
     healthcheck:
@@ -50,6 +53,10 @@ services:
       - CELERY_BROKER_URL=redis://mira-redis:6379/0
       - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
       - TASK_BRIDGE_API_KEY
+      - APIFY_API_TOKEN=${APIFY_API_KEY}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      - OLLAMA_BASE_URL=http://192.168.1.11:11434
     networks:
       - core-net
     healthcheck:

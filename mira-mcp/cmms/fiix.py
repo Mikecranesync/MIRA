@@ -47,9 +47,7 @@ class FiixCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "Fiix not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{self.api_url}{path}", headers=self._headers(), params=params
-            )
+            resp = await client.get(f"{self.api_url}{path}", headers=self._headers(), params=params)
             resp.raise_for_status()
             return resp.json()
 
@@ -57,9 +55,7 @@ class FiixCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "Fiix not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.api_url}{path}", headers=self._headers(), json=payload
-            )
+            resp = await client.post(f"{self.api_url}{path}", headers=self._headers(), json=payload)
             resp.raise_for_status()
             return resp.json()
 

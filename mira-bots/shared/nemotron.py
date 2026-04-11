@@ -15,12 +15,8 @@ logger = logging.getLogger("mira-gsd")
 
 # Defaults — override via env vars or constructor args
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
-DEFAULT_EMBED_MODEL = os.environ.get(
-    "NEMOTRON_EMBED_MODEL", "nvidia/llama-nemotron-embed-1b-v2"
-)
-DEFAULT_RERANK_MODEL = os.environ.get(
-    "NEMOTRON_RERANK_MODEL", "nvidia/llama-nemotron-rerank-1b-v2"
-)
+DEFAULT_EMBED_MODEL = os.environ.get("NEMOTRON_EMBED_MODEL", "nvidia/llama-nemotron-embed-1b-v2")
+DEFAULT_RERANK_MODEL = os.environ.get("NEMOTRON_RERANK_MODEL", "nvidia/llama-nemotron-rerank-1b-v2")
 DEFAULT_REWRITE_MODEL = os.environ.get(
     "NEMOTRON_REWRITE_MODEL", "nvidia/llama-3.1-nemotron-nano-8b-v1"
 )
@@ -103,11 +99,16 @@ class NemotronClient:
             elapsed = int((time.monotonic() - t0) * 1000)
 
             rewritten = data["choices"][0]["message"]["content"].strip()
-            logger.info("NEMOTRON_REWRITE %s", json.dumps({
-                "original": query,
-                "rewritten": rewritten[:200],
-                "latency_ms": elapsed,
-            }))
+            logger.info(
+                "NEMOTRON_REWRITE %s",
+                json.dumps(
+                    {
+                        "original": query,
+                        "rewritten": rewritten[:200],
+                        "latency_ms": elapsed,
+                    }
+                ),
+            )
             return rewritten or query
 
         except Exception as e:
@@ -155,7 +156,10 @@ class NemotronClient:
     # ------------------------------------------------------------------
 
     async def rerank(
-        self, query: str, passages: list[str], top_n: int = 5,
+        self,
+        query: str,
+        passages: list[str],
+        top_n: int = 5,
     ) -> list[dict]:
         """Rerank passages by relevance to query.
 
@@ -163,10 +167,7 @@ class NemotronClient:
         sorted by score descending. Falls back to original order.
         """
         if not self.enabled or not passages:
-            return [
-                {"index": i, "text": p, "score": 1.0}
-                for i, p in enumerate(passages[:top_n])
-            ]
+            return [{"index": i, "text": p, "score": 1.0} for i, p in enumerate(passages[:top_n])]
 
         payload = {
             "model": self.rerank_model,
@@ -191,27 +192,31 @@ class NemotronClient:
             results = []
             for r in sorted(rankings, key=lambda x: x.get("logit", 0), reverse=True)[:top_n]:
                 idx = r["index"]
-                results.append({
-                    "index": idx,
-                    "text": passages[idx] if idx < len(passages) else "",
-                    "score": r.get("logit", 0.0),
-                })
+                results.append(
+                    {
+                        "index": idx,
+                        "text": passages[idx] if idx < len(passages) else "",
+                        "score": r.get("logit", 0.0),
+                    }
+                )
 
-            logger.info("NEMOTRON_RERANK %s", json.dumps({
-                "query": query[:100],
-                "passages_in": len(passages),
-                "results_out": len(results),
-                "top_score": results[0]["score"] if results else 0,
-                "latency_ms": elapsed,
-            }))
+            logger.info(
+                "NEMOTRON_RERANK %s",
+                json.dumps(
+                    {
+                        "query": query[:100],
+                        "passages_in": len(passages),
+                        "results_out": len(results),
+                        "top_score": results[0]["score"] if results else 0,
+                        "latency_ms": elapsed,
+                    }
+                ),
+            )
             return results
 
         except Exception as e:
             logger.warning("Nemotron rerank failed, using original order: %s", e)
-            return [
-                {"index": i, "text": p, "score": 1.0}
-                for i, p in enumerate(passages[:top_n])
-            ]
+            return [{"index": i, "text": p, "score": 1.0} for i, p in enumerate(passages[:top_n])]
 
     # ------------------------------------------------------------------
     # Multimodal embedding (for vision_worker future use)
@@ -229,10 +234,12 @@ class NemotronClient:
 
         payload = {
             "model": self.vl_embed_model,
-            "input": [{
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
-            }],
+            "input": [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+                }
+            ],
             "input_type": "passage",
             "encoding_format": "float",
         }

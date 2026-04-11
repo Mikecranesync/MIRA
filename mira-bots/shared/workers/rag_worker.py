@@ -223,7 +223,10 @@ class RAGWorker:
             # Stage 3: Build prompt with (reranked) chunks → call LLM
             if chunk_texts:
                 messages = self._build_prompt_with_chunks(
-                    state, rewritten, chunk_texts, photo_b64=photo_b64,
+                    state,
+                    rewritten,
+                    chunk_texts,
+                    photo_b64=photo_b64,
                 )
             else:
                 messages = self._build_prompt(state, rewritten, photo_b64)
@@ -283,16 +286,18 @@ class RAGWorker:
                     "explicitly in your reply. Rule 13 overrides Rule 2 for the device name only."
                 )
             text_parts.append(message)
-            messages.append({
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
-                    },
-                    {"type": "text", "text": "\n".join(text_parts)},
-                ],
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
+                        },
+                        {"type": "text", "text": "\n".join(text_parts)},
+                    ],
+                }
+            )
         else:
             user_msg = rewrite_question(message, state.get("asset_identified"))
             messages.append({"role": "user", "content": user_msg})
@@ -352,17 +357,19 @@ class RAGWorker:
 
         # Photo-as-answer guidance: help LLM interpret photo in diagnostic context
         if _photo_continues:
-            messages.append({
-                "role": "system",
-                "content": (
-                    "This photo was sent as a response to your previous question. "
-                    "Examine it for information that answers the question. If you "
-                    "can extract the answer, confirm it and continue the diagnostic. "
-                    "If the photo doesn't clearly show the requested information, "
-                    "acknowledge the photo and re-ask the question differently — "
-                    "suggest the technician type the value or take a closer shot."
-                ),
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "This photo was sent as a response to your previous question. "
+                        "Examine it for information that answers the question. If you "
+                        "can extract the answer, confirm it and continue the diagnostic. "
+                        "If the photo doesn't clearly show the requested information, "
+                        "acknowledge the photo and re-ask the question differently — "
+                        "suggest the technician type the value or take a closer shot."
+                    ),
+                }
+            )
 
         # Current user message
         if photo_b64:

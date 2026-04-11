@@ -21,7 +21,7 @@ MIRA/
 ├── wiki/               # LLM-maintained ops wiki (Karpathy pattern) — open as Obsidian vault
 ├── tests/              # 5-regime testing framework (76 offline tests, 39 golden cases)
 ├── docs/               # PRD, ADRs, architecture C4 diagrams, runbooks
-├── tools/              # Photo pipeline, Google Drive/Photos ingest scripts
+├── tools/              # Photo pipeline, Google Drive/Photos ingest, Reddit→TG curation
 ├── install/            # Setup scripts, smoke tests
 ├── deployment/         # Admin guide, customer agreement
 └── plc/                # PLC program files (deferred to Config 4)

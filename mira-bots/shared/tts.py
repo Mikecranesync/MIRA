@@ -28,6 +28,7 @@ def _get_kokoro():
         return _KOKORO
     try:
         from kokoro_onnx import Kokoro
+
         _KOKORO = Kokoro(KOKORO_MODEL, KOKORO_VOICES)
         logger.info("Kokoro TTS loaded: %s / %s", KOKORO_MODEL, KOKORO_VOICES)
     except Exception as e:
@@ -63,9 +64,7 @@ async def text_to_ogg(text: str) -> bytes | None:
         if not clean:
             return None
 
-        samples, sample_rate = kokoro.create(
-            clean, voice=KOKORO_VOICE, speed=1.0, lang=KOKORO_LANG
-        )
+        samples, sample_rate = kokoro.create(clean, voice=KOKORO_VOICE, speed=1.0, lang=KOKORO_LANG)
 
         wav_buf = io.BytesIO()
         sf.write(wav_buf, samples, sample_rate, format="WAV")

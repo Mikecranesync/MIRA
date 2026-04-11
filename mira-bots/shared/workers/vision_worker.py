@@ -16,22 +16,67 @@ _inference_router = _InferenceRouter()
 logger = logging.getLogger("mira-gsd")
 
 PRINT_KEYWORDS = {
-    "schematic", "diagram", "drawing", "ladder", "p&id", "wiring",
-    "one-line", "rung", "contactor", "electrical print", "control diagram",
-    "ladder logic", "relay logic",
+    "schematic",
+    "diagram",
+    "drawing",
+    "ladder",
+    "p&id",
+    "wiring",
+    "one-line",
+    "rung",
+    "contactor",
+    "electrical print",
+    "control diagram",
+    "ladder logic",
+    "relay logic",
 }
 
 # Keywords that indicate a physical component photo, NOT a drawing —
 # even if the faceplate has many readable text labels (OCR items > threshold)
 EQUIPMENT_FACE_KEYWORDS = {
-    "overload", "relay", "vfd", "drive", "controller", "plc", "display",
-    "indicator", "led", "dial", "faceplate", "nameplate", "breaker",
-    "contactor", "motor starter", "disconnect", "push to reset", "fault",
-    "run", "allen-bradley", "siemens", "eaton", "schneider", "abb",
-    "powerflex", "micro820", "compactlogix", "e1 plus", "e3 plus",
-    "gs10", "gs20", "gs4", "panel meter", "hmi", "touchscreen",
-    "power supply", "terminal block", "sensor", "proximity",
-    "photoelectric", "encoder", "thermocouple", "rtd",
+    "overload",
+    "relay",
+    "vfd",
+    "drive",
+    "controller",
+    "plc",
+    "display",
+    "indicator",
+    "led",
+    "dial",
+    "faceplate",
+    "nameplate",
+    "breaker",
+    "contactor",
+    "motor starter",
+    "disconnect",
+    "push to reset",
+    "fault",
+    "run",
+    "allen-bradley",
+    "siemens",
+    "eaton",
+    "schneider",
+    "abb",
+    "powerflex",
+    "micro820",
+    "compactlogix",
+    "e1 plus",
+    "e3 plus",
+    "gs10",
+    "gs20",
+    "gs4",
+    "panel meter",
+    "hmi",
+    "touchscreen",
+    "power supply",
+    "terminal block",
+    "sensor",
+    "proximity",
+    "photoelectric",
+    "encoder",
+    "thermocouple",
+    "rtd",
 }
 
 OCR_CLASSIFICATION_THRESHOLD = 10
@@ -59,9 +104,7 @@ class VisionWorker:
 
         vision_coro = self._call_vision(photo_b64, message)
         ocr_coro = self._call_ocr(photo_b64)
-        results = await asyncio.gather(
-            vision_coro, ocr_coro, return_exceptions=True
-        )
+        results = await asyncio.gather(vision_coro, ocr_coro, return_exceptions=True)
 
         vision_result = results[0] if not isinstance(results[0], Exception) else message
         ocr_items = results[1] if not isinstance(results[1], Exception) else []
@@ -78,7 +121,9 @@ class VisionWorker:
         classify_confidence = classify_result["confidence"]
         logger.info(
             "Photo classified as %s (confidence=%.2f, %d OCR items)",
-            classification, classify_confidence, len(ocr_items),
+            classification,
+            classify_confidence,
+            len(ocr_items),
         )
 
         drawing_type = None
@@ -100,41 +145,43 @@ class VisionWorker:
 
     async def _call_vision(self, photo_b64: str, caption: str) -> str:
         """Send photo to vision model for asset/drawing identification."""
-        messages = [{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{photo_b64}",
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{photo_b64}",
+                        },
                     },
-                },
-                {
-                    "type": "text",
-                    "text": (
-                        "What is in this image? "
-                        "If it is a PHYSICAL piece of equipment or component "
-                        "(relay, VFD, drive, PLC, breaker, motor starter, overload, "
-                        "sensor, panel meter, HMI), return: manufacturer, model, "
-                        "and describe the STATE of visible indicators — which LEDs "
-                        "are lit (color and label), dial/potentiometer positions, "
-                        "DIP switch settings, display readings, and any fault or "
-                        "alarm indicators. This is critical for diagnosis. "
-                        "If it is an electrical drawing, schematic, or diagram "
-                        "(printed on paper or a CAD screen), say 'electrical drawing' "
-                        "and the type (ladder logic, one-line, wiring, P&ID, "
-                        "panel schedule). "
-                        "If the image shows a computer monitor or laptop screen, "
-                        "analyze ONLY the technical content on screen — ignore "
-                        "application toolbars, menus, window chrome, and any AI "
-                        "assistant UI elements visible in the software. "
-                        "If text is small or partially visible, describe what you "
-                        "can read and note a closer shot may improve extraction. "
-                        "Keep it under 50 words. Do NOT invent any text."
-                    ),
-                },
-            ],
-        }]
+                    {
+                        "type": "text",
+                        "text": (
+                            "What is in this image? "
+                            "If it is a PHYSICAL piece of equipment or component "
+                            "(relay, VFD, drive, PLC, breaker, motor starter, overload, "
+                            "sensor, panel meter, HMI), return: manufacturer, model, "
+                            "and describe the STATE of visible indicators — which LEDs "
+                            "are lit (color and label), dial/potentiometer positions, "
+                            "DIP switch settings, display readings, and any fault or "
+                            "alarm indicators. This is critical for diagnosis. "
+                            "If it is an electrical drawing, schematic, or diagram "
+                            "(printed on paper or a CAD screen), say 'electrical drawing' "
+                            "and the type (ladder logic, one-line, wiring, P&ID, "
+                            "panel schedule). "
+                            "If the image shows a computer monitor or laptop screen, "
+                            "analyze ONLY the technical content on screen — ignore "
+                            "application toolbars, menus, window chrome, and any AI "
+                            "assistant UI elements visible in the software. "
+                            "If text is small or partially visible, describe what you "
+                            "can read and note a closer shot may improve extraction. "
+                            "Keep it under 50 words. Do NOT invent any text."
+                        ),
+                    },
+                ],
+            }
+        ]
 
         # Try Claude router first; fall back to local Open WebUI if not enabled or error
         content, usage = await _inference_router.complete(messages)
@@ -162,28 +209,30 @@ class VisionWorker:
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        messages = [{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
-                },
-                {
-                    "type": "text",
-                    "text": (
-                        "You are a precision OCR engine. Extract ALL text visible "
-                        "in this image exactly as printed. Preserve wire numbers, "
-                        "part numbers, terminal labels, fault codes, and all "
-                        "alphanumeric content. Output as a plain numbered list — "
-                        "no code blocks, no JSON, no markdown formatting. "
-                        "Each line: a number, a period, then the extracted text. "
-                        "NEVER interpret, explain, or add content not visible. "
-                        "If text is unclear write [UNCLEAR]."
-                    ),
-                },
-            ],
-        }]
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            "You are a precision OCR engine. Extract ALL text visible "
+                            "in this image exactly as printed. Preserve wire numbers, "
+                            "part numbers, terminal labels, fault codes, and all "
+                            "alphanumeric content. Output as a plain numbered list — "
+                            "no code blocks, no JSON, no markdown formatting. "
+                            "Each line: a number, a period, then the extracted text. "
+                            "NEVER interpret, explain, or add content not visible. "
+                            "If text is unclear write [UNCLEAR]."
+                        ),
+                    },
+                ],
+            }
+        ]
 
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
@@ -208,7 +257,7 @@ class VisionWorker:
             if line.startswith("```") or line in ("{", "}", "[", "]"):
                 continue
             # Skip markdown table separator rows (|:---|:---|)
-            if re.match(r'^[|:\-\s]+$', line):
+            if re.match(r"^[|:\-\s]+$", line):
                 continue
             # Extract content from markdown table rows (| cell | cell |)
             if line.startswith("|") and line.endswith("|"):
@@ -230,6 +279,7 @@ class VisionWorker:
         """Run Tesseract OCR on image to extract text deterministically."""
         try:
             import pytesseract
+
             image_bytes = base64.b64decode(photo_b64)
             img = Image.open(io.BytesIO(image_bytes))
             text = pytesseract.image_to_string(img, config="--psm 6")
