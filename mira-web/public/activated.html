@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Upload your first manual — FactoryLM</title>
+  <title>Welcome to MIRA — let's learn your equipment</title>
   <meta name="robots" content="noindex,nofollow" />
   <link rel="canonical" href="https://factorylm.com/activated" />
   <style>
@@ -534,14 +534,14 @@
 
     <section class="upload-panel reveal reveal-4" id="upload-panel">
       <div class="upload-header">
-        <div class="label"><span class="led" id="status-led"></span><span id="status-label">INGESTION BAY / READY</span></div>
+        <div class="label"><span class="led" id="status-led"></span><span id="status-label">LEARNING BAY / READY</span></div>
         <div class="channel">CH&nbsp;01 · PDF</div>
       </div>
       <div class="dropzone" id="dropzone">
-        <p class="dropzone-label">Drop a PDF here, or select one below</p>
+        <p class="dropzone-label">Drop an equipment manual here, or select one below</p>
         <button type="button" class="cta-start" id="upload-btn">
           <span class="dot"></span>
-          Upload your first manual
+          Teach MIRA your equipment
           <span class="arrow">→</span>
         </button>
         <p class="dropzone-hint">PDF<span class="sep">/</span>max 50 MB<span class="sep">/</span>one at a time</p>
@@ -561,16 +561,16 @@
 
     <section class="upload-panel reveal reveal-5" id="cmms-panel">
       <div class="upload-header">
-        <div class="label"><span class="led ok"></span><span>CMMS / LIVE</span></div>
-        <div class="channel">ATLAS &middot; v1</div>
+        <div class="label"><span class="led ok"></span><span>WORKSPACE / LIVE</span></div>
+        <div class="channel">MIRA &middot; v1</div>
       </div>
       <div style="padding:32px 28px 36px;">
-        <p style="font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:var(--amber);margin-bottom:16px;">STEP 02 / CMMS</p>
-        <h2 style="font-family:var(--font);font-size:22px;font-weight:600;letter-spacing:-0.02em;margin-bottom:10px;">Your CMMS is live.</h2>
-        <p style="color:var(--text-secondary);font-size:15px;line-height:1.7;margin-bottom:28px;">Work orders, assets, and PM schedules are ready for your equipment. <span style="font-family:var(--serif);font-style:italic;color:var(--text);">Your records wait — no setup required.</span></p>
+        <p style="font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:var(--amber);margin-bottom:16px;">STEP 02 / WORKSPACE</p>
+        <h2 style="font-family:var(--font);font-size:22px;font-weight:600;letter-spacing:-0.02em;margin-bottom:10px;">Your MIRA workspace is ready.</h2>
+        <p style="color:var(--text-secondary);font-size:15px;line-height:1.7;margin-bottom:28px;">The more MIRA knows, the better the diagnosis. Upload your manuals now, or open your workspace and add them any time. <span style="font-family:var(--serif);font-style:italic;color:var(--text);">Your equipment knowledge stays with you.</span></p>
         <a href="#" id="cmms-btn" class="cta-start" style="text-decoration:none;">
           <span class="dot"></span>
-          Open FactoryLM CMMS
+          Open your workspace
           <span class="arrow">→</span>
         </a>
       </div>
@@ -708,7 +708,7 @@
 
       function failWith(msg) {
         setLed('err');
-        setBayLabel('INGESTION BAY / ERROR');
+        setBayLabel('LEARNING BAY / ERROR');
         setStatus(msg, 'error');
         uploadBtn.disabled = false;
         progress.classList.remove('show');
@@ -719,7 +719,7 @@
         uploadBtn.disabled = true;
         progress.classList.add('show');
         setLed('working');
-        setBayLabel('INGESTION BAY / ACTIVE');
+        setBayLabel('LEARNING BAY / ACTIVE');
         progressLabel.textContent = 'INGESTING / ' + (file.name.length > 36 ? file.name.slice(0, 33) + '...' : file.name);
         setSegments(5);
         setStatus('Opening channel…');
@@ -748,10 +748,10 @@
           if (xhr.status >= 200 && xhr.status < 300) {
             setSegments(100, 'ok');
             setLed('ok');
-            setBayLabel('INGESTION BAY / COMPLETE');
+            setBayLabel('LEARNING BAY / COMPLETE');
             progressLabel.textContent = 'INDEXING';
             progressPct.textContent = 'OK';
-            setStatus('Mira is indexing your manual. Handing off to dashboard…', 'success');
+            setStatus('MIRA is learning your equipment. Heading to your workspace…', 'success');
             setTimeout(function () {
               location.href = '/cmms?token=' + encodeURIComponent(token) + '&first=1';
             }, 2400);

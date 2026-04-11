@@ -30,6 +30,10 @@ class MaintainXCMMS(CMMSAdapter):
         if not self.api_key:
             logger.warning("MAINTAINX_API_KEY not set — MaintainX CMMS disabled")
 
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key)
+
     def _headers(self) -> dict:
         return {
             "Authorization": f"Bearer {self.api_key}",

@@ -30,6 +30,10 @@ class LimbleCMMS(CMMSAdapter):
         if not self.api_key:
             logger.warning("LIMBLE_API_KEY not set — Limble CMMS disabled")
 
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key)
+
     def _headers(self) -> dict:
         return {
             "x-api-key": self.api_key,

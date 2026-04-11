@@ -16,6 +16,11 @@ class CMMSAdapter(ABC):
     Errors are returned as {"error": "description"} for graceful degradation.
     """
 
+    @property
+    @abstractmethod
+    def configured(self) -> bool:
+        """True when all required credentials/config are present."""
+
     @abstractmethod
     async def health_check(self) -> dict:
         """Check CMMS API availability."""

@@ -3,22 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FactoryLM — AI Fault Code Diagnosis for Maintenance Teams | Beta</title>
-  <meta name="description" content="Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. AI-powered CMMS for maintenance teams. Join the beta.">
+  <title>FactoryLM — AI Troubleshooter for Maintenance Teams</title>
+  <meta name="description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime. Works alongside MaintainX, Limble, or UpKeep. Try free.">
   <link rel="canonical" href="https://factorylm.com/cmms">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="FactoryLM — AI Fault Code Diagnosis for Maintenance Teams">
-  <meta property="og:description" content="Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. AI-powered CMMS for maintenance teams.">
+  <meta property="og:title" content="FactoryLM — AI Troubleshooter for Maintenance Teams">
+  <meta property="og:description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime. Works alongside MaintainX, Limble, or UpKeep. Try free.">
   <meta property="og:url" content="https://factorylm.com/cmms">
   <meta property="og:image" content="https://factorylm.com/og-image.png">
   <meta property="og:site_name" content="FactoryLM">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="FactoryLM — AI Fault Code Diagnosis for Maintenance Teams">
-  <meta name="twitter:description" content="Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. AI-powered CMMS for maintenance teams.">
+  <meta name="twitter:title" content="FactoryLM — AI Troubleshooter for Maintenance Teams">
+  <meta name="twitter:description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime. Works alongside MaintainX, Limble, or UpKeep. Try free.">
   <meta name="twitter:image" content="https://factorylm.com/og-image.png">
 
   <!-- Structured Data -->
@@ -29,14 +29,14 @@
     "name": "FactoryLM",
     "applicationCategory": "BusinessApplication",
     "operatingSystem": "Web, iOS, Android",
-    "description": "AI maintenance copilot that answers fault code questions from your equipment manuals. Includes CMMS with work orders, asset registry, and PM scheduling.",
+    "description": "AI troubleshooter that knows your equipment. Reduce unplanned downtime by getting the right fix the first time — from your actual OEM manuals, not the internet. Works alongside MaintainX, Limble, and UpKeep.",
     "url": "https://factorylm.com/cmms",
     "featureList": [
-      "AI fault code diagnosis from OEM manuals",
-      "CMMS work order management",
-      "Photo-to-diagnosis pipeline",
-      "Asset registry and PM scheduling",
-      "Telegram and Slack integration"
+      "Fault diagnosis from OEM manuals — cites exact page and section",
+      "Photo-to-diagnosis: snap a nameplate or fault display, get the fix",
+      "Works alongside MaintainX, Limble, and UpKeep — no migration",
+      "Available via Telegram and Slack, even at 2am",
+      "CMMS write-back: auto-creates work orders in your existing system"
     ]
   }
   </script>
@@ -52,15 +52,15 @@
         "name": "What is FactoryLM?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "FactoryLM is an AI-powered maintenance assistant that answers equipment fault code questions from your actual OEM manuals in seconds. It includes a CMMS with work orders, asset tracking, and PM scheduling."
+          "text": "FactoryLM is an AI troubleshooter that knows your equipment. When a machine faults, Mira tells you why it's failing — not just when — by searching your actual OEM manuals and returning the exact diagnostic steps in seconds. It works alongside your existing CMMS; no rip-and-replace required."
         }
       },
       {
         "@type": "Question",
-        "name": "How does Mira AI work?",
+        "name": "Does this replace my CMMS?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Mira uses RAG (Retrieval-Augmented Generation) to search your uploaded equipment manuals and return the exact diagnostic steps for any fault code. It cites the source manual and page number."
+          "text": "No. Mira works alongside MaintainX, Limble, UpKeep, or any CMMS you already use. It adds the diagnostic layer your CMMS doesn't have — the answer to 'what's wrong and how do I fix it right now.' The $297/month plan can even write work orders back into your existing CMMS automatically."
         }
       },
       {
@@ -68,7 +68,7 @@
         "name": "How do I try FactoryLM?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Join the beta for a 7-day video walkthrough showing how Mira diagnoses equipment faults from your actual manuals. Then decide if it's right for your team."
+          "text": "Start free — 10 queries per month, no credit card required. Upgrade to $97/month for unlimited queries and a site license covering your entire team, or $297/month to add automatic work-order write-back into MaintainX, Limble, or UpKeep."
         }
       },
       {
@@ -76,7 +76,7 @@
         "name": "What equipment does FactoryLM support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "FactoryLM works with any equipment manual you upload. It has pre-loaded knowledge for Allen-Bradley PLCs, PowerFlex VFDs, Automation Direct GS10/GS20 drives, and hydraulic systems."
+          "text": "Mira works with any equipment you already have — upload the manual and it learns it. Pre-loaded knowledge covers Allen-Bradley PLCs, PowerFlex VFDs, Automation Direct GS10/GS20 drives, ABB and Yaskawa drives, FANUC CNC systems, and hydraulic power units. No new equipment required."
         }
       }
     ]
@@ -88,7 +88,7 @@
   <meta name="theme-color" content="#f5a623">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="FactoryLM CMMS">
+  <meta name="apple-mobile-web-app-title" content="FactoryLM">
   <link rel="apple-touch-icon" href="/public/icons/mira-192.png">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 </head>
@@ -99,7 +99,7 @@
   <nav class="topbar">
     <a href="/" class="topbar-logo" style="text-decoration:none;color:var(--amber)">
       <i data-lucide="factory" style="width:20px;height:20px"></i>
-      FactoryLM <span>CMMS</span>
+      FactoryLM <span>Troubleshooter</span>
     </a>
     <div class="topbar-right" id="topbar-right">
       <a href="/blog" style="font-size:13px;color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms">Blog</a>
@@ -113,8 +113,8 @@
 
     <!-- ── Hero (unauthenticated) ──────────────────────────── -->
     <section class="hero" id="hero-section">
-      <h1>See AI diagnose your first <em>fault code</em> in 60 seconds.</h1>
-      <p>Upload one equipment manual. Ask one fault code question. Watch Mira answer from the PDF — not the internet.</p>
+      <h1>The AI troubleshooter that knows your <em>equipment.</em></h1>
+      <p>Works alongside your existing CMMS — MaintainX, Limble, or UpKeep. No migration. No rip-and-replace.</p>
 
       <!-- Signup Form -->
       <div class="signup-card" id="signup-form-wrap">
@@ -133,8 +133,9 @@
         <div id="form-error" class="form-error"></div>
         <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
           <i data-lucide="zap" style="width:16px;height:16px"></i>
-          Join the Beta
+          Try Free — 10 queries/month
         </button>
+        <p style="margin:8px 0 0;font-size:var(--text-xs);color:var(--text-muted);text-align:center">No credit card required.</p>
       </div>
 
       <!-- Confirmation (shown after signup) -->
@@ -144,8 +145,8 @@
 
       <!-- Payment success (shown via ?payment=success) -->
       <div class="download-step" id="payment-success" style="display:none;">
-        <p style="color:#f0a030;font-weight:700;font-size:18px;">You're in! Welcome to the beta.</p>
-        <p>Your CMMS is loading below with 3 demo work orders. Upload your first equipment manual to unlock Mira's full power.</p>
+        <p style="color:#f0a030;font-weight:700;font-size:18px;">You're in. Let's reduce some downtime.</p>
+        <p>Your dashboard is loading below. Ask Mira about any fault code or equipment symptom to get started.</p>
       </div>
 
       <!-- Payment cancelled -->
@@ -159,29 +160,29 @@
       <h2>How It Works</h2>
       <div class="seo-grid">
         <div class="seo-card">
-          <h3>1. Ask Mira Your Fault Code</h3>
-          <p>Type your fault code, describe a symptom, or snap a photo. Mira searches your actual equipment manuals — Allen-Bradley, PowerFlex, Automation Direct, hydraulic systems — and returns the diagnostic steps in seconds.</p>
+          <h3>1. Describe the Fault</h3>
+          <p>Type a fault code, describe a symptom, or snap a photo of the display. Mira searches your actual equipment manuals — Allen-Bradley, PowerFlex, Automation Direct, hydraulic systems — and returns the diagnostic steps in seconds, even at 2am.</p>
         </div>
         <div class="seo-card">
-          <h3>2. Get the Answer, Not a Guess</h3>
-          <p>Mira cites the exact manual page and section. No generic internet answers. No hallucinated procedures. Your OEM documentation, searchable by AI, on the floor where you need it.</p>
+          <h3>2. Get the Fix, Not a Guess</h3>
+          <p>Mira tells you why it's failing, not just when. It cites the exact manual page and section — like consulting an experienced colleague who has already read every manual on the floor. No generic internet answers. No guesswork.</p>
         </div>
         <div class="seo-card">
-          <h3>3. Work Order Created Automatically</h3>
-          <p>When Mira diagnoses a fault, it auto-generates a work order in your CMMS with the fault description, probable cause, and recommended fix. No double-entry. No clipboard.</p>
+          <h3>3. Your CMMS Stays in Charge</h3>
+          <p>Mira works alongside MaintainX, Limble, or UpKeep. On the $297/month plan, it writes the work order directly into your existing system — fault description, probable cause, and recommended fix. No double-entry.</p>
         </div>
       </div>
     </section>
 
     <section class="seo-section" id="built-for">
-      <h2>Built for Maintenance Teams Who Are Tired of Flipping Through PDFs</h2>
-      <p>50-70% of CMMS implementations fail because technicians won't use them. FactoryLM works where your team already is — Telegram, Slack, or a web browser on their phone. No training. No app install. No IT department.</p>
-      <p>The average maintenance technician wastes 20-40 minutes per fault looking up codes in manuals. Mira answers the same question in 10 seconds from the same manual. That's the difference between a 30-minute fix and a 2-hour shutdown.</p>
+      <h2>Reduce Unplanned Downtime — Without Replacing What Already Works</h2>
+      <p>Your CMMS tracks work orders. Mira catches what your most experienced tech would catch — the fault your team has seen before but can't quite remember at midnight. It works where your team already is: Telegram, Slack, or a browser on their phone. No training. No app install. No IT ticket.</p>
+      <p>The average maintenance technician wastes 20–40 minutes per fault flipping through PDFs. Mira finds the answer from the same manual in seconds. That's the difference between a 30-minute fix and a 2-hour shutdown — on equipment you already own.</p>
     </section>
 
     <section class="seo-section" id="equipment">
-      <h2>Equipment We Support</h2>
-      <p>Upload any equipment manual and Mira learns it. Pre-loaded knowledge includes:</p>
+      <h2>Works With Your Existing Equipment</h2>
+      <p>Upload any manual and Mira learns it — brownfield facilities, mixed fleets, legacy gear. Pre-loaded knowledge includes:</p>
       <ul class="seo-list">
         <li>Allen-Bradley Micro820, CompactLogix, ControlLogix PLCs</li>
         <li>PowerFlex 525, PowerFlex 4, PowerFlex 40 VFDs</li>
@@ -198,7 +199,7 @@
     <section class="ticker-section" id="ticker-section">
       <div class="ticker-header">
         <div class="live-dot"></div>
-        Live work orders across the network
+        Live faults being diagnosed across the network
       </div>
       <div id="hero-wo-list"></div>
     </section>
@@ -233,7 +234,7 @@
       <div class="chat-panel">
         <div class="chat-header">
           <h3><div class="status-dot"></div> Mira AI</h3>
-          <span style="font-size:var(--text-xs);color:var(--text-muted)">Maintenance Co-Pilot</span>
+          <span style="font-size:var(--text-xs);color:var(--text-muted)">Equipment Troubleshooter</span>
         </div>
 
         <div class="quota-bar" id="query-quota-bar">
@@ -246,7 +247,7 @@
 
         <div class="chat-messages" id="chat-messages">
           <div class="chat-msg system">
-            Welcome to Mira. Ask me about any equipment fault, error code, or maintenance procedure.
+            Welcome to Mira. Describe a fault, enter an error code, or snap a photo. I'll find the answer from your actual equipment manuals.
           </div>
         </div>
 
@@ -384,7 +385,7 @@ async function activateAuth() {
     const btn = document.createElement('a');
     btn.id = 'cmms-open-btn';
     btn.href = `/api/cmms/login?token=${encodeURIComponent(AUTH.token)}`;
-    btn.textContent = 'Open FactoryLM CMMS';
+    btn.textContent = 'Open Mira Troubleshooter';
     btn.style.cssText = [
       'display:inline-flex',
       'align-items:center',
@@ -457,14 +458,14 @@ async function handleSignup() {
     document.getElementById('signup-form-wrap').classList.add('hidden');
     document.getElementById('download-step').classList.add('show');
     document.getElementById('download-greeting').innerHTML =
-      `<strong style="color:#f0a030;">Check your email, ${name}.</strong><br>` +
-      `Your first video walkthrough arrives tomorrow. Keep an eye on your inbox.`;
+      `<strong style="color:#f0a030;">You're in, ${name}.</strong><br>` +
+      `Check your email — your free access link is on its way. You get 10 queries/month to start, no credit card needed.`;
 
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.add('show');
     btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="zap" style="width:16px;height:16px"></i> Join the Beta';
+    btn.innerHTML = '<i data-lucide="zap" style="width:16px;height:16px"></i> Try Free — 10 queries/month';
     lucide.createIcons();
   }
 }
@@ -574,7 +575,7 @@ function renderKanban(wos) {
 
 async function submitQuery() {
   if (AUTH.queriesLeft <= 0) {
-    addChatMsg('system', 'Daily query limit reached. Queries reset tomorrow, or upgrade for unlimited.');
+    addChatMsg('system', "You've used your 10 free queries this month. Upgrade to $97/month for unlimited queries with a full site license.");
     return;
   }
 
@@ -600,7 +601,7 @@ async function submitQuery() {
       typingEl.remove();
       AUTH.queriesLeft = 0;
       updateQuotaBar();
-      addChatMsg('system', 'Daily query limit reached. Upgrade for unlimited queries.');
+      addChatMsg('system', "You've used your 10 free queries this month. Upgrade to $97/month for unlimited queries — site license, unlimited users.");
       return;
     }
 
