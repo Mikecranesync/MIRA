@@ -2,11 +2,31 @@
 
 from __future__ import annotations
 
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+_SIDECAR_PATH = str(Path(__file__).parent.parent.parent / "mira-sidecar")
+
+
+def pytest_configure(config):  # noqa: ARG001
+    """Re-insert mira-sidecar at front of sys.path after all conftest files load.
+
+    mira-crawler/conftest.py inserts mira-crawler/ at sys.path[0], which causes
+    mira-sidecar/app.py's `from config import settings` to pick up the wrong
+    config.py. Running this hook last ensures mira-sidecar/ wins.
+    """
+    if _SIDECAR_PATH not in sys.path:
+        sys.path.insert(0, _SIDECAR_PATH)
+    else:
+        sys.path.remove(_SIDECAR_PATH)
+        sys.path.insert(0, _SIDECAR_PATH)
+    # Evict stale module so the re-ordered path takes effect on next import
+    sys.modules.pop("config", None)
+    sys.modules.pop("app", None)
 
 
 @pytest.fixture
