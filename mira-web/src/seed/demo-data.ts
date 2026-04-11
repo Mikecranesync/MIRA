@@ -12,7 +12,7 @@
  */
 
 import { createWorkOrder, createAsset } from "../lib/atlas.js";
-import { seedAssetKnowledge } from "./knowledge-seed.js";
+import { seedAssetKnowledge, seedFaultCodes, seedWorkOrderPatterns } from "./knowledge-seed.js";
 
 const DEMO_ASSETS = [
   {
@@ -507,9 +507,13 @@ export async function seedDemoData(atlasToken?: string): Promise<void> {
 
   const tenantId = process.env.MIRA_TENANT_ID || "demo";
   try {
-    const knowledgeResult = await seedAssetKnowledge(DEMO_ASSETS, tenantId);
+    const [knowledgeResult, faultResult, patternResult] = await Promise.all([
+      seedAssetKnowledge(DEMO_ASSETS, tenantId),
+      seedFaultCodes(tenantId),
+      seedWorkOrderPatterns(tenantId),
+    ]);
     console.log(
-      `[seed] Knowledge seeded: ${knowledgeResult.inserted}/${knowledgeResult.chunked} entries (${knowledgeResult.failed} failed)`,
+      `[seed] Knowledge seeded: ${knowledgeResult.inserted} asset entries, ${faultResult.inserted} fault codes, ${patternResult.inserted} WO patterns`,
     );
   } catch (err) {
     console.error("[seed] Knowledge seed failed (non-fatal):", err);
