@@ -1,18 +1,18 @@
 # factorylm.com Playwright crawl — findings
 
-_Run: 2026-04-10 15:40 UTC, 25 pages visited_
+_Run: 2026-04-10 17:35 UTC, 25 pages visited_
 
 ## URLs crawled
 
 | URL | Status | Title | H1 | Errors | Links |
 |---|---|---|---|---|---|
-| https://factorylm.com/ | 200 | FactoryLM — Industrial AI Maintenance | AI that actually
-understands your
-equipm | 1 | 19 |
-| https://factorylm.com/cmms | 200 | FactoryLM — AI Fault Code Diagnosis for  | Join the FactoryLM Beta | 0 | 5 |
+| https://factorylm.com/ | 200 | FactoryLM — Industrial AI Maintenance | Diagnose a fault
+in 10 seconds.
+Not 30 m | 0 | 19 |
+| https://factorylm.com/cmms | 200 | FactoryLM — AI Fault Code Diagnosis for  | See AI diagnose your first fault code in | 0 | 10 |
 | https://factorylm.com/blog | 200 | FactoryLM Blog — Maintenance Guides & Fa | Maintenance guides from
-the factory floo | 1 | 21 |
-| https://factorylm.com/activated | 200 | FactoryLM — AI Fault Code Diagnosis for  | Join the FactoryLM Beta | 0 | 5 |
+the factory floo | 0 | 21 |
+| https://factorylm.com/activated | 200 | FactoryLM — AI Fault Code Diagnosis for  | See AI diagnose your first fault code in | 0 | 10 |
 | https://factorylm.com/robots.txt | 200 |  |  | 0 | 0 |
 | https://factorylm.com/sitemap.xml | 200 |  |  | 0 | 0 |
 | https://factorylm.com/og-image.svg | 404 |  |  | 1 | 0 |
@@ -20,20 +20,23 @@ the factory floo | 1 | 21 |
 | https://factorylm.com/manifest.json | 200 |  |  | 0 | 0 |
 | https://factorylm.com/api/health | 200 |  |  | 0 | 0 |
 | https://factorylm.com/demo/work-orders | 200 |  |  | 0 | 0 |
-| https://factorylm.com/blog/how-to-read-vfd-fault-codes | 200 | How to Read VFD Fault Codes: A Beginner' | How to Read VFD Fault Codes: A Beginner' | 1 | 20 |
-| https://factorylm.com/blog/what-is-cmms | 200 | What Is CMMS? A Simple Guide for Small M | What Is CMMS? A Simple Guide for Small M | 1 | 15 |
-| https://factorylm.com/blog/powerflex-f012-overcurrent | 200 | PowerFlex Fault F012 — HW Overcurrent |  | PowerFlex Fault F012 — HW Overcurrent | 1 | 17 |
-| https://factorylm.com/blog/how-to-megger-test-a-motor | 200 | How to Megger Test a Motor: Step-by-Step | How to Megger Test a Motor: Step-by-Step | 1 | 18 |
-| https://factorylm.com/blog/vfd-troubleshooting-checklist | 200 | VFD Troubleshooting Checklist: 10 Things | VFD Troubleshooting Checklist: 10 Things | 1 | 19 |
-| https://factorylm.com/blog/fault-codes | 200 | Equipment Fault Code Library — Troublesh | Equipment Fault Code Library | 1 | 62 |
-| https://factorylm.com/blog/predictive-vs-preventive-maintenance | 200 | Predictive vs Preventive Maintenance: Wh | Predictive vs Preventive Maintenance: Wh | 1 | 17 |
-| https://factorylm.com/blog/common-allen-bradley-plc-faults | 200 | 5 Most Common Allen-Bradley PLC Faults a | 5 Most Common Allen-Bradley PLC Faults a | 1 | 20 |
-| https://factorylm.com/blog/understanding-4-20ma-signals | 200 | Understanding 4-20mA Signals: A Maintena | Understanding 4-20mA Signals: A Maintena | 1 | 17 |
-| https://factorylm.com/blog/why-your-air-compressor-keeps-shutting-down | 200 | Why Your Air Compressor Keeps Shutting D | Why Your Air Compressor Keeps Shutting D | 1 | 18 |
-| https://factorylm.com/blog/yaskawa-oc-overcurrent | 200 | Yaskawa Fault oC — Overcurrent | Factory | Yaskawa Fault oC — Overcurrent | 1 | 16 |
-| https://factorylm.com/blog/abb-acs880-fault-2310-overcurrent | 200 | ABB ACS880 Fault 2310 — Overcurrent | Fa | ABB ACS880 Fault 2310 — Overcurrent | 1 | 16 |
-| https://factorylm.com/blog/gs20-eoc-overcurrent | 200 | GS20 Fault E.OC — Overcurrent During Ope | GS20 Fault E.OC — Overcurrent During Ope | 1 | 17 |
-| https://factorylm.com/blog/powerflex-f013-ground-fault | 200 | PowerFlex Fault F013 — Ground Fault | Fa | PowerFlex Fault F013 — Ground Fault | 1 | 16 |
+| https://factorylm.com/blog/how-to-read-vfd-fault-codes | 200 | How to Read VFD Fault Codes: A Beginner' | How to Read VFD Fault Codes: A Beginner' | 0 | 20 |
+| https://factorylm.com/blog/what-is-cmms | 200 | What Is CMMS? A Simple Guide for Small M | What Is CMMS? A Simple Guide for Small M | 0 | 15 |
+| https://factorylm.com/blog/powerflex-f012-overcurrent | 200 | PowerFlex Fault F012 — HW Overcurrent |  | PowerFlex Fault F012 — HW Overcurrent | 0 | 17 |
+| https://factorylm.com/feature/fault-diagnosis | 200 | Fault Diagnosis | FactoryLM | Answers in seconds,
+not hours | 0 | 18 |
+| https://factorylm.com/feature/cmms-integration | 200 | CMMS Integration | FactoryLM | Work orders that
+write themselves | 0 | 18 |
+| https://factorylm.com/feature/voice-vision | 200 | Voice + Vision | FactoryLM | Hands-free on the
+shop floor | 0 | 18 |
+| https://factorylm.com/blog/how-to-megger-test-a-motor | 200 | How to Megger Test a Motor: Step-by-Step | How to Megger Test a Motor: Step-by-Step | 0 | 18 |
+| https://factorylm.com/blog/vfd-troubleshooting-checklist | 200 | VFD Troubleshooting Checklist: 10 Things | VFD Troubleshooting Checklist: 10 Things | 0 | 19 |
+| https://factorylm.com/blog/fault-codes | 200 | Equipment Fault Code Library — Troublesh | Equipment Fault Code Library | 0 | 62 |
+| https://factorylm.com/blog/predictive-vs-preventive-maintenance | 200 | Predictive vs Preventive Maintenance: Wh | Predictive vs Preventive Maintenance: Wh | 0 | 17 |
+| https://factorylm.com/blog/common-allen-bradley-plc-faults | 200 | 5 Most Common Allen-Bradley PLC Faults a | 5 Most Common Allen-Bradley PLC Faults a | 0 | 20 |
+| https://factorylm.com/blog/understanding-4-20ma-signals | 200 | Understanding 4-20mA Signals: A Maintena | Understanding 4-20mA Signals: A Maintena | 0 | 17 |
+| https://factorylm.com/blog/why-your-air-compressor-keeps-shutting-down | 200 | Why Your Air Compressor Keeps Shutting D | Why Your Air Compressor Keeps Shutting D | 0 | 18 |
+| https://factorylm.com/blog/yaskawa-oc-overcurrent | 200 | Yaskawa Fault oC — Overcurrent | Factory | Yaskawa Fault oC — Overcurrent | 0 | 16 |
 
 ## Broken internal links (4xx/5xx) — 0
 _None found._
@@ -42,64 +45,16 @@ _None found._
 
 ## Console errors by page
 
-### https://factorylm.com/
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
 ### https://factorylm.com/og-image.svg
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/how-to-read-vfd-fault-codes
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/what-is-cmms
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/powerflex-f012-overcurrent
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/how-to-megger-test-a-motor
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/vfd-troubleshooting-checklist
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/fault-codes
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/predictive-vs-preventive-maintenance
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/common-allen-bradley-plc-faults
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/understanding-4-20ma-signals
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/why-your-air-compressor-keeps-shutting-down
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/yaskawa-oc-overcurrent
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/abb-acs880-fault-2310-overcurrent
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/gs20-eoc-overcurrent
-- [error] Failed to load resource: the server responded with a status of 404 (Not Found)
-
-### https://factorylm.com/blog/powerflex-f013-ground-fault
 - [error] Failed to load resource: the server responded with a status of 404 (Not Found)
 
 ## Per-page meta + a11y
 
 ### https://factorylm.com/
 - Title: `FactoryLM — Industrial AI Maintenance`
-- H1: `AI that actually
-understands your
-equipment`
+- H1: `Diagnose a fault
+in 10 seconds.
+Not 30 minutes.`
 - meta:description = `AI that actually understands your equipment. Fault diagnosis, work orders, and maintenance knowledge for field technicia`
 - meta:og:title = `FactoryLM — Industrial AI Maintenance`
 - meta:og:description = `AI that actually understands your equipment. Fault diagnosis, work orders, and maintenance knowledge for field technicia`
@@ -109,11 +64,11 @@ equipment`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/cmms
 - Title: `FactoryLM — AI Fault Code Diagnosis for Maintenance Teams | Beta`
-- H1: `Join the FactoryLM Beta`
+- H1: `See AI diagnose your first fault code in 60 seconds.`
 - meta:description = `Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. AI-powered CMMS for maintenance tea`
 - meta:og:title = `FactoryLM — AI Fault Code Diagnosis for Maintenance Teams`
 - meta:og:description = `Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. AI-powered CMMS for maintenance tea`
@@ -138,11 +93,11 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/activated
 - Title: `FactoryLM — AI Fault Code Diagnosis for Maintenance Teams | Beta`
-- H1: `Join the FactoryLM Beta`
+- H1: `See AI diagnose your first fault code in 60 seconds.`
 - meta:description = `Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. AI-powered CMMS for maintenance tea`
 - meta:og:title = `FactoryLM — AI Fault Code Diagnosis for Maintenance Teams`
 - meta:og:description = `Ask Mira your fault code — get the answer from your equipment manuals in 10 seconds. AI-powered CMMS for maintenance tea`
@@ -209,7 +164,7 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/blog/what-is-cmms
 - Title: `What Is CMMS? A Simple Guide for Small Maintenance Teams | FactoryLM`
@@ -223,7 +178,7 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/blog/powerflex-f012-overcurrent
 - Title: `PowerFlex Fault F012 — HW Overcurrent | FactoryLM`
@@ -237,7 +192,52 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
+
+### https://factorylm.com/feature/fault-diagnosis
+- Title: `Fault Diagnosis | FactoryLM`
+- H1: `Answers in seconds,
+not hours`
+- meta:description = `Mira knows your equipment. Send a fault code, describe a symptom, or upload a photo — and get a cited, actionable answer`
+- meta:og:title = `Fault Diagnosis | FactoryLM`
+- meta:og:description = `Mira knows your equipment. Send a fault code, describe a symptom, or upload a photo — and get a cited, actionable answer`
+- meta:og:image = `https://factorylm.com/og-image.png`
+- meta:twitter:card = `summary_large_image`
+- meta:canonical = `https://factorylm.com/feature/fault-diagnosis`
+- meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
+- images: 0 (missing alt: 0)
+- scripts: 0 (blocking in head: 0)
+- has <main>: True, forms: 0
+
+### https://factorylm.com/feature/cmms-integration
+- Title: `CMMS Integration | FactoryLM`
+- H1: `Work orders that
+write themselves`
+- meta:description = `When Mira identifies a maintenance action, it creates the work order directly in your CMMS — with the asset, fault descr`
+- meta:og:title = `CMMS Integration | FactoryLM`
+- meta:og:description = `When Mira identifies a maintenance action, it creates the work order directly in your CMMS — with the asset, fault descr`
+- meta:og:image = `https://factorylm.com/og-image.png`
+- meta:twitter:card = `summary_large_image`
+- meta:canonical = `https://factorylm.com/feature/cmms-integration`
+- meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
+- images: 0 (missing alt: 0)
+- scripts: 0 (blocking in head: 0)
+- has <main>: True, forms: 0
+
+### https://factorylm.com/feature/voice-vision
+- Title: `Voice + Vision | FactoryLM`
+- H1: `Hands-free on the
+shop floor`
+- meta:description = `Talk to Mira hands-free with voice input. Upload a photo of the fault — Mira identifies the component, cross-references `
+- meta:og:title = `Voice + Vision | FactoryLM`
+- meta:og:description = `Talk to Mira hands-free with voice input. Upload a photo of the fault — Mira identifies the component, cross-references `
+- meta:og:image = `https://factorylm.com/og-image.png`
+- meta:twitter:card = `summary_large_image`
+- meta:canonical = `https://factorylm.com/feature/voice-vision`
+- meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
+- images: 0 (missing alt: 0)
+- scripts: 0 (blocking in head: 0)
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/blog/how-to-megger-test-a-motor
 - Title: `How to Megger Test a Motor: Step-by-Step Guide | FactoryLM`
@@ -251,7 +251,7 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/blog/vfd-troubleshooting-checklist
 - Title: `VFD Troubleshooting Checklist: 10 Things to Check Before Calling Support | FactoryLM`
@@ -265,7 +265,7 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/blog/fault-codes
 - Title: `Equipment Fault Code Library — Troubleshooting Guides | FactoryLM`
@@ -279,7 +279,7 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/blog/predictive-vs-preventive-maintenance
 - Title: `Predictive vs Preventive Maintenance: What Every Technician Should Know | FactoryLM`
@@ -293,7 +293,7 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/blog/common-allen-bradley-plc-faults
 - Title: `5 Most Common Allen-Bradley PLC Faults and How to Fix Them | FactoryLM`
@@ -307,7 +307,7 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/blog/understanding-4-20ma-signals
 - Title: `Understanding 4-20mA Signals: A Maintenance Technician's Guide | FactoryLM`
@@ -321,7 +321,7 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/blog/why-your-air-compressor-keeps-shutting-down
 - Title: `Why Your Air Compressor Keeps Shutting Down | FactoryLM`
@@ -335,7 +335,7 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ### https://factorylm.com/blog/yaskawa-oc-overcurrent
 - Title: `Yaskawa Fault oC — Overcurrent | FactoryLM`
@@ -349,48 +349,6 @@ the factory floor`
 - meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
 - images: 0 (missing alt: 0)
 - scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
-
-### https://factorylm.com/blog/abb-acs880-fault-2310-overcurrent
-- Title: `ABB ACS880 Fault 2310 — Overcurrent | FactoryLM`
-- H1: `ABB ACS880 Fault 2310 — Overcurrent`
-- meta:description = `ABB ACS880 Fault 2310 overcurrent: megger test motor, check cables, adjust accel ramp. Step-by-step troubleshooting.`
-- meta:og:title = `ABB ACS880 Fault 2310 — Overcurrent | FactoryLM`
-- meta:og:description = `ABB ACS880 Fault 2310 overcurrent: megger test motor, check cables, adjust accel ramp. Step-by-step troubleshooting.`
-- meta:og:image = `https://factorylm.com/og-image.png`
-- meta:twitter:card = `summary_large_image`
-- meta:canonical = `https://factorylm.com/blog/abb-acs880-fault-2310-overcurrent`
-- meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
-- images: 0 (missing alt: 0)
-- scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
-
-### https://factorylm.com/blog/gs20-eoc-overcurrent
-- Title: `GS20 Fault E.OC — Overcurrent During Operation | FactoryLM`
-- H1: `GS20 Fault E.OC — Overcurrent During Operation`
-- meta:description = `GS20 E.OC overcurrent during operation: check the mechanical load, verify motor parameters, and clear the fault. Free di`
-- meta:og:title = `GS20 Fault E.OC — Overcurrent During Operation | FactoryLM`
-- meta:og:description = `GS20 E.OC overcurrent during operation: check the mechanical load, verify motor parameters, and clear the fault. Free di`
-- meta:og:image = `https://factorylm.com/og-image.png`
-- meta:twitter:card = `summary_large_image`
-- meta:canonical = `https://factorylm.com/blog/gs20-eoc-overcurrent`
-- meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
-- images: 0 (missing alt: 0)
-- scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
-
-### https://factorylm.com/blog/powerflex-f013-ground-fault
-- Title: `PowerFlex Fault F013 — Ground Fault | FactoryLM`
-- H1: `PowerFlex Fault F013 — Ground Fault`
-- meta:description = `PowerFlex F013 ground fault: how to megger-test motor cables, find insulation breakdown, and fix ground current leakage.`
-- meta:og:title = `PowerFlex Fault F013 — Ground Fault | FactoryLM`
-- meta:og:description = `PowerFlex F013 ground fault: how to megger-test motor cables, find insulation breakdown, and fix ground current leakage.`
-- meta:og:image = `https://factorylm.com/og-image.png`
-- meta:twitter:card = `summary_large_image`
-- meta:canonical = `https://factorylm.com/blog/powerflex-f013-ground-fault`
-- meta:viewport = `width=device-width, initial-scale=1.0, viewport-fit=cover`
-- images: 0 (missing alt: 0)
-- scripts: 0 (blocking in head: 0)
-- has <main>: False, forms: 0
+- has <main>: True, forms: 0
 
 ## External link hosts
