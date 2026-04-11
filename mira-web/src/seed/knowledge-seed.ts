@@ -95,17 +95,32 @@ function extractManufacturer(desc: string): string {
 }
 
 async function embedText(text: string): Promise<number[] | null> {
+  // Try mira-mcp embed proxy first, fall back to direct Ollama
   const key = MCP_KEY();
-  if (!key) return null;
+  if (key) {
+    try {
+      const resp = await fetch(`${MCP_URL()}/api/embed`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${key}`,
+        },
+        body: JSON.stringify({ text }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.embedding) return data.embedding;
+      }
+    } catch { /* fall through to direct Ollama */ }
+  }
 
+  // Direct Ollama fallback (for pre-deployment or when mira-mcp lacks /api/embed)
+  const ollamaUrl = process.env.OLLAMA_BASE_URL || "http://100.86.236.11:11434";
   try {
-    const resp = await fetch(`${MCP_URL()}/api/embed`, {
+    const resp = await fetch(`${ollamaUrl}/api/embeddings`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${key}`,
-      },
-      body: JSON.stringify({ text }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "nomic-embed-text:latest", prompt: text }),
     });
     if (!resp.ok) return null;
     const data = await resp.json();

@@ -130,7 +130,6 @@ export async function createWorkOrder(wo: {
       description: wo.description,
       priority: wo.priority,
       status: wo.status || "OPEN",
-      category: wo.category || "CORRECTIVE",
     }),
   });
 
