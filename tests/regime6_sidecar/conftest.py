@@ -18,15 +18,23 @@ def pytest_configure(config):  # noqa: ARG001
     mira-crawler/conftest.py inserts mira-crawler/ at sys.path[0], which causes
     mira-sidecar/app.py's `from config import settings` to pick up the wrong
     config.py. Running this hook last ensures mira-sidecar/ wins.
+
+    chromadb is mocked here because it's not installed locally — the tests
+    mock MiraVectorStore anyway so the actual chromadb client is never called.
     """
+    from unittest.mock import MagicMock
+
     if _SIDECAR_PATH not in sys.path:
         sys.path.insert(0, _SIDECAR_PATH)
     else:
         sys.path.remove(_SIDECAR_PATH)
         sys.path.insert(0, _SIDECAR_PATH)
-    # Evict stale module so the re-ordered path takes effect on next import
+    # Evict stale modules so re-ordered path takes effect on next import
     sys.modules.pop("config", None)
     sys.modules.pop("app", None)
+    # chromadb is not installed locally — mock it so rag/store.py can import
+    if "chromadb" not in sys.modules:
+        sys.modules["chromadb"] = MagicMock()
 
 
 @pytest.fixture
