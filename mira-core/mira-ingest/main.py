@@ -9,11 +9,13 @@ import os
 import re
 import sqlite3
 import sys
+import uuid
 from datetime import datetime
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 from PIL import Image
 
 logger = logging.getLogger("mira-ingest")
@@ -30,6 +32,23 @@ OPENWEBUI_API_KEY = os.getenv("OPENWEBUI_API_KEY", "")
 KNOWLEDGE_COLLECTION_ID = os.getenv("KNOWLEDGE_COLLECTION_ID", "")
 MAX_PX = int(os.getenv("MAX_INGEST_PX", "1024"))
 MIRA_TENANT_ID = os.getenv("MIRA_TENANT_ID", "")
+FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY", "")
+FIRECRAWL_API_BASE = "https://api.firecrawl.dev/v1"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+# Manufacturer → primary doc-search URL (Firecrawl maps these to find model PDFs)
+_MANUFACTURER_DOC_URLS: dict[str, str] = {
+    "allen-bradley": "https://literature.rockwellautomation.com/idc/groups/literature/documents/",
+    "rockwell": "https://literature.rockwellautomation.com/",
+    "abb": "https://new.abb.com/drives/documents",
+    "siemens": "https://support.industry.siemens.com/cs/ww/en/",
+    "automationdirect": "https://www.automationdirect.com/manuals/",
+    "yaskawa": "https://www.yaskawa.com/downloads/",
+    "schneider": "https://www.se.com/ww/en/download/",
+    "danfoss": "https://www.danfoss.com/en/service-and-support/downloads/",
+    "mitsubishi": "https://www.mitsubishielectric.com/fa/products/drv/",
+    "lenze": "https://www.lenze.com/en/service/downloads/",
+}
 
 # Collection routing patterns for document-kb endpoint
 _ELECTRICAL_RE = re.compile(r"wiring|schematic|diagram|electrical|one.?line|ladder", re.I)
@@ -582,6 +601,264 @@ async def ingest_document_kb(
         "processing_status": processing_status,
         "equipment_type": equipment_type or "",
     }
+
+
+# ---------------------------------------------------------------------------
+# Reactive KB scrape trigger — fired by RAGWorker when knowledge gap detected
+# ---------------------------------------------------------------------------
+
+class ScrapeTriggerRequest(BaseModel):
+    equipment_id: str        # Full asset_identified string from FSM state
+    manufacturer: str        # Parsed manufacturer name
+    model: str               # Parsed model number/name
+    tenant_id: str = ""
+    chat_id: str = ""        # Telegram chat_id for proactive notification
+    context: str = ""        # Optional fault context / description
+
+
+@app.post("/ingest/scrape-trigger")
+async def scrape_trigger(body: ScrapeTriggerRequest, background_tasks: BackgroundTasks):
+    """
+    Reactive KB gap filler: discovers and ingests manufacturer docs for the
+    identified equipment model, then sends a Telegram notification when done.
+
+    Returns immediately. All work happens in a background task.
+    Requires FIRECRAWL_API_KEY in Doppler factorylm/prd.
+    """
+    if not FIRECRAWL_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="FIRECRAWL_API_KEY not configured — scrape trigger unavailable",
+        )
+
+    job_id = str(uuid.uuid4())[:8]
+    logger.info(
+        "Scrape trigger queued: job=%s equipment=%r manufacturer=%r model=%r chat=%s",
+        job_id, body.equipment_id[:60], body.manufacturer[:40],
+        body.model[:40], body.chat_id or "none",
+    )
+
+    background_tasks.add_task(_run_scrape_and_ingest, job_id, body)
+    return {"job_id": job_id, "status": "queued", "equipment_id": body.equipment_id}
+
+
+async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> None:
+    """
+    Background: map manufacturer site → filter model-relevant URLs →
+    scrape top 3 docs → ingest each into Open WebUI KB → notify Telegram.
+    """
+    logger.info("[%s] Starting scrape for %r %r", job_id, body.manufacturer, body.model)
+
+    # 1. Pick the base URL for this manufacturer
+    mfr_key = body.manufacturer.lower().replace(" ", "-").replace("_", "-")
+    base_url = None
+    for key, url in _MANUFACTURER_DOC_URLS.items():
+        if key in mfr_key or mfr_key in key:
+            base_url = url
+            break
+
+    if not base_url:
+        # Generic fallback: search Firecrawl for the model number directly
+        # Use a broad manufacturer site search via Firecrawl's search endpoint
+        logger.info("[%s] No known doc URL for %r — using Firecrawl search", job_id, body.manufacturer)
+        scraped_docs = await _firecrawl_search_model(job_id, body.manufacturer, body.model)
+    else:
+        # Map the manufacturer's doc site, then filter for this model
+        scraped_docs = await _firecrawl_map_and_scrape(job_id, base_url, body.model)
+
+    if not scraped_docs:
+        logger.warning("[%s] No docs found for %r %r", job_id, body.manufacturer, body.model)
+        await _notify_telegram(
+            body.chat_id,
+            f"I searched for documentation on *{body.equipment_id}* but didn't find "
+            f"specific manufacturer docs. Try sending me a PDF manual directly.",
+        )
+        return
+
+    # 2. Ingest each scraped doc into Open WebUI KB
+    ingested = 0
+    for doc in scraped_docs[:3]:
+        try:
+            fname = doc.get("filename", f"{body.model}_{ingested + 1}.txt")
+            content = doc.get("content", "")
+            if len(content) < 100:
+                continue
+            await _ingest_scraped_text(fname, content, equipment_type=body.model[:40])
+            ingested += 1
+        except Exception as e:
+            logger.error("[%s] Ingest failed for %s: %s", job_id, doc.get("filename"), e)
+
+    logger.info("[%s] Ingested %d/%d docs for %r", job_id, ingested, len(scraped_docs), body.equipment_id)
+
+    # 3. Notify the technician
+    if body.chat_id:
+        if ingested > 0:
+            msg = (
+                f"*New knowledge added* ✅\n"
+                f"I found and indexed *{ingested}* document(s) for *{body.equipment_id}*.\n\n"
+                f"Ask me anything about this equipment — I now have manufacturer documentation.\n\n"
+                f"_Tip: ask about fault codes, wiring, specs, or replacement parts._"
+            )
+        else:
+            msg = (
+                f"I searched for *{body.equipment_id}* documentation but the content "
+                f"wasn't detailed enough to index. Send me a PDF manual directly and "
+                f"I'll index it immediately."
+            )
+        await _notify_telegram(body.chat_id, msg)
+
+
+async def _firecrawl_map_and_scrape(job_id: str, base_url: str, model: str) -> list[dict]:
+    """Map a manufacturer doc site and scrape pages matching the model number."""
+    headers = {
+        "Authorization": f"Bearer {FIRECRAWL_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    model_tokens = [t.lower() for t in re.split(r"[\s\-_/]+", model) if len(t) > 2]
+
+    # Map the site to discover URLs
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{FIRECRAWL_API_BASE}/map",
+                headers=headers,
+                json={"url": base_url, "limit": 500},
+            )
+            resp.raise_for_status()
+            all_urls: list[str] = resp.json().get("links", [])
+    except Exception as e:
+        logger.error("[%s] Firecrawl map failed: %s", job_id, e)
+        return []
+
+    logger.info("[%s] Mapped %d URLs from %s", job_id, len(all_urls), base_url)
+
+    # Filter for URLs that contain model tokens and look like docs/PDFs
+    _DOC_RE = re.compile(r"\.(pdf|htm|html)$|/manual|/document|/datasheet|/guide|/spec", re.I)
+    matched = [
+        u for u in all_urls
+        if any(t in u.lower() for t in model_tokens) and _DOC_RE.search(u)
+    ]
+
+    if not matched:
+        # Loosen: any doc URL containing any model token
+        matched = [u for u in all_urls if any(t in u.lower() for t in model_tokens)]
+
+    logger.info("[%s] Matched %d URLs for model %r", job_id, len(matched), model)
+    return await _scrape_urls(job_id, matched[:5], model)
+
+
+async def _firecrawl_search_model(job_id: str, manufacturer: str, model: str) -> list[dict]:
+    """Use Firecrawl search endpoint to find docs when no known base URL."""
+    headers = {
+        "Authorization": f"Bearer {FIRECRAWL_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    query = f"{manufacturer} {model} manual datasheet PDF"
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{FIRECRAWL_API_BASE}/search",
+                headers=headers,
+                json={"query": query, "limit": 5},
+            )
+            resp.raise_for_status()
+            results = resp.json().get("data", [])
+    except Exception as e:
+        logger.error("[%s] Firecrawl search failed: %s", job_id, e)
+        return []
+
+    urls = [r.get("url") for r in results if r.get("url")]
+    logger.info("[%s] Search found %d URLs for %r %r", job_id, len(urls), manufacturer, model)
+    return await _scrape_urls(job_id, urls[:3], model)
+
+
+async def _scrape_urls(job_id: str, urls: list[str], model: str) -> list[dict]:
+    """Scrape a list of URLs, return list of {filename, content} dicts."""
+    results = []
+    for url in urls:
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(
+                    f"{FIRECRAWL_API_BASE}/scrape",
+                    headers={
+                        "Authorization": f"Bearer {FIRECRAWL_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"url": url, "formats": ["markdown"]},
+                )
+                if resp.status_code != 200:
+                    logger.warning("[%s] Scrape %s returned %d", job_id, url[:80], resp.status_code)
+                    continue
+                data = resp.json()
+                content = (
+                    data.get("data", {}).get("markdown")
+                    or data.get("markdown")
+                    or data.get("content")
+                    or ""
+                )
+                if len(content) >= 100:
+                    # Derive a clean filename from URL
+                    slug = re.sub(r"[^a-z0-9_\-]", "_", url.split("/")[-1].lower())[:40] or "doc"
+                    fname = f"{model[:20]}_{slug}.txt".replace(" ", "_")
+                    results.append({"filename": fname, "content": content, "source_url": url})
+                    logger.info("[%s] Scraped %s: %d chars", job_id, url[:80], len(content))
+        except Exception as e:
+            logger.error("[%s] Scrape error for %s: %s", job_id, url[:80], e)
+
+    return results
+
+
+async def _ingest_scraped_text(filename: str, content: str, equipment_type: str = "") -> None:
+    """Push scraped markdown text to Open WebUI KB via the existing collection routing."""
+    if not OPENWEBUI_URL or not OPENWEBUI_API_KEY:
+        return
+
+    col_name, col_desc = _route_collection(filename, equipment_type or None)
+    collection_id = await _get_or_create_kb_collection(col_name, col_desc)
+
+    headers: dict[str, str] = {}
+    if OPENWEBUI_API_KEY:
+        headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
+
+    encoded = content.encode("utf-8")
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            f"{OPENWEBUI_URL}/api/v1/files/",
+            headers=headers,
+            files={"file": (filename, encoded, "text/plain")},
+        )
+        resp.raise_for_status()
+        file_id = resp.json().get("id")
+
+    if file_id:
+        async with httpx.AsyncClient(timeout=15) as client:
+            await client.post(
+                f"{OPENWEBUI_URL}/api/v1/knowledge/{collection_id}/file/add",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"file_id": file_id},
+            )
+
+    logger.info("Scraped text ingested: %s → collection=%s", filename, col_name)
+
+
+async def _notify_telegram(chat_id: str, message: str) -> None:
+    """Send a proactive Telegram message using the bot token from Doppler."""
+    if not chat_id or not TELEGRAM_BOT_TOKEN:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"},
+            )
+            if resp.status_code == 200:
+                logger.info("Telegram notification sent to chat_id=%s", chat_id)
+            else:
+                logger.warning(
+                    "Telegram notify failed: %d %s", resp.status_code, resp.text[:200]
+                )
+    except Exception as e:
+        logger.warning("Telegram notify error (non-fatal): %s", e)
 
 
 # ---------------------------------------------------------------------------

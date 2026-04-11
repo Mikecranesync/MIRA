@@ -1,11 +1,14 @@
 """MIRA Supervisor — Orchestrates workers, manages FSM state, routes intent."""
 
+import asyncio
 import json
 import logging
 import os
 import re
 import sqlite3
 import time
+
+import httpx
 
 from .guardrails import (
     INTENT_KEYWORDS,
@@ -47,6 +50,8 @@ ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"}
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 # How many turns the session photo stays available for follow-up questions
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
+# RAG similarity threshold below which a KB gap is flagged to the scraper
+KB_GAP_SCORE_THRESHOLD = float(os.getenv("MIRA_KB_GAP_THRESHOLD", "0.45"))
 
 
 def format_diagnostic_response(equipment_id: str, key_observation: str,
@@ -77,9 +82,15 @@ class Supervisor:
         collection_id: str,
         vision_model: str = "qwen2.5vl:7b",
         tenant_id: str = None,
+        ingest_url: str = None,
+        mcp_url: str = None,
     ):
         self.db_path = db_path
         self.vision_model = vision_model
+        self.ingest_url = (ingest_url or os.environ.get("INGEST_SERVICE_URL", "")).rstrip("/")
+        self.mcp_url = (mcp_url or os.environ.get("MCP_BASE_URL", "")).rstrip("/")
+        self.mcp_api_key = os.environ.get("MCP_REST_API_KEY", "")
+        self.tenant_id = tenant_id or os.environ.get("MIRA_TENANT_ID", "")
 
         # Nemotron client — enabled only when NVIDIA_API_KEY is set
         self.nemotron = NemotronClient()
@@ -506,6 +517,7 @@ class Supervisor:
                 else:
                     parsed["reply"] = f"{asset_key} — {parsed['reply']}"
 
+        prev_state = state.get("state")
         state = self._advance_state(state, parsed)
 
         ctx = state.get("context") or {}
@@ -527,6 +539,39 @@ class Supervisor:
 
         self._save_state(chat_id, state)
 
+        # --- Post-response side-effects (fire-and-forget, never block reply) ---
+
+        # KB gap detection: if RAG returned no useful chunks for identified equipment,
+        # trigger background scrape of manufacturer docs.
+        if (
+            state.get("asset_identified")
+            and self.ingest_url
+            and not ctx.get("kb_gap_triggered")
+        ):
+            top_score = max(self.rag._last_distances, default=0.0)
+            if top_score < KB_GAP_SCORE_THRESHOLD:
+                logger.info(
+                    "KB gap detected: chat=%s asset=%r top_score=%.3f — triggering scrape",
+                    chat_id, state.get("asset_identified", "")[:50], top_score,
+                )
+                # Mark so we only trigger once per session, not on every turn
+                ctx["kb_gap_triggered"] = True
+                state["context"] = ctx
+                self._save_state(chat_id, state)
+                asyncio.create_task(self._flag_kb_gap(chat_id, state))
+
+        # Auto work-order: create Atlas CMMS WO on first transition to DIAGNOSIS
+        if (
+            state["state"] == "DIAGNOSIS"
+            and prev_state != "DIAGNOSIS"
+            and self.mcp_url
+            and not ctx.get("work_order_created")
+        ):
+            ctx["work_order_created"] = True
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            asyncio.create_task(self._on_diagnosis_complete(chat_id, state, parsed["reply"]))
+
         formatted = self._format_reply(parsed)
         tl_flush()
         return self._make_result(
@@ -535,6 +580,111 @@ class Supervisor:
             trace_id,
             state["state"],
         )
+
+    async def _flag_kb_gap(self, chat_id: str, state: dict) -> None:
+        """
+        Fire-and-forget: POST to ingest/scrape-trigger when RAG returns no
+        useful chunks for the identified equipment.
+
+        Never raises — all errors are logged and swallowed.
+        """
+        if not self.ingest_url:
+            return
+        asset_id = state.get("asset_identified", "")
+        if not asset_id:
+            return
+
+        # Parse manufacturer and model from asset_identified
+        # Format varies: "Allen-Bradley PowerFlex 525, VFD, 480V" or
+        #                 "Manufacturer: ABB, Model: ACS550-01" etc.
+        manufacturer = ""
+        model = ""
+        parts = [p.strip() for p in asset_id.split(",")]
+        for part in parts:
+            pl = part.lower()
+            if "manufacturer:" in pl or "make:" in pl:
+                manufacturer = part.split(":", 1)[-1].strip()
+            elif "model:" in pl or "model number:" in pl:
+                model = part.split(":", 1)[-1].strip()
+        if not manufacturer and parts:
+            manufacturer = parts[0]
+        if not model and len(parts) > 1:
+            model = parts[1]
+
+        payload = {
+            "equipment_id": asset_id,
+            "manufacturer": manufacturer,
+            "model": model,
+            "tenant_id": self.tenant_id,
+            "chat_id": str(chat_id),
+            "context": state.get("fault_category", ""),
+        }
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.post(
+                    f"{self.ingest_url}/ingest/scrape-trigger",
+                    json=payload,
+                )
+            if resp.status_code == 200:
+                logger.info(
+                    "KB gap flagged: chat=%s asset=%r job_id=%s",
+                    chat_id, asset_id[:50], resp.json().get("job_id"),
+                )
+            else:
+                logger.warning("KB gap trigger returned %d: %s", resp.status_code, resp.text[:200])
+        except Exception as e:
+            logger.warning("KB gap trigger error (non-fatal): %s", e)
+
+    async def _on_diagnosis_complete(self, chat_id: str, state: dict, reply: str) -> None:
+        """
+        Auto-create an Atlas CMMS work order when the FSM first reaches DIAGNOSIS state.
+
+        Uses the MCP REST API at /api/cmms/work-orders.
+        Never raises — all errors are logged and swallowed.
+        """
+        if not self.mcp_url or not self.mcp_api_key:
+            logger.debug("WO auto-create skipped: MCP_BASE_URL or MCP_REST_API_KEY not set")
+            return
+
+        asset = state.get("asset_identified", "Unknown equipment")
+        fault = state.get("fault_category", "")
+        sc = state.get("context", {}).get("session_context", {})
+        equipment_type = sc.get("equipment_type", asset)[:80]
+
+        title = f"MIRA: {equipment_type}"[:80]
+        description = (
+            f"Equipment: {asset}\n"
+            + (f"Fault category: {fault}\n" if fault else "")
+            + f"\nMIRA diagnosis:\n{reply[:800]}"
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    f"{self.mcp_url}/api/cmms/work-orders",
+                    headers={
+                        "Authorization": f"Bearer {self.mcp_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "title": title,
+                        "description": description,
+                        "priority": "MEDIUM",
+                        "category": "ELECTRICAL",
+                    },
+                )
+            if resp.status_code in (200, 201):
+                wo = resp.json()
+                logger.info(
+                    "WO auto-created: chat=%s id=%s title=%r",
+                    chat_id, wo.get("id"), wo.get("title", "")[:50],
+                )
+            else:
+                logger.warning(
+                    "WO auto-create returned %d: %s", resp.status_code, resp.text[:200]
+                )
+        except Exception as e:
+            logger.warning("WO auto-create error (non-fatal): %s", e)
 
     def reset(self, chat_id: str) -> None:
         """Reset conversation to IDLE state."""
