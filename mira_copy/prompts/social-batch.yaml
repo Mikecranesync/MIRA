@@ -1,0 +1,58 @@
+system_prompt: |
+  You are generating social media posts for FactoryLM across 6 platforms
+  in a single response. Each post must be adapted to the platform's culture,
+  format, and character limits.
+
+  Platform specs:
+  - LinkedIn: max 3000 chars. Professional tone. Storytelling works.
+    Use line breaks for readability. No hashtag spam (3-5 max).
+  - X (Twitter): max 280 chars. Punchy, direct. One idea per tweet.
+    Can include 1-2 hashtags. Link shortens to 23 chars.
+  - Reddit: max 40000 chars. Authentic, anti-corporate. NEVER sound
+    like an ad. Frame as sharing something useful. Name the subreddit
+    (r/PLC, r/maintenance, r/manufacturing).
+  - Facebook: max 63206 chars. Conversational. Questions drive comments.
+    Target groups like "Maintenance & Reliability Professionals."
+  - TikTok: max 2200 chars caption. Casual, direct. Describe what
+    the video would show. Use trending hashtags sparingly.
+  - Instagram: max 2200 chars. Visual-first caption. Describe the
+    image/carousel. Hashtags in a block at the end (10-15).
+
+  Output format: JSON object with:
+  - posts (array of 6 objects, one per platform):
+    - platform (string)
+    - text (string, the actual post copy)
+    - char_count (int)
+    - hashtags (array of strings, if applicable)
+    - suggested_visual (string, brief description of image/video to pair)
+    - subreddit (string, for Reddit only)
+
+  Return valid JSON only.
+
+user_prompt: |
+  Generate social posts for all 6 platforms targeting {{audience_title}}.
+
+  Audience pain: {{audience_pain}}
+  Equipment context: {{audience_equipment}}
+
+  Content theme for this batch: "{{variant}}"
+
+  Theme options:
+  - "fault-code-tip": Share a specific fault code troubleshooting tip
+  - "ai-vs-manual": Compare AI diagnosis speed vs manual lookup
+  - "build-in-public": Share a milestone or learning from building FactoryLM
+  - "poll-engagement": Ask a diagnostic question (LinkedIn/Facebook only, others get a tip)
+  - "case-study": Share a result or user feedback
+  - "weekly-roundup": Summarize the week's content + link to YouTube/blog
+
+  You are generating for the "{{variant}}" theme.
+
+  Requirements:
+  - Each post must feel native to its platform (not copy-pasted across)
+  - Reference real equipment: {{audience_equipment}}
+  - LinkedIn and Facebook posts should end with a question to drive comments
+  - Reddit post must provide genuine value — no "check out my product" energy
+  - Include app.factorylm.com link only in LinkedIn and Facebook (not Reddit/X)
+  - TikTok and Instagram captions should describe what the video/image shows
+
+  Return valid JSON only.

@@ -1,6 +1,7 @@
 /**
  * Drip email scheduler — runs daily to send timed follow-up emails.
  *
+ * Beta nurture sequence: Loom videos (days 1-6) → payment ask (day 7) → reminder (day 10).
  * Uses @neondatabase/serverless tagged template syntax.
  */
 
@@ -13,6 +14,12 @@ function sql() {
   return neon(url);
 }
 
+const BASE_URL = () => process.env.PUBLIC_URL || "https://factorylm.com";
+
+function loomUrl(n: number): string {
+  return process.env[`LOOM_URL_${n}`] || "https://www.loom.com/share/placeholder";
+}
+
 export async function processDripEmails(): Promise<void> {
   const db = sql();
 
@@ -20,7 +27,7 @@ export async function processDripEmails(): Promise<void> {
     try {
       // Find tenants who signed up exactly N days ago and haven't received this email
       const tenants = await db`
-        SELECT t.id, t.email, t.company
+        SELECT t.id, t.email, t.company, t.first_name, t.tier
         FROM plg_tenants t
         WHERE t.created_at::date = (CURRENT_DATE - ${drip.day}::int)::date
           AND NOT EXISTS (
@@ -29,33 +36,34 @@ export async function processDripEmails(): Promise<void> {
           )`;
 
       for (const tenant of tenants) {
-        // Check engagement condition
-        if (drip.condition === "no_query") {
-          const rows = await db`
-            SELECT COUNT(*) as c FROM plg_query_log WHERE tenant_id = ${tenant.id}`;
-          if (parseInt(String(rows[0]?.c || "0"), 10) > 0) continue;
+        // Skip payment/reminder emails for users who already paid
+        if (drip.condition === "not_paid" && tenant.tier === "active") {
+          continue;
         }
 
-        if (drip.condition === "low_usage") {
-          const rows = await db`
-            SELECT COUNT(*) as c FROM plg_query_log WHERE tenant_id = ${tenant.id}`;
-          if (parseInt(String(rows[0]?.c || "0"), 10) >= 3) continue;
-        }
+        const firstName = tenant.first_name
+          ? String(tenant.first_name)
+          : String(tenant.email).split("@")[0];
 
-        const firstName = String(tenant.email).split("@")[0];
+        const checkoutUrl = `${BASE_URL()}/api/checkout?tid=${tenant.id}&email=${encodeURIComponent(String(tenant.email))}`;
+
+        // Personalize subject line
+        const subject = drip.subject
+          .replace("{{FIRST_NAME}}", firstName);
+
         const sent = await sendEmail({
           to: String(tenant.email),
-          subject: drip.subject.replace(
-            "{{QUERIES_LEFT}}",
-            process.env.PLG_DAILY_FREE_QUERIES || "5"
-          ),
+          subject,
           templateName: drip.templateName,
           vars: {
             FIRST_NAME: firstName,
             COMPANY: String(tenant.company),
-            QUERIES_LEFT: process.env.PLG_DAILY_FREE_QUERIES || "5",
-            CMMS_URL: "https://factorylm.com/cmms",
-            UPGRADE_URL: "https://factorylm.com/pricing",
+            LOOM_URL_1: loomUrl(1),
+            LOOM_URL_2: loomUrl(2),
+            LOOM_URL_3: loomUrl(3),
+            LOOM_URL_4: loomUrl(4),
+            LOOM_URL_5: loomUrl(5),
+            CHECKOUT_URL: checkoutUrl,
           },
         });
 

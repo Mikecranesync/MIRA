@@ -33,7 +33,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
     Works with PDFs and HTML pages. Skips already-ingested chunks (dedup).
     """
     from ingest.chunker import chunk_blocks
-    from ingest.converter import extract_from_html, extract_from_pdf
+    from ingest.converter import extract_from_html, extract_from_pdf_with_fallback
     from ingest.embedder import embed_text
     from ingest.store import chunk_exists, insert_chunk
 
@@ -45,51 +45,73 @@ def ingest_url(self, url: str, manufacturer: str = "",
         logger.error("MIRA_TENANT_ID not set — cannot ingest")
         return {"url": url, "inserted": 0, "error": "no_tenant_id"}
 
-    # 1. Pre-flight size check for PDFs — avoids OOM on very large files
+    # 1. Download (supports http(s):// and file:// schemes)
     is_pdf_url = url.lower().endswith(".pdf")
-    if is_pdf_url:
+
+    if url.startswith("file://"):
+        from pathlib import Path
+        from urllib.parse import urlparse as _urlparse
+        from urllib.request import url2pathname
+
+        local_path = Path(url2pathname(_urlparse(url).path))
         try:
-            head = httpx.head(
+            data = local_path.read_bytes()
+            content_type = (
+                "application/pdf" if local_path.suffix.lower() == ".pdf" else "text/html"
+            )
+            if len(data) > MAX_PDF_BYTES and is_pdf_url:
+                logger.warning(
+                    "Skipping %s — %d MB exceeds limit",
+                    url[:80], len(data) // 1024 // 1024,
+                )
+                return {"url": url, "inserted": 0, "error": "file_too_large"}
+        except Exception as exc:
+            logger.warning("Local file read failed for %s: %s", url[:80], exc)
+            return {"url": url, "inserted": 0, "error": f"local_read_failed: {exc}"}
+    else:
+        # Pre-flight size check for PDFs — avoids OOM on very large files
+        if is_pdf_url:
+            try:
+                head = httpx.head(
+                    url,
+                    timeout=10,
+                    follow_redirects=True,
+                    headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
+                )
+                content_length = int(head.headers.get("content-length", 0))
+                if content_length > MAX_PDF_BYTES:
+                    logger.warning(
+                        "Skipping %s — too large (%d MB > %d MB limit)",
+                        url[:80], content_length // 1024 // 1024, MAX_PDF_BYTES // 1024 // 1024,
+                    )
+                    return {"url": url, "inserted": 0, "error": "file_too_large"}
+            except Exception:
+                pass
+
+        try:
+            resp = httpx.get(
                 url,
-                timeout=10,
+                timeout=DOWNLOAD_TIMEOUT,
                 follow_redirects=True,
                 headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
             )
-            content_length = int(head.headers.get("content-length", 0))
-            if content_length > MAX_PDF_BYTES:
+            resp.raise_for_status()
+            data = resp.content
+            content_type = resp.headers.get("content-type", "")
+            if len(data) > MAX_PDF_BYTES and ("application/pdf" in content_type or is_pdf_url):
                 logger.warning(
-                    "Skipping %s — too large (%d MB > %d MB limit)",
-                    url[:80], content_length // 1024 // 1024, MAX_PDF_BYTES // 1024 // 1024,
+                    "Skipping %s — downloaded %d MB exceeds limit",
+                    url[:80], len(data) // 1024 // 1024,
                 )
                 return {"url": url, "inserted": 0, "error": "file_too_large"}
-        except Exception:
-            pass  # HEAD failed — proceed with download, let normal timeout/OOM guard handle it
-
-    # 2. Download
-    try:
-        resp = httpx.get(
-            url,
-            timeout=DOWNLOAD_TIMEOUT,
-            follow_redirects=True,
-            headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
-        )
-        resp.raise_for_status()
-        data = resp.content
-        content_type = resp.headers.get("content-type", "")
-        if len(data) > MAX_PDF_BYTES and ("application/pdf" in content_type or is_pdf_url):
-            logger.warning(
-                "Skipping %s — downloaded %d MB exceeds limit",
-                url[:80], len(data) // 1024 // 1024,
-            )
-            return {"url": url, "inserted": 0, "error": "file_too_large"}
-    except Exception as exc:
-        logger.warning("Download failed for %s: %s — retrying", url[:80], exc)
-        raise self.retry(exc=exc)
+        except Exception as exc:
+            logger.warning("Download failed for %s: %s — retrying", url[:80], exc)
+            raise self.retry(exc=exc)
 
     # 3. Extract text blocks
     is_pdf = url.lower().endswith(".pdf") or "application/pdf" in content_type
     if is_pdf:
-        blocks = extract_from_pdf(data)
+        blocks = extract_from_pdf_with_fallback(data)
     else:
         blocks = extract_from_html(data)
 
@@ -131,6 +153,17 @@ def ingest_url(self, url: str, manufacturer: str = "",
         )
         if embedding is None:
             continue
+
+        # Quality gate: content filter → relevance → semantic dedup
+        try:
+            from ingest.quality import quality_gate
+            passed, reason = quality_gate(chunk, embedding, tenant_id)
+            if not passed:
+                logger.debug("Quality gate rejected chunk %d: %s", chunk_idx, reason)
+                skipped += 1
+                continue
+        except Exception as e:
+            logger.warning("Quality gate error (fail open): %s", e)
 
         entry_id = insert_chunk(
             tenant_id=tenant_id,

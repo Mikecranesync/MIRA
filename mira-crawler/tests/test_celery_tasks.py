@@ -129,6 +129,7 @@ class TestIngestUrl:
             patch("ingest.store.chunk_exists", return_value=False),
             patch("ingest.embedder.embed_text", return_value=_fake_embedding()),
             patch("ingest.store.insert_chunk", return_value="entry-123"),
+            patch("ingest.quality.quality_gate", return_value=(True, "")),
         ):
             from tasks.ingest import ingest_url
             result = ingest_url("https://example.com/manual.pdf", "ABB", "ACS580")
@@ -260,12 +261,13 @@ class TestCeleryConfig:
 
         assert app.main == "mira_crawler"
 
-    def test_beat_schedule(self):
+    def test_beat_schedule_removed(self):
+        """Beat schedule was removed — Trigger.dev Cloud owns all scheduling."""
         import celeryconfig as cfg
 
-        assert "discover-manufacturers-weekly" in cfg.beat_schedule
-        assert "ingest-foundational-kb-monthly" in cfg.beat_schedule
-        assert "ingest-pending-manuals-nightly" in cfg.beat_schedule
+        assert not hasattr(cfg, "beat_schedule"), (
+            "beat_schedule must not exist in celeryconfig — scheduling is owned by Trigger.dev Cloud"
+        )
 
     def test_task_routes(self):
         import celeryconfig as cfg
@@ -276,6 +278,22 @@ class TestCeleryConfig:
     def test_sane_defaults(self):
         import celeryconfig as cfg
 
-        assert cfg.worker_concurrency == 2
+        assert cfg.worker_concurrency == 3
         assert cfg.task_serializer == "json"
         assert cfg.task_acks_late is True
+
+    def test_all_rate_limited_tasks_exist(self):
+        """Every task name in celeryconfig.task_annotations must exist in app.tasks.
+
+        Regression test for M3: rate-limit annotations were referencing nonexistent
+        task names, resulting in zero rate limits actually applied.
+        """
+        import celeryconfig
+        from celery_app import app
+
+        registered = set(app.tasks.keys())
+        for task_name in celeryconfig.task_annotations.keys():
+            assert task_name in registered, (
+                f"Task annotation references nonexistent task: {task_name}. "
+                f"Check @app.task decorators in tasks/*.py"
+            )

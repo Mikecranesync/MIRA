@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Welcome to MIRA — let's learn your equipment</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <link rel="canonical" href="https://factorylm.com/activated" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Serif:ital,wght@0,400;1,400;1,600&display=swap');
+
+    :root {
+      --bg: #0a0a08;
+      --surface-1: #111110;
+      --surface-2: #171715;
+      --surface-3: #1e1e1b;
+      --border: #28282499;
+      --border-solid: #282824;
+      --amber: #f0a030;
+      --amber-bright: #ffc247;
+      --amber-glow: rgba(240, 160, 48, 0.25);
+      --amber-ring: rgba(240, 160, 48, 0.08);
+      --green: #2dd4a0;
+      --green-glow: rgba(45, 212, 160, 0.35);
+      --red: #f04848;
+      --text: #e4e0d8;
+      --text-secondary: #b0aca2;
+      --text-muted: #7a766c;
+      --text-faint: #4a4840;
+      --font: "DM Sans", system-ui, sans-serif;
+      --serif: "IBM Plex Serif", Georgia, serif;
+      --mono: "IBM Plex Mono", "SF Mono", monospace;
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { font-size: 16px; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      position: relative;
+      overflow-x: hidden;
+    }
+    /* Blueprint grid — faint technical substrate */
+    body::before {
+      content: "";
+      position: fixed; inset: 0; z-index: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(240, 160, 48, 0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(240, 160, 48, 0.018) 1px, transparent 1px);
+      background-size: 56px 56px;
+      mask-image: radial-gradient(ellipse at center, black 30%, transparent 85%);
+      -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 85%);
+    }
+    /* Noise grain — industrial texture */
+    body::after {
+      content: "";
+      position: fixed; inset: 0; z-index: 9999;
+      pointer-events: none;
+      opacity: 0.028;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      background-size: 256px 256px;
+    }
+
+    .page {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+      position: relative;
+      z-index: 1;
+    }
+    /* Corner registration marks — top-left + top-right */
+    .page::before, .page::after {
+      content: "";
+      position: absolute;
+      top: 24px;
+      width: 14px; height: 14px;
+      border-color: rgba(240, 160, 48, 0.25);
+      border-style: solid;
+      opacity: 0;
+      animation: regFadeIn 900ms var(--ease-out) 100ms forwards;
+    }
+    .page::before { left: 24px; border-width: 1px 0 0 1px; }
+    .page::after  { right: 24px; border-width: 1px 1px 0 0; }
+    @keyframes regFadeIn { to { opacity: 1; } }
+
+    /* Orchestrated entrance — stagger reveal */
+    .reveal {
+      opacity: 0;
+      transform: translateY(12px);
+      animation: reveal 720ms var(--ease-out) forwards;
+    }
+    .reveal-1 { animation-delay: 150ms; }
+    .reveal-2 { animation-delay: 280ms; }
+    .reveal-3 { animation-delay: 420ms; }
+    .reveal-4 { animation-delay: 560ms; }
+    .reveal-5 { animation-delay: 700ms; }
+    @keyframes reveal {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .wordmark {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--amber);
+      margin-bottom: 56px;
+    }
+    .wordmark .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 10px var(--amber-glow);
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+    .wordmark .divider {
+      width: 12px; height: 1px; background: var(--text-faint);
+    }
+    .wordmark .meta {
+      color: var(--text-muted);
+      letter-spacing: 2px;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+
+    .hero {
+      border-left: 2px solid var(--amber);
+      padding-left: 28px;
+      margin-bottom: 48px;
+    }
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 2.8px;
+      text-transform: uppercase;
+      color: var(--amber);
+      margin-bottom: 18px;
+    }
+    .hero-tag::before {
+      content: "";
+      width: 18px; height: 1px;
+      background: var(--amber);
+    }
+    .hero h1 {
+      font-family: var(--font);
+      font-size: 44px;
+      font-weight: 600;
+      line-height: 1.08;
+      letter-spacing: -0.025em;
+      margin-bottom: 20px;
+    }
+    .hero h1 .serif {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      color: var(--amber);
+      letter-spacing: -0.01em;
+    }
+    .hero p {
+      color: var(--text-secondary);
+      font-size: 16px;
+      line-height: 1.7;
+      max-width: 560px;
+    }
+    .hero p em {
+      font-family: var(--serif);
+      font-style: italic;
+      color: var(--text);
+    }
+
+    /* Video frame — instrumentation bay with corner brackets */
+    .loom-bay {
+      position: relative;
+      margin-bottom: 52px;
+      padding: 14px;
+    }
+    .loom-bay::before, .loom-bay::after,
+    .loom-bay > .bracket-bl, .loom-bay > .bracket-br {
+      content: "";
+      position: absolute;
+      width: 22px; height: 22px;
+      border-color: var(--amber);
+      border-style: solid;
+      pointer-events: none;
+    }
+    .loom-bay::before { top: 0; left: 0; border-width: 1px 0 0 1px; }
+    .loom-bay::after  { top: 0; right: 0; border-width: 1px 1px 0 0; }
+    .loom-bay .bracket-bl { bottom: 0; left: 0; border-width: 0 0 1px 1px; }
+    .loom-bay .bracket-br { bottom: 0; right: 0; border-width: 0 1px 1px 0; }
+
+    .loom-wrap {
+      position: relative;
+      width: 100%;
+      padding-bottom: 56.25%;
+      background: var(--surface-1);
+      border: 1px solid var(--border-solid);
+      overflow: hidden;
+    }
+    .loom-wrap iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%; height: 100%;
+      border: 0;
+    }
+    .loom-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(circle at center, rgba(240, 160, 48, 0.05) 0%, transparent 70%),
+        repeating-linear-gradient(135deg, var(--surface-1) 0 14px, var(--surface-2) 14px 28px);
+    }
+    .loom-placeholder span {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 12px 22px;
+      border: 1px solid var(--border-solid);
+      background: rgba(10, 10, 8, 0.78);
+      backdrop-filter: blur(4px);
+    }
+    .loom-placeholder span::before {
+      content: "▶ ";
+      color: var(--amber);
+      opacity: 0.6;
+    }
+
+    .upload-panel {
+      background:
+        linear-gradient(180deg, var(--surface-1) 0%, var(--bg) 100%);
+      border: 1px solid var(--border-solid);
+      padding: 0;
+      margin-bottom: 28px;
+      position: relative;
+    }
+    .upload-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border-solid);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .upload-header .label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .upload-header .led {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 8px var(--amber-glow);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    .upload-header .led.ready { background: var(--amber); box-shadow: 0 0 8px var(--amber-glow); }
+    .upload-header .led.working {
+      background: var(--amber-bright);
+      animation: pulse-fast 0.9s ease-in-out infinite;
+    }
+    .upload-header .led.ok {
+      background: var(--green);
+      box-shadow: 0 0 10px var(--green-glow);
+      animation: none;
+    }
+    .upload-header .led.err {
+      background: var(--red);
+      animation: none;
+    }
+    .upload-header .channel { color: var(--text-faint); }
+    @keyframes pulse-fast {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .dropzone {
+      border: 1px dashed var(--border-solid);
+      margin: 28px;
+      padding: 56px 24px 48px;
+      text-align: center;
+      transition: border-color 240ms var(--ease-out), background 240ms var(--ease-out);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+    .dropzone::before {
+      content: "";
+      position: absolute;
+      top: 18px; left: 50%;
+      transform: translateX(-50%);
+      width: 18px; height: 18px;
+      background-image:
+        linear-gradient(var(--text-faint), var(--text-faint)),
+        linear-gradient(var(--text-faint), var(--text-faint)),
+        radial-gradient(circle, transparent 3px, var(--text-faint) 3px, var(--text-faint) 4px, transparent 4px);
+      background-size: 18px 1px, 1px 18px, 18px 18px;
+      background-position: center, center, center;
+      background-repeat: no-repeat;
+      opacity: 0.55;
+      transition: opacity 240ms, filter 240ms;
+    }
+    .dropzone:hover { border-color: var(--amber-ring); }
+    .dropzone:hover::before { opacity: 0.9; }
+    .dropzone.dragover {
+      border-color: var(--amber);
+      background: rgba(240, 160, 48, 0.045);
+    }
+    .dropzone.dragover::before {
+      opacity: 1;
+      filter: drop-shadow(0 0 6px var(--amber-glow));
+    }
+    .dropzone-label {
+      font-size: 15px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      margin-top: 8px;
+    }
+    .dropzone-hint {
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      font-family: var(--mono);
+      margin-top: 22px;
+    }
+    .dropzone-hint .sep { color: var(--border-solid); margin: 0 6px; }
+
+    .cta-start {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%);
+      color: #0a0a08;
+      font-family: var(--font);
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 16px 34px;
+      border: 1px solid #b87508;
+      border-radius: 2px;
+      cursor: pointer;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.28),
+        inset 0 -2px 0 rgba(0, 0, 0, 0.18),
+        0 6px 18px rgba(240, 160, 48, 0.22),
+        0 0 0 1px rgba(240, 160, 48, 0.08);
+      transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out);
+    }
+    .cta-start:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.35),
+        inset 0 -2px 0 rgba(0, 0, 0, 0.18),
+        0 10px 24px rgba(240, 160, 48, 0.32),
+        0 0 0 1px rgba(240, 160, 48, 0.16);
+    }
+    .cta-start:active {
+      transform: translateY(1px);
+      box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.22),
+        0 2px 6px rgba(240, 160, 48, 0.15);
+    }
+    .cta-start:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+      filter: saturate(0.6);
+    }
+    .cta-start .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #0a0a08;
+      box-shadow: 0 0 5px rgba(0, 0, 0, 0.45);
+    }
+    .cta-start .arrow {
+      display: inline-block;
+      width: 14px;
+      color: #0a0a08;
+      transition: transform 180ms var(--ease-out);
+    }
+    .cta-start:hover .arrow { transform: translateX(3px); }
+
+    /* Segmented fuel-gauge progress bar */
+    .progress {
+      margin: 24px 28px 0;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-solid);
+      display: none;
+    }
+    .progress.show { display: block; }
+    .progress-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .progress-row .pct { color: var(--amber); font-weight: 500; }
+    .progress-bar {
+      display: grid;
+      grid-template-columns: repeat(20, 1fr);
+      gap: 2px;
+      height: 10px;
+    }
+    .progress-bar .seg {
+      background: var(--surface-3);
+      transition: background 120ms var(--ease-out), box-shadow 120ms var(--ease-out);
+    }
+    .progress-bar .seg.on {
+      background: var(--amber);
+      box-shadow: 0 0 6px var(--amber-glow);
+    }
+    .progress-bar .seg.ok {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green-glow);
+    }
+
+    .status {
+      margin: 18px 28px 0;
+      padding-bottom: 28px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-family: var(--mono);
+      letter-spacing: 0.5px;
+      min-height: 18px;
+    }
+    .status::before {
+      content: "// ";
+      color: var(--text-faint);
+    }
+    .status:empty::before { content: ""; }
+    .status.error { color: var(--red); }
+    .status.success { color: var(--green); }
+
+    .skip {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      text-decoration: none;
+      padding: 18px 4px;
+      border-bottom: 1px solid transparent;
+      transition: color 220ms var(--ease-out), border-color 220ms var(--ease-out);
+    }
+    .skip::before {
+      content: "[ OVERRIDE ]";
+      color: var(--text-faint);
+      transition: color 220ms var(--ease-out);
+    }
+    .skip:hover {
+      color: var(--text-secondary);
+      border-color: var(--border-solid);
+    }
+    .skip:hover::before { color: var(--text-muted); }
+    .skip-wrap {
+      display: flex;
+      justify-content: center;
+      padding-top: 12px;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 640px) {
+      .page { padding: 36px 20px 60px; }
+      .wordmark { margin-bottom: 40px; }
+      .hero { padding-left: 20px; margin-bottom: 36px; }
+      .hero::before { left: 20px; font-size: 9px; }
+      .hero h1 { font-size: 30px; }
+      .dropzone { margin: 20px; padding: 44px 16px 36px; }
+      .upload-header { padding: 12px 18px; font-size: 9px; letter-spacing: 2px; }
+      .progress { margin: 20px 20px 0; }
+      .status { margin: 16px 20px 0; padding-bottom: 22px; }
+      .cta-start { padding: 14px 24px; font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+
+    <div class="wordmark reveal reveal-1">
+      <span class="dot"></span>
+      FactoryLM
+      <span class="divider"></span>
+      <span class="meta">BETA / 01</span>
+    </div>
+
+    <section class="hero reveal reveal-2">
+      <div class="hero-tag">STEP 01 / INGEST</div>
+      <h1>You're in<span id="first-name-suffix"></span>.<br /><span class="serif">Teach Mira about your equipment.</span></h1>
+      <p>Upload one equipment manual and Mira starts answering fault codes from it in about two minutes. <em>This is where the magic happens</em> — and where most beta users have their "oh, this is different" moment.</p>
+    </section>
+
+    <div class="loom-bay reveal reveal-3">
+      <span class="bracket-bl"></span>
+      <span class="bracket-br"></span>
+      <div class="loom-wrap">
+        {{LOOM_CONTENT}}
+      </div>
+    </div>
+
+    <section class="upload-panel reveal reveal-4" id="upload-panel">
+      <div class="upload-header">
+        <div class="label"><span class="led" id="status-led"></span><span id="status-label">LEARNING BAY / READY</span></div>
+        <div class="channel">CH&nbsp;01 · PDF</div>
+      </div>
+      <div class="dropzone" id="dropzone">
+        <p class="dropzone-label">Drop an equipment manual here, or select one below</p>
+        <button type="button" class="cta-start" id="upload-btn">
+          <span class="dot"></span>
+          Teach MIRA your equipment
+          <span class="arrow">→</span>
+        </button>
+        <p class="dropzone-hint">PDF<span class="sep">/</span>max 50 MB<span class="sep">/</span>one at a time</p>
+      </div>
+
+      <input type="file" id="file-input" accept="application/pdf" class="hidden" />
+
+      <div class="progress" id="progress">
+        <div class="progress-row">
+          <span id="progress-label">INGESTING</span>
+          <span class="pct" id="progress-pct">0%</span>
+        </div>
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <div class="status" id="status"></div>
+    </section>
+
+    <section class="upload-panel reveal reveal-5" id="csv-panel">
+      <div class="upload-header">
+        <div class="label"><span class="led" id="csv-led"></span><span id="csv-status-label">HISTORY IMPORT / READY</span></div>
+        <div class="channel">CH&nbsp;02 · CSV</div>
+      </div>
+      <div style="padding:28px 28px 8px;">
+        <p style="font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:var(--amber);margin-bottom:12px;">OPTIONAL</p>
+        <h2 style="font-family:var(--font);font-size:20px;font-weight:600;letter-spacing:-0.02em;margin-bottom:8px;">Help MIRA learn your shop</h2>
+        <p style="color:var(--text-secondary);font-size:14px;line-height:1.7;margin-bottom:20px;">Upload a CSV of past work orders and MIRA will find patterns in your maintenance history. The more history, the better the diagnosis.</p>
+      </div>
+      <div class="dropzone" id="csv-dropzone" style="margin:0 28px 8px;">
+        <p class="dropzone-label">Drop a CSV file here, or select one below</p>
+        <button type="button" class="cta-start" id="csv-upload-btn">
+          <span class="dot"></span>
+          Upload maintenance history
+          <span class="arrow">&rarr;</span>
+        </button>
+        <p class="dropzone-hint">CSV<span class="sep">/</span>max 5 MB<span class="sep">/</span>columns: date, title, description, priority, asset, category</p>
+      </div>
+      <input type="file" id="csv-file-input" accept=".csv,text/csv" class="hidden" />
+      <div class="progress hidden" id="csv-progress">
+        <div class="progress-row">
+          <span id="csv-progress-label">IMPORTING</span>
+          <span class="pct" id="csv-progress-pct">0%</span>
+        </div>
+        <div class="progress-bar" id="csv-progress-bar"></div>
+      </div>
+      <div class="status" id="csv-status" style="padding:0 28px 20px;"></div>
+    </section>
+
+    <section class="upload-panel reveal reveal-5" id="cmms-panel">
+      <div class="upload-header">
+        <div class="label"><span class="led ok"></span><span>WORKSPACE / LIVE</span></div>
+        <div class="channel">MIRA &middot; v1</div>
+      </div>
+      <div style="padding:32px 28px 36px;">
+        <p style="font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:var(--amber);margin-bottom:16px;">STEP 02 / WORKSPACE</p>
+        <h2 style="font-family:var(--font);font-size:22px;font-weight:600;letter-spacing:-0.02em;margin-bottom:10px;">Your MIRA workspace is ready.</h2>
+        <p style="color:var(--text-secondary);font-size:15px;line-height:1.7;margin-bottom:28px;">The more MIRA knows, the better the diagnosis. Upload your manuals now, or open your workspace and add them any time. <span style="font-family:var(--serif);font-style:italic;color:var(--text);">Your equipment knowledge stays with you.</span></p>
+        <a href="#" id="cmms-btn" class="cta-start" style="text-decoration:none;">
+          <span class="dot"></span>
+          Open your workspace
+          <span class="arrow">→</span>
+        </a>
+      </div>
+    </section>
+
+    <div class="skip-wrap reveal" style="animation-delay:840ms;">
+      <a href="#" class="skip" id="skip-link">Skip to dashboard</a>
+    </div>
+
+  </main>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      const urlToken = params.get('token');
+
+      // Pull token from URL, fall back to session storage.
+      let token = urlToken || sessionStorage.getItem('flm_token') || '';
+      if (urlToken) {
+        sessionStorage.setItem('flm_token', urlToken);
+      }
+
+      // No token = probably someone hit this page directly. Bounce to /cmms.
+      if (!token) {
+        location.replace('/cmms');
+        return;
+      }
+
+      // Decode JWT payload (unverified — display only) to personalize headline.
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+          const email = payload.email || '';
+          const firstName = (email.split('@')[0] || '').split('.')[0];
+          if (firstName) {
+            const suffix = document.getElementById('first-name-suffix');
+            if (suffix) suffix.textContent = ', ' + firstName.charAt(0).toUpperCase() + firstName.slice(1);
+          }
+        }
+      } catch (e) { /* non-fatal */ }
+
+      const dropzone = document.getElementById('dropzone');
+      const fileInput = document.getElementById('file-input');
+      const uploadBtn = document.getElementById('upload-btn');
+      const progress = document.getElementById('progress');
+      const progressBar = document.getElementById('progress-bar');
+      const progressPct = document.getElementById('progress-pct');
+      const progressLabel = document.getElementById('progress-label');
+      const statusEl = document.getElementById('status');
+      const statusLed = document.getElementById('status-led');
+      const statusLabel = document.getElementById('status-label');
+      const skipLink = document.getElementById('skip-link');
+
+      skipLink.href = '/cmms?token=' + encodeURIComponent(token);
+
+      const cmmsBtn = document.getElementById('cmms-btn');
+      if (cmmsBtn) cmmsBtn.href = '/api/cmms/login?token=' + encodeURIComponent(token);
+
+      // Build 20 fuel-gauge segments
+      const SEG_COUNT = 20;
+      const segments = [];
+      for (let i = 0; i < SEG_COUNT; i++) {
+        const seg = document.createElement('div');
+        seg.className = 'seg';
+        progressBar.appendChild(seg);
+        segments.push(seg);
+      }
+
+      function setSegments(pct, cls) {
+        const on = Math.round((pct / 100) * SEG_COUNT);
+        for (let i = 0; i < SEG_COUNT; i++) {
+          segments[i].classList.remove('on', 'ok');
+          if (i < on) segments[i].classList.add(cls || 'on');
+        }
+        progressPct.textContent = Math.max(0, Math.min(100, Math.round(pct))) + '%';
+      }
+
+      function setLed(cls) {
+        statusLed.className = 'led ' + cls;
+      }
+
+      function setBayLabel(text) {
+        statusLabel.textContent = text;
+      }
+
+      function setStatus(msg, level) {
+        statusEl.textContent = msg;
+        statusEl.className = 'status' + (level ? ' ' + level : '');
+      }
+
+      function openPicker() {
+        fileInput.click();
+      }
+
+      uploadBtn.addEventListener('click', openPicker);
+      dropzone.addEventListener('click', function (e) {
+        if (e.target === uploadBtn || uploadBtn.contains(e.target)) return;
+        openPicker();
+      });
+
+      dropzone.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+      dropzone.addEventListener('dragleave', function () {
+        dropzone.classList.remove('dragover');
+      });
+      dropzone.addEventListener('drop', function (e) {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      fileInput.addEventListener('change', function () {
+        if (fileInput.files && fileInput.files.length > 0) {
+          handleFile(fileInput.files[0]);
+        }
+      });
+
+      function handleFile(file) {
+        if (!file) return;
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+          failWith('UNSUPPORTED FORMAT — PDF ONLY');
+          return;
+        }
+        if (file.size > 50 * 1024 * 1024) {
+          failWith('FILE EXCEEDS 50 MB LIMIT');
+          return;
+        }
+        uploadFile(file);
+      }
+
+      function failWith(msg) {
+        setLed('err');
+        setBayLabel('LEARNING BAY / ERROR');
+        setStatus(msg, 'error');
+        uploadBtn.disabled = false;
+        progress.classList.remove('show');
+        setSegments(0);
+      }
+
+      function uploadFile(file) {
+        uploadBtn.disabled = true;
+        progress.classList.add('show');
+        setLed('working');
+        setBayLabel('LEARNING BAY / ACTIVE');
+        progressLabel.textContent = 'INGESTING / ' + (file.name.length > 36 ? file.name.slice(0, 33) + '...' : file.name);
+        setSegments(5);
+        setStatus('Opening channel…');
+
+        const form = new FormData();
+        form.append('file', file);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/ingest/manual');
+        xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+
+        xhr.upload.addEventListener('progress', function (e) {
+          if (e.lengthComputable) {
+            const pct = Math.max(5, Math.round((e.loaded / e.total) * 85));
+            setSegments(pct);
+            setStatus('Transmitting ' + Math.round(e.loaded / 1024) + ' KB of ' + Math.round(e.total / 1024) + ' KB');
+          }
+        });
+
+        xhr.upload.addEventListener('load', function () {
+          setSegments(90);
+          setStatus('Handing off to indexer…');
+        });
+
+        xhr.addEventListener('load', function () {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setSegments(100, 'ok');
+            setLed('ok');
+            setBayLabel('LEARNING BAY / COMPLETE');
+            progressLabel.textContent = 'INDEXING';
+            progressPct.textContent = 'OK';
+            setStatus('MIRA is learning your equipment. Heading to your workspace…', 'success');
+            setTimeout(function () {
+              location.href = '/cmms?token=' + encodeURIComponent(token) + '&first=1';
+            }, 2400);
+          } else if (xhr.status === 401 || xhr.status === 403) {
+            failWith('SESSION EXPIRED — REOPEN ACTIVATION EMAIL');
+          } else if (xhr.status === 413) {
+            failWith('FILE EXCEEDS 50 MB LIMIT');
+          } else if (xhr.status === 415) {
+            failWith('UNSUPPORTED FORMAT — PDF ONLY');
+          } else {
+            failWith('UPLOAD FAILED (HTTP ' + xhr.status + ') — RETRY OR OVERRIDE');
+          }
+        });
+
+        xhr.addEventListener('error', function () {
+          failWith('NETWORK ERROR — CHECK CONNECTION');
+        });
+
+        xhr.send(form);
+      }
+
+      // Set initial LED state
+      setLed('ready');
+
+      // ── CSV Import Handler ──
+      const csvDropzone = document.getElementById('csv-dropzone');
+      const csvFileInput = document.getElementById('csv-file-input');
+      const csvUploadBtn = document.getElementById('csv-upload-btn');
+      const csvProgress = document.getElementById('csv-progress');
+      const csvProgressBar = document.getElementById('csv-progress-bar');
+      const csvProgressPct = document.getElementById('csv-progress-pct');
+      const csvProgressLabel = document.getElementById('csv-progress-label');
+      const csvStatusEl = document.getElementById('csv-status');
+      const csvLed = document.getElementById('csv-led');
+      const csvStatusLabel = document.getElementById('csv-status-label');
+
+      if (csvLed) csvLed.className = 'led ready';
+
+      const CSV_SEG_COUNT = 20;
+      const csvSegments = [];
+      if (csvProgressBar) {
+        for (let i = 0; i < CSV_SEG_COUNT; i++) {
+          const seg = document.createElement('div');
+          seg.className = 'seg';
+          csvProgressBar.appendChild(seg);
+          csvSegments.push(seg);
+        }
+      }
+
+      function setCsvSegments(pct, cls) {
+        const on = Math.round((pct / 100) * CSV_SEG_COUNT);
+        for (let i = 0; i < CSV_SEG_COUNT; i++) {
+          csvSegments[i].classList.remove('on', 'ok');
+          if (i < on) csvSegments[i].classList.add(cls || 'on');
+        }
+        if (csvProgressPct) csvProgressPct.textContent = Math.round(pct) + '%';
+      }
+
+      function csvFail(msg) {
+        if (csvLed) csvLed.className = 'led err';
+        if (csvStatusLabel) csvStatusLabel.textContent = 'HISTORY IMPORT / ERROR';
+        if (csvStatusEl) { csvStatusEl.textContent = msg; csvStatusEl.className = 'status error'; }
+        if (csvUploadBtn) csvUploadBtn.disabled = false;
+        if (csvProgress) csvProgress.classList.remove('show');
+        setCsvSegments(0);
+      }
+
+      function openCsvPicker() { if (csvFileInput) csvFileInput.click(); }
+
+      if (csvUploadBtn) csvUploadBtn.addEventListener('click', openCsvPicker);
+      if (csvDropzone) {
+        csvDropzone.addEventListener('click', function (e) {
+          if (e.target === csvUploadBtn || (csvUploadBtn && csvUploadBtn.contains(e.target))) return;
+          openCsvPicker();
+        });
+        csvDropzone.addEventListener('dragover', function (e) { e.preventDefault(); csvDropzone.classList.add('dragover'); });
+        csvDropzone.addEventListener('dragleave', function () { csvDropzone.classList.remove('dragover'); });
+        csvDropzone.addEventListener('drop', function (e) {
+          e.preventDefault();
+          csvDropzone.classList.remove('dragover');
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleCsvFile(e.dataTransfer.files[0]);
+        });
+      }
+
+      if (csvFileInput) csvFileInput.addEventListener('change', function () {
+        if (csvFileInput.files && csvFileInput.files.length > 0) handleCsvFile(csvFileInput.files[0]);
+      });
+
+      function handleCsvFile(file) {
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith('.csv')) { csvFail('UNSUPPORTED FORMAT — CSV ONLY'); return; }
+        if (file.size > 5 * 1024 * 1024) { csvFail('FILE EXCEEDS 5 MB LIMIT'); return; }
+        uploadCsvFile(file);
+      }
+
+      function uploadCsvFile(file) {
+        if (csvUploadBtn) csvUploadBtn.disabled = true;
+        if (csvProgress) csvProgress.classList.add('show');
+        if (csvLed) csvLed.className = 'led working';
+        if (csvStatusLabel) csvStatusLabel.textContent = 'HISTORY IMPORT / ACTIVE';
+        if (csvProgressLabel) csvProgressLabel.textContent = 'IMPORTING / ' + (file.name.length > 30 ? file.name.slice(0, 27) + '...' : file.name);
+        setCsvSegments(10);
+        if (csvStatusEl) { csvStatusEl.textContent = 'Uploading...'; csvStatusEl.className = 'status'; }
+
+        const form = new FormData();
+        form.append('file', file);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/cmms/import-csv');
+        xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+
+        xhr.upload.addEventListener('progress', function (e) {
+          if (e.lengthComputable) {
+            setCsvSegments(Math.max(10, Math.round((e.loaded / e.total) * 60)));
+          }
+        });
+
+        xhr.upload.addEventListener('load', function () {
+          setCsvSegments(70);
+          if (csvStatusEl) csvStatusEl.textContent = 'Processing rows...';
+        });
+
+        xhr.addEventListener('load', function () {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const result = JSON.parse(xhr.responseText);
+              setCsvSegments(100, 'ok');
+              if (csvLed) csvLed.className = 'led ok';
+              if (csvStatusLabel) csvStatusLabel.textContent = 'HISTORY IMPORT / COMPLETE';
+              if (csvProgressLabel) csvProgressLabel.textContent = 'IMPORTED';
+              if (csvProgressPct) csvProgressPct.textContent = 'OK';
+              const msg = result.imported + ' work orders imported' + (result.failed > 0 ? ', ' + result.failed + ' skipped' : '') + '.';
+              if (csvStatusEl) { csvStatusEl.textContent = msg; csvStatusEl.className = 'status success'; }
+            } catch {
+              csvFail('UNEXPECTED RESPONSE');
+            }
+          } else if (xhr.status === 401 || xhr.status === 403) {
+            csvFail('SESSION EXPIRED — REOPEN ACTIVATION EMAIL');
+          } else if (xhr.status === 413) {
+            csvFail('FILE EXCEEDS 5 MB LIMIT');
+          } else {
+            csvFail('IMPORT FAILED (HTTP ' + xhr.status + ')');
+          }
+          if (csvUploadBtn) csvUploadBtn.disabled = false;
+        });
+
+        xhr.addEventListener('error', function () { csvFail('NETWORK ERROR'); });
+        xhr.send(form);
+      }
+    })();
+  </script>
+</body>
+</html>

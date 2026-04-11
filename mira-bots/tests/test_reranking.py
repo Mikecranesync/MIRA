@@ -143,6 +143,7 @@ class TestRerankingIntegration:
     @pytest.mark.asyncio
     async def test_rerank_called_for_photo_query(self):
         worker = _make_rag_worker()
+        worker._ingest_url = ""  # force text-embed fallback instead of _visual_search
         worker._call_llm = AsyncMock(return_value='{"reply": "test", "next_state": "Q1"}')
         worker._embed_ollama = AsyncMock(return_value=[0.1] * 768)
 
@@ -162,6 +163,7 @@ class TestRerankingIntegration:
     @pytest.mark.asyncio
     async def test_photo_query_embeds_with_asset_context(self):
         worker = _make_rag_worker()
+        worker._ingest_url = ""  # force text-embed fallback instead of _visual_search
         worker._call_llm = AsyncMock(return_value='{"reply": "test", "next_state": "Q1"}')
         worker._embed_ollama = AsyncMock(return_value=[0.1] * 768)
 

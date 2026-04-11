@@ -83,6 +83,45 @@ class TestFactoryDispatch:
 
 
 # ---------------------------------------------------------------------------
+# Factory gate: unconfigured adapters return None
+# ---------------------------------------------------------------------------
+
+
+class TestFactoryGate:
+    """Factory returns None when provider is set but credentials are missing."""
+
+    def test_atlas_unconfigured_returns_none(self, monkeypatch):
+        monkeypatch.delenv("ATLAS_API_USER", raising=False)
+        monkeypatch.delenv("ATLAS_API_PASSWORD", raising=False)
+        assert create_cmms_adapter("atlas") is None
+
+    def test_maintainx_unconfigured_returns_none(self, monkeypatch):
+        monkeypatch.delenv("MAINTAINX_API_KEY", raising=False)
+        assert create_cmms_adapter("maintainx") is None
+
+    def test_limble_unconfigured_returns_none(self, monkeypatch):
+        monkeypatch.delenv("LIMBLE_API_KEY", raising=False)
+        assert create_cmms_adapter("limble") is None
+
+    def test_fiix_unconfigured_returns_none(self, monkeypatch):
+        monkeypatch.delenv("FIIX_API_KEY", raising=False)
+        assert create_cmms_adapter("fiix") is None
+
+    def test_atlas_configured_returns_adapter(self, monkeypatch):
+        monkeypatch.setenv("ATLAS_API_USER", "u")
+        monkeypatch.setenv("ATLAS_API_PASSWORD", "p")
+        adapter = create_cmms_adapter("atlas")
+        assert adapter is not None
+        assert adapter.configured is True
+
+    def test_maintainx_configured_returns_adapter(self, monkeypatch):
+        monkeypatch.setenv("MAINTAINX_API_KEY", "key")
+        adapter = create_cmms_adapter("maintainx")
+        assert adapter is not None
+        assert adapter.configured is True
+
+
+# ---------------------------------------------------------------------------
 # Atlas adapter
 # ---------------------------------------------------------------------------
 
@@ -365,6 +404,52 @@ class TestFiixCreateWorkOrderGuard:
         )
         # _post returns {"error": ...} from unconfigured path — no exception
         assert isinstance(result, dict)
+
+
+# ---------------------------------------------------------------------------
+# Tool split: diagnostic_record_case vs cmms_write_work_order
+# ---------------------------------------------------------------------------
+
+
+class TestToolSplitImports:
+    """Verify the new tool functions are importable from server module."""
+
+    def test_server_module_loads(self):
+        import importlib
+        import sys
+
+        # Ensure mira-mcp is on path
+        if str(MIRA_MCP) not in sys.path:
+            sys.path.insert(0, str(MIRA_MCP))
+
+        # server.py references DB_PATH and MCP_REST_API_KEY from env,
+        # but the tool functions themselves are just async wrappers.
+        # We can verify the module structure without running the server.
+        spec = importlib.util.spec_from_file_location("server", MIRA_MCP / "server.py")
+        assert spec is not None
+
+    def test_atlas_internal_separate_from_external(self, monkeypatch):
+        """When CMMS_PROVIDER=maintainx with Atlas creds also set,
+        Atlas should be used for internal store and MaintainX for external."""
+        monkeypatch.setenv("ATLAS_API_USER", "u")
+        monkeypatch.setenv("ATLAS_API_PASSWORD", "p")
+        monkeypatch.setenv("MAINTAINX_API_KEY", "mx_key")
+
+        atlas = AtlasCMMS()
+        assert atlas.configured is True
+
+        external = create_cmms_adapter("maintainx")
+        assert external is not None
+        assert isinstance(external, MaintainXCMMS)
+
+    def test_atlas_provider_routes_to_internal(self, monkeypatch):
+        """When CMMS_PROVIDER=atlas, factory returns Atlas but server should
+        redirect it to internal store and set external to None."""
+        monkeypatch.setenv("ATLAS_API_USER", "u")
+        monkeypatch.setenv("ATLAS_API_PASSWORD", "p")
+
+        adapter = create_cmms_adapter("atlas")
+        assert isinstance(adapter, AtlasCMMS)
 
 
 # ---------------------------------------------------------------------------

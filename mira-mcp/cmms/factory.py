@@ -28,19 +28,25 @@ def create_cmms_adapter(provider: str | None = None) -> CMMSAdapter | None:
 
     provider = provider.lower().strip()
 
+    adapter: CMMSAdapter | None = None
     match provider:
         case "atlas":
             from cmms.atlas import AtlasCMMS
-            return AtlasCMMS()
+            adapter = AtlasCMMS()
         case "maintainx":
             from cmms.maintainx import MaintainXCMMS
-            return MaintainXCMMS()
+            adapter = MaintainXCMMS()
         case "limble":
             from cmms.limble import LimbleCMMS
-            return LimbleCMMS()
+            adapter = LimbleCMMS()
         case "fiix":
             from cmms.fiix import FiixCMMS
-            return FiixCMMS()
+            adapter = FiixCMMS()
         case _:
             logger.error("Unknown CMMS_PROVIDER: %s", provider)
             return None
+
+    if adapter is not None and not adapter.configured:
+        logger.warning("CMMS provider '%s' selected but not configured — CMMS disabled", provider)
+        return None
+    return adapter

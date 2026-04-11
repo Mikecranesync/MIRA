@@ -29,27 +29,38 @@ def _engine():
 
 def get_tenant(tenant_id: str) -> dict[str, Any] | None:
     with _engine().connect() as conn:
-        row = conn.execute(
-            text("SELECT * FROM tenants WHERE id = :id"),
-            {"id": tenant_id},
-        ).mappings().fetchone()
+        row = (
+            conn.execute(
+                text("SELECT * FROM tenants WHERE id = :id"),
+                {"id": tenant_id},
+            )
+            .mappings()
+            .fetchone()
+        )
     return dict(row) if row else None
 
 
 def get_tier_limits(tier: str) -> dict[str, Any] | None:
     with _engine().connect() as conn:
-        row = conn.execute(
-            text("SELECT * FROM tier_limits WHERE tier = :tier"),
-            {"tier": tier},
-        ).mappings().fetchone()
+        row = (
+            conn.execute(
+                text("SELECT * FROM tier_limits WHERE tier = :tier"),
+                {"tier": tier},
+            )
+            .mappings()
+            .fetchone()
+        )
     return dict(row) if row else None
 
 
-def recall_knowledge(embedding: list[float], tenant_id: str, limit: int = 5) -> list[dict[str, Any]]:
+def recall_knowledge(
+    embedding: list[float], tenant_id: str, limit: int = 5
+) -> list[dict[str, Any]]:
     """pgvector cosine similarity search over knowledge_entries."""
     with _engine().connect() as conn:
-        rows = conn.execute(
-            text("""
+        rows = (
+            conn.execute(
+                text("""
                 SELECT
                     content,
                     manufacturer,
@@ -64,16 +75,22 @@ def recall_knowledge(embedding: list[float], tenant_id: str, limit: int = 5) -> 
                 ORDER BY embedding <=> cast(:emb AS vector)
                 LIMIT :lim
             """),
-            {"emb": str(embedding), "tid": tenant_id, "lim": limit},
-        ).mappings().fetchall()
+                {"emb": str(embedding), "tid": tenant_id, "lim": limit},
+            )
+            .mappings()
+            .fetchall()
+        )
     return [dict(r) for r in rows]
 
 
-def recall_by_image(image_vector: list[float], tenant_id: str, limit: int = 5) -> list[dict[str, Any]]:
+def recall_by_image(
+    image_vector: list[float], tenant_id: str, limit: int = 5
+) -> list[dict[str, Any]]:
     """pgvector cosine similarity search over image_embedding column."""
     with _engine().connect() as conn:
-        rows = conn.execute(
-            text("""
+        rows = (
+            conn.execute(
+                text("""
                 SELECT
                     content,
                     manufacturer,
@@ -88,8 +105,11 @@ def recall_by_image(image_vector: list[float], tenant_id: str, limit: int = 5) -
                 ORDER BY image_embedding <=> cast(:emb AS vector)
                 LIMIT :lim
             """),
-            {"emb": str(image_vector), "tid": tenant_id, "lim": limit},
-        ).mappings().fetchall()
+                {"emb": str(image_vector), "tid": tenant_id, "lim": limit},
+            )
+            .mappings()
+            .fetchall()
+        )
     return [dict(r) for r in rows]
 
 
@@ -97,13 +117,16 @@ def ensure_image_embedding_column() -> None:
     """Additive migration: add image_embedding vector(768) column if absent."""
     try:
         with _engine().connect() as conn:
-            conn.execute(text(
-                "ALTER TABLE knowledge_entries "
-                "ADD COLUMN IF NOT EXISTS image_embedding vector(768)"
-            ))
+            conn.execute(
+                text(
+                    "ALTER TABLE knowledge_entries "
+                    "ADD COLUMN IF NOT EXISTS image_embedding vector(768)"
+                )
+            )
             conn.commit()
     except Exception as exc:
         import logging
+
         logging.getLogger("mira-ingest").warning(
             "image_embedding column migration failed (non-fatal): %s", exc
         )
@@ -131,11 +154,17 @@ def check_tier_limit(tenant_id: str) -> tuple[bool, str]:
             return (True, "")
 
         with _engine().connect() as conn:
-            today_count = conn.execute(text("""
+            today_count = (
+                conn.execute(
+                    text("""
                 SELECT COUNT(*) FROM knowledge_entries
                 WHERE tenant_id = :tid
                   AND created_at >= CURRENT_DATE
-            """), {"tid": tenant_id}).scalar() or 0
+            """),
+                    {"tid": tenant_id},
+                ).scalar()
+                or 0
+            )
 
         if today_count >= daily_limit:
             return (False, f"Daily limit of {daily_limit} requests reached for tier '{tier}'")
@@ -159,6 +188,7 @@ def health_check() -> dict[str, Any]:
 # Manual ingest helpers (write path — used by mira-core/scripts/ingest_manuals.py)
 # ---------------------------------------------------------------------------
 
+
 def get_pending_urls() -> list[dict[str, Any]]:
     """Return all URLs queued for ingest from the three source tables.
 
@@ -168,56 +198,80 @@ def get_pending_urls() -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     with _engine().connect() as conn:
         # source_fingerprints: atoms_created = 0, skip example.com sentinel
-        rows = conn.execute(text(
-            "SELECT id, url, source_type FROM source_fingerprints "
-            "WHERE atoms_created = 0 AND url NOT LIKE 'https://example.com%'"
-        )).mappings().fetchall()
+        rows = (
+            conn.execute(
+                text(
+                    "SELECT id, url, source_type FROM source_fingerprints "
+                    "WHERE atoms_created = 0 AND url NOT LIKE 'https://example.com%'"
+                )
+            )
+            .mappings()
+            .fetchall()
+        )
         for r in rows:
-            results.append({
-                "source_table": "source_fingerprints",
-                "row_id": r["id"],
-                "url": r["url"],
-                "source_type": r["source_type"],
-                "manufacturer": None,
-                "model": None,
-                "title": None,
-            })
+            results.append(
+                {
+                    "source_table": "source_fingerprints",
+                    "row_id": r["id"],
+                    "url": r["url"],
+                    "source_type": r["source_type"],
+                    "manufacturer": None,
+                    "model": None,
+                    "title": None,
+                }
+            )
 
         # manual_cache: pdf_stored = false
-        rows = conn.execute(text(
-            "SELECT id, manual_url, manufacturer, model, manual_title "
-            "FROM manual_cache WHERE pdf_stored = false AND manual_url IS NOT NULL"
-        )).mappings().fetchall()
+        rows = (
+            conn.execute(
+                text(
+                    "SELECT id, manual_url, manufacturer, model, manual_title "
+                    "FROM manual_cache WHERE pdf_stored = false AND manual_url IS NOT NULL"
+                )
+            )
+            .mappings()
+            .fetchall()
+        )
         for r in rows:
             url = r["manual_url"]
             source_type = "pdf" if url.lower().endswith(".pdf") else "web"
-            results.append({
-                "source_table": "manual_cache",
-                "row_id": r["id"],
-                "url": url,
-                "source_type": source_type,
-                "manufacturer": r["manufacturer"],
-                "model": r["model"],
-                "title": r["manual_title"],
-            })
+            results.append(
+                {
+                    "source_table": "manual_cache",
+                    "row_id": r["id"],
+                    "url": url,
+                    "source_type": source_type,
+                    "manufacturer": r["manufacturer"],
+                    "model": r["model"],
+                    "title": r["manual_title"],
+                }
+            )
 
         # manuals: is_verified = false, file_url present
-        rows = conn.execute(text(
-            "SELECT id, file_url, manufacturer, model_number, title "
-            "FROM manuals WHERE is_verified = false AND file_url IS NOT NULL"
-        )).mappings().fetchall()
+        rows = (
+            conn.execute(
+                text(
+                    "SELECT id, file_url, manufacturer, model_number, title "
+                    "FROM manuals WHERE is_verified = false AND file_url IS NOT NULL"
+                )
+            )
+            .mappings()
+            .fetchall()
+        )
         for r in rows:
             url = r["file_url"]
             source_type = "pdf" if url.lower().endswith(".pdf") else "web"
-            results.append({
-                "source_table": "manuals",
-                "row_id": str(r["id"]),
-                "url": url,
-                "source_type": source_type,
-                "manufacturer": r["manufacturer"],
-                "model": r["model_number"],
-                "title": r["title"],
-            })
+            results.append(
+                {
+                    "source_table": "manuals",
+                    "row_id": str(r["id"]),
+                    "url": url,
+                    "source_type": source_type,
+                    "manufacturer": r["manufacturer"],
+                    "model": r["model_number"],
+                    "title": r["title"],
+                }
+            )
 
     return results
 
@@ -225,12 +279,15 @@ def get_pending_urls() -> list[dict[str, Any]]:
 def knowledge_entry_exists(tenant_id: str, source_url: str, chunk_index: int) -> bool:
     """Check if a chunk has already been ingested (dedup guard)."""
     with _engine().connect() as conn:
-        count = conn.execute(text(
-            "SELECT COUNT(*) FROM knowledge_entries "
-            "WHERE tenant_id = :tid "
-            "AND source_url = :url "
-            "AND source_page = :chunk"
-        ), {"tid": tenant_id, "url": source_url, "chunk": chunk_index}).scalar()
+        count = conn.execute(
+            text(
+                "SELECT COUNT(*) FROM knowledge_entries "
+                "WHERE tenant_id = :tid "
+                "AND source_url = :url "
+                "AND source_page = :chunk"
+            ),
+            {"tid": tenant_id, "url": source_url, "chunk": chunk_index},
+        ).scalar()
     return (count or 0) > 0
 
 
@@ -257,7 +314,8 @@ def insert_knowledge_entry(
         "chunk_type": chunk_type,
     }
     with _engine().connect() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             INSERT INTO knowledge_entries
                 (id, tenant_id, source_type, manufacturer, model_number,
                  content, embedding, source_url, source_page, metadata,
@@ -266,19 +324,21 @@ def insert_knowledge_entry(
                 (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                  :content, cast(:embedding AS vector), :source_url, :source_page, cast(:metadata AS jsonb),
                  false, false, :chunk_type)
-        """), {
-            "id": entry_id,
-            "tenant_id": tenant_id,
-            "source_type": source_type,
-            "manufacturer": manufacturer,
-            "model_number": model_number,
-            "content": content,
-            "embedding": str(embedding),
-            "source_url": source_url,
-            "source_page": chunk_index,
-            "metadata": json.dumps(meta),
-            "chunk_type": chunk_type,
-        })
+        """),
+            {
+                "id": entry_id,
+                "tenant_id": tenant_id,
+                "source_type": source_type,
+                "manufacturer": manufacturer,
+                "model_number": model_number,
+                "content": content,
+                "embedding": str(embedding),
+                "source_url": source_url,
+                "source_page": chunk_index,
+                "metadata": json.dumps(meta),
+                "chunk_type": chunk_type,
+            },
+        )
         conn.commit()
     return entry_id
 
@@ -296,7 +356,8 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
         return 0
     with _engine().connect() as conn:
         for entry in entries:
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 INSERT INTO knowledge_entries
                     (id, tenant_id, source_type, manufacturer, model_number,
                      content, embedding, source_url, source_page, metadata,
@@ -305,33 +366,39 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
                     (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                      :content, cast(:embedding AS vector), :source_url, :source_page,
                      cast(:metadata AS jsonb), false, false, :chunk_type)
-            """), entry)
+            """),
+                entry,
+            )
         conn.commit()
     return len(entries)
 
 
 def mark_source_fingerprint_done(row_id: int, atoms_created: int) -> None:
     with _engine().connect() as conn:
-        conn.execute(text(
-            "UPDATE source_fingerprints SET atoms_created = :n WHERE id = :id"
-        ), {"n": atoms_created, "id": row_id})
+        conn.execute(
+            text("UPDATE source_fingerprints SET atoms_created = :n WHERE id = :id"),
+            {"n": atoms_created, "id": row_id},
+        )
         conn.commit()
 
 
 def mark_manual_cache_done(row_id: int) -> None:
     with _engine().connect() as conn:
-        conn.execute(text(
-            "UPDATE manual_cache SET pdf_stored = true WHERE id = :id"
-        ), {"id": row_id})
+        conn.execute(
+            text("UPDATE manual_cache SET pdf_stored = true WHERE id = :id"), {"id": row_id}
+        )
         conn.commit()
 
 
 def mark_manual_verified(row_id: str) -> None:
     with _engine().connect() as conn:
-        conn.execute(text(
-            "UPDATE manuals SET is_verified = true, access_count = COALESCE(access_count, 0) + 1 "
-            "WHERE id = cast(:id AS uuid)"
-        ), {"id": row_id})
+        conn.execute(
+            text(
+                "UPDATE manuals SET is_verified = true, access_count = COALESCE(access_count, 0) + 1 "
+                "WHERE id = cast(:id AS uuid)"
+            ),
+            {"id": row_id},
+        )
         conn.commit()
 
 
@@ -339,13 +406,16 @@ def manual_exists_for(make: str, model: str, tenant_id: str) -> bool:
     """Check if we already have manual content for a given make/model in the KB."""
     try:
         with _engine().connect() as conn:
-            count = conn.execute(text("""
+            count = conn.execute(
+                text("""
                 SELECT COUNT(*) FROM knowledge_entries
                 WHERE tenant_id = :tid
                   AND source_type = 'manual'
                   AND LOWER(manufacturer) = LOWER(:make)
                   AND LOWER(model_number) = LOWER(:model)
-            """), {"tid": tenant_id, "make": make, "model": model}).scalar()
+            """),
+                {"tid": tenant_id, "make": make, "model": model},
+            ).scalar()
         return (count or 0) > 0
     except Exception:
         return False  # fail open — don't block ingest on lookup errors
@@ -374,23 +444,26 @@ def insert_manual_cache_url(
 ) -> bool:
     """Insert a newly-discovered URL into manual_cache. Returns True if inserted, False if duplicate."""
     with _engine().connect() as conn:
-        exists = conn.execute(text(
-            "SELECT 1 FROM manual_cache WHERE manual_url = :url LIMIT 1"
-        ), {"url": manual_url}).fetchone()
+        exists = conn.execute(
+            text("SELECT 1 FROM manual_cache WHERE manual_url = :url LIMIT 1"), {"url": manual_url}
+        ).fetchone()
         if exists:
             return False
-        conn.execute(text("""
+        conn.execute(
+            text("""
             INSERT INTO manual_cache
                 (manufacturer, model, manual_url, manual_title, pdf_stored, source, confidence)
             VALUES
                 (:mfr, :model, :url, :title, false, :source, :conf)
-        """), {
-            "mfr": manufacturer,
-            "model": model,
-            "url": manual_url,
-            "title": manual_title,
-            "source": source,
-            "conf": confidence,
-        })
+        """),
+            {
+                "mfr": manufacturer,
+                "model": model,
+                "url": manual_url,
+                "title": manual_title,
+                "source": source,
+                "conf": confidence,
+            },
+        )
         conn.commit()
     return True

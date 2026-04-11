@@ -25,9 +25,9 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
-from config import CrawlerConfig
-
 from crawler.base_crawler import BaseCrawler
+
+from config import CrawlerConfig
 
 logger = logging.getLogger("mira-crawler.csv")
 

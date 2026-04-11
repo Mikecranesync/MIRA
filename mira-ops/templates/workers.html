@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% set active_page = "workers" %}
+{% block title %}Workers — MIRA Ops{% endblock %}
+
+{% block content %}
+<div class="section-header">
+  <h2 class="section-title">Celery Workers</h2>
+  <span style="font-size:13px;color:#7a766c;">
+    {% if workers.connected %}
+    <span class="status-dot status-active"></span>Connected to broker
+    {% else %}
+    <span class="status-dot status-error"></span>Cannot reach broker
+    {% endif %}
+  </span>
+</div>
+
+<!-- Active Tasks -->
+<div style="margin-bottom:24px;">
+  <h3 class="section-title" style="font-size:14px;margin-bottom:12px;">Active Tasks</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Worker</th>
+          <th>Task</th>
+          <th>ID</th>
+          <th>Started</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for worker_name, tasks in workers.active.items() %}
+          {% for task in tasks %}
+          <tr>
+            <td style="color:#e4e0d8">{{ worker_name }}</td>
+            <td>{{ task.name or task.get('type', '—') }}</td>
+            <td style="color:#7a766c;font-size:12px">{{ task.id[:12] }}...</td>
+            <td style="color:#7a766c;font-size:12px">{{ task.get('time_start', '—') }}</td>
+          </tr>
+          {% endfor %}
+        {% endfor %}
+        {% set all_active = [] %}{% for w, tasks in workers.active.items() %}{% for t in tasks %}{% if all_active.append(t) %}{% endif %}{% endfor %}{% endfor %}
+        {% if not all_active %}
+        <tr>
+          <td colspan="4" style="text-align:center;color:#7a766c;padding:24px">
+            No tasks currently running.
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Scheduled Tasks -->
+<div style="margin-bottom:24px;">
+  <h3 class="section-title" style="font-size:14px;margin-bottom:12px;">Scheduled (Beat)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Worker</th>
+          <th>Tasks Pending</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for worker_name, tasks in workers.scheduled.items() %}
+        <tr>
+          <td style="color:#e4e0d8">{{ worker_name }}</td>
+          <td>{{ tasks|length }} task(s) scheduled</td>
+        </tr>
+        {% endfor %}
+        {% if not workers.scheduled %}
+        <tr>
+          <td colspan="2" style="text-align:center;color:#7a766c;padding:24px">
+            No scheduled tasks.
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Worker Stats -->
+<div>
+  <h3 class="section-title" style="font-size:14px;margin-bottom:12px;">Worker Stats</h3>
+  <div class="card-grid">
+    {% for worker_name, stat in workers.stats.items() %}
+    <div class="card">
+      <div style="color:#e4e0d8;font-size:14px;font-weight:600;margin-bottom:8px;">{{ worker_name }}</div>
+      <div style="font-size:13px;color:#7a766c;line-height:1.8;">
+        <div>Pool: {{ stat.get('pool', {}).get('implementation', '—') }}</div>
+        <div>Concurrency: {{ stat.get('pool', {}).get('max-concurrency', '—') }}</div>
+        <div>Total tasks: {{ stat.get('total', {})|length if stat.get('total') else 0 }} type(s)</div>
+        <div>Uptime: {% set clk = stat.get('clock', 0) %}{{ (clk|float / 3600)|round(1) if clk else '—' }}h</div>
+      </div>
+    </div>
+    {% endfor %}
+    {% if not workers.stats %}
+    <div class="card" style="text-align:center;color:#7a766c;padding:24px;">
+      No worker stats available. Are workers running?
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Link to Flower -->
+<div style="margin-top:24px;text-align:center;">
+  <a href="http://localhost:5555" target="_blank" class="btn btn-ghost">
+    Open Celery Flower (detailed monitoring)
+  </a>
+</div>
+{% endblock %}

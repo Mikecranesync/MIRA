@@ -11,7 +11,7 @@ import sys
 
 def run_intent_tests(test_cases: list[dict]) -> tuple[int, int, list[str]]:
     """Run intent classification tests. No LLM/HTTP needed."""
-    from shared.guardrails import classify_intent, check_output
+    from shared.guardrails import check_output, classify_intent
 
     passed = 0
     failed = 0
@@ -31,13 +31,13 @@ def run_intent_tests(test_cases: list[dict]) -> tuple[int, int, list[str]]:
         guardrail_ok = True
         if should_not_contain and expected:
             # Create a fake bad response containing forbidden content
-            bad_response = f"The soft starter modbus fault code overcurrent on the motor"
+            bad_response = "The soft starter modbus fault code overcurrent on the motor"
             cleaned = check_output(bad_response, expected, has_photo=False)
             for forbidden in should_not_contain:
                 if forbidden.lower() in cleaned.lower():
                     guardrail_ok = False
                     failures.append(
-                        f"  FAIL [{i+1}] guardrail: '{forbidden}' found in "
+                        f"  FAIL [{i + 1}] guardrail: '{forbidden}' found in "
                         f"cleaned output for intent={expected}"
                     )
 
@@ -49,7 +49,7 @@ def run_intent_tests(test_cases: list[dict]) -> tuple[int, int, list[str]]:
             status = "FAIL"
             if not intent_ok:
                 failures.append(
-                    f"  FAIL [{i+1}] intent: input={input_text!r} "
+                    f"  FAIL [{i + 1}] intent: input={input_text!r} "
                     f"expected={expected} got={actual_intent}"
                 )
 
@@ -117,9 +117,7 @@ def run_rewrite_tests(test_cases: list[dict]) -> tuple[int, int, list[str]]:
             print(f"  [PASS] {input_text!r} -> {rewritten!r}")
         else:
             failed += 1
-            failures.append(
-                f"  FAIL rewrite: {input_text!r} missing {missing} in {rewritten!r}"
-            )
+            failures.append(f"  FAIL rewrite: {input_text!r} missing {missing} in {rewritten!r}")
             print(f"  [FAIL] {input_text!r} -> {rewritten!r} (missing {missing})")
 
     return passed, failed, failures
@@ -153,9 +151,11 @@ def main():
     total_failed += f
     all_failures.extend(fails)
 
-    print(f"\n{'='*50}")
-    print(f"Results: {total_passed} passed, {total_failed} failed, "
-          f"{total_passed + total_failed} total")
+    print(f"\n{'=' * 50}")
+    print(
+        f"Results: {total_passed} passed, {total_failed} failed, "
+        f"{total_passed + total_failed} total"
+    )
 
     if all_failures:
         print("\nFailures:")

@@ -7,11 +7,12 @@
 
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import type { Context, Next } from "hono";
+import { findTenantById } from "./quota.js";
 
 export interface MiraTokenPayload extends JWTPayload {
   sub: string; // tenant_id (UUID)
   email: string;
-  tier: string; // "free" | "pro" | "enterprise"
+  tier: string; // "pending" | "active" | "churned"
   atlasCompanyId: number;
   atlasUserId: number;
 }
@@ -71,6 +72,38 @@ export async function requireAuth(c: Context, next: Next) {
   const payload = await verifyToken(raw);
   if (!payload) {
     return c.json({ error: "Invalid or expired token" }, 401);
+  }
+
+  c.set("user", payload);
+  await next();
+}
+
+/**
+ * Hono middleware — requireAuth + verify tenant tier is 'active' in NeonDB.
+ * Returns 403 if tier is not active. Use for product routes (chat, CMMS).
+ * Use requireAuth (not requireActive) for routes any authenticated user needs
+ * (e.g., billing portal).
+ */
+export async function requireActive(c: Context, next: Next) {
+  const header = c.req.header("Authorization");
+  const query = c.req.query("token");
+  const raw = header ? header.replace("Bearer ", "") : query;
+
+  if (!raw) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const payload = await verifyToken(raw);
+  if (!payload) {
+    return c.json({ error: "Invalid or expired token" }, 401);
+  }
+
+  const tenant = await findTenantById(payload.sub);
+  if (!tenant || tenant.tier !== "active") {
+    return c.json(
+      { error: "Subscription required", tier: tenant?.tier || "unknown" },
+      403
+    );
   }
 
   c.set("user", payload);

@@ -20,6 +20,17 @@ services:
       - PLG_DAILY_FREE_QUERIES=${PLG_DAILY_FREE_QUERIES:-5}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
+      - PUBLIC_URL=${PUBLIC_URL:-https://factorylm.com}
+      - LOOM_URL_1=${LOOM_URL_1:-}
+      - LOOM_URL_2=${LOOM_URL_2:-}
+      - LOOM_URL_3=${LOOM_URL_3:-}
+      - LOOM_URL_4=${LOOM_URL_4:-}
+      - LOOM_URL_5=${LOOM_URL_5:-}
+      - LOOM_UPLOAD_URL=${LOOM_UPLOAD_URL:-}
+      - MIRA_MCP_URL=${MIRA_MCP_URL:-http://mira-mcp:8001}
     networks:
       - core-net
       - cmms-net

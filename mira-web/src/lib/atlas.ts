@@ -120,8 +120,8 @@ export async function createWorkOrder(wo: {
   status?: string;
   category?: string;
   companyId?: number;
-}): Promise<Record<string, unknown>> {
-  const token = await adminToken();
+}, authToken?: string): Promise<Record<string, unknown>> {
+  const token = authToken ?? await adminToken();
   const resp = await fetch(`${ATLAS_URL}/work-orders`, {
     method: "POST",
     headers: headers(token),
@@ -130,7 +130,6 @@ export async function createWorkOrder(wo: {
       description: wo.description,
       priority: wo.priority,
       status: wo.status || "OPEN",
-      category: wo.category || "CORRECTIVE",
     }),
   });
 
@@ -150,8 +149,8 @@ export async function createAsset(asset: {
   description?: string;
   model?: string;
   area?: string;
-}): Promise<Record<string, unknown>> {
-  const token = await adminToken();
+}, authToken?: string): Promise<Record<string, unknown>> {
+  const token = authToken ?? await adminToken();
   const resp = await fetch(`${ATLAS_URL}/assets`, {
     method: "POST",
     headers: headers(token),

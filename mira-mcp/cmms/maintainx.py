@@ -30,6 +30,10 @@ class MaintainXCMMS(CMMSAdapter):
         if not self.api_key:
             logger.warning("MAINTAINX_API_KEY not set — MaintainX CMMS disabled")
 
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key)
+
     def _headers(self) -> dict:
         return {
             "Authorization": f"Bearer {self.api_key}",
@@ -40,9 +44,7 @@ class MaintainXCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "MaintainX not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{API_BASE}{path}", headers=self._headers(), params=params
-            )
+            resp = await client.get(f"{API_BASE}{path}", headers=self._headers(), params=params)
             resp.raise_for_status()
             return resp.json()
 
@@ -50,9 +52,7 @@ class MaintainXCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "MaintainX not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{API_BASE}{path}", headers=self._headers(), json=payload
-            )
+            resp = await client.post(f"{API_BASE}{path}", headers=self._headers(), json=payload)
             resp.raise_for_status()
             return resp.json()
 
@@ -60,9 +60,7 @@ class MaintainXCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "MaintainX not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.patch(
-                f"{API_BASE}{path}", headers=self._headers(), json=payload
-            )
+            resp = await client.patch(f"{API_BASE}{path}", headers=self._headers(), json=payload)
             resp.raise_for_status()
             return resp.json()
 

@@ -1,0 +1,8 @@
+# FactoryLM robots.txt
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /demo/
+Disallow: /public/
+
+Sitemap: https://factorylm.com/sitemap.xml

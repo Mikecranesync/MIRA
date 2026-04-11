@@ -53,7 +53,9 @@ def _extract_fault_codes(query_text: str) -> list[str]:
 
 
 def recall_fault_code(
-    code: str, tenant_id: str, model: str | None = None,
+    code: str,
+    tenant_id: str,
+    model: str | None = None,
 ) -> list[dict]:
     """Deterministic fault code lookup from structured fault_codes table.
 
@@ -72,8 +74,10 @@ def recall_fault_code(
 
     try:
         engine = create_engine(
-            url, poolclass=NullPool,
-            connect_args={"sslmode": "require"}, pool_pre_ping=True,
+            url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
         )
         sql = (
             "SELECT code, description, cause, action, severity, "
@@ -92,7 +96,9 @@ def recall_fault_code(
         if results:
             logger.info(
                 "FAULT_CODE_LOOKUP code=%s model=%s hits=%d",
-                code, model or "*", len(results),
+                code,
+                model or "*",
+                len(results),
             )
         return results
     except Exception as exc:
@@ -137,8 +143,12 @@ def _like_search(conn, text_fn, tenant_id: str, codes: list[str], limit: int) ->
 
 
 def _product_search(
-    conn, text_fn, tenant_id: str, products: list[str],
-    embedding: list[float], limit: int,
+    conn,
+    text_fn,
+    tenant_id: str,
+    products: list[str],
+    embedding: list[float],
+    limit: int,
 ) -> list[dict]:
     """Search by product name, reranked by vector similarity to the query.
 
@@ -160,26 +170,36 @@ def _product_search(
         # Without this, pgvector's IVFFlat index scans cells and filters post-scan,
         # returning far fewer results than LIMIT when matching rows are sparse
         # across index cells (e.g., 2 of 278 PF40 chunks).
-        rows = conn.execute(text_fn(
-            "WITH product_chunks AS ("
-            "  SELECT content, manufacturer, model_number, equipment_type, "
-            "  source_type, embedding "
-            "  FROM knowledge_entries "
-            "  WHERE tenant_id = :tid "
-            "  AND model_number ILIKE :pat "
-            "  AND model_number NOT ILIKE :exclude "
-            "  AND embedding IS NOT NULL"
-            ") "
-            "SELECT content, manufacturer, model_number, equipment_type, "
-            "source_type, "
-            "1 - (embedding <=> cast(:emb AS vector)) AS similarity "
-            "FROM product_chunks "
-            "ORDER BY embedding <=> cast(:emb AS vector) "
-            "LIMIT :lim"
-        ), {
-            "tid": tenant_id, "pat": exact_pat, "exclude": exclude_pat,
-            "emb": str(embedding), "lim": limit,
-        }).mappings().fetchall()
+        rows = (
+            conn.execute(
+                text_fn(
+                    "WITH product_chunks AS ("
+                    "  SELECT content, manufacturer, model_number, equipment_type, "
+                    "  source_type, embedding "
+                    "  FROM knowledge_entries "
+                    "  WHERE tenant_id = :tid "
+                    "  AND model_number ILIKE :pat "
+                    "  AND model_number NOT ILIKE :exclude "
+                    "  AND embedding IS NOT NULL"
+                    ") "
+                    "SELECT content, manufacturer, model_number, equipment_type, "
+                    "source_type, "
+                    "1 - (embedding <=> cast(:emb AS vector)) AS similarity "
+                    "FROM product_chunks "
+                    "ORDER BY embedding <=> cast(:emb AS vector) "
+                    "LIMIT :lim"
+                ),
+                {
+                    "tid": tenant_id,
+                    "pat": exact_pat,
+                    "exclude": exclude_pat,
+                    "emb": str(embedding),
+                    "lim": limit,
+                },
+            )
+            .mappings()
+            .fetchall()
+        )
 
         for r in rows:
             key = r["content"][:100]
@@ -305,9 +325,7 @@ def recall_knowledge(
                 .mappings()
                 .fetchall()
             )
-            vector_results = [
-                dict(r) for r in vector_rows if r["similarity"] >= MIN_SIMILARITY
-            ]
+            vector_results = [dict(r) for r in vector_rows if r["similarity"] >= MIN_SIMILARITY]
 
             # Stage 2: Fault code — structured lookup first, ILIKE fallback
             fault_codes = _extract_fault_codes(query_text)
@@ -326,19 +344,19 @@ def recall_knowledge(
                             f"Action: {row.get('action', 'Not specified')}\n"
                             f"Severity: {row.get('severity', 'Not specified')}"
                         )
-                        structured_fault_results.append({
-                            "content": content,
-                            "manufacturer": row.get("manufacturer", ""),
-                            "model_number": row.get("equipment_model", ""),
-                            "equipment_type": "",
-                            "source_type": "fault_code_table",
-                            "similarity": 0.95,  # high confidence — deterministic match
-                        })
+                        structured_fault_results.append(
+                            {
+                                "content": content,
+                                "manufacturer": row.get("manufacturer", ""),
+                                "model_number": row.get("equipment_model", ""),
+                                "equipment_type": "",
+                                "source_type": "fault_code_table",
+                                "similarity": 0.95,  # high confidence — deterministic match
+                            }
+                        )
                 # ILIKE fallback for codes not in structured table
                 if not structured_fault_results:
-                    like_results = _like_search(
-                        conn, text, tenant_id, fault_codes, limit
-                    )
+                    like_results = _like_search(conn, text, tenant_id, fault_codes, limit)
 
             # Stage 3: Product name search (vector-reranked within product's manual)
             product_names = _extract_product_names(query_text)
@@ -349,18 +367,14 @@ def recall_knowledge(
                 )
 
         # Merge and determine retrieval path
-        results, retrieval_path = _merge_results(
-            vector_results, like_results, product_results
-        )
+        results, retrieval_path = _merge_results(vector_results, like_results, product_results)
 
         # Structured fault codes go at the very top (highest confidence)
         if structured_fault_results:
             results = structured_fault_results + results
             retrieval_path = "structured_fault+" + retrieval_path
 
-        top_vector_score = max(
-            (r.get("similarity", 0) for r in vector_results), default=0
-        )
+        top_vector_score = max((r.get("similarity", 0) for r in vector_results), default=0)
         logger.info(
             "NEON_RECALL tenant=%s hits=%d retrieval_path=%s "
             "fault_codes=%s products=%s top_vector_score=%.3f "

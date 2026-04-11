@@ -3,7 +3,7 @@
 **Version:** v0.5.3
 **Updated:** 2026-03-24
 **One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=claude` → Anthropic API | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
+**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
 
 ---
 
@@ -18,9 +18,10 @@ MIRA/
 ├── mira-cmms/          # Atlas CMMS — work orders, PM scheduling, asset registry (4 containers)
 ├── mira-hud/           # AR HUD desktop app (Express + Socket.IO, standalone)
 ├── mira-web/           # PLG acquisition funnel — Hono/Bun, /cmms landing + Mira AI chat (1 container)
+├── wiki/               # LLM-maintained ops wiki (Karpathy pattern) — open as Obsidian vault
 ├── tests/              # 5-regime testing framework (76 offline tests, 39 golden cases)
 ├── docs/               # PRD, ADRs, architecture C4 diagrams, runbooks
-├── tools/              # Photo pipeline, Google Drive/Photos ingest scripts
+├── tools/              # Photo pipeline, Google Drive/Photos ingest, Reddit→TG curation
 ├── install/            # Setup scripts, smoke tests
 ├── deployment/         # Admin guide, customer agreement
 └── plc/                # PLC program files (deferred to Config 4)
@@ -121,7 +122,11 @@ chore: build system, deps, tooling
 | `SLACK_BOT_TOKEN`    | mira-bot-slack                       |
 | `SLACK_APP_TOKEN`    | mira-bot-slack (Socket Mode)         |
 | `ANTHROPIC_API_KEY`  | mira-bots (Claude inference)         |
-| `INFERENCE_BACKEND`  | mira-bots — `"claude"` or `"local"` |
+| `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
+| `GROQ_API_KEY`       | mira-bots (Groq — primary free tier) |
+| `GROQ_MODEL`         | mira-bots — default: llama-3.3-70b-versatile |
+| `CEREBRAS_API_KEY`   | mira-bots (Cerebras — secondary free tier) |
+| `CEREBRAS_MODEL`     | mira-bots — default: llama-3.3-70b |
 | `CLAUDE_MODEL`       | mira-bots — default: claude-sonnet-4-6 |
 | `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest               |
 | `MCP_REST_API_KEY`   | mira-mcp (server), mira-bots (client)|
@@ -197,6 +202,8 @@ chore: build system, deps, tooling
 - `.claude/skills/` — domain skills for diagnostic workflow, adapters, inference, HUD, ingest
 - `docs/adr/` — Architecture Decision Records
 - `docs/runbooks/` — operational runbooks
+- `wiki/` — LLM-maintained ops wiki (Karpathy pattern). **Session start: read `wiki/hot.md`. Session end: update it.**
+- `wiki/SCHEMA.md` — operating instructions for the wiki
 - `.planning/STATE.md` — current sprint state and next task
 - `KNOWLEDGE.md` — deep institutional knowledge (architecture decisions, abandoned approaches, recurring problems)
 - `DEVLOG.md` — chronological development diary (Mar 11–27, 2026)

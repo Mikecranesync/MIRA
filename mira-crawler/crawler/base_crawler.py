@@ -11,15 +11,15 @@ import logging
 from urllib.parse import urlparse
 
 import httpx
-from config import CrawlerConfig
+from crawler.rate_limiter import RateLimiter
+from crawler.robots_checker import RobotsChecker
 from ingest.chunker import chunk_blocks
 from ingest.converter import extract_from_docling, extract_from_html, extract_from_pdf
 from ingest.dedup import DedupStore
 from ingest.embedder import embed_batch
 from ingest.store import store_chunks
 
-from crawler.rate_limiter import RateLimiter
-from crawler.robots_checker import RobotsChecker
+from config import CrawlerConfig
 
 logger = logging.getLogger("mira-crawler.base")
 

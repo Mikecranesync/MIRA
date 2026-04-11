@@ -1,6 +1,6 @@
 {
   "name": "mira-web",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "FactoryLM PLG funnel — CMMS acquisition & onboarding flow",
   "type": "module",
   "scripts": {
@@ -11,9 +11,11 @@
   "dependencies": {
     "hono": "^4.7.6",
     "jose": "^6.0.11",
-    "@neondatabase/serverless": "^1.0.0"
+    "@neondatabase/serverless": "^1.0.0",
+    "stripe": "^17.7.0"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/bun": "^1.2.0"
   },
   "license": "Apache-2.0"

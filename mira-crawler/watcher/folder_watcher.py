@@ -12,7 +12,6 @@ Usage:
 from __future__ import annotations
 
 import logging
-import threading
 from pathlib import Path
 
 from watchdog.events import FileSystemEventHandler

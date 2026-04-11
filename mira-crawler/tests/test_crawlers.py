@@ -9,11 +9,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import yaml
-
-from config import CrawlerConfig
 from crawler.base_crawler import BaseCrawler
 from crawler.curriculum import CurriculumCrawler
 from crawler.manufacturer import ManufacturerCrawler
+
+from config import CrawlerConfig
 
 
 def _make_config(tmp_path: Path, sources: dict | None = None) -> CrawlerConfig:

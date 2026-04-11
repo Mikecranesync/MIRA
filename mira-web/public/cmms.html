@@ -3,13 +3,92 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FactoryLM CMMS — AI-Powered Maintenance</title>
+  <title>FactoryLM — AI Troubleshooter for Maintenance Teams</title>
+  <meta name="description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime. Works alongside MaintainX, Limble, or UpKeep. Join the beta.">
+  <link rel="canonical" href="https://factorylm.com/cmms">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="FactoryLM — AI Troubleshooter for Maintenance Teams">
+  <meta property="og:description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime. Works alongside MaintainX, Limble, or UpKeep. Join the beta.">
+  <meta property="og:url" content="https://factorylm.com/cmms">
+  <meta property="og:image" content="https://factorylm.com/og-image.png">
+  <meta property="og:site_name" content="FactoryLM">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="FactoryLM — AI Troubleshooter for Maintenance Teams">
+  <meta name="twitter:description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime. Works alongside MaintainX, Limble, or UpKeep. Join the beta.">
+  <meta name="twitter:image" content="https://factorylm.com/og-image.png">
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "FactoryLM",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web, iOS, Android",
+    "description": "AI troubleshooter that knows your equipment. Reduce unplanned downtime by getting the right fix the first time — from your actual OEM manuals, not the internet. Works alongside MaintainX, Limble, and UpKeep.",
+    "url": "https://factorylm.com/cmms",
+    "featureList": [
+      "Fault diagnosis from OEM manuals — cites exact page and section",
+      "Photo-to-diagnosis: snap a nameplate or fault display, get the fix",
+      "Works alongside MaintainX, Limble, and UpKeep — no migration",
+      "Available via Telegram and Slack, even at 2am",
+      "CMMS write-back: auto-creates work orders in your existing system"
+    ]
+  }
+  </script>
+
+  <!-- FAQ Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is FactoryLM?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "FactoryLM is an AI troubleshooter that knows your equipment. When a machine faults, Mira tells you why it's failing — not just when — by searching your actual OEM manuals and returning the exact diagnostic steps in seconds. It works alongside your existing CMMS; no rip-and-replace required."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does this replace my CMMS?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. Mira works alongside MaintainX, Limble, UpKeep, or any CMMS you already use. It adds the diagnostic layer your CMMS doesn't have — the answer to 'what's wrong and how do I fix it right now.' The $297/month plan can even write work orders back into your existing CMMS automatically."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I try FactoryLM?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Sign up for the beta at $97/month — site license covering your entire team, unlimited queries. $297/month adds automatic work-order write-back into MaintainX, Limble, or UpKeep."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What equipment does FactoryLM support?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Mira works with any equipment you already have — upload the manual and it learns it. Pre-loaded knowledge covers Allen-Bradley PLCs, PowerFlex VFDs, Automation Direct GS10/GS20 drives, ABB and Yaskawa drives, FANUC CNC systems, and hydraulic power units. No new equipment required."
+        }
+      }
+    ]
+  }
+  </script>
+
   <link rel="stylesheet" href="/public/cmms.css">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#f5a623">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="FactoryLM CMMS">
+  <meta name="apple-mobile-web-app-title" content="FactoryLM">
   <link rel="apple-touch-icon" href="/public/icons/mira-192.png">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 </head>
@@ -18,11 +97,13 @@
 
   <!-- Topbar -->
   <nav class="topbar">
-    <div class="topbar-logo">
+    <a href="/" class="topbar-logo" style="text-decoration:none;color:var(--amber)">
       <i data-lucide="factory" style="width:20px;height:20px"></i>
-      FactoryLM <span>CMMS</span>
-    </div>
+      FactoryLM <span>Troubleshooter</span>
+    </a>
     <div class="topbar-right" id="topbar-right">
+      <a href="/blog" style="font-size:13px;color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms">Blog</a>
+      <a href="/blog/fault-codes" style="font-size:13px;color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms">Fault Codes</a>
       <span id="topbar-user" style="font-size:var(--text-xs);color:var(--text-muted);display:none"></span>
     </div>
   </nav>
@@ -32,8 +113,8 @@
 
     <!-- ── Hero (unauthenticated) ──────────────────────────── -->
     <section class="hero" id="hero-section">
-      <h1>Stop guessing. <em>Start diagnosing.</em></h1>
-      <p>AI-powered CMMS that tells you what's broken, why, and exactly how to fix it. 5 free Mira AI queries — no credit card.</p>
+      <h1>The AI troubleshooter that knows your <em>equipment.</em></h1>
+      <p>Works alongside your existing CMMS — MaintainX, Limble, or UpKeep. No migration. No rip-and-replace.</p>
 
       <!-- Signup Form -->
       <div class="signup-card" id="signup-form-wrap">
@@ -46,42 +127,79 @@
           <input type="text" id="f-company" placeholder="Acme Manufacturing" autocomplete="organization" required>
         </div>
         <div class="form-row">
-          <label for="f-firstname">First name (optional)</label>
+          <label for="f-firstname">First name</label>
           <input type="text" id="f-firstname" placeholder="Mike" autocomplete="given-name">
-        </div>
-        <div class="form-row">
-          <label for="f-role">Role (optional)</label>
-          <select id="f-role">
-            <option value="">Select your role</option>
-            <option value="technician">Maintenance Technician</option>
-            <option value="manager">Maintenance Manager</option>
-            <option value="engineer">Reliability Engineer</option>
-            <option value="director">Plant Director</option>
-            <option value="other">Other</option>
-          </select>
         </div>
         <div id="form-error" class="form-error"></div>
         <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
           <i data-lucide="zap" style="width:16px;height:16px"></i>
-          Create Account &amp; Get App
+          Join the Beta — $97/mo
         </button>
+        <p style="margin:8px 0 0;font-size:var(--text-xs);color:var(--text-muted);text-align:center">Site license — unlimited users. Cancel anytime.</p>
       </div>
 
-      <!-- Download step (shown after signup) -->
+      <!-- Confirmation (shown after signup) -->
       <div class="download-step" id="download-step">
         <p id="download-greeting"></p>
-        <button class="btn-primary" onclick="scrollToDashboard()">
-          <i data-lucide="arrow-down" style="width:16px;height:16px"></i>
-          Go to your CMMS
-        </button>
       </div>
+
+      <!-- Payment success (shown via ?payment=success) -->
+      <div class="download-step" id="payment-success" style="display:none;">
+        <p style="color:#f0a030;font-weight:700;font-size:18px;">You're in. Let's reduce some downtime.</p>
+        <p>Your dashboard is loading below. Ask Mira about any fault code or equipment symptom to get started.</p>
+      </div>
+
+      <!-- Payment cancelled -->
+      <div class="download-step" id="payment-cancelled" style="display:none;">
+        <p>No worries — your walkthrough emails will continue. You can join anytime.</p>
+      </div>
+    </section>
+
+    <!-- ── SEO Content Sections (visible to crawlers and users) ── -->
+    <section class="seo-section" id="how-it-works">
+      <h2>How It Works</h2>
+      <div class="seo-grid">
+        <div class="seo-card">
+          <h3>1. Describe the Fault</h3>
+          <p>Type a fault code, describe a symptom, or snap a photo of the display. Mira searches your actual equipment manuals — Allen-Bradley, PowerFlex, Automation Direct, hydraulic systems — and returns the diagnostic steps in seconds, even at 2am.</p>
+        </div>
+        <div class="seo-card">
+          <h3>2. Get the Fix, Not a Guess</h3>
+          <p>Mira tells you why it's failing, not just when. It cites the exact manual page and section — like consulting an experienced colleague who has already read every manual on the floor. No generic internet answers. No guesswork.</p>
+        </div>
+        <div class="seo-card">
+          <h3>3. Your CMMS Stays in Charge</h3>
+          <p>Mira works alongside MaintainX, Limble, or UpKeep. On the $297/month plan, it writes the work order directly into your existing system — fault description, probable cause, and recommended fix. No double-entry.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="seo-section" id="built-for">
+      <h2>Reduce Unplanned Downtime — Without Replacing What Already Works</h2>
+      <p>Your CMMS tracks work orders. Mira catches what your most experienced tech would catch — the fault your team has seen before but can't quite remember at midnight. It works where your team already is: Telegram, Slack, or a browser on their phone. No training. No app install. No IT ticket.</p>
+      <p>The average maintenance technician wastes 20–40 minutes per fault flipping through PDFs. Mira finds the answer from the same manual in seconds. That's the difference between a 30-minute fix and a 2-hour shutdown — on equipment you already own.</p>
+    </section>
+
+    <section class="seo-section" id="equipment">
+      <h2>Works With Your Existing Equipment</h2>
+      <p>Upload any manual and Mira learns it — brownfield facilities, mixed fleets, legacy gear. Pre-loaded knowledge includes:</p>
+      <ul class="seo-list">
+        <li>Allen-Bradley Micro820, CompactLogix, ControlLogix PLCs</li>
+        <li>PowerFlex 525, PowerFlex 4, PowerFlex 40 VFDs</li>
+        <li>Automation Direct GS10, GS20, GS4 VFDs</li>
+        <li>ABB ACS880, Yaskawa GA800, Siemens SINAMICS G120 VFDs</li>
+        <li>FANUC CNC servo systems</li>
+        <li>Hydraulic power units — Parker, Eaton Vickers, Bosch Rexroth</li>
+        <li>Motors, pumps, compressors, conveyors</li>
+      </ul>
+      <p style="margin-top:0.75rem;font-size:var(--text-sm);color:var(--text-muted)">Browse our <a href="/blog/fault-codes" style="color:var(--accent)">Fault Code Library</a> or read our <a href="/blog" style="color:var(--accent)">maintenance blog</a> for free guides.</p>
     </section>
 
     <!-- ── Live Ticker ─────────────────────────────────────── -->
     <section class="ticker-section" id="ticker-section">
       <div class="ticker-header">
         <div class="live-dot"></div>
-        Live work orders across the network
+        Live faults being diagnosed across the network
       </div>
       <div id="hero-wo-list"></div>
     </section>
@@ -116,7 +234,7 @@
       <div class="chat-panel">
         <div class="chat-header">
           <h3><div class="status-dot"></div> Mira AI</h3>
-          <span style="font-size:var(--text-xs);color:var(--text-muted)">Maintenance Co-Pilot</span>
+          <span style="font-size:var(--text-xs);color:var(--text-muted)">Equipment Troubleshooter</span>
         </div>
 
         <div class="quota-bar" id="query-quota-bar">
@@ -124,12 +242,12 @@
           <div class="quota-track">
             <div class="quota-fill" id="quota-fill" style="width:100%"></div>
           </div>
-          <span class="quota-count" id="quota-count">5 / 5</span>
+          <span class="quota-count" id="quota-count">Unlimited</span>
         </div>
 
         <div class="chat-messages" id="chat-messages">
           <div class="chat-msg system">
-            Welcome to Mira. Ask me about any equipment fault, error code, or maintenance procedure.
+            Welcome to Mira. Describe a fault, enter an error code, or snap a photo. I'll find the answer from your actual equipment manuals.
           </div>
         </div>
 
@@ -189,13 +307,35 @@ const CHECKLIST = {
 window.addEventListener('DOMContentLoaded', async () => {
   const params = new URLSearchParams(location.search);
   const urlToken = params.get('token');
+  const paymentStatus = params.get('payment');
 
+  // Handle payment return from Stripe
+  if (paymentStatus === 'success') {
+    history.replaceState(null, '', '/cmms');
+    document.getElementById('signup-form-wrap').classList.add('hidden');
+    document.getElementById('payment-success').style.display = 'block';
+    // If there's a token in session, try to activate dashboard
+    const stored = sessionStorage.getItem('flm_token');
+    if (stored) {
+      AUTH.token = stored;
+      // Small delay for webhook to process
+      setTimeout(async () => { await activateAuth(); }, 2000);
+    }
+  } else if (paymentStatus === 'cancelled') {
+    history.replaceState(null, '', '/cmms');
+    document.getElementById('signup-form-wrap').classList.add('hidden');
+    document.getElementById('payment-cancelled').style.display = 'block';
+  }
+
+  // Token in URL (from activation email)
   if (urlToken) {
     AUTH.token = urlToken;
+    sessionStorage.setItem('flm_token', urlToken);
     history.replaceState(null, '', '/cmms');
     await activateAuth();
   }
 
+  // Stored session token
   const stored = sessionStorage.getItem('flm_token');
   if (stored && !AUTH.token) {
     AUTH.token = stored;
@@ -211,9 +351,19 @@ window.addEventListener('DOMContentLoaded', async () => {
 async function activateAuth() {
   sessionStorage.setItem('flm_token', AUTH.token);
 
-  // Fetch user profile
+  // Fetch user profile — may return 403 if not active tier
   try {
     const res = await fetch('/api/me', { headers: authHeaders() });
+    if (res.status === 403) {
+      // Pending or churned — show onboarding message, not dashboard
+      const data = await res.json();
+      document.getElementById('signup-form-wrap').classList.add('hidden');
+      document.getElementById('download-step').classList.add('show');
+      document.getElementById('download-greeting').innerHTML =
+        '<strong style="color:#f0a030;">Your onboarding is in progress.</strong><br>' +
+        'Check your email for your next video walkthrough.';
+      return;
+    }
     if (res.ok) {
       const data = await res.json();
       AUTH.user = data;
@@ -228,6 +378,33 @@ async function activateAuth() {
   document.getElementById('dashboard').classList.add('show');
   document.getElementById('topbar-user').style.display = 'inline';
   document.getElementById('topbar-user').textContent = AUTH.user?.email || '';
+
+  // Inject "Open FactoryLM CMMS" primary CTA for active tenants
+  const topbarRight = document.getElementById('topbar-right');
+  if (topbarRight && AUTH.token && !document.getElementById('cmms-open-btn')) {
+    const btn = document.createElement('a');
+    btn.id = 'cmms-open-btn';
+    btn.href = `/api/cmms/login?token=${encodeURIComponent(AUTH.token)}`;
+    btn.textContent = 'Open Mira Troubleshooter';
+    btn.style.cssText = [
+      'display:inline-flex',
+      'align-items:center',
+      'gap:6px',
+      'background:linear-gradient(180deg,#f0a030 0%,#d4880a 100%)',
+      'color:#0a0a08',
+      'font-size:13px',
+      'font-weight:700',
+      'border:1px solid rgba(255,255,255,0.12)',
+      'border-radius:6px',
+      'padding:7px 14px',
+      'text-decoration:none',
+      'white-space:nowrap',
+      'transition:background 150ms ease',
+    ].join(';');
+    btn.onmouseover = () => { btn.style.background = 'linear-gradient(180deg,#f5b040 0%,#e09510 100%)'; };
+    btn.onmouseout  = () => { btn.style.background = 'linear-gradient(180deg,#f0a030 0%,#d4880a 100%)'; };
+    topbarRight.insertBefore(btn, topbarRight.firstChild);
+  }
 
   CHECKLIST['step-account'].done = true;
   renderChecklist();
@@ -246,7 +423,6 @@ async function handleSignup() {
   const email = document.getElementById('f-email').value.trim();
   const company = document.getElementById('f-company').value.trim();
   const firstName = document.getElementById('f-firstname').value.trim();
-  const role = document.getElementById('f-role').value;
   const errEl = document.getElementById('form-error');
   errEl.classList.remove('show');
 
@@ -258,31 +434,38 @@ async function handleSignup() {
 
   const btn = document.getElementById('signup-btn');
   btn.disabled = true;
-  btn.innerHTML = '<svg style="width:16px;height:16px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Creating your account...';
+  btn.innerHTML = '<svg style="width:16px;height:16px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Joining...';
 
   try {
     const res = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, company, firstName, role })
+      body: JSON.stringify({ email, company, firstName })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');
 
-    AUTH.token = data.token;
+    // Active user returning — has token, show dashboard
+    if (data.token) {
+      AUTH.token = data.token;
+      sessionStorage.setItem('flm_token', data.token);
+      await activateAuth();
+      return;
+    }
+
+    // Pending user — show "check your email"
     const name = firstName || email.split('@')[0];
     document.getElementById('signup-form-wrap').classList.add('hidden');
     document.getElementById('download-step').classList.add('show');
-    document.getElementById('download-greeting').textContent =
-      `Welcome, ${name}. Your CMMS is live with ${AUTH.queriesLimit} free Mira queries per day.`;
-
-    await activateAuth();
+    document.getElementById('download-greeting').innerHTML =
+      `<strong style="color:#f0a030;">You're in, ${name}.</strong><br>` +
+      `Check your email — we'll send you a series of short Loom videos showing what MIRA can do. When you're ready, a payment link unlocks everything.`;
 
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.add('show');
     btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="zap" style="width:16px;height:16px"></i> Create Account & Get App';
+    btn.innerHTML = '<i data-lucide="zap" style="width:16px;height:16px"></i> Join the Beta — $97/mo';
     lucide.createIcons();
   }
 }
@@ -392,7 +575,7 @@ function renderKanban(wos) {
 
 async function submitQuery() {
   if (AUTH.queriesLeft <= 0) {
-    addChatMsg('system', 'Daily query limit reached. Queries reset tomorrow, or upgrade for unlimited.');
+    addChatMsg('system', "Query limit reached. Subscribe at $97/month for unlimited queries — site license, unlimited users.");
     return;
   }
 
@@ -418,7 +601,7 @@ async function submitQuery() {
       typingEl.remove();
       AUTH.queriesLeft = 0;
       updateQuotaBar();
-      addChatMsg('system', 'Daily query limit reached. Upgrade for unlimited queries.');
+      addChatMsg('system', "Query limit reached. Subscribe at $97/month for unlimited queries — site license, unlimited users.");
       return;
     }
 
@@ -555,5 +738,24 @@ function showWOToast(wo) {
   setTimeout(() => toast.classList.remove('show'), 5000);
 }
 </script>
+
+<!-- ── Footer ── -->
+<footer role="contentinfo" style="border-top:1px solid var(--border,rgba(255,255,255,0.07));margin-top:64px;padding:32px 24px;background:var(--surface-2,#171715)">
+  <div style="max-width:1080px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px">
+    <a href="/" aria-label="FactoryLM home" style="display:inline-flex;align-items:center;gap:8px;color:var(--amber,#f0a000);text-decoration:none;font-weight:600;font-size:14px">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
+        <rect width="24" height="24" rx="5" fill="#f0a000"/>
+        <path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      FactoryLM
+    </a>
+    <ul role="list" style="display:flex;flex-wrap:wrap;gap:24px;list-style:none;margin:0;padding:0;font-size:13px">
+      <li><a href="/" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Home</a></li>
+      <li><a href="/blog" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Blog</a></li>
+      <li><a href="/blog/fault-codes" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Fault Codes</a></li>
+      <li><a href="mailto:contact@factorylm.com" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Contact</a></li>
+    </ul>
+  </div>
+</footer>
 </body>
 </html>
