@@ -7,6 +7,62 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 to the component (`mira-web-vX.Y.Z`) so they don't collide with the MIRA
 monorepo's top-level tag progression.
 
+## [0.2.1] — 2026-04-11
+
+### Removed
+- **Free tier from `/pricing`.** The shipped page advertised a Free tier
+  with "10 queries/month" but no such tier state existed in the backend
+  — `requireActive` middleware (`src/lib/auth.ts:87-111`) hard-blocks
+  any non-`active` tier with HTTP 403, and `src/lib/quota.ts` Free-tier
+  logic was dead code never called by any route. Matches the explicit
+  "No free tier" intent in `mira-web/CLAUDE.md` and the Fihn beta-only
+  strategy. Layout reflowed from 3-col to 2-col with `max-width: 720px`
+  centering. `mira-web/public/pricing.html`.
+
+### Added
+- **14-day money-back guarantee** on both `$97` and `$297` pricing
+  cards via a new `.card-footnote` utility class. Also surfaced as a
+  FAQ entry and in all three meta descriptions (`name`, `og`, `twitter`).
+
+### Changed
+- `/pricing` nav CTA: `"Try Free"` → `"Get Started"`.
+- `$297` card CTA: `"Contact us"` → `"Get MIRA Integrated"` (parallel
+  structure to `$97`'s "Start with MIRA", matches the hero's
+  "Published pricing, no 'contact sales.'" promise).
+- `$97` card features list condensed from 8 bullets to 6 by merging
+  "AI fault diagnosis via chat" + "Upload equipment manuals (cited OEM
+  answers)" into a single bullet and dropping "Unlimited diagnostic
+  queries" / "Unlimited users (site license)" (already in the card
+  description — redundant).
+- Money-back FAQ answer: dropped the conditional "if MIRA can't answer
+  a fault code your team couldn't find on their own…" and kept the
+  unconditional "cancel for any reason" promise.
+- All three meta descriptions updated to drop "Free trial" language.
+- `/api/health` version string: `"0.1.0"` → `"0.2.1"` (was stale since
+  0.2.0 shipped — it reported 0.1.0 even when package.json was at 0.2.0).
+
+### Fixed
+- Pricing card height mismatch: the featured `$97` card was extending
+  ~24 px below the `$297` card because only `$97` had the 14-day
+  money-back footnote and the flex layout leaked the extra element past
+  the `$297` bottom edge. Adding the same footnote to `$297` aligns
+  both cards and reinforces the trust message on both tiers.
+
+### Follow-up still needed (not in this release)
+- `mira-web/public/index.html` — 4 "Try Free / 10 queries" references
+  on the homepage (nav CTA, hero label, and dedicated "Try MIRA Free"
+  section at lines 1238-1250).
+- `mira-web/public/cmms.html` — interactive demo chat with a client-side
+  fake 10-query limit (lines 578, 604 JS mock + line 462 post-signup
+  copy + line 71 JSON-LD schema + line 136 button label). Requires a
+  product decision on what replaces the "Try MIRA" demo (see #145 for
+  the three options).
+- MaintainX Premium price in the comparison table (currently shown as
+  `$59/user/mo`) should be fact-checked against MaintainX's live pricing
+  before the next marketing push — agent research surfaced `$65/user/mo`.
+
+Investigation: https://github.com/Mikecranesync/MIRA/issues/145
+
 ## [0.2.0] — 2026-04-10
 
 ### Added

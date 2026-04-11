@@ -180,7 +180,7 @@ app.get("/", async (c) => {
 
 // Health probe
 app.get("/api/health", (c) =>
-  c.json({ status: "ok", service: "mira-web", version: "0.1.0" })
+  c.json({ status: "ok", service: "mira-web", version: "0.2.1" })
 );
 
 // Serve CMMS page
