@@ -198,9 +198,9 @@ class TestIngestPathTraversal:
         """
         client, base = async_client
 
-        # Create the target file outside the allowed base
-        outside_dir = tmp_path / "outside"
-        outside_dir.mkdir()
+        # Create the target file outside the allowed base (base.parent is a sibling of base)
+        outside_dir = base.parent / "outside_truly"
+        outside_dir.mkdir(exist_ok=True)
         secret = outside_dir / "secret.txt"
         secret.write_text("secret data", encoding="utf-8")
 

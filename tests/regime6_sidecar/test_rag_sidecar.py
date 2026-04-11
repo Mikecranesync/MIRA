@@ -51,9 +51,16 @@ def test_client(tmp_path):
         patch("app.embed_texts", new=mock_embed.embed),
     ):
         import app as app_mod
+        from config import settings
+
+        # Allow all paths through the guard — path security is tested separately
+        # in test_ingest_security.py; here we focus on ingest/RAG logic.
+        original_docs_base = settings.docs_base_path
+        settings.docs_base_path = "/"
 
         # Force-set module globals (same as what lifespan does)
-        app_mod._store = mock_store
+        app_mod._store_tenant = mock_store
+        app_mod._store_shared = mock_store
         app_mod._llm = mock_llm
         app_mod._embedder = mock_embed
 
@@ -61,7 +68,9 @@ def test_client(tmp_path):
         yield client
 
         # Cleanup globals
-        app_mod._store = None
+        settings.docs_base_path = original_docs_base
+        app_mod._store_tenant = None
+        app_mod._store_shared = None
         app_mod._llm = None
         app_mod._embedder = None
 
@@ -73,7 +82,8 @@ class TestStatusEndpoint:
         data = resp.json()
         assert data["status"] == "ok"
         assert "version" in data
-        assert "doc_count" in data
+        assert "tenant_doc_count" in data
+        assert "shared_doc_count" in data
 
 
 class TestIngestEndpoint:
