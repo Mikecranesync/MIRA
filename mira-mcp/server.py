@@ -56,6 +56,62 @@ if not MCP_REST_API_KEY:
 mcp = FastMCP("mira-mcp", description="MIRA equipment diagnostics tools")
 
 
+def _ensure_schema():
+    """Create required tables if they don't exist. Idempotent."""
+    db = sqlite3.connect(DB_PATH)
+    db.execute("PRAGMA journal_mode=WAL")
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS equipment_status (
+            equipment_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'unknown',
+            last_updated TEXT NOT NULL DEFAULT (datetime('now')),
+            speed_rpm REAL,
+            temperature_c REAL,
+            current_amps REAL,
+            pressure_psi REAL,
+            metadata TEXT
+        );
+        CREATE TABLE IF NOT EXISTS faults (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            equipment_id TEXT NOT NULL,
+            fault_code TEXT NOT NULL,
+            description TEXT,
+            severity TEXT NOT NULL DEFAULT 'warning',
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved INTEGER NOT NULL DEFAULT 0,
+            resolved_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_faults_equipment ON faults(equipment_id);
+        CREATE INDEX IF NOT EXISTS idx_faults_resolved ON faults(resolved);
+        CREATE TABLE IF NOT EXISTS maintenance_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            equipment_id TEXT NOT NULL,
+            note TEXT NOT NULL,
+            author TEXT NOT NULL DEFAULT 'system',
+            category TEXT NOT NULL DEFAULT 'general',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS conversation_state (
+            chat_id TEXT PRIMARY KEY,
+            state TEXT NOT NULL DEFAULT 'IDLE',
+            context TEXT NOT NULL DEFAULT '{}',
+            asset_identified TEXT,
+            fault_category TEXT,
+            exchange_count INTEGER NOT NULL DEFAULT 0,
+            final_state TEXT,
+            voice_enabled INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    db.close()
+    sys.stderr.write(f"INFO: Schema ensured at {DB_PATH}\n")
+
+
+_ensure_schema()
+
+
 def _get_db():
     db = sqlite3.connect(DB_PATH)
     db.execute("PRAGMA journal_mode=WAL")
