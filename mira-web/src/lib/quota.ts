@@ -140,6 +140,28 @@ export async function updateTenantAtlas(
     WHERE id = ${tenantId}`;
 }
 
+export async function updateTenantCmmsConfig(
+  tenantId: string,
+  cmmsTier: string,
+  cmmsProvider: string | null,
+  cmmsConfigJson: string | null,
+): Promise<void> {
+  const db = sql();
+  await db`
+    UPDATE plg_tenants
+    SET cmms_tier = ${cmmsTier},
+        cmms_provider = ${cmmsProvider},
+        cmms_config_json = ${cmmsConfigJson}
+    WHERE id = ${tenantId}`;
+}
+
+export async function getTenantCmmsTier(tenantId: string): Promise<string> {
+  const db = sql();
+  const rows = await db`
+    SELECT cmms_tier FROM plg_tenants WHERE id = ${tenantId} LIMIT 1`;
+  return (rows[0]?.cmms_tier as string) || "base";
+}
+
 // ---------------------------------------------------------------------------
 // Query quota
 // ---------------------------------------------------------------------------
@@ -223,6 +245,9 @@ export async function ensureSchema(): Promise<void> {
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`;
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT`;
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS atlas_provisioning_status TEXT NOT NULL DEFAULT 'pending'`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS cmms_tier TEXT NOT NULL DEFAULT 'base'`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS cmms_provider TEXT`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS cmms_config_json TEXT`;
 
   await db`
     CREATE TABLE IF NOT EXISTS plg_query_log (

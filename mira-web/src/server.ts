@@ -213,6 +213,13 @@ app.get("/activated", async (c) => {
   });
 });
 
+app.get("/pricing", async (c) => {
+  const file = Bun.file("./public/pricing.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Blog — Articles + Fault Code Library
 // ---------------------------------------------------------------------------
