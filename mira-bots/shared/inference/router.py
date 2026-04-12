@@ -97,6 +97,7 @@ class _Provider:
     model: str
     format: str  # "openai" or "anthropic"
     timeout: float = 60.0
+    vision_model: str = ""  # If set, use this model for image requests
 
     @property
     def enabled(self) -> bool:
@@ -117,6 +118,9 @@ def _build_providers() -> list[_Provider]:
                 model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
                 format="openai",
                 timeout=30.0,
+                vision_model=os.getenv(
+                    "GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
+                ),
             )
         )
 
@@ -165,7 +169,10 @@ class InferenceRouter:
 
         if self.enabled:
             names = [p.name for p in self.providers]
+            vision = [f"{p.name}:{p.vision_model}" for p in self.providers if p.vision_model]
             logger.info("InferenceRouter enabled — cascade: %s", " → ".join(names))
+            if vision:
+                logger.info("InferenceRouter vision: %s", ", ".join(vision))
         else:
             logger.info(
                 "InferenceRouter disabled — INFERENCE_BACKEND=%s, providers=%d",
@@ -218,9 +225,8 @@ class InferenceRouter:
         last_error: dict = {}
 
         for provider in self.providers:
-            # Skip non-vision providers for image requests
-            if has_image and provider.format == "openai":
-                # Groq/Cerebras don't support vision — skip to next
+            # For image requests, skip OpenAI-format providers that lack a vision model
+            if has_image and provider.format == "openai" and not provider.vision_model:
                 continue
 
             try:
@@ -263,13 +269,17 @@ class InferenceRouter:
         has_image: bool,
     ) -> tuple[str, dict]:
         """Call an OpenAI-compatible provider (Groq, Cerebras)."""
+        # Use vision model for image requests if available
+        model = provider.vision_model if (has_image and provider.vision_model) else provider.model
         payload: dict = {
-            "model": provider.model,
+            "model": model,
             "max_tokens": max_tokens,
             "messages": messages,
             "temperature": 0.1,
-            "response_format": {"type": "json_object"},
         }
+        # Vision models don't reliably support JSON mode
+        if not has_image:
+            payload["response_format"] = {"type": "json_object"}
         headers = {
             "Authorization": f"Bearer {provider.api_key}",
             "Content-Type": "application/json",
@@ -294,7 +304,7 @@ class InferenceRouter:
             logger.info(
                 "LLM_CALL provider=%s model=%s latency_ms=%d input=%d output=%d",
                 provider.name,
-                provider.model,
+                model,
                 elapsed_ms,
                 usage_dict["input_tokens"],
                 usage_dict["output_tokens"],
@@ -303,7 +313,7 @@ class InferenceRouter:
             self.write_api_usage(
                 session_id=session_id,
                 usage=usage_dict,
-                model=f"{provider.name}/{provider.model}",
+                model=f"{provider.name}/{model}",
                 has_image=has_image,
                 response_time_ms=elapsed_ms,
             )
