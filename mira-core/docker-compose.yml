@@ -174,7 +174,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   mira-docling:
-    image: ds4sd/docling-serve:0.3.1
+    image: quay.io/docling-project/docling-serve:v1.16.1
     container_name: mira-docling
     ports:
       - "127.0.0.1:${DOCLING_PORT:-5001}:5001"
