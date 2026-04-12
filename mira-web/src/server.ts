@@ -522,7 +522,7 @@ app.post("/api/stripe/webhook", async (c) => {
       }
 
       // Seed demo data scoped to the tenant's Atlas company
-      seedDemoData(atlasToken || undefined).catch((err) =>
+      seedDemoData(atlasToken || undefined, tenantId).catch((err) =>
         console.error("[stripe-webhook] Demo seed failed:", err)
       );
 
