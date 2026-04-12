@@ -34,6 +34,7 @@ MAX_PX = int(os.getenv("MAX_INGEST_PX", "1024"))
 MIRA_TENANT_ID = os.getenv("MIRA_TENANT_ID", "")
 FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY", "")
 FIRECRAWL_API_BASE = "https://api.firecrawl.dev/v1"
+APIFY_API_KEY = os.getenv("APIFY_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
 # Manufacturer → primary doc-search URL (Firecrawl maps these to find model PDFs)
@@ -623,12 +624,13 @@ async def scrape_trigger(body: ScrapeTriggerRequest, background_tasks: Backgroun
     identified equipment model, then sends a Telegram notification when done.
 
     Returns immediately. All work happens in a background task.
-    Requires FIRECRAWL_API_KEY in Doppler factorylm/prd.
+    Requires FIRECRAWL_API_KEY or APIFY_API_KEY in Doppler factorylm/prd.
+    Apify is used when FIRECRAWL_API_KEY is absent (free tier, website-content-crawler actor).
     """
-    if not FIRECRAWL_API_KEY:
+    if not FIRECRAWL_API_KEY and not APIFY_API_KEY:
         raise HTTPException(
             status_code=503,
-            detail="FIRECRAWL_API_KEY not configured — scrape trigger unavailable",
+            detail="No scraping backend configured — set FIRECRAWL_API_KEY or APIFY_API_KEY",
         )
 
     job_id = str(uuid.uuid4())[:8]
@@ -657,14 +659,23 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
             base_url = url
             break
 
+    use_apify = bool(APIFY_API_KEY) and not FIRECRAWL_API_KEY
+
     if not base_url:
-        # Generic fallback: search Firecrawl for the model number directly
-        # Use a broad manufacturer site search via Firecrawl's search endpoint
-        logger.info("[%s] No known doc URL for %r — using Firecrawl search", job_id, body.manufacturer)
-        scraped_docs = await _firecrawl_search_model(job_id, body.manufacturer, body.model)
+        logger.info(
+            "[%s] No known doc URL for %r — using %s search",
+            job_id, body.manufacturer, "Apify" if use_apify else "Firecrawl",
+        )
+        if use_apify:
+            scraped_docs = await _apify_search_model(job_id, body.manufacturer, body.model)
+        else:
+            scraped_docs = await _firecrawl_search_model(job_id, body.manufacturer, body.model)
     else:
         # Map the manufacturer's doc site, then filter for this model
-        scraped_docs = await _firecrawl_map_and_scrape(job_id, base_url, body.model)
+        if use_apify:
+            scraped_docs = await _apify_map_and_scrape(job_id, base_url, body.model)
+        else:
+            scraped_docs = await _firecrawl_map_and_scrape(job_id, base_url, body.model)
 
     if not scraped_docs:
         logger.warning("[%s] No docs found for %r %r", job_id, body.manufacturer, body.model)
@@ -806,6 +817,102 @@ async def _scrape_urls(job_id: str, urls: list[str], model: str) -> list[dict]:
             logger.error("[%s] Scrape error for %s: %s", job_id, url[:80], e)
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Apify scraping backend (used when FIRECRAWL_API_KEY is absent)
+# ---------------------------------------------------------------------------
+
+def _apify_items_to_docs(job_id: str, items: list, model: str) -> list[dict]:
+    """Convert Apify dataset items to the {filename, content, source_url} shape."""
+    results = []
+    for item in items:
+        content = item.get("markdown") or item.get("text") or ""
+        url = item.get("url", "")
+        if len(content) < 100:
+            continue
+        slug = re.sub(r"[^a-z0-9_\-]", "_", url.split("/")[-1].lower())[:40] or "doc"
+        fname = f"{model[:20]}_{slug}.txt".replace(" ", "_")
+        results.append({"filename": fname, "content": content, "source_url": url})
+        logger.info("[%s] Apify doc: %s (%d chars)", job_id, url[:80], len(content))
+    return results[:5]
+
+
+async def _apify_map_and_scrape(job_id: str, base_url: str, model: str) -> list[dict]:
+    """Crawl a known manufacturer doc site with Apify, filter by model tokens."""
+    import urllib.parse as _up
+
+    model_tokens = [t.lower() for t in re.split(r"[\s\-_/]+", model) if len(t) > 2]
+    globs = [{"glob": f"**/*{_up.quote(t)}*"} for t in model_tokens[:3]]
+
+    run_input = {
+        "startUrls": [{"url": base_url}],
+        "maxCrawlDepth": 1,
+        "maxCrawlPages": 100,
+        "crawlerType": "cheerio",
+        "outputFormats": ["markdown"],
+        "globs": globs if globs else [{"glob": "**/*.pdf"}, {"glob": "**/*manual*"}],
+    }
+
+    def _run_sync() -> list:
+        from apify_client import ApifyClient  # type: ignore
+
+        client = ApifyClient(APIFY_API_KEY)
+        run = client.actor("apify/website-content-crawler").call(
+            run_input=run_input, timeout_secs=180
+        )
+        dataset_id = (run or {}).get("defaultDatasetId")
+        if not dataset_id:
+            return []
+        return list(client.dataset(dataset_id).list_items().items)
+
+    loop = asyncio.get_event_loop()
+    try:
+        items = await loop.run_in_executor(None, _run_sync)
+    except Exception as e:
+        logger.error("[%s] Apify map+scrape failed: %s", job_id, e)
+        return []
+
+    logger.info("[%s] Apify returned %d items from %s", job_id, len(items), base_url)
+    return _apify_items_to_docs(job_id, items, model)
+
+
+async def _apify_search_model(job_id: str, manufacturer: str, model: str) -> list[dict]:
+    """Use Apify to crawl a DuckDuckGo search when no known manufacturer base URL exists."""
+    import urllib.parse as _up
+
+    encoded = _up.quote_plus(f"{manufacturer} {model} manual datasheet")
+    search_url = f"https://html.duckduckgo.com/html/?q={encoded}"
+
+    run_input = {
+        "startUrls": [{"url": search_url}],
+        "maxCrawlDepth": 1,
+        "maxCrawlPages": 5,
+        "crawlerType": "cheerio",
+        "outputFormats": ["markdown"],
+    }
+
+    def _run_sync() -> list:
+        from apify_client import ApifyClient  # type: ignore
+
+        client = ApifyClient(APIFY_API_KEY)
+        run = client.actor("apify/website-content-crawler").call(
+            run_input=run_input, timeout_secs=120
+        )
+        dataset_id = (run or {}).get("defaultDatasetId")
+        if not dataset_id:
+            return []
+        return list(client.dataset(dataset_id).list_items().items)
+
+    loop = asyncio.get_event_loop()
+    try:
+        items = await loop.run_in_executor(None, _run_sync)
+    except Exception as e:
+        logger.error("[%s] Apify search failed: %s", job_id, e)
+        return []
+
+    logger.info("[%s] Apify search returned %d items", job_id, len(items))
+    return _apify_items_to_docs(job_id, items, manufacturer)
 
 
 async def _ingest_scraped_text(filename: str, content: str, equipment_type: str = "") -> None:
