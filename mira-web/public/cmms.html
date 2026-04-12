@@ -130,6 +130,12 @@
           <label for="f-firstname">First name</label>
           <input type="text" id="f-firstname" placeholder="Mike" autocomplete="given-name">
         </div>
+        <div class="form-row" style="margin-top:12px">
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:var(--text-sm);color:var(--text-secondary)">
+            <input type="checkbox" id="f-terms" required style="margin-top:3px;flex-shrink:0;accent-color:var(--amber)">
+            <span>I agree to the <a href="/terms" target="_blank" style="color:var(--amber)">Terms of Service</a> and <a href="/privacy" target="_blank" style="color:var(--amber)">Privacy Policy</a></span>
+          </label>
+        </div>
         <div id="form-error" class="form-error"></div>
         <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
           <i data-lucide="zap" style="width:16px;height:16px"></i>
@@ -754,6 +760,8 @@ function showWOToast(wo) {
       <li><a href="/blog" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Blog</a></li>
       <li><a href="/blog/fault-codes" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Fault Codes</a></li>
       <li><a href="mailto:contact@factorylm.com" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Contact</a></li>
+      <li><a href="/privacy" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Privacy</a></li>
+      <li><a href="/terms" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Terms</a></li>
     </ul>
   </div>
 </footer>

@@ -145,6 +145,8 @@ app.get("/sitemap.xml", (c) => {
       priority: "0.7",
       freq: "monthly" as const,
     })),
+    { loc: "/privacy", priority: "0.3", freq: "yearly" },
+    { loc: "/terms", priority: "0.3", freq: "yearly" },
   ];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -215,6 +217,20 @@ app.get("/activated", async (c) => {
 
 app.get("/pricing", async (c) => {
   const file = Bun.file("./public/pricing.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+app.get("/privacy", async (c) => {
+  const file = Bun.file("./public/privacy.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+app.get("/terms", async (c) => {
+  const file = Bun.file("./public/terms.html");
   return new Response(await file.text(), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
