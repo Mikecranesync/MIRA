@@ -174,3 +174,39 @@ def test_streaming_response():
 
     # Third: [DONE]
     assert events[2].strip() == "data: [DONE]"
+
+
+def test_chat_completions_dict_user():
+    """POST with user as dict extracts id for chat_id."""
+    _mock_gsd_engine_inst.process.reset_mock()
+    payload = {
+        "model": "mira-diagnostic",
+        "messages": [{"role": "user", "content": "pump vibration"}],
+        "user": {"id": "user-abc-123", "email": "tech@factory.com", "name": "Tech"},
+    }
+    resp = client.post("/v1/chat/completions", json=payload, headers=AUTH_HEADER)
+    assert resp.status_code == 200
+    _mock_gsd_engine_inst.process.assert_awaited_once_with(
+        chat_id="user-abc-123",
+        message="pump vibration",
+        photo_b64=None,
+        platform="openwebui",
+    )
+
+
+def test_chat_completions_metadata_chat_id():
+    """POST with metadata.chat_id used when user is None."""
+    _mock_gsd_engine_inst.process.reset_mock()
+    payload = {
+        "model": "mira-diagnostic",
+        "messages": [{"role": "user", "content": "bearing noise"}],
+        "metadata": {"chat_id": "chat-xyz-789"},
+    }
+    resp = client.post("/v1/chat/completions", json=payload, headers=AUTH_HEADER)
+    assert resp.status_code == 200
+    _mock_gsd_engine_inst.process.assert_awaited_once_with(
+        chat_id="chat-xyz-789",
+        message="bearing noise",
+        photo_b64=None,
+        platform="openwebui",
+    )

@@ -15,7 +15,7 @@ import sys
 import time
 import uuid
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
@@ -115,48 +115,15 @@ class ChatCompletionRequest(BaseModel):
     model: str = "mira-diagnostic"
     messages: list[ChatMessage]
     stream: bool = False
-    user: str | None = None
+    user: str | dict | None = None
+    metadata: dict | None = None
     model_config = {"extra": "allow"}
 
 
 @app.post("/v1/chat/completions")
-async def chat_completions(request: Request, req: ChatCompletionRequest):
+async def chat_completions(req: ChatCompletionRequest):
     if engine is None:
         raise HTTPException(503, "GSDEngine not initialized")
-
-    # ── DEBUG: dump raw request structure (remove after #162 verified) ────────
-    raw = await request.body()
-    try:
-        raw_json = json.loads(raw)
-        _user_field = raw_json.get("user")
-        _metadata = raw_json.get("metadata")
-        logger.info(
-            "DEBUG_INCOMING user_type=%s user_preview=%s metadata_keys=%s",
-            type(_user_field).__name__,
-            str(_user_field)[:100] if _user_field else None,
-            list(_metadata.keys()) if isinstance(_metadata, dict) else None,
-        )
-        for i, msg in enumerate(raw_json.get("messages", [])):
-            content = msg.get("content")
-            if isinstance(content, list):
-                parts = []
-                for p in content:
-                    if isinstance(p, dict):
-                        ptype = p.get("type", "?")
-                        if ptype == "image_url":
-                            url = p.get("image_url", {}).get("url", "")
-                            parts.append(f"image_url({url[:80]}...)" if len(url) > 80 else f"image_url({url})")
-                        else:
-                            parts.append(ptype)
-                    else:
-                        parts.append(type(p).__name__)
-                logger.info("  msg[%d] role=%s parts=%s", i, msg.get("role"), parts)
-            else:
-                preview = str(content)[:100] if content else "(empty)"
-                logger.info("  msg[%d] role=%s content=%s", i, msg.get("role"), preview)
-    except Exception as e:
-        logger.warning("DEBUG_INCOMING parse error: %s", e)
-    # ── END DEBUG ─────────────────────────────────────────────────────────────
 
     # Extract last user message (text content)
     last_user_msg = ""
@@ -180,7 +147,14 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if not last_user_msg and not photo_b64:
         raise HTTPException(400, "No user message found")
 
-    chat_id = req.user or "openwebui_anonymous"
+    # Extract user identity — fallback chain: user dict → user string → metadata → anonymous
+    chat_id = "openwebui_anonymous"
+    if isinstance(req.user, dict):
+        chat_id = req.user.get("id") or req.user.get("email") or chat_id
+    elif isinstance(req.user, str) and req.user:
+        chat_id = req.user
+    if chat_id == "openwebui_anonymous" and req.metadata:
+        chat_id = req.metadata.get("chat_id") or chat_id
 
     t0 = time.monotonic()
     reply = await engine.process(
