@@ -159,3 +159,15 @@ class MaintainXCMMS(CMMSAdapter):
         except httpx.HTTPStatusError as e:
             logger.error("MaintainX list_pm_schedules failed: %s", e)
             return []
+
+    async def create_asset(
+        self,
+        name: str,
+        description: str,
+        manufacturer: str = "",
+        model: str = "",
+        serial: str = "",
+        **kwargs: object,
+    ) -> dict:
+        """Not yet implemented for MaintainX."""
+        return {"error": "create_asset not supported for MaintainX"}

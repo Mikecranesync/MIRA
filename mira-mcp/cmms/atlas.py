@@ -203,6 +203,44 @@ class AtlasCMMS(CMMSAdapter):
             )
             return {"error": str(e)}
 
+    async def create_asset(
+        self,
+        name: str,
+        description: str,
+        manufacturer: str = "",
+        model: str = "",
+        serial: str = "",
+        **kwargs: object,
+    ) -> dict:
+        """Create an equipment asset from nameplate data.
+
+        Atlas asset creation endpoint: POST /assets
+        Required: name. Optional: description, manufacturer, model, serial.
+        """
+        payload: dict = {"name": name, "description": description}
+        if manufacturer:
+            payload["manufacturer"] = manufacturer
+        if model:
+            payload["model"] = model
+        if serial:
+            payload["serialNumber"] = serial
+        try:
+            result = await self._post("/assets", payload)
+            logger.info(
+                "Atlas asset created: id=%s name=%s serial=%s",
+                result.get("id"),
+                name,
+                serial,
+            )
+            return result
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "Atlas create_asset failed: %s %s",
+                e.response.status_code,
+                e.response.text[:200],
+            )
+            return {"error": str(e)}
+
     async def list_pm_schedules(self, asset_id: str | None = None, limit: int = 20) -> list[dict]:
         payload: dict = {"pageSize": limit, "pageNum": 0}
         if asset_id is not None:

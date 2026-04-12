@@ -55,3 +55,15 @@ class CMMSAdapter(ABC):
     @abstractmethod
     async def list_pm_schedules(self, asset_id: str | None = None, limit: int = 20) -> list[dict]:
         """List preventive maintenance schedules."""
+
+    @abstractmethod
+    async def create_asset(
+        self,
+        name: str,
+        description: str,
+        manufacturer: str = "",
+        model: str = "",
+        serial: str = "",
+        **kwargs: object,
+    ) -> dict:
+        """Create an equipment asset from nameplate data."""

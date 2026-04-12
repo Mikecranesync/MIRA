@@ -148,3 +148,15 @@ class LimbleCMMS(CMMSAdapter):
         except httpx.HTTPStatusError as e:
             logger.error("Limble list_pm_schedules failed: %s", e)
             return []
+
+    async def create_asset(
+        self,
+        name: str,
+        description: str,
+        manufacturer: str = "",
+        model: str = "",
+        serial: str = "",
+        **kwargs: object,
+    ) -> dict:
+        """Not yet implemented for Limble."""
+        return {"error": "create_asset not supported for Limble"}
