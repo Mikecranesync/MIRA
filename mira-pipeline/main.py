@@ -213,6 +213,27 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if not last_user_msg and not photo_b64:
         raise HTTPException(400, "No user message found")
 
+    # Open WebUI sends synthetic "suggest follow-ups" requests after each exchange.
+    # These must NOT touch the GSD engine — they advance the FSM and corrupt state.
+    if last_user_msg.lstrip().startswith("### Task:") or last_user_msg.lstrip().startswith(
+        "Suggest "
+    ):
+        logger.info("SKIP synthetic follow-up request: %s", last_user_msg[:60])
+        return {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "mira-diagnostic",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": ""},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
     # Extract user identity from Open WebUI forwarded headers (per-conversation)
     chat_id = (
         request.headers.get("X-OpenWebUI-Chat-Id")
