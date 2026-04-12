@@ -102,6 +102,13 @@ async def list_models():
                 "created": 1700000000,
                 "owned_by": "factorylm",
                 "name": "MIRA Diagnostic",
+                "info": {
+                    "meta": {
+                        "capabilities": {
+                            "vision": True,
+                        },
+                    },
+                },
             }
         ],
     }

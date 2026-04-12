@@ -50,10 +50,11 @@ CHAT_INPUT_SELECTORS = [
     "textarea",
 ]
 RESPONSE_SELECTORS = [
-    ".message-content",
+    ".chat-assistant",
+    "[class*='assistant']",
     "[data-testid='bot-message']",
     ".prose",
-    ".chat-message .content",
+    ".message-content",
     ".response-content",
 ]
 SEND_BTN_SELECTORS = [
@@ -125,6 +126,34 @@ def has_numbered_options(text: str) -> bool:
     return bool(re.search(r"^\d+[.)]\s", text, re.MULTILINE))
 
 
+def _dismiss_overlays(page) -> None:
+    """Dismiss update banners, toasts, and notification overlays that block clicks."""
+    # Open WebUI update banner — bottom-right z-50 overlay
+    for dismiss_sel in [
+        "div.absolute.bottom-8.right-8 button",  # close button on update toast
+        "div[class*='bottom-8'][class*='right-8'] button",
+        "button[aria-label='Close']",
+        "button[aria-label='Dismiss']",
+    ]:
+        try:
+            btn = page.query_selector(dismiss_sel)
+            if btn and btn.is_visible():
+                btn.click(force=True)
+                logger.info("Dismissed overlay: %s", dismiss_sel)
+                time.sleep(0.3)
+        except Exception:
+            pass
+
+    # Click any remaining blocking overlay away
+    try:
+        overlay = page.query_selector("div.absolute.bottom-8.right-8.z-50")
+        if overlay and overlay.is_visible():
+            overlay.evaluate("el => el.remove()")
+            logger.info("Removed blocking overlay via DOM")
+    except Exception:
+        pass
+
+
 def send_message(page, input_sel: str, message: str) -> None:
     """Type a message into the chat input and submit it."""
     page.fill(input_sel, message) if "textarea" in input_sel else None
@@ -143,10 +172,17 @@ def send_message(page, input_sel: str, message: str) -> None:
         el.evaluate(f"el => {{ el.innerText = {json.dumps(message)}; }}")
         el.dispatch_event("input")
 
+    # Dismiss any overlays (update banner, notifications) before clicking send
+    _dismiss_overlays(page)
+
     # Press Enter or click Send button
     btn_sel, btn = find_selector(page, SEND_BTN_SELECTORS, timeout=2000)
     if btn:
-        btn.click()
+        try:
+            btn.click(timeout=5000)
+        except PWTimeoutError:
+            # Overlay still blocking — force click
+            btn.click(force=True)
     else:
         page.keyboard.press("Enter")
 
@@ -250,6 +286,10 @@ def run_audit(base_url: str, headless: bool) -> dict:
                 logger.error("UI login failed: %s", e)
 
         screenshot(page, "01-initial-load")
+
+        # Dismiss any startup overlays (update banners, etc.)
+        time.sleep(1)
+        _dismiss_overlays(page)
 
         # ------------------------------------------------------------------
         # Step 2 — Locate chat input
