@@ -15,7 +15,7 @@ import sys
 import time
 import uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
@@ -121,7 +121,7 @@ class ChatCompletionRequest(BaseModel):
 
 
 @app.post("/v1/chat/completions")
-async def chat_completions(req: ChatCompletionRequest):
+async def chat_completions(request: Request, req: ChatCompletionRequest):
     if engine is None:
         raise HTTPException(503, "GSDEngine not initialized")
 
@@ -147,14 +147,15 @@ async def chat_completions(req: ChatCompletionRequest):
     if not last_user_msg and not photo_b64:
         raise HTTPException(400, "No user message found")
 
-    # Extract user identity — fallback chain: user dict → user string → metadata → anonymous
-    chat_id = "openwebui_anonymous"
-    if isinstance(req.user, dict):
-        chat_id = req.user.get("id") or req.user.get("email") or chat_id
-    elif isinstance(req.user, str) and req.user:
-        chat_id = req.user
-    if chat_id == "openwebui_anonymous" and req.metadata:
-        chat_id = req.metadata.get("chat_id") or chat_id
+    # Extract user identity from Open WebUI forwarded headers (per-conversation)
+    chat_id = (
+        request.headers.get("X-OpenWebUI-Chat-Id")
+        or request.headers.get("x-openwebui-chat-id")
+        or (req.user.get("id") if isinstance(req.user, dict) else None)
+        or (req.user if isinstance(req.user, str) and req.user else None)
+        or (req.metadata.get("chat_id") if req.metadata else None)
+        or "openwebui_anonymous"
+    )
 
     t0 = time.monotonic()
     reply = await engine.process(

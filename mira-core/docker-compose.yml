@@ -11,6 +11,7 @@ services:
       - ENABLE_SIGNUP=true
       - DEFAULT_USER_ROLE=pending
       - ENABLE_COMMUNITY_SHARING=false
+      - ENABLE_FORWARD_USER_INFO_HEADERS=true
       - ENABLE_API_KEYS=true
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY must be set in .env}
       - WEBUI_ENABLE_TELEMETRY=false
