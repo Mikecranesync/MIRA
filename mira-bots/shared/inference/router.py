@@ -109,36 +109,42 @@ def _build_providers() -> list[_Provider]:
 
     groq_key = os.getenv("GROQ_API_KEY", "")
     if groq_key:
-        providers.append(_Provider(
-            name="groq",
-            api_url="https://api.groq.com/openai/v1/chat/completions",
-            api_key=groq_key,
-            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-            format="openai",
-            timeout=30.0,
-        ))
+        providers.append(
+            _Provider(
+                name="groq",
+                api_url="https://api.groq.com/openai/v1/chat/completions",
+                api_key=groq_key,
+                model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                format="openai",
+                timeout=30.0,
+            )
+        )
 
     cerebras_key = os.getenv("CEREBRAS_API_KEY", "")
     if cerebras_key:
-        providers.append(_Provider(
-            name="cerebras",
-            api_url="https://api.cerebras.ai/v1/chat/completions",
-            api_key=cerebras_key,
-            model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
-            format="openai",
-            timeout=30.0,
-        ))
+        providers.append(
+            _Provider(
+                name="cerebras",
+                api_url="https://api.cerebras.ai/v1/chat/completions",
+                api_key=cerebras_key,
+                model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
+                format="openai",
+                timeout=30.0,
+            )
+        )
 
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
     if anthropic_key:
-        providers.append(_Provider(
-            name="claude",
-            api_url=ANTHROPIC_API_URL,
-            api_key=anthropic_key,
-            model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"),
-            format="anthropic",
-            timeout=60.0,
-        ))
+        providers.append(
+            _Provider(
+                name="claude",
+                api_url=ANTHROPIC_API_URL,
+                api_key=anthropic_key,
+                model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"),
+                format="anthropic",
+                timeout=60.0,
+            )
+        )
 
     return providers
 
@@ -219,7 +225,11 @@ class InferenceRouter:
 
             try:
                 content, usage = await self._call_provider(
-                    provider, messages, max_tokens, session_id, has_image,
+                    provider,
+                    messages,
+                    max_tokens,
+                    session_id,
+                    has_image,
                 )
                 if content:
                     return content, usage
@@ -305,7 +315,11 @@ class InferenceRouter:
             error_type = _classify_http_error(status)
             body = e.response.text[:300]
             logger.warning(
-                "%s HTTP %d (%s): %s", provider.name, status, error_type, body,
+                "%s HTTP %d (%s): %s",
+                provider.name,
+                status,
+                error_type,
+                body,
             )
 
             if error_type == "rate_limit":
@@ -314,7 +328,11 @@ class InferenceRouter:
                 await asyncio.sleep(wait)
                 try:
                     return await self._call_openai_compat(
-                        provider, messages, max_tokens, session_id, has_image,
+                        provider,
+                        messages,
+                        max_tokens,
+                        session_id,
+                        has_image,
                     )
                 except Exception:
                     pass
@@ -414,7 +432,10 @@ class InferenceRouter:
             error_type = _classify_http_error(status)
             body = e.response.text[:300]
             logger.warning(
-                "claude HTTP %d (%s): %s", status, error_type, body,
+                "claude HTTP %d (%s): %s",
+                status,
+                error_type,
+                body,
             )
 
             if error_type in ("rate_limit", "service"):
@@ -423,7 +444,11 @@ class InferenceRouter:
                 await asyncio.sleep(wait)
                 try:
                     return await self._call_anthropic(
-                        provider, messages, max_tokens, session_id, has_image,
+                        provider,
+                        messages,
+                        max_tokens,
+                        session_id,
+                        has_image,
                     )
                 except Exception:
                     pass
@@ -454,7 +479,10 @@ class InferenceRouter:
             cost = 0.0
         logger.info(
             "LLM_USAGE provider=%s input=%d output=%d est_cost=$%.5f",
-            provider, inp, out, cost,
+            provider,
+            inp,
+            out,
+            cost,
         )
 
     @staticmethod
@@ -497,7 +525,9 @@ class InferenceRouter:
                     model, has_image, response_time_ms)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    tenant_id, platform, session_id,
+                    tenant_id,
+                    platform,
+                    session_id,
                     usage.get("input_tokens", 0),
                     usage.get("output_tokens", 0),
                     model,
@@ -529,9 +559,7 @@ def _has_image(messages: list[dict]) -> bool:
     return any(
         isinstance(msg.get("content"), list)
         and any(
-            b.get("type") in ("image", "image_url")
-            for b in msg["content"]
-            if isinstance(b, dict)
+            b.get("type") in ("image", "image_url") for b in msg["content"] if isinstance(b, dict)
         )
         for msg in messages
     )
@@ -553,14 +581,16 @@ def _convert_images_for_claude(messages: list[dict]) -> list[dict]:
                     else:
                         media_type = "image/jpeg"
                         b64 = url
-                    new_blocks.append({
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": b64,
-                        },
-                    })
+                    new_blocks.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": b64,
+                            },
+                        }
+                    )
                 else:
                     new_blocks.append(block)
             converted.append({**msg, "content": new_blocks})
