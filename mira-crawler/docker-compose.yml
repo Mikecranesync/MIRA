@@ -30,6 +30,10 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
       - OLLAMA_BASE_URL=http://192.168.1.11:11434
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+    volumes:
+      - ${HOME}/drafts/linkedin:/data/linkedin
     networks:
       - core-net
     healthcheck:

@@ -1,0 +1,160 @@
+{
+  "dashboard": {
+    "uid": "mira-celery-linkedin",
+    "title": "MIRA Celery + LinkedIn Drafts",
+    "tags": ["mira", "celery", "linkedin"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "30s",
+    "time": { "from": "now-24h", "to": "now" },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Worker Status",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+        "targets": [
+          {
+            "expr": "flower_worker_online",
+            "legendFormat": "Online Workers"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                { "color": "red", "value": 0 },
+                { "color": "green", "value": 1 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Task Success Rate (5m)",
+        "type": "gauge",
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+        "targets": [
+          {
+            "expr": "rate(flower_events_total{type=\"task-succeeded\"}[5m]) / (rate(flower_events_total{type=\"task-succeeded\"}[5m]) + rate(flower_events_total{type=\"task-failed\"}[5m]) + 0.001) * 100",
+            "legendFormat": "Success %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "max": 100,
+            "thresholds": {
+              "steps": [
+                { "color": "red", "value": 0 },
+                { "color": "yellow", "value": 80 },
+                { "color": "green", "value": 95 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Queue Depth",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+        "targets": [
+          {
+            "expr": "flower_events_total{type=\"task-received\"} - flower_events_total{type=\"task-succeeded\"} - flower_events_total{type=\"task-failed\"}",
+            "legendFormat": "Pending"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Task Throughput by Name",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+        "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+        "targets": [
+          {
+            "expr": "rate(flower_events_total{type=\"task-succeeded\"}[5m])",
+            "legendFormat": "{{ task }}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 20
+            }
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "LinkedIn Drafts",
+        "type": "row",
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 },
+        "collapsed": false
+      },
+      {
+        "id": 5,
+        "title": "Total Drafts Generated",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 13 },
+        "datasource": { "type": "redis-datasource", "uid": "redis" },
+        "targets": [
+          {
+            "type": "command",
+            "command": "get",
+            "keyName": "linkedin:stats:generated:*"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Drafts by Post Type",
+        "description": "Distribution of generated drafts across the 8 post types",
+        "type": "piechart",
+        "gridPos": { "h": 8, "w": 8, "x": 6, "y": 13 },
+        "datasource": { "type": "redis-datasource", "uid": "redis" },
+        "targets": [
+          {
+            "type": "command",
+            "command": "hgetall",
+            "keyName": "linkedin:stats:by_type"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Recent 10 Drafts",
+        "description": "Latest generated drafts with metadata from Redis",
+        "type": "table",
+        "gridPos": { "h": 8, "w": 16, "x": 0, "y": 21 },
+        "datasource": { "type": "redis-datasource", "uid": "redis" },
+        "targets": [
+          {
+            "type": "command",
+            "command": "zrevrange",
+            "keyName": "linkedin:drafts",
+            "start": "0",
+            "end": "9"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "extractFields",
+            "options": {
+              "source": "Value",
+              "format": "json"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

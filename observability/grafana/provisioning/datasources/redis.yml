@@ -1,0 +1,9 @@
+apiVersion: 1
+datasources:
+  - name: Redis
+    type: redis-datasource
+    access: proxy
+    url: redis://mira-redis:6379
+    jsonData:
+      client: standalone
+    editable: false
