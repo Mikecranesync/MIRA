@@ -8,7 +8,9 @@ services:
       - WEBUI_NAME=MIRA
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - WEBUI_AUTH=true
-      - ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}
+      - ENABLE_SIGNUP=true
+      - DEFAULT_USER_ROLE=pending
+      - ENABLE_COMMUNITY_SHARING=false
       - ENABLE_API_KEYS=true
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY must be set in .env}
       - WEBUI_ENABLE_TELEMETRY=false
@@ -25,8 +27,10 @@ services:
       # Docling for industrial-grade PDF extraction
       - DOCLING_SERVER_URL=http://mira-docling:5001
       - PDF_EXTRACT_IMAGES=true
+    entrypoint: ["/bin/bash", "/entrypoint-mira.sh"]
     volumes:
       - open-webui-data:/app/backend/data
+      - ./entrypoint-mira.sh:/entrypoint-mira.sh:ro
     networks:
       - core-net
       - bot-net
