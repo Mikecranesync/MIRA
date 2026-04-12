@@ -8,6 +8,9 @@ diagnostic workflow (FSM, RAG, guardrails, safety keywords).
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import io
 import json
 import logging
 import os
@@ -16,8 +19,10 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from PIL import Image
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
@@ -40,6 +45,56 @@ OPENWEBUI_API_KEY = os.getenv("OPENWEBUI_API_KEY", "")
 COLLECTION_ID = os.getenv("KNOWLEDGE_COLLECTION_ID", "")
 VISION_MODEL = os.getenv("VISION_MODEL", "qwen2.5vl:7b")
 TENANT_ID = os.getenv("MIRA_TENANT_ID", "")
+INGEST_URL = os.getenv("INGEST_SERVICE_URL", "")
+MAX_VISION_PX = int(os.getenv("MAX_VISION_PX", "1024"))
+
+
+# ── Image resize + ingest helpers ────────────────────────────────────────────
+
+
+def _resize_for_vision(photo_b64: str) -> str:
+    """Downscale base64 image to MAX_VISION_PX longest side.
+
+    Matches Telegram bot's _resize_for_vision — cuts vision model latency.
+    Returns resized base64 string (no data: prefix). Falls back to original
+    if the image can't be decoded.
+    """
+    try:
+        raw = base64.b64decode(photo_b64)
+        img = Image.open(io.BytesIO(raw))
+        if max(img.size) <= MAX_VISION_PX:
+            return photo_b64
+        w, h = img.size
+        ratio = MAX_VISION_PX / max(w, h)
+        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        logger.info("IMAGE_RESIZE %dx%d → %dx%d", w, h, img.width, img.height)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        logger.warning("IMAGE_RESIZE skipped: %s", e)
+        return photo_b64
+
+
+async def _ingest_photo_background(photo_b64: str, asset_tag: str) -> None:
+    """POST photo to mira-ingest for KB storage. Non-blocking — never raises."""
+    if not INGEST_URL:
+        return
+    try:
+        photo_bytes = base64.b64decode(photo_b64)
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                f"{INGEST_URL}/ingest/photo",
+                data={"asset_tag": asset_tag},
+                files={"image": ("photo.jpg", photo_bytes, "image/jpeg")},
+            )
+            if resp.status_code == 200:
+                logger.info("INGEST_PHOTO asset=%s id=%s", asset_tag, resp.json().get("id"))
+            else:
+                logger.warning("INGEST_PHOTO failed %s: %s", resp.status_code, resp.text[:200])
+    except Exception as e:
+        logger.error("INGEST_PHOTO error: %s", e)
+
 
 # ── App ──────────────────────────────────────────────────────────────────────
 
@@ -190,6 +245,10 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
 
+    # Resize image for vision model (matches Telegram bot behavior)
+    if photo_b64:
+        photo_b64 = _resize_for_vision(photo_b64)
+
     t0 = time.monotonic()
     reply = await engine.process(
         chat_id=chat_id,
@@ -199,6 +258,11 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     )
     latency_ms = int((time.monotonic() - t0) * 1000)
     logger.info("PIPELINE_CALL chat_id=%s latency_ms=%d len=%d", chat_id, latency_ms, len(reply))
+
+    # Queue photo for KB ingest in background (non-blocking)
+    if photo_b64:
+        asset_tag = last_user_msg.split()[0] if last_user_msg.strip() else "UNKNOWN"
+        asyncio.create_task(_ingest_photo_background(photo_b64, asset_tag))
 
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     created = int(time.time())
