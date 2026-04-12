@@ -601,6 +601,24 @@ if __name__ == "__main__":
     async def rest_cmms_health(request):
         return JSONResponse(await cmms_health())
 
+    async def rest_cmms_nameplate(request):
+        """POST /api/cmms/nameplate — create Atlas asset from extracted nameplate fields."""
+        body = await request.json()
+        tenant_id = body.get("tenant_id", "")
+        if not tenant_id:
+            return JSONResponse({"error": "tenant_id required"}, status_code=400)
+        return JSONResponse(
+            await create_asset_from_nameplate(
+                tenant_id=tenant_id,
+                manufacturer=body.get("manufacturer", ""),
+                model=body.get("model", ""),
+                serial=body.get("serial", ""),
+                voltage=body.get("voltage", ""),
+                hp=body.get("hp", ""),
+                fla=body.get("fla", ""),
+            )
+        )
+
     async def health(request):
         return JSONResponse({"status": "ok"})
 
@@ -621,6 +639,7 @@ if __name__ == "__main__":
             Route("/api/cmms/pm-schedules", rest_cmms_pm_schedules),
             Route("/api/cmms/invite", rest_cmms_invite, methods=["POST"]),
             Route("/api/cmms/health", rest_cmms_health),
+            Route("/api/cmms/nameplate", rest_cmms_nameplate, methods=["POST"]),
             Route("/ingest/pdf", _rest_ingest_pdf, methods=["POST"]),
             Route("/api/embed", _rest_embed, methods=["POST"]),
         ],

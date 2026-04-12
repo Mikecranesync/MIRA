@@ -7,6 +7,8 @@ import re
 import sqlite3
 import time
 
+import httpx
+
 from .chat_tenant import resolve as resolve_tenant
 from .guardrails import (
     INTENT_KEYWORDS,
@@ -22,6 +24,7 @@ from .nemotron import NemotronClient
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
+from .workers.nameplate_worker import NameplateWorker
 from .workers.plc_worker import PLCWorker
 from .workers.print_worker import PrintWorker
 from .workers.rag_worker import RAGWorker
@@ -79,9 +82,21 @@ class Supervisor:
         collection_id: str,
         vision_model: str = "qwen2.5vl:7b",
         tenant_id: str = None,
+        mcp_base_url: str = "",
+        mcp_api_key: str = "",
+        web_base_url: str = "",
     ):
         self.db_path = db_path
         self.vision_model = vision_model
+
+        # Service base URLs for nameplate downstream calls
+        self.mcp_base_url = (
+            mcp_base_url or os.getenv("MCP_BASE_URL", "http://mira-mcp:8001")
+        ).rstrip("/")
+        self.mcp_api_key = mcp_api_key or os.getenv("MCP_REST_API_KEY", "")
+        self.web_base_url = (
+            web_base_url or os.getenv("WEB_BASE_URL", "http://mira-web:3000")
+        ).rstrip("/")
 
         # Nemotron client — enabled only when NVIDIA_API_KEY is set
         self.nemotron = NemotronClient()
@@ -91,6 +106,7 @@ class Supervisor:
 
         # Initialize workers
         self.vision = VisionWorker(openwebui_url, api_key, vision_model)
+        self.nameplate = NameplateWorker(openwebui_url, api_key, vision_model)
         self.rag = RAGWorker(
             openwebui_url,
             api_key,
@@ -437,6 +453,25 @@ class Supervisor:
                     trace_id,
                     "ELECTRICAL_PRINT",
                 )
+            elif vision_data["classification"] == "NAMEPLATE":
+                reply = await self._handle_nameplate(
+                    chat_id=chat_id,
+                    photo_b64=photo_b64,
+                    state=state,
+                    ctx=ctx,
+                    message=message,
+                    resolved_tenant=resolved_tenant,
+                )
+                state["state"] = "ASSET_IDENTIFIED"
+                state["exchange_count"] += 1
+                self._save_state(chat_id, state)
+                tl_flush()
+                return self._make_result(
+                    reply,
+                    "high",
+                    trace_id,
+                    "ASSET_IDENTIFIED",
+                )
             else:
                 state["state"] = "ASSET_IDENTIFIED"
                 ctx["session_context"] = {
@@ -649,6 +684,132 @@ class Supervisor:
     # ------------------------------------------------------------------
     # State management
     # ------------------------------------------------------------------
+
+    async def _handle_nameplate(
+        self,
+        chat_id: str,
+        photo_b64: str,
+        state: dict,
+        ctx: dict,
+        message: str,
+        resolved_tenant: str,
+    ) -> str:
+        """Run the full nameplate flow: extract fields → create Atlas asset → seed knowledge.
+
+        Returns the reply string to send back to the user.
+        """
+        # 1. Extract structured fields from the nameplate photo
+        try:
+            fields = await self.nameplate.extract(photo_b64)
+        except Exception as e:
+            logger.error("nameplate extract failed: %s", e)
+            fields = {}
+
+        if "parse_error" in fields:
+            logger.warning("nameplate parse_error: %s", fields["parse_error"])
+            fields = {}
+
+        manufacturer = fields.get("manufacturer") or "Unknown"
+        model = fields.get("model") or "Unknown"
+
+        # 2. Create Atlas CMMS asset via mira-mcp REST
+        mcp_headers = {"Content-Type": "application/json"}
+        if self.mcp_api_key:
+            mcp_headers["Authorization"] = f"Bearer {self.mcp_api_key}"
+
+        mcp_payload = {
+            "tenant_id": resolved_tenant,
+            "manufacturer": manufacturer,
+            "model": model,
+            "serial": fields.get("serial") or "",
+            "voltage": fields.get("voltage") or "",
+            "hp": fields.get("hp") or "",
+            "fla": fields.get("fla") or "",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                mcp_resp = await client.post(
+                    f"{self.mcp_base_url}/api/cmms/nameplate",
+                    json=mcp_payload,
+                    headers=mcp_headers,
+                )
+                mcp_resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "nameplate mcp call HTTP %d: %s",
+                e.response.status_code,
+                e.response.text[:200],
+            )
+        except Exception as e:
+            logger.error("nameplate mcp call failed: %s", e)
+
+        # 3. Seed tenant knowledge via mira-web
+        linked_chunks = 0
+        web_headers = {"Content-Type": "application/json"}
+        if self.mcp_api_key:
+            web_headers["Authorization"] = f"Bearer {self.mcp_api_key}"
+
+        web_payload = {
+            "tenant_id": resolved_tenant,
+            "nameplate": {
+                "manufacturer": manufacturer,
+                "modelNumber": model,
+                "serial": fields.get("serial") or "",
+                "voltage": fields.get("voltage") or "",
+                "fla": fields.get("fla") or "",
+                "hp": fields.get("hp") or "",
+            },
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                web_resp = await client.post(
+                    f"{self.web_base_url}/api/provision/nameplate",
+                    json=web_payload,
+                    headers=web_headers,
+                )
+                web_resp.raise_for_status()
+                web_data = web_resp.json()
+                linked_chunks = web_data.get("linkedChunks", 0)
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "nameplate web call HTTP %d: %s",
+                e.response.status_code,
+                e.response.text[:200],
+            )
+        except Exception as e:
+            logger.error("nameplate web call failed: %s", e)
+
+        # 4. Update session state with nameplate data
+        ctx["session_context"] = {
+            "equipment_type": f"{manufacturer} {model}",
+            "manufacturer": manufacturer,
+            "last_question": None,
+            "last_options": [],
+        }
+        state["asset_identified"] = f"{manufacturer}, {model}"
+        state["context"] = ctx
+
+        history = ctx.get("history", [])
+        history.append({"role": "user", "content": message})
+        reply = (
+            f"Asset registered: {manufacturer} {model} — "
+            f"linked to {linked_chunks} OEM manual chunks. "
+            f"Ask me anything about this equipment."
+        )
+        history.append({"role": "assistant", "content": reply})
+        ctx["history"] = history
+        state["context"] = ctx
+
+        logger.info(
+            "NAMEPLATE_FLOW tenant=%s manufacturer=%s model=%s linked_chunks=%d",
+            resolved_tenant,
+            manufacturer,
+            model,
+            linked_chunks,
+        )
+        return reply
 
     async def _call_with_correction(
         self,

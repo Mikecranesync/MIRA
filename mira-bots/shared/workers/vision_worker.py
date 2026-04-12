@@ -31,6 +31,24 @@ PRINT_KEYWORDS = {
     "relay logic",
 }
 
+# Keywords that indicate a nameplate / data plate / rating plate photo.
+# These appear in the vision model description or OCR text when the photo
+# shows an equipment identification label rather than a faceplate with
+# indicators or an electrical drawing.
+NAMEPLATE_KEYWORDS = {
+    "nameplate",
+    "data plate",
+    "rating plate",
+    "specification plate",
+    "serial number plate",
+    "serial plate",
+    "motor nameplate",
+    "equipment tag",
+    "id plate",
+    "identification plate",
+    "name plate",
+}
+
 # Keywords that indicate a physical component photo, NOT a drawing —
 # even if the faceplate has many readable text labels (OCR items > threshold)
 EQUIPMENT_FACE_KEYWORDS = {
@@ -94,7 +112,7 @@ class VisionWorker:
         """Analyze a photo. Returns classification and extracted data.
 
         Returns dict with keys:
-            classification: 'ELECTRICAL_PRINT' | 'EQUIPMENT_PHOTO'
+            classification: 'ELECTRICAL_PRINT' | 'NAMEPLATE' | 'EQUIPMENT_PHOTO'
             vision_result: str (vision model description)
             ocr_items: list[str] (glm-ocr extracted text items)
             tesseract_text: str (Tesseract backup OCR)
@@ -289,7 +307,7 @@ class VisionWorker:
             return ""
 
     def _classify_photo(self, vision_result: str, ocr_items: list) -> dict:
-        """Classify photo as ELECTRICAL_PRINT or EQUIPMENT_PHOTO with confidence.
+        """Classify photo as ELECTRICAL_PRINT, NAMEPLATE, or EQUIPMENT_PHOTO with confidence.
 
         Returns {"type": str, "confidence": float}.
 
@@ -297,6 +315,10 @@ class VisionWorker:
         labels, so OCR count alone must NOT override the vision model's classification.
         Vision model identification takes priority — OCR count is only a tiebreaker
         when the vision model is ambiguous.
+
+        NAMEPLATE detection fires when the vision model or OCR explicitly uses
+        nameplate/data-plate/rating-plate vocabulary, indicating the photo shows
+        an identification label rather than a live faceplate or drawing.
 
         Confidence is based on keyword match density across vision + OCR text.
         """
@@ -306,6 +328,16 @@ class VisionWorker:
 
         equip_matches = sum(1 for kw in EQUIPMENT_FACE_KEYWORDS if kw in combined)
         print_matches = sum(1 for kw in PRINT_KEYWORDS if kw in combined)
+        nameplate_matches = sum(1 for kw in NAMEPLATE_KEYWORDS if kw in combined)
+
+        # Nameplate detection: vision model explicitly calls it a nameplate/data plate.
+        # Check vision_lower first (high confidence); fall back to OCR (lower confidence).
+        if any(kw in vision_lower for kw in NAMEPLATE_KEYWORDS):
+            conf = min(1.0, 0.7 + nameplate_matches * 0.05)
+            return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
+        if any(kw in ocr_text_lower for kw in NAMEPLATE_KEYWORDS):
+            conf = min(1.0, 0.5 + nameplate_matches * 0.05)
+            return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
 
         # Equipment faceplate keywords override everything — these are never drawings
         if any(kw in vision_lower for kw in EQUIPMENT_FACE_KEYWORDS):
