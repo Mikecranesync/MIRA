@@ -27,6 +27,27 @@ class AtlasCMMS(CMMSAdapter):
         self._token: str = ""
         self._token_expires: float = 0
 
+    @classmethod
+    def for_tenant(cls, email: str, password: str, api_url: str | None = None) -> "AtlasCMMS":
+        """Return a new AtlasCMMS instance authenticated as a specific tenant user.
+
+        Bypasses env-var defaults so mira-mcp can impersonate per-tenant Atlas accounts
+        without mutating the process-level singleton or touching env vars.
+
+        Args:
+            email: Atlas CMMS login email for this tenant.
+            password: Atlas CMMS login password for this tenant.
+            api_url: Atlas API base URL. Falls back to ATLAS_API_URL env var, then
+                     the hardcoded default ``http://atlas-api:8080``.
+        """
+        inst = cls.__new__(cls)
+        inst.api_url = api_url or os.environ.get("ATLAS_API_URL", "http://atlas-api:8080")
+        inst.user = email
+        inst.password = password
+        inst._token = ""
+        inst._token_expires = 0.0
+        return inst
+
     @property
     def configured(self) -> bool:
         return bool(self.user and self.password)
