@@ -14,6 +14,7 @@ import os
 import sys
 import time
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -42,13 +43,11 @@ TENANT_ID = os.getenv("MIRA_TENANT_ID", "")
 
 # ── App ──────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="MIRA Pipeline", docs_url=None, redoc_url=None)
-
 engine: GSDEngine | None = None
 
 
-@app.on_event("startup")
-async def _startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global engine
     engine = GSDEngine(
         db_path=DB_PATH,
@@ -59,6 +58,11 @@ async def _startup():
         tenant_id=TENANT_ID or None,
     )
     logger.info("MIRA Pipeline started — GSDEngine initialized (db=%s)", DB_PATH)
+    yield
+    engine = None
+
+
+app = FastAPI(title="MIRA Pipeline", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 
 # ── Auth middleware ──────────────────────────────────────────────────────────
