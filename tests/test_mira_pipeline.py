@@ -210,3 +210,21 @@ def test_chat_completions_metadata_chat_id():
         photo_b64=None,
         platform="openwebui",
     )
+
+
+def test_reset_command():
+    """Typing 'reset' clears FSM state and returns confirmation without calling engine.process."""
+    for keyword in ("reset", "/reset", "start over", "new session"):
+        _mock_gsd_engine_inst.process.reset_mock()
+        _mock_gsd_engine_inst.reset.reset_mock()
+        payload = {
+            "model": "mira-diagnostic",
+            "messages": [{"role": "user", "content": keyword}],
+            "user": "reset-test",
+        }
+        resp = client.post("/v1/chat/completions", json=payload, headers=AUTH_HEADER)
+        assert resp.status_code == 200, f"Failed for keyword: {keyword}"
+        body = resp.json()
+        assert "reset" in body["choices"][0]["message"]["content"].lower()
+        _mock_gsd_engine_inst.reset.assert_called_once_with("reset-test")
+        _mock_gsd_engine_inst.process.assert_not_awaited()

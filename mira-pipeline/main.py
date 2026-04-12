@@ -161,6 +161,28 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         or "openwebui_anonymous"
     )
 
+    # Handle reset command — clear FSM state before processing
+    if last_user_msg.strip().lower() in ("/reset", "reset", "start over", "new session"):
+        engine.reset(chat_id)
+        logger.info("FSM_RESET chat_id=%s", chat_id)
+        return {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "mira-diagnostic",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Conversation reset. What equipment needs help?",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
     t0 = time.monotonic()
     reply = await engine.process(
         chat_id=chat_id,
