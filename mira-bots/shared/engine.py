@@ -7,6 +7,7 @@ import re
 import sqlite3
 import time
 
+from .chat_tenant import resolve as resolve_tenant
 from .guardrails import (
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
@@ -287,6 +288,9 @@ class Supervisor:
         Same logic as process(), but preserves structured metadata for
         benchmark and telemetry consumers.
         """
+        # Resolve tenant per call — chat_tenant LRU cache makes this cheap
+        resolved_tenant = resolve_tenant(chat_id) or self.rag.tenant_id
+
         # Telemetry trace
         t = tl_trace("supervisor.process", user_id=chat_id)
         trace_id = t.id
@@ -326,6 +330,7 @@ class Supervisor:
                     state,
                     chat_id,
                     session_photo=_session_photo,
+                    tenant_id=resolved_tenant,
                 )
 
             # Option selection resolution: expand "1" → full option text
@@ -558,6 +563,7 @@ class Supervisor:
                 message,
                 state,
                 effective_photo,
+                tenant_id=resolved_tenant,
             )
         if raw is None:
             self._save_state(chat_id, state)
@@ -649,12 +655,16 @@ class Supervisor:
         message: str,
         state: dict,
         photo_b64: str = None,
+        tenant_id: str | None = None,
     ) -> tuple:
         """Call RAG worker with self-corrective retry.
 
         Returns (raw, parsed) on success, (None, {"reply": error_msg}) on failure.
         If first response is not grounded and Nemotron is enabled, rewrites
         query and retries once (max 2 attempts).
+
+        Args:
+            tenant_id: Resolved per-call tenant to forward to RAGWorker.process().
         """
         max_attempts = 1 if photo_b64 else (2 if self.nemotron.enabled else 1)
         query = message
@@ -666,6 +676,7 @@ class Supervisor:
                     state,
                     photo_b64=photo_b64,
                     vision_model=self.vision_model,
+                    tenant_id=tenant_id,
                 )
             except Exception as e:
                 logger.error("LLM call failed (rag worker): %s", e)
@@ -693,12 +704,15 @@ class Supervisor:
         state: dict,
         chat_id: str,
         session_photo: str = None,
+        tenant_id: str | None = None,
     ) -> dict:
         """Route a session follow-up through the RAG pipeline without intent filtering.
 
         Returns a dict via _make_result() — must match process_full() return type.
         """
-        raw, parsed = await self._call_with_correction(message, state, photo_b64=session_photo)
+        raw, parsed = await self._call_with_correction(
+            message, state, photo_b64=session_photo, tenant_id=tenant_id
+        )
         if raw is None:
             self._save_state(chat_id, state)
             return self._make_result(parsed["reply"], "none", None, state["state"])
