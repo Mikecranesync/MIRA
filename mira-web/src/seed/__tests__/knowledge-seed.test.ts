@@ -1,5 +1,6 @@
 /**
- * Unit tests for seedAssetFromNameplate (#156).
+ * Unit tests for seedAssetFromNameplate (#156) and
+ * POST /api/provision/nameplate endpoint (#157).
  *
  * Mocking strategy:
  *   - mock.module("@neondatabase/serverless") replaces the neon driver before
@@ -211,5 +212,105 @@ describe("seedAssetFromNameplate", () => {
 
     expect(result.linkedChunks).toBe(0);
     expect(result.inserted).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/provision/nameplate — endpoint tests (#157)
+// ---------------------------------------------------------------------------
+
+describe("POST /api/provision/nameplate", () => {
+  // Lazy-import the Hono app so that mock.module overrides above are already
+  // in effect when server.ts runs its top-level imports.
+  let app: { fetch: (req: Request) => Promise<Response> };
+
+  const FAKE_MCP_KEY = "test-mcp-rest-api-key";
+  const TENANT_ID = "tenant-test-1234";
+
+  const VALID_BODY = {
+    tenant_id: TENANT_ID,
+    nameplate: {
+      manufacturer: "AutomationDirect",
+      modelNumber: "GS1-45P0",
+      serial: "SN-999",
+      voltage: "460V",
+    },
+  };
+
+  beforeEach(async () => {
+    process.env.MCP_REST_API_KEY = FAKE_MCP_KEY;
+    process.env.PLG_JWT_SECRET = "test-jwt-secret-at-least-32-chars-long";
+    process.env.NEON_DATABASE_URL = "postgresql://fake:fake@fake/fake";
+    process.env.OLLAMA_BASE_URL = "http://localhost:11434";
+
+    // Fresh import each time so env vars take effect
+    const mod = await import("../../server.js");
+    app = mod.default as typeof app;
+  });
+
+  function post(body: unknown, authHeader?: string): Promise<Response> {
+    return app.fetch(
+      new Request("http://localhost/api/provision/nameplate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        },
+        body: JSON.stringify(body),
+      }),
+    );
+  }
+
+  it("returns 200 ok with linkedChunks and inserted when service token is valid", async () => {
+    const res = await post(VALID_BODY, `Bearer ${FAKE_MCP_KEY}`);
+    expect(res.status).toBe(200);
+    const json = await res.json() as Record<string, unknown>;
+    expect(json.ok).toBe(true);
+    expect(typeof json.linkedChunks).toBe("number");
+    expect(typeof json.inserted).toBe("number");
+  });
+
+  it("returns 401 when no Authorization header is provided", async () => {
+    const res = await post(VALID_BODY);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 401 when Authorization header is present but not service key and not a valid JWT", async () => {
+    const res = await post(VALID_BODY, "Bearer not-a-valid-token");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 when tenant_id is missing from body", async () => {
+    const res = await post(
+      { nameplate: { manufacturer: "AutomationDirect", modelNumber: "GS1-45P0" } },
+      `Bearer ${FAKE_MCP_KEY}`,
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json() as Record<string, unknown>;
+    expect(typeof json.error).toBe("string");
+  });
+
+  it("returns 400 when nameplate is missing manufacturer", async () => {
+    const res = await post(
+      { tenant_id: TENANT_ID, nameplate: { modelNumber: "GS1-45P0" } },
+      `Bearer ${FAKE_MCP_KEY}`,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when nameplate is missing modelNumber", async () => {
+    const res = await post(
+      { tenant_id: TENANT_ID, nameplate: { manufacturer: "AutomationDirect" } },
+      `Bearer ${FAKE_MCP_KEY}`,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when nameplate field is absent entirely", async () => {
+    const res = await post(
+      { tenant_id: TENANT_ID },
+      `Bearer ${FAKE_MCP_KEY}`,
+    );
+    expect(res.status).toBe(400);
   });
 });
