@@ -401,19 +401,30 @@ def detect_session_followup(message: str, session_context: dict, fsm_state: str)
     return any(sig in msg_lower for sig in SESSION_FOLLOWUP_SIGNALS)
 
 
-_SELECTION_RE = re.compile(r"^\s*(\d+)\.?\s*$")
+_SELECTION_RE = re.compile(r"^\s*(?:option\s+)?(\d+)[.\-,):]?\s*", re.IGNORECASE)
 
 
 def resolve_option_selection(message: str, last_options: list[str]) -> str | None:
-    """If message is a numbered selection (e.g. "1", "1.", "2"), return the
-    matching option text. Returns None if not a valid selection."""
+    """If message starts with a numbered selection, return the matching option text.
+
+    Handles natural replies like "2", "2.", "option 2", "2 again", "2 - yes".
+    When the user adds a short filler (<20 chars) after the number, the bare
+    option text is returned.  When they add a meaningful elaboration (>=20 chars),
+    the elaboration is appended: "<option> — <elaboration>".
+
+    Returns None if the message does not start with a valid in-range number.
+    """
     m = _SELECTION_RE.match(message)
     if not m:
         return None
     idx = int(m.group(1)) - 1  # 1-indexed to 0-indexed
-    if 0 <= idx < len(last_options):
-        return last_options[idx]
-    return None
+    if not (0 <= idx < len(last_options)):
+        return None
+    remainder = message[m.end() :].strip()
+    selected = last_options[idx]
+    if len(remainder) < 20:
+        return selected
+    return f"{selected} — {remainder}"
 
 
 def strip_mentions(message: str) -> str:

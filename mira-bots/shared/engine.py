@@ -338,8 +338,18 @@ class Supervisor:
 
         # Always-on guardrail: safety and off-topic bypass ALL conversation state
         if not photo_b64:
-            # Session follow-up detection: short-circuit before intent classification
             sc = state.get("context", {}).get("session_context", {})
+
+            # Option selection resolution FIRST: expand "2" / "option 2" / "2 again"
+            # → full option text before any follow-up or intent detection runs on it.
+            last_options = sc.get("last_options", [])
+            if last_options:
+                expanded = resolve_option_selection(message, last_options)
+                if expanded:
+                    logger.info("Selection resolved: '%s' → '%s'", message, expanded)
+                    message = expanded
+
+            # Session follow-up detection: now runs on the already-expanded message.
             if detect_session_followup(message, sc, state["state"]):
                 return await self._handle_session_followup(
                     message,
@@ -348,14 +358,6 @@ class Supervisor:
                     session_photo=_session_photo,
                     tenant_id=resolved_tenant,
                 )
-
-            # Option selection resolution: expand "1" → full option text
-            last_options = sc.get("last_options", [])
-            if last_options:
-                expanded = resolve_option_selection(message, last_options)
-                if expanded:
-                    logger.info("Selection resolved: '%s' → '%s'", message, expanded)
-                    message = expanded
 
             intent = classify_intent(message)
             if intent == "safety":
@@ -474,11 +476,12 @@ class Supervisor:
                 )
             else:
                 state["state"] = "ASSET_IDENTIFIED"
+                existing_sc = ctx.get("session_context", {})
                 ctx["session_context"] = {
                     "equipment_type": str(vision_data["vision_result"])[:80],
                     "manufacturer": state.get("asset_identified", "Unknown"),
-                    "last_question": None,
-                    "last_options": [],
+                    "last_question": existing_sc.get("last_question"),
+                    "last_options": existing_sc.get("last_options", []),
                 }
                 state["context"] = ctx
 
