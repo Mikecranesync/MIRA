@@ -23,6 +23,7 @@ services:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - OPENAI_API_BASE_URLS=http://mira-pipeline-saas:9099/v1
       - OPENAI_API_KEYS=${PIPELINE_API_KEY:-}
+      - DEFAULT_MODELS=mira-diagnostic
     volumes:
       - mira-webui-data:/app/backend/data
       - ./mira-core/entrypoint-mira.sh:/entrypoint-mira.sh:ro
