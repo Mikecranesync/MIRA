@@ -84,6 +84,23 @@ def _parse_retry_after(response: httpx.Response) -> float:
         return 5.0
 
 
+def _is_gibberish(text: str, threshold: float = 0.3) -> bool:
+    """Detect garbled vision model output (multilingual garbage, hallucination loops)."""
+    if not text or len(text) < 20:
+        return False
+    non_ascii = sum(1 for c in text if ord(c) > 127)
+    if non_ascii / len(text) > threshold:
+        return True
+    words = text.split()
+    if len(words) > 10:
+        from collections import Counter
+
+        most_common_count = Counter(words).most_common(1)[0][1]
+        if most_common_count > len(words) * 0.15:
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Provider definitions
 # ---------------------------------------------------------------------------
@@ -97,6 +114,7 @@ class _Provider:
     model: str
     format: str  # "openai" or "anthropic"
     timeout: float = 60.0
+    vision_model: str = ""  # If set, use this model for image requests
 
     @property
     def enabled(self) -> bool:
@@ -109,36 +127,45 @@ def _build_providers() -> list[_Provider]:
 
     groq_key = os.getenv("GROQ_API_KEY", "")
     if groq_key:
-        providers.append(_Provider(
-            name="groq",
-            api_url="https://api.groq.com/openai/v1/chat/completions",
-            api_key=groq_key,
-            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-            format="openai",
-            timeout=30.0,
-        ))
+        providers.append(
+            _Provider(
+                name="groq",
+                api_url="https://api.groq.com/openai/v1/chat/completions",
+                api_key=groq_key,
+                model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                format="openai",
+                timeout=30.0,
+                vision_model=os.getenv(
+                    "GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
+                ),
+            )
+        )
 
     cerebras_key = os.getenv("CEREBRAS_API_KEY", "")
     if cerebras_key:
-        providers.append(_Provider(
-            name="cerebras",
-            api_url="https://api.cerebras.ai/v1/chat/completions",
-            api_key=cerebras_key,
-            model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
-            format="openai",
-            timeout=30.0,
-        ))
+        providers.append(
+            _Provider(
+                name="cerebras",
+                api_url="https://api.cerebras.ai/v1/chat/completions",
+                api_key=cerebras_key,
+                model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
+                format="openai",
+                timeout=30.0,
+            )
+        )
 
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
     if anthropic_key:
-        providers.append(_Provider(
-            name="claude",
-            api_url=ANTHROPIC_API_URL,
-            api_key=anthropic_key,
-            model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"),
-            format="anthropic",
-            timeout=60.0,
-        ))
+        providers.append(
+            _Provider(
+                name="claude",
+                api_url=ANTHROPIC_API_URL,
+                api_key=anthropic_key,
+                model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"),
+                format="anthropic",
+                timeout=60.0,
+            )
+        )
 
     return providers
 
@@ -159,7 +186,10 @@ class InferenceRouter:
 
         if self.enabled:
             names = [p.name for p in self.providers]
+            vision = [f"{p.name}:{p.vision_model}" for p in self.providers if p.vision_model]
             logger.info("InferenceRouter enabled — cascade: %s", " → ".join(names))
+            if vision:
+                logger.info("InferenceRouter vision: %s", ", ".join(vision))
         else:
             logger.info(
                 "InferenceRouter disabled — INFERENCE_BACKEND=%s, providers=%d",
@@ -212,16 +242,27 @@ class InferenceRouter:
         last_error: dict = {}
 
         for provider in self.providers:
-            # Skip non-vision providers for image requests
-            if has_image and provider.format == "openai":
-                # Groq/Cerebras don't support vision — skip to next
+            # For image requests, skip OpenAI-format providers that lack a vision model
+            if has_image and provider.format == "openai" and not provider.vision_model:
                 continue
 
             try:
                 content, usage = await self._call_provider(
-                    provider, messages, max_tokens, session_id, has_image,
+                    provider,
+                    messages,
+                    max_tokens,
+                    session_id,
+                    has_image,
                 )
                 if content:
+                    if has_image and _is_gibberish(content):
+                        logger.warning(
+                            "VISION_GIBBERISH provider=%s len=%d — trying next",
+                            provider.name,
+                            len(content),
+                        )
+                        last_error = usage
+                        continue
                     return content, usage
                 last_error = usage
             except _ProviderSkip:
@@ -253,13 +294,17 @@ class InferenceRouter:
         has_image: bool,
     ) -> tuple[str, dict]:
         """Call an OpenAI-compatible provider (Groq, Cerebras)."""
+        # Use vision model for image requests if available
+        model = provider.vision_model if (has_image and provider.vision_model) else provider.model
         payload: dict = {
-            "model": provider.model,
+            "model": model,
             "max_tokens": max_tokens,
             "messages": messages,
             "temperature": 0.1,
-            "response_format": {"type": "json_object"},
         }
+        # Vision models don't reliably support JSON mode
+        if not has_image:
+            payload["response_format"] = {"type": "json_object"}
         headers = {
             "Authorization": f"Bearer {provider.api_key}",
             "Content-Type": "application/json",
@@ -284,7 +329,7 @@ class InferenceRouter:
             logger.info(
                 "LLM_CALL provider=%s model=%s latency_ms=%d input=%d output=%d",
                 provider.name,
-                provider.model,
+                model,
                 elapsed_ms,
                 usage_dict["input_tokens"],
                 usage_dict["output_tokens"],
@@ -293,7 +338,7 @@ class InferenceRouter:
             self.write_api_usage(
                 session_id=session_id,
                 usage=usage_dict,
-                model=f"{provider.name}/{provider.model}",
+                model=f"{provider.name}/{model}",
                 has_image=has_image,
                 response_time_ms=elapsed_ms,
             )
@@ -305,17 +350,28 @@ class InferenceRouter:
             error_type = _classify_http_error(status)
             body = e.response.text[:300]
             logger.warning(
-                "%s HTTP %d (%s): %s", provider.name, status, error_type, body,
+                "%s HTTP %d (%s): %s",
+                provider.name,
+                status,
+                error_type,
+                body,
             )
 
             if error_type == "rate_limit":
                 wait = _parse_retry_after(e.response)
-                logger.info("%s rate limited — waiting %.1fs before retry", provider.name, wait)
-                await asyncio.sleep(wait)
+                logger.info("%s rate limited — waiting %.1fs", provider.name, wait)
+                await asyncio.sleep(min(wait, 30.0))
+                # Single inline retry — no recursion
                 try:
-                    return await self._call_openai_compat(
-                        provider, messages, max_tokens, session_id, has_image,
-                    )
+                    async with httpx.AsyncClient(timeout=provider.timeout) as rc:
+                        r2 = await rc.post(provider.api_url, headers=headers, json=payload)
+                        r2.raise_for_status()
+                        d2 = r2.json()
+                    return d2["choices"][0]["message"]["content"], {
+                        "input_tokens": d2.get("usage", {}).get("prompt_tokens", 0),
+                        "output_tokens": d2.get("usage", {}).get("completion_tokens", 0),
+                        "provider": provider.name,
+                    }
                 except Exception:
                     pass
 
@@ -414,17 +470,27 @@ class InferenceRouter:
             error_type = _classify_http_error(status)
             body = e.response.text[:300]
             logger.warning(
-                "claude HTTP %d (%s): %s", status, error_type, body,
+                "claude HTTP %d (%s): %s",
+                status,
+                error_type,
+                body,
             )
 
             if error_type in ("rate_limit", "service"):
                 wait = 2.0 if error_type == "service" else _parse_retry_after(e.response)
                 logger.info("claude retrying in %.1fs (%s)", wait, error_type)
-                await asyncio.sleep(wait)
+                await asyncio.sleep(min(wait, 30.0))
+                # Single inline retry — no recursion
                 try:
-                    return await self._call_anthropic(
-                        provider, messages, max_tokens, session_id, has_image,
-                    )
+                    async with httpx.AsyncClient(timeout=provider.timeout) as rc:
+                        r2 = await rc.post(provider.api_url, headers=headers, json=payload)
+                        r2.raise_for_status()
+                        d2 = r2.json()
+                    return d2["content"][0]["text"], {
+                        "input_tokens": d2.get("usage", {}).get("input_tokens", 0),
+                        "output_tokens": d2.get("usage", {}).get("output_tokens", 0),
+                        "provider": provider.name,
+                    }
                 except Exception:
                     pass
 
@@ -454,7 +520,10 @@ class InferenceRouter:
             cost = 0.0
         logger.info(
             "LLM_USAGE provider=%s input=%d output=%d est_cost=$%.5f",
-            provider, inp, out, cost,
+            provider,
+            inp,
+            out,
+            cost,
         )
 
     @staticmethod
@@ -497,7 +566,9 @@ class InferenceRouter:
                     model, has_image, response_time_ms)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    tenant_id, platform, session_id,
+                    tenant_id,
+                    platform,
+                    session_id,
                     usage.get("input_tokens", 0),
                     usage.get("output_tokens", 0),
                     model,
@@ -529,9 +600,7 @@ def _has_image(messages: list[dict]) -> bool:
     return any(
         isinstance(msg.get("content"), list)
         and any(
-            b.get("type") in ("image", "image_url")
-            for b in msg["content"]
-            if isinstance(b, dict)
+            b.get("type") in ("image", "image_url") for b in msg["content"] if isinstance(b, dict)
         )
         for msg in messages
     )
@@ -553,14 +622,16 @@ def _convert_images_for_claude(messages: list[dict]) -> list[dict]:
                     else:
                         media_type = "image/jpeg"
                         b64 = url
-                    new_blocks.append({
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": b64,
-                        },
-                    })
+                    new_blocks.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": b64,
+                            },
+                        }
+                    )
                 else:
                     new_blocks.append(block)
             converted.append({**msg, "content": new_blocks})

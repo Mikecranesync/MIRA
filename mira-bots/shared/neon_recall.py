@@ -42,7 +42,7 @@ _PRODUCT_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 
-MIN_SIMILARITY = 0.75
+MIN_SIMILARITY = float(os.getenv("MIRA_MIN_SIMILARITY", "0.70"))
 
 
 def _extract_fault_codes(query_text: str) -> list[str]:
