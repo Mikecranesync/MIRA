@@ -1,9 +1,10 @@
 # MIRA — Build State
 
-**Version:** v0.5.3
-**Updated:** 2026-03-24
+**Version:** v0.5.4
+**Updated:** 2026-04-13
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=claude` → Anthropic API | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
+**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099, OpenAI-compat) → GSDEngine → Anthropic API
 
 ---
 
@@ -60,11 +61,15 @@ MIRA/
 ├── mira-bots/          # Telegram, Slack, Teams, WhatsApp adapters + shared diagnostic engine (4 containers)
 ├── mira-bridge/        # Node-RED orchestration, SQLite WAL shared state (1 container)
 ├── mira-mcp/           # FastMCP server, NeonDB recall, equipment diagnostic tools (1 container)
+├── mira-pipeline/      # OpenAI-compat API wrapping GSDEngine — active VPS chat path
+├── mira-web/           # PLG web frontend (Next.js, :3200) — deployed on VPS, not publicly routed
 ├── mira-cmms/          # Atlas CMMS — work orders, PM scheduling, asset registry (4 containers)
 ├── mira-hud/           # AR HUD desktop app (Express + Socket.IO, standalone)
+├── mira-sidecar/       # ⚠️  LEGACY — ChromaDB RAG backend, superseded by mira-pipeline (ADR-0008)
+│                       #    Do NOT add new callers. OEM doc migration pending before removal.
 ├── tests/              # 5-regime testing framework (76 offline tests, 39 golden cases)
 ├── docs/               # PRD, ADRs, architecture C4 diagrams, runbooks
-├── tools/              # Photo pipeline, Google Drive/Photos ingest scripts
+├── tools/              # Photo pipeline, Google Drive/Photos ingest scripts, migration scripts
 ├── install/            # Setup scripts, smoke tests
 ├── deployment/         # Admin guide, customer agreement
 └── plc/                # PLC program files (deferred to Config 4)
@@ -186,6 +191,7 @@ chore: build system, deps, tooling
 | Google Photos API direct | rclone + Ollama triage | OAuth consent screen "Testing" mode returned empty results |
 | GWS CLI for Gmail | IMAP with Doppler app passwords | Scope registration issues on Windows |
 | glm-ocr model (as primary) | qwen2.5vl handles vision | Consistent 400 errors — retained as optional fallback in vision_worker.py |
+| mira-sidecar (ChromaDB RAG backend) | mira-pipeline + Open WebUI KB | ADR-0008 (Apr 2026): pipeline wraps GSDEngine directly; Open WebUI native KB (Docling) replaces ChromaDB. Sidecar still running pending OEM doc migration (398 chunks). |
 
 ---
 
@@ -198,6 +204,9 @@ chore: build system, deps, tooling
 - **Reddit benchmark** — 15/16 questions hit intent guard canned responses, not real inference
 - **No CD pipeline** — CI validates but deploy to Bravo is manual (docker cp or SSH)
 - **NVIDIA NIM / Nemotron** — API key in Doppler but Regime 5 eval tests blocked on it
+- **mira-sidecar OEM migration pending** — 398 OEM chunks in `shared_oem` ChromaDB must move to Open WebUI KB before sidecar can be stopped. Script: `tools/migrate_sidecar_oem_to_owui.py`. Runbook: `docs/runbooks/sidecar-oem-migration.md`.
+- **mira-web → mira-pipeline cutover pending** — `mira-web/src/lib/mira-chat.ts` calls sidecar `:5000/rag`; must be rewritten to call pipeline `:9099/v1/chat/completions` before mira-web is publicly routed.
+- **mira-pipeline `INFERENCE_BACKEND=cloud` typo on VPS** — compose has `cloud` not `claude`; likely falling back to Groq/Cerebras. Check and fix alongside sidecar cleanup.
 
 ---
 
