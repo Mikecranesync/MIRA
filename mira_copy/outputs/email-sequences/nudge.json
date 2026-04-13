@@ -1,0 +1,8 @@
+{
+  "subject": "Still waiting on fault codes, {{FIRST_NAME}}?",
+  "preview_text": "Diagnose a VFD fault in 30 seconds — not 30 minutes. Try it now.",
+  "headline": "Stop waiting. Start fixing.",
+  "body_html": "<p style=\"color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0 0 16px;\">{{FIRST_NAME}}, you’re not alone if you’ve stood at a faulted GS10 drive or Allen-Bradley panel with no manual in hand.</p>\n\n<p style=\"color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0 0 16px;\">Most techs lose <span style=\"color: #e4e0d8;\">20–40 minutes</span> per fault just finding the right page or waiting on OEM support.</p>\n\n<p style=\"color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0 0 16px;\">With Mira, you get answers in seconds by doing exactly what you already do:</p>\n\n<ol style=\"color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; padding-left: 20px;\">\n  <li style=\"margin-bottom: 8px;\">Snap a photo of the fault code</li>\n  <li style=\"margin-bottom: 8px;\">Paste it into Mira (web, Slack, or Telegram)</li>\n  <li style=\"margin-bottom: 8px;\">Get the fix from your own manuals — not a generic PDF</li>\n</ol>\n\n<p style=\"color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0;\">You’ve got <span style=\"color: #f0a030;\">{{QUERIES_LEFT}} free queries</span> left. One photo is all it takes to see the difference.</p>",
+  "cta_text": "Open your CMMS and try it",
+  "cta_url": "{{CMMS_URL}}"
+}

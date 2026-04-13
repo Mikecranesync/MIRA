@@ -1,0 +1,8 @@
+{
+  "subject": "Fix a VFD fault in 30 seconds, not 30 minutes",
+  "preview_text": "No manual? No problem. Snap a photo, get a diagnosis, create a work order — all in under a minute.",
+  "headline": "Stop waiting. Start fixing.",
+  "body_html": "<p style=\"color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0 0 16px;\">{{FIRST_NAME}}, you’re at a GS20 VFD. Red fault code. No manual on site. OEM support is on hold for 20 minutes.</p><p style=\"color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0 0 16px;\">Now: Open FactoryLM on your phone. Snap a photo of the display. Mira identifies the fault, pulls the exact corrective steps from <span style=\"color: #e4e0d8;\">your uploaded GS20 manual</span>, and auto-creates a work order — all in <span style=\"color: #f0a030;\">under 30 seconds</span>.</p><p style=\"color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0 0 16px;\">No app store. No provisioning. Just point, shoot, fix.</p><p style=\"color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0;\"><span style=\"color: #f0a030;\">{{QUERIES_LEFT}} free AI queries</span> left this month. Use them on real faults — not hold music.</p>",
+  "cta_text": "Open CMMS & Start Diagnosing",
+  "cta_url": "{{CMMS_URL}}"
+}
