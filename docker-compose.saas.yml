@@ -183,6 +183,7 @@ services:
       - MCP_BASE_URL=http://mira-mcp-saas:8001
     volumes:
       - /opt/mira/data:/mira-db
+      - /opt/mira/data/mem0:/data/mem0
     networks:
       - mira-net
     restart: unless-stopped
