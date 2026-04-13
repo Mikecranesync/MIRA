@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "You're staring at a PowerFlex 525 with an F3 code. No manual. No OEM support answer. 40 minutes later, you find the right page.\n\nWith FactoryLM, you snap the display. Mira sees it, checks your manuals, and replies:\n\n'F3: Overvoltage. Check input line voltage. Inspect DC bus capacitors. Verify deceleration time not too short. Recent power surge?'\n\nWork order auto-created. Asset tagged. Done in 30 seconds.\n\nWe built this because waiting 40 minutes to start a fix ruins shift targets.\n\nHave you lost a full hour just hunting a fault cause this month?\n\nTry it: app.factorylm.com",
+      "char_count": 662,
+      "hashtags": [
+        "MaintenanceTech",
+        "VFD",
+        "CMMS"
+      ],
+      "suggested_visual": "Split-screen video: left side shows technician flipping through a printed manual, frustrated. Right side shows phone camera scanning VFD display, Mira responding instantly with diagnosis text overlay.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "AB PLC? GS20 fault? No manual on hand.\n\nBefore: 30 min on hold with Rockwell. Or digging through PDFs.\n\nNow: Photo → AI → fix steps in 28 seconds.\n\nWe use your manuals. Not generic answers.\n\nNo PLC live data yet. Just faster human time.\n\nfactorylm.com",
+      "char_count": 273,
+      "hashtags": [
+        "Maintenance",
+        "VFD"
+      ],
+      "suggested_visual": "Screen recording of a phone camera focusing on a GS20 VFD fault display, then showing Mira’s AI response popping up with repair steps.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "r/maintenance\n\nSharing a real workflow we use in the build: How to cut fault diagnosis from 40+ minutes to under 1 minute when the manual isn’t on site.\n\nScenario: Allen-Bradley PowerFlex 525 shows F0 (Overcurrent).\n\nOld way:\n- Call OEM support >> wait on hold\n- Search for PDF >> scroll to fault codes >> cross-reference drive model\n- Check settings, current traces, motor insulation\n- Maybe find root cause in 40 min\n\nFaster way (what we do):\n- Take photo of display\n- Upload to internal AI tool\n- It pulls from our stored GS20/PF525 manuals\n- Returns:\n  - 'F0: Check motor leads for short. Inspect IGBTs. Confirm not sudden load. Verify accel time not too short.'\n  - Links to manual section\n  - Suggests test points\n\nWe’re not selling anything. This is just how we cut MTTR. We use Claude API directly over our own docs (no LangChain). If you’ve got a stack of PDFs, you can do this today with RAG.\n\nCurious — what fault code burned your day last week?",
+      "char_count": 1239,
+      "hashtags": [],
+      "suggested_visual": "Screenshot of a mobile interface showing a photo of a PowerFlex 525 display with F0 code, next to AI-generated response with bullet-point diagnosis.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Ever stand in front of a faulted hydraulic power unit, no manual, no idea if it’s pressure switch or pump failure?\n\nOne user last week had a GS20 VFD locked out. No PDF on site. Waited 38 minutes to find the PDF on a shared drive.\n\nWith FactoryLM, they’d have snapped a pic. Mira reads the code, checks their uploaded manual, and says:\n\n'OC=Overcurrent. Check motor windings. Inspect for binding. Verify accel time J4=5-8 sec.'\n\n— in 27 seconds.\n\nSame data. Just faster access.\n\nWhat’s the longest you’ve waited just to look up a fault code?",
+      "char_count": 699,
+      "hashtags": [
+        "MaintenanceTech",
+        "VFDRepair",
+        "Hydraulics"
+      ],
+      "suggested_visual": "Before/after carousel: 1) Technician looking at hydraulic unit with clipboard. 2) Zoom on GS20 display showing OC fault. 3) Phone upload. 4) Mira’s response with fix steps.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "POV: You walk up to a faulted Allen-Bradley drive. No manual. No time.\n\nVideo shows hand pulling phone out, snapping photo of PowerFlex 700 display with F1 code.\n\nNext frame: Mira responds instantly:\n'F1: DC Bus Overvoltage. Check incoming line. Inspect brake resistor. Verify decel time isn’t too fast.'\n\nText overlay: 'Real diagnosis. From YOUR manual. 31 seconds.'\n\nNot magic. Just AI that reads your docs so you don’t have to.\n\nNo live PLC data. No fluff. Just answers.",
+      "char_count": 574,
+      "hashtags": [
+        "#Maintenance",
+        "#TechTok",
+        "#VFD"
+      ],
+      "suggested_visual": "First-person POV video: shaky cam walking toward a faulted PowerFlex 700. Phone lifts, snaps photo. Cut to app screen showing AI response. Text overlay highlights '31 seconds'.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "When the hydraulic unit trips and the manual’s in the office.\n\nThis is what you see: GS20 display flashing 'EF'.\n\nOld way: track down PDF >> search codes >> wait >> guess.\n\nNew way: photo → AI → answer in 26 seconds:\n\n'EF = Earth Fault. Check motor insulation resistance. Inspect cable for ground short. Verify terminals not contaminated.'\n\nThen it creates the work order.\n\nAll from your uploaded GS20 manual.\n\nNo generic answers. No waiting.\n\nWe built FactoryLM for the 30-minute searches you shouldn’t have to do.\n\n\n#MaintenanceLife #VFD #Hydraulics #FactoryTech #CMMS #Reliability #PlantMaintenance #AllenBradley #PowerFlex #GS20 #MaintenanceTech #IndustrialAI #WorkOrder #FaultCode #MTTR",
+      "char_count": 848,
+      "hashtags": [
+        "MaintenanceLife",
+        "VFD",
+        "Hydraulics",
+        "FactoryTech",
+        "CMMS",
+        "Reliability",
+        "PlantMaintenance",
+        "AllenBradley",
+        "PowerFlex",
+        "GS20",
+        "MaintenanceTech",
+        "IndustrialAI",
+        "WorkOrder",
+        "FaultCode",
+        "MTTR"
+      ],
+      "suggested_visual": "4-slide carousel: 1) Close-up of GS20 'EF' fault. 2) Phone snapping photo. 3) Mira’s response screen. 4) Work order in CMMS with asset linked.",
+      "subreddit": null
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "Last week, a maintenance tech at a mid-sized packaging plant faced a PowerFlex 750 fault: F40 (Overvoltage during stop).\n\nPlant is 30 miles from OEM rep. Manual is in a binder… somewhere.\n\nHe snapped a photo with FactoryLM. Mira pulled the exact troubleshooting steps from their uploaded manual.\n\nDiagnostics + work order created in 37 seconds.\n\nFixed in under 12 minutes.\n\nNo call to Rockwell. No binder dive. Just accurate answers from their own docs.\n\nWe built FactoryLM to replace 20-minute searches with 10-second answers.\n\nWhat’s the longest you’ve waited for a manual or OEM support?",
+      "char_count": 644,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#CMMS",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "Split-screen video: left side shows a technician staring at a PowerFlex VFD with a confused look, flipping through loose pages; right side shows the same tech using FactoryLM on phone, smiling as Mira displays the fault fix steps.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F40 on a PowerFlex 750.\nNo manual.\nOEM on hold.\n\nOne photo → AI pulls the exact fix from YOUR docs.\n\n37 seconds to diagnosis.\n12 minutes to fix.\n\nNo waiting. Just work.\n\nfactorylm.com",
+      "char_count": 187,
+      "hashtags": [
+        "#Maintenance",
+        "#VFD"
+      ],
+      "suggested_visual": "15-second screen recording: phone camera snaps photo of PowerFlex 750 display showing F40; opens FactoryLM, Mira responds with ‘Overvoltage during stop – check decel time & load inertia’ and creates a work order.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "We’ve been running FactoryLM in beta at several facilities, mostly packaging and plastics. One consistent pain we keep seeing: technicians standing at faulted machines with no access to manuals.\n\nExample: a GS20 VFD trips with “E.OC.A” — overcurrent alarm during start. Tech can’t find the manual. Binder’s missing. OEM support is 45 minutes away.\n\nInstead of guessing or waiting, one user uploaded their GS20 manual into a tool like FactoryLM. Now, when E.OC.A hits, they ask: “What’s E.OC.A on GS20?” and get back:\n\n- Likely cause: motor short or drive overload\n- Check: output terminals, motor insulation, mechanical binding\n- Reference: p. 87, GS20 Manual Rev C\n\nNo AI hallucinations. Just their own docs, instantly searchable.\n\nWe’re not selling anything here — but if you’re tired of chasing binders or waiting on OEMs, organizing and digitizing your manuals pays off fast.\n\nWhat’s your go-to move when a GS10 or PowerFlex trips and the manual’s gone?",
+      "char_count": 1287,
+      "hashtags": [],
+      "suggested_visual": "Screenshot of clean text response from Mira: 'E.OC.A on GS20: Overcurrent Alarm. Check motor insulation resistance and verify no mechanical jam. See page 87 of your uploaded GS20 manual.'",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Real story from a rubber molding plant in Ohio:\n\nA hydraulic power unit tripped offline with no visible alarm. No one could find the schematic.\n\nThe lead tech opened FactoryLM on his phone, uploaded a photo of the HPU control panel.\n\nMira recognized it as a mid-90s Parker system, pulled the correct troubleshooting path, and generated a work order to check pressure relief valve calibration.\n\nMachine back online in 18 minutes.\n\nThey avoided 2+ hours of downtime — and didn’t need to call in outside help.\n\nHow many times has your team been stalled by missing documentation?\n\nTry it: app.factorylm.com",
+      "char_count": 639,
+      "hashtags": [
+        "Maintenance",
+        "Reliability",
+        "FactoryLM"
+      ],
+      "suggested_visual": "Before/after carousel: 1) blurry photo of hydraulic unit with red arrow pointing to dead display; 2) FactoryLM interface showing diagnosis and work order; 3) unit running with green status.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "When your Allen-Bradley PLC throws a fault and the manual is MISSING.\n\nHere’s what happens:\n\n1. You pull out your phone\n2. Snap a pic of the fault code\n3. Mira checks YOUR uploaded manuals\n4. Gets you the exact fix — in seconds\n\nNo more binder hunts. No hold music with Rockwell.\n\nJust answers.\n\n#maintenancetech #vfd #plctroubleshooting #factoryfloor #plantmaintenance",
+      "char_count": 562,
+      "hashtags": [
+        "#maintenancetech",
+        "#vfd",
+        "#plctroubleshooting",
+        "#factoryfloor",
+        "#plantmaintenance"
+      ],
+      "suggested_visual": "Vertical video: tech at a PanelView terminal showing a red fault. Looks around frustrated. Pulls phone, opens FactoryLM, takes photo. Mira appears and says: ‘1756-OF8E: Check I/O connection or module fuse. Page 12 in your AB manual.’ Tech nods, fixes fuse, hits reset.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "No manual. No OEM. Just a flashing fault code.\n\nThis happens every day.\n\nAt a plastics facility last week, a PowerFlex 525 tripped with F14 (Analog Input Loss). The tech didn’t have the manual — but he did have FactoryLM.\n\nHe sent a photo.\nMira found the exact cause in their uploaded docs.\nWork order created in 22 seconds.\n\nFixed before the next shift started.\n\nWe’re building tools for real moments like this — fast, accurate, no fluff.\n\nWhat’s your most frustrating missing-manual moment?\n\n#maintenance #plctech #vfdrepair #factorylm #industrialautomation #maintenanceengineer #plantfloor #troubleshooting #manufacturing #oemequalswaiting #cmms #hydraulics #allenbradley #automationdirect #reliableoperations",
+      "char_count": 877,
+      "hashtags": [
+        "#maintenance",
+        "#plctech",
+        "#vfdrepair",
+        "#factorylm",
+        "#industrialautomation",
+        "#maintenanceengineer",
+        "#plantfloor",
+        "#troubleshooting",
+        "#manufacturing",
+        "#oemequalswaiting",
+        "#cmms",
+        "#hydraulics",
+        "#allenbradley",
+        "#automationdirect",
+        "#reliableoperations"
+      ],
+      "suggested_visual": "Three-image carousel: 1) close-up of PowerFlex 525 display showing F14; 2) split screen — left: empty binder shelf, right: Mira’s response on phone; 3) tech checking analog input wiring with multimeter, green light on now.",
+      "subreddit": null
+    }
+  ]
+}

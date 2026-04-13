@@ -1,0 +1,78 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "You’re staring at a PowerFlex 525 with code F306. No manual. No senior tech on site.\n\nYou could:\n- Dig through 478-page PDF (8–12 min)\n- Call Allen-Bradley support (14 min hold + 6 min on call)\n- Google forums, hope it’s the same symptom\n\nOr you could snap a photo in FactoryLM.\n\nAI reads the fault, pulls from *your* manuals, creates a work order — in 28 seconds.\n\nReal data. Real facility. This week.\n\nWe timed it: photo-to-actionable fix steps in under 30 sec — 93% faster than manual lookup.\n\nYour team still has muscle memory. But now it’s backed by instant documentation.\n\nWhat’s the last fault code you wasted time on?",
+      "char_count": 684,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#CMMS",
+        "#IIoT"
+      ],
+      "suggested_visual": "Split-screen video: left side shows someone flipping through a printed manual, frustrated; right side shows phone camera snapping VFD display, then Mira AI returning diagnosis in seconds.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F306 on a PowerFlex 525.\nManual: 12 min to find it.\nFactoryLM: 28 seconds.\n\nPhoto → AI checks YOUR manuals → work order.\nNo wait. No guesswork.\napp.factorylm.com",
+      "char_count": 173,
+      "hashtags": [
+        "#Maintenance"
+      ],
+      "suggested_visual": "10-second screen recording: photo of VFD fault code taken on phone, flashes 'Processing,' then shows Mira AI response with cause and fix.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "Quick tip for r/PLC: F306 on PowerFlex 525 usually means bus overvoltage during decel.\n\nFix: Increase decel time or check if load is regenerative (e.g. conveyor downhill). Verify braking resistor connection. If using GS20, check E0-11 and H6-01 settings.\n\nBut here’s what bugs me — every time I see this, someone’s deep in PDF page 314 of the PowerFlex 525 manual while the line’s down.\n\nI’ve been testing a tool that indexes our site’s manuals so you just snap the fault code — any Allen-Bradley PLC or VFD — and it pulls the *exact* page, no search.\n\nNot magic. Not cloud-scraping. Just RAG straight from our approved docs.\n\nSaved me 20+ mins last Tuesday on a jammed hydraulic power unit with no tags.\n\nIf you’re drowning in PDFs during breakdowns, try organizing them in a single folder with clear names. Even low-tech beats tab-hopping mid-emergency.",
+      "char_count": 1089,
+      "hashtags": [],
+      "suggested_visual": "Photo of a technician pointing at a VFD display with fault code F306, phone in hand showing a document snippet from the manual side-by-side.",
+      "subreddit": "r/PLC"
+    },
+    {
+      "platform": "Facebook",
+      "text": "You know the drill.\n\nHydraulic power unit trips. No tags. No manual at the machine.\n\nYou walk back, log in, search 4 different folders, maybe print it.\n\nOr — someone hands you a photo of the fault code.\n\nWhat if your phone could read that photo, find the right page in your *own* manual, and tell you the fix in under 30 seconds?\n\nWe tested it on a GS20 with H0-05 fault — 37 seconds total. vs 22 minutes flipping through binder pages.\n\nFactoryLM does this. No new hardware. Just AI over your docs.\n\nWhat’s the most annoying fault code you keep looking up?",
+      "char_count": 638,
+      "hashtags": [],
+      "suggested_visual": "Short video: close-up of a hydraulic unit panel with fault code on display. Hand takes photo. Phone buzzes: 'Fault H0-05: Check enable signal at terminal 12.'",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "POV: You’re a maintenance tech and the line’s down.\n\nYou walk up. VFD says F306.\n\nOld way: Run to office. Open laptop. Find PDF. Search 'F306'… wait… wrong model.\n\nNow: Open FactoryLM. Snap photo.\n\nAI finds the exact fix from YOUR manual. Sends work order.\n\nFrom photo to answer: 28 seconds.\n\nNo typing. No tabs. Just point and know.\n\nThis is how we cut 20+ min off downtime — every time.",
+      "char_count": 548,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD",
+        "#FactoryLife"
+      ],
+      "suggested_visual": "Fast-cut video: tech walks to machine, sees fault → pulls phone, snaps photo → shows AI response pop up → types nothing → gives thumbs up. Text overlay: 'F306 → Fix in 28 sec.'",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "You see a fault code.\nYou need the fix — now.\n\nLeft: 2015. Printer jammed. CD-ROM in pocket. Ctrl+F on a 500-page PDF.\n\nRight: Today. Phone camera on VFD. AI reads it, pulls from your manual, creates a work order.\n\nSame Allen-Bradley fault. 30 seconds vs 30 minutes.\n\nNo Internet? PWA works offline.\nNo manual access? Upload it once.\n\nWe build tools for the person standing at the machine — not the desk.\n\nWhat would you do with 20 extra minutes of uptime?",
+      "char_count": 612,
+      "hashtags": [
+        "#MaintenanceLife",
+        "#CMMS",
+        "#PowerFlex",
+        "#AllenBradley",
+        "#Hydraulics",
+        "#VFD",
+        "#MaintenanceTech",
+        "#FactoryLM",
+        "#MiraAI",
+        "#NoMorePDFs",
+        "#FixItFast",
+        "#IndustrialAI",
+        "#TechLife",
+        "#WorkOrder",
+        "#PWA"
+      ],
+      "suggested_visual": "Carousel: 1) Old computer with PDF open, 'Searching F306...' 2) Phone camera scanning VFD screen 3) AI response: 'F306: Bus overvoltage. Adjust decel time.' 4) Work order generated in app.",
+      "subreddit": null
+    }
+  ]
+}

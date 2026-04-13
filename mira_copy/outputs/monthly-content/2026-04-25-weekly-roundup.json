@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "This week on the FactoryLM feed:\n\n- How a tech in Ohio diagnosed a PowerFlex 750 Overvoltage fault in 32 seconds using Mira instead of flipping through a 400-page manual\n\n- Side-by-side: AI vs. OEM support hold time for a GS20 OC trip (spoiler: 41 min vs. 17 seconds)\n\n- Behind the build: Why we ripped out the first photo-diagnosis model after it missed hydraulic symbol interpretations\n\n- Technician poll: When your Allen-Bradley PLC throws a 1756-L71 MEM2 error, do you check the SD card first or the firmware version?\n\n- User story: \"We cut downtime by 1.5 hours/week just by not waiting on hold with Rockwell tech support\"\n\nWe’re shipping AI that works with your real manuals — not generic answers.\n\nTry it: app.factorylm.com\n\nWhat’s your go-to move on a blank HMI screen?",
+      "char_count": 598,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#CMMS",
+        "#IndustrialAI"
+      ],
+      "suggested_visual": "Carousel: 1) Phone showing Mira chat with 'PowerFlex F7' diagnosis, 2) Timer comparison graphic (AI vs. phone hold), 3) Split image of torn-up model logs vs. clean new pipeline, 4) Screenshot of poll results, 5) Quote card from user",
+      "subreddit": ""
+    },
+    {
+      "platform": "X",
+      "text": "This week:\n\n- PowerFlex F7 in 32 sec\n- GS20 OC trip: 17 sec (AI) vs 41 min (OEM hold)\n- We trashed our first image model — it failed on hydraulic schematics\n- Techs voted: 63% check SD card before firmware on L71 MEM2\n- Real result: 90 min less downtime/week\n\nNo fluff. Just faster fixes. https://app.factorylm.com",
+      "char_count": 276,
+      "hashtags": [
+        "#Maintenance",
+        "#VFD"
+      ],
+      "suggested_visual": "Looping 10-sec clip of Mira responding to 'PowerFlex F7 fault'",
+      "subreddit": ""
+    },
+    {
+      "platform": "Reddit",
+      "text": "r/maintenance\n\nSharing a few things we learned this week from working with plant techs:\n\n- That GS20 OC fault? The manual says 'check motor insulation' — but 8/10 times it’s a ground fault in the conduit between VFD and motor. One tech runs a megger on every OC trip. Saved him 3 repeat calls last month.\n\n- Allen-Bradley 1756-L71 MEM2 errors: SD card corruption is more common than firmware mismatches. But don’t pull it while powered — we’ve seen bricked controllers.\n\n- Hydraulic power unit noise after restart? If it’s whining, check the reservoir level *and* the breather cap. Clogged breather = cavitation = premature pump death.\n\n- We trained our AI on real manuals (not generic fixes). When it failed to read hydraulic symbols in photos, we rebuilt the image pipeline. Now it spots a blocked strainer in a photo 9/10 times.\n\nNo pitch — just things that came up. What’s one non-obvious check you do on repeat faults?",
+      "char_count": 1021,
+      "hashtags": [],
+      "suggested_visual": "None (text post)",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "This week:\n\n- A tech used a photo of a PowerFlex 750 fault to get a repair plan in 30 seconds (instead of 40 min searching)\n- We compared AI answer time vs. OEM phone support — the gap was brutal\n- Our model failed on hydraulic schematics, so we rebuilt it\n- Poll result: Most of you check the SD card first on a 1756-L71 MEM2\n- One facility reported 1.5 fewer hours of downtime per week\n\nWe’re focused on tools that work when you’re standing at a locked-out panel with no manual.\n\nTry it: app.factorylm.com\n\nWhat’s one repair where you *always* end up digging through a binder?",
+      "char_count": 696,
+      "hashtags": [
+        "MaintenanceTech",
+        "FactoryLM",
+        "VFDRepair"
+      ],
+      "suggested_visual": "Video: Technician takes phone photo of VFD display, switches to FactoryLM, reads diagnosis, pulls replacement fuse from cabinet",
+      "subreddit": ""
+    },
+    {
+      "platform": "TikTok",
+      "text": "POV: You’re staring at a tripped GS20 VFD\n\nThis week:\n- AI found the fix in 18 seconds\n- OEM support put us on hold for 41 minutes\n- We tested it 100 times — average save: 28 min/fault\n\nWe built FactoryLM because waiting on hold doesn’t fix machines\n\nVideo shows: Photo of VFD → type 'OC' in Mira → answer appears: 'Check motor phase insulation and conduit grounding.'\n\nThen show timer: 00:18\n\nNo app store. Works in browser. Try it.\n\n#MaintenanceTech #FactoryLM #VFD",
+      "char_count": 678,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#FactoryLM",
+        "#VFD"
+      ],
+      "suggested_visual": "Split-screen video: Left shows technician at VFD, right shows phone screen recording of photo upload and Mira response. Timer overlay counts up to 00:18.",
+      "subreddit": ""
+    },
+    {
+      "platform": "Instagram",
+      "text": "This week in fixes:\n\n🔹 PowerFlex 750 F7 fault — diagnosed in 32 seconds with a photo\n🔹 GS20 OC trip: AI answered in 17 sec vs. 41 min on OEM hold\n🔹 We rebuilt our image model after it missed hydraulic symbols — now 90%+ accuracy\n🔹 Poll: 63% of you check the SD card first on a 1756-L71 MEM2\n🔹 Real user: 90 min less downtime per week\n\nNo lab coats. No sales calls. Just tools that work at the lockout station.\n\nTap link in bio to try.\n\nWhat’s your move on a blank HMI?",
+      "char_count": 790,
+      "hashtags": [
+        "#Maintenance",
+        "#IndustrialMaintenance",
+        "#VFD",
+        "#PLC",
+        "#CMMS",
+        "#FactoryTech",
+        "#Hydraulics",
+        "#AllenBradley",
+        "#PowerFlex",
+        "#GS20",
+        "#Reliability",
+        "#MaintenanceLife",
+        "#TechLife",
+        "#FactoryLM",
+        "#NoDowntime"
+      ],
+      "suggested_visual": "Carousel: 1) Close-up of GS20 VFD display, 2) Phone showing Mira chat response, 3) Timer graphic (17 sec vs 41 min), 4) Poll result bar graph, 5) Technician writing work order on tablet",
+      "subreddit": ""
+    }
+  ]
+}

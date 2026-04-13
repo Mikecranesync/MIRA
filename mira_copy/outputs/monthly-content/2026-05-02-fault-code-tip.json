@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "Fault Code Tip: Allen-Bradley Micro850 Controller - 0x0D10 (I/O Configuration Mismatch)\n\nYou reset the rack, reseated modules, checked wiring. Still red. Now what?\n\nMost techs waste 30+ minutes flipping through PDFs or calling support.\n\nWith FactoryLM: Snap the fault. Ask Mira. Get the fix in under a minute.\n\nThe real issue? A module in Slot 3 was replaced with a different model. The controller sees it but flags the config.\n\nFix: Go to Connected Components Workbench, verify Module Type in I/O Configuration matches hardware. Download updated project.\n\nSaved by accurate docs — fast access to them.\n\nHow many times this month has a missing manual cost you an hour?\n\nhttps://app.factorylm.com",
+      "char_count": 698,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#AllenBradley",
+        "#IndustrialAI"
+      ],
+      "suggested_visual": "Split-screen video: Left shows technician scrolling through a disorganized folder of PDFs. Right shows phone uploading a photo of the fault code, then Mira (AI) pulling the exact config fix from the manual in seconds.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "Fault: PowerFlex 525 - F30 (Overvoltage during regen)\n\nYou checked line voltage. It's clean. Motor stopped mid-cycle.\n\nMost miss this: Check mechanical load. Is the driven load overhauling?\n\nHydraulic accumulator released too fast? Conveyor downhill? That energy feeds back.\n\nFix: Add dynamic braking resistor or adjust decel ramp in Parameter P039.\n\nNo manual? You're guessing.\n\n23 sec vs 30 min. https://app.factorylm.com",
+      "char_count": 278,
+      "hashtags": [
+        "#VFD",
+        "#Maintenance"
+      ],
+      "suggested_visual": "Screen recording: Phone camera focuses on PowerFlex 525 display showing F30. Tap FactoryLM. Text: 'F30 PowerFlex 525' sent. AI response highlights P039 and brake resistor wiring diagram from manual.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "Sharing a real fix from last week — might help someone on the floor right now.\n\nMachine: Hydraulic press with GS20 VFD (Automation Direct)\nFault: F08 (Overcurrent at start)\n\nTech swapped out the contactor, checked output phases — all good. Still trips on start.\n\nHere's what we found:\nF08 on GS20 at startup isn't always motor or VFD. Often, it's mechanical bind.\n\nThe press ram was dragging. Seal degradation increased resistance. The GS20 saw it as overcurrent.\n\nFix:\n- Manually cycle ram (power off)\n- Measure resistance — felt stiff\n- Replace cylinder seals\n- F08 gone, no VFD repair needed\n\nKey: GS20 doesn't distinguish electrical vs mechanical overcurrent. You have to.\n\nIf you're chasing F08 and the motor spins free offload, check the load itself.\n\n(No product pitch — just a tip that saved us 4 hours and a VFD RMA)",
+      "char_count": 973,
+      "hashtags": [],
+      "suggested_visual": "Short clip: Technician rolling ram by hand, then showing GS20 screen clearing F08 after seal replacement.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Fault Code Tip: Allen-Bradley ControlLogix - Code 16#4521 (Fieldbus Time-out)\n\nYou restart the chassis. Online in Studio 5000. Then — bang — fault returns after 2 minutes.\n\nHere’s the hidden cause: One remote I/O adapter (1756-IF8) had firmware mismatch. Not offline — just slow.\n\nIt didn’t drop completely. It delayed responses just enough to trigger the time-out.\n\nFix: Update firmware on the adapter. Not the CPU. Not the network. The module.\n\nHow long does it take you to trace a fault like this?\n\nLast week, one tech used FactoryLM, uploaded a photo, and got the firmware version check in 27 seconds.\n\nHow much downtime could you save with instant access to your own manuals?\n\nhttps://app.factorylm.com",
+      "char_count": 796,
+      "hashtags": [
+        "#PLC",
+        "#ControlLogix",
+        "#MaintenanceTips"
+      ],
+      "suggested_visual": "Carousel: 1) Photo of ControlLogix fault. 2) Zoom on I/O adapter. 3) Screenshot of AI response listing firmware check. 4) Tech updating module.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "You see this on a PowerFlex 755? F40 – Ground Fault.\n\nYou’ve checked motor leads. Insulation good. Megger clean.\n\nBut here’s what NO ONE checks: The output contactor.\n\nIf it’s arcing or welded shut, the VFD sees leakage even when off.\n\nAnd yes — that can throw F40.\n\nVideo shows: Snap fault → Open FactoryLM → Type 'F40 PowerFlex' → Pull diagram of output stage and contactor checklist from manual.\n\nNo PDF digging. No hold time.\n\nReal fix. Real fast.\n\n#MaintenanceTech #VFD #PlantFloor",
+      "char_count": 587,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD",
+        "#PlantFloor"
+      ],
+      "suggested_visual": "Vertical video: Technician wearing gloves points to F40 on PowerFlex 755 screen. Pulls phone, opens FactoryLM, types query. AI returns manual excerpt highlighting output contactor inspection. Tech nods, walks to panel.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "GS10 VFD Fault: E01 – Overvoltage\n\nVoltage supply is 480V. Input stable.\nSo why E01?\n\nMost assume it’s the line. But on GS10, E01 during decel often means: brake chopper not firing.\n\nCheck:\n- P2-04 (Brake Chopper Enable) = 1\n- P2-05 (Threshold) set correctly\n- Measure voltage across DC bus — spikes above 800V?\n\nIf brake chopper is disabled, all that regen energy has nowhere to go.\n\nAuto-decel ramps won’t save you.\n\nThis one burns 3 plants/month.\n\nVideo shows how to verify chopper function in 90 seconds — no scope.\n\n#IndustrialMaintenance #VFDRepair #AutomationDirect #Hydraulics #PLCTech #FactoryLM #MaintenanceLife #TechTips #ElectricalTroubleshooting #Manufacturing #PlantMaintenance #ReliabilityEngineer #MechanicalTech #PowerFlex #AllenBradley",
+      "char_count": 869,
+      "hashtags": [
+        "#IndustrialMaintenance",
+        "#VFDRepair",
+        "#AutomationDirect",
+        "#Hydraulics",
+        "#PLCTech",
+        "#FactoryLM",
+        "#MaintenanceLife",
+        "#TechTips",
+        "#ElectricalTroubleshooting",
+        "#Manufacturing",
+        "#PlantMaintenance",
+        "#ReliabilityEngineer",
+        "#MechanicalTech",
+        "#PowerFlex",
+        "#AllenBradley"
+      ],
+      "suggested_visual": "Reel: Close-up of GS10 display showing E01. Hands open FactoryLM, upload photo. AI response highlights P2-04 and P2-05. Tech adjusts setting, runs test — fault cleared. Text overlay: 'GS10 E01? Don’t replace the VFD. Check the brake chopper.'",
+      "subreddit": null
+    }
+  ]
+}
