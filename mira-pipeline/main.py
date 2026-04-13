@@ -125,7 +125,7 @@ app = FastAPI(title="MIRA Pipeline", docs_url=None, redoc_url=None, lifespan=lif
 
 @app.middleware("http")
 async def _auth(request: Request, call_next):
-    if request.url.path in ("/health",):
+    if request.url.path in ("/health", "/v1/models"):
         return await call_next(request)
     if PIPELINE_API_KEY:
         auth = request.headers.get("Authorization", "")
@@ -271,12 +271,16 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         photo_b64 = _resize_for_vision(photo_b64)
 
     t0 = time.monotonic()
-    reply = await engine.process(
-        chat_id=chat_id,
-        message=last_user_msg,
-        photo_b64=photo_b64,
-        platform="openwebui",
-    )
+    try:
+        reply = await engine.process(
+            chat_id=chat_id,
+            message=last_user_msg,
+            photo_b64=photo_b64,
+            platform="openwebui",
+        )
+    except Exception as e:
+        logger.error("ENGINE_ERROR chat_id=%s: %s", chat_id, e)
+        reply = "MIRA encountered an error processing your request. Please try again."
     latency_ms = int((time.monotonic() - t0) * 1000)
     logger.info("PIPELINE_CALL chat_id=%s latency_ms=%d len=%d", chat_id, latency_ms, len(reply))
 

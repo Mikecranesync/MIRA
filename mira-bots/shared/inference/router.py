@@ -84,6 +84,23 @@ def _parse_retry_after(response: httpx.Response) -> float:
         return 5.0
 
 
+def _is_gibberish(text: str, threshold: float = 0.3) -> bool:
+    """Detect garbled vision model output (multilingual garbage, hallucination loops)."""
+    if not text or len(text) < 20:
+        return False
+    non_ascii = sum(1 for c in text if ord(c) > 127)
+    if non_ascii / len(text) > threshold:
+        return True
+    words = text.split()
+    if len(words) > 10:
+        from collections import Counter
+
+        most_common_count = Counter(words).most_common(1)[0][1]
+        if most_common_count > len(words) * 0.15:
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Provider definitions
 # ---------------------------------------------------------------------------
@@ -238,6 +255,14 @@ class InferenceRouter:
                     has_image,
                 )
                 if content:
+                    if has_image and _is_gibberish(content):
+                        logger.warning(
+                            "VISION_GIBBERISH provider=%s len=%d — trying next",
+                            provider.name,
+                            len(content),
+                        )
+                        last_error = usage
+                        continue
                     return content, usage
                 last_error = usage
             except _ProviderSkip:
@@ -334,16 +359,19 @@ class InferenceRouter:
 
             if error_type == "rate_limit":
                 wait = _parse_retry_after(e.response)
-                logger.info("%s rate limited — waiting %.1fs before retry", provider.name, wait)
-                await asyncio.sleep(wait)
+                logger.info("%s rate limited — waiting %.1fs", provider.name, wait)
+                await asyncio.sleep(min(wait, 30.0))
+                # Single inline retry — no recursion
                 try:
-                    return await self._call_openai_compat(
-                        provider,
-                        messages,
-                        max_tokens,
-                        session_id,
-                        has_image,
-                    )
+                    async with httpx.AsyncClient(timeout=provider.timeout) as rc:
+                        r2 = await rc.post(provider.api_url, headers=headers, json=payload)
+                        r2.raise_for_status()
+                        d2 = r2.json()
+                    return d2["choices"][0]["message"]["content"], {
+                        "input_tokens": d2.get("usage", {}).get("prompt_tokens", 0),
+                        "output_tokens": d2.get("usage", {}).get("completion_tokens", 0),
+                        "provider": provider.name,
+                    }
                 except Exception:
                     pass
 
@@ -451,15 +479,18 @@ class InferenceRouter:
             if error_type in ("rate_limit", "service"):
                 wait = 2.0 if error_type == "service" else _parse_retry_after(e.response)
                 logger.info("claude retrying in %.1fs (%s)", wait, error_type)
-                await asyncio.sleep(wait)
+                await asyncio.sleep(min(wait, 30.0))
+                # Single inline retry — no recursion
                 try:
-                    return await self._call_anthropic(
-                        provider,
-                        messages,
-                        max_tokens,
-                        session_id,
-                        has_image,
-                    )
+                    async with httpx.AsyncClient(timeout=provider.timeout) as rc:
+                        r2 = await rc.post(provider.api_url, headers=headers, json=payload)
+                        r2.raise_for_status()
+                        d2 = r2.json()
+                    return d2["content"][0]["text"], {
+                        "input_tokens": d2.get("usage", {}).get("input_tokens", 0),
+                        "output_tokens": d2.get("usage", {}).get("output_tokens", 0),
+                        "provider": provider.name,
+                    }
                 except Exception:
                     pass
 
