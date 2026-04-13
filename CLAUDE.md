@@ -232,7 +232,7 @@ chore: build system, deps, tooling
 - **NVIDIA NIM / Nemotron** — API key in Doppler but Regime 5 eval tests blocked on it
 - **mira-sidecar OEM migration pending** — 398 OEM chunks in `shared_oem` ChromaDB must move to Open WebUI KB before sidecar can be stopped. Script: `tools/migrate_sidecar_oem_to_owui.py`. Runbook: `docs/runbooks/sidecar-oem-migration.md`.
 - **mira-web → mira-pipeline cutover pending** — `mira-web/src/lib/mira-chat.ts` calls sidecar `:5000/rag`; must be rewritten to call pipeline `:9099/v1/chat/completions` before mira-web is publicly routed.
-- **mira-pipeline `INFERENCE_BACKEND=cloud` typo on VPS** — compose has `cloud` not `claude`; likely falling back to Groq/Cerebras. Check and fix alongside sidecar cleanup.
+
 
 ---
 
