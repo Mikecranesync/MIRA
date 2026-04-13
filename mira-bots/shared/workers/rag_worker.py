@@ -259,6 +259,7 @@ class RAGWorker:
     ) -> list[dict]:
         """Build prompt with explicitly injected reranked chunks."""
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
+        system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"
         if state.get("asset_identified"):
@@ -323,6 +324,7 @@ class RAGWorker:
     ) -> list[dict]:
         """Build message list for LLM with GSD system prompt and state context."""
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
+        system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"
         if state.get("asset_identified"):
