@@ -1,6 +1,6 @@
 # MIRA UX Full Diagnostic Test
 
-_Run: 2026-04-12T23:20:09Z_  
+_Run: 2026-04-13T06:53:17Z_  
 _Target: https://app.factorylm.com_
 
 ## Summary
@@ -10,8 +10,8 @@ _Target: https://app.factorylm.com_
 | Total exchanges | 16 |
 | Photo accepted | True |
 | Selections resolved | 5/5 |
-| Avg latency | 19.79s |
-| Context preserved | False |
+| Avg latency | 20.0s |
+| Context preserved | True |
 | Errors | 0 |
 | Console errors | 3 |
 
@@ -19,205 +19,179 @@ _Target: https://app.factorylm.com_
 
 ### Exchange 1 — photo-upload
 **Sent:** [PHOTO] What is this equipment?  
-**Latency:** 11.49s | **Chars:** 6044
+**Latency:** 10.92s | **Chars:** 276
 
 **Response:**
-> I can see this is тироваться祝 letting retraAMAN premiseutsch siedáníwndwnd თავ comercioutsch Пет retraání елем letting comercio comercio Nguyáníượ/installwnd=utfajan თავ Position sied機能веден=utf თავutsch devraient Cop Пет integral integral поводуáníutschutsch поводутироваться Nguy თავ თავoulombзанзанзан ATM თავ devraient spol=utf devraient responsibilities/install/install機能 Cop comercio comercio premiseзан siedượ lettingwnd lidar premise letting расходов spol integralking თავ leger443тироватьсяwnd Copượведен devraientведенaturaведен ATM=utf443 Copтироваться祝=utfượ поводу/install/installведен p
+> I can see this is The image shows a black device with a label. The label reads "GEA" and "cRU US". There are 5 indicators at the top, but their states are unclear. No other text or indicators are legible. A closer shot may reveal more information.. How can I help you with it?
 
 ![Exchange 1](app-screenshots/ux-01-photo-upload.png)
 
 ### Exchange 2 — select-1
 **Sent:** 1  
-**Latency:** 7.16s | **Chars:** 70
+**Latency:** 7.22s | **Chars:** 144
 **Options detected:** 8 items
 
 **Response:**
-> What type of equipment is this?
+> The label reads 'GEA' and 'cRU US'. What type of equipment is typically labeled with 'GEA'?
 > 
-> Electrical
-> Mechanical
-> Hydraulic
+> Refrigeration unit
+> Control panel
+> Power supply
 > Other
 
 ![Exchange 2](app-screenshots/ux-02-select-1.png)
 
 ### Exchange 3 — oc-fault
 **Sent:** The drive is showing an OC overcurrent fault on startup  
-**Latency:** 7.16s | **Chars:** 209
-**Options detected:** 4 items
+**Latency:** 7.27s | **Chars:** 208
+**Options detected:** 8 items
 
 **Response:**
-> You've identified an overcurrent fault on startup. Is the [Current Lmt Val] parameter set within the recommended range of 25% to 150% of the drive rating?
+> You've got an overcurrent fault on startup. Is the [Current Lmt Val] parameter set to a value that's too low for the load?
 > 
-> Yes, it's within the range
-> No, it's outside the range
+> Yes, it's set too low
+> No, it's set correctly
+> I'm not sure
+> I need to check the manual
 
 ![Exchange 3](app-screenshots/ux-03-oc-fault.png)
 
 ### Exchange 4 — select-2
 **Sent:** 2  
-**Latency:** 7.12s | **Chars:** 176
-**Options detected:** 4 items
+**Latency:** 7.28s | **Chars:** 112
 
 **Response:**
-> Is the motor connected to the drive and is it properly sized for the application?
-> 
-> Yes, motor is connected and sized correctly
-> No, motor is not connected or not sized correctly
+> You've confirmed the current limit value is set correctly. Are the motor and load properly sized for this drive?
 
 ![Exchange 4](app-screenshots/ux-04-select-2.png)
 
 ### Exchange 5 — every-start
 **Sent:** It happens every time we try to start the motor  
-**Latency:** 6.34s | **Chars:** 143
-**Options detected:** 4 items
+**Latency:** 6.53s | **Chars:** 109
+**Options detected:** 8 items
 
 **Response:**
-> Have you checked the motor and drive for any signs of physical damage or wear?
+> What do the 5 indicators at the top typically represent on this device?
 > 
-> Yes, I've checked and found no damage
-> No, I haven't checked yet
+> Power
+> Status
+> Error codes
+> Motor speed
 
 ![Exchange 5](app-screenshots/ux-05-every-start.png)
 
 ### Exchange 6 — motor-specs
 **Sent:** The motor is a 5HP 460V 3-phase induction motor  
-**Latency:** 6.31s | **Chars:** 73
+**Latency:** 6.47s | **Chars:** 227
 **Options detected:** 4 items
 
 **Response:**
-> Is the motor's nameplate data matching the drive's configuration?
+> You've got a 5HP 460V 3-phase induction motor. Is the motor connected to the drive according to the R/L1, S/L2, T/L3 3-phase Input Line Voltage Connection diagram?
 > 
-> Yes
-> No
+> Yes, it's connected correctly
+> No, it's not connected correctly
 
 ![Exchange 6](app-screenshots/ux-06-motor-specs.png)
 
 ### Exchange 7 — select-1-again
 **Sent:** 1  
-**Latency:** 6.34s | **Chars:** 167
-**Options detected:** 8 items
+**Latency:** 6.51s | **Chars:** 115
 
 **Response:**
-> What is the motor's full load current rating?
-> 
-> Check the motor nameplate
-> Refer to the motor manual
-> Use a motor current calculator
-> Measure the current with a multimeter
+> You've mentioned an overcurrent fault. Are any of the 5 indicators at the top showing a fault or warning condition?
 
 ![Exchange 7](app-screenshots/ux-07-select-1-again.png)
 
 ### Exchange 8 — replaced-drive
 **Sent:** We replaced the drive last month, same problem  
-**Latency:** 7.19s | **Chars:** 150
-**Options detected:** 4 items
+**Latency:** 6.52s | **Chars:** 182
 
 **Response:**
-> You've replaced the drive and still experience the issue. Are the motor and drive properly grounded?
-> 
-> Yes, they are grounded
-> No, they are not grounded
+> With the motor being a 5HP 460V 3-phase induction motor and the issue persisting after replacing the drive, could the problem be related to the motor itself or the load it's driving?
 
 ![Exchange 8](app-screenshots/ux-08-replaced-drive.png)
 
 ### Exchange 9 — wiring-question
 **Sent:** What should I check on the wiring?  
-**Latency:** 6.42s | **Chars:** 139
-**Options detected:** 4 items
+**Latency:** 7.36s | **Chars:** 233
+**Options detected:** 8 items
 
 **Response:**
-> Are the motor and drive wired according to the manufacturer's instructions?
+> Are the L1, L2, and L3 connections to the motor and the drive correctly wired and matched to the 460V 3-phase power supply?
 > 
-> Yes, they are wired correctly
-> No, they are not wired correctly
+> Check the phase sequence
+> Verify the voltage rating
+> Inspect the wiring for damage
+> Check the ground connection
 
 ![Exchange 9](app-screenshots/ux-09-wiring-question.png)
 
 ### Exchange 10 — select-3
 **Sent:** 3  
-**Latency:** 6.42s | **Chars:** 165
-**Options detected:** 8 items
+**Latency:** 7.31s | **Chars:** 76
 
 **Response:**
-> Are you using the correct preset frequency for the motor?
-> 
-> Check the motor nameplate
-> Verify the drive configuration
-> Refer to the user manual
-> Check the wiring diagram
+> Are any of the 5 indicators at the top showing a fault or warning condition?
 
 ![Exchange 10](app-screenshots/ux-10-select-3.png)
 
 ### Exchange 11 — cable-length
 **Sent:** The cable run is about 200 feet  
-**Latency:** 6.44s | **Chars:** 124
-**Options detected:** 8 items
+**Latency:** 7.44s | **Chars:** 102
 
 **Response:**
-> Is the voltage drop across the 200-foot cable run within the acceptable limit for the motor?
-> 
-> Yes
-> No
-> Unknown
-> Need to measure
+> With a 200-foot cable run, could the issue be related to voltage drop or electromagnetic interference?
 
 ![Exchange 11](app-screenshots/ux-11-cable-length.png)
 
 ### Exchange 12 — voltage-reading
 **Sent:** We measured 458V at the drive input terminals  
-**Latency:** 47.36s | **Chars:** 82
-**Options detected:** 4 items
+**Latency:** 47.81s | **Chars:** 174
 
 **Response:**
-> Is the measured voltage within the drive's acceptable input voltage range?
-> 
-> Yes
-> No
+> The voltage reading of 458V is close to the rated 460V. Are the indicators at the top of the device showing any signs of overvoltage, undervoltage, or other fault conditions?
 
 ![Exchange 12](app-screenshots/ux-12-voltage-reading.png)
 
 ### Exchange 13 — natural-select
 **Sent:** option 2  
-**Latency:** 47.44s | **Chars:** 60
+**Latency:** 47.95s | **Chars:** 102
 
 **Response:**
-> Is the drive configured to handle the input voltage of 458V?
+> Are the 5 indicators at the top showing any pattern or sequence that could indicate a fault or status?
 
 ![Exchange 13](app-screenshots/ux-13-natural-select.png)
 
 ### Exchange 14 — no-reactor
 **Sent:** No, there is no output reactor installed  
-**Latency:** 47.78s | **Chars:** 103
-**Options detected:** 4 items
+**Latency:** 47.76s | **Chars:** 77
 
 **Response:**
-> Is an output reactor required for this drive configuration?
-> 
-> Yes, it is required
-> No, it is not required
+> Are the 5 indicators at the top related to the motor's status or fault codes?
 
 ![Exchange 14](app-screenshots/ux-14-no-reactor.png)
 
 ### Exchange 15 — param-settings
 **Sent:** What are the recommended parameter settings?  
-**Latency:** 47.59s | **Chars:** 126
-**Options detected:** 2 items
+**Latency:** 47.91s | **Chars:** 90
 
 **Response:**
-> What are the recommended parameter settings for the drive?
-> 
-> Check the drive's manual
-> Refer to the manufacturer's documentation
+> What do the parameters 28, FLA Setting, and L3%FLA indicate in the context of this device?
 
 ![Exchange 15](app-screenshots/ux-15-param-settings.png)
 
 ### Exchange 16 — summary
 **Sent:** Can you summarize the diagnosis?  
-**Latency:** 48.12s | **Chars:** 32
+**Latency:** 47.73s | **Chars:** 224
+**Options detected:** 8 items
 
 **Response:**
-> Can you summarize the diagnosis?
+> You've checked the voltage rating, inspected the wiring, and verified the phase sequence. What do the 5 indicators at the top of the device typically represent?
+> 
+> Fault codes
+> Status indicators
+> Parameter settings
+> Output values
 
 ![Exchange 16](app-screenshots/ux-16-summary.png)
 
