@@ -52,6 +52,7 @@ import {
   parseWORecommendation,
 } from "./lib/mira-chat.js";
 import { seedDemoData } from "./seed/demo-data.js";
+import { seedAssetFromNameplate } from "./seed/knowledge-seed.js";
 import { importCSV } from "./lib/csv-import.js";
 import { sendBetaWelcomeEmail, sendActivatedEmail } from "./lib/mailer.js";
 import { startDripScheduler } from "./lib/drip.js";
@@ -145,6 +146,8 @@ app.get("/sitemap.xml", (c) => {
       priority: "0.7",
       freq: "monthly" as const,
     })),
+    { loc: "/privacy", priority: "0.3", freq: "yearly" },
+    { loc: "/terms", priority: "0.3", freq: "yearly" },
   ];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -215,6 +218,20 @@ app.get("/activated", async (c) => {
 
 app.get("/pricing", async (c) => {
   const file = Bun.file("./public/pricing.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+app.get("/privacy", async (c) => {
+  const file = Bun.file("./public/privacy.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+app.get("/terms", async (c) => {
+  const file = Bun.file("./public/terms.html");
   return new Response(await file.text(), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
@@ -506,7 +523,7 @@ app.post("/api/stripe/webhook", async (c) => {
       }
 
       // Seed demo data scoped to the tenant's Atlas company
-      seedDemoData(atlasToken || undefined).catch((err) =>
+      seedDemoData(atlasToken || undefined, tenantId).catch((err) =>
         console.error("[stripe-webhook] Demo seed failed:", err)
       );
 
@@ -713,6 +730,90 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
   } catch (err) {
     console.error("[ingest-manual] Proxy failed:", err);
     return c.json({ error: "Ingest upstream unreachable" }, 502);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Nameplate Provision — bot adapters call this to seed tenant-scoped knowledge
+// from extracted nameplate data. Accepts either a JWT (user) or the shared
+// MCP_REST_API_KEY bearer token (service-to-service, mira-bots → mira-web).
+// ---------------------------------------------------------------------------
+
+app.post("/api/provision/nameplate", async (c) => {
+  const authHeader = c.req.header("Authorization");
+
+  let resolvedTenantId: string | null = null;
+
+  // Service-to-service path: Bearer <MCP_REST_API_KEY>
+  const mcpKey = process.env.MCP_REST_API_KEY || "";
+  if (mcpKey && authHeader === `Bearer ${mcpKey}`) {
+    // Tenant comes from the request body — validated below
+    resolvedTenantId = "__service__"; // sentinel; actual value extracted after body parse
+  } else {
+    // JWT path
+    if (!authHeader) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const raw = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : authHeader;
+    const { verifyToken } = await import("./lib/auth.js");
+    const payload = await verifyToken(raw);
+    if (!payload) {
+      return c.json({ error: "Invalid or expired token" }, 401);
+    }
+    resolvedTenantId = payload.sub;
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const tenantId = typeof body.tenant_id === "string" ? body.tenant_id.trim() : "";
+  if (!tenantId) {
+    return c.json({ error: "tenant_id is required" }, 400);
+  }
+
+  // For JWT callers, enforce that the token's tenant matches the body's tenant_id
+  if (resolvedTenantId !== "__service__" && resolvedTenantId !== tenantId) {
+    return c.json({ error: "Forbidden: tenant_id mismatch" }, 403);
+  }
+
+  const nameplate = body.nameplate;
+  if (
+    typeof nameplate !== "object" ||
+    nameplate === null ||
+    typeof (nameplate as Record<string, unknown>).manufacturer !== "string" ||
+    !(nameplate as Record<string, unknown>).manufacturer ||
+    typeof (nameplate as Record<string, unknown>).modelNumber !== "string" ||
+    !(nameplate as Record<string, unknown>).modelNumber
+  ) {
+    return c.json(
+      { error: "nameplate.manufacturer and nameplate.modelNumber are required" },
+      400,
+    );
+  }
+
+  try {
+    const result = await seedAssetFromNameplate(
+      tenantId,
+      nameplate as Parameters<typeof seedAssetFromNameplate>[1],
+    );
+    console.log(
+      "[provision-nameplate] tenant=%s manufacturer=%s model=%s linkedChunks=%d inserted=%d",
+      tenantId,
+      (nameplate as Record<string, unknown>).manufacturer,
+      (nameplate as Record<string, unknown>).modelNumber,
+      result.linkedChunks,
+      result.inserted,
+    );
+    return c.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("[provision-nameplate] seedAssetFromNameplate failed:", err);
+    return c.json({ error: "Nameplate provision failed" }, 500);
   }
 });
 

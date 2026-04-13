@@ -158,8 +158,19 @@ class RAGWorker:
         state: dict,
         photo_b64: str = None,
         vision_model: str = None,
+        tenant_id: str | None = None,
     ) -> str:
-        """3-stage RAG pipeline. Returns raw LLM response string."""
+        """3-stage RAG pipeline. Returns raw LLM response string.
+
+        Args:
+            message: User message text.
+            state: Current FSM state dict.
+            photo_b64: Optional base64-encoded photo.
+            vision_model: Optional vision model override.
+            tenant_id: Per-call tenant override. When provided, takes precedence
+                over the constructor-level ``self.tenant_id`` fallback.
+        """
+        effective_tenant = tenant_id or self.tenant_id
         model = vision_model if photo_b64 else None
         metadata = {
             "fsm_state": state.get("state"),
@@ -173,7 +184,7 @@ class RAGWorker:
             rewritten = message
             neon_chunks: list[dict] = []
             async with spans.embed_query(message):
-                if self.tenant_id:
+                if effective_tenant:
                     if photo_b64 and self._ingest_url:
                         neon_chunks = await self._visual_search(photo_b64, message)
                     else:
@@ -184,7 +195,7 @@ class RAGWorker:
                         if embedding:
                             neon_chunks = _neon_recall.recall_knowledge(
                                 embedding,
-                                self.tenant_id,
+                                effective_tenant,
                                 query_text=embed_query,
                             )
 

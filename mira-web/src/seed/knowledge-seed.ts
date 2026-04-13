@@ -427,3 +427,105 @@ export async function seedWorkOrderPatterns(tenantId: string): Promise<SeedKnowl
   console.log(`[knowledge-seed] WO patterns seeded: ${result.inserted}/${chunks.length}`);
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// #156 — Nameplate asset seed (tenant-scoped knowledge from nameplate data)
+// ---------------------------------------------------------------------------
+
+export interface NameplateInput {
+  manufacturer: string;
+  modelNumber: string;
+  serial?: string;
+  voltage?: string;
+  fla?: string;
+  hp?: string;
+  frequency?: string;
+  rpm?: string;
+}
+
+export interface SeedAssetFromNameplateResult {
+  linkedChunks: number;
+  inserted: number;
+}
+
+/**
+ * Query NeonDB for existing OEM manual chunks matching this manufacturer + model
+ * (no tenant filter — OEM manuals are shared/global), then insert one
+ * tenant-scoped knowledge chunk that links the nameplate specs to those entries.
+ */
+export async function seedAssetFromNameplate(
+  tenantId: string,
+  nameplate: NameplateInput,
+): Promise<SeedAssetFromNameplateResult> {
+  const { manufacturer, modelNumber } = nameplate;
+
+  // Step 1 — Count existing OEM manual chunks for this model (global, no tenant filter)
+  let linkedChunks = 0;
+  try {
+    const { neon } = await import("@neondatabase/serverless");
+    const url = process.env.NEON_DATABASE_URL;
+    if (!url) {
+      console.warn("[knowledge-seed] NEON_DATABASE_URL not set — skipping nameplate OEM lookup");
+    } else {
+      const sql = neon(url);
+      const rows = await sql`
+        SELECT COUNT(*) AS cnt
+        FROM knowledge_entries
+        WHERE manufacturer ILIKE ${manufacturer}
+          AND model_number ILIKE ${modelNumber}
+      `;
+      linkedChunks = Number(rows[0]?.cnt ?? 0);
+    }
+  } catch (err) {
+    console.error("[knowledge-seed] OEM chunk lookup failed:", err);
+  }
+
+  // Step 2 — Build context chunk text (omit undefined/null spec fields)
+  const specParts: string[] = [];
+  if (nameplate.voltage) specParts.push(`Voltage: ${nameplate.voltage}`);
+  if (nameplate.fla) specParts.push(`FLA: ${nameplate.fla}`);
+  if (nameplate.hp) specParts.push(`HP: ${nameplate.hp}`);
+  if (nameplate.frequency) specParts.push(`Frequency: ${nameplate.frequency}`);
+  if (nameplate.rpm) specParts.push(`RPM: ${nameplate.rpm}`);
+
+  const assetLabel = nameplate.serial
+    ? `${nameplate.serial} (${manufacturer} ${modelNumber})`
+    : `${manufacturer} ${modelNumber}`;
+
+  const specsLine = specParts.length > 0 ? `\nSpecifications: ${specParts.join(", ")}` : "";
+
+  const chunkText =
+    `Asset: ${assetLabel}\n` +
+    `Linked OEM documentation: ${linkedChunks} chunks found in knowledge base.` +
+    specsLine;
+
+  // Step 3 — Embed the chunk
+  const embedding = await embedText(chunkText);
+  if (!embedding) {
+    console.warn("[knowledge-seed] Embedding failed for nameplate asset:", assetLabel);
+    return { linkedChunks, inserted: 0 };
+  }
+
+  // Step 4 — Insert via the shared helper
+  const chunk: KnowledgeChunk = {
+    content: chunkText,
+    manufacturer,
+    modelNumber,
+    sourceType: "nameplate_asset",
+    chunkType: "text",
+  };
+
+  const ok = await insertKnowledgeEntry(chunk, embedding, tenantId);
+  if (!ok) {
+    console.error("[knowledge-seed] Insert failed for nameplate asset:", assetLabel);
+    return { linkedChunks, inserted: 0 };
+  }
+
+  console.log(
+    `[knowledge-seed] Nameplate seeded: tenant=%s asset=%s linkedChunks=%d`,
+    tenantId,
+    assetLabel,
+    linkedChunks,
+  );
+  return { linkedChunks, inserted: 1 };
+}

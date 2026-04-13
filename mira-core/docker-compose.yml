@@ -5,9 +5,13 @@ services:
     ports:
       - "${WEBUI_PORT:-3000}:8080"
     environment:
+      - WEBUI_NAME=MIRA
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - WEBUI_AUTH=true
-      - ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}
+      - ENABLE_SIGNUP=true
+      - DEFAULT_USER_ROLE=pending
+      - ENABLE_COMMUNITY_SHARING=false
+      - ENABLE_FORWARD_USER_INFO_HEADERS=true
       - ENABLE_API_KEYS=true
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY must be set in .env}
       - WEBUI_ENABLE_TELEMETRY=false
@@ -18,8 +22,23 @@ services:
       - RAG_EMBEDDING_MODEL=nomic-embed-text:latest
       - RAG_CHUNK_SIZE=1000
       - RAG_CHUNK_OVERLAP=100
+      # Pipeline connection — MIRA Diagnostic model via mira-pipeline
+      - OPENAI_API_BASE_URLS=http://mira-pipeline:9099/v1
+      - OPENAI_API_KEYS=${PIPELINE_API_KEY:-}
+      # Docling for industrial-grade PDF extraction
+      - DOCLING_SERVER_URL=http://mira-docling:5001
+      - PDF_EXTRACT_IMAGES=true
+      # STT — Groq Whisper free tier (voice-to-text)
+      - AUDIO_STT_ENGINE=openai
+      - AUDIO_STT_OPENAI_API_BASE_URL=https://api.groq.com/openai/v1
+      - AUDIO_STT_OPENAI_API_KEY=${GROQ_API_KEY:-}
+      - AUDIO_STT_MODEL=whisper-large-v3-turbo
+      # TTS — browser Web Speech API (zero cost, works offline)
+      - AUDIO_TTS_ENGINE=
+    entrypoint: ["/bin/bash", "/entrypoint-mira.sh"]
     volumes:
       - open-webui-data:/app/backend/data
+      - ./entrypoint-mira.sh:/entrypoint-mira.sh:ro
     networks:
       - core-net
       - bot-net
@@ -107,6 +126,69 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+
+  mira-pipeline:
+    build:
+      context: ..
+      dockerfile: mira-pipeline/Dockerfile
+    container_name: mira-pipeline
+    environment:
+      - MIRA_DB_PATH=/data/mira.db
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - VISION_MODEL=${VISION_MODEL:-qwen2.5vl:7b}
+      - INFERENCE_BACKEND=${INFERENCE_BACKEND:-cloud}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
+      - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
+      - MCP_BASE_URL=${MCP_BASE_URL:-http://mira-mcp:8001}
+      - INGEST_SERVICE_URL=http://mira-ingest:8001
+      - MAX_VISION_PX=${MAX_VISION_PX:-1024}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+    volumes:
+      - ../mira-bridge/data:/data
+    ports:
+      - "127.0.0.1:${PIPELINE_PORT:-9099}:9099"
+    networks:
+      - core-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9099/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mira-docling:
+    image: quay.io/docling-project/docling-serve:v1.16.1
+    container_name: mira-docling
+    ports:
+      - "127.0.0.1:${DOCLING_PORT:-5001}:5001"
+    environment:
+      - DOCLING_SERVE_PORT=5001
+    networks:
+      - core-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
 volumes:
   open-webui-data:

@@ -7,6 +7,9 @@ import re
 import sqlite3
 import time
 
+import httpx
+
+from .chat_tenant import resolve as resolve_tenant
 from .guardrails import (
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
@@ -21,6 +24,7 @@ from .nemotron import NemotronClient
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
+from .workers.nameplate_worker import NameplateWorker
 from .workers.plc_worker import PLCWorker
 from .workers.print_worker import PrintWorker
 from .workers.rag_worker import RAGWorker
@@ -47,6 +51,43 @@ ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"}
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 # How many turns the session photo stays available for follow-up questions
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
+
+# Fuzzy-match common LLM-invented state names to valid FSM states.
+# Groq llama-3.3-70b and llama-4-scout frequently produce these.
+_STATE_ALIASES: dict[str, str] = {
+    # Diagnosis variants
+    "DIAGNOSTICS": "DIAGNOSIS",
+    "DIAGNOSTIC": "DIAGNOSIS",
+    "DIAGNOSIS_SUMMARY": "DIAGNOSIS",
+    "FAULT_ANALYSIS": "DIAGNOSIS",
+    "ANALYZING": "DIAGNOSIS",
+    "ANALYSIS": "DIAGNOSIS",
+    "ROOT_CAUSE": "DIAGNOSIS",
+    # Question variants
+    "TROUBLESHOOT": "Q1",
+    "TROUBLESHOOTING": "Q1",
+    "QUESTION": "Q1",
+    "USER_QUERY": "Q1",
+    "INQUIRY": "Q1",
+    "GATHERING_INFO": "Q2",
+    "INSPECT": "Q2",
+    "VERIFY": "Q2",
+    "CHECK_OUTPUT_REACTOR": "Q2",
+    "Q4": "Q3",  # no Q4 — clamp to Q3
+    "Q5": "Q3",
+    # Fix step variants
+    "FIX": "FIX_STEP",
+    "REPAIR": "FIX_STEP",
+    "ACTION": "FIX_STEP",
+    "CONFIG_STEP": "FIX_STEP",
+    "PARAMETER_SETTINGS": "FIX_STEP",
+    "IN_PROGRESS": "FIX_STEP",
+    # Resolved variants
+    "SUMMARY": "RESOLVED",
+    "COMPLETE": "RESOLVED",
+    "DONE": "RESOLVED",
+    "CLOSED": "RESOLVED",
+}
 
 
 def format_diagnostic_response(
@@ -78,9 +119,21 @@ class Supervisor:
         collection_id: str,
         vision_model: str = "qwen2.5vl:7b",
         tenant_id: str = None,
+        mcp_base_url: str = "",
+        mcp_api_key: str = "",
+        web_base_url: str = "",
     ):
         self.db_path = db_path
         self.vision_model = vision_model
+
+        # Service base URLs for nameplate downstream calls
+        self.mcp_base_url = (
+            mcp_base_url or os.getenv("MCP_BASE_URL", "http://mira-mcp:8001")
+        ).rstrip("/")
+        self.mcp_api_key = mcp_api_key or os.getenv("MCP_REST_API_KEY", "")
+        self.web_base_url = (
+            web_base_url or os.getenv("WEB_BASE_URL", "http://mira-web:3000")
+        ).rstrip("/")
 
         # Nemotron client — enabled only when NVIDIA_API_KEY is set
         self.nemotron = NemotronClient()
@@ -90,6 +143,7 @@ class Supervisor:
 
         # Initialize workers
         self.vision = VisionWorker(openwebui_url, api_key, vision_model)
+        self.nameplate = NameplateWorker(openwebui_url, api_key, vision_model)
         self.rag = RAGWorker(
             openwebui_url,
             api_key,
@@ -287,6 +341,9 @@ class Supervisor:
         Same logic as process(), but preserves structured metadata for
         benchmark and telemetry consumers.
         """
+        # Resolve tenant per call — chat_tenant LRU cache makes this cheap
+        resolved_tenant = resolve_tenant(chat_id) or self.rag.tenant_id
+
         # Telemetry trace
         t = tl_trace("supervisor.process", user_id=chat_id)
         trace_id = t.id
@@ -318,23 +375,26 @@ class Supervisor:
 
         # Always-on guardrail: safety and off-topic bypass ALL conversation state
         if not photo_b64:
-            # Session follow-up detection: short-circuit before intent classification
             sc = state.get("context", {}).get("session_context", {})
-            if detect_session_followup(message, sc, state["state"]):
-                return await self._handle_session_followup(
-                    message,
-                    state,
-                    chat_id,
-                    session_photo=_session_photo,
-                )
 
-            # Option selection resolution: expand "1" → full option text
+            # Option selection resolution FIRST: expand "2" / "option 2" / "2 again"
+            # → full option text before any follow-up or intent detection runs on it.
             last_options = sc.get("last_options", [])
             if last_options:
                 expanded = resolve_option_selection(message, last_options)
                 if expanded:
                     logger.info("Selection resolved: '%s' → '%s'", message, expanded)
                     message = expanded
+
+            # Session follow-up detection: now runs on the already-expanded message.
+            if detect_session_followup(message, sc, state["state"]):
+                return await self._handle_session_followup(
+                    message,
+                    state,
+                    chat_id,
+                    session_photo=_session_photo,
+                    tenant_id=resolved_tenant,
+                )
 
             intent = classify_intent(message)
             if intent == "safety":
@@ -432,13 +492,33 @@ class Supervisor:
                     trace_id,
                     "ELECTRICAL_PRINT",
                 )
+            elif vision_data["classification"] == "NAMEPLATE":
+                reply = await self._handle_nameplate(
+                    chat_id=chat_id,
+                    photo_b64=photo_b64,
+                    state=state,
+                    ctx=ctx,
+                    message=message,
+                    resolved_tenant=resolved_tenant,
+                )
+                state["state"] = "ASSET_IDENTIFIED"
+                state["exchange_count"] += 1
+                self._save_state(chat_id, state)
+                tl_flush()
+                return self._make_result(
+                    reply,
+                    "high",
+                    trace_id,
+                    "ASSET_IDENTIFIED",
+                )
             else:
                 state["state"] = "ASSET_IDENTIFIED"
+                existing_sc = ctx.get("session_context", {})
                 ctx["session_context"] = {
                     "equipment_type": str(vision_data["vision_result"])[:80],
                     "manufacturer": state.get("asset_identified", "Unknown"),
-                    "last_question": None,
-                    "last_options": [],
+                    "last_question": existing_sc.get("last_question"),
+                    "last_options": existing_sc.get("last_options", []),
                 }
                 state["context"] = ctx
 
@@ -558,6 +638,7 @@ class Supervisor:
                 message,
                 state,
                 effective_photo,
+                tenant_id=resolved_tenant,
             )
         if raw is None:
             self._save_state(chat_id, state)
@@ -644,17 +725,147 @@ class Supervisor:
     # State management
     # ------------------------------------------------------------------
 
+    async def _handle_nameplate(
+        self,
+        chat_id: str,
+        photo_b64: str,
+        state: dict,
+        ctx: dict,
+        message: str,
+        resolved_tenant: str,
+    ) -> str:
+        """Run the full nameplate flow: extract fields → create Atlas asset → seed knowledge.
+
+        Returns the reply string to send back to the user.
+        """
+        # 1. Extract structured fields from the nameplate photo
+        try:
+            fields = await self.nameplate.extract(photo_b64)
+        except Exception as e:
+            logger.error("nameplate extract failed: %s", e)
+            fields = {}
+
+        if "parse_error" in fields:
+            logger.warning("nameplate parse_error: %s", fields["parse_error"])
+            fields = {}
+
+        manufacturer = fields.get("manufacturer") or "Unknown"
+        model = fields.get("model") or "Unknown"
+
+        # 2. Create Atlas CMMS asset via mira-mcp REST
+        mcp_headers = {"Content-Type": "application/json"}
+        if self.mcp_api_key:
+            mcp_headers["Authorization"] = f"Bearer {self.mcp_api_key}"
+
+        mcp_payload = {
+            "tenant_id": resolved_tenant,
+            "manufacturer": manufacturer,
+            "model": model,
+            "serial": fields.get("serial") or "",
+            "voltage": fields.get("voltage") or "",
+            "hp": fields.get("hp") or "",
+            "fla": fields.get("fla") or "",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                mcp_resp = await client.post(
+                    f"{self.mcp_base_url}/api/cmms/nameplate",
+                    json=mcp_payload,
+                    headers=mcp_headers,
+                )
+                mcp_resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "nameplate mcp call HTTP %d: %s",
+                e.response.status_code,
+                e.response.text[:200],
+            )
+        except Exception as e:
+            logger.error("nameplate mcp call failed: %s", e)
+
+        # 3. Seed tenant knowledge via mira-web
+        linked_chunks = 0
+        web_headers = {"Content-Type": "application/json"}
+        if self.mcp_api_key:
+            web_headers["Authorization"] = f"Bearer {self.mcp_api_key}"
+
+        web_payload = {
+            "tenant_id": resolved_tenant,
+            "nameplate": {
+                "manufacturer": manufacturer,
+                "modelNumber": model,
+                "serial": fields.get("serial") or "",
+                "voltage": fields.get("voltage") or "",
+                "fla": fields.get("fla") or "",
+                "hp": fields.get("hp") or "",
+            },
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                web_resp = await client.post(
+                    f"{self.web_base_url}/api/provision/nameplate",
+                    json=web_payload,
+                    headers=web_headers,
+                )
+                web_resp.raise_for_status()
+                web_data = web_resp.json()
+                linked_chunks = web_data.get("linkedChunks", 0)
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "nameplate web call HTTP %d: %s",
+                e.response.status_code,
+                e.response.text[:200],
+            )
+        except Exception as e:
+            logger.error("nameplate web call failed: %s", e)
+
+        # 4. Update session state with nameplate data
+        ctx["session_context"] = {
+            "equipment_type": f"{manufacturer} {model}",
+            "manufacturer": manufacturer,
+            "last_question": None,
+            "last_options": [],
+        }
+        state["asset_identified"] = f"{manufacturer}, {model}"
+        state["context"] = ctx
+
+        history = ctx.get("history", [])
+        history.append({"role": "user", "content": message})
+        reply = (
+            f"Asset registered: {manufacturer} {model} — "
+            f"linked to {linked_chunks} OEM manual chunks. "
+            f"Ask me anything about this equipment."
+        )
+        history.append({"role": "assistant", "content": reply})
+        ctx["history"] = history
+        state["context"] = ctx
+
+        logger.info(
+            "NAMEPLATE_FLOW tenant=%s manufacturer=%s model=%s linked_chunks=%d",
+            resolved_tenant,
+            manufacturer,
+            model,
+            linked_chunks,
+        )
+        return reply
+
     async def _call_with_correction(
         self,
         message: str,
         state: dict,
         photo_b64: str = None,
+        tenant_id: str | None = None,
     ) -> tuple:
         """Call RAG worker with self-corrective retry.
 
         Returns (raw, parsed) on success, (None, {"reply": error_msg}) on failure.
         If first response is not grounded and Nemotron is enabled, rewrites
         query and retries once (max 2 attempts).
+
+        Args:
+            tenant_id: Resolved per-call tenant to forward to RAGWorker.process().
         """
         max_attempts = 1 if photo_b64 else (2 if self.nemotron.enabled else 1)
         query = message
@@ -666,6 +877,7 @@ class Supervisor:
                     state,
                     photo_b64=photo_b64,
                     vision_model=self.vision_model,
+                    tenant_id=tenant_id,
                 )
             except Exception as e:
                 logger.error("LLM call failed (rag worker): %s", e)
@@ -693,12 +905,15 @@ class Supervisor:
         state: dict,
         chat_id: str,
         session_photo: str = None,
+        tenant_id: str | None = None,
     ) -> dict:
         """Route a session follow-up through the RAG pipeline without intent filtering.
 
         Returns a dict via _make_result() — must match process_full() return type.
         """
-        raw, parsed = await self._call_with_correction(message, state, photo_b64=session_photo)
+        raw, parsed = await self._call_with_correction(
+            message, state, photo_b64=session_photo, tenant_id=tenant_id
+        )
         if raw is None:
             self._save_state(chat_id, state)
             return self._make_result(parsed["reply"], "none", None, state["state"])
@@ -1030,13 +1245,24 @@ class Supervisor:
     # ------------------------------------------------------------------
 
     def _parse_response(self, raw: str) -> dict:
-        """Parse LLM response — try JSON envelope, fall back to plain text."""
+        """Parse LLM response — try JSON envelope, fall back to plain text.
+
+        Groq models frequently return JSON with non-standard keys like
+        ``follow_ups``, ``tags``, ``title``, ``queries`` instead of the
+        expected ``reply`` key. We attempt to salvage these into a valid
+        response so the FSM doesn't stall.
+        """
         raw_stripped = raw.strip()
 
         try:
             parsed = json.loads(raw_stripped)
-            if isinstance(parsed, dict) and "reply" in parsed:
-                return self._extract_parsed(parsed)
+            if isinstance(parsed, dict):
+                if "reply" in parsed:
+                    return self._extract_parsed(parsed)
+                # Groq fallback: salvage non-standard JSON envelopes
+                parsed = self._salvage_groq_json(parsed)
+                if parsed:
+                    return parsed
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -1074,6 +1300,37 @@ class Supervisor:
             clean = raw_stripped
         logger.warning("_parse_response fallback; raw=%r", raw_stripped[:200])
         return {"next_state": None, "reply": clean, "options": [], "confidence": "LOW"}
+
+    @staticmethod
+    def _salvage_groq_json(parsed: dict) -> dict | None:
+        """Attempt to extract a usable reply from non-standard Groq JSON.
+
+        Groq's llama models often return ``{"follow_ups": [...]}`` or
+        ``{"title": "..."}`` instead of the expected ``{"reply": "..."}``.
+        """
+        # {"follow_ups": ["Q1", "Q2", "Q3"]} → format as numbered list
+        follow_ups = parsed.get("follow_ups") or parsed.get("suggestions")
+        if isinstance(follow_ups, list) and follow_ups:
+            text = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(follow_ups[:4]))
+            return {
+                "next_state": None,
+                "reply": text,
+                "options": follow_ups[:4],
+                "confidence": "LOW",
+            }
+
+        # {"title": "..."} → use as reply
+        title = parsed.get("title")
+        if isinstance(title, str) and title.strip():
+            return {"next_state": None, "reply": title.strip(), "options": [], "confidence": "LOW"}
+
+        # {"queries": ["...", "..."]} → search queries, use first as reply
+        queries = parsed.get("queries")
+        if isinstance(queries, list) and queries:
+            return {"next_state": None, "reply": queries[0], "options": [], "confidence": "LOW"}
+
+        # {"tags": ["...", "..."]} → not useful as a reply
+        return None
 
     @staticmethod
     def _extract_parsed(parsed: dict) -> dict:
@@ -1115,7 +1372,7 @@ class Supervisor:
             return state
 
         if parsed.get("next_state"):
-            proposed = parsed["next_state"]
+            proposed = _STATE_ALIASES.get(parsed["next_state"], parsed["next_state"])
             if proposed in self._VALID_STATES:
                 state["state"] = proposed
             else:

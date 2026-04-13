@@ -64,7 +64,7 @@ normalization before RAG retrieval.
 - Enabled when `INFERENCE_BACKEND=cloud` (or `claude` legacy alias) AND at least one provider API key is set
 - Provider enablement is key-based: `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `ANTHROPIC_API_KEY`
 - Groq/Cerebras use OpenAI-compatible API; Claude uses Messages API
-- Image requests skip Groq/Cerebras (no vision support) and go directly to Claude
+- Image requests use provider's `vision_model` if set (Groq → `GROQ_VISION_MODEL`); providers without a vision model are skipped for images
 - `complete(messages, max_tokens, session_id)` — tries each provider, returns first success
 - `sanitize_context(messages)` — strips IPv4, MAC addresses, serial numbers before sending
 - `write_api_usage()` — persists token counts + provider name to `api_usage` table in mira.db

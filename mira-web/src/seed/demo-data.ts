@@ -483,7 +483,7 @@ function buildWorkOrders(): DemoWO[] {
   return orders;
 }
 
-export async function seedDemoData(atlasToken?: string): Promise<void> {
+export async function seedDemoData(atlasToken: string | undefined, tenantId: string): Promise<void> {
   for (const asset of DEMO_ASSETS) {
     try {
       await createAsset(asset, atlasToken);
@@ -505,7 +505,6 @@ export async function seedDemoData(atlasToken?: string): Promise<void> {
 
   console.log(`[seed] Demo data seeded: ${DEMO_ASSETS.length} assets, ${created}/${orders.length} work orders`);
 
-  const tenantId = process.env.MIRA_TENANT_ID || "demo";
   try {
     const [knowledgeResult, faultResult, patternResult] = await Promise.all([
       seedAssetKnowledge(DEMO_ASSETS, tenantId),

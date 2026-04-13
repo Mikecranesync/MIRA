@@ -51,8 +51,10 @@ Full diagram: `~/.claude/projects/.../memory/flows/knowledge-ingest-pipeline.md`
 | Container         | Host Port(s) | Network(s)        | Healthcheck                 |
 |-------------------|--------------|-------------------|-----------------------------|
 | mira-core         | 3000 → 8080  | core-net, bot-net | GET /health                 |
+| mira-pipeline     | 9099         | core-net          | curl /health                |
 | mira-mcpo         | 8000         | core-net          | GET /mira-mcp/docs (bearer) |
 | mira-ingest       | 8002 → 8001  | core-net          | Python urlopen /health      |
+| mira-docling      | 5001         | core-net          | curl /health                |
 | mira-bridge       | 1880         | core-net          | GET /                       |
 | mira-mcp          | 8000, 8001   | core-net          | Python urlopen /sse         |
 | mira-bot-telegram | —            | bot-net, core-net | import check                |
@@ -123,12 +125,14 @@ chore: build system, deps, tooling
 | `SLACK_APP_TOKEN`    | mira-bot-slack (Socket Mode)         |
 | `ANTHROPIC_API_KEY`  | mira-bots (Claude inference)         |
 | `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
-| `GROQ_API_KEY`       | mira-bots (Groq — primary free tier) |
-| `GROQ_MODEL`         | mira-bots — default: llama-3.3-70b-versatile |
+| `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — primary free tier) |
+| `GROQ_MODEL`         | mira-bots, mira-pipeline — default: llama-3.3-70b-versatile |
+| `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: meta-llama/llama-4-scout-17b-16e-instruct |
 | `CEREBRAS_API_KEY`   | mira-bots (Cerebras — secondary free tier) |
-| `CEREBRAS_MODEL`     | mira-bots — default: llama-3.3-70b |
+| `CEREBRAS_MODEL`     | mira-bots — default: llama3.1-8b |
 | `CLAUDE_MODEL`       | mira-bots — default: claude-sonnet-4-6 |
-| `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest               |
+| `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest, mira-pipeline |
+| `PIPELINE_API_KEY`   | mira-pipeline (bearer auth), mira-core (OPENAI_API_KEYS) |
 | `MCP_REST_API_KEY`   | mira-mcp (server), mira-bots (client)|
 | `NEON_DATABASE_URL`  | mira-ingest (NeonDB)                 |
 | `MIRA_TENANT_ID`     | mira-ingest (tenant scoping)         |

@@ -9,6 +9,7 @@ from cmms.factory import create_cmms_adapter
 from fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from tenant_resolver import resolve_atlas_creds
 
 DB_PATH = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
 MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
@@ -22,15 +23,15 @@ if _atlas_tmp.configured:
     _atlas_internal = _atlas_tmp
     sys.stderr.write("INFO: Atlas internal store enabled for diagnostic recording\n")
 else:
-    sys.stderr.write("WARNING: Atlas internal store not configured — diagnostic_record_case disabled\n")
+    sys.stderr.write(
+        "WARNING: Atlas internal store not configured — diagnostic_record_case disabled\n"
+    )
 del _atlas_tmp
 
 # External CMMS adapter — customer's CMMS (maintainx|limble|upkeep)
 _cmms = create_cmms_adapter()
 if _cmms is not None and not isinstance(_cmms, AtlasCMMS):
-    sys.stderr.write(
-        f"INFO: External CMMS integration enabled (provider={type(_cmms).__name__})\n"
-    )
+    sys.stderr.write(f"INFO: External CMMS integration enabled (provider={type(_cmms).__name__})\n")
 elif _cmms is not None and isinstance(_cmms, AtlasCMMS):
     _cmms = None
     sys.stderr.write("INFO: CMMS_PROVIDER=atlas routed to internal store, external CMMS disabled\n")
@@ -276,7 +277,9 @@ async def cmms_write_work_order(
         category: CORRECTIVE, PREVENTIVE, CONDITION_BASED, EMERGENCY
     """
     if _cmms is None:
-        return {"error": "No external CMMS configured. Set CMMS_PROVIDER to maintainx, limble, or upkeep."}
+        return {
+            "error": "No external CMMS configured. Set CMMS_PROVIDER to maintainx, limble, or upkeep."
+        }
     return await _cmms.create_work_order(
         title,
         description,
@@ -372,6 +375,58 @@ async def cmms_health() -> dict:
     else:
         result["external"] = {"status": "disabled", "info": "No external CMMS configured"}
     return result
+
+
+@mcp.tool()
+async def create_asset_from_nameplate(
+    tenant_id: str,
+    manufacturer: str,
+    model: str,
+    serial: str = "",
+    voltage: str = "",
+    hp: str = "",
+    fla: str = "",
+) -> dict:
+    """Create an Atlas CMMS asset for a tenant from extracted nameplate fields.
+
+    Resolves the tenant's Atlas credentials from NeonDB, then POSTs a new
+    asset scoped to that tenant's CMMS account. Called after a nameplate
+    photo is processed by the vision pipeline.
+
+    Args:
+        tenant_id: PLG tenant UUID (plg_tenants.id).
+        manufacturer: Equipment manufacturer name (e.g. 'Allen-Bradley').
+        model: Model number from nameplate (e.g. '1336 PLUS II').
+        serial: Serial number (optional).
+        voltage: Nameplate voltage rating (optional, e.g. '460V').
+        hp: Horsepower rating (optional, e.g. '25HP').
+        fla: Full load amps (optional, e.g. '32A').
+    """
+    creds = await resolve_atlas_creds(tenant_id)
+    if not creds:
+        return {"error": f"Tenant {tenant_id} not provisioned in Atlas"}
+
+    email, password, api_url = creds
+    atlas = AtlasCMMS.for_tenant(email, password, api_url)
+
+    description_parts = []
+    if serial:
+        description_parts.append(f"Serial: {serial}")
+    if voltage:
+        description_parts.append(f"Voltage: {voltage}")
+    if hp:
+        description_parts.append(f"HP: {hp}")
+    if fla:
+        description_parts.append(f"FLA: {fla}")
+    description = ", ".join(description_parts) if description_parts else ""
+
+    return await atlas.create_asset(
+        name=f"{manufacturer} {model}".strip(),
+        description=description,
+        manufacturer=manufacturer,
+        model=model,
+        serial=serial,
+    )
 
 
 OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -540,13 +595,29 @@ if __name__ == "__main__":
         if not emails or not isinstance(emails, list):
             return JSONResponse({"error": "emails array required"}, status_code=400)
         if not isinstance(_atlas_internal, AtlasCMMS):
-            return JSONResponse(
-                {"error": "invite_users is Atlas-only"}, status_code=501
-            )
+            return JSONResponse({"error": "invite_users is Atlas-only"}, status_code=501)
         return JSONResponse(await _atlas_internal.invite_users(emails, role_id))
 
     async def rest_cmms_health(request):
         return JSONResponse(await cmms_health())
+
+    async def rest_cmms_nameplate(request):
+        """POST /api/cmms/nameplate — create Atlas asset from extracted nameplate fields."""
+        body = await request.json()
+        tenant_id = body.get("tenant_id", "")
+        if not tenant_id:
+            return JSONResponse({"error": "tenant_id required"}, status_code=400)
+        return JSONResponse(
+            await create_asset_from_nameplate(
+                tenant_id=tenant_id,
+                manufacturer=body.get("manufacturer", ""),
+                model=body.get("model", ""),
+                serial=body.get("serial", ""),
+                voltage=body.get("voltage", ""),
+                hp=body.get("hp", ""),
+                fla=body.get("fla", ""),
+            )
+        )
 
     async def health(request):
         return JSONResponse({"status": "ok"})
@@ -568,6 +639,7 @@ if __name__ == "__main__":
             Route("/api/cmms/pm-schedules", rest_cmms_pm_schedules),
             Route("/api/cmms/invite", rest_cmms_invite, methods=["POST"]),
             Route("/api/cmms/health", rest_cmms_health),
+            Route("/api/cmms/nameplate", rest_cmms_nameplate, methods=["POST"]),
             Route("/ingest/pdf", _rest_ingest_pdf, methods=["POST"]),
             Route("/api/embed", _rest_embed, methods=["POST"]),
         ],

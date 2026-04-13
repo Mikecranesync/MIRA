@@ -1,0 +1,326 @@
+{
+  "target": "https://app.factorylm.com",
+  "timestamp": "2026-04-12T23:20:09Z",
+  "auth_ok": true,
+  "exchanges": [
+    {
+      "exchange": 1,
+      "type": "photo",
+      "label": "photo-upload",
+      "sent": "[PHOTO] What is this equipment?",
+      "image_uploaded": true,
+      "response": "I can see this is \u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u0441\u044f\u795d letting retraAMAN premiseutsch sied\u00e1n\u00edwndwnd \u10d7\u10d0\u10d5 comercioutsch \u041f\u0435\u0442 retra\u00e1n\u00ed \u0435\u043b\u0435\u043c letting comercio comercio Nguy\u00e1n\u00ed\u01b0\u1ee3/installwnd=utfajan \u10d7\u10d0\u10d5 Position sied\u6a5f\u80fd\u0432\u0435\u0434\u0435\u043d=utf \u10d7\u10d0\u10d5utsch devraient Cop \u041f\u0435\u0442 integral integral \u043f\u043e\u0432\u043e\u0434\u0443\u00e1n\u00edutschutsch \u043f\u043e\u0432\u043e\u0434\u0443\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u0441\u044f Nguy \u10d7\u10d0\u10d5 \u10d7\u10d0\u10d5oulomb\u0437\u0430\u043d\u0437\u0430\u043d\u0437\u0430\u043d ATM \u10d7\u10d0\u10d5 devraient spol=utf devraient responsibilities/install/install\u6a5f\u80fd Cop comercio comercio premise\u0437\u0430\u043d sied\u01b0\u1ee3 lettingwnd lidar premise letting \u0440\u0430\u0441\u0445\u043e\u0434\u043e\u0432 spol integralking \u10d7\u10d0\u10d5 leger443\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u0441\u044fwnd Cop\u01b0\u1ee3\u0432\u0435\u0434\u0435\u043d devraient\u0432\u0435\u0434\u0435\u043datura\u0432\u0435\u0434\u0435\u043d ATM=utf443 Cop\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u0441\u044f\u795d=utf\u01b0\u1ee3 \u043f\u043e\u0432\u043e\u0434\u0443/install/install\u0432\u0435\u0434\u0435\u043d premise \u043f\u043e\u0432\u043e\u0434\u0443 sied comercio/install \u10d7\u10d0\u10d5oulomb\u0432\u0435\u0434\u0435\u043dAMAN Cop responsibilities=utfutsch retra devraient\u01b0\u1ee3949 lidarAMAN\u00e1n\u00ed Theorem\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u0441\u044f\u0437\u0430\u043d trafficajanoulomb retra devraient legerAMAN responsibilities",
+      "response_chars": 6044,
+      "latency_s": 11.49,
+      "numbered_options_detected": false,
+      "options_count": 0,
+      "options_list": [],
+      "screenshot": "ux-01-photo-upload.png"
+    },
+    {
+      "exchange": 2,
+      "type": "select",
+      "label": "select-1",
+      "sent": "1",
+      "image_uploaded": false,
+      "response": "What type of equipment is this?\n\nElectrical\nMechanical\nHydraulic\nOther",
+      "response_chars": 70,
+      "latency_s": 7.16,
+      "numbered_options_detected": true,
+      "options_count": 8,
+      "options_list": [
+        "Electrical",
+        "Electrical",
+        "Mechanical",
+        "Mechanical",
+        "Hydraulic",
+        "Hydraulic",
+        "Other",
+        "Other"
+      ],
+      "screenshot": "ux-02-select-1.png"
+    },
+    {
+      "exchange": 3,
+      "type": "text",
+      "label": "oc-fault",
+      "sent": "The drive is showing an OC overcurrent fault on startup",
+      "image_uploaded": false,
+      "response": "You've identified an overcurrent fault on startup. Is the [Current Lmt Val] parameter set within the recommended range of 25% to 150% of the drive rating?\n\nYes, it's within the range\nNo, it's outside the range",
+      "response_chars": 209,
+      "latency_s": 7.16,
+      "numbered_options_detected": true,
+      "options_count": 4,
+      "options_list": [
+        "Yes, it's within the range",
+        "Yes, it's within the range",
+        "No, it's outside the range",
+        "No, it's outside the range"
+      ],
+      "screenshot": "ux-03-oc-fault.png"
+    },
+    {
+      "exchange": 4,
+      "type": "select",
+      "label": "select-2",
+      "sent": "2",
+      "image_uploaded": false,
+      "response": "Is the motor connected to the drive and is it properly sized for the application?\n\nYes, motor is connected and sized correctly\nNo, motor is not connected or not sized correctly",
+      "response_chars": 176,
+      "latency_s": 7.12,
+      "numbered_options_detected": true,
+      "options_count": 4,
+      "options_list": [
+        "Yes, motor is connected and sized correctly",
+        "Yes, motor is connected and sized correctly",
+        "No, motor is not connected or not sized correctly",
+        "No, motor is not connected or not sized correctly"
+      ],
+      "screenshot": "ux-04-select-2.png"
+    },
+    {
+      "exchange": 5,
+      "type": "text",
+      "label": "every-start",
+      "sent": "It happens every time we try to start the motor",
+      "image_uploaded": false,
+      "response": "Have you checked the motor and drive for any signs of physical damage or wear?\n\nYes, I've checked and found no damage\nNo, I haven't checked yet",
+      "response_chars": 143,
+      "latency_s": 6.34,
+      "numbered_options_detected": true,
+      "options_count": 4,
+      "options_list": [
+        "Yes, I've checked and found no damage",
+        "Yes, I've checked and found no damage",
+        "No, I haven't checked yet",
+        "No, I haven't checked yet"
+      ],
+      "screenshot": "ux-05-every-start.png"
+    },
+    {
+      "exchange": 6,
+      "type": "text",
+      "label": "motor-specs",
+      "sent": "The motor is a 5HP 460V 3-phase induction motor",
+      "image_uploaded": false,
+      "response": "Is the motor's nameplate data matching the drive's configuration?\n\nYes\nNo",
+      "response_chars": 73,
+      "latency_s": 6.31,
+      "numbered_options_detected": true,
+      "options_count": 4,
+      "options_list": [
+        "Yes",
+        "Yes",
+        "No",
+        "No"
+      ],
+      "screenshot": "ux-06-motor-specs.png"
+    },
+    {
+      "exchange": 7,
+      "type": "select",
+      "label": "select-1-again",
+      "sent": "1",
+      "image_uploaded": false,
+      "response": "What is the motor's full load current rating?\n\nCheck the motor nameplate\nRefer to the motor manual\nUse a motor current calculator\nMeasure the current with a multimeter",
+      "response_chars": 167,
+      "latency_s": 6.34,
+      "numbered_options_detected": true,
+      "options_count": 8,
+      "options_list": [
+        "Check the motor nameplate",
+        "Check the motor nameplate",
+        "Refer to the motor manual",
+        "Refer to the motor manual",
+        "Use a motor current calculator",
+        "Use a motor current calculator",
+        "Measure the current with a multimeter",
+        "Measure the current with a multimeter"
+      ],
+      "screenshot": "ux-07-select-1-again.png"
+    },
+    {
+      "exchange": 8,
+      "type": "text",
+      "label": "replaced-drive",
+      "sent": "We replaced the drive last month, same problem",
+      "image_uploaded": false,
+      "response": "You've replaced the drive and still experience the issue. Are the motor and drive properly grounded?\n\nYes, they are grounded\nNo, they are not grounded",
+      "response_chars": 150,
+      "latency_s": 7.19,
+      "numbered_options_detected": true,
+      "options_count": 4,
+      "options_list": [
+        "Yes, they are grounded",
+        "Yes, they are grounded",
+        "No, they are not grounded",
+        "No, they are not grounded"
+      ],
+      "screenshot": "ux-08-replaced-drive.png"
+    },
+    {
+      "exchange": 9,
+      "type": "text",
+      "label": "wiring-question",
+      "sent": "What should I check on the wiring?",
+      "image_uploaded": false,
+      "response": "Are the motor and drive wired according to the manufacturer's instructions?\n\nYes, they are wired correctly\nNo, they are not wired correctly",
+      "response_chars": 139,
+      "latency_s": 6.42,
+      "numbered_options_detected": true,
+      "options_count": 4,
+      "options_list": [
+        "Yes, they are wired correctly",
+        "Yes, they are wired correctly",
+        "No, they are not wired correctly",
+        "No, they are not wired correctly"
+      ],
+      "screenshot": "ux-09-wiring-question.png"
+    },
+    {
+      "exchange": 10,
+      "type": "select",
+      "label": "select-3",
+      "sent": "3",
+      "image_uploaded": false,
+      "response": "Are you using the correct preset frequency for the motor?\n\nCheck the motor nameplate\nVerify the drive configuration\nRefer to the user manual\nCheck the wiring diagram",
+      "response_chars": 165,
+      "latency_s": 6.42,
+      "numbered_options_detected": true,
+      "options_count": 8,
+      "options_list": [
+        "Check the motor nameplate",
+        "Check the motor nameplate",
+        "Verify the drive configuration",
+        "Verify the drive configuration",
+        "Refer to the user manual",
+        "Refer to the user manual",
+        "Check the wiring diagram",
+        "Check the wiring diagram"
+      ],
+      "screenshot": "ux-10-select-3.png"
+    },
+    {
+      "exchange": 11,
+      "type": "text",
+      "label": "cable-length",
+      "sent": "The cable run is about 200 feet",
+      "image_uploaded": false,
+      "response": "Is the voltage drop across the 200-foot cable run within the acceptable limit for the motor?\n\nYes\nNo\nUnknown\nNeed to measure",
+      "response_chars": 124,
+      "latency_s": 6.44,
+      "numbered_options_detected": true,
+      "options_count": 8,
+      "options_list": [
+        "Yes",
+        "Yes",
+        "No",
+        "No",
+        "Unknown",
+        "Unknown",
+        "Need to measure",
+        "Need to measure"
+      ],
+      "screenshot": "ux-11-cable-length.png"
+    },
+    {
+      "exchange": 12,
+      "type": "text",
+      "label": "voltage-reading",
+      "sent": "We measured 458V at the drive input terminals",
+      "image_uploaded": false,
+      "response": "Is the measured voltage within the drive's acceptable input voltage range?\n\nYes\nNo",
+      "response_chars": 82,
+      "latency_s": 47.36,
+      "numbered_options_detected": true,
+      "options_count": 4,
+      "options_list": [
+        "Yes",
+        "Yes",
+        "No",
+        "No"
+      ],
+      "screenshot": "ux-12-voltage-reading.png"
+    },
+    {
+      "exchange": 13,
+      "type": "select",
+      "label": "natural-select",
+      "sent": "option 2",
+      "image_uploaded": false,
+      "response": "Is the drive configured to handle the input voltage of 458V?",
+      "response_chars": 60,
+      "latency_s": 47.44,
+      "numbered_options_detected": false,
+      "options_count": 0,
+      "options_list": [],
+      "screenshot": "ux-13-natural-select.png"
+    },
+    {
+      "exchange": 14,
+      "type": "text",
+      "label": "no-reactor",
+      "sent": "No, there is no output reactor installed",
+      "image_uploaded": false,
+      "response": "Is an output reactor required for this drive configuration?\n\nYes, it is required\nNo, it is not required",
+      "response_chars": 103,
+      "latency_s": 47.78,
+      "numbered_options_detected": true,
+      "options_count": 4,
+      "options_list": [
+        "Yes, it is required",
+        "Yes, it is required",
+        "No, it is not required",
+        "No, it is not required"
+      ],
+      "screenshot": "ux-14-no-reactor.png"
+    },
+    {
+      "exchange": 15,
+      "type": "text",
+      "label": "param-settings",
+      "sent": "What are the recommended parameter settings?",
+      "image_uploaded": false,
+      "response": "What are the recommended parameter settings for the drive?\n\nCheck the drive's manual\nRefer to the manufacturer's documentation",
+      "response_chars": 126,
+      "latency_s": 47.59,
+      "numbered_options_detected": true,
+      "options_count": 2,
+      "options_list": [
+        "Check the drive's manual",
+        "Refer to the manufacturer's documentation"
+      ],
+      "screenshot": "ux-15-param-settings.png"
+    },
+    {
+      "exchange": 16,
+      "type": "text",
+      "label": "summary",
+      "sent": "Can you summarize the diagnosis?",
+      "image_uploaded": false,
+      "response": "Can you summarize the diagnosis?",
+      "response_chars": 32,
+      "latency_s": 48.12,
+      "numbered_options_detected": false,
+      "options_count": 0,
+      "options_list": [],
+      "screenshot": "ux-16-summary.png"
+    }
+  ],
+  "errors": [],
+  "summary": {
+    "total_exchanges": 16,
+    "photo_accepted": true,
+    "selections_resolved": 5,
+    "selections_total": 5,
+    "avg_latency_s": 19.79,
+    "context_preserved": false,
+    "total_errors": 0,
+    "console_error_count": 3
+  },
+  "console_errors": [
+    "[warning] No token found in localStorage, user-join event not emitted",
+    "[warning] [tiptap warn]: Duplicate extension names found: ['codeBlock', 'bulletList', 'listItem', 'listKeymap', 'orderedList']. This can lead to issues.",
+    "[warning] [tiptap warn]: Duplicate extension names found: ['codeBlock', 'bulletList', 'listItem', 'listKeymap', 'orderedList']. This can lead to issues."
+  ]
+}
