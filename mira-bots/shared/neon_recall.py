@@ -32,7 +32,7 @@ _PRODUCT_NAME_RE = re.compile(
     r"|CompactLogix"
     r"|ControlLogix"
     r"|PanelView"
-    r"|GS[12]\d"
+    r"|GS\d{1,2}[A-Z]?[-]?\w*"
     r"|DURApulse"
     r"|SMC-?\d"
     r"|SINAMICS\s*\w+"
