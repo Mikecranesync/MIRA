@@ -53,6 +53,8 @@ task_routes = {
     "mira_crawler.tasks.youtube.*": {"queue": "ingest"},
     "mira_crawler.tasks.gdrive.*": {"queue": "ingest"},
     "mira_crawler.tasks.freshness.*": {"queue": "freshness"},
+    # --- LinkedIn draft generation ---
+    "linkedin.*": {"queue": "celery"},
 }
 
 # ---------------------------------------------------------------------------
@@ -80,6 +82,7 @@ task_annotations = {
 }
 
 # Beat schedule removed — Trigger.dev Cloud owns all scheduling. See mira-crawler/trigger/
+# LinkedIn draft (linkedin.draft_post) also scheduled via Trigger.dev: Mon/Wed/Fri 12:00 UTC
 
 # ---------------------------------------------------------------------------
 # Result expiry

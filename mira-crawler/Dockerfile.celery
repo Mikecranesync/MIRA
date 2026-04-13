@@ -16,6 +16,9 @@ COPY mira-crawler/ /app/mira_crawler/
 COPY mira-core/mira-ingest/db/ /app/db/
 COPY mira_copy/ /app/mira_copy/
 
+# LinkedIn drafter config (voice, topics, weights, prompt template)
+COPY mira-crawler/linkedin/ /app/linkedin/
+
 # Ensure mira_crawler is importable
 ENV PYTHONPATH="/app:/app/mira_crawler"
 

@@ -49,6 +49,7 @@ try:
     import mira_crawler.tasks.freshness  # noqa: F401
     import mira_crawler.tasks.gdrive  # noqa: F401
     import mira_crawler.tasks.ingest  # noqa: F401
+    import mira_crawler.tasks.linkedin  # noqa: F401
     import mira_crawler.tasks.patents  # noqa: F401
     import mira_crawler.tasks.playwright_crawler  # noqa: F401
     import mira_crawler.tasks.reddit  # noqa: F401
@@ -65,6 +66,7 @@ except ImportError:
     import tasks.freshness  # noqa: F401
     import tasks.gdrive  # noqa: F401
     import tasks.ingest  # noqa: F401
+    import tasks.linkedin  # noqa: F401
     import tasks.patents  # noqa: F401
     import tasks.playwright_crawler  # noqa: F401
     import tasks.reddit  # noqa: F401
