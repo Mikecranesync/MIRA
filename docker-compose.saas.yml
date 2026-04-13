@@ -186,6 +186,7 @@ services:
     volumes:
       - /opt/mira/data:/mira-db
       - /opt/mira/data/mem0:/data/mem0
+      - mira-webui-data:/app/backend/data:ro
     networks:
       - mira-net
     restart: unless-stopped
