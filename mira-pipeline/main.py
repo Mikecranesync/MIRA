@@ -29,6 +29,7 @@ from starlette.responses import JSONResponse
 
 # GSDEngine lives in shared/ — mounted at build time from mira-bots/
 sys.path.insert(0, os.path.dirname(__file__))
+from memory import ConversationMemory
 from shared.gsd_engine import GSDEngine
 
 # Explicit handler setup: logging.basicConfig() is a no-op once uvicorn has
@@ -233,11 +234,12 @@ def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: st
 # ── App ──────────────────────────────────────────────────────────────────────
 
 engine: GSDEngine | None = None
+memory: ConversationMemory | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global engine
+    global engine, memory
     engine = GSDEngine(
         db_path=DB_PATH,
         openwebui_url=OPENWEBUI_URL,
@@ -246,9 +248,16 @@ async def lifespan(app: FastAPI):
         vision_model=VISION_MODEL,
         tenant_id=TENANT_ID or None,
     )
+    try:
+        memory = ConversationMemory()
+        logger.info("ConversationMemory enabled")
+    except Exception as e:
+        logger.warning("ConversationMemory disabled: %s", e)
+        memory = None
     logger.info("MIRA Pipeline started — GSDEngine initialized (db=%s)", DB_PATH)
     yield
     engine = None
+    memory = None
 
 
 app = FastAPI(title="MIRA Pipeline", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -464,11 +473,30 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if photo_b64:
         photo_b64 = _resize_for_vision(photo_b64)
 
+    # Memory retrieval — inject past facts into the message context
+    memory_block = ""
+    if memory and chat_id != "openwebui_anonymous":
+        try:
+            memories = memory.search(chat_id, last_user_msg)
+            memory_block = memory.format_memory_block(memories)
+            if memory_block:
+                logger.info("MEMORY_INJECT chat_id=%s memories=%d", chat_id, len(memories))
+        except Exception as e:
+            logger.warning("Memory search failed: %s", e)
+
+    # Prepend memory context to the user message so the engine sees it
+    effective_message = last_user_msg
+    if memory_block:
+        effective_message = (
+            f"[MIRA MEMORY — facts from this session]\n{memory_block}\n"
+            f"[END MEMORY]\n\n{last_user_msg}"
+        )
+
     t0 = time.monotonic()
     try:
         reply = await engine.process(
             chat_id=chat_id,
-            message=last_user_msg,
+            message=effective_message,
             photo_b64=photo_b64,
             platform="openwebui",
         )
@@ -477,6 +505,13 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         reply = "MIRA encountered an error processing your request. Please try again."
     latency_ms = int((time.monotonic() - t0) * 1000)
     logger.info("PIPELINE_CALL chat_id=%s latency_ms=%d len=%d", chat_id, latency_ms, len(reply))
+
+    # Memory extraction — store facts from this turn (non-blocking)
+    if memory and chat_id != "openwebui_anonymous":
+        try:
+            memory.extract_and_store(chat_id, last_user_msg, reply)
+        except Exception as e:
+            logger.warning("Memory extract failed: %s", e)
 
     # Queue photo for KB ingest in background (non-blocking)
     if photo_b64:
@@ -561,6 +596,19 @@ async def learning_stats():
         "ready_to_finetune": total_approved >= min_examples,
         "days_until_finetune": max(0, min_examples - total_approved),
     }
+
+
+# ── Memory Stats — GET /v1/memory-stats ─────────────────────────────────────
+
+
+@app.get("/v1/memory-stats")
+async def memory_stats():
+    """Return memory store statistics."""
+    if memory is None:
+        return {"enabled": False}
+    stats = memory.get_stats()
+    stats["enabled"] = True
+    return stats
 
 
 def _stream_response(reply: str, completion_id: str, created: int):
