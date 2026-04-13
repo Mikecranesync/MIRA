@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "We shipped photo diagnosis for Allen-Bradley PanelView faults last night at 2:17 AM.\n\nTook 6 tries to get the lighting right. First model rejected 40% of real-world photos—too many glare spots on HMI screens.\n\nTrained on 1,200+ field images. Now Mira spots fault codes through smudges, bad angles, even partial screenshots.\n\nYou snap. She reads. Work order auto-creates.\n\nNo more wiping gloves on your jeans to tap a greasy touchscreen.\n\nNo more digging through binder racks for the Rockwell manual.\n\nIt just works.\n\nWe’re building this in public because you deserve to see what’s coming.\n\nWhat machine fault wastes the most time during shift change at your plant?",
+      "char_count": 678,
+      "hashtags": [
+        "#Maintenance",
+        "#CMMS",
+        "#IIoT"
+      ],
+      "suggested_visual": "Time-lapse video of developer reviewing annotated fault photos, model accuracy metrics, and a technician taking a photo of a PanelView 700 screen with grease marks.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "Built AI that reads Allen-Bradley fault codes through grease, glare, and bad angles.\n\nTrained on 1,200+ real photos from the floor.\n\nSnap → diagnose → work order in <30 sec.\n\nNo manual. No hold time.\n\nShipping now.\n\nfactorylm.com",
+      "char_count": 238,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD"
+      ],
+      "suggested_visual": "Split-screen video: left shows blurry, glare-heavy photo of a PowerFlex 4M display; right shows AI cleaning and identifying 'F4' (Ground Fault) in 3 seconds.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "r/maintenance\n\nSpent the last 3 weeks training an image model to read VFD fault codes from bad photos.\n\nWhy? Because I kept seeing techs take 4 tries to snap a usable shot of a GS20 display under shop lighting.\n\nWe tested on:\n- PowerFlex 4M, 525, 755\n- GS10/GS20 with dirty screens\n- Hydraulic HMI panels at 15° angles\n\nGround truth: 98% accuracy on F3 (Overcurrent), F4 (Ground Fault), F8 (Overvoltage).\n\nModel failed hard on glare until we added synthetic lens flare to training images.\n\nNow it corrects light distortion and reads through fingerprints.\n\nIf you’re manually transcribing fault codes from HMIs, this might save you 20+ minutes per incident.\n\nWe’re using it in beta at two packaging plants — 437 photo diagnoses last week.\n\nHappy to share the training dataset specs if anyone’s working on something similar.",
+      "char_count": 1038,
+      "hashtags": [],
+      "suggested_visual": "Side-by-side comparison: raw photo of a GS20 VFD with heavy screen glare, next to AI-enhanced version isolating the 'F4' fault code.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "We just shipped photo diagnosis for Allen-Bradley PanelView and PowerFlex drives.\n\nOur AI now handles real-world conditions: greasy screens, low light, crooked angles.\n\nIt took 1,200+ photos and 6 model iterations to get right.\n\nNo more struggling to read a fault code through a glove smear.\n\nNo more walking back to the office to look up fault F8 in the binder.\n\nSnap the screen. Get the diagnosis. Create the work order — in less time than it takes to unlock your toolbox.\n\nWe’re building this in public because your problems aren’t abstract — they’re on your floor, right now.\n\nWhat’s the most annoying VFD fault you keep seeing on your shifts?",
+      "char_count": 751,
+      "hashtags": [
+        "#MaintenanceLife",
+        "#Reliability",
+        "#TechTip"
+      ],
+      "suggested_visual": "Video of a technician in coveralls using a phone to photograph a grimy PowerFlex 525 display; app overlays 'F3 - Overcurrent' and auto-generates a work order.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "We trained AI to read PowerFlex fault codes — even when the screen's covered in grease.\n\nDay 1: model failed on 40% of real photos.\nDay 14: added synthetic glare to training data.\nDay 21: 98% accuracy on F3, F4, F8.\n\nNow it works first try — like it should.\n\nNo more wiping your gloves on your jeans to tap the HMI.\n\nNo more holding a flashlight at 3 different angles.\n\nJust snap. Diagnose. Fix.\n\nThis is what 'build-in-public' looks like.",
+      "char_count": 596,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD",
+        "#FactoryLife"
+      ],
+      "suggested_visual": "Fast-cut video: greasy hand wiping screen, flashlight bouncing off display, frustrated tech walking away — then smooth sequence of clear photo snap, AI highlighting 'F4', work order appearing.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "We shipped real-world photo diagnosis for Allen-Bradley HMIs and VFDs — built from 1,200+ field photos.\n\nThis wasn’t magic. It was iteration:\n- Version 1: failed on glare\n- Version 3: couldn’t read partial screens\n- Version 6: works through grease, fingerprints, and bad angles\n\nNow Mira spots F3, F4, F8 on PowerFlex and GS20 drives — even if the screen’s half-covered in hydraulic fluid.\n\nNo manual. No second trip. No waiting.\n\nWe’re building this in the open — because your time matters.\n\nWhat fault code should we tackle next?\n\n#MaintenanceTech #CMMS #IIoT #VFD #Hydraulics #PdM #Reliability #FactoryLM #Industry40 #AI #Manufacturing #MaintenanceLife #PlantFloor #TechInTheWild #BuildInPublic",
+      "char_count": 1068,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#CMMS",
+        "#IIoT",
+        "#VFD",
+        "#Hydraulics",
+        "#PdM",
+        "#Reliability",
+        "#FactoryLM",
+        "#Industry40",
+        "#AI",
+        "#Manufacturing",
+        "#MaintenanceLife",
+        "#PlantFloor",
+        "#TechInTheWild",
+        "#BuildInPublic"
+      ],
+      "suggested_visual": "Carousel: 1) close-up of greasy PowerFlex screen, 2) phone camera focusing, 3) AI isolating 'F4' text, 4) work order auto-filling asset and fault description.",
+      "subreddit": null
+    }
+  ]
+}

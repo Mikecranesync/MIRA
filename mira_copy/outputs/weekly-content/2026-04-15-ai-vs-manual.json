@@ -1,0 +1,87 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "You're staring at a PowerFlex 755 fault: F40. Overvoltage during stop.\n\nIn 2010: pull the manual, search index, find page 147, check dc bus voltage, verify brake resistor.\n\nToday: snap a photo. Mira sees F40, pulls your manual, confirms resistor health, creates a work order — in 28 seconds.\n\nNo login. No call to Rockwell. Just answers.\n\nWe tested it with GS20, PowerFlex, and Allen-Bradley controllers. Average lookup time: 37 seconds.\n\nYour manuals already have answers. You just need faster access.\n\nAre you still flipping pages when alarms go off?\n\nLink: app.factorylm.com",
+      "char_count": 562,
+      "hashtags": [
+        "MaintenanceTech",
+        "CMMS",
+        "FactoryAutomation"
+      ],
+      "suggested_visual": "Split-screen video: left side shows someone flipping through a thick paper manual under a machine light; right side shows a phone camera scanning a VFD display, then Mira returning a diagnosis with a work order in seconds.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F40 on a PowerFlex 700?\n\nUsed to take 30 min to find the page.\nNow: snap photo → diagnosis in 28 sec.\n\nAI doesn’t guess. It reads YOUR manual.\n\napp.factorylm.com",
+      "char_count": 180,
+      "hashtags": [
+        "Maintenance",
+        "VFD"
+      ],
+      "suggested_visual": "Quick 10-sec screen recording: phone camera focuses on a PowerFlex HMI showing F40 fault, then app displays Mira’s response with suggested fix and manual excerpt.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "Sharing a pattern I’ve seen across 42 plants: when a GS10 drive faults with OLF (overload), techs waste 20–40 minutes just finding the right troubleshooting section in the manual.\n\nSo we built a tool that uses AI to instantly pull the exact page from *your* uploaded GS10, PowerFlex, or Allen-Bradley manual when a fault code pops up.\n\nExample: OLF on GS10 → tool returns page 88 of the GS10 manual, section 4.3, with thermal reset steps and motor insulation check — in under 10 seconds.\n\nNo new hardware. Just a camera and your phone.\n\nWe’re using it at two contract manufacturing sites now. Mean time to diagnosis dropped from 34 minutes to 1 minute 12 seconds.\n\nIf you’re tired of digging through binders during downtime, this might help. Happy to share the workflow.",
+      "char_count": 1079,
+      "hashtags": [],
+      "suggested_visual": "Screen recording: technician uploads a GS10 manual PDF, then takes a photo of an HMI showing OLF. App returns the specific manual page and action steps.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Raise your hand if you’ve ever stood at a hydraulic power unit with a FAN fault, sweating, phone flashlight in mouth, flipping through a ring binder.\n\nLast week, a user at a packaging line snapped a pic of a PowerFlex 525 FAN fault.\n\nFactoryLM pulled the correct manual section, confirmed the fan was clogged (not failed), and created a work order in 21 seconds.\n\nNo OEM call. No downtime spiral.\n\nWe’re using AI not to guess, but to read *your* manuals — the ones already on your server.\n\nHow long does a fault-code lookup take you right now? Be honest.",
+      "char_count": 628,
+      "hashtags": [
+        "MaintenanceLife",
+        "IndustrialMaintenance",
+        "CMMS",
+        "Hydraulics",
+        "AllenBradley"
+      ],
+      "suggested_visual": "Photo carousel: 1) blurry photo of a binder open under a machine with a flashlight; 2) close-up of a PowerFlex HMI showing FAN fault; 3) app screen showing diagnosis and manual excerpt; 4) technician wiping brow with smile.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "No manual. No call to support. Just a phone.\n\nVideo shows: Technician pulls phone out, films Allen-Bradley PLC fault code (SF light blinking, code 16).\nApp reads it, returns: 'Replace processor battery — page 212 of MicroLogix manual.'\n\nText overlay: 'Diagnosed in 14 seconds. Battery changed in 2 minutes. Machine back online.'\n\nThis isn’t magic. It’s your manual — finally fast.\n\n#MaintenanceTech #FactoryLife #VFD #PLC",
+      "char_count": 624,
+      "hashtags": [
+        "MaintenanceTech",
+        "FactoryLife",
+        "VFD",
+        "PLC",
+        "Troubleshooting"
+      ],
+      "suggested_visual": "Vertical video: Point-of-view shot of technician approaching a faulted Allen-Bradley panel. Phone camera scans display. App shows diagnosis instantly. Quick cut to battery replacement and 'RUN' light on.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "The manual isn’t the problem. The 30 minutes it takes to find page 88 is.\n\nThis is a GS20 drive with a DC BUS OVERVOLTAGE fault.\n\nLeft: binder on the floor, open to wrong section. Tech on phone dialing OEM.\nRight: phone scanning display. Mira returns the exact manual page, checks brake resistor spec, creates work order.\n\nTime saved: 27 minutes.\n\nYour knowledge. Just faster access.\n\n#MaintenanceTech #IndustrialAI #Hydraulics #PowerFlex #AllenBradley #CMMS #FactoryLife #PredictiveMaintenance #PlantFloor #ReliabilityEngineer #MaintenanceEngineer #AutomationDirect #GS20 #MotorControl #Downtime",
+      "char_count": 1016,
+      "hashtags": [
+        "MaintenanceTech",
+        "IndustrialAI",
+        "Hydraulics",
+        "PowerFlex",
+        "AllenBradley",
+        "CMMS",
+        "FactoryLife",
+        "PredictiveMaintenance",
+        "PlantFloor",
+        "ReliabilityEngineer",
+        "MaintenanceEngineer",
+        "AutomationDirect",
+        "GS20",
+        "MotorControl",
+        "Downtime"
+      ],
+      "suggested_visual": "Split-image carousel: 1) photo of messy floor with open manual and notepad; 2) smartphone scanning GS20 HMI; 3) app showing fault diagnosis and manual excerpt; 4) graph showing '37 min vs 28 sec' lookup time.",
+      "subreddit": null
+    }
+  ]
+}

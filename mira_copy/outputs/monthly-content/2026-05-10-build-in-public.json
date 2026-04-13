@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "We ran a live diagnosis test today on a PowerFlex 525 fault — code F41.\n\nOur AI, Mira, found the cause in 12 seconds: phase loss on input terminals. Work order auto-generated.\n\nWe timed the same fault in a printed manual: 38 minutes. \n\nThis is why we're building FactoryLM in public. Not because it's easy — because maintenance techs waste hours every week on this.\n\nBeta users get 2-minute CMMS setup, photo-to-diagnosis, and AI that reads your manuals.\n\nWe're shipping new fixes every week — sometimes messy, always real.\n\nQuestion: How many minutes did you lose last week just hunting down fault codes?",
+      "char_count": 696,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#CMMS",
+        "#PowerFlex"
+      ],
+      "suggested_visual": "Screen recording: split view of Mira returning fault diagnosis in 12 seconds vs. technician flipping through a PowerFlex 525 manual.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F41 on a PowerFlex 525.\n\nTech 1: Checks manual, calls OEM, waits — 40 mins.\nTech 2: Snaps photo. AI returns diagnosis in 11 sec.\n\nWe built the tool we needed on the floor.\n\nWe don't sell promises. We sell time.\n\nhttps://app.factorylm.com",
+      "char_count": 278,
+      "hashtags": [
+        "#VFD",
+        "#AllenBradley"
+      ],
+      "suggested_visual": "Side-by-side video: one hand flipping through a manual, the other tapping a phone to trigger AI diagnosis.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "We're building FactoryLM in public — not as a marketing move, but because we were tired of waiting 30 minutes for simple answers on the floor.\n\nLast week, we stress-tested Mira on a blown GS20 VFD. Fault code: 0x342 (overvoltage during decel).\n\nWe uploaded 14 Automation Direct manuals into the system — including obscure legacy PDFs with no TOC.\n\nMira returned: \n1) Check brake resistor continuity (R5-2 to R5-3, 50Ω)\n2) Verify decel ramp time < 15s\n3) Inspect contactor K2 for arcing\n\nTested all three. Found burnt contacts on K2.\n\nNo live PLC data. No Modbus. Just OCR + RAG over real manuals.\n\nIf you're debugging VFDs daily, this is what it’s like when the AI actually knows your gear.\n\nWe’re sharing these steps because we believe in open testing — not because we want downloads.",
+      "char_count": 1052,
+      "hashtags": [],
+      "suggested_visual": "Photo: annotated screenshot of a GS20 fault log next to Mira's diagnosis card highlighting 'contactor K2'.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "We just fixed how Mira handles hydraulic power unit schematics.\n\nOld way: You upload a .PDF. AI reads it. Sometimes misses symbols.\n\nNew way: We pre-process schematics to isolate relief valves, accumulators, and pump stacks before indexing.\n\nNow, if you snap a photo of a tripped HPU with a stuck relief valve, Mira returns:\n- Exact valve location (per your schematic)\n- Adjustment torque spec\n- Linked PM history\n\nWe’re shipping updates weekly because we know you can’t wait months for a fix.\n\nQuestion: What’s the most frustrating thing about using schematics under pressure?",
+      "char_count": 670,
+      "hashtags": [
+        "Maintenance",
+        "Hydraulics",
+        "FactoryLM"
+      ],
+      "suggested_visual": "Carousel: 1) Photo of a messy HPU control box, 2) Uploaded schematic, 3) Mira’s diagnosis highlighting the relief valve.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "Day 14 of building FactoryLM live.\n\nWe broke Mira yesterday — overloaded the context window with a 1200-page Allen-Bradley manual.\n\nTechs kept asking about obscure ControlLogix I/O faults, so we went all-in on chunking strategy.\n\nNow she parses 175 fault codes from 1756-UM001E-EN without choking.\n\nNo magic. Just stubbornness.\n\nVideo shows: upload → error → fix → fast answer on 'no communication with module in slot 4'.\n\nThis is what real industrial AI looks like — not hype. Grit.",
+      "char_count": 634,
+      "hashtags": [
+        "#BuildInPublic",
+        "#MaintenanceTech",
+        "#AllenBradley"
+      ],
+      "suggested_visual": "Fast-cut video: debug logs, frustrated dev, code edits, then Mira instantly answering a ControlLogix fault.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "Build log: Week 3.\n\nWe’re training Mira to read handwritten notes in margins of old hydraulic schematics.\n\nWhy? Because real techs annotate. Circles. Arrows. 'FIXED 3/22 – check solenoid B'.\n\nLast test: photo of a greasy HPU schematic with 'PUMP NOISE! – replaced 2023' scrawled on it.\n\nMira flagged:\n- Last replacement date\n- Linked work order\n- Suggested checking inlet strainer (per OEM history)\n\nNot perfect yet. But getting closer.\n\nThis is how industrial AI learns — from your floor, not a lab.\n\n#MaintenanceLife #FactoryLM #BuildInPublic #Hydraulics #CMMS #PowerFlex #AllenBradley #AutomationDirect #TechLife #Reliability #IndustrialAI #BuildInTheOpen #NoFreeTier #PWA #OnTheFloor",
+      "char_count": 1045,
+      "hashtags": [
+        "MaintenanceLife",
+        "FactoryLM",
+        "BuildInPublic",
+        "Hydraulics",
+        "CMMS",
+        "PowerFlex",
+        "AllenBradley",
+        "AutomationDirect",
+        "TechLife",
+        "Reliability",
+        "IndustrialAI",
+        "BuildInTheOpen",
+        "NoFreeTier",
+        "PWA",
+        "OnTheFloor"
+      ],
+      "suggested_visual": "Carousel: 1) Close-up of a greasy, hand-annotated hydraulic schematic, 2) Phone screen showing upload, 3) Mira’s diagnosis card with highlighted notes and history.",
+      "subreddit": null
+    }
+  ]
+}

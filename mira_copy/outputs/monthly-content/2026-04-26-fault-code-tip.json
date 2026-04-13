@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "Fault Code Tip: Allen-Bradley PLC with a flashing SERCOS light?\n\nIt’s not always a fiber loop issue.\n\nCheck the SERCOS address dip switches on each axis module. Misaligned = fault. Takes 2 minutes to verify.\n\nBut if you're hunting for that manual in the electrical room while the line’s down? That’s 30+ minutes lost.\n\nWith FactoryLM, you snap the fault, ask Mira, and get the manual section — from your own docs — in under 10 seconds.\n\nWhat’s the most misleading fault code you’ve chased?\n\nLink in comments.",
+      "char_count": 595,
+      "hashtags": [
+        "#maintenance",
+        "#PLC",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "Close-up of an Allen-Bradley PLC with a flashing SERCOS light, technician’s hand holding phone showing QR code scan.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "Fault Code Tip: PowerFlex 525 — F41 (Overvoltage).\n\nNot always regen resistor failure.\n\nCheck input line voltage. Loose lug on L2? Voltage spikes register as overvoltage.\nOne plant found 480V spiking to 560V. Fixed one terminal, cleared the fault.\n\nSave 30 min of guessing: app.factorylm.com",
+      "char_count": 278,
+      "hashtags": [
+        "#VFD",
+        "#MaintenanceTips"
+      ],
+      "suggested_visual": "Split screen: left shows PowerFlex 525 display with F41 fault, right shows multimeter on terminal block with spike reading.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "Sharing a tip we saw in a plant last month — might save someone downtime.\n\nGS20 VFD fault: \"OC-A\" (overcurrent during acceleration).\n\nTechs usually check motor insulation, coupling alignment, or load.\nBut this time, it was the DC bus choke connection on terminals U1/T1.\nHad 18 ohms instead of near-zero. Loose and corroded.\nCleaned and torqued — fault gone. Had to pull the GS20 manual section 4.3 to confirm wiring.\n\nWe’ve been testing a tool that surfaces these exact pages from your own manuals when you snap the fault. No search, no OEM hold time. Works offline too via PWA.\nIf you’re tired of digging through binders for VFD or hydraulic power unit faults, I can share the internal tool we’re using. PM if you want early access.\n\nAnyone else seeing weird OC faults on GS drives?",
+      "char_count": 1196,
+      "hashtags": [],
+      "suggested_visual": "Photo of GS20 VFD with arrow pointing to U1/T1 terminals, close-up of corroded connection, manual page 4.3 open beside it.",
+      "subreddit": "r/PLC"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Fault Code Tip: Hydraulic power unit throwing a high-temp alarm?\n\nDon’t rebuild the cooler yet.\n\nCheck the reservoir breather cap. Clogged = vacuum lock = reduced oil flow = heat buildup.\nOne plant cleared a $12k work order with a $9 cap.\n\nIf you had AI that pulled this from your manuals the second you snapped the fault — no search, no wait — would you use it?\n\nWe built one. Works on any phone.\n\nLink in comments. \n\nWhat’s the smallest part that caused the biggest downtime for you?",
+      "char_count": 647,
+      "hashtags": [
+        "#MaintenanceTips",
+        "#Hydraulics",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "Split image: left shows overheating hydraulic unit, right shows dirty breather cap beside clean replacement.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "VFD says 'Ground Fault'. You pull the motor leads, megger the motor — good.\nThen you spend 40 minutes chasing conduit.\n\nLast week, same fault on a PowerFlex 40. Snap the drive, ask Mira: 'Check output reactor terminals — T1/T2/T3 — for loose shield grounding.\"\nFound it. 90 seconds.\n\nVideo shows: Phone camera pans over PowerFlex 40 fault screen → technician opens FactoryLM → types question → AI highlights reactor grounding note from plant's own manual → close-up of fix.\n\nNo more digging. Just answers.",
+      "char_count": 644,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFDRepair",
+        "#FixItFast"
+      ],
+      "suggested_visual": "Quick-cut video: technician frustrated at VFD, opens FactoryLM on phone, AI response appears, fixes terminal, gives thumbs up.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "Fault: GS20 VFD — \"BUS OVERVOLT\"\n\nManual fix path: 3 places to check\n1. Line voltage (L1/L2/L3) — spike? Loose connection?\n2. DC bus choke — measure resistance\n3. Regen resistor — ohm out leads\n\nBut which page is that on?\n\nInstead of running to the office, we tested this: Snap a photo of the fault screen → open FactoryLM → ask \"BUS OVERVOLT on GS20\" → get the exact troubleshooting section from the plant’s uploaded manual in 8 seconds.\n\nCarousel:\n- 1: GS20 fault screen\n- 2: Phone uploading photo\n- 3: Mira AI response citing manual section 5.2\n- 4: Tech checking line voltage\n- 5: 'Fixed' stamp on work order\n\nNo app store. No login on desktop. Just works.\n\n#MaintenanceLife #VFD #AllenBradley #Hydraulics #PowerFlex #FactoryLM #TechTips #IndustrialAI #CMMS #Manufacturing #PlantMaintenance #Reliability #ElectricalMaintenance #MaintenanceEngineer #SmartFactory",
+      "char_count": 1118,
+      "hashtags": [
+        "#MaintenanceLife",
+        "#VFD",
+        "#AllenBradley",
+        "#Hydraulics",
+        "#PowerFlex",
+        "#FactoryLM",
+        "#TechTips",
+        "#IndustrialAI",
+        "#CMMS",
+        "#Manufacturing",
+        "#PlantMaintenance",
+        "#Reliability",
+        "#ElectricalMaintenance",
+        "#MaintenanceEngineer",
+        "#SmartFactory"
+      ],
+      "suggested_visual": "5-image carousel: 1) GS20 VFD with BUS OVERVOLT, 2) phone camera snapping it, 3) Mira AI result from manual, 4) tech testing voltage, 5) completed work order.",
+      "subreddit": null
+    }
+  ]
+}

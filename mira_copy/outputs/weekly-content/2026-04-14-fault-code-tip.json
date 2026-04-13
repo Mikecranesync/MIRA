@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "Fault Code: PowerFlex 525 — F41 (DC Bus Overvoltage)\n\nYou’re at the VFD. Line stops. No manual. You waste 30 minutes calling support.\n\nWith FactoryLM:\n- Snap a photo of the HMI\n- AI sees F41\n- Pulls your manual\n- Tells you: check decel time, verify mechanical load, inspect braking resistor\n\nDone in 30 seconds.\n\nWe trained Mira on PowerFlex manuals so you don’t have to.\n\nNo provisioning. No sales call. CMMS + AI in 2 minutes.\n\nWhat’s the last fault code you wasted time on?\n\nhttps://app.factorylm.com",
+      "char_count": 592,
+      "hashtags": [
+        "#VFD",
+        "#MaintenanceTech",
+        "#PowerFlex"
+      ],
+      "suggested_visual": "Split-screen video: left side shows technician typing fault code into FactoryLM on phone, right side shows real-time AI response with troubleshooting steps from manual.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F41 on a PowerFlex 525? \n\nLong decel time + high inertia load = DC bus OV. \n\nCheck braking resistor. Verify brake transistor. \n\nOr just snap a pic — Mira pulls your manual & tells you in 10 sec. \n\nhttps://app.factorylm.com",
+      "char_count": 226,
+      "hashtags": [
+        "#Maintenance",
+        "#VFD"
+      ],
+      "suggested_visual": "Short clip of phone screen: hand pointing at PowerFlex HMI showing F41, then opening FactoryLM to show AI response.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "Quick tip for r/PLC and r/maintenance:\n\nIf you're troubleshooting a PowerFlex 525 and see F41 (DC Bus Overvoltage), don't jump straight to the drive.\n\nThis fault usually means the motor’s generating energy faster than the DC bus can dissipate it. Common triggers:\n\n- Too fast deceleration\n- High inertia load (e.g., big fan or conveyor)\n- Failed or undersized braking resistor\n- Open brake transistor circuit\n\nFirst step: extend decel time. See if fault clears.\n\nSecond: check braking resistor with multimeter. Should be 75–100 ohms on a 25 hp drive.\n\nThird: inspect wiring between drive and resistor.\n\nAlso worth noting: if it’s happening at startup, check for phase loss or input voltage imbalance — can falsely trigger F41.\n\nWe see this 2–3 times a week in the logs from users uploading HMI screens to their CMMS. Saved them 20–40 min each time just by surfacing the right manual section.\n\nWould help if Allen-Bradley linked fault codes directly to troubleshooting in the HMI, but until then, we’re indexing every PDF so you don’t have to.",
+      "char_count": 1297,
+      "hashtags": [],
+      "suggested_visual": "None — text-based post only",
+      "subreddit": "r/PLC"
+    },
+    {
+      "platform": "Facebook",
+      "text": "F41 on a PowerFlex 525?\n\nYou don’t need to wait on hold with Rockwell support.\n\nSnap a photo of the HMI.\nAI reads the code.\nPulls the exact page from your manual.\nGives you steps: check decel time, test braking resistor, inspect wiring.\n\nAll before your coworker walks back with the printout.\n\nWe built FactoryLM because we were tired of wasting hours chasing fault codes.\n\nCMMS + AI diagnostics in 2 minutes. No provisioning.\n\nWhat’s the most annoying VFD fault you keep seeing?\n\nhttps://app.factorylm.com",
+      "char_count": 571,
+      "hashtags": [
+        "#Maintenance",
+        "#VFD",
+        "#Reliability"
+      ],
+      "suggested_visual": "Video: technician in plant takes photo of PowerFlex HMI, opens FactoryLM, AI returns troubleshooting steps in under 30 seconds.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "PowerFlex 525 throwing F41?\n\nYou’re losing production time while you dig out the manual.\n\nThis is what you do:\n\n- Check decel time — too fast?\n- Test braking resistor: 75–100 ohms\n- Look for burnt wires to brake chopper\n\nOr just snap a pic.\n\nFactoryLM sees the code.\nPulls your manual.\nGives you steps in 10 seconds.\n\nNo waiting. No guesswork.\n\nWe’re cutting the lookup time from 40 minutes to 10 seconds.\n\n#MaintenanceTips #VFD #FactoryLM",
+      "char_count": 498,
+      "hashtags": [
+        "#MaintenanceTips",
+        "#VFD",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "Fast-cut video: clock shows 12:00, technician sees F41, pulls jacket, grabs phone, snaps photo, shows AI response at 12:10. Text overlay: 'From fault to fix in 10 sec.'",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "F41 on your PowerFlex 525?\n\nYou don’t need to call Rockwell.\n\nSnap a photo of the HMI.\nAI finds the fault in your manual.\nGives you steps: check decel time, test resistor, inspect wiring.\n\nAll in under 30 seconds.\n\nNo more digging through binders.\nNo more hold time.\n\nThis is how maintenance wins back time.\n\n📸: Carousel\n1. HMI screen showing F41\n2. Phone open to FactoryLM photo upload\n3. AI response with troubleshooting steps\n4. Technician checking brake resistor\n\n#MaintenanceLife #VFD #PowerFlex #FactoryTech #IndustrialAI #CMMS #PlantMaintenance #ReliabilityEngineer #TechTips #ShopFloor #NoMoreManuals #MaintenanceTech #FactoryLM #Hydraulics #AllenBradley",
+      "char_count": 899,
+      "hashtags": [
+        "#MaintenanceLife",
+        "#VFD",
+        "#PowerFlex",
+        "#FactoryTech",
+        "#IndustrialAI",
+        "#CMMS",
+        "#PlantMaintenance",
+        "#ReliabilityEngineer",
+        "#TechTips",
+        "#ShopFloor",
+        "#NoMoreManuals",
+        "#MaintenanceTech",
+        "#FactoryLM",
+        "#Hydraulics",
+        "#AllenBradley"
+      ],
+      "suggested_visual": "4-slide carousel: (1) HMI showing F41, (2) FactoryLM app uploading photo, (3) AI response with steps, (4) technician testing resistor with multimeter.",
+      "subreddit": null
+    }
+  ]
+}
