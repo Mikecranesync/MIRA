@@ -9,8 +9,8 @@ product:
     - "Ask Mira your fault code — get the answer from your own manuals in 10 seconds"
     - "RAG over YOUR equipment manuals — not generic knowledge"
   pricing:
-    free: "5 Mira AI queries/day, unlimited CMMS features"
-    paid: "$49/mo unlimited queries"
+    beta: "$97/mo per facility — unlimited AI queries, full CMMS, photo diagnosis"
+    integration: "$297/mo — adds monthly model fine-tuning + Ignition/SCADA path (coming soon)"
   features_live:
     - "AI chat diagnostic (Mira) via web, Telegram, Slack"
     - "CMMS with work orders, assets, PM scheduling"
@@ -64,7 +64,7 @@ tone:
 
 constraints:
   - "Never claim features that don't exist yet (no Modbus/PLC/VFD live data — Config 4 deferred)"
-  - "Pricing: $49/mo unlimited, free = 5 queries/day. No other tiers exist yet."
+  - "Pricing: $97/mo beta (per facility, not per user). No free tier. 48hr risk reversal refund."
   - "No LangChain, no TensorFlow mentioned — we use Claude API directly"
   - "Equipment focus: Allen-Bradley, Automation Direct (GS10/GS20), PowerFlex, hydraulic systems"
   - "All copy must be factually accurate — never overstate what the product does"

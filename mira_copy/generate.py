@@ -53,7 +53,7 @@ def build_system_prompt(base: dict, prompt_config: dict) -> str:
     context_block = (
         f"Product: {product['name']} — {product['tagline']}\n"
         f"URL: {product['url']}\n"
-        f"Pricing: Free = {product['pricing']['free']}. Paid = {product['pricing']['paid']}.\n"
+        f"Pricing: {'. '.join(f'{k}: {v}' for k, v in product['pricing'].items())}.\n"
         f"\nValue propositions:\n"
         + "\n".join(f"- {v}" for v in product["value_props"])
         + "\n\nLive features:\n"
