@@ -383,6 +383,14 @@ SESSION_FOLLOWUP_SIGNALS = [
     "repeat",
     "what was",
     "where did",
+    "explain",
+    "why",
+    "tell me more",
+    "go deeper",
+    "how does that work",
+    "what does that mean",
+    "break it down",
+    "more detail",
 ]
 
 

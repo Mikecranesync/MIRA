@@ -52,6 +52,21 @@ HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 # How many turns the session photo stays available for follow-up questions
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
 
+# Fuzzy-match common LLM-invented state names to valid FSM states
+_STATE_ALIASES: dict[str, str] = {
+    "DIAGNOSTICS": "DIAGNOSIS",
+    "DIAGNOSTIC": "DIAGNOSIS",
+    "DIAGNOSIS_SUMMARY": "DIAGNOSIS",
+    "PARAMETER_SETTINGS": "FIX_STEP",
+    "CHECK_OUTPUT_REACTOR": "Q2",
+    "INSPECT": "Q2",
+    "VERIFY": "Q2",
+    "TROUBLESHOOT": "Q1",
+    "SUMMARY": "RESOLVED",
+    "COMPLETE": "RESOLVED",
+    "DONE": "RESOLVED",
+}
+
 
 def format_diagnostic_response(
     equipment_id: str, key_observation: str, question: str, options: list
@@ -1293,7 +1308,7 @@ class Supervisor:
             return state
 
         if parsed.get("next_state"):
-            proposed = parsed["next_state"]
+            proposed = _STATE_ALIASES.get(parsed["next_state"], parsed["next_state"])
             if proposed in self._VALID_STATES:
                 state["state"] = proposed
             else:
