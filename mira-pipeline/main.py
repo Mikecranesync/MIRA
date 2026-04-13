@@ -28,6 +28,9 @@ from starlette.responses import JSONResponse
 
 # GSDEngine lives in shared/ — mounted at build time from mira-bots/
 sys.path.insert(0, os.path.dirname(__file__))
+import threading
+
+from feedback_sync import run_loop as feedback_sync_loop
 from memory import ConversationMemory
 from shared.gsd_engine import GSDEngine
 
@@ -120,6 +123,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("ConversationMemory disabled: %s", e)
         memory = None
+    # Start feedback sync background thread (polls Open WebUI DB for new ratings)
+    sync_thread = threading.Thread(target=feedback_sync_loop, daemon=True)
+    sync_thread.start()
     logger.info("MIRA Pipeline started — GSDEngine initialized (db=%s)", DB_PATH)
     yield
     engine = None
