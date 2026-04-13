@@ -52,19 +52,41 @@ HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 # How many turns the session photo stays available for follow-up questions
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
 
-# Fuzzy-match common LLM-invented state names to valid FSM states
+# Fuzzy-match common LLM-invented state names to valid FSM states.
+# Groq llama-3.3-70b and llama-4-scout frequently produce these.
 _STATE_ALIASES: dict[str, str] = {
+    # Diagnosis variants
     "DIAGNOSTICS": "DIAGNOSIS",
     "DIAGNOSTIC": "DIAGNOSIS",
     "DIAGNOSIS_SUMMARY": "DIAGNOSIS",
-    "PARAMETER_SETTINGS": "FIX_STEP",
-    "CHECK_OUTPUT_REACTOR": "Q2",
+    "FAULT_ANALYSIS": "DIAGNOSIS",
+    "ANALYZING": "DIAGNOSIS",
+    "ANALYSIS": "DIAGNOSIS",
+    "ROOT_CAUSE": "DIAGNOSIS",
+    # Question variants
+    "TROUBLESHOOT": "Q1",
+    "TROUBLESHOOTING": "Q1",
+    "QUESTION": "Q1",
+    "USER_QUERY": "Q1",
+    "INQUIRY": "Q1",
+    "GATHERING_INFO": "Q2",
     "INSPECT": "Q2",
     "VERIFY": "Q2",
-    "TROUBLESHOOT": "Q1",
+    "CHECK_OUTPUT_REACTOR": "Q2",
+    "Q4": "Q3",  # no Q4 — clamp to Q3
+    "Q5": "Q3",
+    # Fix step variants
+    "FIX": "FIX_STEP",
+    "REPAIR": "FIX_STEP",
+    "ACTION": "FIX_STEP",
+    "CONFIG_STEP": "FIX_STEP",
+    "PARAMETER_SETTINGS": "FIX_STEP",
+    "IN_PROGRESS": "FIX_STEP",
+    # Resolved variants
     "SUMMARY": "RESOLVED",
     "COMPLETE": "RESOLVED",
     "DONE": "RESOLVED",
+    "CLOSED": "RESOLVED",
 }
 
 
@@ -1223,13 +1245,24 @@ class Supervisor:
     # ------------------------------------------------------------------
 
     def _parse_response(self, raw: str) -> dict:
-        """Parse LLM response — try JSON envelope, fall back to plain text."""
+        """Parse LLM response — try JSON envelope, fall back to plain text.
+
+        Groq models frequently return JSON with non-standard keys like
+        ``follow_ups``, ``tags``, ``title``, ``queries`` instead of the
+        expected ``reply`` key. We attempt to salvage these into a valid
+        response so the FSM doesn't stall.
+        """
         raw_stripped = raw.strip()
 
         try:
             parsed = json.loads(raw_stripped)
-            if isinstance(parsed, dict) and "reply" in parsed:
-                return self._extract_parsed(parsed)
+            if isinstance(parsed, dict):
+                if "reply" in parsed:
+                    return self._extract_parsed(parsed)
+                # Groq fallback: salvage non-standard JSON envelopes
+                parsed = self._salvage_groq_json(parsed)
+                if parsed:
+                    return parsed
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -1267,6 +1300,32 @@ class Supervisor:
             clean = raw_stripped
         logger.warning("_parse_response fallback; raw=%r", raw_stripped[:200])
         return {"next_state": None, "reply": clean, "options": [], "confidence": "LOW"}
+
+    @staticmethod
+    def _salvage_groq_json(parsed: dict) -> dict | None:
+        """Attempt to extract a usable reply from non-standard Groq JSON.
+
+        Groq's llama models often return ``{"follow_ups": [...]}`` or
+        ``{"title": "..."}`` instead of the expected ``{"reply": "..."}``.
+        """
+        # {"follow_ups": ["Q1", "Q2", "Q3"]} → format as numbered list
+        follow_ups = parsed.get("follow_ups") or parsed.get("suggestions")
+        if isinstance(follow_ups, list) and follow_ups:
+            text = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(follow_ups[:4]))
+            return {"next_state": None, "reply": text, "options": follow_ups[:4], "confidence": "LOW"}
+
+        # {"title": "..."} → use as reply
+        title = parsed.get("title")
+        if isinstance(title, str) and title.strip():
+            return {"next_state": None, "reply": title.strip(), "options": [], "confidence": "LOW"}
+
+        # {"queries": ["...", "..."]} → search queries, use first as reply
+        queries = parsed.get("queries")
+        if isinstance(queries, list) and queries:
+            return {"next_state": None, "reply": queries[0], "options": [], "confidence": "LOW"}
+
+        # {"tags": ["...", "..."]} → not useful as a reply
+        return None
 
     @staticmethod
     def _extract_parsed(parsed: dict) -> dict:
