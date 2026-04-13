@@ -1,14 +1,15 @@
 """MIRA Inference Router — Multi-provider LLM cascade.
 
-Cascade order: Groq → Cerebras → Claude → (caller falls back to Open WebUI).
+Cascade order: Gemini → Groq → Cerebras → Claude → (caller falls back to Open WebUI).
 
 Each provider is tried in sequence. On any failure (rate limit, billing,
 timeout, service error), the next provider is attempted. The caller
 (rag_worker._call_llm) treats an empty-string return as "all cloud
 providers failed" and falls through to the local Open WebUI/Ollama path.
 
-Provider enablement is key-based: if GROQ_API_KEY is set, Groq is in the
-cascade. Same for CEREBRAS_API_KEY and ANTHROPIC_API_KEY. Order is fixed.
+Provider enablement is key-based: if GEMINI_API_KEY is set, Gemini is in the
+cascade. Same for GROQ_API_KEY, CEREBRAS_API_KEY and ANTHROPIC_API_KEY.
+Order is fixed.
 
 INFERENCE_BACKEND controls the master switch:
   "cloud"  → run the cascade (default when any cloud key is set)
@@ -125,6 +126,21 @@ def _build_providers() -> list[_Provider]:
     """Build the ordered provider list from environment variables."""
     providers: list[_Provider] = []
 
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    if gemini_key:
+        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        providers.append(
+            _Provider(
+                name="gemini",
+                api_url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                api_key=gemini_key,
+                model=gemini_model,
+                format="openai",
+                timeout=30.0,
+                vision_model=os.getenv("GEMINI_VISION_MODEL", gemini_model),
+            )
+        )
+
     groq_key = os.getenv("GROQ_API_KEY", "")
     if groq_key:
         providers.append(
@@ -174,9 +190,9 @@ class InferenceRouter:
     """Multi-provider LLM cascade with automatic failover.
 
     Enabled when INFERENCE_BACKEND is "cloud" or "claude" and at least one
-    provider API key is set. Tries providers in order: Groq → Cerebras →
-    Claude. Returns ("", {}) only when ALL providers fail — caller then
-    falls through to Open WebUI.
+    provider API key is set. Tries providers in order: Gemini → Groq →
+    Cerebras → Claude. Returns ("", {}) only when ALL providers fail —
+    caller then falls through to Open WebUI.
     """
 
     def __init__(self):
@@ -512,9 +528,7 @@ class InferenceRouter:
         provider = usage.get("provider", "unknown")
         if provider == "claude":
             cost = (inp * 0.000003) + (out * 0.000015)
-        elif provider == "groq":
-            cost = 0.0
-        elif provider == "cerebras":
+        elif provider in ("groq", "cerebras", "gemini"):
             cost = 0.0
         else:
             cost = 0.0
@@ -577,6 +591,33 @@ class InferenceRouter:
                 ),
             )
             con.commit()
+
+            # --- Daily spend monitor (Claude only) ---
+            if "claude" in model.lower():
+                row = con.execute(
+                    """SELECT SUM(input_tokens), SUM(output_tokens), COUNT(*)
+                       FROM api_usage
+                       WHERE model LIKE '%claude%'
+                         AND DATE(timestamp) = DATE('now')""",
+                ).fetchone()
+                if row and row[0]:
+                    day_in, day_out, day_calls = row
+                    day_cost = (day_in * 0.000003) + (day_out * 0.000015)
+                    logger.info(
+                        "CLAUDE_DAILY_SPEND calls=%d input=%d output=%d est_cost=$%.4f",
+                        day_calls,
+                        day_in,
+                        day_out,
+                        day_cost,
+                    )
+                    daily_cap = float(os.getenv("CLAUDE_DAILY_SPEND_CAP", "1.00"))
+                    if day_cost > daily_cap:
+                        logger.warning(
+                            "CLAUDE_SPEND_ALERT daily=$%.4f exceeds cap=$%.2f",
+                            day_cost,
+                            daily_cap,
+                        )
+
             con.close()
         except Exception as e:
             logger.warning("api_usage write failed: %s", e)

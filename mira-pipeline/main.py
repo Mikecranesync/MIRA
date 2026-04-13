@@ -634,6 +634,58 @@ async def list_recent_sessions():
     ]
 
 
+# ── Debug: API Spend — GET /v1/debug/spend ──────────────────────────────────
+
+
+@app.get("/v1/debug/spend")
+async def api_spend():
+    """Return API spend breakdown: today, 7-day, 30-day, by provider."""
+    import sqlite3 as _sqlite3
+
+    db = _sqlite3.connect(DB_PATH)
+    db.execute("PRAGMA journal_mode=WAL")
+
+    def _query(where: str) -> list[dict]:
+        rows = db.execute(
+            f"SELECT model, COUNT(*) as calls, "
+            f"COALESCE(SUM(input_tokens),0) as input_tokens, "
+            f"COALESCE(SUM(output_tokens),0) as output_tokens "
+            f"FROM api_usage WHERE {where} GROUP BY model ORDER BY input_tokens DESC"
+        ).fetchall()
+        results = []
+        for r in rows:
+            model, calls, inp, out = r
+            if "claude" in (model or "").lower():
+                cost = (inp * 0.000003) + (out * 0.000015)
+            else:
+                cost = 0.0
+            results.append(
+                {"model": model, "calls": calls, "input": inp, "output": out, "cost": round(cost, 4)}
+            )
+        return results
+
+    today = _query("DATE(timestamp) = DATE('now')")
+    week = _query("timestamp > datetime('now', '-7 days')")
+    month = _query("timestamp > datetime('now', '-30 days')")
+
+    total_row = db.execute(
+        "SELECT COUNT(*), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) "
+        "FROM api_usage"
+    ).fetchone()
+    db.close()
+
+    def _sum_cost(rows: list[dict]) -> float:
+        return round(sum(r["cost"] for r in rows), 4)
+
+    return {
+        "today": {"providers": today, "total_cost": _sum_cost(today)},
+        "7_day": {"providers": week, "total_cost": _sum_cost(week)},
+        "30_day": {"providers": month, "total_cost": _sum_cost(month)},
+        "all_time": {"calls": total_row[0], "input_tokens": total_row[1], "output_tokens": total_row[2]},
+        "daily_cap": float(os.getenv("CLAUDE_DAILY_SPEND_CAP", "1.00")),
+    }
+
+
 # ── Feedback — POST /v1/feedback ────────────────────────────────────────────
 
 

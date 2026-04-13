@@ -3,7 +3,7 @@
 **Version:** v0.5.5
 **Updated:** 2026-04-14
 **One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
+**Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099, OpenAI-compat) → GSDEngine → Anthropic API
 
 ---
@@ -175,10 +175,13 @@ chore: build system, deps, tooling
 | `SLACK_APP_TOKEN`    | mira-bot-slack (Socket Mode)         |
 | `ANTHROPIC_API_KEY`  | mira-bots (Claude inference)         |
 | `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
-| `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — primary free tier) |
+| `GEMINI_API_KEY`     | mira-bots, mira-pipeline (Gemini — primary free tier) |
+| `GEMINI_MODEL`       | mira-bots, mira-pipeline — default: gemini-2.5-flash |
+| `GEMINI_VISION_MODEL`| mira-bots, mira-pipeline — default: gemini-2.5-flash |
+| `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — secondary free tier) |
 | `GROQ_MODEL`         | mira-bots, mira-pipeline — default: llama-3.3-70b-versatile |
 | `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: meta-llama/llama-4-scout-17b-16e-instruct |
-| `CEREBRAS_API_KEY`   | mira-bots (Cerebras — secondary free tier) |
+| `CEREBRAS_API_KEY`   | mira-bots (Cerebras — tertiary free tier) |
 | `CEREBRAS_MODEL`     | mira-bots — default: llama3.1-8b |
 | `CLAUDE_MODEL`       | mira-bots — default: claude-sonnet-4-6 |
 | `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest, mira-pipeline |
