@@ -254,7 +254,22 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     )
 
     # Handle reset command — clear FSM state before processing
-    if last_user_msg.strip().lower() in ("/reset", "reset", "start over", "new session"):
+    reset_phrases = (
+        "/reset",
+        "reset",
+        "start over",
+        "new session",
+        "never mind",
+        "nevermind",
+        "wrong chat",
+        "ignore that",
+        "that wasn't for you",
+        "that wasnt for you",
+        "scratch that",
+    )
+    if last_user_msg.strip().lower() in reset_phrases or any(
+        last_user_msg.strip().lower().startswith(p) for p in ("never mind", "nevermind", "wrong ")
+    ):
         engine.reset(chat_id)
         logger.info("FSM_RESET chat_id=%s", chat_id)
         return {

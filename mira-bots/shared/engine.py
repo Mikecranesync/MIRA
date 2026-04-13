@@ -69,6 +69,8 @@ _STATE_ALIASES: dict[str, str] = {
     "QUESTION": "Q1",
     "USER_QUERY": "Q1",
     "INQUIRY": "Q1",
+    "NEED_MORE_INFO": "Q1",
+    "NEED_INFO": "Q1",
     "GATHERING_INFO": "Q2",
     "INSPECT": "Q2",
     "VERIFY": "Q2",
@@ -454,7 +456,14 @@ class Supervisor:
             # Track which turn the photo was sent on
             ctx["photo_turn"] = state["exchange_count"]
             state["context"] = ctx
-            state["asset_identified"] = str(vision_data["vision_result"])
+            # Store a concise asset identifier, not the full vision description.
+            # The LLM regurgitates the full text on every turn if we store the paragraph.
+            full_vision = str(vision_data["vision_result"])
+            # Try to extract just the equipment name (first sentence or 80 chars)
+            first_sentence = full_vision.split(".")[0].strip()
+            state["asset_identified"] = (
+                first_sentence[:120] if first_sentence else full_vision[:120]
+            )
 
             # Save photo to disk for follow-up turns
             self._save_session_photo(chat_id, photo_b64)
