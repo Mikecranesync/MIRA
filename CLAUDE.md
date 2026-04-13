@@ -1,9 +1,55 @@
 # MIRA — Build State
 
-**Version:** v0.5.3
-**Updated:** 2026-03-24
+**Version:** v0.5.4
+**Updated:** 2026-04-13
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
+**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099, OpenAI-compat) → GSDEngine → Anthropic API
+
+---
+
+## KANBAN Board
+
+**Board:** https://github.com/users/Mikecranesync/projects/4 (project ID: 4, owner: Mikecranesync)
+
+### On Session Start
+Run this to see what's open and in-progress:
+```bash
+gh project item-list 4 --owner Mikecranesync --format json --limit 100 | python3 -c "
+import sys, json
+items = json.load(sys.stdin)['items']
+for s in ['In Progress', 'Todo']:
+    hits = [i for i in items if i.get('status') == s]
+    if hits:
+        print(f'\n## {s} ({len(hits)})')
+        for i in hits: print(f'  {i[\"title\"]}')
+"
+```
+
+### On Every Commit
+After committing, add any new GitHub issues to the board and move resolved issues to Done:
+```bash
+# Add a new issue to the board
+gh project item-add 4 --owner Mikecranesync --url <issue-url>
+
+# Move an item to In Progress
+gh project item-edit --project-id PVT_kwHODSgiRM4BSa9e --id <item-id> --field-id PVTSSF_lAHODSgiRM4BSa9ezg_9d4k --single-select-option-id 47fc9ee4
+
+# Move an item to Done
+gh project item-edit --project-id PVT_kwHODSgiRM4BSa9e --id <item-id> --field-id PVTSSF_lAHODSgiRM4BSa9ezg_9d4k --single-select-option-id 98236657
+
+# Get item IDs
+gh project item-list 4 --owner Mikecranesync --format json --limit 100 | python3 -c "
+import sys, json
+for i in json.load(sys.stdin)['items']:
+    print(i['id'], i.get('status',''), i['title'][:60])
+"
+```
+
+### Rules
+- Every GitHub issue created during a session → add to board immediately
+- Every issue closed by a commit → move to Done on the board
+- Never leave the board stale: if you fix something, update the status
 
 ---
 
@@ -15,13 +61,17 @@ MIRA/
 ├── mira-bots/          # Telegram, Slack, Teams, WhatsApp adapters + shared diagnostic engine (4 containers)
 ├── mira-bridge/        # Node-RED orchestration, SQLite WAL shared state (1 container)
 ├── mira-mcp/           # FastMCP server, NeonDB recall, equipment diagnostic tools (1 container)
+├── mira-pipeline/      # OpenAI-compat API wrapping GSDEngine — active VPS chat path
+├── mira-web/           # PLG web frontend (Next.js, :3200) — deployed on VPS, not publicly routed
 ├── mira-cmms/          # Atlas CMMS — work orders, PM scheduling, asset registry (4 containers)
 ├── mira-hud/           # AR HUD desktop app (Express + Socket.IO, standalone)
+├── mira-sidecar/       # ⚠️  LEGACY — ChromaDB RAG backend, superseded by mira-pipeline (ADR-0008)
+│                       #    Do NOT add new callers. OEM doc migration pending before removal.
 ├── mira-web/           # PLG acquisition funnel — Hono/Bun, /cmms landing + Mira AI chat (1 container)
 ├── wiki/               # LLM-maintained ops wiki (Karpathy pattern) — open as Obsidian vault
 ├── tests/              # 5-regime testing framework (76 offline tests, 39 golden cases)
 ├── docs/               # PRD, ADRs, architecture C4 diagrams, runbooks
-├── tools/              # Photo pipeline, Google Drive/Photos ingest, Reddit→TG curation
+├── tools/              # Photo pipeline, Google Drive/Photos ingest, Reddit→TG curation, migration scripts
 ├── install/            # Setup scripts, smoke tests
 ├── deployment/         # Admin guide, customer agreement
 └── plc/                # PLC program files (deferred to Config 4)
@@ -167,6 +217,7 @@ chore: build system, deps, tooling
 | Google Photos API direct | rclone + Ollama triage | OAuth consent screen "Testing" mode returned empty results |
 | GWS CLI for Gmail | IMAP with Doppler app passwords | Scope registration issues on Windows |
 | glm-ocr model (as primary) | qwen2.5vl handles vision | Consistent 400 errors — retained as optional fallback in vision_worker.py |
+| mira-sidecar (ChromaDB RAG backend) | mira-pipeline + Open WebUI KB | ADR-0008 (Apr 2026): pipeline wraps GSDEngine directly; Open WebUI native KB (Docling) replaces ChromaDB. Sidecar still running pending OEM doc migration (398 chunks). |
 
 ---
 
@@ -179,6 +230,9 @@ chore: build system, deps, tooling
 - **Reddit benchmark** — 15/16 questions hit intent guard canned responses, not real inference
 - **No CD pipeline** — CI validates but deploy to Bravo is manual (docker cp or SSH)
 - **NVIDIA NIM / Nemotron** — API key in Doppler but Regime 5 eval tests blocked on it
+- **mira-sidecar OEM migration pending** — 398 OEM chunks in `shared_oem` ChromaDB must move to Open WebUI KB before sidecar can be stopped. Script: `tools/migrate_sidecar_oem_to_owui.py`. Runbook: `docs/runbooks/sidecar-oem-migration.md`.
+- **mira-web → mira-pipeline cutover pending** — `mira-web/src/lib/mira-chat.ts` calls sidecar `:5000/rag`; must be rewritten to call pipeline `:9099/v1/chat/completions` before mira-web is publicly routed.
+- **mira-pipeline `INFERENCE_BACKEND=cloud` typo on VPS** — compose has `cloud` not `claude`; likely falling back to Groq/Cerebras. Check and fix alongside sidecar cleanup.
 
 ---
 

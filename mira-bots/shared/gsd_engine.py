@@ -19,6 +19,8 @@ class GSDEngine:
         collection_id: str,
         vision_model: str = "qwen2.5vl:7b",
         tenant_id: str = None,
+        ingest_url: str = None,
+        mcp_url: str = None,
     ):
         self._supervisor = Supervisor(
             db_path=db_path,
@@ -27,6 +29,8 @@ class GSDEngine:
             collection_id=collection_id,
             vision_model=vision_model,
             tenant_id=tenant_id,
+            ingest_url=ingest_url,
+            mcp_url=mcp_url,
         )
 
     async def process(

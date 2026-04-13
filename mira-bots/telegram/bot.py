@@ -43,6 +43,8 @@ engine = GSDEngine(
     collection_id=KNOWLEDGE_COLLECTION_ID,
     vision_model=os.environ.get("VISION_MODEL", "qwen2.5vl:7b"),
     tenant_id=os.environ.get("MIRA_TENANT_ID", ""),
+    ingest_url=INGEST_SERVICE_URL,
+    mcp_url=MCP_BASE_URL,
 )
 
 FAULT_KEYWORDS = {

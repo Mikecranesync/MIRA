@@ -16,3 +16,4 @@ decision, the options considered, what was chosen and why, and the consequences.
 | [0005](0005-ar-hud-architecture.md) | AR HUD Architecture | Accepted |
 | [0006](0006-paperclip-dev-orchestration.md) | Paperclip Dev Orchestration | Accepted |
 | [0007](0007-notebook-intelligence-layer.md) | Notebook Intelligence Layer — Open WebUI + MIRA Pipeline | Accepted |
+| [0008](0008-sidecar-deprecation.md) | Deprecate mira-sidecar — Migration to mira-pipeline + Open WebUI KB | Accepted — in progress |

@@ -158,6 +158,39 @@ Keywords are phrase-level (not single words) to reduce false positives.
 
 ---
 
+## Two-Brain Architecture (PRD v2)
+
+The sidecar maintains two ChromaDB collections:
+
+| Collection   | Name          | Purpose                                   |
+|-------------|---------------|-------------------------------------------|
+| **Brain 1** | `shared_oem`  | Shared OEM manuals — available to ALL users |
+| **Brain 2** | `mira_docs`   | Per-tenant private docs — filtered by `asset_id` |
+
+**Query-time merge:** Brain 2 (n=5) + Brain 1 (n=5) → deduplicate by
+`(source_file, page, chunk_index)` → re-rank by cosine distance → top 5.
+Brain 2 is NOT artificially boosted — wins by relevance only.
+
+**Source labeling:** Each hit carries `_brain` = `"Your docs"` or `"Mira library"`.
+Citations in LLM output use `[Your docs: filename — page N]` vs
+`[Mira library: filename — page N]`.
+
+**Ingestion routing:** Use `collection="shared"` on `/ingest` or `/ingest/upload`
+to target Brain 1. Default `"tenant"` targets Brain 2.
+
+---
+
+## Safety Guardrails (`safety.py`)
+
+`detect_safety(query)` checks for 30 trigger phrases (arc flash, LOTO,
+confined space, etc.) BEFORE the query reaches the LLM. If triggered:
+1. System prompt gets a safety preamble
+2. `SAFETY_BANNER` is prepended to the response
+
+Keywords are phrase-level (not single words) to reduce false positives.
+
+---
+
 ## Configuration
 
 Settings are loaded in priority order:
