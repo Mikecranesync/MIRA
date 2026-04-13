@@ -505,6 +505,64 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     }
 
 
+# ── Feedback — POST /v1/feedback ────────────────────────────────────────────
+
+
+class FeedbackRequest(BaseModel):
+    chat_id: str
+    rating: str  # "up" or "down"
+    reason: str = ""
+    model_config = {"extra": "allow"}
+
+
+@app.post("/v1/feedback")
+async def submit_feedback(req: FeedbackRequest):
+    """Capture thumbs-up/down rating and write to mira.db feedback_log."""
+    if engine is None:
+        raise HTTPException(503, "GSDEngine not initialized")
+
+    feedback = "positive" if req.rating in ("up", "1", "positive") else "negative"
+    engine.log_feedback(req.chat_id, feedback, req.reason)
+    logger.info("FEEDBACK chat_id=%s rating=%s reason=%r", req.chat_id, feedback, req.reason)
+    return {"ok": True, "chat_id": req.chat_id, "feedback": feedback}
+
+
+# ── Learning Stats — GET /v1/learning-stats ─────────────────────────────────
+
+
+@app.get("/v1/learning-stats")
+async def learning_stats():
+    """Return feedback counts and fine-tune readiness."""
+    import sqlite3 as _sqlite3
+
+    db = _sqlite3.connect(DB_PATH)
+    db.execute("PRAGMA journal_mode=WAL")
+
+    total_approved = db.execute(
+        "SELECT COUNT(*) FROM feedback_log WHERE feedback = 'positive'"
+    ).fetchone()[0]
+    total_rejected = db.execute(
+        "SELECT COUNT(*) FROM feedback_log WHERE feedback = 'negative'"
+    ).fetchone()[0]
+    approved_today = db.execute(
+        "SELECT COUNT(*) FROM feedback_log WHERE feedback = 'positive' AND created_at >= date('now')"
+    ).fetchone()[0]
+    total_conversations = db.execute("SELECT COUNT(*) FROM conversation_state").fetchone()[0]
+    db.close()
+
+    min_examples = 50
+    return {
+        "total_approved": total_approved,
+        "total_rejected": total_rejected,
+        "approved_today": approved_today,
+        "total_conversations": total_conversations,
+        "current_model_version": "v0.6.0-base",
+        "min_examples_needed": min_examples,
+        "ready_to_finetune": total_approved >= min_examples,
+        "days_until_finetune": max(0, min_examples - total_approved),
+    }
+
+
 def _stream_response(reply: str, completion_id: str, created: int):
     """Yield SSE chunks in OpenAI streaming format."""
 
