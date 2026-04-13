@@ -71,6 +71,8 @@ _STATE_ALIASES: dict[str, str] = {
     "INQUIRY": "Q1",
     "NEED_MORE_INFO": "Q1",
     "NEED_INFO": "Q1",
+    "PARAMETER_IDENTIFIED": "Q1",
+    "READING_IDENTIFIED": "Q1",
     "GATHERING_INFO": "Q2",
     "INSPECT": "Q2",
     "VERIFY": "Q2",
