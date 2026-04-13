@@ -1,0 +1,77 @@
+services:
+  mira-redis:
+    image: redis:7.4.2-alpine
+    container_name: mira-redis
+    restart: unless-stopped
+    networks:
+      - core-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    volumes:
+      - redis-data:/data
+
+  mira-celery-worker:
+    build:
+      context: ..
+      dockerfile: mira-crawler/Dockerfile.celery
+    container_name: mira-celery-worker
+    restart: unless-stopped
+    command: celery -A mira_crawler.celery_app worker --concurrency=2 -Q ingest,discovery,celery --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - APIFY_API_TOKEN=${APIFY_API_KEY}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      - OLLAMA_BASE_URL=http://192.168.1.11:11434
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+    volumes:
+      - ${HOME}/drafts/linkedin:/data/linkedin
+    networks:
+      - core-net
+    healthcheck:
+      test: ["CMD", "celery", "-A", "mira_crawler.celery_app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mira-task-bridge:
+    build:
+      context: ..
+      dockerfile: mira-crawler/Dockerfile.bridge
+    container_name: mira-task-bridge
+    restart: unless-stopped
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    ports:
+      - "8003:8003"
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - TASK_BRIDGE_API_KEY
+      - APIFY_API_TOKEN=${APIFY_API_KEY}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      - OLLAMA_BASE_URL=http://192.168.1.11:11434
+    networks:
+      - core-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  core-net:
+    external: true
+
+volumes:
+  redis-data:

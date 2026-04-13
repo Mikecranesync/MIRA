@@ -16,6 +16,11 @@ class CMMSAdapter(ABC):
     Errors are returned as {"error": "description"} for graceful degradation.
     """
 
+    @property
+    @abstractmethod
+    def configured(self) -> bool:
+        """True when all required credentials/config are present."""
+
     @abstractmethod
     async def health_check(self) -> dict:
         """Check CMMS API availability."""
@@ -36,9 +41,7 @@ class CMMSAdapter(ABC):
         """Create a work order from diagnostic findings."""
 
     @abstractmethod
-    async def complete_work_order(
-        self, work_order_id: str, feedback: str = ""
-    ) -> dict:
+    async def complete_work_order(self, work_order_id: str, feedback: str = "") -> dict:
         """Mark a work order as complete."""
 
     @abstractmethod
@@ -50,7 +53,17 @@ class CMMSAdapter(ABC):
         """Get a single asset by ID."""
 
     @abstractmethod
-    async def list_pm_schedules(
-        self, asset_id: str | None = None, limit: int = 20
-    ) -> list[dict]:
+    async def list_pm_schedules(self, asset_id: str | None = None, limit: int = 20) -> list[dict]:
         """List preventive maintenance schedules."""
+
+    @abstractmethod
+    async def create_asset(
+        self,
+        name: str,
+        description: str,
+        manufacturer: str = "",
+        model: str = "",
+        serial: str = "",
+        **kwargs: object,
+    ) -> dict:
+        """Create an equipment asset from nameplate data."""

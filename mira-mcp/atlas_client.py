@@ -17,4 +17,5 @@ complete_work_order = _adapter.complete_work_order
 list_assets = _adapter.list_assets
 get_asset = _adapter.get_asset
 list_pm_schedules = _adapter.list_pm_schedules
+invite_users = _adapter.invite_users
 health_check = _adapter.health_check

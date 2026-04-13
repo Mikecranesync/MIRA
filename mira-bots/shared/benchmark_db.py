@@ -123,6 +123,7 @@ def ensure_tables(db_path: str | None = None) -> None:
 # Questions CRUD
 # ---------------------------------------------------------------------------
 
+
 def insert_question(
     title: str,
     body: str = "",
@@ -177,6 +178,7 @@ def count_questions(db_path: str | None = None) -> int:
 # Runs CRUD
 # ---------------------------------------------------------------------------
 
+
 def create_run(metadata: dict | None = None, db_path: str | None = None) -> int:
     """Create a new benchmark run. Returns run id."""
     db = _get_db(db_path)
@@ -217,9 +219,7 @@ def get_run(run_id: int, db_path: str | None = None) -> dict | None:
 
 def list_runs(limit: int = 20, db_path: str | None = None) -> list[dict]:
     db = _get_db(db_path)
-    rows = db.execute(
-        "SELECT * FROM benchmark_runs ORDER BY id DESC LIMIT ?", (limit,)
-    ).fetchall()
+    rows = db.execute("SELECT * FROM benchmark_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     db.close()
     return [dict(r) for r in rows]
 
@@ -227,6 +227,7 @@ def list_runs(limit: int = 20, db_path: str | None = None) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Results CRUD
 # ---------------------------------------------------------------------------
+
 
 def insert_result(
     run_id: int,
@@ -247,8 +248,7 @@ def insert_result(
            (run_id, question_id, reply, confidence, trace_id, next_state,
             latency_ms, error, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (run_id, question_id, reply, confidence, trace_id, next_state,
-         latency_ms, error, now),
+        (run_id, question_id, reply, confidence, trace_id, next_state, latency_ms, error, now),
     )
     db.commit()
     rid = cur.lastrowid
@@ -278,6 +278,7 @@ def list_results(
 # Prejudged Cases CRUD
 # ---------------------------------------------------------------------------
 
+
 def insert_prejudged_case(
     source: str,
     title: str,
@@ -300,8 +301,18 @@ def insert_prejudged_case(
                (source, source_id, title, equipment_type, fault_category,
                 evidence_packet, ground_truth, difficulty, metadata, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (source, source_id or None, title, equipment_type, fault_category,
-             evidence_packet, gt, difficulty, json.dumps(metadata or {}), now),
+            (
+                source,
+                source_id or None,
+                title,
+                equipment_type,
+                fault_category,
+                evidence_packet,
+                gt,
+                difficulty,
+                json.dumps(metadata or {}),
+                now,
+            ),
         )
         db.commit()
         return cur.lastrowid
@@ -337,9 +348,9 @@ def list_prejudged_cases(
 def count_prejudged_cases(source: str | None = None, db_path: str | None = None) -> int:
     db = _get_db(db_path)
     if source:
-        n = db.execute(
-            "SELECT COUNT(*) FROM prejudged_cases WHERE source=?", (source,)
-        ).fetchone()[0]
+        n = db.execute("SELECT COUNT(*) FROM prejudged_cases WHERE source=?", (source,)).fetchone()[
+            0
+        ]
     else:
         n = db.execute("SELECT COUNT(*) FROM prejudged_cases").fetchone()[0]
     db.close()
@@ -356,6 +367,7 @@ def get_prejudged_case(case_id: int, db_path: str | None = None) -> dict | None:
 # ---------------------------------------------------------------------------
 # Prejudged Runs CRUD
 # ---------------------------------------------------------------------------
+
 
 def create_prejudged_run(metadata: dict | None = None, db_path: str | None = None) -> int:
     """Create a new prejudged benchmark run. Returns run id."""
@@ -397,9 +409,7 @@ def get_prejudged_run(run_id: int, db_path: str | None = None) -> dict | None:
 
 def list_prejudged_runs(limit: int = 20, db_path: str | None = None) -> list[dict]:
     db = _get_db(db_path)
-    rows = db.execute(
-        "SELECT * FROM prejudged_runs ORDER BY id DESC LIMIT ?", (limit,)
-    ).fetchall()
+    rows = db.execute("SELECT * FROM prejudged_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     db.close()
     return [dict(r) for r in rows]
 
@@ -407,6 +417,7 @@ def list_prejudged_runs(limit: int = 20, db_path: str | None = None) -> list[dic
 # ---------------------------------------------------------------------------
 # Prejudged Conversations CRUD
 # ---------------------------------------------------------------------------
+
 
 def insert_prejudged_conversation(
     run_id: int,
@@ -427,8 +438,17 @@ def insert_prejudged_conversation(
            (run_id, case_id, transcript, turn_count, reached_diagnosis,
             final_state, total_latency_ms, error, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (run_id, case_id, json.dumps(transcript), turn_count,
-         reached_diagnosis, final_state, total_latency_ms, error, now),
+        (
+            run_id,
+            case_id,
+            json.dumps(transcript),
+            turn_count,
+            reached_diagnosis,
+            final_state,
+            total_latency_ms,
+            error,
+            now,
+        ),
     )
     db.commit()
     conv_id = cur.lastrowid
@@ -469,9 +489,17 @@ def update_prejudged_judge_scores(
             root_cause_alignment=?, expert_comparison=?, composite_score=?,
             verdict=?, judge_reasoning=?
            WHERE id=?""",
-        (evidence_utilization, path_efficiency, gsd_compliance,
-         root_cause_alignment, expert_comparison, composite,
-         verdict, judge_reasoning, conv_id),
+        (
+            evidence_utilization,
+            path_efficiency,
+            gsd_compliance,
+            root_cause_alignment,
+            expert_comparison,
+            composite,
+            verdict,
+            judge_reasoning,
+            conv_id,
+        ),
     )
     db.commit()
     db.close()

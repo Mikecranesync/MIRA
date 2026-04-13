@@ -2,6 +2,10 @@
 
 Uses httpx directly to call the Ollama REST API.
 Supports both /api/chat (completions) and /api/embeddings.
+
+PII sanitization is applied to outbound messages before the API call,
+matching the AnthropicProvider pattern. Even though Ollama is local,
+PII could leak via log aggregation or request tracing.
 """
 
 from __future__ import annotations
@@ -9,6 +13,8 @@ from __future__ import annotations
 import logging
 
 import httpx
+
+from llm.sanitize import sanitize_messages
 
 logger = logging.getLogger("mira-sidecar")
 
@@ -42,9 +48,10 @@ class OllamaProvider:
         Returns empty string on any error.
         """
         url = f"{self._base_url}/api/chat"
+        clean_messages = sanitize_messages(messages)
         payload = {
             "model": self._chat_model,
-            "messages": messages,
+            "messages": clean_messages,
             "stream": False,
             "options": {"num_predict": max_tokens},
         }

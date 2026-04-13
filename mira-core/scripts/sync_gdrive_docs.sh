@@ -11,8 +11,8 @@
 set -euo pipefail
 
 MIRA_ROOT="${MIRA_ROOT:-$HOME/Mira}"
-DEST="$MIRA_ROOT/mira-core/data/gdrive_ingest/industrial"
-LOG="$MIRA_ROOT/mira-core/data/gdrive_ingest/sync.log"
+DEST="$MIRA_ROOT/mira-core/data/manuals/pdf"
+LOG="$MIRA_ROOT/mira-core/data/manuals/sync.log"
 DRY_RUN=""
 
 if [[ "${1:-}" == "--dry-run" ]]; then

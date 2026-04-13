@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from ingest.dedup import DedupStore, _file_hash
 
 

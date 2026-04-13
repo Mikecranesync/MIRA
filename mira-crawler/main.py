@@ -21,17 +21,18 @@ import threading
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
-
-from config import CrawlerConfig
+from crawler.csv_crawler import CSVCrawler
 from crawler.curriculum import CurriculumCrawler
 from crawler.manufacturer import ManufacturerCrawler
 from crawler.report import generate_report
-from ingest.converter import extract_from_pdf
 from ingest.chunker import chunk_blocks
+from ingest.converter import extract_from_docling, extract_from_pdf
 from ingest.dedup import DedupStore
 from ingest.embedder import embed_batch
 from ingest.store import store_chunks
 from watcher.folder_watcher import FolderWatcher
+
+from config import CrawlerConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,7 +51,12 @@ def _ingest_file(path: Path, config: CrawlerConfig) -> None:
             logger.info("Skipping (already indexed): %s", path.name)
             return
 
-        blocks = extract_from_pdf(data, min_chars=config.chunk_min_chars)
+        if config.use_docling:
+            blocks = extract_from_docling(data, min_chars=config.chunk_min_chars)
+            if not blocks:
+                blocks = extract_from_pdf(data, min_chars=config.chunk_min_chars)
+        else:
+            blocks = extract_from_pdf(data, min_chars=config.chunk_min_chars)
         if not blocks:
             logger.warning("No blocks extracted from %s", path.name)
             return
@@ -115,7 +121,7 @@ def _run_report(config: CrawlerConfig) -> None:
 def healthcheck() -> bool:
     """Basic health check — can import and config loads."""
     try:
-        config = CrawlerConfig()
+        CrawlerConfig()
         return True
     except Exception:
         return False
@@ -195,6 +201,11 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Show what would be crawled")
     parser.add_argument("--report", action="store_true", help="Generate crawl report")
     parser.add_argument("--healthcheck", action="store_true", help="Run health check")
+    parser.add_argument(
+        "--crawl-from-csv",
+        action="store_true",
+        help="Crawl PDFs from manual_scrape_targets.csv url_hint column",
+    )
     args = parser.parse_args()
 
     config = CrawlerConfig()
@@ -207,6 +218,15 @@ def main() -> None:
 
     if args.report:
         _run_report(config)
+        return
+
+    if args.crawl_from_csv:
+        crawler = CSVCrawler(config)
+        try:
+            stats = crawler.crawl(dry_run=args.dry_run)
+            print(stats)
+        finally:
+            crawler.close()
         return
 
     if args.crawl == "curriculum":

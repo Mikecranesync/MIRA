@@ -33,6 +33,10 @@ class FiixCMMS(CMMSAdapter):
         if not self.api_key:
             logger.warning("FIIX_API_KEY not set — Fiix CMMS disabled")
 
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key)
+
     def _headers(self) -> dict:
         return {
             "Authorization": f"Bearer {self.api_key}",
@@ -43,9 +47,7 @@ class FiixCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "Fiix not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{self.api_url}{path}", headers=self._headers(), params=params
-            )
+            resp = await client.get(f"{self.api_url}{path}", headers=self._headers(), params=params)
             resp.raise_for_status()
             return resp.json()
 
@@ -53,9 +55,7 @@ class FiixCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "Fiix not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.api_url}{path}", headers=self._headers(), json=payload
-            )
+            resp = await client.post(f"{self.api_url}{path}", headers=self._headers(), json=payload)
             resp.raise_for_status()
             return resp.json()
 
@@ -106,7 +106,10 @@ class FiixCMMS(CMMSAdapter):
             "intPriorityID": priority_map.get(priority.upper(), 3),
         }
         if asset_id:
-            payload["intAssetID"] = int(asset_id)
+            try:
+                payload["intAssetID"] = int(asset_id)
+            except ValueError:
+                return {"error": f"Invalid asset_id '{asset_id}' — must be numeric for Fiix"}
         try:
             result = await self._post("/work-orders", payload)
             logger.info("Fiix work order created: id=%s title=%s", result.get("id"), title)
@@ -150,3 +153,15 @@ class FiixCMMS(CMMSAdapter):
         except httpx.HTTPStatusError as e:
             logger.error("Fiix list_pm_schedules failed: %s", e)
             return []
+
+    async def create_asset(
+        self,
+        name: str,
+        description: str,
+        manufacturer: str = "",
+        model: str = "",
+        serial: str = "",
+        **kwargs: object,
+    ) -> dict:
+        """Not yet implemented for Fiix."""
+        return {"error": "create_asset not supported for Fiix"}

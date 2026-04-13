@@ -3,8 +3,8 @@ services:
     build: .
     container_name: mira-mcp
     ports:
-      - "${MCP_SSE_PORT:-8009}:8000"
-      - "8001:8001"
+      - "127.0.0.1:${MCP_SSE_PORT:-8009}:8000"
+      - "127.0.0.1:8001:8001"
     environment:
       - MIRA_DB_PATH=/mira-db/mira.db
       - FASTMCP_HOST=0.0.0.0
@@ -13,16 +13,18 @@ services:
       - RETRIEVAL_BACKEND=${RETRIEVAL_BACKEND:-openwebui}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - VIKING_STORE_PATH=/mira-db/viking
+      - CMMS_PROVIDER=${CMMS_PROVIDER:-atlas}
       - ATLAS_API_URL=${ATLAS_API_URL:-http://atlas-api:8080}
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      - MAINTAINX_API_KEY=${MAINTAINX_API_KEY:-}
     volumes:
       - ${MIRA_DB_PATH:-../mira-bridge/data}:/mira-db
     networks:
       - core-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/sse')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

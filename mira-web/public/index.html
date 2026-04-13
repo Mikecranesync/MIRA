@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime — works alongside MaintainX, Limble, or UpKeep.">
+  <meta name="theme-color" content="#f0a000">
+  <link rel="canonical" href="https://factorylm.com/">
+  <!-- Open Graph -->
+  <meta property="og:title" content="FactoryLM — AI Troubleshooter for Maintenance Teams">
+  <meta property="og:description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime — works alongside MaintainX, Limble, or UpKeep.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://factorylm.com/">
+  <meta property="og:image" content="https://factorylm.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="FactoryLM">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="FactoryLM — AI Troubleshooter for Maintenance Teams">
+  <meta name="twitter:description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime — works alongside MaintainX, Limble, or UpKeep.">
+  <meta name="twitter:image" content="https://factorylm.com/og-image.png">
+  <title>FactoryLM — AI Troubleshooter for Maintenance Teams</title>
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "FactoryLM",
+    "url": "https://factorylm.com",
+    "logo": "https://factorylm.com/public/icons/mira-512.png",
+    "description": "AI troubleshooter for industrial maintenance. Reduces unplanned downtime by diagnosing equipment faults from your OEM manuals. Works alongside your existing CMMS."
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "FactoryLM",
+    "url": "https://factorylm.com"
+  }
+  </script>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <!-- Widget CSS pre-loaded so FAB renders before JS lazy-loads -->
+  <link rel="preload" href="/public/mira-chat.css" as="style" onload="this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="/public/mira-chat.css"></noscript>
+
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --page-bg:      #0d0e11;
+      --surface:      #13141a;
+      --border:       rgba(255,255,255,0.07);
+      --border-hi:    rgba(255,255,255,0.12);
+      --text:         #e8eaf0;
+      --text-dim:     rgba(255,255,255,0.5);
+      --text-faint:   rgba(255,255,255,0.28);
+      --text-label:   rgba(255,255,255,0.35);
+      --amber:        #f0a000;
+      --teal:         #00d4aa;
+      --font:         'Inter', 'Helvetica Neue', sans-serif;
+      --max-w:        1080px;
+      --ease-out:     cubic-bezier(0.16,1,0.3,1);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--page-bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* Amber radial gradient — FactoryLM brand (replaces Linear's purple tint) */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(240,160,0,0.06) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout helpers ── */
+    .inner {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 0 40px;
+    }
+
+    @media (max-width: 768px) { .inner { padding: 0 24px; } }
+    @media (max-width: 480px) { .inner { padding: 0 16px; } }
+
+    /* ── Scroll animation ── */
+    .fade-in {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 400ms ease, transform 400ms ease;
+    }
+    .fade-in.visible { opacity: 1; transform: translateY(0); }
+    .fade-in:nth-child(2) { transition-delay: 80ms; }
+    .fade-in:nth-child(3) { transition-delay: 160ms; }
+    .fade-in:nth-child(4) { transition-delay: 240ms; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .fade-in { opacity: 1; transform: none; transition: none; }
+    }
+
+    /* ── Navigation ── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 56px;
+      z-index: 100;
+      transition: background 200ms ease, border-color 200ms ease;
+      border-bottom: 1px solid transparent;
+    }
+
+    nav.scrolled {
+      background: rgba(13,14,17,0.85);
+      backdrop-filter: blur(12px) saturate(180%);
+      -webkit-backdrop-filter: blur(12px) saturate(180%);
+      border-bottom-color: rgba(255,255,255,0.06);
+    }
+
+    .nav-inner {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 0 40px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    @media (max-width: 768px) { .nav-inner { padding: 0 24px; } }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 500;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-logo svg {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      letter-spacing: normal;
+      transition: color 150ms ease;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    /* Nav CTA — compact amber button */
+    .nav-cta {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0a0a08;
+      background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      padding: 7px 14px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+      white-space: nowrap;
+    }
+
+    .nav-cta:hover {
+      background: linear-gradient(180deg, #f5b040 0%, #e09510 100%);
+      border-color: rgba(255,255,255,0.20);
+      color: #0a0a08;
+    }
+
+    @media (max-width: 640px) {
+      .nav-links { display: none; }
+    }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 144px 0 120px;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (max-width: 768px) { .hero { padding: 100px 0 80px; } }
+    @media (max-width: 480px) { .hero { padding: 88px 0 60px; } }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+
+    @media (max-width: 900px) {
+      .hero-grid {
+        grid-template-columns: 1fr;
+        gap: 48px;
+      }
+    }
+
+    .hero-text {
+      max-width: 560px;
+    }
+
+    /* Hero eyebrow */
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-label);
+      margin-bottom: 20px;
+    }
+
+    .hero-eyebrow-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--amber);
+    }
+
+    /* Hero headline — large, left-aligned, regular weight, tight tracking */
+    .hero-h1 {
+      font-size: clamp(36px, 5vw, 56px);
+      font-weight: 400;
+      letter-spacing: -0.04em;
+      line-height: 1.08;
+      color: var(--text);
+      margin-bottom: 20px;
+    }
+
+    .hero-h1 em {
+      font-style: normal;
+      color: var(--amber);
+    }
+
+    /* Sub-headline */
+    .hero-sub {
+      font-size: 18px;
+      line-height: 1.55;
+      color: var(--text-dim);
+      max-width: 480px;
+      margin-bottom: 32px;
+      font-weight: 300;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    /* Primary button — white on black */
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 9px 18px;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      transition: opacity 150ms ease;
+      white-space: nowrap;
+    }
+
+    .btn-primary:hover { opacity: 0.9; }
+
+    /* Industrial CTA — "Start Here" panel button */
+    .cta-start {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%);
+      color: #0a0a08;
+      border: 2px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 14px 32px;
+      text-decoration: none;
+      cursor: pointer;
+      position: relative;
+      box-shadow:
+        0 0 20px rgba(240,160,48,0.10),
+        0 1px 0 rgba(255,255,255,0.15) inset,
+        0 -1px 0 rgba(0,0,0,0.20) inset;
+      transition: transform 150ms var(--ease-out), box-shadow 200ms ease;
+    }
+
+    .cta-start:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 0 30px rgba(240,160,48,0.25),
+        0 4px 16px rgba(240,160,48,0.15),
+        0 1px 0 rgba(255,255,255,0.20) inset,
+        0 -1px 0 rgba(0,0,0,0.20) inset;
+    }
+
+    .cta-start:active {
+      transform: translateY(1px);
+      box-shadow:
+        0 0 10px rgba(240,160,48,0.08),
+        0 2px 4px rgba(0,0,0,0.3) inset;
+    }
+
+    .cta-start-pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #0a0a08;
+      flex-shrink: 0;
+      animation: pulse-dot 2s ease-in-out infinite;
+      box-shadow: 0 0 0 0 rgba(10,10,8,0.4);
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(10,10,8,0.4); }
+      50% { box-shadow: 0 0 0 4px rgba(10,10,8,0.0); }
+    }
+
+    .cta-start-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1;
+    }
+
+    .cta-start-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      opacity: 0.55;
+      margin-bottom: 4px;
+    }
+
+    .cta-start-action {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+
+    /* Ghost button */
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      color: rgba(255,255,255,0.7);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 400;
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color 150ms ease, color 150ms ease;
+    }
+
+    .btn-ghost:hover {
+      border-color: rgba(255,255,255,0.3);
+      color: #fff;
+    }
+
+    /* Hero product frame — right column */
+    .hero-demo {
+      position: relative;
+    }
+
+    .demo-frame {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px 12px 0 0;
+      background: #1a1b1f;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+
+    .demo-frame-bar {
+      height: 36px;
+      background: #13141a;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 6px;
+    }
+
+    .demo-frame-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+    }
+
+    .demo-frame-url {
+      flex: 1;
+      height: 20px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 4px;
+      margin: 0 8px;
+    }
+
+    .demo-frame-content {
+      padding: 16px;
+      min-height: 320px;
+    }
+
+    /* Static chat mockup inside the demo frame */
+    .demo-chat {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .demo-sys {
+      text-align: center;
+      font-size: 10px;
+      color: rgba(255,255,255,0.25);
+      padding: 4px 0;
+    }
+
+    .demo-msg {
+      max-width: 90%;
+      padding: 8px 12px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .demo-msg-user {
+      align-self: flex-end;
+      background: rgba(240,160,0,0.10);
+      border: 1px solid rgba(240,160,0,0.18);
+      border-radius: 8px 8px 2px 8px;
+      color: #e8eaf0;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .demo-msg-mira {
+      align-self: flex-start;
+      background: #1b1f2b;
+      border-radius: 8px 8px 8px 2px;
+      color: #e8eaf0;
+      display: flex;
+      gap: 8px;
+    }
+
+    .demo-avatar {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(0,212,170,0.12);
+      border: 1px solid rgba(0,212,170,0.2);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .demo-citation {
+      display: inline-block;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: rgba(0,212,170,0.08);
+      color: #00d4aa;
+      border: 1px solid rgba(0,212,170,0.18);
+      margin-top: 5px;
+    }
+
+    .demo-cursor {
+      display: inline-block;
+      width: 2px;
+      height: 12px;
+      background: var(--amber);
+      vertical-align: middle;
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    /* ── Feature sections ── */
+    .features {
+      padding: 120px 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (max-width: 768px) { .features { padding: 80px 0; } }
+    @media (max-width: 480px) { .features { padding: 60px 0; } }
+
+    .feature {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+      padding: 64px 0;
+    }
+
+    .feature + .feature {
+      border-top: 1px solid var(--border);
+    }
+
+    .feature.reverse { direction: rtl; }
+    .feature.reverse > * { direction: ltr; }
+
+    @media (max-width: 768px) {
+      .feature,
+      .feature.reverse {
+        grid-template-columns: 1fr;
+        direction: ltr;
+        gap: 36px;
+        padding: 48px 0;
+      }
+    }
+
+    /* Section label */
+    .section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-label);
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+
+    .feature-h2 {
+      font-size: clamp(24px, 3vw, 32px);
+      font-weight: 400;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+
+    .feature-body {
+      font-size: 15px;
+      color: var(--text-dim);
+      line-height: 1.65;
+      max-width: 480px;
+      margin-bottom: 20px;
+      font-weight: 300;
+    }
+
+    /* Feature stat pills */
+    .feature-stats {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .feature-stat {
+      font-size: 12px;
+      color: var(--text-faint);
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    /* Feature mock card */
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+    }
+
+    .feature-card-header {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-faint);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .fc-badge {
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+    }
+
+    .fc-badge-green {
+      background: rgba(0,212,170,0.1);
+      color: var(--teal);
+      border: 1px solid rgba(0,212,170,0.2);
+    }
+
+    .fc-badge-amber {
+      background: rgba(240,160,0,0.1);
+      color: var(--amber);
+      border: 1px solid rgba(240,160,0,0.2);
+    }
+
+    .fc-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      gap: 12px;
+    }
+
+    .fc-row:last-child { border-bottom: none; }
+
+    .fc-label { color: var(--text-dim); font-size: 11px; }
+    .fc-value { font-size: 12px; }
+
+    /* ── Slideshow (feature walkthrough) ── */
+    .slideshow {
+      position: relative;
+      cursor: pointer;
+      outline: none;
+      border-radius: 10px;
+      transition: transform 280ms cubic-bezier(0.16,1,0.3,1);
+    }
+    .slideshow:hover,
+    .slideshow:focus-visible { transform: translateY(-2px); }
+    .slideshow:focus-visible {
+      box-shadow: 0 0 0 2px rgba(240,160,0,0.55);
+    }
+    .slideshow-slides {
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr;
+    }
+    .slideshow-slides > .slide {
+      grid-area: 1 / 1;
+      opacity: 0;
+      transform: translateY(6px) scale(0.992);
+      transition:
+        opacity 500ms cubic-bezier(0.16,1,0.3,1),
+        transform 500ms cubic-bezier(0.16,1,0.3,1);
+      pointer-events: none;
+    }
+    .slideshow-slides > .slide.active {
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .slideshow-slides > .slide { transition: none; }
+    }
+    .slideshow-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 14px;
+      padding: 0 6px;
+      min-height: 22px;
+      gap: 16px;
+    }
+    .slideshow-dots {
+      display: flex;
+      gap: 7px;
+    }
+    .slide-dot {
+      width: 22px;
+      height: 3px;
+      background: rgba(255,255,255,0.13);
+      border: none;
+      padding: 0;
+      border-radius: 2px;
+      cursor: pointer;
+      transition: all 280ms cubic-bezier(0.16,1,0.3,1);
+      outline: none;
+    }
+    .slide-dot:hover { background: rgba(255,255,255,0.28); }
+    .slide-dot.active {
+      background: var(--amber);
+      width: 34px;
+      box-shadow: 0 0 10px rgba(240,160,0,0.35);
+    }
+    .slide-dot:focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 2px;
+    }
+    .slideshow-hint {
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      opacity: 0;
+      transform: translateX(-4px);
+      transition: opacity 280ms ease, transform 280ms ease, color 280ms ease;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .slideshow:hover .slideshow-hint,
+    .slideshow:focus-visible .slideshow-hint {
+      opacity: 1;
+      transform: none;
+      color: var(--amber);
+    }
+    .feature-card-step {
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      color: var(--amber);
+      text-transform: uppercase;
+      margin-right: 10px;
+      padding: 1px 5px;
+      border: 1px solid rgba(240,160,0,0.25);
+      border-radius: 3px;
+      background: rgba(240,160,0,0.05);
+    }
+    /* Slideshow container on hover hints at clickability with amber ring */
+    .slideshow::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      transition: border-color 280ms ease;
+      pointer-events: none;
+    }
+    .slideshow:hover::after { border-color: rgba(240,160,0,0.18); }
+
+    /* ── CTA section ── */
+    .cta-section {
+      padding: 120px 0;
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+    }
+
+    @media (max-width: 768px) { .cta-section { padding: 80px 0; } }
+
+    .cta-inner {
+      max-width: 520px;
+    }
+
+    .cta-h2 {
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 400;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+
+    .cta-sub {
+      font-size: 16px;
+      color: var(--text-dim);
+      margin-bottom: 28px;
+      font-weight: 300;
+      line-height: 1.6;
+    }
+
+    .cta-note {
+      font-size: 12px;
+      color: var(--text-faint);
+      margin-top: 12px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid var(--border);
+      position: relative;
+      z-index: 1;
+    }
+
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-dim);
+      text-decoration: none;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 20px;
+      list-style: none;
+    }
+
+    .footer-links a {
+      font-size: 13px;
+      color: var(--text-faint);
+      text-decoration: none;
+      transition: color 150ms ease;
+    }
+
+    .footer-links a:hover { color: var(--text-dim); }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── Navigation ── -->
+  <nav id="main-nav" role="navigation" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo" aria-label="FactoryLM home">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="24" height="24" rx="5" fill="#f0a000"/>
+          <path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        FactoryLM
+      </a>
+
+      <ul class="nav-links" role="list">
+        <li><a href="#features">Product</a></li>
+        <li><a href="/pricing">Pricing</a></li>
+        <li><a href="/blog">Blog</a></li>
+        <li><a href="/cmms">Troubleshooter</a></li>
+      </ul>
+
+      <a href="/cmms" class="nav-cta">Join the Beta</a>
+    </div>
+  </nav>
+
+  <main id="main-content">
+
+  <!-- ── Hero ── -->
+  <section class="hero" aria-labelledby="hero-heading">
+    <div class="inner">
+      <div class="hero-grid">
+        <div class="hero-text">
+          <div class="hero-eyebrow fade-in">
+            <span class="hero-eyebrow-dot" aria-hidden="true"></span>
+            AI Troubleshooter
+          </div>
+
+          <h1 class="hero-h1 fade-in" id="hero-heading">
+            The AI troubleshooter<br>
+            that <em>knows your<br>equipment.</em>
+          </h1>
+
+          <p class="hero-sub fade-in">
+            Reduces unplanned downtime — even when the fault hits at 2am.
+            Works alongside your existing CMMS. No migration. No rip-and-replace.
+          </p>
+
+          <div class="hero-actions fade-in">
+            <a href="/cmms" class="cta-start">
+              <span class="cta-start-pulse" aria-hidden="true"></span>
+              <span class="cta-start-text">
+                <span class="cta-start-label">$97/mo &mdash; site license</span>
+                <span class="cta-start-action">Join the Beta &rarr;</span>
+              </span>
+            </a>
+            <a href="/blog" class="btn-ghost">
+              Read the blog
+            </a>
+          </div>
+          <p style="font-size:12px;color:var(--text-faint);margin-top:12px;" class="fade-in">Unlimited users. Works with MaintainX, Limble, and UpKeep.</p>
+        </div>
+
+        <!-- Product demo frame -->
+        <div class="hero-demo fade-in" aria-hidden="true">
+          <div class="demo-frame" role="img" aria-label="Mira chat interface demo">
+            <div class="demo-frame-bar">
+              <div class="demo-frame-dot"></div>
+              <div class="demo-frame-dot"></div>
+              <div class="demo-frame-dot"></div>
+              <div class="demo-frame-url"></div>
+            </div>
+            <div class="demo-frame-content">
+              <div class="demo-chat">
+                <div class="demo-sys">Session — SIGNAL tier — Public corpus</div>
+
+                <div class="demo-msg demo-msg-user">
+                  Fault E-731 on the FANUC R-30iB, axis 2 following error
+                </div>
+
+                <div class="demo-msg demo-msg-mira">
+                  <div class="demo-avatar"></div>
+                  <div>
+                    Axis 2 following error E-731 typically indicates encoder
+                    feedback loss or excessive position error. Check the
+                    J2 encoder cable at CN2 connector — look for pinch
+                    damage near the J2 axis housing.
+                    <br><br>
+                    If cable is intact, verify pulse coder battery voltage
+                    (should be &gt;3.1V).
+                    <span class="demo-cursor"></span>
+                    <br>
+                    <span class="demo-citation">[§12.4 FANUC R-30iB Maintenance p.284]</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Features ── -->
+  <section class="features" id="features" aria-labelledby="features-heading">
+    <div class="inner">
+      <div class="feature fade-in">
+        <!-- Text left, demo right -->
+        <div class="feature-text">
+          <div class="section-label">Fault Diagnosis</div>
+          <h2 class="feature-h2" id="features-heading">
+            Answers in seconds,<br>not hours
+          </h2>
+          <p class="feature-body">
+            Tells you why it's failing, not just when. Send a fault code, describe a symptom,
+            or upload a photo — get a cited answer from your OEM manuals and your team's
+            repair history.
+          </p>
+          <div class="feature-stats">
+            <span class="feature-stat">Catches faults at 2am</span>
+            <span class="feature-stat">Citation on every answer</span>
+          </div>
+        </div>
+
+        <div class="slideshow fade-in" role="link" tabindex="0" data-href="/feature/fault-diagnosis" aria-label="Fault Diagnosis walkthrough — click for full feature page">
+          <div class="slideshow-slides">
+            <div class="slide active">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">01/04</span>INCOMING — FAULT CODE</span>
+                  <span class="fc-badge fc-badge-green">SIGNAL</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">User</span><span class="fc-value">Line 3 tech — iPhone</span></div>
+                <div class="fc-row"><span class="fc-label">Input</span><span class="fc-value">F-012 on PowerFlex 753</span></div>
+                <div class="fc-row"><span class="fc-label">Context</span><span class="fc-value">Second trip today, same fault</span></div>
+                <div class="fc-row"><span class="fc-label">Mode</span><span class="fc-value">Voice + typed</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">02/04</span>MIRA — SEARCHING</span>
+                  <span class="fc-badge fc-badge-amber">PROCESSING</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Matched</span><span class="fc-value">PF753 Manual §6.2</span></div>
+                <div class="fc-row"><span class="fc-label">Candidates</span><span class="fc-value">4 → 1 ranked</span></div>
+                <div class="fc-row"><span class="fc-label">Confidence</span><span class="fc-value">94% — high</span></div>
+                <div class="fc-row"><span class="fc-label">Latency</span><span class="fc-value" style="color:#00d4aa">612 ms to first token</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">03/04</span>CITED ANSWER</span>
+                  <span class="fc-badge fc-badge-green">DELIVERED</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Fault</span><span class="fc-value">F-012 — Overcurrent</span></div>
+                <div class="fc-row"><span class="fc-label">Root cause</span><span class="fc-value">Mechanical load spike at startup</span></div>
+                <div class="fc-row"><span class="fc-label">Action</span><span class="fc-value">Accel ramp P042 → 4.5s</span></div>
+                <div class="fc-row"><span class="fc-label">Source</span><span class="fc-value" style="color:#00d4aa">[§6.2 PF753 Manual p.81]</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">04/04</span>WORK ORDER — CREATED</span>
+                  <span class="fc-badge fc-badge-amber">AUTO</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Asset</span><span class="fc-value">Line 3 PowerFlex 753</span></div>
+                <div class="fc-row"><span class="fc-label">Priority</span><span class="fc-value" style="color:#f0a000">MEDIUM</span></div>
+                <div class="fc-row"><span class="fc-label">Assigned</span><span class="fc-value">On-call technician</span></div>
+                <div class="fc-row"><span class="fc-label">Logged</span><span class="fc-value" style="color:#00d4aa">14:02 · your-cmms</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="slideshow-controls">
+            <div class="slideshow-dots" role="tablist" aria-label="Fault Diagnosis slide navigation">
+              <button class="slide-dot active" aria-label="Slide 1 of 4: Incoming fault code" data-idx="0"></button>
+              <button class="slide-dot" aria-label="Slide 2 of 4: Mira searching" data-idx="1"></button>
+              <button class="slide-dot" aria-label="Slide 3 of 4: Cited answer" data-idx="2"></button>
+              <button class="slide-dot" aria-label="Slide 4 of 4: Work order created" data-idx="3"></button>
+            </div>
+            <span class="slideshow-hint">Click for walkthrough &rarr;</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature reverse fade-in" id="how-it-works">
+        <!-- Demo left, text right (reversed grid) -->
+        <div class="slideshow" role="link" tabindex="0" data-href="/feature/cmms-integration" aria-label="CMMS Integration walkthrough — click for full feature page">
+          <div class="slideshow-slides">
+            <div class="slide active">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">01/04</span>ACTION DETECTED</span>
+                  <span class="fc-badge fc-badge-green">SIGNAL</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Source</span><span class="fc-value">Mira chat — Line 3 tech</span></div>
+                <div class="fc-row"><span class="fc-label">Trigger</span><span class="fc-value">"Replace J2 encoder cable"</span></div>
+                <div class="fc-row"><span class="fc-label">Context</span><span class="fc-value">Photo + fault cited</span></div>
+                <div class="fc-row"><span class="fc-label">Severity</span><span class="fc-value" style="color:#ff5d5d">HIGH — downtime risk</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">02/04</span>ASSET LOOKUP</span>
+                  <span class="fc-badge fc-badge-green">MATCHED</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Asset</span><span class="fc-value">Conveyor Drive #3 — Motor</span></div>
+                <div class="fc-row"><span class="fc-label">Last service</span><span class="fc-value">47 days ago</span></div>
+                <div class="fc-row"><span class="fc-label">Uptime</span><span class="fc-value" style="color:#00d4aa">94.2% YTD</span></div>
+                <div class="fc-row"><span class="fc-label">PM due</span><span class="fc-value">In 11 days</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">03/04</span>WORK ORDER DRAFTED</span>
+                  <span class="fc-badge fc-badge-amber">READY</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Parts</span><span class="fc-value">A06B-6117-K003 cable</span></div>
+                <div class="fc-row"><span class="fc-label">Est. time</span><span class="fc-value">45 minutes</span></div>
+                <div class="fc-row"><span class="fc-label">Tools</span><span class="fc-value">M4 hex, zip ties, meter</span></div>
+                <div class="fc-row"><span class="fc-label">Priority</span><span class="fc-value" style="color:#f0a000">HIGH</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">04/04</span>YOUR CMMS — SYNCED</span>
+                  <span class="fc-badge fc-badge-green">LIVE</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Status</span><span class="fc-value" style="color:#f0a000">HIGH PRIORITY</span></div>
+                <div class="fc-row"><span class="fc-label">Kanban</span><span class="fc-value">Today's Queue</span></div>
+                <div class="fc-row"><span class="fc-label">Assigned</span><span class="fc-value">Mike H. — first available</span></div>
+                <div class="fc-row"><span class="fc-label">Notified</span><span class="fc-value" style="color:#00d4aa">Your CMMS notifications</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="slideshow-controls">
+            <div class="slideshow-dots" role="tablist" aria-label="CMMS Integration slide navigation">
+              <button class="slide-dot active" aria-label="Slide 1 of 4: Action detected" data-idx="0"></button>
+              <button class="slide-dot" aria-label="Slide 2 of 4: Asset lookup" data-idx="1"></button>
+              <button class="slide-dot" aria-label="Slide 3 of 4: Work order drafted" data-idx="2"></button>
+              <button class="slide-dot" aria-label="Slide 4 of 4: Your CMMS synced" data-idx="3"></button>
+            </div>
+            <span class="slideshow-hint">Click for walkthrough &rarr;</span>
+          </div>
+        </div>
+
+        <div class="feature-text">
+          <div class="section-label">Works With Your CMMS</div>
+          <h2 class="feature-h2">
+            Work orders that<br>write themselves
+          </h2>
+          <p class="feature-body">
+            MIRA connects into your existing CMMS — MaintainX, Limble, or UpKeep.
+            Work orders MIRA creates flow straight into the system your techs already use.
+            No rip-and-replace.
+          </p>
+          <div class="feature-stats">
+            <span class="feature-stat">MaintainX · Limble · UpKeep</span>
+            <span class="feature-stat">Auto asset lookup</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature fade-in">
+        <div class="feature-text">
+          <div class="section-label">Voice + Vision</div>
+          <h2 class="feature-h2">
+            Hands-free on the<br>shop floor
+          </h2>
+          <p class="feature-body">
+            Talk to Mira hands-free with voice input. Upload a photo of the fault —
+            Mira identifies the component, cross-references your equipment history,
+            and reads the answer back to you out loud.
+          </p>
+          <div class="feature-stats">
+            <span class="feature-stat">Works on iPhone/Android</span>
+            <span class="feature-stat">Offline voice input</span>
+            <span class="feature-stat">Photo analysis</span>
+          </div>
+        </div>
+
+        <div class="slideshow" role="link" tabindex="0" data-href="/feature/voice-vision" aria-label="Voice + Vision walkthrough — click for full feature page">
+          <div class="slideshow-slides">
+            <div class="slide active">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">01/04</span>VOICE INPUT — FIELD</span>
+                  <span class="fc-badge fc-badge-green">MIC LIVE</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">User</span><span class="fc-value">"Hey Mira — E-731 on axis 2"</span></div>
+                <div class="fc-row"><span class="fc-label">Language</span><span class="fc-value">en-US · offline STT</span></div>
+                <div class="fc-row"><span class="fc-label">Noise</span><span class="fc-value">72 dBA — shop floor</span></div>
+                <div class="fc-row"><span class="fc-label">Confidence</span><span class="fc-value" style="color:#00d4aa">98% transcription</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">02/04</span>PHOTO — UPLOADED</span>
+                  <span class="fc-badge fc-badge-amber">COMPRESSED</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">File</span><span class="fc-value">encoder_cable_j2.jpg</span></div>
+                <div class="fc-row"><span class="fc-label">Size</span><span class="fc-value">2.1 MB → 380 KB</span></div>
+                <div class="fc-row"><span class="fc-label">Camera</span><span class="fc-value">iPhone 15 · back lens</span></div>
+                <div class="fc-row"><span class="fc-label">Upload</span><span class="fc-value">3 seconds over LTE</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">03/04</span>IDENTIFIED</span>
+                  <span class="fc-badge fc-badge-green">MATCHED</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Component</span><span class="fc-value">FANUC J2 encoder cable</span></div>
+                <div class="fc-row"><span class="fc-label">Series</span><span class="fc-value">A06B-6117 family</span></div>
+                <div class="fc-row"><span class="fc-label">Issue</span><span class="fc-value" style="color:#f0a000">Bend radius failure</span></div>
+                <div class="fc-row"><span class="fc-label">Location</span><span class="fc-value">At cable clamp — CN2 side</span></div>
+              </div>
+            </div>
+            <div class="slide">
+              <div class="feature-card">
+                <div class="feature-card-header">
+                  <span><span class="feature-card-step">04/04</span>ANSWER — READ BACK</span>
+                  <span class="fc-badge fc-badge-green">SPEAKING</span>
+                </div>
+                <div class="fc-row"><span class="fc-label">Voice</span><span class="fc-value">Kokoro TTS · 180 wpm</span></div>
+                <div class="fc-row"><span class="fc-label">Script</span><span class="fc-value">"Replace cable, reroute 4× dia..."</span></div>
+                <div class="fc-row"><span class="fc-label">Duration</span><span class="fc-value">11 seconds</span></div>
+                <div class="fc-row"><span class="fc-label">Work order</span><span class="fc-value" style="color:#00d4aa">Auto-created</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="slideshow-controls">
+            <div class="slideshow-dots" role="tablist" aria-label="Voice and Vision slide navigation">
+              <button class="slide-dot active" aria-label="Slide 1 of 4: Voice input" data-idx="0"></button>
+              <button class="slide-dot" aria-label="Slide 2 of 4: Photo uploaded" data-idx="1"></button>
+              <button class="slide-dot" aria-label="Slide 3 of 4: Identified" data-idx="2"></button>
+              <button class="slide-dot" aria-label="Slide 4 of 4: Answer read back" data-idx="3"></button>
+            </div>
+            <span class="slideshow-hint">Click for walkthrough &rarr;</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Resources / Blog ── -->
+  <section class="features" id="resources" style="border-top:1px solid var(--border)">
+    <div class="inner">
+      <div class="feature fade-in" style="grid-template-columns:1fr">
+        <div class="feature-text" style="max-width:none">
+          <div class="section-label">Resources</div>
+          <h2 class="feature-h2">From the factory floor</h2>
+          <p class="feature-body" style="max-width:560px">
+            Practical troubleshooting guides, fault code references, and
+            maintenance insights — written by engineers who've been on the
+            floor at 2 AM.
+          </p>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:8px">
+        <a href="/blog/how-to-read-vfd-fault-codes" class="fade-in" style="display:block;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;text-decoration:none;transition:border-color 200ms">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--amber);font-weight:500;margin-bottom:6px">Guide</div>
+          <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:6px;letter-spacing:-0.01em">How to Read VFD Fault Codes</div>
+          <div style="font-size:13px;color:var(--text-dim);font-weight:300;line-height:1.5">Interpret fault codes from PowerFlex, Yaskawa, ABB, Siemens, and more.</div>
+        </a>
+        <a href="/blog/how-to-megger-test-a-motor" class="fade-in" style="display:block;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;text-decoration:none;transition:border-color 200ms">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--amber);font-weight:500;margin-bottom:6px">Guide</div>
+          <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:6px;letter-spacing:-0.01em">How to Megger Test a Motor</div>
+          <div style="font-size:13px;color:var(--text-dim);font-weight:300;line-height:1.5">Step-by-step insulation resistance testing with pass/fail values.</div>
+        </a>
+        <a href="/blog/vfd-troubleshooting-checklist" class="fade-in" style="display:block;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;text-decoration:none;transition:border-color 200ms">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--amber);font-weight:500;margin-bottom:6px">Guide</div>
+          <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:6px;letter-spacing:-0.01em">VFD Troubleshooting Checklist</div>
+          <div style="font-size:13px;color:var(--text-dim);font-weight:300;line-height:1.5">10 things to check before calling the manufacturer.</div>
+        </a>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-top:20px;flex-wrap:wrap" class="fade-in">
+        <a href="/blog" class="btn-ghost">All articles</a>
+        <a href="/blog/fault-codes" class="btn-ghost">Fault code library <span style="color:var(--text-faint);margin-left:4px">50 codes</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA / Beta ── -->
+  <section class="cta-section" id="beta" aria-labelledby="cta-heading">
+    <div class="inner">
+      <div class="cta-inner">
+        <div class="section-label fade-in">Join the Beta</div>
+        <h2 class="cta-h2 fade-in" id="cta-heading">
+          See what MIRA finds<br>in your equipment data
+        </h2>
+        <p class="cta-sub fade-in">
+          Upload a manual, ask a fault code question, see what comes back.
+          $97/mo flat — site license covers your entire team.
+        </p>
+        <div class="fade-in">
+          <a href="/cmms" class="cta-start">
+            <span class="cta-start-pulse" aria-hidden="true"></span>
+            <span class="cta-start-text">
+              <span class="cta-start-label">$97/mo &mdash; site license</span>
+              <span class="cta-start-action">Join the Beta &rarr;</span>
+            </span>
+          </a>
+          <p class="cta-note">Unlimited users. Cancel anytime.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  </main>
+
+  <!-- ── Footer ── -->
+  <footer role="contentinfo">
+    <div class="inner">
+      <div class="footer-inner">
+        <a href="/" class="footer-logo" aria-label="FactoryLM home">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
+            <rect width="24" height="24" rx="5" fill="#f0a000"/>
+            <path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          FactoryLM
+        </a>
+
+        <ul class="footer-links" role="list">
+          <li><a href="/blog">Blog</a></li>
+          <li><a href="/blog/fault-codes">Fault Codes</a></li>
+          <li><a href="/cmms">Troubleshooter</a></li>
+          <li><a href="mailto:contact@factorylm.com">Contact</a></li>
+          <li><a href="/privacy">Privacy</a></li>
+          <li><a href="/terms">Terms</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // ── Nav scroll effect ──────────────────────────────────────────────
+    (function () {
+      const nav = document.getElementById('main-nav');
+      function update() {
+        nav.classList.toggle('scrolled', window.scrollY > 10);
+      }
+      window.addEventListener('scroll', update, { passive: true });
+      update();
+    })();
+
+    // ── CMMS CTA swap for active tenants ──────────────────────────────
+    (function () {
+      const token = sessionStorage.getItem('flm_token');
+      if (!token) return;
+      const cta = document.querySelector('a.nav-cta');
+      if (!cta) return;
+      cta.href = '/api/cmms/login?token=' + encodeURIComponent(token);
+      cta.textContent = 'Open Dashboard';
+    })();
+
+    // ── Scroll fade-in observer ────────────────────────────────────────
+    (function () {
+      if (!window.IntersectionObserver) return;
+      const observer = new IntersectionObserver(
+        (entries) => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }),
+        { threshold: 0.08 }
+      );
+      document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+    })();
+
+    // ── Feature slideshow carousels ───────────────────────────────────
+    (function () {
+      const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const INTERVAL_MS = 5500;
+      const RESUME_DELAY_MS = 9000;
+
+      document.querySelectorAll('.slideshow').forEach(show => {
+        const slides = show.querySelectorAll('.slide');
+        const dots = show.querySelectorAll('.slide-dot');
+        if (slides.length === 0) return;
+
+        let idx = 0;
+        let paused = false;
+        let timer = null;
+        let resumeTimer = null;
+
+        function go(n) {
+          idx = ((n % slides.length) + slides.length) % slides.length;
+          slides.forEach((s, j) => s.classList.toggle('active', j === idx));
+          dots.forEach((d, j) => d.classList.toggle('active', j === idx));
+        }
+        function start() {
+          if (REDUCED || timer) return;
+          timer = setInterval(() => { if (!paused) go(idx + 1); }, INTERVAL_MS);
+        }
+        function pause() { paused = true; }
+        function resume() { paused = false; }
+        function pauseThenResume() {
+          pause();
+          clearTimeout(resumeTimer);
+          resumeTimer = setTimeout(resume, RESUME_DELAY_MS);
+        }
+
+        show.addEventListener('mouseenter', pause);
+        show.addEventListener('mouseleave', resume);
+        show.addEventListener('focusin', pause);
+        show.addEventListener('focusout', resume);
+
+        dots.forEach((dot, i) => {
+          dot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            go(i);
+            pauseThenResume();
+          });
+        });
+
+        show.addEventListener('click', (e) => {
+          if (e.target.closest('.slide-dot')) return;
+          const href = show.dataset.href;
+          if (href) window.location.href = href;
+        });
+        show.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            const href = show.dataset.href;
+            if (href) window.location.href = href;
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            go(idx + 1);
+            pauseThenResume();
+          } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            go(idx - 1);
+            pauseThenResume();
+          }
+        });
+
+        start();
+      });
+
+      // Pause all slideshows when tab hidden
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') {
+          document.querySelectorAll('.slideshow').forEach(s => s.dispatchEvent(new Event('mouseenter')));
+        } else {
+          document.querySelectorAll('.slideshow').forEach(s => s.dispatchEvent(new Event('mouseleave')));
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

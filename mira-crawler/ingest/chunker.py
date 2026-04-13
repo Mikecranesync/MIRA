@@ -3,6 +3,10 @@
 Splits extracted text blocks into chunks that respect section and sentence
 boundaries. Tables are detected and kept intact (or split only at row
 boundaries). Configurable min/max sizes.
+
+Token hard cap ensures chunks stay under MAX_TOKENS (default 2000) for
+compatibility with EmbeddingGemma (2048 token context) and nomic-embed-text.
+Uses tiktoken when available, falls back to len(text)//4 estimate.
 """
 
 from __future__ import annotations
@@ -17,6 +21,31 @@ DEFAULT_MIN_CHARS = 200
 DEFAULT_MAX_CHARS = 2000
 DEFAULT_OVERLAP = 200
 TABLE_MAX_CHARS = 1200
+MAX_TOKENS = 2000  # hard cap — leaves 48 tokens headroom for embedding task prefixes
+
+# Token counting: tiktoken if available, else conservative char estimate
+try:
+    import tiktoken
+    _ENCODER = tiktoken.get_encoding("cl100k_base")
+
+    def _token_len(text: str) -> int:
+        return len(_ENCODER.encode(text))
+
+    def _token_truncate(text: str, max_tokens: int) -> str:
+        tokens = _ENCODER.encode(text)
+        if len(tokens) <= max_tokens:
+            return text
+        return _ENCODER.decode(tokens[:max_tokens])
+
+except ImportError:
+    logger.info("tiktoken not available — using char//4 estimate for token counts")
+
+    def _token_len(text: str) -> int:
+        return len(text) // 4
+
+    def _token_truncate(text: str, max_tokens: int) -> str:
+        max_chars = max_tokens * 4
+        return text[:max_chars] if len(text) > max_chars else text
 
 _PIPE_TABLE_RE = re.compile(r"^\s*\|.+\|.+\|")
 _SEPARATOR_RE = re.compile(r"^\s*\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$")
@@ -411,6 +440,13 @@ def chunk_blocks(
                     "chunk_quality": chunk_quality,
                 })
                 chunk_index += 1
+
+    # Token hard cap — ensure no chunk exceeds MAX_TOKENS for embedding models
+    for chunk in chunks:
+        if _token_len(chunk["text"]) > MAX_TOKENS:
+            chunk["text"] = _token_truncate(chunk["text"], MAX_TOKENS)
+            if chunk.get("chunk_quality") != "table":
+                chunk["chunk_quality"] = "token_truncated"
 
     logger.info(
         "Chunked %d blocks → %d chunks (source=%s, equipment=%s)",

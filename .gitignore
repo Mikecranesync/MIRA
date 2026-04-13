@@ -1,3 +1,7 @@
+# Generated marketing content (mira-copy outputs)
+mira_copy/outputs/*
+!mira_copy/outputs/.gitkeep
+
 # Secrets — NEVER commit these
 .env
 *.env.local
@@ -79,11 +83,30 @@ mira-core/data/equipment_photos/
 # Google Drive ingest staging (downloaded docs, never committed)
 mira-core/data/gdrive_ingest/
 
+# Manual PDFs (stored locally, not committed to git)
+mira-core/data/manuals/
+
+# Crawler runtime data (cache, dedup DBs, logs, incoming docs)
+mira-crawler/data/
+
+# Test photos (real equipment photos, synced separately)
+tests/regime1_telethon/photos/
+tests/regime3_nameplate/photos/real/
+
+# Local backups
+backups/
+
+# Accidental Docker container extraction artifacts
+usr/
+
 # GitHub Actions cache
 .github/actions-cache/
 
 # Claude Code runtime files
 .claude/scheduled_tasks.lock
+
+# Obsidian vault config (wiki is git-tracked, but Obsidian settings are local)
+wiki/.obsidian/
 
 # Cloned SDK repos (have their own .git)
 ignition-sdk-examples/
@@ -93,6 +116,7 @@ Pics/
 
 # Paperclip runtime artifacts (secrets, local DB)
 paperclip/.env.paperclip
+paperclip/.generated/
 
 # uv lock file (generated, not committed — except for Docker-built services)
 uv.lock
@@ -108,3 +132,6 @@ mira-sidecar/docs/
 mira-sidecar/logs/
 mira-sidecar/.venv/
 factorylm.properties
+
+# Observability data volumes (managed by Docker)
+observability/grafana/provisioning/dashboards/celery-tasks.json

@@ -12,12 +12,11 @@ produces URL lists for the base crawler pipeline.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import yaml
+from crawler.base_crawler import BaseCrawler
 
 from config import CrawlerConfig
-from crawler.base_crawler import BaseCrawler
 
 logger = logging.getLogger("mira-crawler.curriculum")
 

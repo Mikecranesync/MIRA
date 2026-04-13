@@ -73,6 +73,7 @@ def insert_chunk(
     section: str = "",
     chunk_index: int = 0,
     chunk_type: str = "text",
+    image_embedding: list[float] | None = None,
 ) -> str:
     """Insert a single chunk into knowledge_entries. Returns entry ID or empty string."""
     from sqlalchemy import text
@@ -86,6 +87,8 @@ def insert_chunk(
         "chunk_type": chunk_type,
     }
 
+    img_emb_val = str(image_embedding) if image_embedding else None
+
     try:
         with _engine().connect() as conn:
             conn.execute(
@@ -93,11 +96,12 @@ def insert_chunk(
                     INSERT INTO knowledge_entries
                         (id, tenant_id, source_type, manufacturer, model_number,
                          content, embedding, source_url, source_page,
-                         metadata, is_private, verified, chunk_type)
+                         metadata, is_private, verified, chunk_type, image_embedding)
                     VALUES
                         (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                          :content, cast(:embedding AS vector), :source_url, :source_page,
-                         cast(:metadata AS jsonb), false, false, :chunk_type)
+                         cast(:metadata AS jsonb), false, false, :chunk_type,
+                         cast(:image_embedding AS vector))
                 """),
                 {
                     "id": entry_id,
@@ -111,6 +115,7 @@ def insert_chunk(
                     "source_page": page_num,
                     "metadata": json.dumps(metadata),
                     "chunk_type": chunk_type,
+                    "image_embedding": img_emb_val,
                 },
             )
             conn.commit()
@@ -125,11 +130,13 @@ def store_chunks(
     tenant_id: str,
     manufacturer: str = "",
     model_number: str = "",
+    image_embedding: list[float] | None = None,
 ) -> int:
     """Store a batch of (chunk, embedding) pairs into NeonDB.
 
     Skips chunks that already exist (dedup by source_url + chunk_index).
     Returns number of chunks inserted.
+    image_embedding: optional 768-dim visual vector stored alongside text embedding.
     """
     inserted = 0
 
@@ -154,6 +161,7 @@ def store_chunks(
             section=chunk.get("section", ""),
             chunk_index=chunk_index,
             chunk_type=chunk.get("chunk_type", "text"),
+            image_embedding=image_embedding,
         )
         if entry_id:
             inserted += 1

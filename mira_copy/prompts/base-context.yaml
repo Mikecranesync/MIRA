@@ -1,0 +1,70 @@
+product:
+  name: FactoryLM
+  tagline: "AI-powered industrial maintenance"
+  url: "https://app.factorylm.com"
+  value_props:
+    - "CMMS setup in 2 minutes — no sales call, no provisioning"
+    - "Snap a photo of any fault — AI diagnosis + work order in seconds"
+    - "Works on phone and desktop as a PWA — no app store"
+    - "Ask Mira your fault code — get the answer from your own manuals in 10 seconds"
+    - "RAG over YOUR equipment manuals — not generic knowledge"
+  pricing:
+    free: "5 Mira AI queries/day, unlimited CMMS features"
+    paid: "$49/mo unlimited queries"
+  features_live:
+    - "AI chat diagnostic (Mira) via web, Telegram, Slack"
+    - "CMMS with work orders, assets, PM scheduling"
+    - "Photo-to-diagnosis pipeline"
+    - "Drip email onboarding sequence"
+    - "PWA mobile install"
+  features_not_built:
+    - "Modbus / PLC / VFD live data (Config 4 — deferred)"
+    - "Ignition SCADA module (.modl)"
+    - "Kokoro TTS"
+
+audiences:
+  maintenance_tech:
+    title: "Maintenance Technician"
+    pain: "Standing at a faulted machine with no manual, waiting 20-40 min to find the right page or on hold with OEM support"
+    size: "Individual contributor on the floor"
+    trigger: "Has anyone seen this fault code before?"
+    equipment: "Allen-Bradley PLCs, GS10/GS20/PowerFlex VFDs, hydraulic power units"
+  maintenance_manager:
+    title: "Maintenance Manager"
+    pain: "MTTR too high, no visibility into tech performance, CMMS adoption failed"
+    size: "Manages 5-50 techs across 1-3 facilities"
+    trigger: "We need to reduce our downtime but nobody uses the CMMS"
+    equipment: "Same as tech, plus Ignition SCADA"
+  plant_manager:
+    title: "Plant Manager"
+    pain: "Unplanned downtime costs $X/hr, no audit trail on maintenance decisions"
+    size: "Oversees entire facility, reports to VP Ops"
+    trigger: "How do I know my maintenance team is following procedure?"
+  reliability_engineer:
+    title: "Reliability Engineer"
+    pain: "No failure pattern data, reactive instead of predictive, drowning in spreadsheets"
+    size: "1-2 per plant, data-driven mindset"
+    trigger: "I need to show ROI on our maintenance program"
+
+tone:
+  voice: "Peer, not professor. Direct, confident, specific to their daily reality."
+  style: "Short sentences. Concrete scenarios. Numbers over adjectives."
+  avoid:
+    - "Certainly!"
+    - "Great question!"
+    - "leverage"
+    - "synergy"
+    - "revolutionize"
+    - "cutting-edge"
+    - "unlock"
+    - "empower"
+    - "game-changer"
+    - "seamless"
+  proof: "Concrete scenarios and numbers. 'Diagnose a VFD fault in 30 seconds' not 'improve efficiency'."
+
+constraints:
+  - "Never claim features that don't exist yet (no Modbus/PLC/VFD live data — Config 4 deferred)"
+  - "Pricing: $49/mo unlimited, free = 5 queries/day. No other tiers exist yet."
+  - "No LangChain, no TensorFlow mentioned — we use Claude API directly"
+  - "Equipment focus: Allen-Bradley, Automation Direct (GS10/GS20), PowerFlex, hydraulic systems"
+  - "All copy must be factually accurate — never overstate what the product does"

@@ -1,21 +1,32 @@
-"""MIRA Inference Router — Feature-flagged Claude API backend.
+"""MIRA Inference Router — Multi-provider LLM cascade.
 
-When INFERENCE_BACKEND=claude and ANTHROPIC_API_KEY is set, routes LLM
-reasoning calls to Claude instead of local Open WebUI / Ollama.
-Vision (GLM-OCR, VisionWorker) stays local regardless of this setting.
+Cascade order: Groq → Cerebras → Claude → (caller falls back to Open WebUI).
 
-Falls back gracefully — returns ("", {}) on any error so caller can
-fall through to the Open WebUI path.
+Each provider is tried in sequence. On any failure (rate limit, billing,
+timeout, service error), the next provider is attempted. The caller
+(rag_worker._call_llm) treats an empty-string return as "all cloud
+providers failed" and falls through to the local Open WebUI/Ollama path.
 
-Uses httpx directly (no Anthropic SDK) — httpx is already in requirements
-and the Messages API is a simple POST.
+Provider enablement is key-based: if GROQ_API_KEY is set, Groq is in the
+cascade. Same for CEREBRAS_API_KEY and ANTHROPIC_API_KEY. Order is fixed.
+
+INFERENCE_BACKEND controls the master switch:
+  "cloud"  → run the cascade (default when any cloud key is set)
+  "claude" → legacy alias, same as "cloud"
+  "local"  → skip cascade entirely, go straight to Open WebUI
+
+Uses httpx directly — no provider SDKs.
 """
 
+from __future__ import annotations
+
+import asyncio
 import logging
 import os
 import re
 import sqlite3
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -23,18 +34,24 @@ import yaml
 
 logger = logging.getLogger("mira-gsd")
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
+
+# PII sanitization patterns
+_IPV4_RE = re.compile(
+    r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"
+)
+_MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
+_SERIAL_RE = re.compile(
+    r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)[:\s#]*[A-Z0-9\-]{4,20}\b",
+    re.IGNORECASE,
+)
+
+ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+ANTHROPIC_VERSION = "2023-06-01"
 
 
 def get_system_prompt() -> str:
-    """Load system prompt from prompts/diagnose/active.yaml on each call.
-
-    Loading on every request enables zero-downtime prompt rollouts — swap
-    active.yaml and the next inference call picks up the new prompt.
-    Falls back to empty string if file is missing or malformed.
-    """
+    """Load system prompt from prompts/diagnose/active.yaml on each call."""
     try:
         with open(_PROMPT_PATH) as f:
             data = yaml.safe_load(f)
@@ -45,51 +62,144 @@ def get_system_prompt() -> str:
     except Exception as e:
         logger.error("Failed to load active.yaml: %s", e)
         return ""
-ANTHROPIC_VERSION = "2023-06-01"
 
-# Regex patterns for PII / sensitive data sanitization
-_IPV4_RE = re.compile(
-    r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"
-)
-_MAC_RE = re.compile(
-    r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b"
-)
-_SERIAL_RE = re.compile(
-    r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)[:\s#]*[A-Z0-9\-]{4,20}\b",
-    re.IGNORECASE,
-)
+
+def _classify_http_error(status_code: int) -> str:
+    if status_code == 429:
+        return "rate_limit"
+    if status_code in (401, 403):
+        return "auth"
+    if status_code == 400:
+        return "billing"
+    if status_code in (500, 502, 503, 529):
+        return "service"
+    return "unknown"
+
+
+def _parse_retry_after(response: httpx.Response) -> float:
+    header = response.headers.get("retry-after", "")
+    try:
+        return min(float(header), 30.0) if header else 5.0
+    except ValueError:
+        return 5.0
+
+
+def _is_gibberish(text: str, threshold: float = 0.3) -> bool:
+    """Detect garbled vision model output (multilingual garbage, hallucination loops)."""
+    if not text or len(text) < 20:
+        return False
+    non_ascii = sum(1 for c in text if ord(c) > 127)
+    if non_ascii / len(text) > threshold:
+        return True
+    words = text.split()
+    if len(words) > 10:
+        from collections import Counter
+
+        most_common_count = Counter(words).most_common(1)[0][1]
+        if most_common_count > len(words) * 0.15:
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Provider definitions
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _Provider:
+    name: str
+    api_url: str
+    api_key: str
+    model: str
+    format: str  # "openai" or "anthropic"
+    timeout: float = 60.0
+    vision_model: str = ""  # If set, use this model for image requests
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.api_key)
+
+
+def _build_providers() -> list[_Provider]:
+    """Build the ordered provider list from environment variables."""
+    providers: list[_Provider] = []
+
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    if groq_key:
+        providers.append(
+            _Provider(
+                name="groq",
+                api_url="https://api.groq.com/openai/v1/chat/completions",
+                api_key=groq_key,
+                model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                format="openai",
+                timeout=30.0,
+                vision_model=os.getenv(
+                    "GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
+                ),
+            )
+        )
+
+    cerebras_key = os.getenv("CEREBRAS_API_KEY", "")
+    if cerebras_key:
+        providers.append(
+            _Provider(
+                name="cerebras",
+                api_url="https://api.cerebras.ai/v1/chat/completions",
+                api_key=cerebras_key,
+                model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
+                format="openai",
+                timeout=30.0,
+            )
+        )
+
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if anthropic_key:
+        providers.append(
+            _Provider(
+                name="claude",
+                api_url=ANTHROPIC_API_URL,
+                api_key=anthropic_key,
+                model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"),
+                format="anthropic",
+                timeout=60.0,
+            )
+        )
+
+    return providers
 
 
 class InferenceRouter:
-    """Routes LLM completion calls to Claude API when enabled.
+    """Multi-provider LLM cascade with automatic failover.
 
-    Enabled only when:
-      INFERENCE_BACKEND=claude  AND  ANTHROPIC_API_KEY is non-empty.
-
-    Falls back to Open WebUI path on any error (caller checks empty string).
-    Follows the same self.enabled / graceful-fallback pattern as NemotronClient.
+    Enabled when INFERENCE_BACKEND is "cloud" or "claude" and at least one
+    provider API key is set. Tries providers in order: Groq → Cerebras →
+    Claude. Returns ("", {}) only when ALL providers fail — caller then
+    falls through to Open WebUI.
     """
 
     def __init__(self):
         self.backend = os.getenv("INFERENCE_BACKEND", "local")
-        self.api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        self.model = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
-        self.enabled = self.backend == "claude" and bool(self.api_key)
+        self.providers = _build_providers()
+        self.enabled = self.backend in ("cloud", "claude") and len(self.providers) > 0
 
         if self.enabled:
-            logger.info(
-                "InferenceRouter enabled (model=%s)", self.model
-            )
+            names = [p.name for p in self.providers]
+            vision = [f"{p.name}:{p.vision_model}" for p in self.providers if p.vision_model]
+            logger.info("InferenceRouter enabled — cascade: %s", " → ".join(names))
+            if vision:
+                logger.info("InferenceRouter vision: %s", ", ".join(vision))
         else:
             logger.info(
-                "InferenceRouter disabled — INFERENCE_BACKEND=%s, api_key=%s",
+                "InferenceRouter disabled — INFERENCE_BACKEND=%s, providers=%d",
                 self.backend,
-                "set" if self.api_key else "not set",
+                len(self.providers),
             )
 
     @staticmethod
     def sanitize_context(messages: list[dict]) -> list[dict]:
-        """Strip IPs, MACs, serial numbers from message content before sending to Claude."""
+        """Strip IPs, MACs, serial numbers from message content before sending."""
         sanitized = []
         for msg in messages:
             content = msg.get("content", "")
@@ -120,91 +230,211 @@ class InferenceRouter:
         max_tokens: int = 1024,
         session_id: str = "unknown_unknown_unknown",
     ) -> tuple[str, dict]:
-        """POST to Claude Messages API via httpx.
+        """Try each provider in cascade order. Return first successful response.
 
-        Returns (content_str, usage_dict).
-        usage_dict = {"input_tokens": N, "output_tokens": N}
-        Returns ("", {}) on any error — caller must handle fallback.
-
-        session_id format: {tenant_id}_{platform}_{user_id} — used for usage logging.
+        Returns (content_str, usage_dict) on success.
+        Returns ("", {}) when all providers fail.
         """
         if not self.enabled:
             return "", {}
 
-        # Convert OpenAI-style image_url blocks to Claude image blocks
-        converted = []
-        for msg in messages:
-            content = msg.get("content")
-            if isinstance(content, list):
-                new_blocks = []
-                for block in content:
-                    if block.get("type") == "image_url":
-                        url = block["image_url"]["url"]
-                        if url.startswith("data:"):
-                            media_type = url.split(";")[0].replace("data:", "")
-                            b64 = url.split(",", 1)[1] if "," in url else url
-                        else:
-                            media_type = "image/jpeg"
-                            b64 = url
-                        new_blocks.append({
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": b64,
-                            },
-                        })
-                    else:
-                        new_blocks.append(block)
-                converted.append({**msg, "content": new_blocks})
-            else:
-                converted.append(msg)
+        has_image = _has_image(messages)
+        last_error: dict = {}
 
-        # Split system message from conversation turns
-        system_prompt = None
-        turns = []
+        for provider in self.providers:
+            # For image requests, skip OpenAI-format providers that lack a vision model
+            if has_image and provider.format == "openai" and not provider.vision_model:
+                continue
+
+            try:
+                content, usage = await self._call_provider(
+                    provider,
+                    messages,
+                    max_tokens,
+                    session_id,
+                    has_image,
+                )
+                if content:
+                    if has_image and _is_gibberish(content):
+                        logger.warning(
+                            "VISION_GIBBERISH provider=%s len=%d — trying next",
+                            provider.name,
+                            len(content),
+                        )
+                        last_error = usage
+                        continue
+                    return content, usage
+                last_error = usage
+            except _ProviderSkip:
+                continue
+
+        if last_error:
+            logger.warning("All providers exhausted — last error: %s", last_error)
+        return "", last_error
+
+    async def _call_provider(
+        self,
+        provider: _Provider,
+        messages: list[dict],
+        max_tokens: int,
+        session_id: str,
+        has_image: bool,
+    ) -> tuple[str, dict]:
+        """Call a single provider. Returns (content, usage) or raises _ProviderSkip."""
+        if provider.format == "anthropic":
+            return await self._call_anthropic(provider, messages, max_tokens, session_id, has_image)
+        return await self._call_openai_compat(provider, messages, max_tokens, session_id, has_image)
+
+    async def _call_openai_compat(
+        self,
+        provider: _Provider,
+        messages: list[dict],
+        max_tokens: int,
+        session_id: str,
+        has_image: bool,
+    ) -> tuple[str, dict]:
+        """Call an OpenAI-compatible provider (Groq, Cerebras)."""
+        # Use vision model for image requests if available
+        model = provider.vision_model if (has_image and provider.vision_model) else provider.model
+        payload: dict = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": messages,
+            "temperature": 0.1,
+        }
+        # Vision models don't reliably support JSON mode
+        if not has_image:
+            payload["response_format"] = {"type": "json_object"}
+        headers = {
+            "Authorization": f"Bearer {provider.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            t0 = time.monotonic()
+            async with httpx.AsyncClient(timeout=provider.timeout) as client:
+                resp = await client.post(provider.api_url, headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+            elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+            content = data["choices"][0]["message"]["content"]
+            usage = data.get("usage", {})
+            usage_dict = {
+                "input_tokens": usage.get("prompt_tokens", 0),
+                "output_tokens": usage.get("completion_tokens", 0),
+                "provider": provider.name,
+            }
+
+            logger.info(
+                "LLM_CALL provider=%s model=%s latency_ms=%d input=%d output=%d",
+                provider.name,
+                model,
+                elapsed_ms,
+                usage_dict["input_tokens"],
+                usage_dict["output_tokens"],
+            )
+
+            self.write_api_usage(
+                session_id=session_id,
+                usage=usage_dict,
+                model=f"{provider.name}/{model}",
+                has_image=has_image,
+                response_time_ms=elapsed_ms,
+            )
+
+            return content, usage_dict
+
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            error_type = _classify_http_error(status)
+            body = e.response.text[:300]
+            logger.warning(
+                "%s HTTP %d (%s): %s",
+                provider.name,
+                status,
+                error_type,
+                body,
+            )
+
+            if error_type == "rate_limit":
+                wait = _parse_retry_after(e.response)
+                logger.info("%s rate limited — waiting %.1fs", provider.name, wait)
+                await asyncio.sleep(min(wait, 30.0))
+                # Single inline retry — no recursion
+                try:
+                    async with httpx.AsyncClient(timeout=provider.timeout) as rc:
+                        r2 = await rc.post(provider.api_url, headers=headers, json=payload)
+                        r2.raise_for_status()
+                        d2 = r2.json()
+                    return d2["choices"][0]["message"]["content"], {
+                        "input_tokens": d2.get("usage", {}).get("prompt_tokens", 0),
+                        "output_tokens": d2.get("usage", {}).get("completion_tokens", 0),
+                        "provider": provider.name,
+                    }
+                except Exception:
+                    pass
+
+            raise _ProviderSkip(provider.name, error_type)
+
+        except httpx.TimeoutException:
+            logger.warning("%s timeout after %.0fs", provider.name, provider.timeout)
+            raise _ProviderSkip(provider.name, "timeout")
+
+        except Exception as e:
+            logger.warning("%s unexpected error: %s", provider.name, e)
+            raise _ProviderSkip(provider.name, "unknown")
+
+    async def _call_anthropic(
+        self,
+        provider: _Provider,
+        messages: list[dict],
+        max_tokens: int,
+        session_id: str,
+        has_image: bool,
+    ) -> tuple[str, dict]:
+        """Call Claude Messages API (custom format)."""
+        converted = _convert_images_for_claude(messages)
+
+        system_parts: list[str] = []
+        turns: list[dict] = []
         for msg in converted:
             if msg["role"] == "system":
-                system_prompt = msg["content"] if isinstance(msg["content"], str) \
-                    else " ".join(
-                        b.get("text", "") for b in msg["content"]
-                        if isinstance(b, dict) and b.get("type") == "text"
+                c = msg["content"]
+                if isinstance(c, str):
+                    system_parts.append(c)
+                elif isinstance(c, list):
+                    system_parts.append(
+                        " ".join(
+                            b.get("text", "")
+                            for b in c
+                            if isinstance(b, dict) and b.get("type") == "text"
+                        )
                     )
             else:
                 turns.append(msg)
 
         if not turns:
-            return "", {}
+            raise _ProviderSkip(provider.name, "no_turns")
 
         payload: dict = {
-            "model": self.model,
+            "model": provider.model,
             "max_tokens": max_tokens,
             "messages": turns,
         }
-        if system_prompt:
-            payload["system"] = system_prompt
+        if system_parts:
+            payload["system"] = "\n\n".join(system_parts)
 
         headers = {
-            "x-api-key": self.api_key,
+            "x-api-key": provider.api_key,
             "anthropic-version": ANTHROPIC_VERSION,
             "content-type": "application/json",
         }
 
-        # Detect image presence for usage logging
-        has_image = any(
-            isinstance(msg.get("content"), list)
-            and any(
-                b.get("type") in ("image", "image_url")
-                for b in msg["content"]
-                if isinstance(b, dict)
-            )
-            for msg in messages
-        )
-
         try:
             t0 = time.monotonic()
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(ANTHROPIC_API_URL, headers=headers, json=payload)
+            async with httpx.AsyncClient(timeout=provider.timeout) as client:
+                resp = await client.post(provider.api_url, headers=headers, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
             elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -214,21 +444,21 @@ class InferenceRouter:
             usage_dict = {
                 "input_tokens": usage.get("input_tokens", 0),
                 "output_tokens": usage.get("output_tokens", 0),
+                "provider": "claude",
             }
 
             logger.info(
-                "CLAUDE_CALL model=%s latency_ms=%d input=%d output=%d",
-                self.model,
+                "LLM_CALL provider=claude model=%s latency_ms=%d input=%d output=%d",
+                provider.model,
                 elapsed_ms,
                 usage_dict["input_tokens"],
                 usage_dict["output_tokens"],
             )
 
-            # Persist usage row to SQLite (best-effort — never blocks response)
             self.write_api_usage(
                 session_id=session_id,
                 usage=usage_dict,
-                model=self.model,
+                model=provider.model,
                 has_image=has_image,
                 response_time_ms=elapsed_ms,
             )
@@ -236,24 +466,64 @@ class InferenceRouter:
             return content, usage_dict
 
         except httpx.HTTPStatusError as e:
-            logger.error(
-                "InferenceRouter HTTP error: %s %s",
-                e.response.status_code,
-                e.response.text[:200],
+            status = e.response.status_code
+            error_type = _classify_http_error(status)
+            body = e.response.text[:300]
+            logger.warning(
+                "claude HTTP %d (%s): %s",
+                status,
+                error_type,
+                body,
             )
-            return "", {}
+
+            if error_type in ("rate_limit", "service"):
+                wait = 2.0 if error_type == "service" else _parse_retry_after(e.response)
+                logger.info("claude retrying in %.1fs (%s)", wait, error_type)
+                await asyncio.sleep(min(wait, 30.0))
+                # Single inline retry — no recursion
+                try:
+                    async with httpx.AsyncClient(timeout=provider.timeout) as rc:
+                        r2 = await rc.post(provider.api_url, headers=headers, json=payload)
+                        r2.raise_for_status()
+                        d2 = r2.json()
+                    return d2["content"][0]["text"], {
+                        "input_tokens": d2.get("usage", {}).get("input_tokens", 0),
+                        "output_tokens": d2.get("usage", {}).get("output_tokens", 0),
+                        "provider": provider.name,
+                    }
+                except Exception:
+                    pass
+
+            raise _ProviderSkip("claude", error_type)
+
+        except httpx.TimeoutException:
+            logger.warning("claude timeout after %.0fs", provider.timeout)
+            raise _ProviderSkip("claude", "timeout")
+
         except Exception as e:
-            logger.error("InferenceRouter error: %s", e)
-            return "", {}
+            logger.warning("claude unexpected error: %s", e)
+            raise _ProviderSkip("claude", "unknown")
 
     @staticmethod
     def log_usage(usage: dict) -> None:
-        """Log token usage and estimated cost for a Claude API call."""
+        """Log token usage and estimated cost."""
         inp = usage.get("input_tokens", 0)
         out = usage.get("output_tokens", 0)
-        cost = (inp * 0.000003) + (out * 0.000015)
+        provider = usage.get("provider", "unknown")
+        if provider == "claude":
+            cost = (inp * 0.000003) + (out * 0.000015)
+        elif provider == "groq":
+            cost = 0.0
+        elif provider == "cerebras":
+            cost = 0.0
+        else:
+            cost = 0.0
         logger.info(
-            "CLAUDE_USAGE: input=%d output=%d est_cost=$%.5f", inp, out, cost
+            "LLM_USAGE provider=%s input=%d output=%d est_cost=$%.5f",
+            provider,
+            inp,
+            out,
+            cost,
         )
 
     @staticmethod
@@ -264,11 +534,7 @@ class InferenceRouter:
         has_image: bool,
         response_time_ms: int,
     ) -> None:
-        """Write one row to the api_usage table in mira.db.
-
-        Table is created if missing (idempotent). Session ID format:
-        {tenant_id}_{platform}_{user_id} — platform extracted from middle segment.
-        """
+        """Write one row to the api_usage table in mira.db."""
         db_path = os.getenv("MIRA_DB_PATH", "/data/mira.db")
         if not db_path or not os.path.exists(db_path):
             return
@@ -300,7 +566,9 @@ class InferenceRouter:
                     model, has_image, response_time_ms)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    tenant_id, platform, session_id,
+                    tenant_id,
+                    platform,
+                    session_id,
                     usage.get("input_tokens", 0),
                     usage.get("output_tokens", 0),
                     model,
@@ -312,3 +580,61 @@ class InferenceRouter:
             con.close()
         except Exception as e:
             logger.warning("api_usage write failed: %s", e)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+class _ProviderSkip(Exception):
+    """Signal to skip to next provider in the cascade."""
+
+    def __init__(self, provider: str, reason: str):
+        self.provider = provider
+        self.reason = reason
+        super().__init__(f"{provider}: {reason}")
+
+
+def _has_image(messages: list[dict]) -> bool:
+    return any(
+        isinstance(msg.get("content"), list)
+        and any(
+            b.get("type") in ("image", "image_url") for b in msg["content"] if isinstance(b, dict)
+        )
+        for msg in messages
+    )
+
+
+def _convert_images_for_claude(messages: list[dict]) -> list[dict]:
+    """Convert OpenAI-style image_url blocks to Claude's base64 image format."""
+    converted = []
+    for msg in messages:
+        content = msg.get("content")
+        if isinstance(content, list):
+            new_blocks = []
+            for block in content:
+                if block.get("type") == "image_url":
+                    url = block["image_url"]["url"]
+                    if url.startswith("data:"):
+                        media_type = url.split(";")[0].replace("data:", "")
+                        b64 = url.split(",", 1)[1] if "," in url else url
+                    else:
+                        media_type = "image/jpeg"
+                        b64 = url
+                    new_blocks.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": b64,
+                            },
+                        }
+                    )
+                else:
+                    new_blocks.append(block)
+            converted.append({**msg, "content": new_blocks})
+        else:
+            converted.append(msg)
+    return converted

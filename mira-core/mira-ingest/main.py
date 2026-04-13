@@ -74,6 +74,7 @@ app = FastAPI(title="mira-ingest")
 # DB helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_db() -> sqlite3.Connection:
     db = sqlite3.connect(DB_PATH)
     db.execute("PRAGMA journal_mode=WAL")
@@ -104,6 +105,7 @@ def _ensure_table() -> None:
 # Image helpers
 # ---------------------------------------------------------------------------
 
+
 def _sanitize_image(data: bytes) -> bytes:
     """Strip EXIF metadata and resize to MAX_PX longest side."""
     img = Image.open(io.BytesIO(data))
@@ -121,6 +123,7 @@ def _sanitize_image(data: bytes) -> bytes:
 # Similarity
 # ---------------------------------------------------------------------------
 
+
 def _cosine_similarity(a: list, b: list) -> float:
     """Pure-Python cosine similarity between two float vectors."""
     dot = sum(x * y for x, y in zip(a, b))
@@ -135,6 +138,7 @@ def _cosine_similarity(a: list, b: list) -> float:
 # Ollama calls
 # ---------------------------------------------------------------------------
 
+
 async def _describe_photo(image_b64: str, notes: str = "") -> str:
     user_text = DESCRIBE_SYSTEM
     if notes:
@@ -145,11 +149,13 @@ async def _describe_photo(image_b64: str, notes: str = "") -> str:
             json={
                 "model": DESCRIBE_MODEL,
                 "stream": False,
-                "messages": [{
-                    "role": "user",
-                    "content": user_text,
-                    "images": [image_b64],
-                }],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": user_text,
+                        "images": [image_b64],
+                    }
+                ],
             },
         )
         resp.raise_for_status()
@@ -179,6 +185,7 @@ async def _embed_text(text: str) -> list:
 # ---------------------------------------------------------------------------
 # Open WebUI KB push (best-effort, never fails ingest)
 # ---------------------------------------------------------------------------
+
 
 async def _push_to_kb(asset_tag: str, description: str) -> None:
     if not KNOWLEDGE_COLLECTION_ID or not OPENWEBUI_URL:
@@ -210,6 +217,7 @@ async def _push_to_kb(asset_tag: str, description: str) -> None:
 # ---------------------------------------------------------------------------
 # Document KB helpers
 # ---------------------------------------------------------------------------
+
 
 def _route_collection(filename: str, hint: str | None) -> tuple[str, str]:
     """Map a filename (or explicit hint) to an Open WebUI knowledge collection."""
@@ -299,15 +307,32 @@ async def _poll_file_status(file_id: str, timeout_s: int = 300) -> str:
 # Lifecycle
 # ---------------------------------------------------------------------------
 
+
 @app.on_event("startup")
 async def startup():
     _ensure_table()
     PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+    # Warn if nomic-embed-text is missing from Ollama — RAG will silently fail without it
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{OLLAMA_URL}/api/tags")
+            resp.raise_for_status()
+            models = [m["name"] for m in resp.json().get("models", [])]
+            if not any("nomic-embed-text" in name for name in models):
+                logger.warning(
+                    "nomic-embed-text not found in Ollama. RAG embedding will fail. "
+                    "Run: ollama pull nomic-embed-text on the host, then restart."
+                )
+            else:
+                logger.info("nomic-embed-text confirmed present in Ollama.")
+    except Exception as e:
+        logger.warning("Could not reach Ollama at %s to verify models: %s", OLLAMA_URL, e)
 
 
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @app.get("/health")
 async def health():
@@ -316,7 +341,6 @@ async def health():
 
 @app.get("/health/db")
 async def health_db():
-    import sqlite3 as _sqlite3
     # SQLite check
     try:
         db = _get_db()
@@ -331,6 +355,7 @@ async def health_db():
     if os.getenv("NEON_DATABASE_URL"):
         try:
             from db.neon import health_check as _neon_health
+
             neon_result = _neon_health()
         except Exception as exc:
             neon_result = {"status": "error", "detail": str(exc)}
@@ -355,6 +380,7 @@ async def ingest_photo(
     if tenant_id:
         try:
             from db.neon import check_tier_limit
+
             allowed, reason = check_tier_limit(tenant_id)
             if not allowed:
                 raise HTTPException(status_code=429, detail=reason)
@@ -411,8 +437,14 @@ async def ingest_photo(
             image_vector, text_vector, ingested_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            asset_tag, location, notes, description, photo_path,
-            json.dumps(image_vector), json.dumps(text_vector), timestamp,
+            asset_tag,
+            location,
+            notes,
+            description,
+            photo_path,
+            json.dumps(image_vector),
+            json.dumps(text_vector),
+            timestamp,
         ),
     )
     db.commit()
@@ -428,6 +460,70 @@ async def ingest_photo(
         "description": description,
         "photo_path": photo_path,
     }
+
+
+@app.post("/ingest/search-visual")
+async def search_visual(body: dict):
+    """Dual-modality search: image embedding + text embedding merged with RRF.
+
+    Body: {query_image_b64?, query_text?, top_k?}
+    Returns: {results: [{...score...}]}
+    """
+    query_image_b64 = body.get("query_image_b64", "")
+    query_text = body.get("query_text", "")
+    top_k = int(body.get("top_k", 5))
+
+    if not query_image_b64 and not query_text:
+        raise HTTPException(status_code=422, detail="query_image_b64 or query_text required")
+
+    tenant_id = os.getenv("MIRA_TENANT_ID", "")
+    if not tenant_id:
+        raise HTTPException(status_code=503, detail="MIRA_TENANT_ID not configured")
+
+    try:
+        from db.neon import recall_by_image, recall_knowledge
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"NeonDB not available: {e}")
+
+    image_results: list[dict] = []
+    text_results: list[dict] = []
+
+    if query_image_b64:
+        try:
+            img_vec = await _embed_image(query_image_b64)
+            image_results = recall_by_image(img_vec, tenant_id, limit=top_k * 2)
+        except Exception as e:
+            logger.warning("Visual search embed/recall failed: %s", e)
+
+    if query_text:
+        try:
+            txt_vec = await _embed_text(query_text)
+            text_results = recall_knowledge(txt_vec, tenant_id, limit=top_k * 2)
+        except Exception as e:
+            logger.warning("Text search embed/recall failed: %s", e)
+
+    # Reciprocal Rank Fusion: score = 1/(60+rank_text) + 1/(60+rank_image)
+    RRF_K = 60
+    scores: dict[str, float] = {}
+    entries: dict[str, dict] = {}
+
+    for rank, r in enumerate(text_results):
+        key = r.get("content", "")[:200]
+        scores[key] = scores.get(key, 0.0) + 1.0 / (RRF_K + rank)
+        entries[key] = r
+
+    for rank, r in enumerate(image_results):
+        key = r.get("content", "")[:200]
+        scores[key] = scores.get(key, 0.0) + 1.0 / (RRF_K + rank)
+        if key not in entries:
+            entries[key] = r
+
+    merged = sorted(
+        [{"rrf_score": scores[k], **entries[k]} for k in scores],
+        key=lambda x: x["rrf_score"],
+        reverse=True,
+    )
+    return {"results": merged[:top_k]}
 
 
 @app.post("/ingest/search")
@@ -458,15 +554,17 @@ async def search_photos(body: dict):
         if not vec:
             continue
         score = _cosine_similarity(query_vector, vec)
-        results.append({
-            "id": row["id"],
-            "asset_tag": row["asset_tag"],
-            "location": row["location"],
-            "description": row["description"],
-            "photo_path": row["photo_path"],
-            "ingested_at": row["ingested_at"],
-            "score": score,
-        })
+        results.append(
+            {
+                "id": row["id"],
+                "asset_tag": row["asset_tag"],
+                "location": row["location"],
+                "description": row["description"],
+                "photo_path": row["photo_path"],
+                "ingested_at": row["ingested_at"],
+                "score": score,
+            }
+        )
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return {"results": results[:top_k]}
@@ -475,6 +573,7 @@ async def search_photos(body: dict):
 # ---------------------------------------------------------------------------
 # Document KB ingest — upload original PDF to Open WebUI, let it chunk + embed
 # ---------------------------------------------------------------------------
+
 
 @app.post("/ingest/document-kb")
 async def ingest_document_kb(
@@ -519,6 +618,7 @@ async def ingest_document_kb(
     if tenant_id:
         try:
             from db.neon import check_tier_limit
+
             allowed, reason = check_tier_limit(tenant_id)
             if not allowed:
                 raise HTTPException(status_code=429, detail=reason)
@@ -583,14 +683,17 @@ async def ingest_document_kb(
             elif resp.status_code not in (200, 201):
                 logger.warning(
                     "KB attach returned %s: %s (non-fatal)",
-                    resp.status_code, resp.text[:200],
+                    resp.status_code,
+                    resp.text[:200],
                 )
     except Exception as e:
         logger.warning("KB attach failed (non-fatal, file is uploaded): %s", e)
 
     logger.info(
         "Document KB ingest complete: %s → collection='%s' processing_status=%s",
-        fname, col_name, processing_status,
+        fname,
+        col_name,
+        processing_status,
     )
 
     return {
@@ -990,6 +1093,7 @@ def _get_benchmark_db():
         if bots_path not in sys.path:
             sys.path.insert(0, bots_path)
         import shared.benchmark_db as bdb
+
         bdb.DB_PATH = DB_PATH
         bdb.ensure_tables()
         _benchmark_db = bdb
@@ -1063,7 +1167,8 @@ async def benchmark_report(run_id: int):
     # Import report generator at call time
     bots_scripts = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "mira-bots", "scripts",
+        "mira-bots",
+        "scripts",
     )
     if bots_scripts not in sys.path:
         sys.path.insert(0, bots_scripts)

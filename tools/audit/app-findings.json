@@ -1,0 +1,46 @@
+{
+  "target": "https://app.factorylm.com",
+  "timestamp": "2026-04-12T21:45:47Z",
+  "auth_ok": true,
+  "exchanges": [
+    {
+      "exchange": 1,
+      "sent": "GS10 VFD showing OC fault on startup",
+      "received": "What is the exact overcurrent fault code displayed on the GS10 variable frequency drive?\n\nCheck the drive's parameter settings\nVerify the motor and load configuration\nInspect the power cables and connections\nReview the recent fault history",
+      "latency_s": 7.27,
+      "options_detected": false,
+      "char_count": 239
+    },
+    {
+      "exchange": 2,
+      "sent": "2",
+      "received": "You've chosen to verify the motor and load configuration. What type of motor is connected to the GS10 VFD?\n\nInduction motor\nSynchronous motor\nPermanent magnet motor",
+      "latency_s": 7.97,
+      "options_detected": false,
+      "char_count": 164
+    },
+    {
+      "exchange": 3,
+      "sent": "2 again, can you explain more?",
+      "received": "You've selected to verify the motor and load configuration again. To properly configure the GS10 VFD for your specific motor type, what is the motor's rated power and voltage?\n\nMatch the motor's nameplate data\nCheck the VFD's manual for motor configuration guidelines\nUse the VFD's automatic motor tuning feature",
+      "latency_s": 6.36,
+      "options_detected": false,
+      "char_count": 312,
+      "is_contextual": true
+    }
+  ],
+  "errors": [],
+  "summary": {
+    "total_exchanges": 3,
+    "options_in_first_response": false,
+    "avg_latency_s": 7.2,
+    "follow_up_contextual": true,
+    "total_errors": 0,
+    "console_error_count": 3
+  },
+  "console_errors": [
+    "[warning] No token found in localStorage, user-join event not emitted",
+    "[warning] [tiptap warn]: Duplicate extension names found: ['codeBlock', 'bulletList', 'listItem', 'listKeymap', 'orderedList']. This can lead to issues.",
+    "[warning] [tiptap warn]: Duplicate extension names found: ['codeBlock', 'bulletList', 'listItem', 'listKeymap', 'orderedList']. This can lead to issues."
+  ]
+}

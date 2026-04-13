@@ -104,9 +104,14 @@ class PrintWorker:
             data = resp.json()
         elapsed_ms = int((time.monotonic() - t0) * 1000)
 
-        logger.info("LLM_CALL worker=print %s", json.dumps({
-            "model": model or "mira:latest",
-            "latency_ms": elapsed_ms,
-        }))
+        logger.info(
+            "LLM_CALL worker=print %s",
+            json.dumps(
+                {
+                    "model": model or "mira:latest",
+                    "latency_ms": elapsed_ms,
+                }
+            ),
+        )
 
         return data["choices"][0]["message"]["content"]

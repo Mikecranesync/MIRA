@@ -1,0 +1,89 @@
+# MIRA Observability Stack
+# Usage: docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+#   or:  make observe
+#
+# Services join core-net so they can reach mira-redis and mira-celery-worker directly.
+# Flower connects to Redis broker via CELERY_BROKER_URL.
+# Prometheus scrapes Flower's /metrics endpoint.
+# Grafana reads from Prometheus and auto-provisions the Celery dashboard.
+
+services:
+
+  # ── Flower — Celery task monitor ─────────────────────────────────────────
+  flower:
+    image: mher/flower:2.0
+    container_name: mira-flower
+    restart: unless-stopped
+    command: >
+      celery
+      --broker=${CELERY_BROKER_URL:-redis://mira-redis:6379/0}
+      flower
+      --port=5555
+      --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-mira2026}
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://mira-redis:6379/0}
+    depends_on:
+      - mira-redis
+    networks:
+      - core-net
+
+  # ── RedisInsight — Redis browser UI ──────────────────────────────────────
+  redisinsight:
+    image: redis/redisinsight:2.58
+    container_name: mira-redisinsight
+    restart: unless-stopped
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_data:/data
+    depends_on:
+      - mira-redis
+    networks:
+      - core-net
+
+  # ── Prometheus — metrics collection ──────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v3.4.0
+    container_name: mira-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+    networks:
+      - core-net
+
+  # ── Grafana — dashboards ──────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:12.0.1
+    container_name: mira-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-mira2026}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_INSTALL_PLUGINS=redis-datasource
+    depends_on:
+      - prometheus
+    networks:
+      - core-net
+
+networks:
+  core-net:
+    external: true
+
+volumes:
+  redisinsight_data:
+  prometheus_data:
+  grafana_data:

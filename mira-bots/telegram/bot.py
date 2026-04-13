@@ -8,18 +8,17 @@ import os
 
 import httpx
 from PIL import Image
+from shared import tts
+from shared.gsd_engine import GSDEngine
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
-    ContextTypes,
 )
-
-from shared.gsd_engine import GSDEngine
-from shared import tts
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,7 +31,9 @@ OPENWEBUI_BASE_URL = os.environ.get("OPENWEBUI_BASE_URL", "http://mira-core:8080
 OPENWEBUI_API_KEY = os.environ.get("OPENWEBUI_API_KEY", "")
 MCP_BASE_URL = os.environ.get("MCP_BASE_URL", "http://mira-mcp:8001")
 MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
-KNOWLEDGE_COLLECTION_ID = os.environ.get("KNOWLEDGE_COLLECTION_ID", "dd9004b9-3af2-4751-9993-3307e478e9a3")
+KNOWLEDGE_COLLECTION_ID = os.environ.get(
+    "KNOWLEDGE_COLLECTION_ID", "dd9004b9-3af2-4751-9993-3307e478e9a3"
+)
 INGEST_SERVICE_URL = os.environ.get("INGEST_SERVICE_URL", "")
 
 engine = GSDEngine(
@@ -47,8 +48,17 @@ engine = GSDEngine(
 )
 
 FAULT_KEYWORDS = {
-    "fault", "error", "fail", "trip", "alarm", "down",
-    "not working", "broken", "stopped", "issue", "warning",
+    "fault",
+    "error",
+    "fail",
+    "trip",
+    "alarm",
+    "down",
+    "not working",
+    "broken",
+    "stopped",
+    "issue",
+    "warning",
 }
 
 # Photo batching: accumulate rapid-fire multi-photo messages before processing
@@ -68,9 +78,7 @@ class typing_action:
     async def _loop(self):
         while True:
             try:
-                await self.context.bot.send_chat_action(
-                    chat_id=self.chat_id, action=self.action
-                )
+                await self.context.bot.send_chat_action(chat_id=self.chat_id, action=self.action)
             except Exception:
                 pass
             await asyncio.sleep(4)
@@ -114,8 +122,18 @@ def _equipment_type_from_doc(filename: str, caption: str) -> str:
     if caption and caption.strip():
         return caption.strip().split()[0].lower()[:40]
     stem = os.path.splitext(filename)[0].lower()
-    for suffix in ("-manual", "-guide", "-spec", "-datasheet", "-data-sheet",
-                   "_manual", "_guide", "_spec", "_datasheet", "_data_sheet"):
+    for suffix in (
+        "-manual",
+        "-guide",
+        "-spec",
+        "-datasheet",
+        "-data-sheet",
+        "_manual",
+        "_guide",
+        "_spec",
+        "_datasheet",
+        "_data_sheet",
+    ):
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
             break
@@ -148,16 +166,12 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = update.message.caption or ""
 
     if doc.mime_type != "application/pdf":
-        await update.message.reply_text(
-            f"Only PDF files are supported (got {doc.mime_type})."
-        )
+        await update.message.reply_text(f"Only PDF files are supported (got {doc.mime_type}).")
         return
 
     MB = 1024 * 1024
     if doc.file_size and doc.file_size > 20 * MB:
-        await update.message.reply_text(
-            f"{filename} is {doc.file_size // MB}MB — limit is 20MB."
-        )
+        await update.message.reply_text(f"{filename} is {doc.file_size // MB}MB — limit is 20MB.")
         return
 
     if not INGEST_SERVICE_URL:
@@ -166,8 +180,9 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     equipment_type = _equipment_type_from_doc(filename, caption)
     await update.message.reply_text(f"Indexing {filename}...")
-    logger.info("PDF from %s: %s (type=%s)", update.effective_user.first_name,
-                filename, equipment_type)
+    logger.info(
+        "PDF from %s: %s (type=%s)", update.effective_user.first_name, filename, equipment_type
+    )
 
     async def _do_ingest_doc():
         try:
@@ -184,10 +199,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             col = data.get("collection_name", "Knowledge Base")
             proc = data.get("processing_status", "completed")
             if proc == "completed":
-                reply = (
-                    f"Indexed *{filename}* into *{col}* collection.\n"
-                    "Ask me anything about it."
-                )
+                reply = f"Indexed *{filename}* into *{col}* collection.\nAsk me anything about it."
             else:
                 reply = (
                     f"*{filename}* uploaded to *{col}*.\n"
@@ -216,6 +228,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def _get_voice_enabled(chat_id: str) -> bool:
     """Read voice_enabled flag from DB for this chat."""
     import sqlite3
+
     db_path = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
     try:
         db = sqlite3.connect(db_path)
@@ -232,6 +245,7 @@ def _get_voice_enabled(chat_id: str) -> bool:
 def _set_voice_enabled(chat_id: str, enabled: bool) -> None:
     """Write voice_enabled flag to DB for this chat."""
     import sqlite3
+
     db_path = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
     db = sqlite3.connect(db_path)
     db.execute("PRAGMA journal_mode=WAL")
@@ -272,8 +286,7 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         status = "on" if _get_voice_enabled(chat_id) else "off"
         await update.message.reply_text(
-            f"Voice responses are currently {status}.\n"
-            "Use /voice on or /voice off to change."
+            f"Voice responses are currently {status}.\nUse /voice on or /voice off to change."
         )
 
 
@@ -312,9 +325,7 @@ async def _process_photo_batch(
                     engine.process(chat_id, caption, photo_b64=photo_b64)
                 )
                 try:
-                    reply = await asyncio.wait_for(
-                        asyncio.shield(process_task), timeout=10.0
-                    )
+                    reply = await asyncio.wait_for(asyncio.shield(process_task), timeout=10.0)
                 except asyncio.TimeoutError:
                     await update.message.reply_text(
                         "Processing equipment photo — this may take up to 90 seconds"
@@ -398,9 +409,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "task": None,
         }
 
-    flush_task = asyncio.create_task(
-        _flush_photos(chat_id_int, update, context)
-    )
+    flush_task = asyncio.create_task(_flush_photos(chat_id_int, update, context))
     PHOTO_BUFFER[chat_id_int]["task"] = flush_task
 
 
@@ -424,7 +433,12 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     headers=headers,
                     json={
                         "model": "mira:latest",
-                        "messages": [{"role": "user", "content": "Give a brief status summary of all monitored equipment"}],
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": "Give a brief status summary of all monitored equipment",
+                            }
+                        ],
                         "files": [{"type": "collection", "id": KNOWLEDGE_COLLECTION_ID}],
                     },
                 )
@@ -492,7 +506,9 @@ async def faults_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         lines = [f"Active Faults ({len(faults)}):"]
         for f in faults:
-            lines.append(f"\u2022 [{f['severity'].upper()}] {f['equipment_id']} \u2014 {f['fault_code']}: {f['description']}")
+            lines.append(
+                f"\u2022 [{f['severity'].upper()}] {f['equipment_id']} \u2014 {f['fault_code']}: {f['description']}"
+            )
         await update.message.reply_text("\n".join(lines))
     except Exception as e:
         logger.error("Faults command error: %s", e)
@@ -507,7 +523,9 @@ async def bad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if reason:
         await update.message.reply_text(f"Logged: {reason}")
     else:
-        await update.message.reply_text("Logged. What specifically was wrong?\nUse /bad <reason> to explain.")
+        await update.message.reply_text(
+            "Logged. What specifically was wrong?\nUse /bad <reason> to explain."
+        )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

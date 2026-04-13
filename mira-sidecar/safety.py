@@ -23,7 +23,6 @@ SAFETY_KEYWORDS: list[str] = [
     "loto",
     "visible smoke",
     "smoke from",
-    "smoking",
     "burn mark",
     "melted insulation",
     "electrical fire",

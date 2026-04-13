@@ -11,11 +11,12 @@ Activated via USE_DOCLING=true env var — never call directly.
 """
 from __future__ import annotations
 
+import io
 import logging
 
 logger = logging.getLogger("docling_adapter")
 
-DEFAULT_MAX_PAGES = 300
+DEFAULT_MAX_PAGES = 1000
 DEFAULT_MIN_CHUNK_CHARS = 80
 
 
@@ -71,6 +72,26 @@ class DoclingAdapter:
 
         if not data:
             return []
+
+        # Pre-check page count BEFORE expensive Docling conversion
+        try:
+            from pypdf import PdfReader
+
+            reader = PdfReader(io.BytesIO(data))
+            page_count = len(reader.pages)
+            if page_count > self.max_pages:
+                logger.warning(
+                    "PDF has %d pages (max %d) — skipping pre-conversion",
+                    page_count,
+                    self.max_pages,
+                )
+                return []
+            logger.info("PDF pre-check: %d pages (max %d) — proceeding", page_count, self.max_pages)
+        except ImportError:
+            logger.debug("pypdf not available — skipping pre-check")
+        except Exception as e:
+            logger.debug("pypdf pre-check failed (%s) — letting Docling try", e)
+
         try:
             self._load()
         except RuntimeError as e:
@@ -83,13 +104,6 @@ class DoclingAdapter:
                 tmp_path = tmp.name
             result = self._converter.convert(Path(tmp_path))
             doc = result.document
-            if len(doc.pages) > self.max_pages:
-                logger.warning(
-                    "PDF exceeds max_pages (%d > %d) — skipping",
-                    len(doc.pages),
-                    self.max_pages,
-                )
-                return []
             table_count = len(doc.tables) if hasattr(doc, "tables") and doc.tables else 0
             if table_count:
                 logger.info("PDF contains %d tables (rendered as Markdown in chunks)", table_count)

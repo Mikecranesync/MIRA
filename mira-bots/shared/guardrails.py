@@ -3,46 +3,158 @@
 Pure Python, zero external dependencies.
 """
 
+import random
 import re
 
 SAFETY_KEYWORDS = [
-    "exposed wire", "energized conductor", "arc flash", "lockout", "tagout",
-    "loto", "smoke", "burn mark", "melted insulation", "electrical fire",
-    "shock hazard", "rotating hazard", "pinch point", "entanglement",
-    "confined space", "pressurized", "caught in", "crush hazard",
-    "fall hazard", "chemical spill", "gas leak",
+    "exposed wire",
+    "energized conductor",
+    "arc flash",
+    "lockout tagout",
+    "lockout/tagout",
+    "loto",
+    "visible smoke",
+    "smoke from",
+    "burn mark",
+    "melted insulation",
+    "electrical fire",
+    "shock hazard",
+    "rotating hazard",
+    "pinch point",
+    "entanglement",
+    "confined space",
+    "pressurized",
+    "caught in",
+    "crush hazard",
+    "fall hazard",
+    "chemical spill",
+    "gas leak",
 ]
 
 INTENT_KEYWORDS = {
     # Fault & alarm terms
-    "fault", "error", "fail", "trip", "alarm", "down", "not working",
-    "broken", "stopped", "issue", "warning", "faulting", "tripping",
-    "wrong", "problem", "diagnose", "analyze",
+    "fault",
+    "error",
+    "fail",
+    "trip",
+    "alarm",
+    "down",
+    "not working",
+    "broken",
+    "stopped",
+    "issue",
+    "warning",
+    "faulting",
+    "tripping",
+    "wrong",
+    "problem",
+    "diagnose",
+    "analyze",
     # Symptoms
-    "vibration", "noise", "leak", "hot", "cold", "smell", "spark",
-    "reading", "pressure", "temperature", "speed", "current", "voltage",
+    "vibration",
+    "noise",
+    "leak",
+    "hot",
+    "cold",
+    "smell",
+    "spark",
+    "reading",
+    "pressure",
+    "temperature",
+    "speed",
+    "current",
+    "voltage",
     # Actions
-    "nameplate", "model", "serial", "reset", "calibrate", "replace",
-    "code", "showing", "display", "mean",
+    "nameplate",
+    "model",
+    "serial",
+    "reset",
+    "calibrate",
+    "replace",
+    "code",
+    "showing",
+    "display",
+    "mean",
     # Negation patterns
-    "not respond", "not activat", "not working", "not turning", "not start",
-    "output", "input", "no power", "no signal", "no output", "no response",
+    "not respond",
+    "not activat",
+    "not working",
+    "not turning",
+    "not start",
+    "output",
+    "input",
+    "no power",
+    "no signal",
+    "no output",
+    "no response",
     # Equipment operation
-    "parameter", "setting", "configure", "mode", "stop", "start", "run",
-    "accel", "decel", "ramp", "frequency", "torque", "overload",
+    "parameter",
+    "setting",
+    "configure",
+    "mode",
+    "stop",
+    "start",
+    "run",
+    "accel",
+    "decel",
+    "ramp",
+    "frequency",
+    "torque",
+    "overload",
     # Specifications
-    "spec", "specification", "rating", "rated", "capacity", "range",
-    "limit", "tolerance", "ambient", "altitude", "enclosure", "dimension",
+    "spec",
+    "specification",
+    "rating",
+    "rated",
+    "capacity",
+    "range",
+    "limit",
+    "tolerance",
+    "ambient",
+    "altitude",
+    "enclosure",
+    "dimension",
     # Installation
-    "wire", "wiring", "install", "mount", "connect", "terminal", "cable",
-    "ground", "grounding", "shield", "conduit",
+    "wire",
+    "wiring",
+    "install",
+    "mount",
+    "connect",
+    "terminal",
+    "cable",
+    "ground",
+    "grounding",
+    "shield",
+    "conduit",
     # General maintenance
-    "maintenance", "inspect", "lubricate", "procedure", "schedule",
-    "troubleshoot", "repair", "overhaul", "manual",
+    "maintenance",
+    "inspect",
+    "lubricate",
+    "procedure",
+    "schedule",
+    "troubleshoot",
+    "repair",
+    "overhaul",
+    "manual",
     # Equipment types
-    "drive", "motor", "pump", "conveyor", "compressor", "sensor",
-    "switch", "relay", "breaker", "fuse", "transformer", "contactor",
-    "plc", "hmi", "vfd", "servo", "encoder", "actuator",
+    "drive",
+    "motor",
+    "pump",
+    "conveyor",
+    "compressor",
+    "sensor",
+    "switch",
+    "relay",
+    "breaker",
+    "fuse",
+    "transformer",
+    "contactor",
+    "plc",
+    "hmi",
+    "vfd",
+    "servo",
+    "encoder",
+    "actuator",
 }
 
 # Equipment brand/model names — always classify as industrial intent
@@ -62,49 +174,223 @@ _FAULT_CODE_RE = re.compile(
 )
 
 GREETING_PATTERNS = {
-    "hello", "hi", "hey", "howdy", "good morning", "good afternoon",
-    "good evening", "what's up", "sup", "yo", "thanks", "thank you",
-    "bye", "goodbye", "see you", "later",
+    "hello",
+    "hi",
+    "hey",
+    "howdy",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "what's up",
+    "sup",
+    "yo",
+    "thanks",
+    "thank you",
+    "bye",
+    "goodbye",
+    "see you",
+    "later",
 }
 
 HELP_PATTERNS = {
-    "what can you do", "help me", "how do you work", "what do you do",
-    "can you help", "who are you", "what are you",
+    "what can you do",
+    "help me",
+    "how do you work",
+    "what do you do",
+    "can you help",
+    "who are you",
+    "what are you",
 }
 
 MAINTENANCE_ABBREVIATIONS = {
-    "mtr": "motor", "vfd": "variable frequency drive", "oc": "overcurrent",
-    "trpd": "tripped", "dwn": "down", "brk": "breaker", "xfmr": "transformer",
-    "pnl": "panel", "sw": "switch", "cb": "circuit breaker", "ol": "overload",
-    "uv": "undervoltage", "ov": "overvoltage", "gf": "ground fault",
-    "plc": "programmable logic controller", "hmi": "human machine interface",
-    "dcs": "distributed control system", "rtd": "resistance temperature detector",
-    "tc": "thermocouple", "psi": "pounds per square inch", "rpm": "revolutions per minute",
-    "hp": "horsepower", "kw": "kilowatt", "amp": "ampere",
-    "hz": "hertz", "gpm": "gallons per minute", "cfm": "cubic feet per minute",
-    "loto": "lockout tagout", "ppe": "personal protective equipment",
-    "sop": "standard operating procedure", "pm": "preventive maintenance",
-    "wo": "work order", "cmms": "computerized maintenance management system",
-    "conv": "conveyor", "comp": "compressor", "gen": "generator", "xfer": "transfer",
-    "msg": "message", "pwr": "power", "flt": "fault", "tmp": "temperature",
-    "spd": "speed", "freq": "frequency", "ctrl": "control", "sys": "system",
-    "seq": "sequencer", "e-stop": "emergency stop", "estop": "emergency stop",
-    "pneu": "pneumatic", "hyd": "hydraulic", "cont": "contactor", "act": "actuator",
-    "blk": "black", "wht": "white", "red": "red", "grn": "green", "blu": "blue",
-    "prox": "proximity sensor", "sol": "solenoid", "vlv": "valve", "cyl": "cylinder",
-    "brgn": "bearing", "brg": "bearing", "enc": "encoder", "srv": "servo",
-    "io": "input output", "di": "digital input", "do": "digital output",
-    "ai": "analog input", "ao": "analog output", "pid": "proportional integral derivative",
-    "scr": "screen", "disp": "display", "pmp": "pump", "fdr": "feeder",
-    "acc": "accumulator", "dmp": "damper", "exh": "exhaust", "intlk": "interlock",
+    "mtr": "motor",
+    "vfd": "variable frequency drive",
+    "oc": "overcurrent",
+    "trpd": "tripped",
+    "dwn": "down",
+    "brk": "breaker",
+    "xfmr": "transformer",
+    "pnl": "panel",
+    "sw": "switch",
+    "cb": "circuit breaker",
+    "ol": "overload",
+    "uv": "undervoltage",
+    "ov": "overvoltage",
+    "gf": "ground fault",
+    "plc": "programmable logic controller",
+    "hmi": "human machine interface",
+    "dcs": "distributed control system",
+    "rtd": "resistance temperature detector",
+    "tc": "thermocouple",
+    "psi": "pounds per square inch",
+    "rpm": "revolutions per minute",
+    "hp": "horsepower",
+    "kw": "kilowatt",
+    "amp": "ampere",
+    "hz": "hertz",
+    "gpm": "gallons per minute",
+    "cfm": "cubic feet per minute",
+    "loto": "lockout tagout",
+    "ppe": "personal protective equipment",
+    "sop": "standard operating procedure",
+    "pm": "preventive maintenance",
+    "wo": "work order",
+    "cmms": "computerized maintenance management system",
+    "conv": "conveyor",
+    "comp": "compressor",
+    "gen": "generator",
+    "xfer": "transfer",
+    "msg": "message",
+    "pwr": "power",
+    "flt": "fault",
+    "tmp": "temperature",
+    "spd": "speed",
+    "freq": "frequency",
+    "ctrl": "control",
+    "sys": "system",
+    "seq": "sequencer",
+    "e-stop": "emergency stop",
+    "estop": "emergency stop",
+    "pneu": "pneumatic",
+    "hyd": "hydraulic",
+    "cont": "contactor",
+    "act": "actuator",
+    "blk": "black",
+    "wht": "white",
+    "red": "red",
+    "grn": "green",
+    "blu": "blue",
+    "prox": "proximity sensor",
+    "sol": "solenoid",
+    "vlv": "valve",
+    "cyl": "cylinder",
+    "brgn": "bearing",
+    "brg": "bearing",
+    "enc": "encoder",
+    "srv": "servo",
+    "io": "input output",
+    "di": "digital input",
+    "do": "digital output",
+    "ai": "analog input",
+    "ao": "analog output",
+    "pid": "proportional integral derivative",
+    "scr": "screen",
+    "disp": "display",
+    "pmp": "pump",
+    "fdr": "feeder",
+    "acc": "accumulator",
+    "dmp": "damper",
+    "exh": "exhaust",
+    "intlk": "interlock",
 }
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>\s*")
 
+# Signals that the technician is under time or job pressure.
+EMOTIONAL_PRESSURE_SIGNALS = [
+    "days",
+    "hours",
+    "all week",
+    "all month",
+    "third time",
+    "fourth time",
+    "fifth time",
+    "again and again",
+    "keeps faulting",
+    "keeps tripping",
+    "my boss",
+    "the boss",
+    "manager",
+    "write me up",
+    "write up",
+    "fired",
+    "end of shift",
+    "shift ends",
+    "deadline",
+    "losing my job",
+    "my fault",
+    "blamed me",
+    "shutting down",
+    "production down",
+    "line's down",
+    "line is down",
+]
+
+# Signals that the technician is a junior / first-timer.
+JUNIOR_SIGNALS = [
+    "i'm new",
+    "im new",
+    "new to this",
+    "first time",
+    "just started",
+    "don't know much",
+    "not sure what",
+    "i think it might",
+    "learning",
+    "can you explain",
+    "what does that mean",
+    "what is a",
+]
+
+# Signals that the technician is experienced.
+SENIOR_SIGNALS = [
+    "fla",
+    "oc ",
+    "ol ",
+    "gf ",
+    "uvf",
+    "ovf",
+    "loto",
+    "rms",
+    "thd",
+    "svc",
+    "acr",
+    "plc tag",
+    "rung",
+    "ladder logic",
+    "struct text",
+]
+
+# Greeting variants — randomized so repeat users don't see the same string.
+_GREETING_VARIANTS = [
+    (
+        "Hey \u2014 I'm MIRA, your maintenance copilot. "
+        "Send me a photo of equipment, a fault code, or describe what's "
+        "going on and I'll help you diagnose it."
+    ),
+    (
+        "MIRA here. Photo, fault code, or symptom description \u2014 "
+        "tell me what you've got and we'll work through it."
+    ),
+    ("Hey. What's the equipment and what's it doing?"),
+]
+
 SESSION_FOLLOWUP_SIGNALS = [
-    "you said", "you mentioned", "you told me", "link", "url", "website",
-    "manufacturer", "datasheet", "manual", "document", "earlier", "before",
-    "last time", "again", "repeat", "what was", "where did",
+    "you said",
+    "you mentioned",
+    "you told me",
+    "link",
+    "url",
+    "website",
+    "manufacturer",
+    "datasheet",
+    "manual",
+    "document",
+    "earlier",
+    "before",
+    "last time",
+    "again",
+    "repeat",
+    "what was",
+    "where did",
+    "explain",
+    "why",
+    "tell me more",
+    "go deeper",
+    "how does that work",
+    "what does that mean",
+    "break it down",
+    "more detail",
 ]
 
 
@@ -123,24 +409,73 @@ def detect_session_followup(message: str, session_context: dict, fsm_state: str)
     return any(sig in msg_lower for sig in SESSION_FOLLOWUP_SIGNALS)
 
 
-_SELECTION_RE = re.compile(r"^\s*(\d+)\.?\s*$")
+_SELECTION_RE = re.compile(r"^\s*(?:option\s+)?(\d+)[.\-,):]?\s*", re.IGNORECASE)
 
 
 def resolve_option_selection(message: str, last_options: list[str]) -> str | None:
-    """If message is a numbered selection (e.g. "1", "1.", "2"), return the
-    matching option text. Returns None if not a valid selection."""
+    """If message starts with a numbered selection, return the matching option text.
+
+    Handles natural replies like "2", "2.", "option 2", "2 again", "2 - yes".
+    When the user adds a short filler (<20 chars) after the number, the bare
+    option text is returned.  When they add a meaningful elaboration (>=20 chars),
+    the elaboration is appended: "<option> — <elaboration>".
+
+    Returns None if the message does not start with a valid in-range number.
+    """
     m = _SELECTION_RE.match(message)
     if not m:
         return None
     idx = int(m.group(1)) - 1  # 1-indexed to 0-indexed
-    if 0 <= idx < len(last_options):
-        return last_options[idx]
-    return None
+    if not (0 <= idx < len(last_options)):
+        return None
+    remainder = message[m.end() :].strip()
+    selected = last_options[idx]
+    if len(remainder) < 20:
+        return selected
+    return f"{selected} — {remainder}"
 
 
 def strip_mentions(message: str) -> str:
     """Remove Slack-style @mention tags from message text."""
     return _MENTION_RE.sub("", message).strip()
+
+
+def detect_expertise_level(message: str) -> str:
+    """Estimate technician expertise from vocabulary.
+
+    Returns: 'senior' | 'junior' | 'unknown'
+
+    Used by the inference layer to hint the prompt (Rule 17).
+    Not used for routing — only for context enrichment.
+    """
+    msg_lower = message.lower()
+    junior_hits = sum(1 for s in JUNIOR_SIGNALS if s in msg_lower)
+    senior_hits = sum(1 for s in SENIOR_SIGNALS if s in msg_lower)
+
+    # Terse messages with abbreviations lean senior; verbose with uncertainty lean junior
+    word_count = len(message.split())
+    if word_count < 8 and senior_hits > 0:
+        return "senior"
+    if junior_hits >= 2:
+        return "junior"
+    if junior_hits == 1 and senior_hits == 0:
+        return "junior"
+    if senior_hits >= 2:
+        return "senior"
+    return "unknown"
+
+
+def detect_emotional_state(message: str) -> str:
+    """Detect emotional pressure signals in the technician's message.
+
+    Returns: 'pressured' | 'neutral'
+
+    'pressured' covers downtime duration, job threat, repeated failure.
+    Used by inference layer to trigger Rule 18 acknowledgment.
+    """
+    msg_lower = message.lower()
+    hits = sum(1 for s in EMOTIONAL_PRESSURE_SIGNALS if s in msg_lower)
+    return "pressured" if hits >= 1 else "neutral"
 
 
 def classify_intent(message: str) -> str:
@@ -162,11 +497,12 @@ def classify_intent(message: str) -> str:
     if any(pat in msg for pat in HELP_PATTERNS):
         return "help"
 
-    # Short greetings — check before industrial to avoid "hi" triggering "hmi"
-    words = set(msg.split())
-    if (words & GREETING_PATTERNS and len(msg) < 20) or len(msg) < 4:
-        return "greeting"
-
+    # Industrial signals — check BEFORE greeting to avoid false positives on
+    # messages like "hi my vfd is down" (17 chars, contains "hi" greeting word
+    # but also has "down" in INTENT_KEYWORDS). The original ordering checked
+    # greetings first to avoid "hi" triggering "hmi", but that's not a real
+    # risk: expand_abbreviations("hi") stays "hi" and substring matching
+    # checks INTENT_KEYWORDS-in-text, not text-in-INTENT_KEYWORDS.
     if any(kw in msg_expanded for kw in INTENT_KEYWORDS):
         return "industrial"
 
@@ -177,6 +513,11 @@ def classify_intent(message: str) -> str:
     # Equipment brand/model name match (PowerFlex, Micro820, etc.)
     if _EQUIPMENT_NAME_RE.search(message):
         return "industrial"
+
+    # Short greetings — only reached if no industrial signal was found
+    words = set(msg.split())
+    if (words & GREETING_PATTERNS and len(msg) < 20) or len(msg) < 4:
+        return "greeting"
 
     # Default to industrial — a maintenance bot should attempt to help
     return "industrial"
@@ -193,28 +534,19 @@ def check_output(response: str, intent: str, has_photo: bool = False) -> str:
     # No industrial jargon in greeting/help responses
     if intent in ("greeting", "help"):
         hallucination_markers = [
-            "soft starter", "modbus", "overcurrent",
+            "soft starter",
+            "modbus",
+            "overcurrent",
             "variable frequency",
         ]
         if any(marker in resp_lower for marker in hallucination_markers):
             if intent == "greeting":
-                return (
-                    "Hey \u2014 I'm MIRA, your maintenance copilot. "
-                    "Send me a photo of equipment, a fault code, or describe what's "
-                    "going on and I'll help you diagnose it."
-                )
-            return (
-                "I help maintenance technicians diagnose equipment issues. "
-                "Send me a photo of a fault screen, a fault code like "
-                "'OC' or 'F-201', or describe what's happening with your equipment."
-            )
+                return random.choice(_GREETING_VARIANTS)
+            return "What equipment or fault code can I help you with?"
 
     # No system prompt leakage
     if intent != "industrial" and "system prompt" in resp_lower:
-        return (
-            "I help maintenance technicians diagnose equipment issues. "
-            "What can I help you with?"
-        )
+        return "What equipment or fault code can I help you with?"
 
     return response
 

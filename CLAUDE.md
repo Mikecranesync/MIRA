@@ -3,7 +3,7 @@
 **Version:** v0.5.4
 **Updated:** 2026-04-13
 **One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=claude` → Anthropic API | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
+**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099, OpenAI-compat) → GSDEngine → Anthropic API
 
 ---
@@ -67,15 +67,32 @@ MIRA/
 ├── mira-hud/           # AR HUD desktop app (Express + Socket.IO, standalone)
 ├── mira-sidecar/       # ⚠️  LEGACY — ChromaDB RAG backend, superseded by mira-pipeline (ADR-0008)
 │                       #    Do NOT add new callers. OEM doc migration pending before removal.
+├── mira-web/           # PLG acquisition funnel — Hono/Bun, /cmms landing + Mira AI chat (1 container)
+├── wiki/               # LLM-maintained ops wiki (Karpathy pattern) — open as Obsidian vault
 ├── tests/              # 5-regime testing framework (76 offline tests, 39 golden cases)
 ├── docs/               # PRD, ADRs, architecture C4 diagrams, runbooks
-├── tools/              # Photo pipeline, Google Drive/Photos ingest scripts, migration scripts
+├── tools/              # Photo pipeline, Google Drive/Photos ingest, Reddit→TG curation, migration scripts
 ├── install/            # Setup scripts, smoke tests
 ├── deployment/         # Admin guide, customer agreement
 └── plc/                # PLC program files (deferred to Config 4)
 ```
 
 See local CLAUDE.md in each module for deep context.
+
+**Flows & architecture maps:** Persistent copies in `~/.claude/projects/.../memory/flows/` — Tailscale network, ingest pipeline, C4 index, fault diagnosis, photo pipeline.
+
+### Knowledge Ingest Route
+
+```
+Apify/Firecrawl/rclone → manual_cache → ingest_manuals.py (2:15am)
+→ Docling/pdfplumber → chunk_blocks() [mira-crawler/ingest/chunker.py]
+→ TOKEN CAP 2000 (Gemma+nomic safe) → Ollama embed (BRAVO:11434)
+→ NeonDB knowledge_entries (25K rows) → 4-stage retrieval
+```
+
+Endpoints: `mira-ingest :8002 POST /ingest/photo` | `mira-mcp :8009 POST /ingest/pdf`
+Key files: `mira-crawler/ingest/chunker.py` | `mira-core/scripts/ingest_manuals.py` | `mira-core/mira-ingest/db/neon.py`
+Full diagram: `~/.claude/projects/.../memory/flows/knowledge-ingest-pipeline.md`
 
 ---
 
@@ -84,8 +101,10 @@ See local CLAUDE.md in each module for deep context.
 | Container         | Host Port(s) | Network(s)        | Healthcheck                 |
 |-------------------|--------------|-------------------|-----------------------------|
 | mira-core         | 3000 → 8080  | core-net, bot-net | GET /health                 |
+| mira-pipeline     | 9099         | core-net          | curl /health                |
 | mira-mcpo         | 8000         | core-net          | GET /mira-mcp/docs (bearer) |
 | mira-ingest       | 8002 → 8001  | core-net          | Python urlopen /health      |
+| mira-docling      | 5001         | core-net          | curl /health                |
 | mira-bridge       | 1880         | core-net          | GET /                       |
 | mira-mcp          | 8000, 8001   | core-net          | Python urlopen /sse         |
 | mira-bot-telegram | —            | bot-net, core-net | import check                |
@@ -97,6 +116,7 @@ See local CLAUDE.md in each module for deep context.
 | atlas-api         | 8088 → 8080  | cmms-net, core-net| GET /actuator/health        |
 | atlas-frontend    | 3100 → 3000  | cmms-net          | GET /                       |
 | atlas-minio       | 9000, 9001   | cmms-net          | mc ready local              |
+| mira-web          | 3200 → 3000  | core-net, cmms-net| curl /api/health            |
 
 ---
 
@@ -154,9 +174,15 @@ chore: build system, deps, tooling
 | `SLACK_BOT_TOKEN`    | mira-bot-slack                       |
 | `SLACK_APP_TOKEN`    | mira-bot-slack (Socket Mode)         |
 | `ANTHROPIC_API_KEY`  | mira-bots (Claude inference)         |
-| `INFERENCE_BACKEND`  | mira-bots — `"claude"` or `"local"` |
+| `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
+| `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — primary free tier) |
+| `GROQ_MODEL`         | mira-bots, mira-pipeline — default: llama-3.3-70b-versatile |
+| `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: meta-llama/llama-4-scout-17b-16e-instruct |
+| `CEREBRAS_API_KEY`   | mira-bots (Cerebras — secondary free tier) |
+| `CEREBRAS_MODEL`     | mira-bots — default: llama3.1-8b |
 | `CLAUDE_MODEL`       | mira-bots — default: claude-sonnet-4-6 |
-| `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest               |
+| `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest, mira-pipeline |
+| `PIPELINE_API_KEY`   | mira-pipeline (bearer auth), mira-core (OPENAI_API_KEYS) |
 | `MCP_REST_API_KEY`   | mira-mcp (server), mira-bots (client)|
 | `NEON_DATABASE_URL`  | mira-ingest (NeonDB)                 |
 | `MIRA_TENANT_ID`     | mira-ingest (tenant scoping)         |
@@ -234,6 +260,8 @@ chore: build system, deps, tooling
 - `.claude/skills/` — domain skills for diagnostic workflow, adapters, inference, HUD, ingest
 - `docs/adr/` — Architecture Decision Records
 - `docs/runbooks/` — operational runbooks
+- `wiki/` — LLM-maintained ops wiki (Karpathy pattern). **Session start: read `wiki/hot.md`. Session end: update it.**
+- `wiki/SCHEMA.md` — operating instructions for the wiki
 - `.planning/STATE.md` — current sprint state and next task
 - `KNOWLEDGE.md` — deep institutional knowledge (architecture decisions, abandoned approaches, recurring problems)
 - `DEVLOG.md` — chronological development diary (Mar 11–27, 2026)

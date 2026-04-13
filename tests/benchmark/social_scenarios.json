@@ -1,0 +1,182 @@
+[
+  {
+    "id": "EMO-001",
+    "category": "emotional",
+    "emotional_signal": "downtime_duration",
+    "message": "This conveyor has been down for 3 days. Motor hums but shaft doesn't turn. Running a Baldor 15HP.",
+    "expected_acknowledgment": true,
+    "ack_keywords": ["three days", "3 days", "long time", "significant", "that's"],
+    "expected_forward": true,
+    "expertise_expected": "unknown"
+  },
+  {
+    "id": "EMO-002",
+    "category": "emotional",
+    "emotional_signal": "job_pressure",
+    "message": "My boss is threatening to write me up if this PowerFlex 40 line doesn't run by end of shift. Shows F4.",
+    "expected_acknowledgment": true,
+    "ack_keywords": ["end of shift", "shift", "let's move", "fast", "pressure"],
+    "expected_forward": true,
+    "expertise_expected": "unknown"
+  },
+  {
+    "id": "EMO-003",
+    "category": "emotional",
+    "emotional_signal": "junior_anxiety",
+    "message": "Hi, I'm new to this facility and don't really understand these drives. The display shows OC and the motor stopped.",
+    "expected_acknowledgment": false,
+    "ack_keywords": [],
+    "expected_forward": true,
+    "expertise_expected": "junior"
+  },
+  {
+    "id": "EMO-004",
+    "category": "emotional",
+    "emotional_signal": "exhaustion",
+    "message": "I've been working on this motor for 6 hours straight. F2 fault on the drive keeps coming back after reset.",
+    "expected_acknowledgment": true,
+    "ack_keywords": ["six hours", "6 hours", "coming back", "keeps", "recurring"],
+    "expected_forward": true,
+    "expertise_expected": "unknown"
+  },
+  {
+    "id": "EMO-005",
+    "category": "emotional",
+    "emotional_signal": "chronic_failure",
+    "message": "Fourth time this month this drive has faulted. Same OC fault every time. Siemens SINAMICS G120.",
+    "expected_acknowledgment": true,
+    "ack_keywords": ["fourth time", "4th time", "tells us", "pattern", "recurring", "again"],
+    "expected_forward": true,
+    "expertise_expected": "unknown"
+  },
+  {
+    "id": "EMO-006",
+    "category": "emotional",
+    "emotional_signal": "blame",
+    "message": "My maintenance manager says it's definitely the motor that failed. I don't think it's the motor. GS20 VFD, OL fault.",
+    "expected_acknowledgment": false,
+    "ack_keywords": [],
+    "expected_forward": true,
+    "expertise_expected": "unknown"
+  },
+  {
+    "id": "EMO-007",
+    "category": "emotional",
+    "emotional_signal": "night_shift",
+    "message": "It's 3am, night shift, I'm the only one here. VFD on pump 3 keeps tripping OV fault every 20 minutes.",
+    "expected_acknowledgment": true,
+    "ack_keywords": ["night shift", "3am", "alone", "every 20", "recurring"],
+    "expected_forward": true,
+    "expertise_expected": "unknown"
+  },
+  {
+    "id": "EMO-008",
+    "category": "emotional",
+    "emotional_signal": "none",
+    "message": "Quick question — what does parameter P044 do on a PowerFlex 525?",
+    "expected_acknowledgment": false,
+    "ack_keywords": [],
+    "expected_forward": true,
+    "expertise_expected": "unknown"
+  },
+  {
+    "id": "EMO-009",
+    "category": "emotional",
+    "emotional_signal": "explicit_junior",
+    "message": "Hello I just started working here last week and I don't know much about motors. The motor isn't starting and I don't know where to begin.",
+    "expected_acknowledgment": false,
+    "ack_keywords": [],
+    "expected_forward": true,
+    "expertise_expected": "junior"
+  },
+  {
+    "id": "EMO-010",
+    "category": "emotional",
+    "emotional_signal": "explicit_senior",
+    "message": "PF40 OC trip at 125% FLA. Accel ramp 10s, load is centrifugal pump. P036 at 150. Happened twice in 48hrs.",
+    "expected_acknowledgment": false,
+    "ack_keywords": [],
+    "expected_forward": true,
+    "expertise_expected": "senior"
+  },
+  {
+    "id": "PERS-001",
+    "category": "persona_consistency",
+    "trait": "peer_not_professor",
+    "message": "What causes a VFD to overheat?",
+    "forbidden_phrases": [
+      "it is important to note", "please be aware", "it is worth mentioning",
+      "one should consider", "it should be noted", "allow me to explain",
+      "great question", "certainly!", "of course!", "absolutely!"
+    ]
+  },
+  {
+    "id": "PERS-002",
+    "category": "persona_consistency",
+    "trait": "no_hedge",
+    "message": "PowerFlex 40 showing F4 overcurrent. What should I check first?",
+    "forbidden_phrases": [
+      "might be", "could be", "possibly", "i think", "i believe",
+      "not entirely sure", "hard to say", "difficult to determine", "uncertain"
+    ]
+  },
+  {
+    "id": "PERS-003",
+    "category": "persona_consistency",
+    "trait": "concision",
+    "message": "Motor tripped on thermal overload. What's the next step?",
+    "max_words": 65
+  },
+  {
+    "id": "PERS-004",
+    "category": "persona_consistency",
+    "trait": "single_question",
+    "message": "Contactor chatters when energized. What's wrong?",
+    "max_question_marks": 1
+  },
+  {
+    "id": "PERS-005",
+    "category": "persona_consistency",
+    "trait": "peer_not_professor",
+    "message": "How do I set the accel time on a GS20 drive?",
+    "forbidden_phrases": [
+      "it is important", "please ensure", "you should note",
+      "great question", "certainly", "of course", "absolutely"
+    ]
+  },
+  {
+    "id": "CAL-001",
+    "category": "expertise_calibration",
+    "senior_message": "PF525 OC trip. P036=150, ramp=8s, 10HP pump. Happened after motor swap.",
+    "junior_message": "Hi, I have a PowerFlex 525 drive and it shows an overcurrent fault. The motor was just replaced. I'm not sure what to check. Can you help?",
+    "topic": "VFD overcurrent after motor swap"
+  },
+  {
+    "id": "CAL-002",
+    "category": "expertise_calibration",
+    "senior_message": "Motor megger test: phase-phase 500V DC, getting 2 MΩ L1-L2, 18 MΩ elsewhere. New motor, never run.",
+    "junior_message": "Hello, I tested the motor with a megohmmeter and got different readings between the wires. One pair shows 2 megaohms and the rest show 18 megaohms. Is this normal for a brand new motor?",
+    "topic": "Motor insulation resistance test interpretation"
+  },
+  {
+    "id": "CAL-003",
+    "category": "expertise_calibration",
+    "senior_message": "GS20, OV fault, 480V input, no braking resistor, decel 3s, 20HP centrifugal fan.",
+    "junior_message": "I have an AutomationDirect GS20 drive that shows an overvoltage fault whenever I slow the motor down. The motor is driving a big fan. I don't understand why it faults when stopping.",
+    "topic": "Regen overvoltage on decel"
+  },
+  {
+    "id": "CAL-004",
+    "category": "expertise_calibration",
+    "senior_message": "3RT2 contactor, 120VAC coil, chattering on energize. Bus voltage 118V, measured at coil terminal.",
+    "junior_message": "I have a contactor that makes a buzzing noise and kind of flickers when it's supposed to be on. The coil is 120 volts AC. Everything worked fine until today.",
+    "topic": "Contactor chatter low voltage"
+  },
+  {
+    "id": "CAL-005",
+    "category": "expertise_calibration",
+    "senior_message": "CompactLogix 1769-L33ER, solid red FAULT LED, no I/O comms, last change was adding a 1769-IF4 module.",
+    "junior_message": "My Allen Bradley PLC has a solid red light on the front that says FAULT. It stopped communicating with everything. The only thing we did recently was add a new input card to the rack.",
+    "topic": "PLC hardware fault after adding I/O module"
+  }
+]

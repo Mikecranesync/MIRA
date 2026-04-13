@@ -118,9 +118,43 @@ from `LLM_PROVIDER` and `EMBEDDING_PROVIDER` settings:
 **Important:** When `LLM_PROVIDER=anthropic`, embedding is always Ollama — Anthropic
 has no embedding API. The factory enforces this automatically.
 
-**PII sanitization** is applied inside `AnthropicProvider.complete()` before every
-outbound API call. IPv4 addresses, MAC addresses, and serial numbers are replaced
-with `[IP]`, `[MAC]`, `[SN]`. This matches the pattern in `mira-bots/shared/inference/router.py`.
+**PII sanitization** is applied in both `AnthropicProvider` and `OllamaProvider`
+via the shared `llm/sanitize.py` module. IPv4 addresses, MAC addresses, and serial
+numbers are replaced with `[IP]`, `[MAC]`, `[SN]` before every outbound API call.
+This matches the pattern in `mira-bots/shared/inference/router.py`.
+
+---
+
+## Two-Brain Architecture (PRD v2)
+
+The sidecar maintains two ChromaDB collections:
+
+| Collection   | Name          | Purpose                                   |
+|-------------|---------------|-------------------------------------------|
+| **Brain 1** | `shared_oem`  | Shared OEM manuals — available to ALL users |
+| **Brain 2** | `mira_docs`   | Per-tenant private docs — filtered by `asset_id` |
+
+**Query-time merge:** Brain 2 (n=5) + Brain 1 (n=5) → deduplicate by
+`(source_file, page, chunk_index)` → re-rank by cosine distance → top 5.
+Brain 2 is NOT artificially boosted — wins by relevance only.
+
+**Source labeling:** Each hit carries `_brain` = `"Your docs"` or `"Mira library"`.
+Citations in LLM output use `[Your docs: filename — page N]` vs
+`[Mira library: filename — page N]`.
+
+**Ingestion routing:** Use `collection="shared"` on `/ingest` or `/ingest/upload`
+to target Brain 1. Default `"tenant"` targets Brain 2.
+
+---
+
+## Safety Guardrails (`safety.py`)
+
+`detect_safety(query)` checks for 28 trigger phrases (arc flash, LOTO,
+confined space, etc.) BEFORE the query reaches the LLM. If triggered:
+1. System prompt gets a safety preamble
+2. `SAFETY_BANNER` is prepended to the response
+
+Keywords are phrase-level (not single words) to reduce false positives.
 
 ---
 
@@ -192,12 +226,14 @@ Re-ingesting the same document is idempotent — chunk IDs are derived from
 
 ## Document Chunking
 
-`rag/chunker.py` supports PDF (pdfplumber), DOCX (python-docx), and TXT.
-Default chunk size: 512 tokens. Default overlap: 64 tokens.
-Token counting uses tiktoken `cl100k_base` encoding.
+`rag/chunker.py` handles file extraction (PDF via pdfplumber, DOCX via python-docx,
+TXT) then delegates to `mira-crawler/ingest/chunker.chunk_blocks()` for sentence-aware,
+table-aware splitting with a 2000-token hard cap (safe for nomic-embed-text and
+EmbeddingGemma). The crawler chunker is copied into the Docker image at build time
+(see Dockerfile `COPY mira-crawler/ingest/`).
 
-Splits prefer sentence boundaries; falls back to hard token splits for
-pathological inputs (e.g., a single run-on paragraph longer than chunk_size).
+Default chunk size: 512 tokens. Default overlap: 64 tokens.
+Tables are detected and split at row boundaries with header prepended to each split.
 
 ---
 
@@ -285,14 +321,7 @@ If `PROPERTIES_FILE` points to a non-existent path, a WARNING is logged
 and the file is silently ignored. All settings fall back to env vars / defaults.
 
 **PII in logs**
-The PII sanitizer only runs inside `AnthropicProvider`. If you use the
-openai or ollama provider, PII (IP addresses, serial numbers, MAC addresses)
-is NOT automatically stripped before sending. Add sanitization at the call
-site if needed.
-
-**PII on Tier 1 via /route**
-When `/route` selects Tier 1 (local Ollama), queries go through
-`OllamaProvider.complete()` which has NO PII sanitization. This is acceptable
-for local-only deployment (data never leaves the machine), but if Tier 1 logs
-are ever shipped to a cloud log aggregator, PII will leak. Add sanitization
-to `OllamaProvider` before enabling remote log shipping.
+**PII sanitization** is applied in both `AnthropicProvider` and `OllamaProvider`
+via the shared `llm/sanitize.py` module. IPv4, MAC addresses, and serial numbers
+are stripped before every outbound LLM call. The `openai` provider does NOT yet
+have PII sanitization — add it at the call site if needed.

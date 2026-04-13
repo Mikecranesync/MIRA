@@ -15,9 +15,9 @@ import re
 from urllib.parse import urljoin
 
 import yaml
+from crawler.base_crawler import BaseCrawler
 
 from config import CrawlerConfig
-from crawler.base_crawler import BaseCrawler
 
 logger = logging.getLogger("mira-crawler.manufacturer")
 

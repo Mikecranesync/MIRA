@@ -11,7 +11,9 @@
 
 services:
   mira-sidecar:
-    build: ./mira-sidecar
+    build:
+      context: .
+      dockerfile: mira-sidecar/Dockerfile
     container_name: mira-sidecar-pathb
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -30,15 +32,13 @@ services:
       # Claude fallback (Tier 3) — set via Doppler or env
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - LLM_MODEL_ANTHROPIC=claude-sonnet-4-6
-      # Brain 3 — NeonDB cloud knowledge base
-      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       # Sidecar config
       - HOST=0.0.0.0
       - PORT=5000
       - CHROMA_PATH=/data/chroma
       - DOCS_BASE_PATH=/data/docs
     ports:
-      - "5050:5000"
+      - "127.0.0.1:5050:5000"
     volumes:
       - pathb-chroma:/data/chroma
       - pathb-docs:/data/docs

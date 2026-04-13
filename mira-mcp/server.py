@@ -1,24 +1,45 @@
-"""MIRA MCP Server — equipment diagnostics + Atlas CMMS integration."""
+"""MIRA MCP Server — equipment diagnostics + CMMS integration."""
 
 import os
 import sqlite3
 import sys
 
+from cmms.atlas import AtlasCMMS
+from cmms.factory import create_cmms_adapter
 from fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from tenant_resolver import resolve_atlas_creds
 
 DB_PATH = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
 MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
 RETRIEVAL_BACKEND = os.environ.get("RETRIEVAL_BACKEND", "openwebui")
 MIRA_TENANT_ID = os.environ.get("MIRA_TENANT_ID", "")
 
-# Atlas CMMS — enabled when ATLAS_API_USER is set
-_atlas_ok = bool(os.environ.get("ATLAS_API_USER", ""))
-if _atlas_ok:
-    sys.stderr.write("INFO: Atlas CMMS integration enabled\n")
+# Internal Atlas adapter — always-on for diagnostic case recording
+_atlas_internal: AtlasCMMS | None = None
+_atlas_tmp = AtlasCMMS()
+if _atlas_tmp.configured:
+    _atlas_internal = _atlas_tmp
+    sys.stderr.write("INFO: Atlas internal store enabled for diagnostic recording\n")
 else:
-    sys.stderr.write("INFO: Atlas CMMS integration disabled (ATLAS_API_USER not set)\n")
+    sys.stderr.write(
+        "WARNING: Atlas internal store not configured — diagnostic_record_case disabled\n"
+    )
+del _atlas_tmp
+
+# External CMMS adapter — customer's CMMS (maintainx|limble|upkeep)
+_cmms = create_cmms_adapter()
+if _cmms is not None and not isinstance(_cmms, AtlasCMMS):
+    sys.stderr.write(f"INFO: External CMMS integration enabled (provider={type(_cmms).__name__})\n")
+elif _cmms is not None and isinstance(_cmms, AtlasCMMS):
+    _cmms = None
+    sys.stderr.write("INFO: CMMS_PROVIDER=atlas routed to internal store, external CMMS disabled\n")
+else:
+    sys.stderr.write("INFO: External CMMS integration disabled (CMMS_PROVIDER not set)\n")
+
+_CMMS_DISABLED_ERROR = {"error": "CMMS not configured (set CMMS_PROVIDER)"}
+_ATLAS_DISABLED_ERROR = {"error": "Internal diagnostic store not configured"}
 
 _viking_ok = False
 if RETRIEVAL_BACKEND == "openviking":
@@ -34,6 +55,62 @@ if not MCP_REST_API_KEY:
     sys.stderr.flush()
 
 mcp = FastMCP("mira-mcp", description="MIRA equipment diagnostics tools")
+
+
+def _ensure_schema():
+    """Create required tables if they don't exist. Idempotent."""
+    db = sqlite3.connect(DB_PATH)
+    db.execute("PRAGMA journal_mode=WAL")
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS equipment_status (
+            equipment_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'unknown',
+            last_updated TEXT NOT NULL DEFAULT (datetime('now')),
+            speed_rpm REAL,
+            temperature_c REAL,
+            current_amps REAL,
+            pressure_psi REAL,
+            metadata TEXT
+        );
+        CREATE TABLE IF NOT EXISTS faults (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            equipment_id TEXT NOT NULL,
+            fault_code TEXT NOT NULL,
+            description TEXT,
+            severity TEXT NOT NULL DEFAULT 'warning',
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved INTEGER NOT NULL DEFAULT 0,
+            resolved_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_faults_equipment ON faults(equipment_id);
+        CREATE INDEX IF NOT EXISTS idx_faults_resolved ON faults(resolved);
+        CREATE TABLE IF NOT EXISTS maintenance_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            equipment_id TEXT NOT NULL,
+            note TEXT NOT NULL,
+            author TEXT NOT NULL DEFAULT 'system',
+            category TEXT NOT NULL DEFAULT 'general',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS conversation_state (
+            chat_id TEXT PRIMARY KEY,
+            state TEXT NOT NULL DEFAULT 'IDLE',
+            context TEXT NOT NULL DEFAULT '{}',
+            asset_identified TEXT,
+            fault_category TEXT,
+            exchange_count INTEGER NOT NULL DEFAULT 0,
+            final_state TEXT,
+            voice_enabled INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    db.close()
+    sys.stderr.write(f"INFO: Schema ensured at {DB_PATH}\n")
+
+
+_ensure_schema()
 
 
 def _get_db():
@@ -148,18 +225,68 @@ def get_maintenance_notes(
         conn.close()
 
 
-# ── Atlas CMMS Tools ──────────────────────────────────────────
+# ── Diagnostic Case Recording (always-on, writes to internal Atlas store) ──
 
 
 @mcp.tool()
-async def cmms_list_work_orders(status: str = "", limit: int = 20) -> dict:
-    """List work orders from Atlas CMMS. Filter by status: OPEN, IN_PROGRESS, ON_HOLD, COMPLETE."""
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import list_work_orders
+async def diagnostic_record_case(
+    title: str,
+    description: str,
+    priority: str = "MEDIUM",
+    asset_id: int = 0,
+    category: str = "CORRECTIVE",
+) -> dict:
+    """Record a diagnostic case in MIRA's internal store. Always available.
 
-    orders = await list_work_orders(status, limit)
-    return {"work_orders": orders, "count": len(orders)}
+    Args:
+        title: Short summary (e.g. 'VFD overcurrent fault on Pump-001')
+        description: Full diagnostic context from MIRA session
+        priority: NONE, LOW, MEDIUM, HIGH
+        asset_id: Internal asset ID (0 to skip)
+        category: CORRECTIVE, PREVENTIVE, CONDITION_BASED, EMERGENCY
+    """
+    if _atlas_internal is None:
+        return _ATLAS_DISABLED_ERROR
+    return await _atlas_internal.create_work_order(
+        title,
+        description,
+        priority,
+        asset_id=str(asset_id) if asset_id else None,
+        category=category,
+    )
+
+
+# ── External CMMS Tools (write to customer's MaintainX/Limble/UpKeep) ──
+
+
+@mcp.tool()
+async def cmms_write_work_order(
+    title: str,
+    description: str,
+    priority: str = "MEDIUM",
+    asset_id: int = 0,
+    category: str = "CORRECTIVE",
+) -> dict:
+    """Write a work order to the customer's external CMMS (MaintainX, Limble, UpKeep).
+
+    Args:
+        title: Short summary (e.g. 'VFD overcurrent fault on Pump-001')
+        description: Full diagnostic context from MIRA session
+        priority: NONE, LOW, MEDIUM, HIGH
+        asset_id: CMMS asset ID (0 to skip)
+        category: CORRECTIVE, PREVENTIVE, CONDITION_BASED, EMERGENCY
+    """
+    if _cmms is None:
+        return {
+            "error": "No external CMMS configured. Set CMMS_PROVIDER to maintainx, limble, or upkeep."
+        }
+    return await _cmms.create_work_order(
+        title,
+        description,
+        priority,
+        asset_id=str(asset_id) if asset_id else None,
+        category=category,
+    )
 
 
 @mcp.tool()
@@ -170,68 +297,66 @@ async def cmms_create_work_order(
     asset_id: int = 0,
     category: str = "CORRECTIVE",
 ) -> dict:
-    """Create a work order in Atlas CMMS from a diagnostic finding.
+    """Create a work order from a diagnostic finding. Routes to internal store or external CMMS.
 
     Args:
         title: Short summary (e.g. 'VFD overcurrent fault on Pump-001')
         description: Full diagnostic context from MIRA session
         priority: NONE, LOW, MEDIUM, HIGH
-        asset_id: Atlas asset ID (0 to skip)
+        asset_id: CMMS asset ID (0 to skip)
         category: CORRECTIVE, PREVENTIVE, CONDITION_BASED, EMERGENCY
     """
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import create_work_order
+    if _cmms is not None:
+        return await cmms_write_work_order(title, description, priority, asset_id, category)
+    return await diagnostic_record_case(title, description, priority, asset_id, category)
 
-    return await create_work_order(
-        title,
-        description,
-        priority,
-        asset_id=asset_id if asset_id else None,
-        category=category,
-    )
+
+@mcp.tool()
+async def cmms_list_work_orders(status: str = "", limit: int = 20) -> dict:
+    """List work orders. Uses external CMMS if configured, otherwise internal store."""
+    adapter = _cmms or _atlas_internal
+    if adapter is None:
+        return _CMMS_DISABLED_ERROR
+    orders = await adapter.list_work_orders(status, limit)
+    return {"work_orders": orders, "count": len(orders)}
 
 
 @mcp.tool()
 async def cmms_complete_work_order(work_order_id: int, feedback: str = "") -> dict:
-    """Mark a work order as complete in Atlas CMMS."""
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import complete_work_order
-
-    return await complete_work_order(work_order_id, feedback)
+    """Mark a work order as complete. Uses external CMMS if configured, otherwise internal store."""
+    adapter = _cmms or _atlas_internal
+    if adapter is None:
+        return _CMMS_DISABLED_ERROR
+    return await adapter.complete_work_order(str(work_order_id), feedback)
 
 
 @mcp.tool()
 async def cmms_list_assets(limit: int = 50) -> dict:
-    """List equipment assets registered in Atlas CMMS."""
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import list_assets
-
-    assets = await list_assets(limit)
+    """List equipment assets. Uses external CMMS if configured, otherwise internal store."""
+    adapter = _cmms or _atlas_internal
+    if adapter is None:
+        return _CMMS_DISABLED_ERROR
+    assets = await adapter.list_assets(limit)
     return {"assets": assets, "count": len(assets)}
 
 
 @mcp.tool()
 async def cmms_get_asset(asset_id: int) -> dict:
-    """Get details for a specific asset from Atlas CMMS."""
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import get_asset
-
-    return await get_asset(asset_id)
+    """Get details for a specific asset. Uses external CMMS if configured, otherwise internal store."""
+    adapter = _cmms or _atlas_internal
+    if adapter is None:
+        return _CMMS_DISABLED_ERROR
+    return await adapter.get_asset(str(asset_id))
 
 
 @mcp.tool()
 async def cmms_list_pm_schedules(asset_id: int = 0, limit: int = 20) -> dict:
-    """List preventive maintenance schedules from Atlas CMMS."""
-    if not _atlas_ok:
-        return {"error": "Atlas CMMS not configured"}
-    from atlas_client import list_pm_schedules
-
-    schedules = await list_pm_schedules(
-        asset_id=asset_id if asset_id else None,
+    """List preventive maintenance schedules. Uses external CMMS if configured, otherwise internal store."""
+    adapter = _cmms or _atlas_internal
+    if adapter is None:
+        return _CMMS_DISABLED_ERROR
+    schedules = await adapter.list_pm_schedules(
+        asset_id=str(asset_id) if asset_id else None,
         limit=limit,
     )
     return {"pm_schedules": schedules, "count": len(schedules)}
@@ -239,10 +364,108 @@ async def cmms_list_pm_schedules(asset_id: int = 0, limit: int = 20) -> dict:
 
 @mcp.tool()
 async def cmms_health() -> dict:
-    """Check Atlas CMMS API connectivity."""
-    from atlas_client import health_check
+    """Check CMMS API connectivity. Reports both internal and external status."""
+    result = {}
+    if _atlas_internal is not None:
+        result["internal"] = await _atlas_internal.health_check()
+    else:
+        result["internal"] = {"status": "disabled"}
+    if _cmms is not None:
+        result["external"] = await _cmms.health_check()
+    else:
+        result["external"] = {"status": "disabled", "info": "No external CMMS configured"}
+    return result
 
-    return await health_check()
+
+@mcp.tool()
+async def create_asset_from_nameplate(
+    tenant_id: str,
+    manufacturer: str,
+    model: str,
+    serial: str = "",
+    voltage: str = "",
+    hp: str = "",
+    fla: str = "",
+) -> dict:
+    """Create an Atlas CMMS asset for a tenant from extracted nameplate fields.
+
+    Resolves the tenant's Atlas credentials from NeonDB, then POSTs a new
+    asset scoped to that tenant's CMMS account. Called after a nameplate
+    photo is processed by the vision pipeline.
+
+    Args:
+        tenant_id: PLG tenant UUID (plg_tenants.id).
+        manufacturer: Equipment manufacturer name (e.g. 'Allen-Bradley').
+        model: Model number from nameplate (e.g. '1336 PLUS II').
+        serial: Serial number (optional).
+        voltage: Nameplate voltage rating (optional, e.g. '460V').
+        hp: Horsepower rating (optional, e.g. '25HP').
+        fla: Full load amps (optional, e.g. '32A').
+    """
+    creds = await resolve_atlas_creds(tenant_id)
+    if not creds:
+        return {"error": f"Tenant {tenant_id} not provisioned in Atlas"}
+
+    email, password, api_url = creds
+    atlas = AtlasCMMS.for_tenant(email, password, api_url)
+
+    description_parts = []
+    if serial:
+        description_parts.append(f"Serial: {serial}")
+    if voltage:
+        description_parts.append(f"Voltage: {voltage}")
+    if hp:
+        description_parts.append(f"HP: {hp}")
+    if fla:
+        description_parts.append(f"FLA: {fla}")
+    description = ", ".join(description_parts) if description_parts else ""
+
+    return await atlas.create_asset(
+        name=f"{manufacturer} {model}".strip(),
+        description=description,
+        manufacturer=manufacturer,
+        model=model,
+        serial=serial,
+    )
+
+
+OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+EMBED_MODEL = os.environ.get("EMBED_MODEL", "nomic-embed-text:latest")
+
+
+async def _rest_embed(request):
+    """POST /api/embed — embed text via Ollama. Returns 768-dim vector."""
+    import httpx as _httpx
+
+    body = await request.json()
+    text = body.get("text", "")
+    if not text:
+        return JSONResponse({"error": "missing 'text' field"}, status_code=400)
+    texts = body.get("texts")
+    if texts and isinstance(texts, list):
+        results = []
+        for t in texts[:50]:
+            try:
+                resp = await _httpx.AsyncClient(timeout=30).post(
+                    f"{OLLAMA_URL}/api/embeddings",
+                    json={"model": EMBED_MODEL, "prompt": t},
+                )
+                resp.raise_for_status()
+                results.append(resp.json()["embedding"])
+            except Exception:
+                results.append(None)
+        return JSONResponse({"embeddings": results})
+    try:
+        async with _httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{OLLAMA_URL}/api/embeddings",
+                json={"model": EMBED_MODEL, "prompt": text},
+            )
+            resp.raise_for_status()
+            return JSONResponse({"embedding": resp.json()["embedding"]})
+    except Exception as exc:
+        sys.stderr.write(f"ERROR: /api/embed failed: {exc}\n")
+        return JSONResponse({"error": f"Embedding failed: {exc}"}, status_code=502)
 
 
 async def _rest_ingest_pdf(request):
@@ -341,8 +564,60 @@ if __name__ == "__main__":
         limit = int(request.query_params.get("limit", 20))
         return JSONResponse(await cmms_list_pm_schedules(asset_id, limit))
 
+    async def rest_cmms_write_work_order(request):
+        body = await request.json()
+        return JSONResponse(
+            await cmms_write_work_order(
+                title=body.get("title", ""),
+                description=body.get("description", ""),
+                priority=body.get("priority", "MEDIUM"),
+                asset_id=body.get("asset_id", 0),
+                category=body.get("category", "CORRECTIVE"),
+            )
+        )
+
+    async def rest_diagnostic_record_case(request):
+        body = await request.json()
+        return JSONResponse(
+            await diagnostic_record_case(
+                title=body.get("title", ""),
+                description=body.get("description", ""),
+                priority=body.get("priority", "MEDIUM"),
+                asset_id=body.get("asset_id", 0),
+                category=body.get("category", "CORRECTIVE"),
+            )
+        )
+
+    async def rest_cmms_invite(request):
+        body = await request.json()
+        emails = body.get("emails", [])
+        role_id = int(body.get("role_id", 4))
+        if not emails or not isinstance(emails, list):
+            return JSONResponse({"error": "emails array required"}, status_code=400)
+        if not isinstance(_atlas_internal, AtlasCMMS):
+            return JSONResponse({"error": "invite_users is Atlas-only"}, status_code=501)
+        return JSONResponse(await _atlas_internal.invite_users(emails, role_id))
+
     async def rest_cmms_health(request):
         return JSONResponse(await cmms_health())
+
+    async def rest_cmms_nameplate(request):
+        """POST /api/cmms/nameplate — create Atlas asset from extracted nameplate fields."""
+        body = await request.json()
+        tenant_id = body.get("tenant_id", "")
+        if not tenant_id:
+            return JSONResponse({"error": "tenant_id required"}, status_code=400)
+        return JSONResponse(
+            await create_asset_from_nameplate(
+                tenant_id=tenant_id,
+                manufacturer=body.get("manufacturer", ""),
+                model=body.get("model", ""),
+                serial=body.get("serial", ""),
+                voltage=body.get("voltage", ""),
+                hp=body.get("hp", ""),
+                fla=body.get("fla", ""),
+            )
+        )
 
     async def health(request):
         return JSONResponse({"status": "ok"})
@@ -358,10 +633,15 @@ if __name__ == "__main__":
             Route("/api/faults/history", rest_fault_history),
             Route("/api/cmms/work-orders", rest_cmms_work_orders),
             Route("/api/cmms/work-orders", rest_cmms_create_work_order, methods=["POST"]),
+            Route("/api/cmms/write-work-order", rest_cmms_write_work_order, methods=["POST"]),
+            Route("/api/diagnostic/case", rest_diagnostic_record_case, methods=["POST"]),
             Route("/api/cmms/assets", rest_cmms_assets),
             Route("/api/cmms/pm-schedules", rest_cmms_pm_schedules),
+            Route("/api/cmms/invite", rest_cmms_invite, methods=["POST"]),
             Route("/api/cmms/health", rest_cmms_health),
+            Route("/api/cmms/nameplate", rest_cmms_nameplate, methods=["POST"]),
             Route("/ingest/pdf", _rest_ingest_pdf, methods=["POST"]),
+            Route("/api/embed", _rest_embed, methods=["POST"]),
         ],
         exception_handlers={404: _not_found},
     )

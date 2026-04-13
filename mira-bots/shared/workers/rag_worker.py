@@ -147,6 +147,7 @@ class RAGWorker:
         self.tenant_id = tenant_id or os.environ.get("MIRA_TENANT_ID", "")
         if not self.tenant_id:
             logger.warning("MIRA_TENANT_ID not set — NeonDB recall will be skipped")
+        self._ingest_url = os.environ.get("INGEST_BASE_URL", "http://mira-ingest:8001").rstrip("/")
         self._last_sources: list[str] = []
         self._last_distances: list[float] = []
         self._prompt_meta = _load_prompt_meta()
@@ -157,8 +158,19 @@ class RAGWorker:
         state: dict,
         photo_b64: str = None,
         vision_model: str = None,
+        tenant_id: str | None = None,
     ) -> str:
-        """3-stage RAG pipeline. Returns raw LLM response string."""
+        """3-stage RAG pipeline. Returns raw LLM response string.
+
+        Args:
+            message: User message text.
+            state: Current FSM state dict.
+            photo_b64: Optional base64-encoded photo.
+            vision_model: Optional vision model override.
+            tenant_id: Per-call tenant override. When provided, takes precedence
+                over the constructor-level ``self.tenant_id`` fallback.
+        """
+        effective_tenant = tenant_id or self.tenant_id
         model = vision_model if photo_b64 else None
         metadata = {
             "fsm_state": state.get("state"),
@@ -168,21 +180,24 @@ class RAGWorker:
         }
 
         async with trace_rag_query(message, metadata=metadata) as spans:
-            # Stage 1: Embed query → NeonDB pgvector recall (single knowledge source)
+            # Stage 1: Embed query → NeonDB recall (visual for photos, text for text)
             rewritten = message
             neon_chunks: list[dict] = []
             async with spans.embed_query(message):
-                if self.tenant_id:
-                    embed_query = message
-                    if photo_b64 and state.get("asset_identified"):
-                        embed_query = f"{state['asset_identified']} {message}"
-                    embedding = await self._embed_ollama(embed_query)
-                    if embedding:
-                        neon_chunks = _neon_recall.recall_knowledge(
-                            embedding,
-                            self.tenant_id,
-                            query_text=embed_query,
-                        )
+                if effective_tenant:
+                    if photo_b64 and self._ingest_url:
+                        neon_chunks = await self._visual_search(photo_b64, message)
+                    else:
+                        embed_query = message
+                        if photo_b64 and state.get("asset_identified"):
+                            embed_query = f"{state['asset_identified']} {message}"
+                        embedding = await self._embed_ollama(embed_query)
+                        if embedding:
+                            neon_chunks = _neon_recall.recall_knowledge(
+                                embedding,
+                                effective_tenant,
+                                query_text=embed_query,
+                            )
 
             # Extract chunk texts for reranking / telemetry
             chunk_texts = [c["content"] for c in neon_chunks]
@@ -219,7 +234,10 @@ class RAGWorker:
             # Stage 3: Build prompt with (reranked) chunks → call LLM
             if chunk_texts:
                 messages = self._build_prompt_with_chunks(
-                    state, rewritten, chunk_texts, photo_b64=photo_b64,
+                    state,
+                    rewritten,
+                    chunk_texts,
+                    photo_b64=photo_b64,
                 )
             else:
                 messages = self._build_prompt(state, rewritten, photo_b64)
@@ -279,16 +297,18 @@ class RAGWorker:
                     "explicitly in your reply. Rule 13 overrides Rule 2 for the device name only."
                 )
             text_parts.append(message)
-            messages.append({
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
-                    },
-                    {"type": "text", "text": "\n".join(text_parts)},
-                ],
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
+                        },
+                        {"type": "text", "text": "\n".join(text_parts)},
+                    ],
+                }
+            )
         else:
             user_msg = rewrite_question(message, state.get("asset_identified"))
             messages.append({"role": "user", "content": user_msg})
@@ -348,17 +368,19 @@ class RAGWorker:
 
         # Photo-as-answer guidance: help LLM interpret photo in diagnostic context
         if _photo_continues:
-            messages.append({
-                "role": "system",
-                "content": (
-                    "This photo was sent as a response to your previous question. "
-                    "Examine it for information that answers the question. If you "
-                    "can extract the answer, confirm it and continue the diagnostic. "
-                    "If the photo doesn't clearly show the requested information, "
-                    "acknowledge the photo and re-ask the question differently — "
-                    "suggest the technician type the value or take a closer shot."
-                ),
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "This photo was sent as a response to your previous question. "
+                        "Examine it for information that answers the question. If you "
+                        "can extract the answer, confirm it and continue the diagnostic. "
+                        "If the photo doesn't clearly show the requested information, "
+                        "acknowledge the photo and re-ask the question differently — "
+                        "suggest the technician type the value or take a closer shot."
+                    ),
+                }
+            )
 
         # Current user message
         if photo_b64:
@@ -396,6 +418,22 @@ class RAGWorker:
             messages.append({"role": "user", "content": user_msg})
         return messages
 
+    async def _visual_search(self, photo_b64: str, query_text: str) -> list[dict]:
+        """Call /ingest/search-visual for dual-modality retrieval. Non-blocking."""
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{self._ingest_url}/ingest/search-visual",
+                    json={"query_image_b64": photo_b64, "query_text": query_text, "top_k": 5},
+                )
+                resp.raise_for_status()
+                results = resp.json().get("results", [])
+            logger.info("Visual search returned %d chunks", len(results))
+            return results
+        except Exception as e:
+            logger.warning("Visual search failed (falling back to empty): %s", e)
+            return []
+
     async def _embed_ollama(self, text: str) -> list[float] | None:
         """Embed text via Ollama nomic-embed-text (768-dim, matches NeonDB vectors)."""
         ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
@@ -413,14 +451,13 @@ class RAGWorker:
             return None
 
     async def _call_llm(self, messages: list[dict], model: str = None) -> str:
-        """Call LLM — Claude API if router enabled, else Open WebUI."""
+        """Call LLM — cloud cascade (Groq→Cerebras→Claude) then Open WebUI fallback."""
         if self.router and self.router.enabled:
             clean = self.router.sanitize_context(messages)
             content, usage = await self.router.complete(clean)
             if content:
                 self.router.log_usage(usage)
                 return content
-            # Claude call failed — fall through to Open WebUI
 
         return await self._call_openwebui(messages, model=model)
 

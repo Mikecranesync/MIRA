@@ -11,15 +11,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /usr/local/bin/uv
 
 # Copy dependency files first (layer caching)
-COPY pyproject.toml uv.lock ./
+COPY mira-sidecar/pyproject.toml mira-sidecar/uv.lock ./
 RUN uv sync --frozen --no-dev
 
 # Copy application code
-COPY app.py config.py safety.py ./
-COPY llm/ llm/
-COPY rag/ rag/
-COPY fsm/ fsm/
-COPY routing/ routing/
+COPY mira-sidecar/app.py mira-sidecar/config.py mira-sidecar/safety.py ./
+COPY mira-sidecar/llm/ llm/
+COPY mira-sidecar/rag/ rag/
+COPY mira-sidecar/fsm/ fsm/
+COPY mira-sidecar/routing/ routing/
+
+# Copy mira-crawler chunker — rag/chunker.py delegates to this via sys.path
+# Path must match: dirname(dirname(dirname(__file__))) + "mira-crawler"
+# __file__ = /app/rag/chunker.py → resolves to /mira-crawler/ingest/chunker.py
+COPY mira-crawler/ingest/__init__.py /mira-crawler/ingest/__init__.py
+COPY mira-crawler/ingest/chunker.py /mira-crawler/ingest/chunker.py
 
 # Runtime directories (mounted as volumes in production)
 RUN mkdir -p /data/chroma /data/docs

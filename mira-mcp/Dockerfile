@@ -5,5 +5,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY server.py .
 COPY atlas_client.py .
+COPY cmms/ ./cmms/
+COPY context/ ./context/
 
 CMD ["python", "server.py"]

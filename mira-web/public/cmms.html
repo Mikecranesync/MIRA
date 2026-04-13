@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FactoryLM — AI Troubleshooter for Maintenance Teams</title>
+  <meta name="description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime. Works alongside MaintainX, Limble, or UpKeep. Join the beta.">
+  <link rel="canonical" href="https://factorylm.com/cmms">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="FactoryLM — AI Troubleshooter for Maintenance Teams">
+  <meta property="og:description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime. Works alongside MaintainX, Limble, or UpKeep. Join the beta.">
+  <meta property="og:url" content="https://factorylm.com/cmms">
+  <meta property="og:image" content="https://factorylm.com/og-image.png">
+  <meta property="og:site_name" content="FactoryLM">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="FactoryLM — AI Troubleshooter for Maintenance Teams">
+  <meta name="twitter:description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime. Works alongside MaintainX, Limble, or UpKeep. Join the beta.">
+  <meta name="twitter:image" content="https://factorylm.com/og-image.png">
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "FactoryLM",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web, iOS, Android",
+    "description": "AI troubleshooter that knows your equipment. Reduce unplanned downtime by getting the right fix the first time — from your actual OEM manuals, not the internet. Works alongside MaintainX, Limble, and UpKeep.",
+    "url": "https://factorylm.com/cmms",
+    "featureList": [
+      "Fault diagnosis from OEM manuals — cites exact page and section",
+      "Photo-to-diagnosis: snap a nameplate or fault display, get the fix",
+      "Works alongside MaintainX, Limble, and UpKeep — no migration",
+      "Available via Telegram and Slack, even at 2am",
+      "CMMS write-back: auto-creates work orders in your existing system"
+    ]
+  }
+  </script>
+
+  <!-- FAQ Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is FactoryLM?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "FactoryLM is an AI troubleshooter that knows your equipment. When a machine faults, Mira tells you why it's failing — not just when — by searching your actual OEM manuals and returning the exact diagnostic steps in seconds. It works alongside your existing CMMS; no rip-and-replace required."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does this replace my CMMS?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. Mira works alongside MaintainX, Limble, UpKeep, or any CMMS you already use. It adds the diagnostic layer your CMMS doesn't have — the answer to 'what's wrong and how do I fix it right now.' The $297/month plan can even write work orders back into your existing CMMS automatically."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I try FactoryLM?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Sign up for the beta at $97/month — site license covering your entire team, unlimited queries. $297/month adds automatic work-order write-back into MaintainX, Limble, or UpKeep."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What equipment does FactoryLM support?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Mira works with any equipment you already have — upload the manual and it learns it. Pre-loaded knowledge covers Allen-Bradley PLCs, PowerFlex VFDs, Automation Direct GS10/GS20 drives, ABB and Yaskawa drives, FANUC CNC systems, and hydraulic power units. No new equipment required."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <link rel="stylesheet" href="/public/cmms.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#f5a623">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FactoryLM">
+  <link rel="apple-touch-icon" href="/public/icons/mira-192.png">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body>
+<div class="page">
+
+  <!-- Topbar -->
+  <nav class="topbar">
+    <a href="/" class="topbar-logo" style="text-decoration:none;color:var(--amber)">
+      <i data-lucide="factory" style="width:20px;height:20px"></i>
+      FactoryLM <span>Troubleshooter</span>
+    </a>
+    <div class="topbar-right" id="topbar-right">
+      <a href="/blog" style="font-size:13px;color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms">Blog</a>
+      <a href="/blog/fault-codes" style="font-size:13px;color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms">Fault Codes</a>
+      <span id="topbar-user" style="font-size:var(--text-xs);color:var(--text-muted);display:none"></span>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="main">
+
+    <!-- ── Hero (unauthenticated) ──────────────────────────── -->
+    <section class="hero" id="hero-section">
+      <h1>The AI troubleshooter that knows your <em>equipment.</em></h1>
+      <p>Works alongside your existing CMMS — MaintainX, Limble, or UpKeep. No migration. No rip-and-replace.</p>
+
+      <!-- Signup Form -->
+      <div class="signup-card" id="signup-form-wrap">
+        <div class="form-row">
+          <label for="f-email">Work email</label>
+          <input type="email" id="f-email" placeholder="you@yourplant.com" autocomplete="email" required>
+        </div>
+        <div class="form-row">
+          <label for="f-company">Company / Facility name</label>
+          <input type="text" id="f-company" placeholder="Acme Manufacturing" autocomplete="organization" required>
+        </div>
+        <div class="form-row">
+          <label for="f-firstname">First name</label>
+          <input type="text" id="f-firstname" placeholder="Mike" autocomplete="given-name">
+        </div>
+        <div class="form-row" style="margin-top:12px">
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:var(--text-sm);color:var(--text-secondary)">
+            <input type="checkbox" id="f-terms" required style="margin-top:3px;flex-shrink:0;accent-color:var(--amber)">
+            <span>I agree to the <a href="/terms" target="_blank" style="color:var(--amber)">Terms of Service</a> and <a href="/privacy" target="_blank" style="color:var(--amber)">Privacy Policy</a></span>
+          </label>
+        </div>
+        <div id="form-error" class="form-error"></div>
+        <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
+          <i data-lucide="zap" style="width:16px;height:16px"></i>
+          Join the Beta — $97/mo
+        </button>
+        <p style="margin:8px 0 0;font-size:var(--text-xs);color:var(--text-muted);text-align:center">Site license — unlimited users. Cancel anytime.</p>
+      </div>
+
+      <!-- Confirmation (shown after signup) -->
+      <div class="download-step" id="download-step">
+        <p id="download-greeting"></p>
+      </div>
+
+      <!-- Payment success (shown via ?payment=success) -->
+      <div class="download-step" id="payment-success" style="display:none;">
+        <p style="color:#f0a030;font-weight:700;font-size:18px;">You're in. Let's reduce some downtime.</p>
+        <p>Your dashboard is loading below. Ask Mira about any fault code or equipment symptom to get started.</p>
+      </div>
+
+      <!-- Payment cancelled -->
+      <div class="download-step" id="payment-cancelled" style="display:none;">
+        <p>No worries — your walkthrough emails will continue. You can join anytime.</p>
+      </div>
+    </section>
+
+    <!-- ── SEO Content Sections (visible to crawlers and users) ── -->
+    <section class="seo-section" id="how-it-works">
+      <h2>How It Works</h2>
+      <div class="seo-grid">
+        <div class="seo-card">
+          <h3>1. Describe the Fault</h3>
+          <p>Type a fault code, describe a symptom, or snap a photo of the display. Mira searches your actual equipment manuals — Allen-Bradley, PowerFlex, Automation Direct, hydraulic systems — and returns the diagnostic steps in seconds, even at 2am.</p>
+        </div>
+        <div class="seo-card">
+          <h3>2. Get the Fix, Not a Guess</h3>
+          <p>Mira tells you why it's failing, not just when. It cites the exact manual page and section — like consulting an experienced colleague who has already read every manual on the floor. No generic internet answers. No guesswork.</p>
+        </div>
+        <div class="seo-card">
+          <h3>3. Your CMMS Stays in Charge</h3>
+          <p>Mira works alongside MaintainX, Limble, or UpKeep. On the $297/month plan, it writes the work order directly into your existing system — fault description, probable cause, and recommended fix. No double-entry.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="seo-section" id="built-for">
+      <h2>Reduce Unplanned Downtime — Without Replacing What Already Works</h2>
+      <p>Your CMMS tracks work orders. Mira catches what your most experienced tech would catch — the fault your team has seen before but can't quite remember at midnight. It works where your team already is: Telegram, Slack, or a browser on their phone. No training. No app install. No IT ticket.</p>
+      <p>The average maintenance technician wastes 20–40 minutes per fault flipping through PDFs. Mira finds the answer from the same manual in seconds. That's the difference between a 30-minute fix and a 2-hour shutdown — on equipment you already own.</p>
+    </section>
+
+    <section class="seo-section" id="equipment">
+      <h2>Works With Your Existing Equipment</h2>
+      <p>Upload any manual and Mira learns it — brownfield facilities, mixed fleets, legacy gear. Pre-loaded knowledge includes:</p>
+      <ul class="seo-list">
+        <li>Allen-Bradley Micro820, CompactLogix, ControlLogix PLCs</li>
+        <li>PowerFlex 525, PowerFlex 4, PowerFlex 40 VFDs</li>
+        <li>Automation Direct GS10, GS20, GS4 VFDs</li>
+        <li>ABB ACS880, Yaskawa GA800, Siemens SINAMICS G120 VFDs</li>
+        <li>FANUC CNC servo systems</li>
+        <li>Hydraulic power units — Parker, Eaton Vickers, Bosch Rexroth</li>
+        <li>Motors, pumps, compressors, conveyors</li>
+      </ul>
+      <p style="margin-top:0.75rem;font-size:var(--text-sm);color:var(--text-muted)">Browse our <a href="/blog/fault-codes" style="color:var(--accent)">Fault Code Library</a> or read our <a href="/blog" style="color:var(--accent)">maintenance blog</a> for free guides.</p>
+    </section>
+
+    <!-- ── Live Ticker ─────────────────────────────────────── -->
+    <section class="ticker-section" id="ticker-section">
+      <div class="ticker-header">
+        <div class="live-dot"></div>
+        Live faults being diagnosed across the network
+      </div>
+      <div id="hero-wo-list"></div>
+    </section>
+
+    <!-- ── Dashboard (authenticated) ──────────────────────── -->
+    <section class="dashboard" id="dashboard">
+      <div class="board-section">
+        <div class="board-header">
+          <h2>Work Orders</h2>
+          <span style="font-size:var(--text-xs);color:var(--text-muted)" id="wo-count"></span>
+        </div>
+        <div class="kanban" id="kanban">
+          <div class="kanban-col" id="col-open">
+            <div class="kanban-col-header">
+              Open <span class="kanban-col-count" id="count-open">0</span>
+            </div>
+          </div>
+          <div class="kanban-col" id="col-progress">
+            <div class="kanban-col-header">
+              In Progress <span class="kanban-col-count" id="count-progress">0</span>
+            </div>
+          </div>
+          <div class="kanban-col" id="col-complete">
+            <div class="kanban-col-header">
+              Complete <span class="kanban-col-count" id="count-complete">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Panel -->
+      <div class="chat-panel">
+        <div class="chat-header">
+          <h3><div class="status-dot"></div> Mira AI</h3>
+          <span style="font-size:var(--text-xs);color:var(--text-muted)">Equipment Troubleshooter</span>
+        </div>
+
+        <div class="quota-bar" id="query-quota-bar">
+          <span style="color:var(--text-muted)">Queries today:</span>
+          <div class="quota-track">
+            <div class="quota-fill" id="quota-fill" style="width:100%"></div>
+          </div>
+          <span class="quota-count" id="quota-count">Unlimited</span>
+        </div>
+
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-msg system">
+            Welcome to Mira. Describe a fault, enter an error code, or snap a photo. I'll find the answer from your actual equipment manuals.
+          </div>
+        </div>
+
+        <div class="chat-input-area">
+          <input type="text" id="chat-input" placeholder="Describe a fault or enter an error code..."
+                 onkeydown="if(event.key==='Enter')submitQuery()">
+          <button id="chat-send" onclick="submitQuery()">Ask Mira</button>
+        </div>
+
+        <!-- Onboarding Checklist -->
+        <div class="checklist" id="checklist-panel">
+          <h4>Getting Started</h4>
+          <div id="checklist-steps"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- WO Toast -->
+<div class="wo-toast" id="wo-toast">
+  <span id="wo-toast-msg"></span>
+</div>
+
+<script>
+// ── Service Worker ─────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+}
+
+// PWA install prompt
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+});
+window.installPWA = async function() {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+};
+
+// ── State ──────────────────────────────────────────────────────
+
+const AUTH = { token: null, user: null, queriesLeft: 5, queriesLimit: 5 };
+
+const CHECKLIST = {
+  'step-account':   { label: 'Create your account',         done: false },
+  'step-ask-mira':  { label: 'Ask Mira your first fault',   done: false },
+  'step-create-wo': { label: 'Create your first work order', done: false },
+};
+
+// ── Init ───────────────────────────────────────────────────────
+
+window.addEventListener('DOMContentLoaded', async () => {
+  const params = new URLSearchParams(location.search);
+  const urlToken = params.get('token');
+  const paymentStatus = params.get('payment');
+
+  // Handle payment return from Stripe
+  if (paymentStatus === 'success') {
+    history.replaceState(null, '', '/cmms');
+    document.getElementById('signup-form-wrap').classList.add('hidden');
+    document.getElementById('payment-success').style.display = 'block';
+    // If there's a token in session, try to activate dashboard
+    const stored = sessionStorage.getItem('flm_token');
+    if (stored) {
+      AUTH.token = stored;
+      // Small delay for webhook to process
+      setTimeout(async () => { await activateAuth(); }, 2000);
+    }
+  } else if (paymentStatus === 'cancelled') {
+    history.replaceState(null, '', '/cmms');
+    document.getElementById('signup-form-wrap').classList.add('hidden');
+    document.getElementById('payment-cancelled').style.display = 'block';
+  }
+
+  // Token in URL (from activation email)
+  if (urlToken) {
+    AUTH.token = urlToken;
+    sessionStorage.setItem('flm_token', urlToken);
+    history.replaceState(null, '', '/cmms');
+    await activateAuth();
+  }
+
+  // Stored session token
+  const stored = sessionStorage.getItem('flm_token');
+  if (stored && !AUTH.token) {
+    AUTH.token = stored;
+    await activateAuth();
+  }
+
+  initTicker();
+  lucide.createIcons();
+});
+
+// ── Auth Activation ────────────────────────────────────────────
+
+async function activateAuth() {
+  sessionStorage.setItem('flm_token', AUTH.token);
+
+  // Fetch user profile — may return 403 if not active tier
+  try {
+    const res = await fetch('/api/me', { headers: authHeaders() });
+    if (res.status === 403) {
+      // Pending or churned — show onboarding message, not dashboard
+      const data = await res.json();
+      document.getElementById('signup-form-wrap').classList.add('hidden');
+      document.getElementById('download-step').classList.add('show');
+      document.getElementById('download-greeting').innerHTML =
+        '<strong style="color:#f0a030;">Your onboarding is in progress.</strong><br>' +
+        'Check your email for your next video walkthrough.';
+      return;
+    }
+    if (res.ok) {
+      const data = await res.json();
+      AUTH.user = data;
+      AUTH.queriesLeft = data.quota.remaining;
+      AUTH.queriesLimit = data.quota.dailyLimit;
+    }
+  } catch (e) { console.error('Profile fetch failed:', e); }
+
+  // Show dashboard, hide hero
+  document.getElementById('hero-section').style.display = 'none';
+  document.getElementById('ticker-section').style.display = 'none';
+  document.getElementById('dashboard').classList.add('show');
+  document.getElementById('topbar-user').style.display = 'inline';
+  document.getElementById('topbar-user').textContent = AUTH.user?.email || '';
+
+  // Inject "Open FactoryLM CMMS" primary CTA for active tenants
+  const topbarRight = document.getElementById('topbar-right');
+  if (topbarRight && AUTH.token && !document.getElementById('cmms-open-btn')) {
+    const btn = document.createElement('a');
+    btn.id = 'cmms-open-btn';
+    btn.href = `/api/cmms/login?token=${encodeURIComponent(AUTH.token)}`;
+    btn.textContent = 'Open Mira Troubleshooter';
+    btn.style.cssText = [
+      'display:inline-flex',
+      'align-items:center',
+      'gap:6px',
+      'background:linear-gradient(180deg,#f0a030 0%,#d4880a 100%)',
+      'color:#0a0a08',
+      'font-size:13px',
+      'font-weight:700',
+      'border:1px solid rgba(255,255,255,0.12)',
+      'border-radius:6px',
+      'padding:7px 14px',
+      'text-decoration:none',
+      'white-space:nowrap',
+      'transition:background 150ms ease',
+    ].join(';');
+    btn.onmouseover = () => { btn.style.background = 'linear-gradient(180deg,#f5b040 0%,#e09510 100%)'; };
+    btn.onmouseout  = () => { btn.style.background = 'linear-gradient(180deg,#f0a030 0%,#d4880a 100%)'; };
+    topbarRight.insertBefore(btn, topbarRight.firstChild);
+  }
+
+  CHECKLIST['step-account'].done = true;
+  renderChecklist();
+  updateQuotaBar();
+  await fetchTenantWorkOrders();
+  lucide.createIcons();
+}
+
+function authHeaders() {
+  return { 'Authorization': `Bearer ${AUTH.token}`, 'Content-Type': 'application/json' };
+}
+
+// ── Signup ─────────────────────────────────────────────────────
+
+async function handleSignup() {
+  const email = document.getElementById('f-email').value.trim();
+  const company = document.getElementById('f-company').value.trim();
+  const firstName = document.getElementById('f-firstname').value.trim();
+  const errEl = document.getElementById('form-error');
+  errEl.classList.remove('show');
+
+  if (!email || !company) {
+    errEl.textContent = 'Email and company name are required.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  const btn = document.getElementById('signup-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<svg style="width:16px;height:16px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Joining...';
+
+  try {
+    const res = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, company, firstName })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Registration failed');
+
+    // Active user returning — has token, show dashboard
+    if (data.token) {
+      AUTH.token = data.token;
+      sessionStorage.setItem('flm_token', data.token);
+      await activateAuth();
+      return;
+    }
+
+    // Pending user — show "check your email"
+    const name = firstName || email.split('@')[0];
+    document.getElementById('signup-form-wrap').classList.add('hidden');
+    document.getElementById('download-step').classList.add('show');
+    document.getElementById('download-greeting').innerHTML =
+      `<strong style="color:#f0a030;">You're in, ${name}.</strong><br>` +
+      `Check your email — we'll send you a series of short Loom videos showing what MIRA can do. When you're ready, a payment link unlocks everything.`;
+
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.add('show');
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="zap" style="width:16px;height:16px"></i> Join the Beta — $97/mo';
+    lucide.createIcons();
+  }
+}
+
+function scrollToDashboard() {
+  document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ── Ticker ─────────────────────────────────────────────────────
+
+async function initTicker() {
+  try {
+    const res = await fetch('/demo/work-orders');
+    const wos = await res.json();
+    const list = document.getElementById('hero-wo-list');
+    list.innerHTML = '';
+    for (let i = 0; i < Math.min(3, wos.length); i++) {
+      list.innerHTML += tickerCardHTML(wos[i]);
+    }
+    lucide.createIcons();
+
+    let idx = 0;
+    setInterval(() => {
+      idx = (idx + 1) % wos.length;
+      const card = document.createElement('div');
+      card.style.cssText = 'opacity:0;transform:translateY(-8px);transition:all 0.4s cubic-bezier(0.16,1,0.3,1)';
+      card.innerHTML = tickerCardHTML(wos[idx]);
+      list.insertBefore(card, list.firstChild);
+      if (list.children.length > 3) {
+        const last = list.lastChild;
+        last.style.cssText += 'opacity:0;transform:translateY(8px)';
+        setTimeout(() => last.remove(), 400);
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        card.style.opacity = '1';
+        card.style.transform = 'translateY(0)';
+      }));
+      lucide.createIcons();
+    }, 6000);
+  } catch (e) { console.error('Ticker init failed:', e); }
+}
+
+function tickerCardHTML(wo) {
+  const time = wo.minutesAgo < 60 ? `${wo.minutesAgo}m ago` : `${Math.floor(wo.minutesAgo / 60)}h ago`;
+  const priBadge = { HIGH: 'badge-high', MEDIUM: 'badge-medium', LOW: 'badge-low' }[wo.priority] || 'badge-low';
+  const aiBadge = wo.ai ? '<span class="badge badge-ai">AI</span>' : '';
+  return `
+    <div class="mini-wo">
+      <span class="mini-wo-id">${wo.id}</span>
+      <div class="mini-wo-content">
+        <div class="mini-wo-title">${wo.title}</div>
+        <div class="mini-wo-asset">${wo.assetName} · ${time}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+        <span class="badge ${priBadge}">${wo.priority}</span>
+        ${aiBadge}
+      </div>
+    </div>`;
+}
+
+// ── Kanban Board ───────────────────────────────────────────────
+
+async function fetchTenantWorkOrders() {
+  try {
+    const res = await fetch('/demo/tenant-work-orders', { headers: authHeaders() });
+    const data = await res.json();
+    const wos = Array.isArray(data) ? data : (data.content || data.results || []);
+    renderKanban(wos);
+  } catch (e) { console.error('WO fetch failed:', e); }
+}
+
+function renderKanban(wos) {
+  const cols = { OPEN: 'col-open', IN_PROGRESS: 'col-progress', COMPLETE: 'col-complete' };
+  const counts = { OPEN: 0, IN_PROGRESS: 0, COMPLETE: 0 };
+
+  // Clear cards (keep headers)
+  for (const colId of Object.values(cols)) {
+    const col = document.getElementById(colId);
+    const cards = col.querySelectorAll('.wo-card');
+    cards.forEach(c => c.remove());
+  }
+
+  for (const wo of wos) {
+    const status = wo.status || 'OPEN';
+    const colId = cols[status] || cols.OPEN;
+    counts[status] = (counts[status] || 0) + 1;
+
+    const card = document.createElement('div');
+    const pri = (wo.priority || 'MEDIUM').toUpperCase();
+    card.className = `wo-card ${pri === 'HIGH' ? 'priority-high' : pri === 'LOW' ? 'priority-low' : ''}`;
+    card.innerHTML = `
+      <div class="wo-card-title">${wo.title || wo.name || 'Untitled'}</div>
+      <div class="wo-card-meta">
+        <span class="badge ${pri === 'HIGH' ? 'badge-high' : pri === 'LOW' ? 'badge-low' : 'badge-medium'}">${pri}</span>
+        ${wo.aiGenerated ? '<span class="badge badge-ai">AI</span>' : ''}
+      </div>`;
+    document.getElementById(colId).appendChild(card);
+  }
+
+  document.getElementById('count-open').textContent = counts.OPEN;
+  document.getElementById('count-progress').textContent = counts.IN_PROGRESS;
+  document.getElementById('count-complete').textContent = counts.COMPLETE;
+  document.getElementById('wo-count').textContent = `${wos.length} total`;
+}
+
+// ── Mira Chat ──────────────────────────────────────────────────
+
+async function submitQuery() {
+  if (AUTH.queriesLeft <= 0) {
+    addChatMsg('system', "Query limit reached. Subscribe at $97/month for unlimited queries — site license, unlimited users.");
+    return;
+  }
+
+  const input = document.getElementById('chat-input');
+  const query = input.value.trim();
+  if (!query) return;
+
+  input.value = '';
+  input.disabled = true;
+  document.getElementById('chat-send').disabled = true;
+
+  addChatMsg('user', query);
+  const typingEl = addChatMsg('assistant typing', '');
+
+  try {
+    const res = await fetch('/api/mira/chat', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ query })
+    });
+
+    if (res.status === 429) {
+      typingEl.remove();
+      AUTH.queriesLeft = 0;
+      updateQuotaBar();
+      addChatMsg('system', "Query limit reached. Subscribe at $97/month for unlimited queries — site license, unlimited users.");
+      return;
+    }
+
+    if (!res.ok) throw new Error('Chat request failed');
+
+    // Read SSE stream
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let answered = false;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Parse SSE events
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const evt of events) {
+        const lines = evt.split('\n');
+        let eventType = '';
+        let eventData = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) eventType = line.slice(7);
+          if (line.startsWith('data: ')) eventData = line.slice(6);
+        }
+
+        if (eventType === 'answer' && eventData) {
+          const data = JSON.parse(eventData);
+          typingEl.classList.remove('typing');
+          typingEl.innerHTML = formatMiraAnswer(data.answer, data.sources);
+          answered = true;
+
+          // Check for WO created
+          const woHeader = res.headers.get('X-WO-Created');
+          if (woHeader) {
+            try {
+              const wo = JSON.parse(woHeader);
+              showWOToast(wo);
+              markChecklist('step-create-wo');
+              fetchTenantWorkOrders();
+            } catch {}
+          }
+
+          markChecklist('step-ask-mira');
+        }
+      }
+    }
+
+    if (!answered) {
+      typingEl.classList.remove('typing');
+      typingEl.textContent = 'No response received. Please try again.';
+    }
+
+    // Update quota
+    AUTH.queriesLeft = Math.max(0, AUTH.queriesLeft - 1);
+    updateQuotaBar();
+
+  } catch (err) {
+    typingEl.remove();
+    addChatMsg('system', 'Connection error. Please try again.');
+    console.error('Chat error:', err);
+  } finally {
+    input.disabled = false;
+    document.getElementById('chat-send').disabled = false;
+    input.focus();
+  }
+}
+
+function addChatMsg(cls, text) {
+  const msgs = document.getElementById('chat-messages');
+  const el = document.createElement('div');
+  el.className = `chat-msg ${cls}`;
+  el.textContent = text;
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+  return el;
+}
+
+function formatMiraAnswer(answer, sources) {
+  // Convert markdown-like formatting
+  let html = answer
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+
+  if (sources && sources.length > 0) {
+    html += '<div class="sources">Sources: ';
+    html += sources.map(s =>
+      `[${s.brain}: ${s.file}${s.page ? ` — p${s.page}` : ''}]`
+    ).join(' ');
+    html += '</div>';
+  }
+  return html;
+}
+
+// ── Quota Bar ──────────────────────────────────────────────────
+
+function updateQuotaBar() {
+  const pct = (AUTH.queriesLeft / AUTH.queriesLimit) * 100;
+  document.getElementById('quota-fill').style.width = `${pct}%`;
+  document.getElementById('quota-count').textContent = `${AUTH.queriesLeft} / ${AUTH.queriesLimit}`;
+}
+
+// ── Checklist ──────────────────────────────────────────────────
+
+function renderChecklist() {
+  const container = document.getElementById('checklist-steps');
+  if (!container) return;
+  container.innerHTML = Object.entries(CHECKLIST).map(([id, step]) => `
+    <div class="checklist-step ${step.done ? 'done' : ''}" id="${id}">
+      <div class="checklist-icon">${step.done ? '&#10003;' : '&#9675;'}</div>
+      <span>${step.label}</span>
+    </div>
+  `).join('');
+}
+
+function markChecklist(stepId) {
+  if (CHECKLIST[stepId] && !CHECKLIST[stepId].done) {
+    CHECKLIST[stepId].done = true;
+    if (stepId === 'step-create-wo') markChecklist('step-ask-mira');
+    renderChecklist();
+  }
+}
+
+// ── WO Toast ───────────────────────────────────────────────────
+
+function showWOToast(wo) {
+  const toast = document.getElementById('wo-toast');
+  document.getElementById('wo-toast-msg').textContent =
+    `Work order ${wo.customId || wo.id || ''} created and added to the board.`;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 5000);
+}
+</script>
+
+<!-- ── Footer ── -->
+<footer role="contentinfo" style="border-top:1px solid var(--border,rgba(255,255,255,0.07));margin-top:64px;padding:32px 24px;background:var(--surface-2,#171715)">
+  <div style="max-width:1080px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px">
+    <a href="/" aria-label="FactoryLM home" style="display:inline-flex;align-items:center;gap:8px;color:var(--amber,#f0a000);text-decoration:none;font-weight:600;font-size:14px">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
+        <rect width="24" height="24" rx="5" fill="#f0a000"/>
+        <path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      FactoryLM
+    </a>
+    <ul role="list" style="display:flex;flex-wrap:wrap;gap:24px;list-style:none;margin:0;padding:0;font-size:13px">
+      <li><a href="/" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Home</a></li>
+      <li><a href="/blog" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Blog</a></li>
+      <li><a href="/blog/fault-codes" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Fault Codes</a></li>
+      <li><a href="mailto:contact@factorylm.com" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Contact</a></li>
+      <li><a href="/privacy" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Privacy</a></li>
+      <li><a href="/terms" style="color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms" onmouseover="this.style.color='var(--amber,#f0a000)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Terms</a></li>
+    </ul>
+  </div>
+</footer>
+</body>
+</html>

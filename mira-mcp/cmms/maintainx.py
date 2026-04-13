@@ -30,6 +30,10 @@ class MaintainXCMMS(CMMSAdapter):
         if not self.api_key:
             logger.warning("MAINTAINX_API_KEY not set — MaintainX CMMS disabled")
 
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key)
+
     def _headers(self) -> dict:
         return {
             "Authorization": f"Bearer {self.api_key}",
@@ -40,9 +44,7 @@ class MaintainXCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "MaintainX not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{API_BASE}{path}", headers=self._headers(), params=params
-            )
+            resp = await client.get(f"{API_BASE}{path}", headers=self._headers(), params=params)
             resp.raise_for_status()
             return resp.json()
 
@@ -50,9 +52,7 @@ class MaintainXCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "MaintainX not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{API_BASE}{path}", headers=self._headers(), json=payload
-            )
+            resp = await client.post(f"{API_BASE}{path}", headers=self._headers(), json=payload)
             resp.raise_for_status()
             return resp.json()
 
@@ -60,9 +60,7 @@ class MaintainXCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "MaintainX not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.patch(
-                f"{API_BASE}{path}", headers=self._headers(), json=payload
-            )
+            resp = await client.patch(f"{API_BASE}{path}", headers=self._headers(), json=payload)
             resp.raise_for_status()
             return resp.json()
 
@@ -109,7 +107,10 @@ class MaintainXCMMS(CMMSAdapter):
             "categories": [category_map.get(category.upper(), "REACTIVE")],
         }
         if asset_id:
-            payload["assetId"] = int(asset_id)
+            try:
+                payload["assetId"] = int(asset_id)
+            except ValueError:
+                return {"error": f"Invalid asset_id '{asset_id}' — must be numeric for MaintainX"}
         try:
             result = await self._post("/workorders", payload)
             logger.info(
@@ -158,3 +159,15 @@ class MaintainXCMMS(CMMSAdapter):
         except httpx.HTTPStatusError as e:
             logger.error("MaintainX list_pm_schedules failed: %s", e)
             return []
+
+    async def create_asset(
+        self,
+        name: str,
+        description: str,
+        manufacturer: str = "",
+        model: str = "",
+        serial: str = "",
+        **kwargs: object,
+    ) -> dict:
+        """Not yet implemented for MaintainX."""
+        return {"error": "create_asset not supported for MaintainX"}

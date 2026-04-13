@@ -55,6 +55,10 @@
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true,
-    "context7@claude-plugins-official": true
+    "context7@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "codex@openai-codex": true,
+    "skill-creator@claude-plugins-official": true,
+    "stripe@claude-plugins-official": true
   }
 }

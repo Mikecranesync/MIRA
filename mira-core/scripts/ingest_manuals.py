@@ -15,11 +15,13 @@ Usage:
 from __future__ import annotations
 
 import io
+import json
 import logging
 import os
 import re
 import sys
 import time
+import uuid
 
 import httpx
 
@@ -35,7 +37,7 @@ CHUNK_SIZE_DOCLING = 2500    # Docling path — blocks are pre-chunked semantica
 CHUNK_OVERLAP = 200
 DOWNLOAD_TIMEOUT = 60
 EMBED_TIMEOUT = 30
-MAX_PDF_PAGES = 300          # skip runaway PDFs
+MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "1000"))
 MIN_CHUNK_CHARS = 80
 REQUEST_DELAY = 0.5          # seconds between URL downloads (polite crawl)
 
@@ -75,7 +77,7 @@ if _CRAWLER_DIR not in sys.path:
 
 from db.neon import (  # noqa: E402
     get_pending_urls,
-    insert_knowledge_entry,
+    insert_knowledge_entries_batch,
     knowledge_entry_exists,
     mark_manual_cache_done,
     mark_manual_verified,
@@ -344,8 +346,11 @@ def process_url(record: dict) -> int:
         overlap=CHUNK_OVERLAP,
     )
     inserted = 0
+    total_chunks = len(chunks)
+    batch_size = 100
+    buffer: list[dict] = []
 
-    for chunk in chunks:
+    for i, chunk in enumerate(chunks):
         text = chunk["text"]
         chunk_idx = chunk["chunk_index"]
 
@@ -353,28 +358,53 @@ def process_url(record: dict) -> int:
         if knowledge_entry_exists(MIRA_TENANT_ID, url, chunk_idx):
             continue
 
+        # Progress logging every 50 chunks
+        if (i + 1) % 50 == 0:
+            log.info("Embedding chunk %d/%d for %s...", i + 1, total_chunks, url[:60])
+
         embedding = _embed(text)
         if embedding is None:
             continue
 
-        try:
-            insert_knowledge_entry(
-                tenant_id=MIRA_TENANT_ID,
-                content=text,
-                embedding=embedding,
-                manufacturer=manufacturer,
-                model_number=model,
-                source_url=url,
-                chunk_index=chunk_idx,
-                page_num=chunk.get("page_num"),
-                section=chunk.get("section", ""),
-                source_type="manual",
-                chunk_type=chunk.get("chunk_type", "text"),
-            )
-            inserted += 1
-        except Exception as exc:
-            log.warning("[WARN] insert failed chunk %d of %s: %s", chunk_idx, url, exc)
+        meta = {
+            "source_url": url,
+            "chunk_index": chunk_idx,
+            "page_num": chunk.get("page_num"),
+            "section": chunk.get("section", ""),
+            "chunk_type": chunk.get("chunk_type", "text"),
+        }
+        buffer.append({
+            "id": str(uuid.uuid4()),
+            "tenant_id": MIRA_TENANT_ID,
+            "source_type": "manual",
+            "manufacturer": manufacturer,
+            "model_number": model,
+            "content": text,
+            "embedding": str(embedding),
+            "source_url": url,
+            "source_page": chunk_idx,
+            "metadata": json.dumps(meta),
+            "chunk_type": chunk.get("chunk_type", "text"),
+        })
 
+        if len(buffer) >= batch_size:
+            try:
+                insert_knowledge_entries_batch(buffer)
+                inserted += len(buffer)
+                log.info("Inserted %d/%d chunks for %s", inserted, total_chunks, url[:60])
+            except Exception as exc:
+                log.warning("[WARN] batch insert failed at chunk %d of %s: %s", i, url, exc)
+            buffer = []
+
+    # Flush remainder
+    if buffer:
+        try:
+            insert_knowledge_entries_batch(buffer)
+            inserted += len(buffer)
+        except Exception as exc:
+            log.warning("[WARN] final batch insert failed: %s", exc)
+
+    log.info("Completed %s: %d/%d chunks inserted", url[:60], inserted, total_chunks)
     return inserted
 
 
@@ -443,34 +473,61 @@ def process_local_pdf(pdf_path: str) -> int:
     log.info("  %s → %d blocks → %d chunks", filename, len(blocks), len(chunks))
 
     inserted = 0
-    for chunk in chunks:
+    total_chunks = len(chunks)
+    batch_size = 100
+    buffer: list[dict] = []
+
+    for i, chunk in enumerate(chunks):
         chunk_idx = chunk["chunk_index"]
 
         if knowledge_entry_exists(MIRA_TENANT_ID, filename, chunk_idx):
             continue
 
+        if (i + 1) % 50 == 0:
+            log.info("Embedding chunk %d/%d for %s...", i + 1, total_chunks, filename)
+
         embedding = _embed(chunk["text"])
         if embedding is None:
             continue
 
-        try:
-            insert_knowledge_entry(
-                tenant_id=MIRA_TENANT_ID,
-                content=chunk["text"],
-                embedding=embedding,
-                manufacturer=mfr,
-                model_number=model,
-                source_url=filename,
-                chunk_index=chunk_idx,
-                page_num=chunk.get("page_num"),
-                section=chunk.get("section", ""),
-                source_type="manual",
-                chunk_type=chunk.get("chunk_type", "text"),
-            )
-            inserted += 1
-        except Exception as exc:
-            log.warning("[WARN] insert failed chunk %d of %s: %s", chunk_idx, filename, exc)
+        meta = {
+            "source_url": filename,
+            "chunk_index": chunk_idx,
+            "page_num": chunk.get("page_num"),
+            "section": chunk.get("section", ""),
+            "chunk_type": chunk.get("chunk_type", "text"),
+        }
+        buffer.append({
+            "id": str(uuid.uuid4()),
+            "tenant_id": MIRA_TENANT_ID,
+            "source_type": "manual",
+            "manufacturer": mfr,
+            "model_number": model,
+            "content": chunk["text"],
+            "embedding": str(embedding),
+            "source_url": filename,
+            "source_page": chunk_idx,
+            "metadata": json.dumps(meta),
+            "chunk_type": chunk.get("chunk_type", "text"),
+        })
 
+        if len(buffer) >= batch_size:
+            try:
+                insert_knowledge_entries_batch(buffer)
+                inserted += len(buffer)
+                log.info("Inserted %d/%d chunks for %s", inserted, total_chunks, filename)
+            except Exception as exc:
+                log.warning("[WARN] batch insert failed at chunk %d of %s: %s", i, filename, exc)
+            buffer = []
+
+    if buffer:
+        try:
+            insert_knowledge_entries_batch(buffer)
+            inserted += len(buffer)
+        except Exception as exc:
+            log.warning("[WARN] final batch insert failed: %s", exc)
+
+    log.info("Completed %s: %d/%d chunks inserted", filename, inserted, total_chunks)
     return inserted
 
 

@@ -30,6 +30,10 @@ class LimbleCMMS(CMMSAdapter):
         if not self.api_key:
             logger.warning("LIMBLE_API_KEY not set — Limble CMMS disabled")
 
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key)
+
     def _headers(self) -> dict:
         return {
             "x-api-key": self.api_key,
@@ -40,9 +44,7 @@ class LimbleCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "Limble not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{API_BASE}{path}", headers=self._headers(), params=params
-            )
+            resp = await client.get(f"{API_BASE}{path}", headers=self._headers(), params=params)
             resp.raise_for_status()
             return resp.json()
 
@@ -50,9 +52,7 @@ class LimbleCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "Limble not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{API_BASE}{path}", headers=self._headers(), json=payload
-            )
+            resp = await client.post(f"{API_BASE}{path}", headers=self._headers(), json=payload)
             resp.raise_for_status()
             return resp.json()
 
@@ -60,9 +60,7 @@ class LimbleCMMS(CMMSAdapter):
         if not self.api_key:
             return {"error": "Limble not configured (missing API key)"}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.patch(
-                f"{API_BASE}{path}", headers=self._headers(), json=payload
-            )
+            resp = await client.patch(f"{API_BASE}{path}", headers=self._headers(), json=payload)
             resp.raise_for_status()
             return resp.json()
 
@@ -103,7 +101,10 @@ class LimbleCMMS(CMMSAdapter):
             "type": "unplanned" if category.upper() in ("CORRECTIVE", "EMERGENCY") else "planned",
         }
         if asset_id:
-            payload["assetId"] = int(asset_id)
+            try:
+                payload["assetId"] = int(asset_id)
+            except ValueError:
+                return {"error": f"Invalid asset_id '{asset_id}' — must be numeric for Limble"}
         try:
             result = await self._post("/tasks", payload)
             logger.info("Limble work order created: id=%s title=%s", result.get("id"), title)
@@ -147,3 +148,15 @@ class LimbleCMMS(CMMSAdapter):
         except httpx.HTTPStatusError as e:
             logger.error("Limble list_pm_schedules failed: %s", e)
             return []
+
+    async def create_asset(
+        self,
+        name: str,
+        description: str,
+        manufacturer: str = "",
+        model: str = "",
+        serial: str = "",
+        **kwargs: object,
+    ) -> dict:
+        """Not yet implemented for Limble."""
+        return {"error": "create_asset not supported for Limble"}

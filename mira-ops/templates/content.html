@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% set active_page = "content" %}
+{% block title %}Content — MIRA Ops{% endblock %}
+
+{% block content %}
+<div class="section-header">
+  <h2 class="section-title">Content Items</h2>
+  <div class="actions">
+    <form method="POST" action="/generate/blog" style="display:inline">
+      <button type="submit" class="btn btn-primary btn-sm">+ Blog Post</button>
+    </form>
+    <form method="POST" action="/generate/video" style="display:inline">
+      <button type="submit" class="btn btn-primary btn-sm">+ Video Script</button>
+    </form>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Type</th>
+        <th>Title / Topic</th>
+        <th>Audience</th>
+        <th>Words</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td style="color:#7a766c">#{{ item.id }}</td>
+        <td><span class="badge badge-draft">{{ item.content_type }}</span></td>
+        <td class="truncate" style="color:#e4e0d8">{{ item.title or item.topic or '—' }}</td>
+        <td>{{ item.audience }}</td>
+        <td style="color:#7a766c">{{ item.word_count or '—' }}</td>
+        <td id="status-{{ item.id }}">
+          <span class="badge badge-{{ item.status }}">{{ item.status }}</span>
+        </td>
+        <td style="color:#7a766c;font-size:12px">
+          {{ item.created_at.strftime('%b %d %H:%M') if item.created_at else '—' }}
+        </td>
+        <td>
+          {% if item.status == 'draft' %}
+          <div class="actions" id="actions-{{ item.id }}">
+            <button class="btn btn-approve btn-sm"
+                    hx-post="/content/{{ item.id }}/approve"
+                    hx-target="#status-{{ item.id }}"
+                    hx-swap="innerHTML">Approve</button>
+            <button class="btn btn-reject btn-sm"
+                    hx-post="/content/{{ item.id }}/reject"
+                    hx-target="#status-{{ item.id }}"
+                    hx-swap="innerHTML">Reject</button>
+          </div>
+          {% elif item.status == 'approved' %}
+          <button class="btn btn-primary btn-sm"
+                  hx-post="/content/{{ item.id }}/publish"
+                  hx-target="#status-{{ item.id }}"
+                  hx-swap="innerHTML">Publish</button>
+          {% else %}
+          <span style="color:#7a766c">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not items %}
+      <tr>
+        <td colspan="8" style="text-align:center;color:#7a766c;padding:32px">
+          No content items yet. Click "+ Blog Post" to generate one.
+        </td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

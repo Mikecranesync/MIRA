@@ -85,21 +85,11 @@ class HealthProbe:
                 self._interval,
             )
 
-    async def _stop_async(self) -> None:
+    async def astop(self) -> None:
         """Cancel the probe task and close the HTTP client."""
         if self._task and not self._task.done():
             self._task.cancel()
         if self._client:
             await self._client.aclose()
-            self._client = None
-        logger.info("HEALTH_PROBE stopped")
-
-    def stop(self) -> None:
-        """Schedule async cleanup from sync context (lifespan teardown)."""
-        if self._task and not self._task.done():
-            self._task.cancel()
-        if self._client:
-            # Schedule client close — safe from lifespan teardown
-            asyncio.get_event_loop().create_task(self._client.aclose())
             self._client = None
         logger.info("HEALTH_PROBE stopped")
