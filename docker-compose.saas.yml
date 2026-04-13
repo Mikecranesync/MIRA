@@ -38,6 +38,7 @@ services:
     volumes:
       - mira-webui-data:/app/backend/data
       - ./mira-core/entrypoint-mira.sh:/entrypoint-mira.sh:ro
+      - ./mira-core/branding:/branding:ro
     networks:
       - mira-net
     restart: unless-stopped

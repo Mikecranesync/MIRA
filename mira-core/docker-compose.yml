@@ -39,6 +39,7 @@ services:
     volumes:
       - open-webui-data:/app/backend/data
       - ./entrypoint-mira.sh:/entrypoint-mira.sh:ro
+      - ./branding:/branding:ro
     networks:
       - core-net
       - bot-net
