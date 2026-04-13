@@ -19,6 +19,7 @@ import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -559,6 +560,78 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         ],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }
+
+
+# ── Debug: Session Photo — GET /v1/debug/photo/{chat_id} ────────────────────
+
+
+@app.get("/v1/debug/photo/{chat_id}")
+async def get_session_photo(chat_id: str):
+    """Return the session photo for a given chat_id (debugging)."""
+    from starlette.responses import FileResponse
+
+    photo_dir = Path(DB_PATH).parent / "session_photos"
+    photo_path = photo_dir / f"{chat_id}.jpg"
+    if not photo_path.exists():
+        raise HTTPException(404, f"No session photo for chat {chat_id}")
+    return FileResponse(str(photo_path), media_type="image/jpeg")
+
+
+# ── Debug: Conversation State — GET /v1/debug/state/{chat_id} ───────────────
+
+
+@app.get("/v1/debug/state/{chat_id}")
+async def get_conversation_state(chat_id: str):
+    """Return full conversation state for debugging."""
+    import sqlite3 as _sqlite3
+
+    db = _sqlite3.connect(DB_PATH)
+    db.row_factory = _sqlite3.Row
+    row = db.execute("SELECT * FROM conversation_state WHERE chat_id = ?", (chat_id,)).fetchone()
+    db.close()
+    if not row:
+        raise HTTPException(404, f"No state for chat {chat_id}")
+    import json as _json
+
+    ctx = _json.loads(row["context"]) if row["context"] else {}
+    return {
+        "chat_id": row["chat_id"],
+        "state": row["state"],
+        "exchange_count": row["exchange_count"],
+        "asset_identified": row["asset_identified"],
+        "fault_category": row["fault_category"],
+        "history": ctx.get("history", []),
+        "session_context": ctx.get("session_context", {}),
+        "photo_url": f"/v1/debug/photo/{chat_id}",
+    }
+
+
+# ── Debug: Recent Sessions — GET /v1/debug/sessions ─────────────────────────
+
+
+@app.get("/v1/debug/sessions")
+async def list_recent_sessions():
+    """List recent conversation sessions for debugging."""
+    import sqlite3 as _sqlite3
+
+    db = _sqlite3.connect(DB_PATH)
+    db.row_factory = _sqlite3.Row
+    rows = db.execute(
+        "SELECT chat_id, state, exchange_count, asset_identified, updated_at "
+        "FROM conversation_state ORDER BY rowid DESC LIMIT 10"
+    ).fetchall()
+    db.close()
+    photo_dir = Path(DB_PATH).parent / "session_photos"
+    return [
+        {
+            "chat_id": r["chat_id"],
+            "state": r["state"],
+            "exchanges": r["exchange_count"],
+            "asset": (r["asset_identified"] or "")[:80],
+            "has_photo": (photo_dir / f"{r['chat_id']}.jpg").exists(),
+        }
+        for r in rows
+    ]
 
 
 # ── Feedback — POST /v1/feedback ────────────────────────────────────────────
