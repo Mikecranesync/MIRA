@@ -1312,7 +1312,12 @@ class Supervisor:
         follow_ups = parsed.get("follow_ups") or parsed.get("suggestions")
         if isinstance(follow_ups, list) and follow_ups:
             text = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(follow_ups[:4]))
-            return {"next_state": None, "reply": text, "options": follow_ups[:4], "confidence": "LOW"}
+            return {
+                "next_state": None,
+                "reply": text,
+                "options": follow_ups[:4],
+                "confidence": "LOW",
+            }
 
         # {"title": "..."} → use as reply
         title = parsed.get("title")
