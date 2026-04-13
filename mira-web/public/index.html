@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime — works alongside MaintainX, Limble, or UpKeep.">
+  <meta name="description" content="AI-powered maintenance assistant for VFDs, motors, and PLCs. Snap a photo of any fault screen — get the diagnosis in 10 seconds. $97/mo per facility.">
   <meta name="theme-color" content="#f0a000">
   <link rel="canonical" href="https://factorylm.com/">
   <!-- Open Graph -->
-  <meta property="og:title" content="FactoryLM — AI Troubleshooter for Maintenance Teams">
-  <meta property="og:description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime — works alongside MaintainX, Limble, or UpKeep.">
+  <meta property="og:title" content="FactoryLM — AI Maintenance Copilot for Industrial Equipment">
+  <meta property="og:description" content="AI-powered maintenance assistant for VFDs, motors, and PLCs. Snap a photo of any fault screen — get the diagnosis in 10 seconds. $97/mo per facility.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://factorylm.com/">
   <meta property="og:image" content="https://factorylm.com/og-image.png">
@@ -17,19 +17,26 @@
   <meta property="og:site_name" content="FactoryLM">
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="FactoryLM — AI Troubleshooter for Maintenance Teams">
-  <meta name="twitter:description" content="The AI troubleshooter that knows your equipment. Reduces unplanned downtime — works alongside MaintainX, Limble, or UpKeep.">
+  <meta name="twitter:title" content="FactoryLM — AI Maintenance Copilot for Industrial Equipment">
+  <meta name="twitter:description" content="AI-powered maintenance assistant for VFDs, motors, and PLCs. Snap a photo of any fault screen — get the diagnosis in 10 seconds. $97/mo per facility.">
   <meta name="twitter:image" content="https://factorylm.com/og-image.png">
-  <title>FactoryLM — AI Troubleshooter for Maintenance Teams</title>
+  <title>FactoryLM — AI Maintenance Copilot for Industrial Equipment</title>
   <!-- Structured Data -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "Organization",
+    "@type": "SoftwareApplication",
     "name": "FactoryLM",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "description": "AI-powered maintenance assistant for industrial equipment diagnostics",
     "url": "https://factorylm.com",
-    "logo": "https://factorylm.com/public/icons/mira-512.png",
-    "description": "AI troubleshooter for industrial maintenance. Reduces unplanned downtime by diagnosing equipment faults from your OEM manuals. Works alongside your existing CMMS."
+    "offers": {
+      "@type": "Offer",
+      "price": "97",
+      "priceCurrency": "USD",
+      "billingPeriod": "month"
+    }
   }
   </script>
   <script type="application/ld+json">
@@ -42,9 +49,11 @@
   </script>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
+  <link rel="dns-prefetch" href="//fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" onload="this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap"></noscript>
   <!-- Widget CSS pre-loaded so FAB renders before JS lazy-loads -->
   <link rel="preload" href="/public/mira-chat.css" as="style" onload="this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="/public/mira-chat.css"></noscript>
