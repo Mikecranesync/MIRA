@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v2.5.0
+**Version:** v2.5.2
 **Updated:** 2026-04-14
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
@@ -251,6 +251,17 @@ chore: build system, deps, tooling
 ---
 
 ## Release Notes
+
+### v2.5.2 (2026-04-14) — Hotfix: Apify crawlerType enum fix (closes #230)
+- **`crawlerType: playwright:chrome`** — Fixed invalid enum value `"playwright"` in `crawl_routes.yaml` and `route_fallback.py`. Apify rejects bare `"playwright"`; valid values are `playwright:chrome`, `playwright:firefox`, `playwright:adaptive`. Confirmed from e2e Pilz job `2f78ae8b`.
+- **`route_fallback.py` reads from YAML** — `crawlerType` sourced from `params.get("crawlerType", "playwright:chrome")` instead of hardcoded.
+
+### v2.5.1 (2026-04-14) — Phase 2 Route Fallback Registry — ADR-0009 (closes #211)
+- **`config/crawl_routes.yaml`** — Vendor-specific strategy priority lists. Pilz, Yaskawa, Siemens, ABB skip `apify_cheerio` and start with `apify_playwright` (JS-rendered SPAs).
+- **`mira-core/mira-ingest/route_fallback.py`** — Fallback orchestrator: `LOW_QUALITY`/`SHELL_ONLY`/`EMPTY` automatically retries through `apify_playwright → duckduckgo_site_search → llm_discover_url`.
+- **Three fallback strategies**: Apify Playwright (Chromium headless), DuckDuckGo site-scoped PDF search, LLM URL discovery (Gemini→Groq→Claude-Haiku + HTTP HEAD validation).
+- **Budget controls**: max 3 strategies, $0.20 hard stop. `SKIP_ON_RETRY` prevents re-running the failed primary.
+- **Eval**: 10/10. Scorecard: `tests/eval/runs/2026-04-14-v2.5.1-pre.md`.
 
 ### v2.5.0 (2026-04-14) — Phase 1 Crawl Verification Layer (closes #210)
 - **`crawl_verifier.py`** — New post-crawl QA module. Every Apify run now produces a verified outcome code: `SUCCESS`, `LOW_QUALITY`, `SHELL_ONLY`, `EMPTY`, `FAILED`. Zero silent greens.
