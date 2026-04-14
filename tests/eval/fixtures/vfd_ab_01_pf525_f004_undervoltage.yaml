@@ -1,0 +1,18 @@
+id: vfd_ab_01_pf525_f004_undervoltage
+description: "PowerFlex 525 F004 undervoltage fault — happy path to DIAGNOSIS"
+expected_final_state: DIAGNOSIS
+max_turns: 8
+expected_keywords: [undervoltage, PowerFlex, voltage, input, fault, 525]
+forbidden_keywords: []
+expected_vendor: Allen-Bradley
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [vfd, pf525, undervoltage, happy-path, allen-bradley]
+turns:
+  - role: user
+    content: "PF525 showing F004 fault, display says undervoltage"
+  - role: user
+    content: "Packaging line, trips every morning when we first start up, clears after a few tries"
+  - role: user
+    content: "3HP motor 480V, same circuit it has been on for two years"
