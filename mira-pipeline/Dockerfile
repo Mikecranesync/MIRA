@@ -15,6 +15,7 @@ COPY mira-bots/prompts/ ./prompts/
 COPY mira-pipeline/main.py .
 COPY mira-pipeline/memory.py .
 COPY mira-pipeline/feedback_sync.py .
+COPY mira-pipeline/eval_api.py .
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 9099
