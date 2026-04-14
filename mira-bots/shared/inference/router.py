@@ -47,6 +47,9 @@ _SERIAL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Warn when any LLM call exceeds this threshold — indicates context bloat
+_LATENCY_WARN_MS = int(os.getenv("MIRA_LATENCY_WARN_MS", "15000"))
+
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 
@@ -350,6 +353,14 @@ class InferenceRouter:
                 usage_dict["input_tokens"],
                 usage_dict["output_tokens"],
             )
+            if elapsed_ms > _LATENCY_WARN_MS:
+                logger.warning(
+                    "SLOW_LLM_CALL provider=%s latency_ms=%d input_tokens=%d — "
+                    "consider trimming context",
+                    provider.name,
+                    elapsed_ms,
+                    usage_dict["input_tokens"],
+                )
 
             self.write_api_usage(
                 session_id=session_id,
@@ -470,6 +481,13 @@ class InferenceRouter:
                 usage_dict["input_tokens"],
                 usage_dict["output_tokens"],
             )
+            if elapsed_ms > _LATENCY_WARN_MS:
+                logger.warning(
+                    "SLOW_LLM_CALL provider=claude latency_ms=%d input_tokens=%d — "
+                    "consider trimming context",
+                    elapsed_ms,
+                    usage_dict["input_tokens"],
+                )
 
             self.write_api_usage(
                 session_id=session_id,

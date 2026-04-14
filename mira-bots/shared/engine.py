@@ -890,6 +890,8 @@ class Supervisor:
             f"Ask me anything about this equipment."
         )
         history.append({"role": "assistant", "content": reply})
+        if len(history) > HISTORY_LIMIT:
+            history = history[-HISTORY_LIMIT:]
         ctx["history"] = history
         state["context"] = ctx
 

@@ -13,6 +13,10 @@ from .. import neon_recall as _neon_recall
 from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
 from ..langfuse_setup import trace_rag_query
 
+# Max tokens to allocate for conversation history in the prompt.
+# Prevents late-conversation latency spikes from unbounded context growth.
+_HISTORY_TOKEN_BUDGET = int(os.getenv("MIRA_HISTORY_TOKEN_BUDGET", "2000"))
+
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
 
 
@@ -30,6 +34,27 @@ def _load_prompt_meta() -> dict:
 
 
 logger = logging.getLogger("mira-gsd")
+
+
+def _trim_history_by_tokens(
+    history: list[dict], max_tokens: int = _HISTORY_TOKEN_BUDGET
+) -> list[dict]:
+    """Walk history backward, keep entries until token budget is exhausted.
+
+    Replaces the fixed ``history[-10:]`` slice to prevent latency spikes
+    when late-conversation messages grow much longer than early ones.
+    Uses a rough 1-token ≈ 4-chars heuristic (same as the rest of the codebase).
+    """
+    trimmed: list[dict] = []
+    tokens_used = 0
+    for entry in reversed(history):
+        entry_tokens = len(entry.get("content", "")) // 4
+        if tokens_used + entry_tokens > max_tokens:
+            break
+        trimmed.append(entry)
+        tokens_used += entry_tokens
+    return list(reversed(trimmed))
+
 
 
 GSD_SYSTEM_PROMPT = """\
@@ -309,7 +334,7 @@ class RAGWorker:
         messages = [{"role": "system", "content": system_content}]
 
         history = state.get("context", {}).get("history", [])
-        for entry in history[-10:]:
+        for entry in _trim_history_by_tokens(history):
             messages.append({"role": entry["role"], "content": entry["content"]})
 
         if photo_b64:
@@ -416,12 +441,13 @@ class RAGWorker:
         _SELF_REF_SIGNALS = ["you said", "your response", "earlier", "before", "what you told me"]
         if not photo_b64 or _photo_continues:
             history = state.get("context", {}).get("history", [])
-            for entry in history[-10:]:
+            trimmed = _trim_history_by_tokens(history)
+            for entry in trimmed:
                 messages.append({"role": entry["role"], "content": entry["content"]})
             # Self-reference: inject prior MIRA turns explicitly when technician
             # asks about something MIRA said earlier
             if any(s in message.lower() for s in _SELF_REF_SIGNALS):
-                mira_turns = [h for h in history[-10:] if h["role"] == "assistant"][-3:]
+                mira_turns = [h for h in trimmed if h["role"] == "assistant"][-3:]
                 if mira_turns:
                     messages.insert(
                         0,
