@@ -384,12 +384,12 @@ def main() -> int:
     args = parser.parse_args()
 
     # Support --output as either a directory or a direct .md file path
+    run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     output_arg = Path(args.output)
     if args.output.endswith(".md"):
         output_path = output_arg
         output_dir = output_path.parent
     else:
-        run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         output_dir = output_arg
         output_path = output_dir / f"{run_date}.md"
 
