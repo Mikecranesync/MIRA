@@ -1,0 +1,14 @@
+id: abbreviation_heavy_10
+description: "Night-shift terse shorthand — abbreviation expansion must fire for diagnosis to proceed"
+expected_final_state: Q2
+max_turns: 4
+expected_keywords: [overcurrent, PowerFlex, motor]
+expected_vendor: Allen-Bradley
+wo_expected: false
+safety_expected: false
+tags: [abbreviation, night-shift, terse, guardrails]
+turns:
+  - role: user
+    content: "pf525 oc flt on strtup, mtr 10hp"
+  - role: user
+    content: "main conveyor, trips every time, 100ft cable run"

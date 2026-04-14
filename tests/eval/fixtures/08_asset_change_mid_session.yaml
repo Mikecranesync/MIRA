@@ -1,0 +1,17 @@
+id: asset_change_mid_session_08
+description: "User corrects the asset model mid-conversation — FSM must adapt without losing context"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [GS20, motor, loaded, overcurrent, fault, pump]
+forbidden_keywords: []
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+tags: [asset-change, context-switch, fsm, regression]
+turns:
+  - role: user
+    content: "GS10 VFD overcurrent fault, trips on startup"
+  - role: user
+    content: "Actually sorry, it's a GS20 not a GS10. Same OC fault."
+  - role: user
+    content: "3HP motor, 480V, pumping water, trips every time we try to start"
