@@ -102,6 +102,63 @@ async def _ingest_photo_background(photo_b64: str, asset_tag: str) -> None:
         logger.error("INGEST_PHOTO error: %s", e)
 
 
+# ── PDF ingest helper (P0-3) ─────────────────────────────────────────────────
+
+
+async def _ingest_pdf_background(
+    file_id: str, filename: str, tenant_id: str
+) -> None:
+    """Fetch a PDF from OW's file API and forward it to mira-ingest.
+
+    Runs as a background task — never raises, never blocks the chat response.
+    OW stores uploaded files at GET /api/v1/files/{file_id}/content.
+    mira-ingest's /ingest/document-kb handles Docling processing, collection
+    routing, and NeonDB persistence.
+    """
+    if not INGEST_URL or not OPENWEBUI_URL:
+        logger.debug("P0-3 PDF ingest skipped — INGEST_SERVICE_URL or OPENWEBUI_BASE_URL not set")
+        return
+
+    headers: dict[str, str] = {}
+    if OPENWEBUI_API_KEY:
+        headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            # Fetch raw PDF bytes from OW's file storage
+            fetch_resp = await client.get(
+                f"{OPENWEBUI_URL}/api/v1/files/{file_id}/content",
+                headers=headers,
+            )
+            fetch_resp.raise_for_status()
+            pdf_bytes = fetch_resp.content
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            ingest_resp = await client.post(
+                f"{INGEST_URL}/ingest/document-kb",
+                files={"file": (filename, pdf_bytes, "application/pdf")},
+                data={"equipment_type": tenant_id or ""},
+            )
+            if ingest_resp.status_code == 200:
+                result = ingest_resp.json()
+                logger.info(
+                    "P0-3 PDF ingested: filename=%s collection=%s file_id=%s tenant=%s",
+                    filename,
+                    result.get("collection_name", "?"),
+                    file_id,
+                    tenant_id,
+                )
+            else:
+                logger.warning(
+                    "P0-3 PDF ingest returned %s for %s: %s",
+                    ingest_resp.status_code,
+                    filename,
+                    ingest_resp.text[:200],
+                )
+    except Exception as exc:
+        logger.error("P0-3 PDF ingest error for %s (file_id=%s): %s", filename, file_id, exc)
+
+
 # ── Regenerate helpers (P0-2) ────────────────────────────────────────────────
 
 
@@ -356,6 +413,25 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         or (req.metadata.get("chat_id") if req.metadata else None)
         or "openwebui_anonymous"
     )
+
+    # P0-3: Route PDF attachments to mira-ingest before touching the GSD engine.
+    # OW passes uploaded files in the request body under a "files" key that is
+    # outside the OpenAI spec — captured via model_extra (extra="allow").
+    # Each entry looks like: {"type": "file", "file": {"id": ..., "name": ...}}
+    # or the flat variant: {"id": ..., "name": ..., "type": "application/pdf"}.
+    # We fire-and-forget ingest; the chat response is not held up.
+    ow_files: list = req.model_extra.get("files", []) if req.model_extra else []
+    for file_entry in ow_files:
+        inner = file_entry.get("file", file_entry)  # unwrap nested "file" key if present
+        fid = inner.get("id") or inner.get("file_id") or ""
+        fname = inner.get("name") or inner.get("filename") or ""
+        ftype = (inner.get("type") or inner.get("content_type") or "").lower()
+        is_pdf = ftype == "application/pdf" or fname.lower().endswith(".pdf")
+        if fid and is_pdf:
+            asyncio.create_task(
+                _ingest_pdf_background(fid, fname or "document.pdf", TENANT_ID or chat_id)
+            )
+            logger.info("P0-3 PDF queued for ingest: file_id=%s name=%s", fid, fname)
 
     # Handle reset command — clear FSM state before processing
     if last_user_msg.strip().lower() in ("/reset", "reset", "start over", "new session"):
