@@ -246,6 +246,16 @@ chore: build system, deps, tooling
 
 ---
 
+## Release Notes
+
+### v0.5.4 (2026-04-14) — P0 Open WebUI UX fixes
+- **P0-1**: Continue button (`### Task: Continue generating...`) now echoes last assistant turn instead of returning blank
+- **P0-2**: Regenerate button dedup — FSM rolls back to prior state when identical user message detected in consecutive turns
+- **P0-3**: PDF uploads in OW now route to `mira-ingest /ingest/document-kb` instead of silently falling through to OW native embedding
+- **Rollback anchor:** `v0.5.3-pre-p0-ux` tag on commit before merge; to roll back: `git checkout v0.5.3-pre-p0-ux` → rebuild `mira-pipeline`
+
+---
+
 ## Where to Resume
 
 - **`feature/vim` branch** — Merged to main. VIM phases 1A→4 + mira-crawler phases 1→4 + Docling adapter all integrated.
