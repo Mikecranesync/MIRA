@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v2.6.0
+**Version:** v2.7.0
 **Updated:** 2026-04-14
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
@@ -252,6 +252,14 @@ chore: build system, deps, tooling
 
 ## Release Notes
 
+### v2.7.0 (2026-04-14) — Active learning loop: production 👎 → fixtures → draft PR (closes #219)
+- **`mira-bots/tools/active_learner.py`** — `ActiveLearner` class: scans `feedback_log` for `/bad` entries, reconstructs conversations from `interactions`, anonymizes via Claude (PII stripped, vendor/model preserved), infers eval pass criteria with confidence gate (default: 0.6), generates YAML fixtures matching existing eval schema.
+- **`tests/eval/active_learning_tasks.py`** — Celery `shared_task` `mira_active_learning.run_nightly` at 04:00 UTC. File-based lock (30-min stale timeout). Honors `ACTIVE_LEARNING_DISABLED=1` env var.
+- **`tests/eval/fixtures/auto-generated/`** — Fixture staging area. Draft PR opened to this path; reviewed fixtures promoted to `tests/eval/fixtures/` with sequential numbering.
+- **Draft PR format**: one commit per run, PR title `auto: active-learning fixtures from YYYY-MM-DD feedback (N new)`, body includes fixture table + review checklist + hashed source chat_ids.
+- **`ACTIVE_LEARNING_GH_TOKEN`** — New Doppler secret required: GitHub PAT with `contents:write` + `pull_requests:write`.
+- **Eval still 10/10** — Active learner runs independently; does not affect existing eval harness.
+
 ### v2.6.0 (2026-04-14) — LLM-as-judge eval layer — closes #217 (Karpathy alignment P0)
 - **`tests/eval/judge.py`** — Cross-model LLM judge. Four Likert dimensions (1–5): `groundedness`, `helpfulness`, `tone`, `instruction_following`. Routes judge calls away from the response generator: Claude-generated → Groq judge; Groq/Cerebras-generated → Claude judge; unknown → Claude. Implements ADR-0010 gap #1.
 - **`tests/eval/run_eval.py`** — Judge integration: `run_scenario()` calls `judge.grade()` once per scenario (last response, last user question). Scorecard gains four judge columns + aggregate summary section with trend arrows vs. previous run. Raw judge JSON written to `{scorecard_stem}-judge.jsonl`. `EVAL_DISABLE_JUDGE=1` skips all judge calls.
@@ -375,6 +383,8 @@ from celery.schedules import crontab
 'mira-eval-every-60-min': {'task': 'mira_eval.run_batch', 'schedule': 3600.0}
 # Nightly 03:00 UTC — checkpoints + LLM-as-judge
 'mira-eval-nightly-with-judge': {'task': 'mira_eval.run_batch_with_judge', 'schedule': crontab(hour=3, minute=0)}
+# Nightly 04:00 UTC — active learning: 👎 feedback → anonymized fixtures → draft PR
+'mira-active-learning-nightly': {'task': 'mira_active_learning.run_nightly', 'schedule': crontab(hour=4, minute=0)}
 ```
 
 ### Adding a scenario
@@ -389,6 +399,45 @@ override cross-model routing for a specific fixture.
 - `pilz_manual_miss_11` — regression guard for GET_DOCUMENTATION intent (v2.4.0 fix)
 
 **Design doc:** `docs/adr/0010-karpathy-eval-alignment.md`
+
+---
+
+## Active Learning Loop (v2.7.0)
+
+Nightly Celery task at **04:00 UTC** (after judge eval at 03:00): scans `feedback_log` for
+`/bad` ratings since last run, anonymizes each conversation via Claude, infers pass criteria from
+the rating reason, generates a YAML eval fixture, and opens a **draft GitHub PR** to
+`tests/eval/fixtures/auto-generated/`. Reviewers promote fixtures to `tests/eval/fixtures/` after
+verifying anonymization and criteria accuracy.
+
+| Path | Purpose |
+|------|---------|
+| `mira-bots/tools/active_learner.py` | Core `ActiveLearner` class |
+| `tests/eval/active_learning_tasks.py` | Celery `mira_active_learning.run_nightly` task |
+| `tests/eval/fixtures/auto-generated/` | Draft fixtures pending review |
+| `mira-bots/tests/tools/test_active_learner.py` | Unit tests |
+
+**Env vars** (add to Doppler `factorylm/prd`):
+
+| Var | Required | Default | Notes |
+|-----|----------|---------|-------|
+| `ACTIVE_LEARNING_GH_TOKEN` | YES | — | GitHub PAT with `contents:write` + `pull_requests:write` |
+| `ACTIVE_LEARNING_DISABLED` | no | `0` | Set to `1` to skip without removing beat schedule |
+| `ACTIVE_LEARNING_MIN_CONFIDENCE` | no | `0.6` | Drop fixture if Claude criteria confidence < threshold |
+| `ACTIVE_LEARNING_MAX_FIXTURES_PER_RUN` | no | `10` | Cap fixtures per nightly run (keeps PR reviewable) |
+| `ACTIVE_LEARNING_STATE_PATH` | no | `/opt/mira/data/active_learning_state.json` | Checkpoint file |
+
+**Deploy:**
+```bash
+cp tests/eval/active_learning_tasks.py /opt/master_of_puppets/workers/mira_active_learning_tasks.py
+supervisorctl restart master_of_puppets_worker
+```
+
+**Dry-run** (inspect output before first PR):
+```bash
+cd /opt/mira && MIRA_DB_PATH=/opt/mira/data/mira.db \
+  python3 mira-bots/tools/active_learner.py --dry-run --output /tmp/active_learning_dryrun
+```
 
 ---
 
