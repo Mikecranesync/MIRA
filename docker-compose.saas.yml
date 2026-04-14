@@ -95,6 +95,7 @@ services:
       - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID}
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - EMBED_TEXT_MODEL=nomic-embed-text
+      - APIFY_API_KEY=${APIFY_API_KEY}
     networks:
       - mira-net
     restart: unless-stopped
