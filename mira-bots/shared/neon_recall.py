@@ -20,8 +20,21 @@ import re
 
 logger = logging.getLogger("mira-gsd")
 
-# Fault code patterns: F002, F-201, CE2, OC1, EF, E014, etc.
+# Fault code patterns: F002, F-201, CE2, OC1, EF, E014, A501, etc.
 _FAULT_CODE_RE = re.compile(r"\b[A-Za-z]{1,3}[-]?\d{1,4}\b")
+
+# VFD-specific alpha-only fault codes (Yaskawa, AutomationDirect, etc.)
+# These don't have trailing digits so _FAULT_CODE_RE misses them.
+# Only matched when near fault-context words to avoid false positives.
+_VFD_ALPHA_CODES = frozenset({
+    "OC", "OCA", "OCD", "GF", "OV", "UV", "LF", "OH", "OL", "SC",
+    "PF", "RR", "BB", "DEV", "OS", "PGO", "EF", "STP", "AUF",
+    "OPL", "PHL",
+})
+_FAULT_CONTEXT_RE = re.compile(
+    r"\b(fault|error|alarm|trip|code|warning|drive|vfd|inverter)\b",
+    re.IGNORECASE,
+)
 
 # Product name patterns in user queries — matches "PowerFlex 40", "Micro820",
 # "GS20", "CompactLogix", "ControlLogix", etc.
@@ -38,6 +51,10 @@ _PRODUCT_NAME_RE = re.compile(
     r"|SINAMICS\s*\w+"
     r"|SIMATIC\s*\w+"
     r"|ACS\s*\d{3,4}"
+    r"|VLT\s*FC\s*\d{3}"
+    r"|A1000"
+    r"|Yaskawa\s*A1000"
+    r"|Danfoss\s*VLT"
     r")\b",
     re.IGNORECASE,
 )
@@ -51,10 +68,25 @@ SHARED_TENANT_ID = os.getenv("MIRA_SHARED_TENANT_ID", "78917b56-f85f-43bb-9a08-1
 
 
 def _extract_fault_codes(query_text: str) -> list[str]:
-    """Extract fault code tokens from raw user query."""
+    """Extract fault code tokens from raw user query.
+
+    Matches two patterns:
+      1. Alphanumeric codes like F4, F012, OC1, A501 (via regex)
+      2. VFD-specific alpha-only codes like OC, GF, OH (only when
+         fault-context words appear in the same message)
+    """
     if not query_text:
         return []
-    return list({m.upper() for m in _FAULT_CODE_RE.findall(query_text)})
+    codes: set[str] = {m.upper() for m in _FAULT_CODE_RE.findall(query_text)}
+
+    # Check for alpha-only VFD codes when fault context is present
+    if _FAULT_CONTEXT_RE.search(query_text):
+        for word in query_text.upper().split():
+            cleaned = word.strip(".,!?:;()\"'")
+            if cleaned in _VFD_ALPHA_CODES:
+                codes.add(cleaned)
+
+    return list(codes)
 
 
 def recall_fault_code(
