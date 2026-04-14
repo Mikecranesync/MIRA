@@ -269,13 +269,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="MIRA Pipeline", docs_url=None, redoc_url=None, lifespan=lifespan)
 
+from eval_api import router as _eval_router  # noqa: E402
+app.include_router(_eval_router)
+
 
 # ── Auth middleware ──────────────────────────────────────────────────────────
 
 
 @app.middleware("http")
 async def _auth(request: Request, call_next):
-    if request.url.path in ("/health", "/v1/models"):
+    if request.url.path in ("/health", "/v1/models", "/eval/latest", "/eval/list"):
         return await call_next(request)
     if PIPELINE_API_KEY:
         auth = request.headers.get("Authorization", "")

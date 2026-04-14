@@ -190,10 +190,12 @@ services:
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - INGEST_SERVICE_URL=http://mira-ingest-saas:8001
+      - EVAL_RUNS_DIR=/eval-runs
     volumes:
       - /opt/mira/data:/mira-db
       - /opt/mira/data/mem0:/data/mem0
       - mira-webui-data:/app/backend/data:ro
+      - /opt/mira/tests/eval/runs:/eval-runs:ro
     networks:
       - mira-net
     restart: unless-stopped

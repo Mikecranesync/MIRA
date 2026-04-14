@@ -160,11 +160,19 @@ def _read_fsm_state(chat_id: str) -> str:
 
 
 def _load_fixtures(fixtures_dir: Path) -> list[dict]:
-    """Load all YAML fixtures from fixtures_dir, sorted by filename."""
+    """Load scenario fixtures from fixtures_dir, sorted by filename.
+
+    Only loads files matching NN_*.yaml (two leading digits + underscore).
+    Other YAML files (vision fixtures, smoke tests, etc.) are skipped — they
+    use a different schema and must be run by their own dedicated runners.
+    """
     fixtures = []
-    for path in sorted(fixtures_dir.glob("*.yaml")):
+    for path in sorted(fixtures_dir.glob("[0-9][0-9]_*.yaml")):
         with open(path) as f:
             fixture = yaml.safe_load(f)
+        if "id" not in fixture:
+            logger.warning("Skipping %s — missing required 'id' field", path.name)
+            continue
         fixture["_path"] = str(path)
         fixtures.append(fixture)
     return fixtures
@@ -362,7 +370,12 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Load fixtures only, no HTTP calls")
     parser.add_argument(
         "--output", default=str(RUNS_DIR),
-        help="Directory to write scorecards (default: tests/eval/runs/)",
+        help=(
+            "Output path. If ends with .md, used as the scorecard file directly "
+            "(useful for timestamped Celery runs). Otherwise treated as a directory "
+            "and the scorecard is written as YYYY-MM-DD.md inside it. "
+            "Default: tests/eval/runs/"
+        ),
     )
     parser.add_argument(
         "--fixtures", default=str(FIXTURES_DIR),
@@ -370,13 +383,19 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    output_dir = Path(args.output)
-    output_path = output_dir / f"{run_date}.md"
+    # Support --output as either a directory or a direct .md file path
+    output_arg = Path(args.output)
+    if args.output.endswith(".md"):
+        output_path = output_arg
+        output_dir = output_path.parent
+    else:
+        run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        output_dir = output_arg
+        output_path = output_dir / f"{run_date}.md"
 
     # Find previous scorecard for diff
     existing = sorted(output_dir.glob("*.md"))
-    prev_path = existing[-1] if existing else None
+    prev_path = existing[-2] if output_path in existing and len(existing) >= 2 else (existing[-1] if existing else None)
 
     # Load fixtures
     fixtures = _load_fixtures(Path(args.fixtures))
