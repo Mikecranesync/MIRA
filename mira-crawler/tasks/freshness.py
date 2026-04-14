@@ -154,13 +154,29 @@ def _find_stale_entries(tenant_id: str) -> list[dict]:
 
 
 def _mark_entry_stale(entry_id: str) -> bool:
-    """Set metadata->>'is_stale' = 'true' on a single knowledge_entry row."""
+    """Set metadata->>'is_stale' = 'true' on a single knowledge_entry row.
+
+    Kept for single-row use cases. The batch path
+    (``_mark_entries_stale_batch``) is preferred for large audits (#113).
+    """
+    return _mark_entries_stale_batch([entry_id]) > 0
+
+
+def _mark_entries_stale_batch(entry_ids: list[str]) -> int:
+    """Set metadata->>'is_stale' = 'true' on many rows in a single UPDATE (#113).
+
+    Uses a single ``WHERE id = ANY(:ids)`` clause so N stale entries cost 1
+    transaction instead of N. Returns the number of rows updated. All IDs
+    are passed as bound parameters — no f-string interpolation.
+    """
+    if not entry_ids:
+        return 0
     from sqlalchemy import text
 
     try:
         engine = _engine()
         with engine.connect() as conn:
-            conn.execute(
+            result = conn.execute(
                 text("""
                     UPDATE knowledge_entries
                     SET metadata = jsonb_set(
@@ -168,15 +184,40 @@ def _mark_entry_stale(entry_id: str) -> bool:
                         '{is_stale}',
                         'true'
                     )
-                    WHERE id = :entry_id
+                    WHERE id = ANY(cast(:ids AS uuid[]))
                 """),
-                {"entry_id": entry_id},
+                {"ids": entry_ids},
             )
             conn.commit()
-        return True
+            return result.rowcount or 0
     except Exception as exc:
-        logger.warning("Failed to mark entry %s as stale: %s", entry_id, exc)
-        return False
+        logger.warning(
+            "Batch stale mark failed for %d ids: %s (falling back to per-row)",
+            len(entry_ids), exc,
+        )
+        # Best-effort fallback so partial failure doesn't block the whole audit
+        ok = 0
+        for eid in entry_ids:
+            try:
+                engine = _engine()
+                with engine.connect() as conn:
+                    conn.execute(
+                        text("""
+                            UPDATE knowledge_entries
+                            SET metadata = jsonb_set(
+                                COALESCE(metadata, '{}'),
+                                '{is_stale}',
+                                'true'
+                            )
+                            WHERE id = :entry_id
+                        """),
+                        {"entry_id": eid},
+                    )
+                    conn.commit()
+                ok += 1
+            except Exception as inner:
+                logger.warning("Failed to mark %s as stale: %s", eid, inner)
+        return ok
 
 
 # ---------------------------------------------------------------------------
@@ -210,15 +251,16 @@ def audit_stale_content() -> dict:
     stale_found = checked
     recrawl_queued = 0
 
+    # 2. Mark all stale entries in a single batch UPDATE (#113).
+    if stale_entries:
+        _mark_entries_stale_batch([e["id"] for e in stale_entries])
+
+    # 3. Queue recrawls for entries with valid HTTP URLs
     for entry in stale_entries:
         entry_id = entry["id"]
         source_url = entry["source_url"]
         source_type = entry["source_type"]
 
-        # 2. Mark as stale
-        _mark_entry_stale(entry_id)
-
-        # 3. Queue for recrawl if URL is present and not a file:// URI
         if source_url and source_url.startswith("http"):
             try:
                 ingest_url.delay(url=source_url, source_type=source_type)

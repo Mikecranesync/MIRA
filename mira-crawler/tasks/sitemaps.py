@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import httpx
 
@@ -16,6 +18,11 @@ try:
     from mira_crawler.tasks._shared import get_redis
 except ImportError:
     from tasks._shared import get_redis
+
+try:
+    from mira_crawler.crawler.robots_checker import RobotsChecker
+except ImportError:
+    from crawler.robots_checker import RobotsChecker
 
 logger = logging.getLogger("mira-crawler.tasks.sitemaps")
 
@@ -149,12 +156,34 @@ def check_sitemaps() -> dict:
         return {"sitemaps_checked": 0, "new_urls": 0, "error": str(exc)}
 
     sitemaps_checked = 0
+    sitemaps_skipped_robots = 0
     new_urls = 0
     updated_lastmod: dict[str, str] = {}
 
+    # 2. Check robots.txt compliance before fetching each sitemap (#114).
+    # User-agent matches the one used for the fetch below.
+    cache_dir = Path(os.environ.get("ROBOTS_CACHE_DIR", "/tmp/mira-robots"))
+    robots = RobotsChecker(cache_dir=cache_dir, user_agent="MIRA-KB/1.0")
+
     with httpx.Client(timeout=_FETCH_TIMEOUT, follow_redirects=True) as client:
         for sitemap_url in SITEMAP_URLS:
-            # 2. Fetch sitemap
+            # Robots.txt check
+            try:
+                if not robots.is_allowed(sitemap_url):
+                    logger.info(
+                        "Skipping %s — disallowed by robots.txt",
+                        sitemap_url[:80],
+                    )
+                    sitemaps_skipped_robots += 1
+                    continue
+            except Exception as exc:
+                # Fail open — robots.txt check failure shouldn't block the whole job
+                logger.warning(
+                    "robots.txt check failed for %s (proceeding): %s",
+                    sitemap_url[:80], exc,
+                )
+
+            # 3. Fetch sitemap
             try:
                 resp = client.get(
                     sitemap_url,
@@ -203,8 +232,14 @@ def check_sitemaps() -> dict:
             logger.error("Failed to persist lastmod to Redis: %s", exc)
 
     logger.info(
-        "check_sitemaps complete: %d sitemaps checked, %d new/updated URLs queued",
+        "check_sitemaps complete: %d checked, %d skipped (robots.txt), "
+        "%d new/updated URLs queued",
         sitemaps_checked,
+        sitemaps_skipped_robots,
         new_urls,
     )
-    return {"sitemaps_checked": sitemaps_checked, "new_urls": new_urls}
+    return {
+        "sitemaps_checked": sitemaps_checked,
+        "sitemaps_skipped_robots": sitemaps_skipped_robots,
+        "new_urls": new_urls,
+    }

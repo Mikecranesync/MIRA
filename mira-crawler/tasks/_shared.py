@@ -102,40 +102,62 @@ def ingest_text_inline(
     )
 
     inserted = 0
-    for chunk in chunks:
-        chunk_idx = chunk.get("chunk_index", 0)
 
-        if chunk_exists(tenant_id, source_url, chunk_idx):
-            continue
+    # Open ONE NeonDB connection for the whole document — quality gate's
+    # dedup stage runs one SELECT per chunk; sharing the connection avoids
+    # a TLS handshake per chunk (#112).
+    try:
+        from ingest.store import _engine
+    except ImportError:
+        from mira_crawler.ingest.store import _engine
 
-        embedding = embed_text(chunk["text"], ollama_url=ollama_url, model=embed_model)
-        if embedding is None:
-            continue
+    dedup_conn = None
+    try:
+        dedup_conn = _engine().connect()
+    except Exception as exc:
+        logger.warning("Could not open shared dedup connection (fail open): %s", exc)
 
-        # Quality gate — fail open on any error so ingest is never blocked
-        try:
-            passed, reason = quality_gate(chunk, embedding, tenant_id)
-            if not passed:
-                logger.debug(
-                    "Quality gate rejected chunk %d from %s: %s",
-                    chunk_idx,
-                    source_url[:80],
-                    reason,
-                )
+    try:
+        for chunk in chunks:
+            chunk_idx = chunk.get("chunk_index", 0)
+
+            if chunk_exists(tenant_id, source_url, chunk_idx):
                 continue
-        except Exception as exc:
-            logger.warning("Quality gate error (fail open): %s", exc)
 
-        entry_id = insert_chunk(
-            tenant_id=tenant_id,
-            content=chunk["text"],
-            embedding=embedding,
-            source_url=source_url,
-            source_type=source_type,
-            chunk_index=chunk_idx,
-            chunk_type=chunk.get("chunk_type", "text"),
-        )
-        if entry_id:
-            inserted += 1
+            embedding = embed_text(chunk["text"], ollama_url=ollama_url, model=embed_model)
+            if embedding is None:
+                continue
+
+            # Quality gate — fail open on any error so ingest is never blocked
+            try:
+                passed, reason = quality_gate(chunk, embedding, tenant_id, conn=dedup_conn)
+                if not passed:
+                    logger.debug(
+                        "Quality gate rejected chunk %d from %s: %s",
+                        chunk_idx,
+                        source_url[:80],
+                        reason,
+                    )
+                    continue
+            except Exception as exc:
+                logger.warning("Quality gate error (fail open): %s", exc)
+
+            entry_id = insert_chunk(
+                tenant_id=tenant_id,
+                content=chunk["text"],
+                embedding=embedding,
+                source_url=source_url,
+                source_type=source_type,
+                chunk_index=chunk_idx,
+                chunk_type=chunk.get("chunk_type", "text"),
+            )
+            if entry_id:
+                inserted += 1
+    finally:
+        if dedup_conn is not None:
+            try:
+                dedup_conn.close()
+            except Exception:
+                pass
 
     return inserted

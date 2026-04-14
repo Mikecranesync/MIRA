@@ -154,29 +154,44 @@ def _relevance_score(embedding: list[float]) -> float:
     return best
 
 
-def _semantic_dedup_score(embedding: list[float], tenant_id: str) -> float:
+def _semantic_dedup_score(
+    embedding: list[float],
+    tenant_id: str,
+    conn=None,
+) -> float:
     """Return cosine similarity to the nearest existing chunk in NeonDB.
 
     Uses pgvector <=> operator (cosine distance).  Returns 0.0 on any error
     so the gate fails open rather than blocking ingest.
+
+    Args:
+        embedding: Query vector.
+        tenant_id: Tenant scope for the query.
+        conn: Optional SQLAlchemy connection. When provided, the caller owns
+              the connection (one TLS handshake shared across many chunks).
+              When None, we open and close a one-shot connection per call.
     """
     try:
-        from ingest.store import _engine
         from sqlalchemy import text
 
-        engine = _engine()
         vec_str = str(embedding)
-        with engine.connect() as conn:
-            row = conn.execute(
-                text("""
-                    SELECT 1 - (embedding <=> cast(:vec AS vector)) AS similarity
-                    FROM knowledge_entries
-                    WHERE tenant_id = :tid
-                    ORDER BY embedding <=> cast(:vec AS vector)
-                    LIMIT 1
-                """),
-                {"vec": vec_str, "tid": tenant_id},
-            ).fetchone()
+        sql = text("""
+            SELECT 1 - (embedding <=> cast(:vec AS vector)) AS similarity
+            FROM knowledge_entries
+            WHERE tenant_id = :tid
+            ORDER BY embedding <=> cast(:vec AS vector)
+            LIMIT 1
+        """)
+        params = {"vec": vec_str, "tid": tenant_id}
+
+        if conn is not None:
+            row = conn.execute(sql, params).fetchone()
+        else:
+            from ingest.store import _engine
+
+            with _engine().connect() as own_conn:
+                row = own_conn.execute(sql, params).fetchone()
+
         if row is None:
             return 0.0
         return float(row[0])
@@ -193,6 +208,7 @@ def quality_gate(
     chunk: dict,
     embedding: list[float],
     tenant_id: str,
+    conn=None,
 ) -> tuple[bool, str]:
     """Run 3-stage quality gate on a chunk before DB insertion.
 
@@ -200,6 +216,9 @@ def quality_gate(
         chunk:     Chunk dict with at least a 'text' key.
         embedding: Pre-computed Ollama embedding for the chunk text.
         tenant_id: Tenant scope for semantic dedup query.
+        conn: Optional SQLAlchemy connection for the dedup query. When a
+              caller ingests many chunks from the same document, passing a
+              shared connection avoids a TLS handshake per chunk (#112).
 
     Returns:
         (True, "")                         — chunk passes all stages
@@ -239,7 +258,7 @@ def quality_gate(
         # ------------------------------------------------------------------
         # Stage 3: Semantic dedup (pgvector nearest neighbor)
         # ------------------------------------------------------------------
-        dedup_score = _semantic_dedup_score(embedding, tenant_id)
+        dedup_score = _semantic_dedup_score(embedding, tenant_id, conn=conn)
         if dedup_score > _DEDUP_THRESHOLD:
             return False, f"near_duplicate:{dedup_score:.3f}"
 
