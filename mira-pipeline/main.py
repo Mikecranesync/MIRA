@@ -14,6 +14,7 @@ import io
 import json
 import logging
 import os
+import sqlite3
 import sys
 import time
 import uuid
@@ -99,6 +100,77 @@ async def _ingest_photo_background(photo_b64: str, asset_tag: str) -> None:
                 logger.warning("INGEST_PHOTO failed %s: %s", resp.status_code, resp.text[:200])
     except Exception as e:
         logger.error("INGEST_PHOTO error: %s", e)
+
+
+# ── Regenerate helpers (P0-2) ────────────────────────────────────────────────
+
+
+def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: str) -> bool:
+    """Detect an OW Regenerate and roll back FSM state if confirmed.
+
+    Open WebUI's Regenerate button strips the last assistant message and
+    resends the identical user query.  The GSD engine would then advance the
+    FSM a second time for the same turn, corrupting diagnostic state.
+
+    Detection: query the ``interactions`` table for the most recent entry for
+    this chat_id.  If ``user_message`` matches, it is a regenerate.
+
+    Rollback: find the FSM state from the interaction BEFORE the last one and
+    write it back to ``conversation_state``.  The engine will then re-process
+    the message starting from the correct prior state.
+
+    Returns True if a rollback was performed, False otherwise.
+    """
+    try:
+        db = sqlite3.connect(db_path)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.row_factory = sqlite3.Row
+
+        rows = db.execute(
+            """SELECT id, user_message, fsm_state
+               FROM interactions
+               WHERE chat_id = ?
+               ORDER BY id DESC
+               LIMIT 2""",
+            (chat_id,),
+        ).fetchall()
+
+        if not rows:
+            db.close()
+            return False
+
+        last = rows[0]
+        if last["user_message"].strip() != user_message.strip():
+            db.close()
+            return False
+
+        # It's a regenerate.  Determine the state to restore:
+        # rows[1] is the interaction *before* the one we're rolling back, so
+        # its fsm_state is the FSM position we should restart from.
+        # If there is no prior row the session started at IDLE.
+        prior_state = rows[1]["fsm_state"] if len(rows) > 1 else "IDLE"
+        prior_state = prior_state or "IDLE"
+
+        db.execute(
+            """UPDATE conversation_state
+               SET state = ?, updated_at = CURRENT_TIMESTAMP
+               WHERE chat_id = ?""",
+            (prior_state, chat_id),
+        )
+        # Also remove the last interaction row so history stays consistent
+        db.execute("DELETE FROM interactions WHERE id = ?", (last["id"],))
+        db.commit()
+        db.close()
+
+        logger.info(
+            "P0-2 REGENERATE chat_id=%s rolled back to state=%s (was: %s)",
+            chat_id, prior_state, last["fsm_state"],
+        )
+        return True
+
+    except Exception as exc:
+        logger.warning("P0-2 regenerate check failed (non-fatal): %s", exc)
+        return False
 
 
 # ── App ──────────────────────────────────────────────────────────────────────
@@ -306,6 +378,11 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
             ],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
+
+    # P0-2: Detect regenerate — if OW is replaying the same user message for
+    # this chat session, roll the FSM back to its pre-turn state before calling
+    # the engine so we don't advance the diagnostic state twice.
+    _detect_and_rollback_regenerate(DB_PATH, chat_id, last_user_msg)
 
     # Resize image for vision model (matches Telegram bot behavior)
     if photo_b64:
