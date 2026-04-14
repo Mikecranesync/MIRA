@@ -65,7 +65,9 @@ def _strategy_list(manufacturer: str) -> list[str]:
     for vendor_key, strategies in overrides.items():
         if vendor_key in mfr_lower or mfr_lower in vendor_key:
             return list(strategies)
-    return list(cfg.get("_default", ["apify_playwright", "duckduckgo_site_search", "llm_discover_url"]))
+    return list(
+        cfg.get("_default", ["apify_playwright", "duckduckgo_site_search", "llm_discover_url"])
+    )
 
 
 def _budget() -> dict:
@@ -152,7 +154,9 @@ async def _run_apify_playwright(
 # ---------------------------------------------------------------------------
 
 _DDG_HTML_URL = "https://html.duckduckgo.com/html/"
-_URL_RE = re.compile(r"https?://[^\s\"'>]+(?:\.pdf|/manual|/user-guide|/installation|document)", re.IGNORECASE)
+_URL_RE = re.compile(
+    r"https?://[^\s\"'>]+(?:\.pdf|/manual|/user-guide|/installation|document)", re.IGNORECASE
+)
 
 
 async def _run_duckduckgo_search(
@@ -171,7 +175,9 @@ async def _run_duckduckgo_search(
     logger.info("[%s] DDG search: %s", job_id, query[:100])
 
     try:
-        async with httpx.AsyncClient(timeout=20, headers={"User-Agent": "MIRA/2.5 (industrial docs crawler)"}) as client:
+        async with httpx.AsyncClient(
+            timeout=20, headers={"User-Agent": "MIRA/2.5 (industrial docs crawler)"}
+        ) as client:
             resp = await client.get(f"{_DDG_HTML_URL}?{encoded}")
             resp.raise_for_status()
             html = resp.text
@@ -195,17 +201,27 @@ async def _run_duckduckgo_search(
             all_urls.append(url)
 
     pdf_urls = [u for u in all_urls if ".pdf" in u.lower()]
-    doc_urls = [u for u in all_urls if u not in pdf_urls and any(
-        s in u.lower() for s in ["/manual", "/user-guide", "/installation", "document", "download"]
-    )]
-    ordered = (pdf_urls + doc_urls + [u for u in all_urls if u not in pdf_urls + doc_urls])
+    doc_urls = [
+        u
+        for u in all_urls
+        if u not in pdf_urls
+        and any(
+            s in u.lower()
+            for s in ["/manual", "/user-guide", "/installation", "document", "download"]
+        )
+    ]
+    ordered = pdf_urls + doc_urls + [u for u in all_urls if u not in pdf_urls + doc_urls]
     target_urls = ordered[: params.get("max_results", 8)]
 
-    logger.info("[%s] DDG found %d candidate URLs (%d PDFs)", job_id, len(target_urls), len(pdf_urls))
+    logger.info(
+        "[%s] DDG found %d candidate URLs (%d PDFs)", job_id, len(target_urls), len(pdf_urls)
+    )
 
     # Scrape each URL and return content
     docs: list[dict] = []
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": "MIRA/2.5"}) as client:
+    async with httpx.AsyncClient(
+        timeout=30, follow_redirects=True, headers={"User-Agent": "MIRA/2.5"}
+    ) as client:
         for url in target_urls:
             if len(docs) >= params.get("max_scrape_per_result", 1) * len(target_urls):
                 break
@@ -244,8 +260,8 @@ async def _run_duckduckgo_search(
 _LLM_PROMPT = (
     "You are a technical documentation assistant. Return the direct URL to the user manual PDF "
     "or main documentation page for the following industrial equipment. "
-    "Respond with JSON only: {{\"url\": \"https://...\", \"confidence\": \"high|medium|low\"}}. "
-    "If you don't know, respond {{\"url\": null, \"confidence\": \"low\"}}. "
+    'Respond with JSON only: {{"url": "https://...", "confidence": "high|medium|low"}}. '
+    'If you don\'t know, respond {{"url": null, "confidence": "low"}}. '
     "Equipment: {manufacturer} {model}"
 )
 
@@ -282,7 +298,12 @@ async def _run_llm_discover_url(
                     parsed = json.loads(text)
                     discovered_url = parsed.get("url")
                     confidence = parsed.get("confidence", "low")
-                    logger.info("[%s] LLM (Gemini) discovered URL: %s (%s)", job_id, discovered_url, confidence)
+                    logger.info(
+                        "[%s] LLM (Gemini) discovered URL: %s (%s)",
+                        job_id,
+                        discovered_url,
+                        confidence,
+                    )
         except Exception as exc:
             logger.debug("[%s] Gemini URL discovery failed: %s", job_id, exc)
 
@@ -307,7 +328,12 @@ async def _run_llm_discover_url(
                     parsed = json.loads(text)
                     discovered_url = parsed.get("url")
                     confidence = parsed.get("confidence", "low")
-                    logger.info("[%s] LLM (Groq) discovered URL: %s (%s)", job_id, discovered_url, confidence)
+                    logger.info(
+                        "[%s] LLM (Groq) discovered URL: %s (%s)",
+                        job_id,
+                        discovered_url,
+                        confidence,
+                    )
         except Exception as exc:
             logger.debug("[%s] Groq URL discovery failed: %s", job_id, exc)
 
@@ -339,7 +365,12 @@ async def _run_llm_discover_url(
                         parsed = json.loads(m.group())
                         discovered_url = parsed.get("url")
                         confidence = parsed.get("confidence", "low")
-                        logger.info("[%s] LLM (Claude) discovered URL: %s (%s)", job_id, discovered_url, confidence)
+                        logger.info(
+                            "[%s] LLM (Claude) discovered URL: %s (%s)",
+                            job_id,
+                            discovered_url,
+                            confidence,
+                        )
         except Exception as exc:
             logger.debug("[%s] Anthropic URL discovery failed: %s", job_id, exc)
 
@@ -465,9 +496,13 @@ async def run_fallback(
                     fallback_job_id, url, manufacturer, model
                 )
             elif strategy == "duckduckgo_site_search":
-                docs, apify_run_id = await _run_duckduckgo_search(fallback_job_id, manufacturer, model)
+                docs, apify_run_id = await _run_duckduckgo_search(
+                    fallback_job_id, manufacturer, model
+                )
             elif strategy == "llm_discover_url":
-                docs, apify_run_id = await _run_llm_discover_url(fallback_job_id, manufacturer, model)
+                docs, apify_run_id = await _run_llm_discover_url(
+                    fallback_job_id, manufacturer, model
+                )
             else:
                 logger.warning("[%s] Unknown strategy %r — skipping", job_id, strategy)
                 continue
@@ -489,14 +524,23 @@ async def run_fallback(
                 continue
             kb_write_attempts += 1
             try:
-                ok = await ingest_fn(fname, content, equipment_type=model[:40], run_id=apify_run_id or fallback_job_id)
+                ok = await ingest_fn(
+                    fname,
+                    content,
+                    equipment_type=model[:40],
+                    run_id=apify_run_id or fallback_job_id,
+                )
                 if ok:
                     kb_writes += 1
             except Exception as exc:
                 logger.error("[%s] Fallback ingest failed: %s", job_id, exc)
 
         # Verify this strategy's outcome
-        if apify_run_id and not apify_run_id.startswith("ddg") and not apify_run_id.startswith("llm"):
+        if (
+            apify_run_id
+            and not apify_run_id.startswith("ddg")
+            and not apify_run_id.startswith("llm")
+        ):
             try:
                 verification = await verify_fn(
                     job_id=fallback_job_id,

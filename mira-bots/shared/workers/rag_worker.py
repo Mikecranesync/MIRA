@@ -247,14 +247,14 @@ class RAGWorker:
                 if query_vendor:
                     qv_lower = query_vendor.lower()
                     vendor_matched = any(
-                        qv_lower in (c.get("manufacturer") or "").lower()
-                        for c in neon_chunks
+                        qv_lower in (c.get("manufacturer") or "").lower() for c in neon_chunks
                     )
                     if not vendor_matched:
                         logger.info(
                             "CROSS_VENDOR_CONTAMINATION vendor=%r — %d chunk(s) from "
                             "other equipment suppressed, honesty directive will fire",
-                            query_vendor, len(chunk_texts),
+                            query_vendor,
+                            len(chunk_texts),
                         )
                         chunk_texts = []
 
@@ -296,9 +296,7 @@ class RAGWorker:
                         "NO_KB_COVERAGE asset=%r — honesty directive injected",
                         state.get("asset_identified", "unknown"),
                     )
-                messages = self._build_prompt(
-                    state, rewritten, photo_b64, no_kb_coverage=no_kb
-                )
+                messages = self._build_prompt(state, rewritten, photo_b64, no_kb_coverage=no_kb)
             t0 = time.monotonic()
             raw = await self._call_llm(messages, model=model)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -411,10 +409,10 @@ class RAGWorker:
                 "CRITICAL: The knowledge base has NO documentation for this equipment. "
                 "You searched and found nothing.\n"
                 "You MUST follow these rules for this response:\n"
-                "1. Open with: \"I don't have documentation for this equipment in my knowledge base.\"\n"
+                '1. Open with: "I don\'t have documentation for this equipment in my knowledge base."\n'
                 "2. Do NOT ask the user to consult a manual — you don't have it.\n"
                 "3. Any general troubleshooting knowledge MUST be prefaced with: "
-                "\"Based on general knowledge (not from specific documentation)...\"\n"
+                '"Based on general knowledge (not from specific documentation)..."\n'
                 f"4. {url_hint}\n"
                 "5. If they haven't provided the model number, ask for it so a manual can be sourced.\n"
                 "6. Set confidence to LOW. Do not pretend to have specific documentation.\n"

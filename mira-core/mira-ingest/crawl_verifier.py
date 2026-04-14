@@ -162,12 +162,8 @@ def _get_verify_db() -> sqlite3.Connection:
             )
             """
         )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_crawl_runs_run_id ON crawl_runs(run_id)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_crawl_runs_outcome ON crawl_runs(outcome)"
-        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_crawl_runs_run_id ON crawl_runs(run_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_crawl_runs_outcome ON crawl_runs(outcome)")
         conn.commit()
         _db_initialized = True
     return conn
@@ -257,9 +253,7 @@ def _compute_metrics(
             deep_url_count += 1
 
     # Average content length across all pages (shell and non-shell alike)
-    total_chars = sum(
-        len(item.get("text", "") or item.get("markdown", "") or "") for item in items
-    )
+    total_chars = sum(len(item.get("text", "") or item.get("markdown", "") or "") for item in items)
     avg_content_length = total_chars / total
 
     return {

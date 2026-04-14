@@ -459,12 +459,15 @@ class Supervisor:
                     "I've queued a search — ask me again shortly."
                 )
             import asyncio
+
             asyncio.create_task(
                 self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id)
             )
             logger.info(
                 "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s",
-                chat_id, mfr, url,
+                chat_id,
+                mfr,
+                url,
             )
             self._record_exchange(chat_id, state, message, reply)
             tl_flush()
@@ -1029,12 +1032,15 @@ class Supervisor:
                 job_id = resp.json().get("job_id", "?")
                 logger.info(
                     "SCRAPE_TRIGGER queued job_id=%s manufacturer=%r chat_id=%s",
-                    job_id, manufacturer, chat_id,
+                    job_id,
+                    manufacturer,
+                    chat_id,
                 )
             else:
                 logger.warning(
                     "SCRAPE_TRIGGER HTTP %d: %s",
-                    resp.status_code, resp.text[:200],
+                    resp.status_code,
+                    resp.text[:200],
                 )
         except Exception as e:
             logger.warning("SCRAPE_TRIGGER failed (non-fatal): %s", e)

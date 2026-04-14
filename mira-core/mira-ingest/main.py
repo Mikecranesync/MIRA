@@ -796,9 +796,7 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
     else:
         # Map the manufacturer's doc site, then filter for this model
         if use_apify:
-            scraped_docs, apify_run_id = await _apify_map_and_scrape(
-                job_id, base_url, body.model
-            )
+            scraped_docs, apify_run_id = await _apify_map_and_scrape(job_id, base_url, body.model)
         else:
             scraped_docs = await _firecrawl_map_and_scrape(job_id, base_url, body.model)
 
@@ -914,9 +912,7 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
                 f"Ask me anything about this equipment — I now have manufacturer documentation.\n\n"
                 f"_Tip: ask about fault codes, wiring, specs, or replacement parts._"
             )
-        elif crawl_outcome in ("LOW_QUALITY", "SHELL_ONLY") or (
-            not crawl_outcome and ingested > 0
-        ):
+        elif crawl_outcome in ("LOW_QUALITY", "SHELL_ONLY") or (not crawl_outcome and ingested > 0):
             msg = (
                 f"I found pages for *{body.equipment_id}* but the content was listing "
                 f"pages rather than actual manual documentation. "
@@ -1050,9 +1046,7 @@ def _apify_items_to_docs(job_id: str, items: list, model: str) -> list[dict]:
     return results[:5]
 
 
-async def _apify_map_and_scrape(
-    job_id: str, base_url: str, model: str
-) -> tuple[list[dict], str]:
+async def _apify_map_and_scrape(job_id: str, base_url: str, model: str) -> tuple[list[dict], str]:
     """Crawl a known manufacturer doc site with Apify, filter by model tokens.
 
     Returns (docs, apify_run_id). run_id is "" on failure.
@@ -1095,9 +1089,7 @@ async def _apify_map_and_scrape(
     return _apify_items_to_docs(job_id, items, model), apify_run_id
 
 
-async def _apify_search_model(
-    job_id: str, manufacturer: str, model: str
-) -> tuple[list[dict], str]:
+async def _apify_search_model(job_id: str, manufacturer: str, model: str) -> tuple[list[dict], str]:
     """Use Apify to crawl a DuckDuckGo search when no known manufacturer base URL exists.
 
     Returns (docs, apify_run_id). run_id is "" on failure.
@@ -1197,9 +1189,7 @@ async def _ingest_scraped_text(
                     kb_resp.text[:200],
                 )
     except Exception as exc:
-        logger.error(
-            "KB file/add failed run_id=%s filename=%s: %s", run_id or "?", filename, exc
-        )
+        logger.error("KB file/add failed run_id=%s filename=%s: %s", run_id or "?", filename, exc)
 
     logger.info(
         "Scraped text ingested: %s → collection=%s kb_ok=%s run_id=%s",
