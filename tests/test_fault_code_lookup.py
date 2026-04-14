@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -20,12 +19,11 @@ MIRA_BOTS = REPO_ROOT / "mira-bots"
 if str(MIRA_BOTS) not in sys.path:
     sys.path.insert(0, str(MIRA_BOTS))
 
-from shared.neon_recall import (
+from shared.neon_recall import (  # noqa: E402
     _extract_fault_codes,
     _extract_product_names,
     _merge_results,
 )
-
 
 # ── _extract_fault_codes tests ─────────────────────────────────────────────
 
