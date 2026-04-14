@@ -8,16 +8,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 # Add mira-bots to path
 REPO_ROOT = Path(__file__).parent.parent
 MIRA_BOTS = REPO_ROOT / "mira-bots"
 if str(MIRA_BOTS) not in sys.path:
     sys.path.insert(0, str(MIRA_BOTS))
 
-from shared.workers.rag_worker import _trim_history_by_tokens
-
+from shared.workers.rag_worker import _trim_history_by_tokens  # noqa: E402
 
 # ── _trim_history_by_tokens tests ──────────────────────────────────────────
 
