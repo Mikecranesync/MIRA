@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v0.5.5
+**Version:** v0.5.6
 **Updated:** 2026-04-14
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
