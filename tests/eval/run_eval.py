@@ -171,12 +171,24 @@ def _read_fsm_state(chat_id: str) -> str:
 def _load_fixtures(fixtures_dir: Path) -> list[dict]:
     """Load scenario fixtures from fixtures_dir, sorted by filename.
 
-    Only loads files matching NN_*.yaml (two leading digits + underscore).
+    Loads files matching:
+      - NN_*.yaml  — original numbered scenarios (01_gs10_overcurrent.yaml, etc.)
+      - vfd_*.yaml — VFD vendor corpus scenarios (Sprint A and beyond)
+
     Other YAML files (vision fixtures, smoke tests, etc.) are skipped — they
     use a different schema and must be run by their own dedicated runners.
+    Files without a top-level ``id`` field are silently skipped.
     """
     fixtures = []
-    for path in sorted(fixtures_dir.glob("[0-9][0-9]_*.yaml")):
+    seen: set[str] = set()
+    candidates = sorted(
+        list(fixtures_dir.glob("[0-9][0-9]_*.yaml"))
+        + list(fixtures_dir.glob("vfd_*.yaml"))
+    )
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
         with open(path) as f:
             fixture = yaml.safe_load(f)
         if "id" not in fixture:

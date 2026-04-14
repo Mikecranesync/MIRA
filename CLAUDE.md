@@ -327,12 +327,11 @@ chore: build system, deps, tooling
 
 ## Continuous Eval Loop
 
-MIRA has two automated eval tiers — 11 scenario fixtures, 5 binary checkpoints + 4 LLM-as-judge
-dimensions (v2.6.0+).
+MIRA has two automated eval tiers — 51 scenario fixtures (31 `NN_*.yaml` + 20 `vfd_*.yaml`), 5 binary checkpoints + 4 LLM-as-judge dimensions (v2.6.0+).
 
 | Path | Purpose |
 |------|---------|
-| `tests/eval/fixtures/` | YAML scenario fixtures (11 as of v2.6.0) |
+| `tests/eval/fixtures/` | YAML scenario fixtures (51 total: 31 `NN_*.yaml` + 20 VFD `vfd_*.yaml`) |
 | `tests/eval/run_eval.py` | CLI runner — `python3 tests/eval/run_eval.py` |
 | `tests/eval/grader.py` | 5 binary checkpoint definitions |
 | `tests/eval/judge.py` | LLM-as-judge — 4 Likert dimensions, cross-model routing |

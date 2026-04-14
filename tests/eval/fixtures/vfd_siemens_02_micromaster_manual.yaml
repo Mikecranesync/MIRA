@@ -1,0 +1,16 @@
+id: vfd_siemens_02_micromaster_manual
+description: "Documentation intent — MICROMASTER 440 manual request, must return siemens.com URL"
+# DOC_INTENT responses are inline — FSM stays at IDLE.
+# Correctness captured by cp_keyword_match checking for vendor URL.
+expected_final_state: IDLE
+max_turns: 2
+expected_keywords: [siemens.com, MICROMASTER, manual, 440]
+forbidden_keywords: []
+expected_vendor: Siemens
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [documentation, siemens, micromaster, doc-intent]
+turns:
+  - role: user
+    content: "find me the MICROMASTER 440 manual"

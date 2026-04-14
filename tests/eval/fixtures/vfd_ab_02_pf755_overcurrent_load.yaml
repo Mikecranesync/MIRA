@@ -1,0 +1,20 @@
+id: vfd_ab_02_pf755_overcurrent_load
+description: "PowerFlex 755 repeated overcurrent under load — multi-turn diagnostic path"
+expected_final_state: DIAGNOSIS
+max_turns: 8
+expected_keywords: [overcurrent, PowerFlex, 755, load, motor, current]
+forbidden_keywords: []
+expected_vendor: Allen-Bradley
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [vfd, pf755, overcurrent, load, allen-bradley]
+turns:
+  - role: user
+    content: "PF755 tripping on overcurrent under load, happens at about 70% speed"
+  - role: user
+    content: "50HP motor running a screw conveyor, 480V three-phase"
+  - role: user
+    content: "Happens about 15 minutes after startup, motor is warm when it trips"
+  - role: user
+    content: "No recent changes. Load is consistent — dry material conveyor, same as always"

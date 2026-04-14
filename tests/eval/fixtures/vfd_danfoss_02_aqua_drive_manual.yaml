@@ -1,0 +1,16 @@
+id: vfd_danfoss_02_aqua_drive_manual
+description: "Documentation intent — Danfoss AQUA Drive FC 202 manual, must return danfoss.com URL"
+# DOC_INTENT responses are inline — FSM stays at IDLE.
+# Correctness captured by cp_keyword_match checking for vendor URL domain.
+expected_final_state: IDLE
+max_turns: 2
+expected_keywords: [danfoss.com, FC 202, manual, AQUA]
+forbidden_keywords: []
+expected_vendor: Danfoss
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [documentation, danfoss, fc202, aqua-drive, doc-intent]
+turns:
+  - role: user
+    content: "get me a manual for the Danfoss AQUA Drive FC 202"

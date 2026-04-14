@@ -1,0 +1,16 @@
+id: vfd_abb_02_acs880_find_manual
+description: "Documentation intent — ABB ACS880 manual request, must return abb.com URL"
+# DOC_INTENT responses are inline — FSM stays at IDLE.
+# Correctness captured by cp_keyword_match checking for vendor URL domain.
+expected_final_state: IDLE
+max_turns: 2
+expected_keywords: [abb.com, ACS880, manual]
+forbidden_keywords: []
+expected_vendor: ABB
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [documentation, abb, acs880, doc-intent]
+turns:
+  - role: user
+    content: "can you find a manual for the ABB ACS880"

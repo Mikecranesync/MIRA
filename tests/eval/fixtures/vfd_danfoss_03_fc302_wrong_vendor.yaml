@@ -1,0 +1,18 @@
+id: vfd_danfoss_03_fc302_wrong_vendor
+description: "Danfoss FC 302 query — RAG must not return AutomationDirect or Allen-Bradley chunks"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: []
+forbidden_keywords: [GS10, GS20, GS30, AutomationDirect, PowerFlex, Allen-Bradley, Rockwell, PF525, PF755]
+expected_vendor: Danfoss
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [vfd, danfoss, fc302, cross-vendor, contamination, regression]
+turns:
+  - role: user
+    content: "Danfoss VLT AutomationDrive FC 302 overcurrent alarm on a belt conveyor"
+  - role: user
+    content: "37kW, 480V, trips at full load, started after a motor swap last week"
+  - role: user
+    content: "New motor is same HP rating, same frame, same full load amps"

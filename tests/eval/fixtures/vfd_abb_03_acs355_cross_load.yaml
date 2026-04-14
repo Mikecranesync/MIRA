@@ -1,0 +1,18 @@
+id: vfd_abb_03_acs355_cross_load
+description: "ABB ACS355 motor overload — out-of-KB, no cross-vendor content from AB or AutomationDirect"
+expected_final_state: DIAGNOSIS
+max_turns: 5
+expected_keywords: []
+forbidden_keywords: [PowerFlex, GS10, GS20, Allen-Bradley, AutomationDirect, Rockwell, PF525, PF755]
+expected_vendor: ABB
+wo_expected: false
+safety_expected: false
+honesty_required: true
+tags: [vfd, abb, acs355, motor-overload, out-of-kb, cross-vendor]
+turns:
+  - role: user
+    content: "ABB ACS355 showing motor overload fault, 7.5kW motor on a compressor"
+  - role: user
+    content: "460V, fault code A2013, ambient is about 40°C"
+  - role: user
+    content: "Motor is rated within drive spec, been running about a year"
