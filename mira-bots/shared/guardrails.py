@@ -286,6 +286,41 @@ MAINTENANCE_ABBREVIATIONS = {
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>\s*")
 
+# Vendor support URLs — used by both the documentation-intent routing in engine.py
+# and the no-KB-coverage honesty signal in rag_worker.py.
+VENDOR_SUPPORT_URLS: dict[str, str] = {
+    "pilz": "pilz.com/support",
+    "yaskawa": "yaskawa.com/service/support",
+    "automationdirect": "automationdirect.com/support",
+    "automation direct": "automationdirect.com/support",
+    "allen-bradley": "rockwellautomation.com/support",
+    "allen bradley": "rockwellautomation.com/support",
+    "rockwell": "rockwellautomation.com/support",
+    "powerflex": "rockwellautomation.com/support",
+    "siemens": "siemens.com/support",
+    "abb": "abb.com/support",
+    "omron": "ia.omron.com/support",
+    "schneider": "se.com/support",
+    "schneider electric": "se.com/support",
+    "mitsubishi": "mitsubishielectric.com/support",
+    "danfoss": "danfoss.com/support",
+    "eaton": "eaton.com/support",
+    "delta": "deltaww.com/support",
+    "lenze": "lenze.com/support",
+    "bosch rexroth": "boschrexroth.com/support",
+    "rexroth": "boschrexroth.com/support",
+}
+
+
+def vendor_support_url(text: str) -> str | None:
+    """Return the support URL for the first recognized vendor found in text, or None."""
+    text_lower = text.lower()
+    for vendor, url in VENDOR_SUPPORT_URLS.items():
+        if vendor in text_lower:
+            return url
+    return None
+
+
 # Phrases that unambiguously signal a documentation retrieval request.
 # Checked BEFORE the generic industrial check so "manual" in INTENT_KEYWORDS
 # does not swallow document requests into the diagnostic RAG path.
