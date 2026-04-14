@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v2.4.1
+**Version:** v2.5.0
 **Updated:** 2026-04-14
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
@@ -251,6 +251,17 @@ chore: build system, deps, tooling
 ---
 
 ## Release Notes
+
+### v2.5.0 (2026-04-14) — Phase 1 Crawl Verification Layer (closes #210)
+- **`crawl_verifier.py`** — New post-crawl QA module. Every Apify run now produces a verified outcome code: `SUCCESS`, `LOW_QUALITY`, `SHELL_ONLY`, `EMPTY`, `FAILED`. Zero silent greens.
+- **Key metric: `avg_content_length`** — Discriminates real manual content (10K–50K chars/page) from download listing pages (700–3,500 chars/page). 4,000 char threshold. This is what catches the Yaskawa/Pilz patterns.
+- **Honest technician notifications** — `LOW_QUALITY`/`SHELL_ONLY` sends "found listing pages, not manual content — send a PDF directly" instead of "New knowledge added ✅".
+- **`GET /ingest/crawl-verifications`** — Last 50 verification records as JSON. Used by eval loop and future dashboard.
+- **`POST /ingest/crawl-classify-historical`** — Retroactive run classification for past crawls.
+- **KB write correlation** — `_ingest_scraped_text` now returns bool and logs `kb_ok` with `run_id`, so auth failures (like the v2.4.0 OPENWEBUI_API_KEY incident) are visible.
+- **Proof-of-concept**: Yaskawa V1000 run `Brgo1xN4QLjhr0Pgc` (previously "SUCCEEDED") classified as `LOW_QUALITY` — 103 listing pages, avg 1,736 chars, content_density=0.12.
+- **Sample scorecard**: `tests/eval/crawl-verifications/2026-04-14-sample.md`
+- **Eval**: 10/10 (no regression).
 
 ### v2.4.1 (2026-04-14) — Hotfix: safety keywords, doc phrase gap, OPENWEBUI_API_KEY
 - **Safety keywords expanded** — `SAFETY_KEYWORDS` now includes electrical isolation / live-work phrases: `"isolate the power"`, `"isolating power"`, `"de-energize"`, `"de-energizing"`, `"pull the fuse"`, `"pull the breaker"`, `"live wire"`, `"live panel"`, `"working on live"`, and more. Forensic: Mike's Turn 2 description of pulling cables from a live distribution block was routed to diagnostic FSM instead of STOP escalation.
