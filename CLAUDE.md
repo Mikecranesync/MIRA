@@ -1,7 +1,7 @@
 # MIRA — Build State
 
-**Version:** v0.5.4
-**Updated:** 2026-04-13
+**Version:** v0.5.5
+**Updated:** 2026-04-14
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099, OpenAI-compat) → GSDEngine → Anthropic API
@@ -252,6 +252,34 @@ chore: build system, deps, tooling
 - **Photo pipeline on Bravo** — 3,694 confirmed equipment photos in `~/takeout_staging/ollama_confirmed/`. Ready for KB ingest at scale.
 - **LlamaIndex RAG upgrade** — PRD complete (`MIRA_LlamaIndex_RAG_PRD.docx.md`). Replaces hand-rolled RAG in rag_worker.py with LlamaIndex orchestration. Ready to build.
 - **Bot quality tuning** — RAG quality gate (0.70 threshold), NeonDB-only retrieval, Nemotron reranking active. Next: fix intent guard false positives.
+
+---
+
+## Continuous Eval Loop
+
+MIRA has a nightly automated eval system (`tests/eval/`) — 10 scenario fixtures, 5 binary checkpoints per scenario, running at 02:00 UTC on VPS.
+
+| Path | Purpose |
+|------|---------|
+| `tests/eval/fixtures/` | YAML scenario fixtures (10 as of Week 1) |
+| `tests/eval/run_eval.py` | CLI runner — `python3 tests/eval/run_eval.py` |
+| `tests/eval/grader.py` | 5 binary checkpoint definitions |
+| `tests/eval/runs/YYYY-MM-DD.md` | Nightly scorecard output |
+
+**Running manually on VPS:**
+```bash
+cd /opt/mira && python3 tests/eval/run_eval.py
+# Scorecard written to tests/eval/runs/YYYY-MM-DD.md
+# Logs: /var/log/mira-eval.log
+```
+
+**Adding a scenario:** Copy any file in `tests/eval/fixtures/`, edit the `turns` and ground-truth fields, save as `NN_description.yaml`. It runs automatically on next nightly eval.
+
+**Baseline (2026-04-14):** 8/10 pass. Known failures:
+- `gs20_cross_vendor_03` — pipeline says Allen-Bradley PowerFlex for GS20 (cross-vendor hallucination)
+- `yaskawa_out_of_kb_04` — no honesty signal for uncovered equipment
+
+**Design doc:** `docs/plans/auto-research-eval-loop.md`
 
 ---
 
