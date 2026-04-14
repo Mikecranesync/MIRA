@@ -1,0 +1,16 @@
+id: vfd_mitsu_01_fr_d720_fault_oc
+description: "Mitsubishi FR-D720 OC fault — expect honesty response (no Mitsubishi KB)"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: []
+forbidden_keywords: []
+expected_vendor: Mitsubishi
+wo_expected: false
+safety_expected: false
+honesty_required: true
+tags: [vfd, mitsubishi, fr-d720, overcurrent, out-of-kb]
+turns:
+  - role: user
+    content: "Mitsubishi FR-D720 showing OC fault, tripping on startup"
+  - role: user
+    content: "0.4kW fan motor, 220V single-phase, brand new installation"

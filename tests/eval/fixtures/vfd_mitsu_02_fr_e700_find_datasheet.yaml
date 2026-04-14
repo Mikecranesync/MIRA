@@ -1,0 +1,16 @@
+id: vfd_mitsu_02_fr_e700_find_datasheet
+description: "Documentation intent — FR-E700 datasheet request, must return Mitsubishi URL"
+# DOC_INTENT responses are inline — FSM stays at IDLE.
+# Correctness captured by cp_keyword_match checking for vendor URL domain.
+expected_final_state: IDLE
+max_turns: 2
+expected_keywords: [mitsubishi, FR-E700, datasheet, manual]
+forbidden_keywords: []
+expected_vendor: Mitsubishi
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [documentation, mitsubishi, fr-e700, doc-intent]
+turns:
+  - role: user
+    content: "looking for the FR-E700 datasheet"
