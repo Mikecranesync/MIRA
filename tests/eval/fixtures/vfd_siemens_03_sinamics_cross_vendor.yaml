@@ -1,0 +1,18 @@
+id: vfd_siemens_03_sinamics_cross_vendor
+description: "SINAMICS G120 query — RAG must not return Allen-Bradley or AutomationDirect chunks"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: []
+forbidden_keywords: [PowerFlex, Allen-Bradley, Rockwell, PF525, PF755, GS10, GS20, AutomationDirect]
+expected_vendor: Siemens
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [vfd, siemens, sinamics, cross-vendor, contamination, regression]
+turns:
+  - role: user
+    content: "SINAMICS G120 VFD tripping on overcurrent, pump motor 11kW"
+  - role: user
+    content: "Fault just started today, no changes to the system"
+  - role: user
+    content: "Nameplate says 380-480V 3AC, motor is within drive rating"
