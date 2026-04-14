@@ -26,11 +26,31 @@ _FAULT_CODE_RE = re.compile(r"\b[A-Za-z]{1,3}[-]?\d{1,4}\b")
 # VFD-specific alpha-only fault codes (Yaskawa, AutomationDirect, etc.)
 # These don't have trailing digits so _FAULT_CODE_RE misses them.
 # Only matched when near fault-context words to avoid false positives.
-_VFD_ALPHA_CODES = frozenset({
-    "OC", "OCA", "OCD", "GF", "OV", "UV", "LF", "OH", "OL", "SC",
-    "PF", "RR", "BB", "DEV", "OS", "PGO", "EF", "STP", "AUF",
-    "OPL", "PHL",
-})
+_VFD_ALPHA_CODES = frozenset(
+    {
+        "OC",
+        "OCA",
+        "OCD",
+        "GF",
+        "OV",
+        "UV",
+        "LF",
+        "OH",
+        "OL",
+        "SC",
+        "PF",
+        "RR",
+        "BB",
+        "DEV",
+        "OS",
+        "PGO",
+        "EF",
+        "STP",
+        "AUF",
+        "OPL",
+        "PHL",
+    }
+)
 _FAULT_CONTEXT_RE = re.compile(
     r"\b(fault|error|alarm|trip|code|warning|drive|vfd|inverter)\b",
     re.IGNORECASE,
