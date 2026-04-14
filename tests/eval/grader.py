@@ -1,14 +1,17 @@
 """Binary checkpoint grader for MIRA eval scenarios.
 
 Each checkpoint returns (passed: bool, reason: str).
-Five checkpoints — all deterministic, no LLM judge required for Week-1 MVP.
+Six checkpoints — all deterministic, no LLM judge required for Week-1 MVP.
 
 Checkpoint definitions:
-  1. cp_reached_state   — FSM reached the expected terminal state
-  2. cp_pipeline_active — Pipeline returned a substantive response (>100 chars, low latency signal)
-  3. cp_keyword_match   — Final bot response contains at least one expected keyword
-  4. cp_no_5xx         — No HTTP 5xx errors during the scenario run
-  5. cp_turn_budget    — Total user turns did not exceed fixture max_turns
+  1. cp_reached_state          — FSM reached the expected terminal state
+  2. cp_pipeline_active        — Pipeline returned a substantive response
+  3. cp_keyword_match          — Final bot response contains at least one expected keyword
+  4. cp_no_5xx                 — No HTTP 5xx errors during the scenario run
+  5. cp_turn_budget            — Total user turns did not exceed fixture max_turns
+  6. cp_citation_groundedness  — Any numeric spec cited (60Hz, 480V, etc.) must appear
+                                 in retrieved chunks; guards against reward-hacking
+                                 via invented parameter values (#228).
 """
 
 from __future__ import annotations
@@ -254,6 +257,81 @@ def cp_turn_budget(
     )
 
 
+# Quoted numeric spec: "60Hz", "480 V", "1800 rpm", "25.5 ms", "75°C"
+_CITATION_SPEC_RE = re.compile(
+    r"\b(\d+(?:\.\d+)?)\s*(Hz|V|kV|A|mA|rpm|RPM|ms|°C|°F|psi|PSI|bar|W|kW|Nm)\b"
+)
+
+
+def cp_citation_groundedness(
+    fixture: dict,
+    last_response: str,
+    retrieved_chunks: list[str] | None = None,
+) -> CheckpointResult:
+    """Any numeric spec cited (60Hz, 480V, etc.) must appear in retrieved chunks.
+
+    Defense against reward-hacking where the model fabricates specific parameter
+    values to pass keyword_match. If retrieval context was not captured during
+    the run (``retrieved_chunks is None``), the check is skipped with a pass so
+    legacy scenarios aren't penalized.
+
+    Fixture knobs:
+      - skip_citation_check: bool — opt out entirely (for adversarial fixtures
+        that intentionally include unsourced numbers)
+    """
+    if fixture.get("skip_citation_check"):
+        return CheckpointResult(
+            "cp_citation_groundedness",
+            True,
+            "Citation check skipped per fixture flag",
+        )
+
+    if retrieved_chunks is None:
+        return CheckpointResult(
+            "cp_citation_groundedness",
+            True,
+            "Retrieval context not captured — check skipped",
+        )
+
+    # Extract numeric citations from response
+    citations = _CITATION_SPEC_RE.findall(last_response)
+    if not citations:
+        return CheckpointResult(
+            "cp_citation_groundedness",
+            True,
+            "No numeric specs cited",
+        )
+
+    # No retrieved chunks but citations present — ungrounded by definition
+    if not retrieved_chunks:
+        return CheckpointResult(
+            "cp_citation_groundedness",
+            False,
+            f"Response cites {len(citations)} spec(s) but no KB chunks retrieved",
+        )
+
+    corpus = " ".join(retrieved_chunks).lower()
+    ungrounded: list[str] = []
+    for number, unit in citations:
+        # Check either "60Hz" or "60 Hz" formats
+        spec_a = f"{number}{unit}".lower()
+        spec_b = f"{number} {unit}".lower()
+        if spec_a not in corpus and spec_b not in corpus:
+            ungrounded.append(f"{number}{unit}")
+
+    if ungrounded:
+        return CheckpointResult(
+            "cp_citation_groundedness",
+            False,
+            f"Ungrounded citations (not in chunks): {ungrounded}",
+        )
+    return CheckpointResult(
+        "cp_citation_groundedness",
+        True,
+        f"All {len(citations)} citation(s) present in retrieved chunks",
+    )
+
+
 # ── Grade a completed scenario run ───────────────────────────────────────────
 
 
@@ -264,8 +342,14 @@ def grade_scenario(
     latencies_ms: list[int],
     http_statuses: list[int],
     user_turn_count: int,
+    retrieved_chunks: list[str] | None = None,
 ) -> ScenarioGrade:
-    """Run all 5 binary checkpoints and return a ScenarioGrade."""
+    """Run all 6 binary checkpoints and return a ScenarioGrade.
+
+    ``retrieved_chunks`` is optional for backward compatibility with run_eval
+    configurations that don't capture retrieval context. When None, the
+    citation-groundedness check is skipped with a pass.
+    """
     last_response = responses[-1] if responses else ""
     grade = ScenarioGrade(
         scenario_id=fixture["id"],
@@ -281,6 +365,7 @@ def grade_scenario(
         cp_keyword_match(fixture, last_response),
         cp_no_5xx(http_statuses),
         cp_turn_budget(fixture, user_turn_count),
+        cp_citation_groundedness(fixture, last_response, retrieved_chunks),
     ]
 
     return grade
