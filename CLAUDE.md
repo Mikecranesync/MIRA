@@ -226,6 +226,7 @@ chore: build system, deps, tooling
 
 ## Known Broken / Incomplete
 
+- **Gemini key blocked** — `GEMINI_API_KEY` in Doppler returns 403 "Your project has been denied access". Get fresh key from aistudio.google.com and update Doppler `factorylm/prd`. Cascade falls through to Groq/Claude in the meantime (smoke-tested OK).
 - **Teams + WhatsApp** — Code-complete, pending cloud setup (Azure Bot Service, WhatsApp Business API)
 - **PLC at 192.168.1.100** — Unreachable from PLC laptop; needs physical check (power/switch/cable)
 - **Charlie Doppler keychain** — Same SSH keychain lock as Bravo had; needs `doppler configure set token-storage file`
