@@ -313,3 +313,168 @@ def crawl_js_site(start_url: str, max_pages: int = 50) -> dict:
         start_url,
     )
     return {"pages_crawled": pages_crawled, "urls_queued": urls_queued}
+
+
+# ---------------------------------------------------------------------------
+# Fan-out tasks (#111) — replace long-running BFS with fast discovery +
+# per-URL Celery dispatch so no task holds a worker slot for minutes.
+# ---------------------------------------------------------------------------
+
+
+@app.task(name="tasks.playwright_crawler.discover_js_urls")
+def discover_js_urls(start_url: str) -> dict:
+    """Render one page via Playwright, extract links, fan out ingest tasks.
+
+    Fast replacement for ``crawl_js_site``: renders the start page, queues
+    each discovered PDF/article link via ``ingest_url.delay()`` or
+    ``render_and_ingest_page.delay()``, then returns immediately. Frees the
+    worker slot in seconds instead of minutes.
+
+    Depth: 1 level. For deeper discovery, the dispatched
+    ``render_and_ingest_page`` tasks can in turn call ``discover_js_urls``
+    on their own pages — but we cap recursion to avoid fan-out explosions.
+    """
+    try:
+        from mira_crawler.tasks.ingest import ingest_url
+    except ImportError:
+        from tasks.ingest import ingest_url
+
+    if not _is_allowed_domain(start_url):
+        logger.warning("Refusing to discover disallowed domain: %s", start_url)
+        return {"urls_queued": 0, "articles_queued": 0, "error": "domain_not_allowed"}
+
+    if not _PLAYWRIGHT_AVAILABLE:
+        return {
+            "urls_queued": 0, "articles_queued": 0,
+            "error": "playwright_not_installed",
+        }
+
+    if not _check_robots(start_url):
+        logger.info("robots.txt disallows discovery: %s", start_url[:80])
+        return {"urls_queued": 0, "articles_queued": 0, "error": "robots_disallowed"}
+
+    pdfs_queued = 0
+    articles_queued = 0
+
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent=_USER_AGENT,
+                extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
+            )
+            page = context.new_page()
+            try:
+                page.goto(start_url, timeout=_FETCH_TIMEOUT_MS,
+                          wait_until="domcontentloaded")
+                html_content = page.content()
+            except PlaywrightTimeoutError:
+                logger.warning("Discovery timed out: %s", start_url[:80])
+                browser.close()
+                return {"urls_queued": 0, "articles_queued": 0, "error": "timeout"}
+
+            browser.close()
+
+        # Fan out discovered links — each becomes its own Celery task
+        for link in _extract_links(html_content, start_url):
+            if not _is_same_domain(link, start_url):
+                continue
+            if not _is_allowed_domain(link):
+                continue
+
+            if _is_pdf_url(link):
+                try:
+                    ingest_url.delay(url=link, source_type="equipment_manual")
+                    pdfs_queued += 1
+                except Exception as exc:
+                    logger.warning("Failed to queue PDF %s: %s", link[:80], exc)
+            elif _is_article_url(link):
+                try:
+                    render_and_ingest_page.delay(url=link)
+                    articles_queued += 1
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to queue article %s: %s", link[:80], exc
+                    )
+
+    except Exception as exc:
+        logger.error("discover_js_urls failed for %s: %s", start_url, exc)
+        return {
+            "urls_queued": pdfs_queued,
+            "articles_queued": articles_queued,
+            "error": str(exc),
+        }
+
+    logger.info(
+        "discover_js_urls complete for %s: %d PDFs, %d articles queued",
+        start_url[:60], pdfs_queued, articles_queued,
+    )
+    return {"urls_queued": pdfs_queued, "articles_queued": articles_queued}
+
+
+@app.task(name="tasks.playwright_crawler.render_and_ingest_page")
+def render_and_ingest_page(url: str) -> dict:
+    """Render a single JS-heavy page and inline-ingest its text.
+
+    This is the per-URL unit that ``discover_js_urls`` fans out to. Each
+    call renders exactly one page (no BFS, no traversal), so the worker
+    slot is held only for the duration of that single render + ingest.
+    """
+    import os
+
+    if not _is_allowed_domain(url):
+        return {"ingested": False, "error": "domain_not_allowed"}
+
+    if not _PLAYWRIGHT_AVAILABLE:
+        return {"ingested": False, "error": "playwright_not_installed"}
+
+    if not _check_robots(url):
+        return {"ingested": False, "error": "robots_disallowed"}
+
+    tenant_id = os.getenv("MIRA_TENANT_ID", "")
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    embed_model = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
+    if not tenant_id:
+        return {"ingested": False, "error": "no_tenant_id"}
+
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent=_USER_AGENT,
+                extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
+            )
+            page = context.new_page()
+            try:
+                page.goto(url, timeout=_FETCH_TIMEOUT_MS,
+                          wait_until="domcontentloaded")
+                html_content = page.content()
+            except PlaywrightTimeoutError:
+                browser.close()
+                return {"ingested": False, "error": "timeout"}
+            except Exception as exc:
+                browser.close()
+                logger.warning("Render failed for %s: %s", url[:80], exc)
+                return {"ingested": False, "error": str(exc)}
+            browser.close()
+    except Exception as exc:
+        logger.error("Playwright session failed: %s", exc)
+        return {"ingested": False, "error": str(exc)}
+
+    text = _extract_text(html_content)
+    if not text or len(text) < 200:
+        return {"ingested": False, "error": "too_little_text"}
+
+    try:
+        inserted = ingest_text_inline(
+            text=text,
+            source_url=url,
+            source_type="knowledge_article",
+            tenant_id=tenant_id,
+            ollama_url=ollama_url,
+            embed_model=embed_model,
+        )
+        return {"ingested": True, "chunks_inserted": inserted}
+    except Exception as exc:
+        logger.warning("Inline ingest failed for %s: %s", url[:80], exc)
+        return {"ingested": False, "error": str(exc)}
