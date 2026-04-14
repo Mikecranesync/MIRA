@@ -1,0 +1,17 @@
+id: gs20_cross_vendor_03
+description: "GS20 OC fault — validates no cross-vendor confusion with PF525 F004 symptoms"
+expected_final_state: DIAGNOSIS
+max_turns: 8
+expected_keywords: [GS20, overcurrent]
+forbidden_keywords: [PowerFlex 525, PowerFlex 755, PF525]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+tags: [vfd, gs20, cross-vendor, regression]
+turns:
+  - role: user
+    content: "Getting F004 on my GS20, what does it mean?"
+  - role: user
+    content: "Just installed it last week, 3HP motor, trips immediately on start"
+  - role: user
+    content: "Output reactor is not installed, direct wiring to motor"

@@ -1,0 +1,20 @@
+id: full_diagnosis_happy_path_07
+description: "GS10 full 5-turn diagnosis — golden path from symptom to DIAGNOSIS with WO"
+expected_final_state: DIAGNOSIS
+max_turns: 10
+expected_keywords: [overcurrent, parameter, GS10]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+tags: [vfd, gs10, happy-path, full-diagnosis, golden]
+turns:
+  - role: user
+    content: "GS10 VFD overcurrent fault on startup, motor 5HP 460V"
+  - role: user
+    content: "1"
+  - role: user
+    content: "Trips within 2 seconds of start, load is a centrifugal pump, no output reactor"
+  - role: user
+    content: "2"
+  - role: user
+    content: "Factory defaults, we haven't changed any parameters since install last year"

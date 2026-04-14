@@ -1,0 +1,16 @@
+id: gs10_overcurrent_01
+description: "GS10 VFD overcurrent fault, senior tech, happy path"
+expected_final_state: DIAGNOSIS
+max_turns: 8
+expected_keywords: [overcurrent, GS10, parameter]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+tags: [vfd, overcurrent, gs10, happy-path]
+turns:
+  - role: user
+    content: "GS10 VFD showing OC fault on startup"
+  - role: user
+    content: "2"
+  - role: user
+    content: "Motor is 5HP 460V three-phase, no load connected during startup test"
