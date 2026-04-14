@@ -49,6 +49,9 @@ _MANUFACTURER_DOC_URLS: dict[str, str] = {
     "danfoss": "https://www.danfoss.com/en/service-and-support/downloads/",
     "mitsubishi": "https://www.mitsubishielectric.com/fa/products/drv/",
     "lenze": "https://www.lenze.com/en/service/downloads/",
+    "pilz": "https://www.pilz.com/en-US/support/downloads",
+    "omron": "https://www.fa.omron.com/support/technical-info/",
+    "eaton": "https://www.eaton.com/content/dam/eaton/",
 }
 
 # Collection routing patterns for document-kb endpoint

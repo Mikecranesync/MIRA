@@ -286,6 +286,112 @@ MAINTENANCE_ABBREVIATIONS = {
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>\s*")
 
+# Vendor support URLs — used by both the documentation-intent routing in engine.py
+# and the no-KB-coverage honesty signal in rag_worker.py.
+VENDOR_SUPPORT_URLS: dict[str, str] = {
+    "pilz": "pilz.com/support",
+    "yaskawa": "yaskawa.com/service/support",
+    "automationdirect": "automationdirect.com/support",
+    "automation direct": "automationdirect.com/support",
+    "allen-bradley": "rockwellautomation.com/support",
+    "allen bradley": "rockwellautomation.com/support",
+    "rockwell": "rockwellautomation.com/support",
+    "powerflex": "rockwellautomation.com/support",
+    "siemens": "siemens.com/support",
+    "abb": "abb.com/support",
+    "omron": "ia.omron.com/support",
+    "schneider": "se.com/support",
+    "schneider electric": "se.com/support",
+    "mitsubishi": "mitsubishielectric.com/support",
+    "danfoss": "danfoss.com/support",
+    "eaton": "eaton.com/support",
+    "delta": "deltaww.com/support",
+    "lenze": "lenze.com/support",
+    "bosch rexroth": "boschrexroth.com/support",
+    "rexroth": "boschrexroth.com/support",
+}
+
+
+def vendor_support_url(text: str | None) -> str | None:
+    """Return the support URL for the first recognized vendor found in text, or None."""
+    if not text:
+        return None
+    text_lower = text.lower()
+    for vendor, url in VENDOR_SUPPORT_URLS.items():
+        if vendor in text_lower:
+            return url
+    return None
+
+
+_VENDOR_DISPLAY_NAMES: dict[str, str] = {
+    "pilz": "Pilz",
+    "yaskawa": "Yaskawa",
+    "automationdirect": "AutomationDirect",
+    "automation direct": "AutomationDirect",
+    "allen-bradley": "Allen-Bradley",
+    "allen bradley": "Allen-Bradley",
+    "rockwell": "Rockwell Automation",
+    "powerflex": "Rockwell Automation",
+    "siemens": "Siemens",
+    "abb": "ABB",
+    "omron": "Omron",
+    "schneider electric": "Schneider Electric",
+    "schneider": "Schneider Electric",
+    "mitsubishi": "Mitsubishi Electric",
+    "danfoss": "Danfoss",
+    "eaton": "Eaton",
+    "delta": "Delta Electronics",
+    "lenze": "Lenze",
+    "bosch rexroth": "Bosch Rexroth",
+    "rexroth": "Bosch Rexroth",
+}
+
+
+def vendor_name_from_text(text: str | None) -> str | None:
+    """Return a display-ready manufacturer name for the first recognized vendor in text."""
+    if not text:
+        return None
+    text_lower = text.lower()
+    for vendor, name in _VENDOR_DISPLAY_NAMES.items():
+        if vendor in text_lower:
+            return name
+    return None
+
+
+# Phrases that unambiguously signal a documentation retrieval request.
+# Checked BEFORE the generic industrial check so "manual" in INTENT_KEYWORDS
+# does not swallow document requests into the diagnostic RAG path.
+_DOCUMENTATION_PHRASES = (
+    "do you have the manual",
+    "do you have a manual",
+    "do you have the datasheet",
+    "do you have a datasheet",
+    "do you have documentation",
+    "have the manual",
+    "find the manual",
+    "find me the manual",
+    "find me a manual",
+    "get me the manual",
+    "get the manual",
+    "send me the manual",
+    "where is the manual",
+    "where can i find the manual",
+    "where to find the manual",
+    "i need the manual",
+    "need the manual",
+    "find the datasheet",
+    "get me the datasheet",
+    "get the datasheet",
+    "where is the datasheet",
+    "where can i find the datasheet",
+    "where to find the datasheet",
+    "i need the datasheet",
+    "need the datasheet",
+    "pinout",
+    "pin out",
+    "wiring diagram for",
+)
+
 # Signals that the technician is under time or job pressure.
 EMOTIONAL_PRESSURE_SIGNALS = [
     "days",
@@ -481,7 +587,12 @@ def detect_emotional_state(message: str) -> str:
 def classify_intent(message: str) -> str:
     """Classify message intent.
 
-    Returns: 'greeting' | 'help' | 'industrial' | 'safety' | 'off_topic'
+    Returns: 'greeting' | 'help' | 'industrial' | 'documentation' | 'safety' | 'off_topic'
+
+    'documentation' fires when the technician explicitly asks for a manual,
+    datasheet, pinout, or wiring diagram — distinct from a diagnostic question
+    that happens to reference a manual.  It routes to an immediate vendor-URL
+    response + async KB crawl rather than the standard RAG diagnostic path.
 
     Industrial intent is broad — any question about equipment, specifications,
     installation, maintenance, or fault diagnosis. The default for unrecognized
@@ -496,6 +607,11 @@ def classify_intent(message: str) -> str:
 
     if any(pat in msg for pat in HELP_PATTERNS):
         return "help"
+
+    # Documentation retrieval — checked BEFORE industrial so "manual" in
+    # INTENT_KEYWORDS doesn't swallow explicit document requests.
+    if any(phrase in msg for phrase in _DOCUMENTATION_PHRASES):
+        return "documentation"
 
     # Industrial signals — check BEFORE greeting to avoid false positives on
     # messages like "hi my vfd is down" (17 chars, contains "hi" greeting word
@@ -545,7 +661,7 @@ def check_output(response: str, intent: str, has_photo: bool = False) -> str:
             return "What equipment or fault code can I help you with?"
 
     # No system prompt leakage
-    if intent != "industrial" and "system prompt" in resp_lower:
+    if intent not in ("industrial", "documentation") and "system prompt" in resp_lower:
         return "What equipment or fault code can I help you with?"
 
     return response

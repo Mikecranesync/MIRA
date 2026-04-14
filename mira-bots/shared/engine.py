@@ -18,6 +18,8 @@ from .guardrails import (
     detect_session_followup,
     resolve_option_selection,
     strip_mentions,
+    vendor_name_from_text,
+    vendor_support_url,
 )
 from .inference.router import InferenceRouter
 from .nemotron import NemotronClient
@@ -134,10 +136,11 @@ class Supervisor:
         self.db_path = db_path
         self.vision_model = vision_model
 
-        # Service base URLs for nameplate downstream calls
+        # Service base URLs for nameplate downstream calls and reactive ingest
         self.mcp_base_url = (
             mcp_base_url or os.getenv("MCP_BASE_URL", "http://mira-mcp:8001")
         ).rstrip("/")
+        self._ingest_base_url = os.getenv("INGEST_BASE_URL", "http://mira-ingest:8001").rstrip("/")
         self.mcp_api_key = mcp_api_key or os.getenv("MCP_REST_API_KEY", "")
         self.web_base_url = (
             web_base_url or os.getenv("WEB_BASE_URL", "http://mira-web:3000")
@@ -433,6 +436,39 @@ class Supervisor:
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, "IDLE")
+
+        # Documentation intent: respond with vendor URL immediately + async crawl
+        if not photo_b64 and intent == "documentation":
+            combined = f"{message} {state.get('asset_identified', '')}".strip()
+            url = vendor_support_url(combined)
+            mfr = vendor_name_from_text(combined) or ""
+            if url:
+                reply = (
+                    f"I don't have documentation for that equipment in my knowledge "
+                    f"base yet.\n\n"
+                    f"You can find it here: {url}\n\n"
+                    f"I've queued a crawl to pull the manual automatically — ask me "
+                    f"again in a couple of minutes and I'll have more specific information."
+                )
+            else:
+                reply = (
+                    "I don't have documentation for that equipment in my knowledge "
+                    "base yet.\n\n"
+                    "Try searching the manufacturer's website for the model number and "
+                    "document type.\n\n"
+                    "I've queued a search — ask me again shortly."
+                )
+            import asyncio
+            asyncio.create_task(
+                self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id)
+            )
+            logger.info(
+                "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s",
+                chat_id, mfr, url,
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(reply, "low", trace_id, state["state"])
 
         # Photo path: delegate to vision worker, then route
         _photo_continues_session = False
@@ -963,6 +999,43 @@ class Supervisor:
             None,
             state["state"],
         )
+
+    async def _fire_scrape_trigger(
+        self,
+        equipment_id: str,
+        manufacturer: str,
+        tenant_id: str,
+        chat_id: str,
+    ) -> None:
+        """POST to /ingest/scrape-trigger in the background — failures are non-fatal.
+
+        Called via asyncio.create_task() so it never blocks the user response.
+        """
+        url = f"{self._ingest_base_url}/ingest/scrape-trigger"
+        payload = {
+            "equipment_id": equipment_id[:120],
+            "manufacturer": manufacturer,
+            "model": "",
+            "tenant_id": tenant_id or "",
+            "chat_id": chat_id,
+            "context": "documentation_request",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(url, json=payload)
+            if resp.status_code == 200:
+                job_id = resp.json().get("job_id", "?")
+                logger.info(
+                    "SCRAPE_TRIGGER queued job_id=%s manufacturer=%r chat_id=%s",
+                    job_id, manufacturer, chat_id,
+                )
+            else:
+                logger.warning(
+                    "SCRAPE_TRIGGER HTTP %d: %s",
+                    resp.status_code, resp.text[:200],
+                )
+        except Exception as e:
+            logger.warning("SCRAPE_TRIGGER failed (non-fatal): %s", e)
 
     _STOP_WORDS = frozenset(
         {

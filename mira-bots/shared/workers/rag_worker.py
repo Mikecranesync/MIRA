@@ -10,7 +10,7 @@ import httpx
 import yaml
 
 from .. import neon_recall as _neon_recall
-from ..guardrails import rewrite_question
+from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
 from ..langfuse_setup import trace_rag_query
 
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
@@ -30,6 +30,7 @@ def _load_prompt_meta() -> dict:
 
 
 logger = logging.getLogger("mira-gsd")
+
 
 GSD_SYSTEM_PROMPT = """\
 You are MIRA, an industrial maintenance assistant. You use the Guided \
@@ -171,6 +172,9 @@ class RAGWorker:
                 over the constructor-level ``self.tenant_id`` fallback.
         """
         effective_tenant = tenant_id or self.tenant_id
+        # Track whether retrieval was attempted so we can inject the honesty
+        # directive when it ran but returned zero useful chunks.
+        retrieval_attempted = bool(effective_tenant)
         model = vision_model if photo_b64 else None
         metadata = {
             "fsm_state": state.get("state"),
@@ -208,6 +212,27 @@ class RAGWorker:
                 logger.info("RAG_QUALITY_GATE top_score=%.3f — chunks suppressed", top_score)
                 chunk_texts = []
 
+            # Vendor-relevance check: if the query names a specific vendor/brand but ALL
+            # returned chunks have a different manufacturer, they are cross-vendor
+            # contamination from the shared OEM pool.  Suppress them so the honesty
+            # directive fires rather than the LLM hallucinating with wrong-equipment docs.
+            if chunk_texts and not photo_b64:
+                query_combined = f"{message} {state.get('asset_identified', '')}".strip()
+                query_vendor = vendor_name_from_text(query_combined)
+                if query_vendor:
+                    qv_lower = query_vendor.lower()
+                    vendor_matched = any(
+                        qv_lower in (c.get("manufacturer") or "").lower()
+                        for c in neon_chunks
+                    )
+                    if not vendor_matched:
+                        logger.info(
+                            "CROSS_VENDOR_CONTAMINATION vendor=%r — %d chunk(s) from "
+                            "other equipment suppressed, honesty directive will fire",
+                            query_vendor, len(chunk_texts),
+                        )
+                        chunk_texts = []
+
             self._last_sources = chunk_texts
             self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
 
@@ -240,7 +265,15 @@ class RAGWorker:
                     photo_b64=photo_b64,
                 )
             else:
-                messages = self._build_prompt(state, rewritten, photo_b64)
+                no_kb = retrieval_attempted and not photo_b64
+                if no_kb:
+                    logger.info(
+                        "NO_KB_COVERAGE asset=%r — honesty directive injected",
+                        state.get("asset_identified", "unknown"),
+                    )
+                messages = self._build_prompt(
+                    state, rewritten, photo_b64, no_kb_coverage=no_kb
+                )
             t0 = time.monotonic()
             raw = await self._call_llm(messages, model=model)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -321,8 +354,15 @@ class RAGWorker:
         message: str,
         photo_b64: str = None,
         neon_chunks: list[dict] = None,
+        no_kb_coverage: bool = False,
     ) -> list[dict]:
-        """Build message list for LLM with GSD system prompt and state context."""
+        """Build message list for LLM with GSD system prompt and state context.
+
+        Args:
+            no_kb_coverage: True when retrieval was attempted but returned zero results.
+                Injects an explicit honesty directive so the LLM admits it has no
+                documentation rather than hallucinating specifics.
+        """
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
@@ -331,6 +371,30 @@ class RAGWorker:
             system_content += f"Asset identified: {state['asset_identified']}\n"
         if state.get("fault_category"):
             system_content += f"Fault category: {state['fault_category']}\n"
+
+        # Honesty directive: retrieval ran but found nothing relevant
+        if no_kb_coverage:
+            asset = state.get("asset_identified", "")
+            support_url = vendor_support_url(asset) or vendor_support_url(message)
+            url_hint = (
+                f"Point them to {support_url} for the official manual."
+                if support_url
+                else "Suggest they search the manufacturer's website for the equipment manual."
+            )
+            system_content += (
+                "\n\n--- NO KB COVERAGE ---\n"
+                "CRITICAL: The knowledge base has NO documentation for this equipment. "
+                "You searched and found nothing.\n"
+                "You MUST follow these rules for this response:\n"
+                "1. Open with: \"I don't have documentation for this equipment in my knowledge base.\"\n"
+                "2. Do NOT ask the user to consult a manual — you don't have it.\n"
+                "3. Any general troubleshooting knowledge MUST be prefaced with: "
+                "\"Based on general knowledge (not from specific documentation)...\"\n"
+                f"4. {url_hint}\n"
+                "5. If they haven't provided the model number, ask for it so a manual can be sourced.\n"
+                "6. Set confidence to LOW. Do not pretend to have specific documentation.\n"
+                "--- END NO KB COVERAGE ---\n"
+            )
 
         # Inject NeonDB knowledge base chunks when available
         if neon_chunks:

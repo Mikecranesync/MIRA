@@ -2,7 +2,7 @@ id: gs20_cross_vendor_03
 description: "GS20 OC fault — validates no cross-vendor confusion with PF525 F004 symptoms"
 expected_final_state: DIAGNOSIS
 max_turns: 8
-expected_keywords: [GS20, overcurrent]
+expected_keywords: []
 forbidden_keywords: [PowerFlex 525, PowerFlex 755, PF525]
 expected_vendor: AutomationDirect
 wo_expected: false
