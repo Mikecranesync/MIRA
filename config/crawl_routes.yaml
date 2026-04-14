@@ -53,7 +53,7 @@ strategies:
   apify_playwright:
     # Apify website-content-crawler with Playwright (JS rendering)
     actor: apify/website-content-crawler
-    crawlerType: playwright  # headless Chromium
+    crawlerType: playwright:chrome  # headless Chromium
     maxCrawlPages: 20        # fewer pages — JS rendering is slower
     maxCrawlDepth: 2         # go deeper than cheerio to find actual docs
     waitUntil: networkidle   # wait for React/Angular to finish loading

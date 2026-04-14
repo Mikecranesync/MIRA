@@ -101,7 +101,7 @@ async def _run_apify_playwright(
         "startUrls": [{"url": base_url}],
         "maxCrawlDepth": params.get("maxCrawlDepth", 2),
         "maxCrawlPages": params.get("maxCrawlPages", 20),
-        "crawlerType": "playwright",
+        "crawlerType": params.get("crawlerType", "playwright:chrome"),
         "outputFormats": ["markdown"],
         "globs": globs or [{"glob": "**/*manual*"}, {"glob": "**/*.pdf"}],
     }
