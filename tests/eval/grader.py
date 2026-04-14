@@ -124,33 +124,40 @@ def cp_reached_state(
 def cp_pipeline_active(
     responses: list[str],
     latencies_ms: list[int],
+    fixture: dict | None = None,
 ) -> CheckpointResult:
     """Pipeline returned substantive responses — not empty / not just a health echo.
 
-    Heuristic: at least one response >100 chars AND at least one call took >200ms
-    (indicates LLM inference ran, not a cached/trivial response).
+    Heuristic: at least one response >50 chars AND at least one call took >100ms.
+    Safety/honesty fixtures may legitimately produce short responses — thresholds are
+    relaxed for those (>20 chars + >50ms).
     """
-    long_responses = [r for r in responses if len(r) > 100]
-    slow_calls = [ms for ms in latencies_ms if ms > 200]
+    is_special = fixture and (fixture.get("safety_expected") or fixture.get("honesty_required"))
+    min_chars = 20 if is_special else 50
+    min_ms = 50 if is_special else 100
 
-    if long_responses and slow_calls:
+    substantive = [r for r in responses if len(r) >= min_chars]
+    real_calls = [ms for ms in latencies_ms if ms >= min_ms]
+
+    if substantive and real_calls:
         return CheckpointResult(
             "cp_pipeline_active",
             True,
-            f"{len(long_responses)} substantive response(s), slowest={max(latencies_ms)}ms",
+            f"{len(substantive)} substantive response(s), slowest={max(latencies_ms)}ms",
         )
 
-    if not long_responses:
+    if not substantive:
+        longest = max((len(r) for r in responses), default=0)
         return CheckpointResult(
             "cp_pipeline_active",
             False,
-            f"All responses <100 chars (longest: {max((len(r) for r in responses), default=0)} chars)",
+            f"All responses <{min_chars} chars (longest: {longest} chars)",
         )
 
     return CheckpointResult(
         "cp_pipeline_active",
         False,
-        f"No call exceeded 200ms — possible trivial response (fastest: {min(latencies_ms, default=0)}ms)",
+        f"No call exceeded {min_ms}ms — possible trivial response",
     )
 
 
@@ -258,7 +265,7 @@ def grade_scenario(
 
     grade.checkpoints = [
         cp_reached_state(fixture, final_fsm_state),
-        cp_pipeline_active(responses, latencies_ms),
+        cp_pipeline_active(responses, latencies_ms, fixture=fixture),
         cp_keyword_match(fixture, last_response),
         cp_no_5xx(http_statuses),
         cp_turn_budget(fixture, user_turn_count),

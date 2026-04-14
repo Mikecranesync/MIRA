@@ -146,7 +146,7 @@ def _read_fsm_state(chat_id: str) -> str:
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT state FROM fsm_sessions WHERE chat_id = ? ORDER BY rowid DESC LIMIT 1",
+            "SELECT state FROM conversation_state WHERE chat_id = ?",
             (chat_id,),
         ).fetchone()
         conn.close()
