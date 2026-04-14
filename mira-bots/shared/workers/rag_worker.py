@@ -31,6 +31,38 @@ def _load_prompt_meta() -> dict:
 
 logger = logging.getLogger("mira-gsd")
 
+# ── Vendor support URLs ───────────────────────────────────────────────────────
+# Used to give techs a direct pointer when MIRA has no KB coverage for the equipment.
+
+VENDOR_SUPPORT_URLS: dict[str, str] = {
+    "pilz": "pilz.com/support",
+    "yaskawa": "yaskawa.com/service/support",
+    "automationdirect": "automationdirect.com/support",
+    "automation direct": "automationdirect.com/support",
+    "allen-bradley": "rockwellautomation.com/support",
+    "allen bradley": "rockwellautomation.com/support",
+    "rockwell": "rockwellautomation.com/support",
+    "powerflex": "rockwellautomation.com/support",
+    "siemens": "siemens.com/support",
+    "abb": "abb.com/support",
+    "omron": "ia.omron.com/support",
+    "schneider": "se.com/support",
+    "schneider electric": "se.com/support",
+    "mitsubishi": "mitsubishielectric.com/support",
+    "danfoss": "danfoss.com/support",
+    "eaton": "eaton.com/support",
+}
+
+
+def _vendor_support_url(text: str) -> str | None:
+    """Return vendor support URL for the best-matching vendor found in text, or None."""
+    text_lower = text.lower()
+    for vendor, url in VENDOR_SUPPORT_URLS.items():
+        if vendor in text_lower:
+            return url
+    return None
+
+
 GSD_SYSTEM_PROMPT = """\
 You are MIRA, an industrial maintenance assistant. You use the Guided \
 Socratic Dialogue method. You never give direct answers. You guide the \
@@ -171,6 +203,9 @@ class RAGWorker:
                 over the constructor-level ``self.tenant_id`` fallback.
         """
         effective_tenant = tenant_id or self.tenant_id
+        # Track whether retrieval was attempted so we can inject the honesty
+        # directive when it ran but returned zero useful chunks.
+        retrieval_attempted = bool(effective_tenant)
         model = vision_model if photo_b64 else None
         metadata = {
             "fsm_state": state.get("state"),
@@ -240,7 +275,15 @@ class RAGWorker:
                     photo_b64=photo_b64,
                 )
             else:
-                messages = self._build_prompt(state, rewritten, photo_b64)
+                no_kb = retrieval_attempted and not photo_b64
+                if no_kb:
+                    logger.info(
+                        "NO_KB_COVERAGE asset=%r — honesty directive injected",
+                        state.get("asset_identified", "unknown"),
+                    )
+                messages = self._build_prompt(
+                    state, rewritten, photo_b64, no_kb_coverage=no_kb
+                )
             t0 = time.monotonic()
             raw = await self._call_llm(messages, model=model)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -321,8 +364,15 @@ class RAGWorker:
         message: str,
         photo_b64: str = None,
         neon_chunks: list[dict] = None,
+        no_kb_coverage: bool = False,
     ) -> list[dict]:
-        """Build message list for LLM with GSD system prompt and state context."""
+        """Build message list for LLM with GSD system prompt and state context.
+
+        Args:
+            no_kb_coverage: True when retrieval was attempted but returned zero results.
+                Injects an explicit honesty directive so the LLM admits it has no
+                documentation rather than hallucinating specifics.
+        """
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
@@ -331,6 +381,30 @@ class RAGWorker:
             system_content += f"Asset identified: {state['asset_identified']}\n"
         if state.get("fault_category"):
             system_content += f"Fault category: {state['fault_category']}\n"
+
+        # Honesty directive: retrieval ran but found nothing
+        if no_kb_coverage:
+            asset = state.get("asset_identified", "")
+            support_url = _vendor_support_url(asset) or _vendor_support_url(message)
+            url_hint = (
+                f"Point them to {support_url} for the official manual."
+                if support_url
+                else "Suggest they search the manufacturer's website for the equipment manual."
+            )
+            system_content += (
+                "\n\n--- NO KB COVERAGE ---\n"
+                "CRITICAL: The knowledge base has NO documentation for this equipment. "
+                "You searched and found nothing.\n"
+                "You MUST follow these rules for this response:\n"
+                "1. Open with: \"I don't have documentation for this equipment in my knowledge base.\"\n"
+                "2. Do NOT ask the user to consult a manual — you don't have it.\n"
+                "3. Any general troubleshooting knowledge MUST be prefaced with: "
+                "\"Based on general knowledge (not from specific documentation)...\"\n"
+                f"4. {url_hint}\n"
+                "5. If they haven't provided the model number, ask for it so a manual can be sourced.\n"
+                "6. Set confidence to LOW. Do not pretend to have specific documentation.\n"
+                "--- END NO KB COVERAGE ---\n"
+            )
 
         # Inject NeonDB knowledge base chunks when available
         if neon_chunks:
