@@ -29,8 +29,7 @@ class GSDEngine:
             collection_id=collection_id,
             vision_model=vision_model,
             tenant_id=tenant_id,
-            ingest_url=ingest_url,
-            mcp_url=mcp_url,
+            mcp_base_url=mcp_url or "",
         )
 
     async def process(
