@@ -67,15 +67,58 @@ _MANUAL_RE = re.compile(r"manual|vfd|drive|plc|motor|pump|compressor|datasheet",
 
 DESCRIBE_SYSTEM = (
     "You are an industrial maintenance AI helping a technician at a machine. "
-    "When shown an equipment photo, respond in under 100 words using plain language. "
-    "Structure your response as: "
-    "(1) What is this device — name the make, model, and function. "
-    "(2) What likely caused any visible issue — state the most probable fault cause. "
-    "(3) What should the tech do right now — give one specific, concrete next step. "
-    "If the image is a nameplate or tag only, identify the device and give one "
-    "general next step for a tech responding to an unknown fault on this equipment type. "
-    "Never use unexplained acronyms. Do not exceed 100 words."
+    "When shown an equipment photo, reply with a single valid JSON object "
+    "containing four fields:\n"
+    '  "component": short name (e.g. "GS20 VFD", "PowerFlex 525", "motor nameplate"),\n'
+    '  "symptom":   what is visibly wrong or notable (e.g. "F004 fault", "burn marks", '
+    '"LED off", "none visible"),\n'
+    '  "condition": overall state (e.g. "faulted", "powered but idle", "operating", '
+    '"unknown"),\n'
+    '  "description": 1-2 sentence plain-language summary a technician can read at a glance.\n'
+    "Return ONLY the JSON object — no prose before or after. "
+    "If the image is a nameplate only, put the device name in component, the read-out "
+    "text in symptom, and \"nameplate\" in condition. Never invent fault codes."
 )
+
+
+def _parse_structured_description(raw: str) -> dict:
+    """Parse structured vision output. Returns dict with canonical keys.
+
+    Falls back to a best-effort dict where description=raw if JSON parsing
+    fails so downstream code always gets the same shape (#220 Bug D).
+    """
+    default = {
+        "component": "",
+        "symptom": "",
+        "condition": "",
+        "description": (raw or "").strip(),
+    }
+    if not raw:
+        return default
+
+    text = raw.strip()
+    # Strip markdown code fences if present
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.DOTALL)
+
+    # Find the outermost JSON object if there's leading/trailing prose
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        text = text[start : end + 1]
+
+    try:
+        obj = json.loads(text)
+        if not isinstance(obj, dict):
+            return default
+        return {
+            "component": str(obj.get("component", "")).strip(),
+            "symptom": str(obj.get("symptom", "")).strip(),
+            "condition": str(obj.get("condition", "")).strip(),
+            "description": str(obj.get("description", raw)).strip(),
+        }
+    except (json.JSONDecodeError, TypeError):
+        return default
 
 app = FastAPI(title="mira-ingest")
 
@@ -96,17 +139,24 @@ def _ensure_table() -> None:
     db = _get_db()
     db.execute("""
         CREATE TABLE IF NOT EXISTS equipment_photos (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            asset_tag    TEXT NOT NULL,
-            location     TEXT,
-            notes        TEXT,
-            description  TEXT,
-            photo_path   TEXT,
-            image_vector TEXT,
-            text_vector  TEXT,
-            ingested_at  TEXT
+            id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_tag              TEXT NOT NULL,
+            location               TEXT,
+            notes                  TEXT,
+            description            TEXT,
+            structured_description TEXT,   -- JSON: {component, symptom, condition, description} (#220)
+            photo_path             TEXT,
+            image_vector           TEXT,
+            text_vector            TEXT,
+            ingested_at            TEXT
         )
     """)
+    # Additive migration: rows written before #220 won't have the column
+    try:
+        db.execute("ALTER TABLE equipment_photos ADD COLUMN structured_description TEXT")
+    except sqlite3.OperationalError:
+        # Column already exists — no-op
+        pass
     db.commit()
     db.close()
 
@@ -420,10 +470,14 @@ async def ingest_photo(
 
     # Describe via vision model (non-fatal fallback)
     try:
-        description = await _describe_photo(image_b64, notes=notes)
+        raw_description = await _describe_photo(image_b64, notes=notes)
     except Exception as e:
         logger.error("Vision description failed: %s", e)
-        description = notes or "No description available"
+        raw_description = notes or "No description available"
+
+    # Parse structured fields (#220). Always returns dict with the 4 keys.
+    structured = _parse_structured_description(raw_description)
+    description = structured["description"] or raw_description
 
     # Embed image vector (non-fatal)
     try:
@@ -432,9 +486,17 @@ async def ingest_photo(
         logger.error("Image embed failed: %s", e)
         image_vector = []
 
-    # Embed text vector (non-fatal)
+    # Embed text vector (non-fatal) — combine structured fields for richer embedding
+    text_for_embed = " ".join(
+        v for v in (
+            structured["component"],
+            structured["symptom"],
+            structured["condition"],
+            description,
+        ) if v
+    ).strip() or description
     try:
-        text_vector = await _embed_text(description)
+        text_vector = await _embed_text(text_for_embed)
     except Exception as e:
         logger.error("Text embed failed: %s", e)
         text_vector = []
@@ -443,14 +505,15 @@ async def ingest_photo(
     db = _get_db()
     cursor = db.execute(
         """INSERT INTO equipment_photos
-           (asset_tag, location, notes, description, photo_path,
-            image_vector, text_vector, ingested_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           (asset_tag, location, notes, description, structured_description,
+            photo_path, image_vector, text_vector, ingested_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             asset_tag,
             location,
             notes,
             description,
+            json.dumps(structured),
             photo_path,
             json.dumps(image_vector),
             json.dumps(text_vector),
@@ -468,6 +531,7 @@ async def ingest_photo(
         "id": photo_id,
         "asset_tag": asset_tag,
         "description": description,
+        "structured_description": structured,
         "photo_path": photo_path,
     }
 
