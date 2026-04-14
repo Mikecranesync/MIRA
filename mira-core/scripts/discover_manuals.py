@@ -70,6 +70,57 @@ CRAWL_TARGETS = [
         "crawler_type": "playwright",
         "max_pages": 150,
     },
+    # GS10 is the centerpiece of the demo F05 escalation pattern (Pump-001);
+    # AutomationDirect documentation must be crawlable to keep that corpus
+    # current. (#142)
+    {
+        "manufacturer": "AutomationDirect",
+        "start_url": "https://www.automationdirect.com/support/manuals",
+        "crawler_type": "cheerio",
+        "max_pages": 200,
+    },
+    # SEW-Eurodrive — Conv-001 gearmotor fleet unit
+    {
+        "manufacturer": "SEW-Eurodrive",
+        "start_url": "https://download.sew-eurodrive.com/download/documentation/en",
+        "crawler_type": "cheerio",
+        "max_pages": 150,
+    },
+    # Ingersoll Rand — Comp-001 compressor fleet unit
+    {
+        "manufacturer": "Ingersoll Rand",
+        "start_url": "https://www.ingersollrand.com/en-us/service-and-support/technical-library",
+        "crawler_type": "playwright",
+        "max_pages": 100,
+    },
+    # Dake — Press-001 hydraulic press fleet unit
+    {
+        "manufacturer": "Dake",
+        "start_url": "https://www.dakecorp.com/customer-service/manuals",
+        "crawler_type": "cheerio",
+        "max_pages": 100,
+    },
+    # FANUC — Robot-001 industrial robot fleet unit
+    {
+        "manufacturer": "FANUC",
+        "start_url": "https://www.fanucamerica.com/support",
+        "crawler_type": "playwright",
+        "max_pages": 100,
+    },
+    # Yaskawa — A1000/V1000/J1000/GA500/GA700 VFD families
+    {
+        "manufacturer": "Yaskawa",
+        "start_url": "https://www.yaskawa.com/downloads/search-manuals",
+        "crawler_type": "playwright",
+        "max_pages": 150,
+    },
+    # Danfoss — VLT FC Series (seeded fault codes)
+    {
+        "manufacturer": "Danfoss",
+        "start_url": "https://www.danfoss.com/en/service-and-support/downloads",
+        "crawler_type": "playwright",
+        "max_pages": 150,
+    },
 ]
 
 # Link patterns that suggest manuals / technical docs
