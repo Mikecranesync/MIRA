@@ -1,0 +1,24 @@
+id: vfd_abb_04_acs150_multi_turn
+description: "ABB ACS150 multi-turn — asset tag to symptom to diagnosis across 6 turns, out-of-KB honesty"
+expected_final_state: DIAGNOSIS
+max_turns: 10
+expected_keywords: []
+forbidden_keywords: []
+expected_vendor: ABB
+wo_expected: false
+safety_expected: false
+honesty_required: true
+tags: [vfd, abb, acs150, multi-turn, out-of-kb]
+turns:
+  - role: user
+    content: "Asset tag PUMP-07, the VFD is acting up"
+  - role: user
+    content: "It's an ABB ACS150, 2.2kW, 240V single-phase input, three-phase output"
+  - role: user
+    content: "Making a buzzing noise and output current is higher than normal"
+  - role: user
+    content: "Motor is 2HP NEMA frame, has been running this pump for three years"
+  - role: user
+    content: "No fault code on the display, just the buzzing and high current"
+  - role: user
+    content: "Current is reading about 140% of motor nameplate FLA"
