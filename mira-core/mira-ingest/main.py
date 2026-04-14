@@ -24,6 +24,7 @@ from crawl_verifier import (
     list_verifications,
     verify_crawl,
 )
+from route_fallback import RETRY_ON, run_fallback
 
 logger = logging.getLogger("mira-ingest")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -870,7 +871,42 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
 
     crawl_outcome = verification.get("outcome", "") if verification else ""
 
-    # 4. Notify the technician — honest message based on verified outcome
+    # 4. Route fallback — if primary (cheerio) failed, try alternative strategies
+    fallback_result: dict = {}
+    if use_apify and apify_run_id and crawl_outcome in RETRY_ON:
+        logger.info("[%s] Primary outcome=%s — triggering fallback chain", job_id, crawl_outcome)
+        try:
+            fallback_result = await run_fallback(
+                job_id=job_id,
+                manufacturer=body.manufacturer,
+                model=body.model,
+                base_url=base_url,
+                prev_verification=verification,
+                ingest_fn=_ingest_scraped_text,
+                verify_fn=verify_crawl,
+                started_at=started_at,
+            )
+            # Update outcome from the best fallback result
+            if fallback_result.get("final_outcome") == OUTCOME_SUCCESS:
+                crawl_outcome = OUTCOME_SUCCESS
+                # Update ingested count from successful fallback
+                ingested += fallback_result.get("last_verification", {}).get("kb_writes", 0)
+                logger.info(
+                    "[%s] Fallback succeeded via strategy=%s",
+                    job_id,
+                    fallback_result.get("winning_strategy"),
+                )
+            else:
+                logger.warning(
+                    "[%s] Fallback exhausted — tried %s, final_outcome=%s",
+                    job_id,
+                    fallback_result.get("strategies_tried"),
+                    fallback_result.get("final_outcome"),
+                )
+        except Exception as exc:
+            logger.error("[%s] Fallback chain failed (non-fatal): %s", job_id, exc)
+
+    # 5. Notify the technician — honest message based on verified outcome
     if body.chat_id:
         if crawl_outcome == OUTCOME_SUCCESS and ingested > 0:
             msg = (

@@ -1,0 +1,76 @@
+# Crawl Route Fallback Registry — ADR-0009 Phase 2
+#
+# When Phase 1 verifier returns LOW_QUALITY, SHELL_ONLY, or EMPTY,
+# the route_fallback orchestrator picks the next strategy from the
+# vendor's list and re-verifies until SUCCESS or budget exhausted.
+#
+# Strategy order matters — cheapest and fastest first.
+# Strategies not in the vendor override use the _default list.
+
+# Budget controls apply globally
+budget:
+  max_strategies_per_request: 3   # stop after this many attempts regardless
+  max_cost_usd: 0.20              # hard stop (Apify actors cost ~$0.005-0.05/run)
+
+# Default strategy chain for unknown vendors
+_default:
+  - apify_cheerio           # fast, free tier, fails on JS-rendered sites
+  - apify_playwright        # JS rendering via Chromium — handles SPAs
+  - duckduckgo_site_search  # site-scoped DDG search → top PDF URLs
+  - llm_discover_url        # LLM discovers direct PDF URL as last resort
+
+# Vendor-specific overrides
+# Key: lowercase vendor name (matched via substring against manufacturer field)
+overrides:
+  pilz:
+    - apify_playwright        # pilz.com is fully JS-rendered, skip cheerio
+    - duckduckgo_site_search
+    - llm_discover_url
+
+  yaskawa:
+    - apify_playwright        # yaskawa.com downloads portal is a React SPA
+    - duckduckgo_site_search
+    - llm_discover_url
+
+  siemens:
+    - apify_playwright        # industry.siemens.com uses heavy JS
+    - duckduckgo_site_search
+    - llm_discover_url
+
+  abb:
+    - apify_playwright        # new.abb.com is Angular
+    - duckduckgo_site_search
+    - llm_discover_url
+
+  # Vendors whose sites are cheerio-friendly (plain HTML)
+  # These get the default _default chain.
+  # automationdirect: uses _default
+  # rockwell: uses _default
+  # allen-bradley: uses _default
+
+# Strategy parameter overrides
+strategies:
+  apify_playwright:
+    # Apify website-content-crawler with Playwright (JS rendering)
+    actor: apify/website-content-crawler
+    crawlerType: playwright  # headless Chromium
+    maxCrawlPages: 20        # fewer pages — JS rendering is slower
+    maxCrawlDepth: 2         # go deeper than cheerio to find actual docs
+    waitUntil: networkidle   # wait for React/Angular to finish loading
+    timeout_secs: 300
+
+  apify_cheerio:
+    actor: apify/website-content-crawler
+    crawlerType: cheerio
+    maxCrawlPages: 100
+    maxCrawlDepth: 1
+    timeout_secs: 180
+
+  duckduckgo_site_search:
+    max_results: 8           # fetch top 8 PDF/manual URLs from DDG
+    max_scrape_per_result: 1 # ingest 1 page per result URL
+
+  llm_discover_url:
+    model: gemini-2.5-flash  # use cheapest model for URL discovery
+    validate_url: true        # HTTP HEAD check before ingesting
+    timeout_s: 15             # HEAD check timeout
