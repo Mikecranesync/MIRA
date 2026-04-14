@@ -1,0 +1,14 @@
+# Oracle / local override — official frontend image, env-var URLs.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+services:
+  atlas-api:
+    environment:
+      PUBLIC_API_URL: ${ATLAS_PUBLIC_API_URL:-http://localhost:8088}
+      PUBLIC_FRONT_URL: ${ATLAS_PUBLIC_FRONT_URL:-http://localhost:3100}
+      PUBLIC_MINIO_ENDPOINT: ${ATLAS_PUBLIC_MINIO_URL:-http://localhost:9000}
+
+  atlas-frontend:
+    build: !reset null
+    image: intelloop/atlas-cmms-frontend
+    environment:
+      API_URL: ${ATLAS_PUBLIC_API_URL:-http://localhost:8088}
