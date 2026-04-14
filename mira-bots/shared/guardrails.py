@@ -321,6 +321,39 @@ def vendor_support_url(text: str) -> str | None:
     return None
 
 
+_VENDOR_DISPLAY_NAMES: dict[str, str] = {
+    "pilz": "Pilz",
+    "yaskawa": "Yaskawa",
+    "automationdirect": "AutomationDirect",
+    "automation direct": "AutomationDirect",
+    "allen-bradley": "Allen-Bradley",
+    "allen bradley": "Allen-Bradley",
+    "rockwell": "Rockwell Automation",
+    "powerflex": "Rockwell Automation",
+    "siemens": "Siemens",
+    "abb": "ABB",
+    "omron": "Omron",
+    "schneider electric": "Schneider Electric",
+    "schneider": "Schneider Electric",
+    "mitsubishi": "Mitsubishi Electric",
+    "danfoss": "Danfoss",
+    "eaton": "Eaton",
+    "delta": "Delta Electronics",
+    "lenze": "Lenze",
+    "bosch rexroth": "Bosch Rexroth",
+    "rexroth": "Bosch Rexroth",
+}
+
+
+def vendor_name_from_text(text: str) -> str | None:
+    """Return a display-ready manufacturer name for the first recognized vendor in text."""
+    text_lower = text.lower()
+    for vendor, name in _VENDOR_DISPLAY_NAMES.items():
+        if vendor in text_lower:
+            return name
+    return None
+
+
 # Phrases that unambiguously signal a documentation retrieval request.
 # Checked BEFORE the generic industrial check so "manual" in INTENT_KEYWORDS
 # does not swallow document requests into the diagnostic RAG path.
