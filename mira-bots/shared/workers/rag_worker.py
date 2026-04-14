@@ -10,7 +10,7 @@ import httpx
 import yaml
 
 from .. import neon_recall as _neon_recall
-from ..guardrails import rewrite_question
+from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
 from ..langfuse_setup import trace_rag_query
 
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
@@ -30,37 +30,6 @@ def _load_prompt_meta() -> dict:
 
 
 logger = logging.getLogger("mira-gsd")
-
-# ── Vendor support URLs ───────────────────────────────────────────────────────
-# Used to give techs a direct pointer when MIRA has no KB coverage for the equipment.
-
-VENDOR_SUPPORT_URLS: dict[str, str] = {
-    "pilz": "pilz.com/support",
-    "yaskawa": "yaskawa.com/service/support",
-    "automationdirect": "automationdirect.com/support",
-    "automation direct": "automationdirect.com/support",
-    "allen-bradley": "rockwellautomation.com/support",
-    "allen bradley": "rockwellautomation.com/support",
-    "rockwell": "rockwellautomation.com/support",
-    "powerflex": "rockwellautomation.com/support",
-    "siemens": "siemens.com/support",
-    "abb": "abb.com/support",
-    "omron": "ia.omron.com/support",
-    "schneider": "se.com/support",
-    "schneider electric": "se.com/support",
-    "mitsubishi": "mitsubishielectric.com/support",
-    "danfoss": "danfoss.com/support",
-    "eaton": "eaton.com/support",
-}
-
-
-def _vendor_support_url(text: str) -> str | None:
-    """Return vendor support URL for the best-matching vendor found in text, or None."""
-    text_lower = text.lower()
-    for vendor, url in VENDOR_SUPPORT_URLS.items():
-        if vendor in text_lower:
-            return url
-    return None
 
 
 GSD_SYSTEM_PROMPT = """\
@@ -243,6 +212,27 @@ class RAGWorker:
                 logger.info("RAG_QUALITY_GATE top_score=%.3f — chunks suppressed", top_score)
                 chunk_texts = []
 
+            # Vendor-relevance check: if the query names a specific vendor/brand but ALL
+            # returned chunks have a different manufacturer, they are cross-vendor
+            # contamination from the shared OEM pool.  Suppress them so the honesty
+            # directive fires rather than the LLM hallucinating with wrong-equipment docs.
+            if chunk_texts and not photo_b64:
+                query_combined = f"{message} {state.get('asset_identified', '')}".strip()
+                query_vendor = vendor_name_from_text(query_combined)
+                if query_vendor:
+                    qv_lower = query_vendor.lower()
+                    vendor_matched = any(
+                        qv_lower in (c.get("manufacturer") or "").lower()
+                        for c in neon_chunks
+                    )
+                    if not vendor_matched:
+                        logger.info(
+                            "CROSS_VENDOR_CONTAMINATION vendor=%r — %d chunk(s) from "
+                            "other equipment suppressed, honesty directive will fire",
+                            query_vendor, len(chunk_texts),
+                        )
+                        chunk_texts = []
+
             self._last_sources = chunk_texts
             self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
 
@@ -382,10 +372,10 @@ class RAGWorker:
         if state.get("fault_category"):
             system_content += f"Fault category: {state['fault_category']}\n"
 
-        # Honesty directive: retrieval ran but found nothing
+        # Honesty directive: retrieval ran but found nothing relevant
         if no_kb_coverage:
             asset = state.get("asset_identified", "")
-            support_url = _vendor_support_url(asset) or _vendor_support_url(message)
+            support_url = vendor_support_url(asset) or vendor_support_url(message)
             url_hint = (
                 f"Point them to {support_url} for the official manual."
                 if support_url
