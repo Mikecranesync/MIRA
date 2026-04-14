@@ -312,8 +312,10 @@ VENDOR_SUPPORT_URLS: dict[str, str] = {
 }
 
 
-def vendor_support_url(text: str) -> str | None:
+def vendor_support_url(text: str | None) -> str | None:
     """Return the support URL for the first recognized vendor found in text, or None."""
+    if not text:
+        return None
     text_lower = text.lower()
     for vendor, url in VENDOR_SUPPORT_URLS.items():
         if vendor in text_lower:
@@ -345,8 +347,10 @@ _VENDOR_DISPLAY_NAMES: dict[str, str] = {
 }
 
 
-def vendor_name_from_text(text: str) -> str | None:
+def vendor_name_from_text(text: str | None) -> str | None:
     """Return a display-ready manufacturer name for the first recognized vendor in text."""
+    if not text:
+        return None
     text_lower = text.lower()
     for vendor, name in _VENDOR_DISPLAY_NAMES.items():
         if vendor in text_lower:
