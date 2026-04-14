@@ -2,7 +2,7 @@ id: full_diagnosis_happy_path_07
 description: "GS10 full 5-turn diagnosis — golden path from symptom to DIAGNOSIS with WO"
 expected_final_state: DIAGNOSIS
 max_turns: 10
-expected_keywords: [overcurrent, parameter, GS10]
+expected_keywords: [overcurrent, parameter, GS10, acceleration, ramp, motor, check, fault, drive]
 expected_vendor: AutomationDirect
 wo_expected: false
 safety_expected: false
