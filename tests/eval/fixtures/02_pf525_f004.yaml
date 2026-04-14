@@ -2,7 +2,7 @@ id: pf525_f004_02
 description: "PowerFlex 525 F004 overcurrent on conveyor, standard fault-code lookup"
 expected_final_state: DIAGNOSIS
 max_turns: 8
-expected_keywords: [F004, PowerFlex, overcurrent]
+expected_keywords: [cable, wire, motor, fault, AWG, overcurrent, PowerFlex]
 expected_vendor: Allen-Bradley
 wo_expected: false
 safety_expected: false

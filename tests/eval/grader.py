@@ -92,7 +92,19 @@ def cp_reached_state(
         )
         return CheckpointResult("cp_reached_state", passed, reason)
 
-    # Standard: exact match or "at least as far" for multi-Q scenarios
+    # Standard: exact match or "at least as far" for multi-Q scenarios.
+    # Special case: expected=IDLE means we want exactly IDLE (no diagnostic session started),
+    # so use exact match — "at least IDLE" would trivially pass everything.
+    if expected == "IDLE":
+        passed = final_state == "IDLE"
+        return CheckpointResult(
+            "cp_reached_state",
+            passed,
+            f"State={final_state!r} (expected IDLE — inline response, no session state)"
+            if passed
+            else f"State={final_state!r}, expected exactly IDLE",
+        )
+
     _STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
 
     def _rank(s: str) -> int:

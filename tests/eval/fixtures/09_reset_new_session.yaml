@@ -2,7 +2,7 @@ id: reset_new_session_09
 description: "User starts a session, sends /reset, then starts fresh — FSM must clear cleanly"
 expected_final_state: Q1
 max_turns: 4
-expected_keywords: [GS10, overcurrent]
+expected_keywords: [GS10, overcurrent, parameter, fault, motor]
 expected_vendor: AutomationDirect
 wo_expected: false
 safety_expected: false

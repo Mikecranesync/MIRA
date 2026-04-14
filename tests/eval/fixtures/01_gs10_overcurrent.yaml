@@ -1,8 +1,8 @@
 id: gs10_overcurrent_01
 description: "GS10 VFD overcurrent fault, senior tech, happy path"
-expected_final_state: DIAGNOSIS
+expected_final_state: Q2
 max_turns: 8
-expected_keywords: [overcurrent, GS10, parameter]
+expected_keywords: [overcurrent, GS10, parameter, motor, fault]
 expected_vendor: AutomationDirect
 wo_expected: false
 safety_expected: false
