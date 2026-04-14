@@ -17,3 +17,4 @@ decision, the options considered, what was chosen and why, and the consequences.
 | [0006](0006-paperclip-dev-orchestration.md) | Paperclip Dev Orchestration | Accepted |
 | [0007](0007-notebook-intelligence-layer.md) | Notebook Intelligence Layer — Open WebUI + MIRA Pipeline | Accepted |
 | [0008](0008-sidecar-deprecation.md) | Deprecate mira-sidecar — Migration to mira-pipeline + Open WebUI KB | Accepted — in progress |
+| [0010](0010-karpathy-eval-alignment.md) | Full Karpathy Eval Alignment — Closing the 7 Gaps | Accepted |
