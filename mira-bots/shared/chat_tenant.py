@@ -51,7 +51,13 @@ def _ensure_table() -> None:
 
 
 # Call at import time so the table is guaranteed to exist before any resolver call.
-_ensure_table()
+# Failure is non-fatal at import — allows module import in environments (CI, tests)
+# where the DB path does not yet exist.  The table will be created on first write
+# access once a DB path is actually available.
+try:
+    _ensure_table()
+except sqlite3.OperationalError as exc:
+    logger.warning("chat_tenant_map init deferred — DB not yet reachable: %s", exc)
 
 
 @functools.lru_cache(maxsize=512)

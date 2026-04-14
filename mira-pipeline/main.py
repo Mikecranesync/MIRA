@@ -14,6 +14,7 @@ import io
 import json
 import logging
 import os
+import sqlite3
 import sys
 import time
 import uuid
@@ -99,6 +100,134 @@ async def _ingest_photo_background(photo_b64: str, asset_tag: str) -> None:
                 logger.warning("INGEST_PHOTO failed %s: %s", resp.status_code, resp.text[:200])
     except Exception as e:
         logger.error("INGEST_PHOTO error: %s", e)
+
+
+# ── PDF ingest helper (P0-3) ─────────────────────────────────────────────────
+
+
+async def _ingest_pdf_background(
+    file_id: str, filename: str, tenant_id: str
+) -> None:
+    """Fetch a PDF from OW's file API and forward it to mira-ingest.
+
+    Runs as a background task — never raises, never blocks the chat response.
+    OW stores uploaded files at GET /api/v1/files/{file_id}/content.
+    mira-ingest's /ingest/document-kb handles Docling processing, collection
+    routing, and NeonDB persistence.
+    """
+    if not INGEST_URL or not OPENWEBUI_URL:
+        logger.debug("P0-3 PDF ingest skipped — INGEST_SERVICE_URL or OPENWEBUI_BASE_URL not set")
+        return
+
+    headers: dict[str, str] = {}
+    if OPENWEBUI_API_KEY:
+        headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            # Fetch raw PDF bytes from OW's file storage
+            fetch_resp = await client.get(
+                f"{OPENWEBUI_URL}/api/v1/files/{file_id}/content",
+                headers=headers,
+            )
+            fetch_resp.raise_for_status()
+            pdf_bytes = fetch_resp.content
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            ingest_resp = await client.post(
+                f"{INGEST_URL}/ingest/document-kb",
+                files={"file": (filename, pdf_bytes, "application/pdf")},
+                data={"equipment_type": tenant_id or ""},
+            )
+            if ingest_resp.status_code == 200:
+                result = ingest_resp.json()
+                logger.info(
+                    "P0-3 PDF ingested: filename=%s collection=%s file_id=%s tenant=%s",
+                    filename,
+                    result.get("collection_name", "?"),
+                    file_id,
+                    tenant_id,
+                )
+            else:
+                logger.warning(
+                    "P0-3 PDF ingest returned %s for %s: %s",
+                    ingest_resp.status_code,
+                    filename,
+                    ingest_resp.text[:200],
+                )
+    except Exception as exc:
+        logger.error("P0-3 PDF ingest error for %s (file_id=%s): %s", filename, file_id, exc)
+
+
+# ── Regenerate helpers (P0-2) ────────────────────────────────────────────────
+
+
+def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: str) -> bool:
+    """Detect an OW Regenerate and roll back FSM state if confirmed.
+
+    Open WebUI's Regenerate button strips the last assistant message and
+    resends the identical user query.  The GSD engine would then advance the
+    FSM a second time for the same turn, corrupting diagnostic state.
+
+    Detection: query the ``interactions`` table for the most recent entry for
+    this chat_id.  If ``user_message`` matches, it is a regenerate.
+
+    Rollback: find the FSM state from the interaction BEFORE the last one and
+    write it back to ``conversation_state``.  The engine will then re-process
+    the message starting from the correct prior state.
+
+    Returns True if a rollback was performed, False otherwise.
+    """
+    try:
+        db = sqlite3.connect(db_path)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.row_factory = sqlite3.Row
+
+        rows = db.execute(
+            """SELECT id, user_message, fsm_state
+               FROM interactions
+               WHERE chat_id = ?
+               ORDER BY id DESC
+               LIMIT 2""",
+            (chat_id,),
+        ).fetchall()
+
+        if not rows:
+            db.close()
+            return False
+
+        last = rows[0]
+        if last["user_message"].strip() != user_message.strip():
+            db.close()
+            return False
+
+        # It's a regenerate.  Determine the state to restore:
+        # rows[1] is the interaction *before* the one we're rolling back, so
+        # its fsm_state is the FSM position we should restart from.
+        # If there is no prior row the session started at IDLE.
+        prior_state = rows[1]["fsm_state"] if len(rows) > 1 else "IDLE"
+        prior_state = prior_state or "IDLE"
+
+        db.execute(
+            """UPDATE conversation_state
+               SET state = ?, updated_at = CURRENT_TIMESTAMP
+               WHERE chat_id = ?""",
+            (prior_state, chat_id),
+        )
+        # Also remove the last interaction row so history stays consistent
+        db.execute("DELETE FROM interactions WHERE id = ?", (last["id"],))
+        db.commit()
+        db.close()
+
+        logger.info(
+            "P0-2 REGENERATE chat_id=%s rolled back to state=%s (was: %s)",
+            chat_id, prior_state, last["fsm_state"],
+        )
+        return True
+
+    except Exception as exc:
+        logger.warning("P0-2 regenerate check failed (non-fatal): %s", exc)
+        return False
 
 
 # ── App ──────────────────────────────────────────────────────────────────────
@@ -218,11 +347,47 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if not last_user_msg and not photo_b64:
         raise HTTPException(400, "No user message found")
 
-    # Open WebUI sends synthetic "suggest follow-ups" requests after each exchange.
-    # These must NOT touch the GSD engine — they advance the FSM and corrupt state.
-    if last_user_msg.lstrip().startswith("### Task:") or last_user_msg.lstrip().startswith(
-        "Suggest "
-    ):
+    # Open WebUI sends synthetic task messages that must NOT touch the GSD engine.
+    # There are two distinct subtypes with different correct responses:
+    #
+    # 1. "### Task: Continue generating …" — the Continue button.  OW expects the
+    #    response to be the continued text, not empty.  Return the last assistant
+    #    turn verbatim so the UI shows something and the FSM does not advance.
+    #
+    # 2. All other "### Task:" / "Suggest " variants — follow-up suggestions,
+    #    title generation, etc.  Return empty; OW discards these internally.
+    stripped_msg = last_user_msg.lstrip()
+    if stripped_msg.startswith("### Task: Continue"):
+        # P0-1 FIX: find the last assistant message in history and echo it back.
+        last_assistant = ""
+        for msg in reversed(req.messages):
+            if msg.role == "assistant":
+                content = msg.content
+                if isinstance(content, list):
+                    last_assistant = " ".join(
+                        p.get("text", "") for p in content
+                        if isinstance(p, dict) and p.get("type") == "text"
+                    ).strip()
+                else:
+                    last_assistant = str(content)
+                break
+        logger.info("P0-1 CONTINUE intercepted — echoing last assistant turn (%d chars)", len(last_assistant))
+        return {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "mira-diagnostic",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": last_assistant},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
+    if stripped_msg.startswith("### Task:") or stripped_msg.startswith("Suggest "):
         logger.info("SKIP synthetic follow-up request: %s", last_user_msg[:60])
         return {
             "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
@@ -249,6 +414,25 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         or "openwebui_anonymous"
     )
 
+    # P0-3: Route PDF attachments to mira-ingest before touching the GSD engine.
+    # OW passes uploaded files in the request body under a "files" key that is
+    # outside the OpenAI spec — captured via model_extra (extra="allow").
+    # Each entry looks like: {"type": "file", "file": {"id": ..., "name": ...}}
+    # or the flat variant: {"id": ..., "name": ..., "type": "application/pdf"}.
+    # We fire-and-forget ingest; the chat response is not held up.
+    ow_files: list = req.model_extra.get("files", []) if req.model_extra else []
+    for file_entry in ow_files:
+        inner = file_entry.get("file", file_entry)  # unwrap nested "file" key if present
+        fid = inner.get("id") or inner.get("file_id") or ""
+        fname = inner.get("name") or inner.get("filename") or ""
+        ftype = (inner.get("type") or inner.get("content_type") or "").lower()
+        is_pdf = ftype == "application/pdf" or fname.lower().endswith(".pdf")
+        if fid and is_pdf:
+            asyncio.create_task(
+                _ingest_pdf_background(fid, fname or "document.pdf", TENANT_ID or chat_id)
+            )
+            logger.info("P0-3 PDF queued for ingest: file_id=%s name=%s", fid, fname)
+
     # Handle reset command — clear FSM state before processing
     if last_user_msg.strip().lower() in ("/reset", "reset", "start over", "new session"):
         engine.reset(chat_id)
@@ -270,6 +454,11 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
             ],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
+
+    # P0-2: Detect regenerate — if OW is replaying the same user message for
+    # this chat session, roll the FSM back to its pre-turn state before calling
+    # the engine so we don't advance the diagnostic state twice.
+    _detect_and_rollback_regenerate(DB_PATH, chat_id, last_user_msg)
 
     # Resize image for vision model (matches Telegram bot behavior)
     if photo_b64:

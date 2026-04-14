@@ -15,8 +15,8 @@ from pathlib import Path
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel
 from PIL import Image
+from pydantic import BaseModel
 
 logger = logging.getLogger("mira-ingest")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -711,13 +711,14 @@ async def ingest_document_kb(
 # Reactive KB scrape trigger — fired by RAGWorker when knowledge gap detected
 # ---------------------------------------------------------------------------
 
+
 class ScrapeTriggerRequest(BaseModel):
-    equipment_id: str        # Full asset_identified string from FSM state
-    manufacturer: str        # Parsed manufacturer name
-    model: str               # Parsed model number/name
+    equipment_id: str  # Full asset_identified string from FSM state
+    manufacturer: str  # Parsed manufacturer name
+    model: str  # Parsed model number/name
     tenant_id: str = ""
-    chat_id: str = ""        # Telegram chat_id for proactive notification
-    context: str = ""        # Optional fault context / description
+    chat_id: str = ""  # Telegram chat_id for proactive notification
+    context: str = ""  # Optional fault context / description
 
 
 @app.post("/ingest/scrape-trigger")
@@ -739,8 +740,11 @@ async def scrape_trigger(body: ScrapeTriggerRequest, background_tasks: Backgroun
     job_id = str(uuid.uuid4())[:8]
     logger.info(
         "Scrape trigger queued: job=%s equipment=%r manufacturer=%r model=%r chat=%s",
-        job_id, body.equipment_id[:60], body.manufacturer[:40],
-        body.model[:40], body.chat_id or "none",
+        job_id,
+        body.equipment_id[:60],
+        body.manufacturer[:40],
+        body.model[:40],
+        body.chat_id or "none",
     )
 
     background_tasks.add_task(_run_scrape_and_ingest, job_id, body)
@@ -767,7 +771,9 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
     if not base_url:
         logger.info(
             "[%s] No known doc URL for %r — using %s search",
-            job_id, body.manufacturer, "Apify" if use_apify else "Firecrawl",
+            job_id,
+            body.manufacturer,
+            "Apify" if use_apify else "Firecrawl",
         )
         if use_apify:
             scraped_docs = await _apify_search_model(job_id, body.manufacturer, body.model)
@@ -802,7 +808,9 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
         except Exception as e:
             logger.error("[%s] Ingest failed for %s: %s", job_id, doc.get("filename"), e)
 
-    logger.info("[%s] Ingested %d/%d docs for %r", job_id, ingested, len(scraped_docs), body.equipment_id)
+    logger.info(
+        "[%s] Ingested %d/%d docs for %r", job_id, ingested, len(scraped_docs), body.equipment_id
+    )
 
     # 3. Notify the technician
     if body.chat_id:
@@ -849,8 +857,7 @@ async def _firecrawl_map_and_scrape(job_id: str, base_url: str, model: str) -> l
     # Filter for URLs that contain model tokens and look like docs/PDFs
     _DOC_RE = re.compile(r"\.(pdf|htm|html)$|/manual|/document|/datasheet|/guide|/spec", re.I)
     matched = [
-        u for u in all_urls
-        if any(t in u.lower() for t in model_tokens) and _DOC_RE.search(u)
+        u for u in all_urls if any(t in u.lower() for t in model_tokens) and _DOC_RE.search(u)
     ]
 
     if not matched:
@@ -925,6 +932,7 @@ async def _scrape_urls(job_id: str, urls: list[str], model: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Apify scraping backend (used when FIRECRAWL_API_KEY is absent)
 # ---------------------------------------------------------------------------
+
 
 def _apify_items_to_docs(job_id: str, items: list, model: str) -> list[dict]:
     """Convert Apify dataset items to the {filename, content, source_url} shape."""
@@ -1064,9 +1072,7 @@ async def _notify_telegram(chat_id: str, message: str) -> None:
             if resp.status_code == 200:
                 logger.info("Telegram notification sent to chat_id=%s", chat_id)
             else:
-                logger.warning(
-                    "Telegram notify failed: %d %s", resp.status_code, resp.text[:200]
-                )
+                logger.warning("Telegram notify failed: %d %s", resp.status_code, resp.text[:200])
     except Exception as e:
         logger.warning("Telegram notify error (non-fatal): %s", e)
 

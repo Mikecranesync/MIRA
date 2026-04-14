@@ -181,6 +181,7 @@ services:
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
+      - INGEST_SERVICE_URL=http://mira-ingest-saas:8001
     volumes:
       - /opt/mira/data:/mira-db
     networks:
