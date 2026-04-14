@@ -464,7 +464,7 @@ app.post("/api/stripe/webhook", async (c) => {
 
   let event;
   try {
-    event = constructWebhookEvent(rawBody, signature);
+    event = await constructWebhookEvent(rawBody, signature);
   } catch (err) {
     console.error("[stripe-webhook] Signature verification failed:", err);
     return c.json({ error: "Invalid signature" }, 400);

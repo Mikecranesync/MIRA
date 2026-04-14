@@ -19,6 +19,7 @@ import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -29,6 +30,10 @@ from starlette.responses import JSONResponse
 
 # GSDEngine lives in shared/ — mounted at build time from mira-bots/
 sys.path.insert(0, os.path.dirname(__file__))
+import threading
+
+from feedback_sync import run_loop as feedback_sync_loop
+from memory import ConversationMemory
 from shared.gsd_engine import GSDEngine
 
 # Explicit handler setup: logging.basicConfig() is a no-op once uvicorn has
@@ -233,11 +238,12 @@ def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: st
 # ── App ──────────────────────────────────────────────────────────────────────
 
 engine: GSDEngine | None = None
+memory: ConversationMemory | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global engine
+    global engine, memory
     engine = GSDEngine(
         db_path=DB_PATH,
         openwebui_url=OPENWEBUI_URL,
@@ -246,9 +252,19 @@ async def lifespan(app: FastAPI):
         vision_model=VISION_MODEL,
         tenant_id=TENANT_ID or None,
     )
+    try:
+        memory = ConversationMemory()
+        logger.info("ConversationMemory enabled")
+    except Exception as e:
+        logger.warning("ConversationMemory disabled: %s", e)
+        memory = None
+    # Start feedback sync background thread (polls Open WebUI DB for new ratings)
+    sync_thread = threading.Thread(target=feedback_sync_loop, daemon=True)
+    sync_thread.start()
     logger.info("MIRA Pipeline started — GSDEngine initialized (db=%s)", DB_PATH)
     yield
     engine = None
+    memory = None
 
 
 app = FastAPI(title="MIRA Pipeline", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -434,7 +450,22 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
             logger.info("P0-3 PDF queued for ingest: file_id=%s name=%s", fid, fname)
 
     # Handle reset command — clear FSM state before processing
-    if last_user_msg.strip().lower() in ("/reset", "reset", "start over", "new session"):
+    reset_phrases = (
+        "/reset",
+        "reset",
+        "start over",
+        "new session",
+        "never mind",
+        "nevermind",
+        "wrong chat",
+        "ignore that",
+        "that wasn't for you",
+        "that wasnt for you",
+        "scratch that",
+    )
+    if last_user_msg.strip().lower() in reset_phrases or any(
+        last_user_msg.strip().lower().startswith(p) for p in ("never mind", "nevermind", "wrong ")
+    ):
         engine.reset(chat_id)
         logger.info("FSM_RESET chat_id=%s", chat_id)
         return {
@@ -464,11 +495,30 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if photo_b64:
         photo_b64 = _resize_for_vision(photo_b64)
 
+    # Memory retrieval — inject past facts into the message context
+    memory_block = ""
+    if memory and chat_id != "openwebui_anonymous":
+        try:
+            memories = memory.search(chat_id, last_user_msg)
+            memory_block = memory.format_memory_block(memories)
+            if memory_block:
+                logger.info("MEMORY_INJECT chat_id=%s memories=%d", chat_id, len(memories))
+        except Exception as e:
+            logger.warning("Memory search failed: %s", e)
+
+    # Prepend memory context to the user message so the engine sees it
+    effective_message = last_user_msg
+    if memory_block:
+        effective_message = (
+            f"[MIRA MEMORY — facts from this session]\n{memory_block}\n"
+            f"[END MEMORY]\n\n{last_user_msg}"
+        )
+
     t0 = time.monotonic()
     try:
         reply = await engine.process(
             chat_id=chat_id,
-            message=last_user_msg,
+            message=effective_message,
             photo_b64=photo_b64,
             platform="openwebui",
         )
@@ -477,6 +527,13 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         reply = "MIRA encountered an error processing your request. Please try again."
     latency_ms = int((time.monotonic() - t0) * 1000)
     logger.info("PIPELINE_CALL chat_id=%s latency_ms=%d len=%d", chat_id, latency_ms, len(reply))
+
+    # Memory extraction — store facts from this turn (non-blocking)
+    if memory and chat_id != "openwebui_anonymous":
+        try:
+            memory.extract_and_store(chat_id, last_user_msg, reply)
+        except Exception as e:
+            logger.warning("Memory extract failed: %s", e)
 
     # Queue photo for KB ingest in background (non-blocking)
     if photo_b64:
@@ -503,6 +560,201 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         ],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }
+
+
+# ── Debug: Session Photo — GET /v1/debug/photo/{chat_id} ────────────────────
+
+
+@app.get("/v1/debug/photo/{chat_id}")
+async def get_session_photo(chat_id: str):
+    """Return the session photo for a given chat_id (debugging)."""
+    from starlette.responses import FileResponse
+
+    photo_dir = Path(DB_PATH).parent / "session_photos"
+    photo_path = photo_dir / f"{chat_id}.jpg"
+    if not photo_path.exists():
+        raise HTTPException(404, f"No session photo for chat {chat_id}")
+    return FileResponse(str(photo_path), media_type="image/jpeg")
+
+
+# ── Debug: Conversation State — GET /v1/debug/state/{chat_id} ───────────────
+
+
+@app.get("/v1/debug/state/{chat_id}")
+async def get_conversation_state(chat_id: str):
+    """Return full conversation state for debugging."""
+    import sqlite3 as _sqlite3
+
+    db = _sqlite3.connect(DB_PATH)
+    db.row_factory = _sqlite3.Row
+    row = db.execute("SELECT * FROM conversation_state WHERE chat_id = ?", (chat_id,)).fetchone()
+    db.close()
+    if not row:
+        raise HTTPException(404, f"No state for chat {chat_id}")
+    import json as _json
+
+    ctx = _json.loads(row["context"]) if row["context"] else {}
+    return {
+        "chat_id": row["chat_id"],
+        "state": row["state"],
+        "exchange_count": row["exchange_count"],
+        "asset_identified": row["asset_identified"],
+        "fault_category": row["fault_category"],
+        "history": ctx.get("history", []),
+        "session_context": ctx.get("session_context", {}),
+        "photo_url": f"/v1/debug/photo/{chat_id}",
+    }
+
+
+# ── Debug: Recent Sessions — GET /v1/debug/sessions ─────────────────────────
+
+
+@app.get("/v1/debug/sessions")
+async def list_recent_sessions():
+    """List recent conversation sessions for debugging."""
+    import sqlite3 as _sqlite3
+
+    db = _sqlite3.connect(DB_PATH)
+    db.row_factory = _sqlite3.Row
+    rows = db.execute(
+        "SELECT chat_id, state, exchange_count, asset_identified, updated_at "
+        "FROM conversation_state ORDER BY rowid DESC LIMIT 10"
+    ).fetchall()
+    db.close()
+    photo_dir = Path(DB_PATH).parent / "session_photos"
+    return [
+        {
+            "chat_id": r["chat_id"],
+            "state": r["state"],
+            "exchanges": r["exchange_count"],
+            "asset": (r["asset_identified"] or "")[:80],
+            "has_photo": (photo_dir / f"{r['chat_id']}.jpg").exists(),
+        }
+        for r in rows
+    ]
+
+
+# ── Debug: API Spend — GET /v1/debug/spend ──────────────────────────────────
+
+
+@app.get("/v1/debug/spend")
+async def api_spend():
+    """Return API spend breakdown: today, 7-day, 30-day, by provider."""
+    import sqlite3 as _sqlite3
+
+    db = _sqlite3.connect(DB_PATH)
+    db.execute("PRAGMA journal_mode=WAL")
+
+    def _query(where: str) -> list[dict]:
+        rows = db.execute(
+            f"SELECT model, COUNT(*) as calls, "
+            f"COALESCE(SUM(input_tokens),0) as input_tokens, "
+            f"COALESCE(SUM(output_tokens),0) as output_tokens "
+            f"FROM api_usage WHERE {where} GROUP BY model ORDER BY input_tokens DESC"
+        ).fetchall()
+        results = []
+        for r in rows:
+            model, calls, inp, out = r
+            if "claude" in (model or "").lower():
+                cost = (inp * 0.000003) + (out * 0.000015)
+            else:
+                cost = 0.0
+            results.append(
+                {"model": model, "calls": calls, "input": inp, "output": out, "cost": round(cost, 4)}
+            )
+        return results
+
+    today = _query("DATE(timestamp) = DATE('now')")
+    week = _query("timestamp > datetime('now', '-7 days')")
+    month = _query("timestamp > datetime('now', '-30 days')")
+
+    total_row = db.execute(
+        "SELECT COUNT(*), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) "
+        "FROM api_usage"
+    ).fetchone()
+    db.close()
+
+    def _sum_cost(rows: list[dict]) -> float:
+        return round(sum(r["cost"] for r in rows), 4)
+
+    return {
+        "today": {"providers": today, "total_cost": _sum_cost(today)},
+        "7_day": {"providers": week, "total_cost": _sum_cost(week)},
+        "30_day": {"providers": month, "total_cost": _sum_cost(month)},
+        "all_time": {"calls": total_row[0], "input_tokens": total_row[1], "output_tokens": total_row[2]},
+        "daily_cap": float(os.getenv("CLAUDE_DAILY_SPEND_CAP", "1.00")),
+    }
+
+
+# ── Feedback — POST /v1/feedback ────────────────────────────────────────────
+
+
+class FeedbackRequest(BaseModel):
+    chat_id: str
+    rating: str  # "up" or "down"
+    reason: str = ""
+    model_config = {"extra": "allow"}
+
+
+@app.post("/v1/feedback")
+async def submit_feedback(req: FeedbackRequest):
+    """Capture thumbs-up/down rating and write to mira.db feedback_log."""
+    if engine is None:
+        raise HTTPException(503, "GSDEngine not initialized")
+
+    feedback = "positive" if req.rating in ("up", "1", "positive") else "negative"
+    engine.log_feedback(req.chat_id, feedback, req.reason)
+    logger.info("FEEDBACK chat_id=%s rating=%s reason=%r", req.chat_id, feedback, req.reason)
+    return {"ok": True, "chat_id": req.chat_id, "feedback": feedback}
+
+
+# ── Learning Stats — GET /v1/learning-stats ─────────────────────────────────
+
+
+@app.get("/v1/learning-stats")
+async def learning_stats():
+    """Return feedback counts and fine-tune readiness."""
+    import sqlite3 as _sqlite3
+
+    db = _sqlite3.connect(DB_PATH)
+    db.execute("PRAGMA journal_mode=WAL")
+
+    total_approved = db.execute(
+        "SELECT COUNT(*) FROM feedback_log WHERE feedback = 'positive'"
+    ).fetchone()[0]
+    total_rejected = db.execute(
+        "SELECT COUNT(*) FROM feedback_log WHERE feedback = 'negative'"
+    ).fetchone()[0]
+    approved_today = db.execute(
+        "SELECT COUNT(*) FROM feedback_log WHERE feedback = 'positive' AND created_at >= date('now')"
+    ).fetchone()[0]
+    total_conversations = db.execute("SELECT COUNT(*) FROM conversation_state").fetchone()[0]
+    db.close()
+
+    min_examples = 50
+    return {
+        "total_approved": total_approved,
+        "total_rejected": total_rejected,
+        "approved_today": approved_today,
+        "total_conversations": total_conversations,
+        "current_model_version": "v0.6.0-base",
+        "min_examples_needed": min_examples,
+        "ready_to_finetune": total_approved >= min_examples,
+        "days_until_finetune": max(0, min_examples - total_approved),
+    }
+
+
+# ── Memory Stats — GET /v1/memory-stats ─────────────────────────────────────
+
+
+@app.get("/v1/memory-stats")
+async def memory_stats():
+    """Return memory store statistics."""
+    if memory is None:
+        return {"enabled": False}
+    stats = memory.get_stats()
+    stats["enabled"] = True
+    return stats
 
 
 def _stream_response(reply: str, completion_id: str, created: int):

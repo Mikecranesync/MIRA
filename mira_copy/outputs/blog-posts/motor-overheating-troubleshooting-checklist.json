@@ -1,0 +1,35 @@
+{
+  "title": "Motor Overheating Troubleshooting Checklist for PowerFlex VFDs and Allen-Bradley Systems",
+  "meta_description": "Step-by-step motor overheating troubleshooting checklist for PowerFlex VFDs, Allen-Bradley systems, and hydraulic units. Find root cause fast with proven field steps.",
+  "slug": "motor-overheating-troubleshooting-checklist",
+  "h2_sections": [
+    {
+      "heading": "What is motor overheating and why it kills uptime",
+      "body": "Motor overheating isn’t just a warning—over 60% of premature motor failures are thermal. Every 10°C above rated temperature cuts insulation life in half. In industrial settings, overheating stops production, burns out bearings, and damages VFDs. You’re standing at a tripped GS20 VFD, the display shows 'Motor Over Temp' or your Allen-Bradley PLC logs a fault, but the manual’s in the office or missing. Meanwhile, the line’s down. Even without FactoryLM, you can act fast. Heat isn’t random—it’s traceable. Causes stack: mechanical load, cooling failure, electrical imbalance, or drive misconfiguration. Your first move? Don’t guess. Verify load, airflow, and current. Use your IR thermometer on the motor casing. If it’s over 80°C, stop and assess. A warm motor is normal. A hot one is a symptom. At 100°C+, you’re minutes from failure. Rule out obvious blockages in cooling fins or hydraulic reservoirs. Check if the motor fan is sheared or clogged with debris. This isn’t theory—it’s what works on the floor when the clock’s ticking."
+    },
+    {
+      "heading": "Common causes of motor overheating (list 1-7)",
+      "body": "1. Overload beyond nameplate current – Verify with clamp meter. A 25 HP motor pulling 90A on a 78A nameplate will overheat. 2. Poor ventilation – Clogged cooling fins, blocked intakes, or failed fan. 3. High ambient temperature – Enclosures over 40°C reduce cooling efficiency. 4. Phase imbalance – Over 2% voltage imbalance creates internal motor heat. Measure L1-L2-L3 at VFD output. 5. Incorrect VFD parameter settings – Improper motor thermistor setup in PowerFlex P035 or P036. 6. Mechanical binding – Hydraulic pump seizure, misaligned couplings, or worn bearings. 7. Repeated starts/stops – Inrush current cycles heat windings. Check PLC logic for rapid cycling. Each cause leaves clues. High current? Check load. Normal current but hot motor? Likely cooling or environment. Use a megger to test for winding degradation—anything under 1 MΩ on a 480V motor is a red flag. Don’t skip the basics: a dirty motor acts like it’s wrapped in insulation. Clean it before you condemn it."
+    },
+    {
+      "heading": "Step-by-step fix: Diagnose and resolve in under 30 minutes",
+      "body": "Step 1: Power down and lock out. Confirm zero energy with a multimeter. Step 2: Inspect mechanically. Spin the shaft by hand. Binding? Check couplings, belts, or hydraulic load. Step 3: Clean cooling surfaces. Remove dust from fins and fan housing. Step 4: Check airflow. Use an anemometer or tissue test at intake. No flow? Fan motor or ducting issue. Step 5: Measure winding resistance. Use a DMM on the motor leads. Balanced between phases? Open winding means burnout. Step 6: Megger test. 500V for 1 minute. Read insulation resistance. Under 1 MΩ? Schedule rewind or replace. Step 7: Power up, measure running current with clamp meter. Compare to nameplate. 10% over? Check load or VFD output. Step 8: In PowerFlex, check P035 (Thermistor Type) and P094 (Thermal Current). Ensure correct motor FLA in P034. Step 9: Monitor temperature with IR gun every 10 minutes for 30 min. Trending up? Stop and reassess. Step 10: Log results. Even if it runs, document findings. Repeat in 24 hours. This process works whether you’ve got the manual or not. With FactoryLM, you’d snap a photo of the motor tag or VFD screen and Mira gives you the steps instantly—no digging through binders or calling support on hold."
+    },
+    {
+      "heading": "When to escalate: Red flags that need engineering support",
+      "body": "Not every issue stays in the maintenance bay. Escalate when: motor tests pass but overheats under load—this points to intermittent harmonics or VFD waveform distortion. If voltage imbalance exceeds 3% at the motor, investigate incoming power or drive IGBTs. If multiple motors on the same bus overheat, suspect DC bus ripple or grounding issues. Do not reset and walk away if the megger reading is borderline or the motor smells burnt. Once you smell varnish, the windings are compromised. If the PLC is commanding rapid starts (more than 10/hr), loop in controls engineering to adjust the cycle logic. Also escalate if the VFD faults as 'Ground Fault' during testing—this requires full drive inspection. Thermal imaging helps, but don’t rely on it alone. A motor can read hot on surface but have internal hotspots. If you don’t have a thermal camera, use cycle time data: if it overheats in under 15 minutes of operation, the issue is active and serious. Your job is to isolate the cause, not fix every root—but knowing when to call in the team keeps everyone safe and keeps downtime tight."
+    }
+  ],
+  "cta_text": "Stop searching for manuals in binders or waiting on OEM support. With FactoryLM, snap a photo of any motor or VFD screen and get the repair steps in seconds. Try it at app.factorylm.com.",
+  "tags": [
+    "motor overheating troubleshooting",
+    "VFD motor temperature",
+    "Allen-Bradley maintenance",
+    "PowerFlex 525 fault",
+    "motor megger test",
+    "thermal overload fix",
+    "industrial motor repair",
+    "hydraulic system maintenance"
+  ],
+  "word_count": 980
+}

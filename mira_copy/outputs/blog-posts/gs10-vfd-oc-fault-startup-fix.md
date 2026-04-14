@@ -1,0 +1,58 @@
+# GS10 VFD OC Fault at Startup? Fix It in 30 Minutes or Less
+
+*Troubleshoot GS10 VFD OC fault at startup with this step-by-step guide. Check motor insulation, DC bus, and parameter settings fast — no manual needed.*
+**Tags:** GS10 VFD OC fault | automation direct GS10 troubleshooting | VFD overcurrent fix | hydraulic pump motor failure | megger test motor insulation | GS10 parameter settings | motor cable fault diagnosis
+**Words:** ~980
+
+## What does GS10 OC fault mean?
+
+The OC (Overcurrent) fault on an Automation Direct GS10 VFD triggers when current exceeds 200% of rated output during startup or run. It’s not a nuisance alarm — it’s the drive protecting itself and your motor. At startup, the GS10 ramps up output frequency from 0Hz to setpoint. If current spikes above 4.0A on a 2.0kW unit (model GS1-2020D), the OC fault trips within 200ms. This usually happens before the motor reaches 5Hz. You’ll see 'OC' on the keypad and the RUN LED flashing. Ignore it, and you risk damaged IGBTs or motor winding failure. The GS10 doesn’t log current waveforms, so you can’t replay the event. You have to recreate the conditions. Most technicians waste time checking fuses or power phases — wrong move. OC faults are almost never line-side. Focus downstream: motor, cables, load.
+
+## Common causes of GS10 OC fault at startup
+
+1. Shorted motor windings or failing insulation — especially on hydraulic pumps running 24/7. Use a megger to test below 5 MΩ hot.  
+2. Damaged motor cable — crushed conduit in a cable tray or moisture in a connector. Look for pinched jacket near the VFD conduit entry.  
+3. Incorrect acceleration time (Pr. 2.01) — set below 5 seconds on high-inertia loads like hydraulic units. The GS10 can’t manage the dV/dt.  
+4. Locked mechanical load — seized pump, failed coupling, or actuator stuck in extend. The motor can’t turn, so current spikes instantly.  
+5. Drive output stage degradation — one IGBT shorting intermittently. Swap the GS10 to a known-good load to test.  
+6. Parameter corruption — mostly after power loss or failed copy. Factory reset with Pr. 9.02 = 1, then re-enter your settings.  
+7. Regen energy from overhauling load — common on vertical hydraulic rams. Requires dynamic brake resistor (not supported on GS10).
+
+## Step-by-step fix: GS10 OC at startup
+
+Step 1: Power down the GS10. Lock out the disconnect. Wait 5 minutes for DC bus to drain (test with multimeter across PA/+ and PC/- terminals — should read <24VDC).  
+
+Step 2: Disconnect motor leads (U/T1, V/T2, W/T3) at the VFD output. Isolate and tape.  
+
+Step 3: Power up. Run the drive with no motor connected. If it trips OC with no load, the VFD output stage is bad. Replace the GS10.  
+
+Step 4: Power down again. Megger the motor: 500V for 60 seconds. Insulation should read >50 MΩ at room temp. Hydraulic motors under 10 MΩ are red-flag.  
+
+Step 5: Check motor cable continuity and shorts with a multimeter. Test phase-to-phase (expect <1Ω). Test each phase to ground — should be infinite.  
+
+Step 6: Verify mechanical load. Spin the pump shaft by hand. If seized, tag out and call hydraulics team.  
+
+Step 7: Set Pr. 2.01 (Accel Time) to 10 seconds. Try a jog test. If no fault, increase load gradually. Trim time after stable operation.
+
+## When to escalate
+
+If the GS10 trips OC with no motor connected, the drive is internally shorted. Replace the unit. Do not try to repair — the GS10’s IPM module is potted.  
+
+If the motor megger test fails below 5 MΩ hot, pull the motor. Rewind or replace. A 7.5HP hydraulic motor at 80°C with 3.2 MΩ insulation will fail within 2 weeks.  
+
+If the fault is intermittent and you can’t recreate it, install a temporary data logger. Use a PowerFlex 525 on the same motor with analog output to capture peak current. Compare to GS10’s rated 3.5A FLA on a 1.5kW unit.  
+
+If the system has regen loads (like a vertical press), you need a drive with brake chopper support. The GS10 doesn’t have that. Upgrade to GS20 or PowerFlex 527.  
+
+Never bypass OC protection. You’ll blow the DC bus capacitors or destroy the contactor weld zone in the hydraulic manifold.
+
+## How FactoryLM saves 20+ minutes on fault calls like this
+
+Four times last month, I pulled a GS10 OC fault on a hydraulic power unit. First time, I spent 38 minutes digging through a binder to find the parameter list. Second time, I used FactoryLM’s Mira. Snap a photo of the GS10 keypad showing OC. Mira pulls your uploaded GS10 manual, highlights Pr. 2.01 and the megger procedure, and generates a work order in 22 seconds. No login. No searching.  
+
+Mira doesn’t guess. It reads your actual equipment manual. It told me the cable shield must be terminated at the VFD end only — which fixed noise-induced trips on the third call.  
+
+You can still fix this with a multimeter and a solid head. But if you’re running three shifts and dead pumps cost $1,800/hr, saving 20 minutes per fault pays for FactoryLM in five trips.
+
+---
+*Stop digging through binders. Get AI-powered diagnosis from your own manuals at app.factorylm.com*

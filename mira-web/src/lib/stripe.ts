@@ -68,13 +68,14 @@ export async function createPortalSession(
 /**
  * Verify and construct a Stripe webhook event from raw body + signature.
  */
-export function constructWebhookEvent(
+export async function constructWebhookEvent(
   rawBody: string,
   signature: string
-): Stripe.Event {
+): Promise<Stripe.Event> {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret) throw new Error("STRIPE_WEBHOOK_SECRET not set");
 
   const stripe = getStripe();
-  return stripe.webhooks.constructEvent(rawBody, signature, secret);
+  // Use async version — Bun's SubtleCrypto doesn't support sync HMAC
+  return await stripe.webhooks.constructEventAsync(rawBody, signature, secret);
 }

@@ -39,6 +39,7 @@ services:
     volumes:
       - open-webui-data:/app/backend/data
       - ./entrypoint-mira.sh:/entrypoint-mira.sh:ro
+      - ./branding:/branding:ro
     networks:
       - core-net
       - bot-net
@@ -149,6 +150,9 @@ services:
       - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=${MCP_BASE_URL:-http://mira-mcp:8001}

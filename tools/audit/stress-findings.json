@@ -1,0 +1,1839 @@
+{
+  "timestamp": "2026-04-13T11:50:12Z",
+  "wave_filter": null,
+  "analysis": {
+    "total": 50,
+    "passed": 50,
+    "failed": 0,
+    "pass_rate": 100.0,
+    "failure_counts": {
+      "send_error": 0,
+      "empty_response": 0,
+      "safety_missed": 0,
+      "timeout": 0
+    },
+    "by_category": {
+      "vfd_fault": {
+        "total": 10,
+        "passed": 10
+      },
+      "motor": {
+        "total": 10,
+        "passed": 10
+      },
+      "advanced": {
+        "total": 10,
+        "passed": 10
+      },
+      "natural_lang": {
+        "total": 10,
+        "passed": 10
+      },
+      "edge_case": {
+        "total": 10,
+        "passed": 10
+      }
+    },
+    "by_wave": {
+      "1": {
+        "total": 10,
+        "passed": 10
+      },
+      "2": {
+        "total": 10,
+        "passed": 10
+      },
+      "3": {
+        "total": 10,
+        "passed": 10
+      },
+      "4": {
+        "total": 10,
+        "passed": 10
+      },
+      "5": {
+        "total": 10,
+        "passed": 10
+      }
+    },
+    "avg_latency_s": 138.57,
+    "max_latency_s": 239.75,
+    "avg_first_response_words": 26.1
+  },
+  "scenarios": [
+    {
+      "name": "powerflex_525_f012",
+      "category": "vfd_fault",
+      "wave": 1,
+      "passed": true,
+      "exchanges_completed": 4,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "PowerFlex 525 showing F012 overcurrent fault",
+          "response_preview": "You're seeing an F012 overcurrent fault on the PowerFlex 525. What does the motor wiring look like?\n\nInspect for visible damage\nCheck for loose connections\nVerify wiring against the manual\nUse a multi",
+          "word_count": 37,
+          "option_count": 8,
+          "latency_s": 9.28
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "You've noted the procedures for addressing the F012 fault. Have you inspected the motor wiring for any visible signs of damage or shorts?\n\nYes, inspected and found damage\nYes, inspected but found no d",
+          "word_count": 39,
+          "option_count": 8,
+          "latency_s": 7.5
+        },
+        {
+          "msg_index": 2,
+          "sent": "It happens during acceleration",
+          "response_preview": "Acceleration is when the issue occurs. Is the overcurrent happening in the motor or the drive itself?",
+          "word_count": 17,
+          "option_count": 0,
+          "latency_s": 7.38
+        },
+        {
+          "msg_index": 3,
+          "sent": "2",
+          "response_preview": "You're focusing on the motor wiring. Are you checking the wiring for any signs of overheating or corrosion?",
+          "word_count": 18,
+          "option_count": 0,
+          "latency_s": 7.39
+        }
+      ],
+      "latency_total_s": 32.12
+    },
+    {
+      "name": "gs10_oc_startup",
+      "category": "vfd_fault",
+      "wave": 1,
+      "passed": true,
+      "exchanges_completed": 4,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "GS10 VFD OC fault on startup",
+          "response_preview": "You're seeing an overcurrent fault on startup with the GS10 variable frequency drive. Is the motor connected to the drive properly, with no loose or damaged connections?\n\nYes, connections are secure\nN",
+          "word_count": 37,
+          "option_count": 4,
+          "latency_s": 7.45
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "You've noted the GS10 fault code in addition to F012. Are you using the Allen-Bradley PowerFlex 525 manual to guide your troubleshooting?\n\nYes, I'm using the manual\nNo, I'm not using the manual",
+          "word_count": 33,
+          "option_count": 4,
+          "latency_s": 8.36
+        },
+        {
+          "msg_index": 2,
+          "sent": "Motor is 5HP 460V 3-phase",
+          "response_preview": "With a 5HP, 460V, 3-phase motor, are you checking the motor winding resistance to ensure it matches the manufacturer's specifications?\n\nYes, I've checked the winding resistance\nNo, I haven't checked t",
+          "word_count": 49,
+          "option_count": 8,
+          "latency_s": 8.25
+        },
+        {
+          "msg_index": 3,
+          "sent": "1",
+          "response_preview": "You're inspecting for visible damage. Does the motor wiring show any signs of physical damage or wear?\n\nYes, there is visible damage\nNo, the wiring looks intact\nI'm not sure, need to inspect further\nO",
+          "word_count": 35,
+          "option_count": 8,
+          "latency_s": 8.33
+        }
+      ],
+      "latency_total_s": 33.34
+    },
+    {
+      "name": "danfoss_earth_fault",
+      "category": "vfd_fault",
+      "wave": 1,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Danfoss VFD showing earth fault alarm",
+          "response_preview": "Is the earth fault alarm related to the GS10 fault code on the Danfoss VFD?\n\nYes, they are related\nNo, they are separate issues",
+          "word_count": 24,
+          "option_count": 4,
+          "latency_s": 7.49
+        },
+        {
+          "msg_index": 1,
+          "sent": "2",
+          "response_preview": "You've checked for loose connections. Are the motor and VFD properly grounded to prevent earth faults?\n\nYes, grounding is proper\nNo, grounding needs to be checked",
+          "word_count": 26,
+          "option_count": 4,
+          "latency_s": 7.41
+        },
+        {
+          "msg_index": 2,
+          "sent": "We checked the ground and it looks good",
+          "response_preview": "With the ground checked, does the F012 fault code on the Allen-Bradley PowerFlex 525 indicate a hardware overcurrent issue that could be related to the motor or its wiring?\n\nYes, likely related to the",
+          "word_count": 51,
+          "option_count": 8,
+          "latency_s": 7.62
+        }
+      ],
+      "latency_total_s": 23.16
+    },
+    {
+      "name": "yaskawa_sv_fault",
+      "category": "vfd_fault",
+      "wave": 1,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Yaskawa A1000 SV fault code",
+          "response_preview": "Is the Yaskawa A1000 SV fault code related to the F012 or GS10 fault codes you're seeing on the other devices?\n\nYes, related to F012\nYes, related to GS10\nNo, unrelated to F012 or GS10\nUnknown",
+          "word_count": 36,
+          "option_count": 8,
+          "latency_s": 48.26
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "You've got multiple fault codes. Does the A1000 fault code on the Yaskawa indicate an issue with the drive's output to the motor?",
+          "word_count": 23,
+          "option_count": 0,
+          "latency_s": 47.55
+        },
+        {
+          "msg_index": 2,
+          "sent": "The motor was just replaced",
+          "response_preview": "With a new motor, could the issue be with the wiring or connections between the motor and the drive?\n\nInspect motor wiring\nCheck drive settings\nVerify motor grounding\nTest motor rotation",
+          "word_count": 31,
+          "option_count": 8,
+          "latency_s": 47.48
+        }
+      ],
+      "latency_total_s": 143.97
+    },
+    {
+      "name": "siemens_g120_f0003",
+      "category": "vfd_fault",
+      "wave": 1,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Siemens G120 fault F0003 overcurrent",
+          "response_preview": "Is the overcurrent condition indicated by the F0003 fault code on the Siemens G120 related to the F012 fault code on the Allen-Bradley PowerFlex 525?\n\nYes, they are related\nNo, they are not related",
+          "word_count": 34,
+          "option_count": 4,
+          "latency_s": 48.3
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Are the multiple fault codes from different devices indicating a common issue, such as a short circuit or wiring problem?\n\nYes, a common issue\nNo, separate issues",
+          "word_count": 27,
+          "option_count": 4,
+          "latency_s": 48.19
+        },
+        {
+          "msg_index": 2,
+          "sent": "It's a 10HP motor on a 15HP drive",
+          "response_preview": "Is the drive's overcurrent protection tripping due to the motor's startup current exceeding the drive's rated capacity?\n\nYes, the motor's startup current is too high\nNo, the issue is with the motor wi",
+          "word_count": 35,
+          "option_count": 4,
+          "latency_s": 48.26
+        }
+      ],
+      "latency_total_s": 145.31
+    },
+    {
+      "name": "gs20_undervoltage",
+      "category": "vfd_fault",
+      "wave": 1,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "AutomationDirect GS20 UL undervoltage fault",
+          "response_preview": "Could the undervoltage fault on the AutomationDirect GS20 be causing the overcurrent fault F012 on the Allen-Bradley PowerFlex 525?\n\nCheck input voltage to the drive\nVerify motor wiring for shorts\nIns",
+          "word_count": 40,
+          "option_count": 8,
+          "latency_s": 48.27
+        },
+        {
+          "msg_index": 1,
+          "sent": "2",
+          "response_preview": "Is the input voltage to the drive within the acceptable range for the Allen-Bradley PowerFlex 525?\n\nYes, within range\nNo, below range\nNo, above range\nUnknown",
+          "word_count": 26,
+          "option_count": 8,
+          "latency_s": 48.3
+        },
+        {
+          "msg_index": 2,
+          "sent": "Input voltage reads 195V on all three phases",
+          "response_preview": "Is the low input voltage of 195V on all three phases causing the drive to trip on undervoltage or overcurrent protection?",
+          "word_count": 21,
+          "option_count": 0,
+          "latency_s": 47.48
+        }
+      ],
+      "latency_total_s": 144.81
+    },
+    {
+      "name": "powerflex_40_overtemp",
+      "category": "vfd_fault",
+      "wave": 1,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "PowerFlex 40 F33 heatsink overtemp",
+          "response_preview": "Could the heatsink overtemp fault F33 on the PowerFlex 40 be related to the overcurrent fault F012 due to excessive current draw from a short circuit or motor issue?",
+          "word_count": 29,
+          "option_count": 0,
+          "latency_s": 48.28
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Are multiple fault codes indicating a more complex issue with the drive or motor?\n\nYes, multiple faults are related\nNo, each fault is a separate issue",
+          "word_count": 26,
+          "option_count": 4,
+          "latency_s": 48.28
+        },
+        {
+          "msg_index": 2,
+          "sent": "The fan is running and the enclosure has ventilation",
+          "response_preview": "Is the drive sized correctly for the motor, considering it's a 10HP motor on a 15HP drive?\n\nYes, the drive is sized correctly\nNo, the drive is oversized\nNo, the drive is undersized\nUnsure",
+          "word_count": 34,
+          "option_count": 8,
+          "latency_s": 47.66
+        }
+      ],
+      "latency_total_s": 144.74
+    },
+    {
+      "name": "abb_acs580_2310",
+      "category": "vfd_fault",
+      "wave": 1,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "ABB ACS580 fault code 2310",
+          "response_preview": "Is the fault code 2310 on the ABB ACS580 related to the overcurrent fault F012 previously reported?\n\nYes, it's related\nNo, it's a separate issue",
+          "word_count": 25,
+          "option_count": 4,
+          "latency_s": 47.66
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Does the combination of fault codes point to a specific issue with the motor, drive, or wiring?\n\nMotor issue\nDrive issue\nWiring issue\nOther",
+          "word_count": 24,
+          "option_count": 8,
+          "latency_s": 48.33
+        },
+        {
+          "msg_index": 2,
+          "sent": "Short cable run, about 20 feet",
+          "response_preview": "With a short cable run of 20 feet, could the issue be related to the drive or motor itself rather than the cabling?",
+          "word_count": 23,
+          "option_count": 0,
+          "latency_s": 48.26
+        }
+      ],
+      "latency_total_s": 144.78
+    },
+    {
+      "name": "generic_sc_fault",
+      "category": "vfd_fault",
+      "wave": 1,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Drive showing SC short circuit fault on output",
+          "response_preview": "Is the SC short circuit fault on the drive's output related to the F012 fault code?",
+          "word_count": 16,
+          "option_count": 0,
+          "latency_s": 48.22
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "You've confirmed a short circuit fault, does the drive need to be replaced or can it be reset?\n\nReplace drive\nReset drive",
+          "word_count": 22,
+          "option_count": 4,
+          "latency_s": 48.33
+        },
+        {
+          "msg_index": 2,
+          "sent": "We meggered the motor and it reads 50 megohms",
+          "response_preview": "With a megohm reading of 50, is the motor insulation within the acceptable range?",
+          "word_count": 14,
+          "option_count": 0,
+          "latency_s": 48.17
+        }
+      ],
+      "latency_total_s": 145.09
+    },
+    {
+      "name": "drive_no_fault",
+      "category": "vfd_fault",
+      "wave": 1,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "VFD won't start, no fault code on display",
+          "response_preview": "Is the drive configured correctly for the motor size and type?\n\nCheck drive settings\nVerify motor parameters\nInspect wiring connections\nReview startup sequence",
+          "word_count": 23,
+          "option_count": 8,
+          "latency_s": 47.56
+        },
+        {
+          "msg_index": 1,
+          "sent": "2",
+          "response_preview": "Is the input voltage to the drive within the specified range?\n\nYes\nNo",
+          "word_count": 13,
+          "option_count": 4,
+          "latency_s": 48.01
+        },
+        {
+          "msg_index": 2,
+          "sent": "Run command is wired to terminal 1",
+          "response_preview": "Is the run command wiring consistent with the documentation for the Allen-Bradley PowerFlex 525?\n\nYes, it matches\nNo, it does not match",
+          "word_count": 22,
+          "option_count": 4,
+          "latency_s": 47.47
+        }
+      ],
+      "latency_total_s": 143.7
+    },
+    {
+      "name": "motor_hums_no_start",
+      "category": "motor",
+      "wave": 2,
+      "passed": true,
+      "exchanges_completed": 4,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "3-phase motor hums but won't start",
+          "response_preview": "Are the motor parameters, such as voltage and horsepower, matched correctly with the drive settings?\n\nYes, matched correctly\nNo, mismatched",
+          "word_count": 20,
+          "option_count": 4,
+          "latency_s": 48.34
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Does the fault code F012 indicate a hardware overcurrent condition?\n\nYes\nNo",
+          "word_count": 12,
+          "option_count": 4,
+          "latency_s": 48.2
+        },
+        {
+          "msg_index": 2,
+          "sent": "All three phases read 460V at the motor",
+          "response_preview": "Is the motor rotation direction set correctly in the drive parameters?",
+          "word_count": 11,
+          "option_count": 0,
+          "latency_s": 48.17
+        },
+        {
+          "msg_index": 3,
+          "sent": "2",
+          "response_preview": "Is the overcurrent condition indicated by fault code F012 related to the motor wiring or the drive itself?\n\nMotor wiring\nDrive internal issue",
+          "word_count": 23,
+          "option_count": 4,
+          "latency_s": 47.62
+        }
+      ],
+      "latency_total_s": 192.97
+    },
+    {
+      "name": "motor_overheats",
+      "category": "motor",
+      "wave": 2,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Motor runs but overheats after 30 minutes",
+          "response_preview": "Is the cable length within the permissible connection cable length specified in the documentation?\n\nYes, it is within the limit\nNo, it exceeds the limit",
+          "word_count": 25,
+          "option_count": 4,
+          "latency_s": 48.14
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the overcurrent condition indicated by fault code F012 causing the motor to overheat?\n\nYes\nNo",
+          "word_count": 16,
+          "option_count": 4,
+          "latency_s": 48.06
+        },
+        {
+          "msg_index": 2,
+          "sent": "Current reads 12A, nameplate says 10A FLA",
+          "response_preview": "Is the 2A difference between the measured current and the nameplate FLA a possible cause of the overcurrent condition?",
+          "word_count": 19,
+          "option_count": 0,
+          "latency_s": 48.16
+        }
+      ],
+      "latency_total_s": 144.86
+    },
+    {
+      "name": "motor_trips_breaker",
+      "category": "motor",
+      "wave": 2,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Motor trips breaker immediately on start",
+          "response_preview": "Is the high inrush current during motor startup causing the breaker to trip?",
+          "word_count": 13,
+          "option_count": 0,
+          "latency_s": 48.12
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Could the immediate tripping be related to a short circuit in the motor wiring?\n\nYes, it's possible\nNo, it's likely a drive issue",
+          "word_count": 23,
+          "option_count": 4,
+          "latency_s": 47.78
+        },
+        {
+          "msg_index": 2,
+          "sent": "It's a 20HP motor on a 30A breaker",
+          "response_preview": "Is the 30A breaker undersized for the 20HP motor?",
+          "word_count": 9,
+          "option_count": 0,
+          "latency_s": 47.55
+        }
+      ],
+      "latency_total_s": 143.78
+    },
+    {
+      "name": "motor_vibration",
+      "category": "motor",
+      "wave": 2,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Motor vibrates excessively at full speed",
+          "response_preview": "Could the vibration be caused by an imbalance in the motor or a misalignment of the drive and motor?",
+          "word_count": 19,
+          "option_count": 0,
+          "latency_s": 47.61
+        },
+        {
+          "msg_index": 1,
+          "sent": "2",
+          "response_preview": "Is the input voltage to the drive within the specified range for the Allen-Bradley PowerFlex 525?\n\nYes\nNo",
+          "word_count": 18,
+          "option_count": 4,
+          "latency_s": 48.14
+        },
+        {
+          "msg_index": 2,
+          "sent": "Bearings were replaced 6 months ago",
+          "response_preview": "Could the vibration be related to a problem with the new bearings or their installation?",
+          "word_count": 15,
+          "option_count": 0,
+          "latency_s": 48.22
+        }
+      ],
+      "latency_total_s": 144.28
+    },
+    {
+      "name": "motor_runs_backwards",
+      "category": "motor",
+      "wave": 2,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Single phase motor runs backwards after rewiring",
+          "response_preview": "Did you swap the wiring connections for the start and run windings?\n\nYes\nNo",
+          "word_count": 14,
+          "option_count": 4,
+          "latency_s": 48.26
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the F012 fault code related to a hardware overcurrent issue?\n\nYes, it's a hardware issue\nNo, it's a software issue\nNot sure, need more information\nOther",
+          "word_count": 27,
+          "option_count": 8,
+          "latency_s": 47.58
+        },
+        {
+          "msg_index": 2,
+          "sent": "We swapped two leads on the starter",
+          "response_preview": "Could swapping the leads have caused a phase reversal, leading to the motor running backwards?\n\nYes, it's possible\nNo, it shouldn't affect the motor direction",
+          "word_count": 25,
+          "option_count": 4,
+          "latency_s": 47.56
+        }
+      ],
+      "latency_total_s": 144.19
+    },
+    {
+      "name": "motor_shaft_locked",
+      "category": "motor",
+      "wave": 2,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Motor shaft is locked, can't rotate by hand",
+          "response_preview": "Is the motor shaft locked due to a mechanical issue or a fault in the motor itself?\n\nMechanical issue\nMotor fault\nBearing seizure\nOther",
+          "word_count": 24,
+          "option_count": 8,
+          "latency_s": 47.45
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the F012 fault code related to a hardware overcurrent issue, possibly caused by a short circuit in the motor wiring?\n\nInspect motor wiring for shorts or damage\nCheck motor winding resistance with m",
+          "word_count": 38,
+          "option_count": 6,
+          "latency_s": 47.48
+        },
+        {
+          "msg_index": 2,
+          "sent": "It was working fine yesterday",
+          "response_preview": "Did something change overnight, such as a power surge or environmental factor, that could have triggered the fault?\n\nPower surge\nEnvironmental factor\nOther",
+          "word_count": 23,
+          "option_count": 6,
+          "latency_s": 47.64
+        }
+      ],
+      "latency_total_s": 143.34
+    },
+    {
+      "name": "motor_grinding",
+      "category": "motor",
+      "wave": 2,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Motor makes grinding noise at low speed",
+          "response_preview": "Could the grinding noise be related to a mechanical issue, such as worn bearings or misaligned motor components?\n\nCheck motor bearings\nInspect motor alignment\nVerify motor lubrication\nCheck for debris",
+          "word_count": 32,
+          "option_count": 8,
+          "latency_s": 47.59
+        },
+        {
+          "msg_index": 1,
+          "sent": "2",
+          "response_preview": "What does the input voltage to the drive measure?\n\nWithin tolerance\nBelow minimum\nAbove maximum",
+          "word_count": 15,
+          "option_count": 3,
+          "latency_s": 48.23
+        },
+        {
+          "msg_index": 2,
+          "sent": "The noise goes away above 30Hz",
+          "response_preview": "Is the noise related to a resonance or vibration issue at low frequencies?\n\nYes, resonance issue\nNo, not related to resonance",
+          "word_count": 21,
+          "option_count": 4,
+          "latency_s": 47.61
+        }
+      ],
+      "latency_total_s": 144.17
+    },
+    {
+      "name": "motor_high_current",
+      "category": "motor",
+      "wave": 2,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Motor current is 20% above nameplate FLA",
+          "response_preview": "Is the motor overloaded or is the drive not properly configured to match the motor's nameplate current rating?\n\nCheck motor load\nVerify drive settings",
+          "word_count": 24,
+          "option_count": 4,
+          "latency_s": 48.28
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Does the F012 fault code indicate an overcurrent condition?\n\nYes, it's a hardware overcurrent fault\nNo, it's a different type of fault",
+          "word_count": 22,
+          "option_count": 4,
+          "latency_s": 48.25
+        },
+        {
+          "msg_index": 2,
+          "sent": "The load hasn't changed recently",
+          "response_preview": "Could the overcurrent condition be caused by a short circuit or issue within the motor or wiring?\n\nInspect motor wiring for damage\nCheck motor winding resistance\nVerify cable insulation integrity\nChec",
+          "word_count": 35,
+          "option_count": 8,
+          "latency_s": 47.61
+        }
+      ],
+      "latency_total_s": 145.74
+    },
+    {
+      "name": "motor_low_insulation",
+      "category": "motor",
+      "wave": 2,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Motor insulation resistance reads 0.5 megohm",
+          "response_preview": "Is the low insulation resistance reading an indication of moisture or damage to the motor windings?",
+          "word_count": 16,
+          "option_count": 0,
+          "latency_s": 48.36
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Does the low insulation resistance reading correspond to the F012 fault code for hardware overcurrent?\n\nYes, it matches\nNo, it doesn't match",
+          "word_count": 22,
+          "option_count": 4,
+          "latency_s": 48.23
+        },
+        {
+          "msg_index": 2,
+          "sent": "It's been in service for 15 years",
+          "response_preview": "Could the age of the motor be a contributing factor to the low insulation resistance reading?",
+          "word_count": 16,
+          "option_count": 0,
+          "latency_s": 47.39
+        }
+      ],
+      "latency_total_s": 144.28
+    },
+    {
+      "name": "motor_flood_damage",
+      "category": "motor",
+      "wave": 2,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Motor was submerged in flood water last week",
+          "response_preview": "Could the flood water have caused damage to the motor windings or insulation, leading to the low insulation resistance reading and F012 fault code?\n\nYes, water damage is likely\nNo, the motor was prope",
+          "word_count": 35,
+          "option_count": 4,
+          "latency_s": 48.3
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the motor likely damaged beyond repair due to the flood water submersion?\n\nYes, replace the motor\nNo, attempt to dry and repair",
+          "word_count": 23,
+          "option_count": 4,
+          "latency_s": 48.17
+        },
+        {
+          "msg_index": 2,
+          "sent": "We dried it out and it runs but makes noise",
+          "response_preview": "Could the mismatch between the 10HP motor and the 15HP drive be causing the noise, or is it more likely related to the flood damage?",
+          "word_count": 25,
+          "option_count": 0,
+          "latency_s": 48.25
+        }
+      ],
+      "latency_total_s": 145.03
+    },
+    {
+      "name": "vfd_parameter_help",
+      "category": "advanced",
+      "wave": 3,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "What parameters should I set for a PowerFlex 525 with a 5HP motor",
+          "response_preview": "What is the motor's rated speed and torque to determine the correct scaling of the Magnetic Linkage Estimator and Mutual Inductance Compensation parameters on the PowerFlex 525?\n\nCheck the motor namep",
+          "word_count": 42,
+          "option_count": 4,
+          "latency_s": 48.16
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Does the F012 fault code indicate a hardware overcurrent condition that could be related to the motor or drive?\n\nYes, it's a hardware issue\nNo, it's a software issue",
+          "word_count": 29,
+          "option_count": 4,
+          "latency_s": 48.24
+        },
+        {
+          "msg_index": 2,
+          "sent": "460V 3-phase, 7.6A FLA",
+          "response_preview": "Is the 7.6A Full Load Amps (FLA) within the acceptable range for the PowerFlex 525 drive?",
+          "word_count": 16,
+          "option_count": 0,
+          "latency_s": 48.3
+        }
+      ],
+      "latency_total_s": 145.25
+    },
+    {
+      "name": "wiring_troubleshoot",
+      "category": "advanced",
+      "wave": 3,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "What should I check on VFD output wiring to a motor 200 feet away",
+          "response_preview": "Should you check the output wiring for signs of damage, corrosion, or excessive length that could cause signal degradation or voltage drop?\n\nInsulation resistance\nContinuity\nWire gauge\nShielding",
+          "word_count": 28,
+          "option_count": 8,
+          "latency_s": 47.61
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the F012 fault code related to a short circuit in the motor wiring?\n\nYes, it's a short circuit\nNo, it's an overcurrent condition\nMaybe, it's unclear\nNot sure, need more info",
+          "word_count": 32,
+          "option_count": 8,
+          "latency_s": 47.74
+        },
+        {
+          "msg_index": 2,
+          "sent": "No output reactor installed",
+          "response_preview": "Could the lack of an output reactor be causing excessive voltage spikes or reflections on the 200-foot wiring run to the motor?\n\nCheck the drive manual for reactor recommendations\nMeasure the voltage ",
+          "word_count": 55,
+          "option_count": 8,
+          "latency_s": 48.2
+        }
+      ],
+      "latency_total_s": 144.53
+    },
+    {
+      "name": "drive_sizing",
+      "category": "advanced",
+      "wave": 3,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "How do I size a VFD for a 15HP 460V motor",
+          "response_preview": "Should you consider the motor's full-load amps, power factor, and efficiency when sizing the VFD?",
+          "word_count": 15,
+          "option_count": 0,
+          "latency_s": 48.38
+        },
+        {
+          "msg_index": 1,
+          "sent": "2",
+          "response_preview": "Do you need to check the motor nameplate data to ensure it matches the VFD settings?",
+          "word_count": 16,
+          "option_count": 0,
+          "latency_s": 47.47
+        },
+        {
+          "msg_index": 2,
+          "sent": "Normal duty, no heavy starting loads",
+          "response_preview": "Is the VFD sized for the motor's normal duty cycle and not oversized or undersized for the application?\n\nCheck VFD manual for sizing guidelines\nVerify motor full-load amps",
+          "word_count": 28,
+          "option_count": 4,
+          "latency_s": 47.53
+        }
+      ],
+      "latency_total_s": 143.67
+    },
+    {
+      "name": "harmonic_issues",
+      "category": "advanced",
+      "wave": 3,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "We're getting harmonic distortion on the power bus since adding 3 VFDs",
+          "response_preview": "Could the total harmonic distortion be exceeding the acceptable limits due to the added VFDs?",
+          "word_count": 15,
+          "option_count": 0,
+          "latency_s": 48.47
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the F012 fault code related to overcurrent protection on the PowerFlex 525?\n\nYes, it's related to overcurrent\nNo, it's related to another issue",
+          "word_count": 24,
+          "option_count": 4,
+          "latency_s": 48.25
+        },
+        {
+          "msg_index": 2,
+          "sent": "Total VFD load is about 50HP",
+          "response_preview": "Should the total VFD load be compared to the available power supply capacity to ensure it's within the acceptable range?\n\nYes, to prevent overloading\nNo, it's not necessary for this application",
+          "word_count": 31,
+          "option_count": 4,
+          "latency_s": 48.17
+        }
+      ],
+      "latency_total_s": 145.39
+    },
+    {
+      "name": "modbus_comm_fail",
+      "category": "advanced",
+      "wave": 3,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "GS10 VFD Modbus communication keeps dropping",
+          "response_preview": "Is the communication loss related to the Modbus settings or the physical connection?\n\nCheck Modbus settings\nInspect physical connection",
+          "word_count": 19,
+          "option_count": 4,
+          "latency_s": 47.49
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Could the F012 fault code be related to a short circuit in the motor wiring?\n\nInspect motor wiring for damage\nCheck motor winding resistance\nVerify cable insulation integrity\nReview VFD settings",
+          "word_count": 31,
+          "option_count": 8,
+          "latency_s": 48.16
+        },
+        {
+          "msg_index": 2,
+          "sent": "Cable run is 100 feet, 120 ohm termination installed",
+          "response_preview": "Is the 120 ohm termination resistor correctly sized for the 100-foot cable run?",
+          "word_count": 13,
+          "option_count": 0,
+          "latency_s": 47.98
+        }
+      ],
+      "latency_total_s": 144.12
+    },
+    {
+      "name": "encoder_feedback",
+      "category": "advanced",
+      "wave": 3,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "VFD shows encoder feedback error on closed loop operation",
+          "response_preview": "Is the encoder feedback error related to a problem with the PG-X3 option card or the encoder wiring?\n\nPG-X3 option card issue\nEncoder wiring problem\nEncoder itself faulty\nOther",
+          "word_count": 29,
+          "option_count": 8,
+          "latency_s": 47.95
+        },
+        {
+          "msg_index": 1,
+          "sent": "2",
+          "response_preview": "Are the motor bearings properly lubricated?",
+          "word_count": 6,
+          "option_count": 0,
+          "latency_s": 47.84
+        },
+        {
+          "msg_index": 2,
+          "sent": "Encoder cable is shielded and grounded at the drive end",
+          "response_preview": "Is the encoder cable also grounded at the motor end?\n\nYes\nNo",
+          "word_count": 12,
+          "option_count": 4,
+          "latency_s": 48.0
+        }
+      ],
+      "latency_total_s": 144.22
+    },
+    {
+      "name": "regen_braking",
+      "category": "advanced",
+      "wave": 3,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "VFD trips on overvoltage during deceleration",
+          "response_preview": "Is the DC bus voltage exceeding the drive's maximum allowed voltage during deceleration?\n\nYes\nNo",
+          "word_count": 15,
+          "option_count": 4,
+          "latency_s": 48.16
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the fault code F012 related to a hardware overcurrent condition?\n\nYes, it's a hardware overcurrent\nNo, it's a different fault code\nNot sure, need more information\nIt's related to a different fault ",
+          "word_count": 34,
+          "option_count": 8,
+          "latency_s": 48.11
+        },
+        {
+          "msg_index": 2,
+          "sent": "Decel time is set to 5 seconds for a high inertia load",
+          "response_preview": "Is the decel time of 5 seconds sufficient for the high inertia load, or should it be adjusted to prevent overvoltage trips?\n\nIncrease decel time\nDecrease decel time\nAdjust other parameters\nCheck drive",
+          "word_count": 34,
+          "option_count": 8,
+          "latency_s": 49.14
+        }
+      ],
+      "latency_total_s": 146.12
+    },
+    {
+      "name": "multi_motor",
+      "category": "advanced",
+      "wave": 3,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Can I run two motors from one VFD",
+          "response_preview": "What is the total horsepower rating of the two motors compared to the drive's capacity?\n\nEqual to or less than the drive's capacity\nGreater than the drive's capacity",
+          "word_count": 28,
+          "option_count": 4,
+          "latency_s": 48.0
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the fault code F012 related to a hardware overcurrent condition as described in the Allen-Bradley PowerFlex 525 documentation?\n\nYes, it matches the description\nNo, it does not match the description",
+          "word_count": 31,
+          "option_count": 4,
+          "latency_s": 48.05
+        },
+        {
+          "msg_index": 2,
+          "sent": "Both motors are 5HP same model",
+          "response_preview": "Are the motor full-load amps set correctly in the VFD for the two 5HP motors?\n\nYes, they are set correctly\nNo, they need to be adjusted",
+          "word_count": 26,
+          "option_count": 4,
+          "latency_s": 48.12
+        }
+      ],
+      "latency_total_s": 144.83
+    },
+    {
+      "name": "soft_start_vs_vfd",
+      "category": "advanced",
+      "wave": 3,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Should I use a soft start or a VFD for a pump application",
+          "response_preview": "What type of pump is being used in the application, centrifugal or positive displacement?\n\nCentrifugal\nPositive Displacement",
+          "word_count": 17,
+          "option_count": 4,
+          "latency_s": 48.01
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the F012 fault code related to a short circuit in the motor wiring?\n\nYes, it's a wiring issue\nNo, it's a different cause",
+          "word_count": 24,
+          "option_count": 4,
+          "latency_s": 48.26
+        },
+        {
+          "msg_index": 2,
+          "sent": "Constant speed, just need to reduce inrush current",
+          "response_preview": "Would a soft start be sufficient to reduce inrush current for this constant speed application?",
+          "word_count": 15,
+          "option_count": 0,
+          "latency_s": 47.97
+        }
+      ],
+      "latency_total_s": 144.64
+    },
+    {
+      "name": "preventive_maintenance",
+      "category": "advanced",
+      "wave": 3,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "What preventive maintenance should I do on a VFD annually",
+          "response_preview": "Should you check the VFD's output voltage and current ratings annually?\n\nYes\nNo",
+          "word_count": 13,
+          "option_count": 4,
+          "latency_s": 47.84
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Does the PowerFlex 525 VFD have a specific maintenance schedule outlined in its manual?\n\nYes, it does\nNo, it doesn't",
+          "word_count": 20,
+          "option_count": 4,
+          "latency_s": 47.74
+        },
+        {
+          "msg_index": 2,
+          "sent": "It's in a dusty environment",
+          "response_preview": "Should you clean the VFD's heat sink and vents annually to prevent dust buildup?",
+          "word_count": 14,
+          "option_count": 0,
+          "latency_s": 47.72
+        }
+      ],
+      "latency_total_s": 143.66
+    },
+    {
+      "name": "option_two_natural",
+      "category": "natural_lang",
+      "wave": 4,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "PowerFlex 525 F012 overcurrent",
+          "response_preview": "Is the overcurrent fault F012 due to a short circuit in the motor wiring or a mismatch between the motor and drive ratings?\n\nInspect motor wiring for shorts or damage\nVerify motor winding resistance w",
+          "word_count": 43,
+          "option_count": 6,
+          "latency_s": 47.75
+        },
+        {
+          "msg_index": 1,
+          "sent": "option 2",
+          "response_preview": "Is the PowerFlex 525 drive sized correctly for the motor load?",
+          "word_count": 11,
+          "option_count": 0,
+          "latency_s": 47.94
+        },
+        {
+          "msg_index": 2,
+          "sent": "Yes that's correct",
+          "response_preview": "You've confirmed the drive is sized correctly. Does the motor wiring have any signs of damage or shorts?\n\nInspect motor wiring\nCheck motor winding resistance\nVerify cable insulation integrity\nReview d",
+          "word_count": 32,
+          "option_count": 8,
+          "latency_s": 47.88
+        }
+      ],
+      "latency_total_s": 144.08
+    },
+    {
+      "name": "explain_more",
+      "category": "natural_lang",
+      "wave": 4,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "GS10 VFD OC fault",
+          "response_preview": "Is the GS10 overcurrent fault related to the F012 fault you mentioned earlier, possibly indicating a common issue with the motor or wiring?\n\nYes, they are related\nNo, they are separate issues",
+          "word_count": 32,
+          "option_count": 4,
+          "latency_s": 48.28
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Should you inspect the motor wiring for any signs of damage or wear that could be causing the overcurrent fault?\n\nYes, inspect the wiring\nNo, check the VFD settings first",
+          "word_count": 30,
+          "option_count": 4,
+          "latency_s": 48.2
+        },
+        {
+          "msg_index": 2,
+          "sent": "explain more about that",
+          "response_preview": "You mentioned the GS10 overcurrent fault, which could be related to the F012 fault. Are you checking the motor wiring for any signs of damage, such as cuts, frays, or corrosion, that could be causing ",
+          "word_count": 76,
+          "option_count": 8,
+          "latency_s": 48.23
+        }
+      ],
+      "latency_total_s": 145.44
+    },
+    {
+      "name": "why_question",
+      "category": "natural_lang",
+      "wave": 4,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Motor overheating on VFD",
+          "response_preview": "Is the motor overheating due to an issue with the variable frequency drive's cooling system or an overload condition?",
+          "word_count": 19,
+          "option_count": 0,
+          "latency_s": 47.91
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "You've selected to investigate further. Does the VFD's overload protection feature have a setting that could be contributing to the motor overheating issue?\n\nCheck VFD settings\nInspect motor for block",
+          "word_count": 37,
+          "option_count": 8,
+          "latency_s": 47.48
+        },
+        {
+          "msg_index": 2,
+          "sent": "why?",
+          "response_preview": "Could debris in the motor be causing friction, leading to overheating and triggering the GS10 overcurrent fault?\n\nYes, debris could be the cause\nNo, debris is unlikely to be the cause",
+          "word_count": 31,
+          "option_count": 4,
+          "latency_s": 48.06
+        }
+      ],
+      "latency_total_s": 144.05
+    },
+    {
+      "name": "go_deeper",
+      "category": "natural_lang",
+      "wave": 4,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "VFD output voltage is low",
+          "response_preview": "Is the low output voltage from the VFD due to a mismatch between the VFD's output voltage rating and the motor's required voltage, considering the 200-foot cable length?\n\nVFD output voltage rating\nMot",
+          "word_count": 41,
+          "option_count": 8,
+          "latency_s": 48.14
+        },
+        {
+          "msg_index": 1,
+          "sent": "2",
+          "response_preview": "Are the VFD settings, such as the carrier frequency or voltage boost, properly configured for the motor and load?",
+          "word_count": 19,
+          "option_count": 0,
+          "latency_s": 47.86
+        },
+        {
+          "msg_index": 2,
+          "sent": "go deeper on the wiring",
+          "response_preview": "Is the wiring gauge and size suitable for the 200-foot distance and 50HP load, considering voltage drop and potential overheating?\n\nCheck the wiring gauge\nVerify the wiring size\nInspect for physical d",
+          "word_count": 38,
+          "option_count": 8,
+          "latency_s": 47.64
+        }
+      ],
+      "latency_total_s": 144.25
+    },
+    {
+      "name": "what_does_that_mean",
+      "category": "natural_lang",
+      "wave": 4,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Drive shows STO fault",
+          "response_preview": "Does the STO (Safe Torque Off) fault indicate a problem with the drive's safety function or a wiring issue with the STO input?\n\nCheck STO input wiring\nVerify STO configuration settings",
+          "word_count": 31,
+          "option_count": 4,
+          "latency_s": 48.06
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the STO fault related to an overcurrent condition, similar to the F012 fault code?\n\nYes, it's related to overcurrent\nNo, it's a separate safety issue",
+          "word_count": 26,
+          "option_count": 4,
+          "latency_s": 48.12
+        },
+        {
+          "msg_index": 2,
+          "sent": "what does that mean?",
+          "response_preview": "Is the motor operating above its rated full load amps, which could be causing the issue?",
+          "word_count": 16,
+          "option_count": 0,
+          "latency_s": 47.97
+        }
+      ],
+      "latency_total_s": 144.51
+    },
+    {
+      "name": "break_it_down",
+      "category": "natural_lang",
+      "wave": 4,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "VFD carrier frequency causing motor noise",
+          "response_preview": "Could the carrier frequency of the variable frequency drive be set too high, causing voltage spikes and noise in the motor?\n\nCheck the carrier frequency setting\nVerify the motor is properly grounded\nI",
+          "word_count": 43,
+          "option_count": 8,
+          "latency_s": 47.76
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the F012 fault code related to the overcurrent condition, and should you inspect the motor wiring for shorts or damage?\n\nInspect motor wiring\nCheck drive settings\nVerify motor winding resistance\nCh",
+          "word_count": 35,
+          "option_count": 8,
+          "latency_s": 48.0
+        },
+        {
+          "msg_index": 2,
+          "sent": "can you break it down?",
+          "response_preview": "Are you checking the motor and drive for physical issues, such as debris, loose connections, or damaged components?\n\nYes, inspecting for physical issues\nNo, looking for electrical issues\nNot sure, nee",
+          "word_count": 38,
+          "option_count": 8,
+          "latency_s": 47.69
+        }
+      ],
+      "latency_total_s": 144.27
+    },
+    {
+      "name": "tell_me_more",
+      "category": "natural_lang",
+      "wave": 4,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "PowerFlex 40 won't accept run command",
+          "response_preview": "Is P036 [Start Source] set to 5 'RS-485 (DSI) Port' to allow the PowerFlex 40 to accept the run command?\n\nYes, it is set to 5\nNo, it is not set to 5\nI'm not sure\nOther",
+          "word_count": 37,
+          "option_count": 8,
+          "latency_s": 48.12
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Is the F012 fault code related to the overcurrent condition, and should you inspect the motor wiring for shorts or damage?\n\nInspect motor wiring\nCheck drive configuration\nVerify motor parameters\nRevie",
+          "word_count": 34,
+          "option_count": 8,
+          "latency_s": 47.38
+        },
+        {
+          "msg_index": 2,
+          "sent": "tell me more",
+          "response_preview": "Should you check the output wiring for signs of damage, such as cuts, abrasions, or rodent damage, that could be causing the issue?\n\nInspect wiring for physical damage\nCheck for loose connections\nVeri",
+          "word_count": 39,
+          "option_count": 8,
+          "latency_s": 47.92
+        }
+      ],
+      "latency_total_s": 144.16
+    },
+    {
+      "name": "rephrase",
+      "category": "natural_lang",
+      "wave": 4,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "The drive thing is broken",
+          "response_preview": "Does the drive display any specific fault codes or error messages that could help identify the issue?",
+          "word_count": 17,
+          "option_count": 0,
+          "latency_s": 47.83
+        },
+        {
+          "msg_index": 1,
+          "sent": "actually let me rephrase - the VFD shows F012",
+          "response_preview": "Is the F012 fault code on the PowerFlex 525 drive related to a hardware overcurrent condition, possibly caused by a short circuit in the motor wiring?\n\nYes, it's a hardware overcurrent\nNo, it's a diff",
+          "word_count": 36,
+          "option_count": 4,
+          "latency_s": 47.8
+        },
+        {
+          "msg_index": 2,
+          "sent": "1",
+          "response_preview": "Does the F012 fault code indicate that the drive has detected excessive current, and should you inspect the motor wiring for shorts or damage?\n\nYes, inspect the motor wiring\nNo, check the drive settin",
+          "word_count": 34,
+          "option_count": 4,
+          "latency_s": 47.64
+        }
+      ],
+      "latency_total_s": 143.72
+    },
+    {
+      "name": "thanks_fixed",
+      "category": "natural_lang",
+      "wave": 4,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "GS20 undervoltage fault",
+          "response_preview": "Is the input voltage to the drive within the specified range, typically between 90% and 110% of the nominal voltage?",
+          "word_count": 20,
+          "option_count": 0,
+          "latency_s": 48.14
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Should you check the motor wiring for any signs of physical damage or wear that could be causing the overcurrent condition indicated by the F012 fault code?\n\nInspect wiring for cuts or abrasions\nCheck",
+          "word_count": 47,
+          "option_count": 8,
+          "latency_s": 47.92
+        },
+        {
+          "msg_index": 2,
+          "sent": "thanks, that fixed it",
+          "response_preview": "Exactly right. Do you know why a loose connection or improper grounding could cause an overcurrent condition?",
+          "word_count": 17,
+          "option_count": 0,
+          "latency_s": 48.17
+        }
+      ],
+      "latency_total_s": 144.69
+    },
+    {
+      "name": "abbreviations",
+      "category": "natural_lang",
+      "wave": 4,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "mtr trpd OC on strt, PF525 15hp",
+          "response_preview": "Is the motor's full-load current within the breaker's rating?\n\nYes, it is\nNo, it is not",
+          "word_count": 16,
+          "option_count": 4,
+          "latency_s": 48.16
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "Should you refer to the Allen-Bradley PowerFlex 525 documentation to understand the cause of the F012 fault code?\n\nYes, to understand the cause\nNo, to try another solution",
+          "word_count": 28,
+          "option_count": 4,
+          "latency_s": 48.27
+        },
+        {
+          "msg_index": 2,
+          "sent": "chkd wiring, looks gd",
+          "response_preview": "Did you verify the motor wiring meets the recommended gauge and size specifications for the application?",
+          "word_count": 16,
+          "option_count": 0,
+          "latency_s": 47.91
+        }
+      ],
+      "latency_total_s": 144.72
+    },
+    {
+      "name": "never_mind_reset",
+      "category": "edge_case",
+      "wave": 5,
+      "passed": true,
+      "exchanges_completed": 4,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "PowerFlex fault F012",
+          "response_preview": "Is the F012 fault code related to a hardware overcurrent condition as described in the PowerFlex 525 documentation?\n\nYes, it's a hardware overcurrent issue\nNo, it's a different type of fault",
+          "word_count": 31,
+          "option_count": 4,
+          "latency_s": 47.94
+        },
+        {
+          "msg_index": 1,
+          "sent": "never mind",
+          "response_preview": "Conversation reset. What equipment needs help?",
+          "word_count": 6,
+          "option_count": 0,
+          "latency_s": 48.02
+        },
+        {
+          "msg_index": 2,
+          "sent": "GS10 OC fault instead",
+          "response_preview": "You mentioned a GS10 overcurrent fault. What does the device's manual say about the GS10 fault code?\n\nCheck the manual for GS10 description\nLook for similar fault codes in the manual\nSearch online for",
+          "word_count": 44,
+          "option_count": 8,
+          "latency_s": 48.52
+        },
+        {
+          "msg_index": 3,
+          "sent": "1",
+          "response_preview": "You're looking at a GS10 overcurrent fault. Is the issue likely related to the motor wiring or the drive itself?\n\nMotor wiring\nDrive internal issue",
+          "word_count": 25,
+          "option_count": 4,
+          "latency_s": 47.81
+        }
+      ],
+      "latency_total_s": 192.95
+    },
+    {
+      "name": "wrong_chat",
+      "category": "edge_case",
+      "wave": 5,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "hey can you order pizza",
+          "response_preview": "Let's focus on the GS10 fault. What parameter adjustments have you tried so far?\n\nA517 [PM DC Inject Cur] adjustment\nA518 [PM Align Time] adjustment\nOther",
+          "word_count": 26,
+          "option_count": 6,
+          "latency_s": 47.73
+        },
+        {
+          "msg_index": 1,
+          "sent": "wrong chat sorry",
+          "response_preview": "Conversation reset. What equipment needs help?",
+          "word_count": 6,
+          "option_count": 0,
+          "latency_s": 48.25
+        },
+        {
+          "msg_index": 2,
+          "sent": "Motor won't start",
+          "response_preview": "You're seeing a motor failure to start on command. What's the exact fault code displayed on the Allen-Bradley PowerFlex 525?\n\nF012\nGS10\nA1000\nF0003",
+          "word_count": 24,
+          "option_count": 4,
+          "latency_s": 47.91
+        }
+      ],
+      "latency_total_s": 144.25
+    },
+    {
+      "name": "safety_fire",
+      "category": "edge_case",
+      "wave": 5,
+      "passed": true,
+      "exchanges_completed": 1,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "THE VFD IS ON FIRE AND SMOKING",
+          "response_preview": "STOP \u2014 Active smoke visible. De-energize first.",
+          "word_count": 7,
+          "option_count": 0,
+          "latency_s": 47.83
+        }
+      ],
+      "latency_total_s": 47.91
+    },
+    {
+      "name": "safety_arc_flash",
+      "category": "edge_case",
+      "wave": 5,
+      "passed": true,
+      "exchanges_completed": 1,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "I see arc flash inside the panel with exposed wires",
+          "response_preview": "STOP \u2014 describe the hazard. De-energize the equipment first. Do not proceed until the area is safe.",
+          "word_count": 17,
+          "option_count": 0,
+          "latency_s": 47.98
+        }
+      ],
+      "latency_total_s": 48.05
+    },
+    {
+      "name": "long_description",
+      "category": "edge_case",
+      "wave": 5,
+      "passed": true,
+      "exchanges_completed": 2,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "We have a PowerFlex 525 that was installed three months ago to replace an older PowerFlex 40. The mo",
+          "response_preview": "The drive tripped on F012 overcurrent during acceleration. What could be causing the motor to draw excessive current during start-up?\n\nInsufficient motor cooling\nIncorrect motor FLA setting\nOver-torqu",
+          "word_count": 33,
+          "option_count": 8,
+          "latency_s": 48.27
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "You've got a PowerFlex 525 tripping on F012 overcurrent. Is the motor wiring or connections possibly damaged, causing the excessive current draw?\n\nInspect motor wiring for damage\nCheck motor connectio",
+          "word_count": 40,
+          "option_count": 8,
+          "latency_s": 48.5
+        }
+      ],
+      "latency_total_s": 97.3
+    },
+    {
+      "name": "greeting_then_question",
+      "category": "edge_case",
+      "wave": 5,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "Hi there, good morning",
+          "response_preview": "You're troubleshooting a PowerFlex 525 issue. What's the current status of the drive and motor?\n\nDrive is tripping on F012\nMotor won't start\nOther issue",
+          "word_count": 25,
+          "option_count": 6,
+          "latency_s": 48.09
+        },
+        {
+          "msg_index": 1,
+          "sent": "I have a VFD showing overcurrent fault",
+          "response_preview": "Is the overcurrent fault occurring during acceleration or at a specific frequency?\n\nDuring acceleration\nAt a specific frequency\nDuring deceleration\nAt startup",
+          "word_count": 22,
+          "option_count": 8,
+          "latency_s": 47.91
+        },
+        {
+          "msg_index": 2,
+          "sent": "1",
+          "response_preview": "Is the motor wiring properly sized and insulated for the application?\n\nYes, the wiring is properly sized and insulated\nNo, the wiring may be undersized or damaged",
+          "word_count": 27,
+          "option_count": 4,
+          "latency_s": 47.69
+        }
+      ],
+      "latency_total_s": 144.19
+    },
+    {
+      "name": "reset_then_new",
+      "category": "edge_case",
+      "wave": 5,
+      "passed": true,
+      "exchanges_completed": 4,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "GS10 fault",
+          "response_preview": "You've got a GS10 fault. Is the motor or drive experiencing excessive heat, possibly causing the fault?\n\nCheck motor temperature\nCheck drive temperature\nVerify cooling system\nInspect motor and drive f",
+          "word_count": 34,
+          "option_count": 8,
+          "latency_s": 48.02
+        },
+        {
+          "msg_index": 1,
+          "sent": "reset",
+          "response_preview": "Conversation reset. What equipment needs help?",
+          "word_count": 6,
+          "option_count": 0,
+          "latency_s": 48.33
+        },
+        {
+          "msg_index": 2,
+          "sent": "Motor vibration issue",
+          "response_preview": "What kind of motor is experiencing the vibration issue?\n\nInduction motor\nServo motor\nDC motor\nOther",
+          "word_count": 16,
+          "option_count": 8,
+          "latency_s": 47.7
+        },
+        {
+          "msg_index": 3,
+          "sent": "1",
+          "response_preview": "You mentioned a motor vibration issue. Is the motor connected to an Allen-Bradley PowerFlex 525?\n\nYes\nNo",
+          "word_count": 17,
+          "option_count": 4,
+          "latency_s": 47.92
+        }
+      ],
+      "latency_total_s": 192.76
+    },
+    {
+      "name": "rapid_fire",
+      "category": "edge_case",
+      "wave": 5,
+      "passed": true,
+      "exchanges_completed": 4,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "VFD fault",
+          "response_preview": "You have a variable frequency drive fault. Could the issue be related to overcurrent, as indicated by fault code F012?\n\nYes, overcurrent is possible\nNo, it's a different issue",
+          "word_count": 29,
+          "option_count": 4,
+          "latency_s": 48.44
+        },
+        {
+          "msg_index": 1,
+          "sent": "It's a PowerFlex 525",
+          "response_preview": "Is the fault code F012 related to a hardware overcurrent issue on the PowerFlex 525?\n\nYes, it's a hardware overcurrent issue\nNo, it's a different type of issue",
+          "word_count": 28,
+          "option_count": 4,
+          "latency_s": 48.34
+        },
+        {
+          "msg_index": 2,
+          "sent": "Fault code F012",
+          "response_preview": "You confirmed fault code F012. Does the issue likely involve a short circuit in the motor wiring?\n\nYes, likely a short circuit\nNo, possibly another cause",
+          "word_count": 26,
+          "option_count": 4,
+          "latency_s": 47.5
+        },
+        {
+          "msg_index": 3,
+          "sent": "1",
+          "response_preview": "You suspect a short circuit. Should you inspect the motor wiring for damage or shorts?\n\nInspect motor wiring\nCheck motor winding resistance\nVerify cable insulation integrity\nOther",
+          "word_count": 27,
+          "option_count": 8,
+          "latency_s": 48.03
+        }
+      ],
+      "latency_total_s": 193.19
+    },
+    {
+      "name": "ask_for_summary",
+      "category": "edge_case",
+      "wave": 5,
+      "passed": true,
+      "exchanges_completed": 5,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "GS10 overcurrent on startup",
+          "response_preview": "Is the motor current exceeding the rated current during startup, causing the GS10 overcurrent fault?\n\nYes, the motor current is exceeding the rated current\nNo, the motor current is within the rated cu",
+          "word_count": 33,
+          "option_count": 4,
+          "latency_s": 47.88
+        },
+        {
+          "msg_index": 1,
+          "sent": "1",
+          "response_preview": "You're looking at the startup current. Are you checking the motor wiring for shorts or damage as the possible cause of the overcurrent fault?\n\nYes, checking the wiring\nNo, looking for other causes",
+          "word_count": 33,
+          "option_count": 4,
+          "latency_s": 47.81
+        },
+        {
+          "msg_index": 2,
+          "sent": "5HP motor 460V",
+          "response_preview": "Is the 5HP motor properly sized for the load it's driving?\n\nYes, it's properly sized\nNo, it's undersized",
+          "word_count": 18,
+          "option_count": 4,
+          "latency_s": 47.75
+        },
+        {
+          "msg_index": 3,
+          "sent": "2",
+          "response_preview": "You're considering the motor load. Should you check the variable frequency drive settings to ensure they match the motor's requirements?",
+          "word_count": 20,
+          "option_count": 0,
+          "latency_s": 47.74
+        },
+        {
+          "msg_index": 4,
+          "sent": "Can you summarize the diagnosis so far?",
+          "response_preview": "You've checked for signs of overheating and inspected the drive for damage, and considered the total VFD load of 50HP. What could be causing the GS10 overcurrent fault on startup?\n\nMotor overload\nInco",
+          "word_count": 43,
+          "option_count": 8,
+          "latency_s": 47.84
+        }
+      ],
+      "latency_total_s": 239.75
+    },
+    {
+      "name": "nonsense_then_real",
+      "category": "edge_case",
+      "wave": 5,
+      "passed": true,
+      "exchanges_completed": 3,
+      "failures": [],
+      "responses": [
+        {
+          "msg_index": 0,
+          "sent": "asdfghjkl",
+          "response_preview": "Does the fault code GS10 match any of the codes in the retrieved documents, such as F012 for HW Overcurrent?\n\nYes, it matches F012\nNo, it doesn't match any",
+          "word_count": 29,
+          "option_count": 4,
+          "latency_s": 47.88
+        },
+        {
+          "msg_index": 1,
+          "sent": "Sorry, my kid grabbed the keyboard. Motor won't start, no fault codes",
+          "response_preview": "You're troubleshooting a motor that won't start on command. Is the motor properly connected to the drive?\n\nCheck motor wiring\nVerify motor connection to drive\nInspect drive output\nCheck control input ",
+          "word_count": 32,
+          "option_count": 8,
+          "latency_s": 47.73
+        },
+        {
+          "msg_index": 2,
+          "sent": "1",
+          "response_preview": "You've listed several fault codes. Does the F012 HW Overcurrent code suggest a short circuit in the motor wiring?\n\nYes, it does\nNo, it suggests something else",
+          "word_count": 27,
+          "option_count": 4,
+          "latency_s": 48.19
+        }
+      ],
+      "latency_total_s": 144.41
+    }
+  ]
+}

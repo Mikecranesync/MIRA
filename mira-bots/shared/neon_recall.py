@@ -32,7 +32,7 @@ _PRODUCT_NAME_RE = re.compile(
     r"|CompactLogix"
     r"|ControlLogix"
     r"|PanelView"
-    r"|GS[12]\d"
+    r"|GS\d{1,2}[A-Z]?[-]?\w*"
     r"|DURApulse"
     r"|SMC-?\d"
     r"|SINAMICS\s*\w+"
@@ -43,6 +43,11 @@ _PRODUCT_NAME_RE = re.compile(
 )
 
 MIN_SIMILARITY = float(os.getenv("MIRA_MIN_SIMILARITY", "0.70"))
+
+# Shared OEM knowledge pool — 61K entries ingested under the original tenant.
+# All tenants search this pool in addition to their own entries so they have
+# immediate access to OEM manual knowledge on first login.
+SHARED_TENANT_ID = os.getenv("MIRA_SHARED_TENANT_ID", "78917b56-f85f-43bb-9a08-1bb98a6cd6c3")
 
 
 def _extract_fault_codes(query_text: str) -> list[str]:
@@ -82,9 +87,9 @@ def recall_fault_code(
         sql = (
             "SELECT code, description, cause, action, severity, "
             "equipment_model, manufacturer "
-            "FROM fault_codes WHERE tenant_id = :tid AND code = :code"
+            "FROM fault_codes WHERE (tenant_id = :tid OR tenant_id = :shared_tid) AND code = :code"
         )
-        params: dict = {"tid": tenant_id, "code": code.upper()}
+        params: dict = {"tid": tenant_id, "code": code.upper(), "shared_tid": SHARED_TENANT_ID}
         if model:
             sql += " AND equipment_model ILIKE :model"
             params["model"] = f"%{model}%"
@@ -114,11 +119,14 @@ def _extract_product_names(query_text: str) -> list[str]:
 
 
 def _like_search(conn, text_fn, tenant_id: str, codes: list[str], limit: int) -> list[dict]:
-    """Run ILIKE keyword search for fault codes against content column."""
+    """Run ILIKE keyword search for fault codes against content column.
+
+    Searches both the caller's tenant entries and the shared OEM knowledge pool.
+    """
     if not codes:
         return []
     conditions = []
-    params: dict = {"tid": tenant_id, "lim": limit}
+    params: dict = {"tid": tenant_id, "shared_tid": SHARED_TENANT_ID, "lim": limit}
     for i, code in enumerate(codes[:5]):
         key = f"pat{i}"
         conditions.append(f"content ILIKE :{key}")
@@ -134,7 +142,7 @@ def _like_search(conn, text_fn, tenant_id: str, codes: list[str], limit: int) ->
             source_type,
             0.5 AS similarity
         FROM knowledge_entries
-        WHERE tenant_id = :tid
+        WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
           AND ({where_clause})
         LIMIT :lim
     """)
@@ -155,6 +163,8 @@ def _product_search(
     Filters to chunks from the product's manual (model_number match), then
     orders by cosine similarity to the user's query embedding. This surfaces
     the most RELEVANT chunks from the right manual — not just arbitrary rows.
+
+    Searches both the caller's tenant entries and the shared OEM knowledge pool.
     """
     if not products:
         return []
@@ -177,7 +187,7 @@ def _product_search(
                     "  SELECT content, manufacturer, model_number, equipment_type, "
                     "  source_type, embedding "
                     "  FROM knowledge_entries "
-                    "  WHERE tenant_id = :tid "
+                    "  WHERE (tenant_id = :tid OR tenant_id = :shared_tid) "
                     "  AND model_number ILIKE :pat "
                     "  AND model_number NOT ILIKE :exclude "
                     "  AND embedding IS NOT NULL"
@@ -191,6 +201,7 @@ def _product_search(
                 ),
                 {
                     "tid": tenant_id,
+                    "shared_tid": SHARED_TENANT_ID,
                     "pat": exact_pat,
                     "exclude": exclude_pat,
                     "emb": str(embedding),
@@ -303,7 +314,7 @@ def recall_knowledge(
             pool_pre_ping=True,
         )
         with engine.connect() as conn:
-            # Stage 1: Dense vector search
+            # Stage 1: Dense vector search — searches tenant entries + shared OEM pool
             vector_rows = (
                 conn.execute(
                     text("""
@@ -315,12 +326,17 @@ def recall_knowledge(
                         source_type,
                         1 - (embedding <=> cast(:emb AS vector)) AS similarity
                     FROM knowledge_entries
-                    WHERE tenant_id = :tid
+                    WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
                       AND embedding IS NOT NULL
                     ORDER BY embedding <=> cast(:emb AS vector)
                     LIMIT :lim
                 """),
-                    {"emb": str(embedding), "tid": tenant_id, "lim": limit},
+                    {
+                        "emb": str(embedding),
+                        "tid": tenant_id,
+                        "shared_tid": SHARED_TENANT_ID,
+                        "lim": limit,
+                    },
                 )
                 .mappings()
                 .fetchall()

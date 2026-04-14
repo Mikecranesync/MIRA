@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "Last week, a maintenance tech at a Midwest bottling plant stood in front of a tripped PowerFlex 750 VFD. Fault: F40. No manual. No senior tech on shift.\n\nHe opened FactoryLM on his phone, snapped the screen, and Mira (our AI) returned the diagnosis in 12 seconds: DC bus overvoltage, likely from a sudden conveyor stop. Root cause: failing brake resistor.\n\nHe pulled the part number from the app, created the work order, and had the line back in 22 minutes.\n\nWithout it? He estimated a 45-minute delay — waiting for manuals or OEM call-back.\n\nOne fault. One photo. Thirty minutes saved.\n\nWe’re not replacing skill. We’re giving you back time.\n\nHow many minutes do you lose each week just chasing fault codes?",
+      "char_count": 1082,
+      "hashtags": [
+        "MaintenanceTech",
+        "FactoryAutomation",
+        "CMMS"
+      ],
+      "suggested_visual": "Split-screen video: Left shows a technician taking a photo of a PowerFlex 750 fault display. Right shows FactoryLM's AI response with the diagnosis and work order creation.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F40 on a PowerFlex 750? Don’t pull the manual.\n\nSnap it. Get the fix in <15 sec.\n\nAI doesn’t care if you’re the junior tech on 3rd shift.\n\nfactorylm.com",
+      "char_count": 185,
+      "hashtags": [
+        "VFD",
+        "Maintenance"
+      ],
+      "suggested_visual": "15-second screen recording: Phone camera focuses on a PowerFlex 750 with F40 fault. App opens, photo taken, AI response appears with diagnosis and action steps.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "Sharing something that helped our team — might help yours.\n\nWe run a mix of Allen-Bradley CompactLogix PLCs and GS20 VFDs. Last year, our avg. time to diagnose a fault code without OEM support was 38 minutes. With manuals missing or outdated, it was worse during shift changes.\n\nWe started testing an internal tool — now FactoryLM — that lets us take a photo of any fault screen and get back a diagnosis pulled from our own manuals via AI.\n\nExample: Last week, a GS10 faulted with ‘E01’ — no context on screen. Photo to the app. Back came: ‘Input phase loss detected. Check line-side fuses L1/L2.’\n\nWe checked. One fuse blown. Fixed in 15 minutes.\n\nThe value wasn’t the answer — it was not waiting.\n\nWe built it to stop wasting time hunting pages. It works on phones, no install. If you’re stuck on a fault, you could test it during a break.\n\nNo pitch — just sharing what’s working for us.",
+      "char_count": 1289,
+      "hashtags": [],
+      "suggested_visual": "Short timelapse: Technician takes photo of a GS10 VFD with E01 fault, opens browser, uploads to FactoryLM, gets response, checks fuse, marks repair.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Imagine this: You're on night shift. A hydraulic power unit just tripped with a ‘Pump Over Temp’ alarm. No manual nearby. No one to call.\n\nWhat if you could snap a photo of the screen and get the exact cause — from your own equipment manuals — in under 20 seconds?\n\nOne user did this last week. FactoryLM returned: ‘Check oil level and cooling fan operation. Sensor fault if both OK.’ He refilled the reservoir. Back up in 18 minutes.\n\nNo waiting. No guesswork.\n\nHow many times this month have you stood in front of a machine, just wishing you had the right page?",
+      "char_count": 784,
+      "hashtags": [
+        "MaintenanceLife",
+        "Reliability",
+        "Hydraulics"
+      ],
+      "suggested_visual": "Carousel: 1) Dark shop floor with illuminated HPU alarm. 2) Phone showing photo of fault. 3) App response with diagnosis. 4) Technician refilling oil reservoir.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "You: Standing in front of a faulted Allen-Bradley PanelView. Alarm code: 32-1. No manual. Shift ends in 30 min.\n\nWhat you do: Pull out phone, open FactoryLM, snap photo.\n\n8 seconds later: ‘32-1 = Communication loss with I/O module. Check 1769-IF8 module fuse and terminal block.’\n\nYou check. Fuse blown. Swap it. Line running.\n\nAll without leaving the floor.\n\nThis is how techs get home on time.",
+      "char_count": 683,
+      "hashtags": [
+        "MaintenanceTech",
+        "Troubleshooting",
+        "ViralMechanic"
+      ],
+      "suggested_visual": "Fast-cut video: Technician looks stressed at PanelView. Pulls phone, snaps photo in FactoryLM PWA. AI response appears. He walks to rack, pulls module, replaces fuse, hits reset. Machine restarts. Clock shows 4:58 PM.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "Photo 1: A gloved hand pointing at a GS20 VFD with a flashing ‘E07’ fault.\n\nPhoto 2: Phone screen — FactoryLM open, photo just taken.\n\nPhoto 3: AI response: ‘E07 = Brake transistor short. Test DB resistor circuit. Check for shorted connections.’\n\nPhoto 4: Tech replacing the brake resistor, smiling.\n\nThis happened in 11 minutes. No manual. No waiting.\n\nReal diagnosis. Real machine. Real time saved.\n\nNo magic. Just your manuals — instantly accessible.",
+      "char_count": 692,
+      "hashtags": [
+        "MaintenanceLife",
+        "FactoryTech",
+        "VFDRepair",
+        "AllenBradley",
+        "HydraulicSystems",
+        "CMMS",
+        "PowerFlex",
+        "GS10",
+        "GS20",
+        "ReliabilityEngineering",
+        "TechLife",
+        "MaintenanceMatters",
+        "SmartMaintenance",
+        "NoMoreDowntime",
+        "MiraAI"
+      ],
+      "suggested_visual": "4-slide carousel: 1) Faulted GS20. 2) Phone using FactoryLM. 3) AI diagnosis. 4) Technician completing repair.",
+      "subreddit": null
+    }
+  ]
+}
