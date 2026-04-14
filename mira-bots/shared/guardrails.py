@@ -29,6 +29,23 @@ SAFETY_KEYWORDS = [
     "fall hazard",
     "chemical spill",
     "gas leak",
+    # Electrical isolation / live-work phrases (added v2.4.1)
+    "isolate the power",
+    "isolating power",
+    "isolating the power",
+    "de-energize",
+    "de-energizing",
+    "pull the fuse",
+    "pull the breaker",
+    "pulling the fuse",
+    "pulling the breaker",
+    "removing power",
+    "cutting power",
+    "live wire",
+    "live circuit",
+    "live panel",
+    "working live",
+    "working on live",
 ]
 
 INTENT_KEYWORDS = {
@@ -371,25 +388,39 @@ _DOCUMENTATION_PHRASES = (
     "find the manual",
     "find me the manual",
     "find me a manual",
+    "find a manual",          # v2.4.1: "can you find a manual for..."
     "get me the manual",
     "get the manual",
+    "get a manual",           # v2.4.1: "get a manual for this"
     "send me the manual",
     "where is the manual",
     "where can i find the manual",
     "where to find the manual",
     "i need the manual",
     "need the manual",
+    "need a manual",          # v2.4.1: "I need a manual for..."
+    "looking for a manual",   # v2.4.1: "I'm looking for a manual"
+    "looking for the manual",
     "find the datasheet",
+    "find a datasheet",       # v2.4.1
     "get me the datasheet",
     "get the datasheet",
+    "get a datasheet",        # v2.4.1
     "where is the datasheet",
     "where can i find the datasheet",
     "where to find the datasheet",
     "i need the datasheet",
     "need the datasheet",
+    "need a datasheet",       # v2.4.1
+    "looking for a datasheet",# v2.4.1
+    "looking for the datasheet",
     "pinout",
     "pin out",
     "wiring diagram for",
+    "get the documentation",  # v2.4.1: explicit doc retrieval requests
+    "find the documentation",
+    "get documentation for",
+    "find documentation for",
 )
 
 # Signals that the technician is under time or job pressure.

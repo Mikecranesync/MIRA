@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v2.4.0
+**Version:** v2.4.1
 **Updated:** 2026-04-14
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
@@ -251,6 +251,13 @@ chore: build system, deps, tooling
 ---
 
 ## Release Notes
+
+### v2.4.1 (2026-04-14) — Hotfix: safety keywords, doc phrase gap, OPENWEBUI_API_KEY
+- **Safety keywords expanded** — `SAFETY_KEYWORDS` now includes electrical isolation / live-work phrases: `"isolate the power"`, `"isolating power"`, `"de-energize"`, `"de-energizing"`, `"pull the fuse"`, `"pull the breaker"`, `"live wire"`, `"live panel"`, `"working on live"`, and more. Forensic: Mike's Turn 2 description of pulling cables from a live distribution block was routed to diagnostic FSM instead of STOP escalation.
+- **`_DOCUMENTATION_PHRASES` expanded** — Added 12 article-agnostic variants: `"find a manual"`, `"get a manual"`, `"need a manual"`, `"looking for a manual"`, `"looking for the manual"`, `"find a datasheet"`, etc. Forensic: Mike's exact phrase `"Can you find a manual for this kind of distribution block"` returned Q3 FSM instead of vendor URL + scrape-trigger.
+- **System prompt Rule 21** — MIRA must never confirm unverified user actions as fact. Reflect user's exact words, do not add specificity. Forensic: `"I pulled the big one"` → MIRA said `"You've removed the main power cable"` (false attribution).
+- **OPENWEBUI_API_KEY rotated** — Stale key `sk-c416...` replaced with current valid key from Open WebUI DB. All Apify crawl results were silently failing to write to KB (0/N ingested on every job). Rotated in Doppler + redeployed `mira-ingest`. KB writes now return 200.
+- **Eval:** 10/10. Scorecard: `tests/eval/runs/2026-04-14-v2.4.1-pre.md`.
 
 ### v2.4.0 (2026-04-14) — GET_DOCUMENTATION intent + cross-vendor guard
 - **`GET_DOCUMENTATION` intent** — `classify_intent()` now returns `"documentation"` for explicit manual/datasheet/pinout requests (checked before `industrial` so "manual" doesn't swallow doc queries). Responds immediately with vendor support URL, no LLM call (~17ms). Closes #203.
