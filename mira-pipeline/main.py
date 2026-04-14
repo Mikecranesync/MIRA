@@ -30,11 +30,16 @@ from starlette.responses import JSONResponse
 sys.path.insert(0, os.path.dirname(__file__))
 from shared.gsd_engine import GSDEngine
 
+# Explicit handler setup: logging.basicConfig() is a no-op once uvicorn has
+# already installed its own handlers on the root logger, so we configure our
+# named logger directly to guarantee PIPELINE_CALL lines appear in docker logs.
 logger = logging.getLogger("mira-pipeline")
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(name)s %(levelname)s %(message)s",
-)
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+    logger.addHandler(_handler)
+logger.propagate = True
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
