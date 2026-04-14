@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v0.5.6
+**Version:** v2.4.0
 **Updated:** 2026-04-14
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
@@ -252,6 +252,16 @@ chore: build system, deps, tooling
 
 ## Release Notes
 
+### v2.4.0 (2026-04-14) — GET_DOCUMENTATION intent + cross-vendor guard
+- **`GET_DOCUMENTATION` intent** — `classify_intent()` now returns `"documentation"` for explicit manual/datasheet/pinout requests (checked before `industrial` so "manual" doesn't swallow doc queries). Responds immediately with vendor support URL, no LLM call (~17ms). Closes #203.
+- **Cross-vendor contamination guard** — `rag_worker` clears chunks when query vendor ≠ chunk manufacturer → honesty directive fires. Fixes GS20 queries returning Allen-Bradley content. Closes #204.
+- **Async scrape-trigger** — On `documentation` intent, `engine._fire_scrape_trigger()` fires as `asyncio.create_task()` → `POST mira-ingest:/ingest/scrape-trigger` → Apify actor starts crawling vendor docs. End-to-end confirmed: Pilz query → Apify run `9ELqsnRqp384TeoxJ` completed.
+- **None guard** — `vendor_support_url(None)` / `vendor_name_from_text(None)` no longer crash when `asset_identified` state is `None`.
+- **Eval runner fix** — `run_date` UnboundLocalError when `--output` is a `.md` path (nightly Celery runner).
+- **APIFY_API_KEY** wired into `mira-ingest` container via `docker-compose.saas.yml`.
+- **Eval baseline:** 10/10 (was 8/10). Scorecard: `tests/eval/runs/2026-04-14-v2.4.0-pre.md`.
+- **Follow-up:** #207 (per-call tenant_id, model extraction, model-level KB check, logger propagation).
+
 ### v0.5.4 (2026-04-14) — P0 Open WebUI UX fixes
 - **P0-1**: Continue button (`### Task: Continue generating...`) now echoes last assistant turn instead of returning blank
 - **P0-2**: Regenerate button dedup — FSM rolls back to prior state when identical user message detected in consecutive turns
@@ -266,6 +276,7 @@ chore: build system, deps, tooling
 - **Photo pipeline on Bravo** — 3,694 confirmed equipment photos in `~/takeout_staging/ollama_confirmed/`. Ready for KB ingest at scale.
 - **LlamaIndex RAG upgrade** — PRD complete (`MIRA_LlamaIndex_RAG_PRD.docx.md`). Replaces hand-rolled RAG in rag_worker.py with LlamaIndex orchestration. Ready to build.
 - **Bot quality tuning** — RAG quality gate (0.70 threshold), NeonDB-only retrieval, Nemotron reranking active. Next: fix intent guard false positives.
+- **Pilz forensic follow-ups** — Issue #207 filed: per-call tenant_id in Celery ingest, structured model extraction, model-level KB coverage check, mira-gsd logger propagation to docker logs.
 
 ---
 
