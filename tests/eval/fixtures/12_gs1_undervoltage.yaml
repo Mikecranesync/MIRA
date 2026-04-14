@@ -1,0 +1,17 @@
+id: gs1_undervoltage_12
+description: "GS1 VFD undervoltage trip during motor startup — junior tech, needs grounding context"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [undervoltage, voltage, input, power, supply]
+forbidden_keywords: [PowerFlex, Yaskawa, Siemens]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+tags: [vfd, undervoltage, gs1, junior-tech, sprint-a]
+turns:
+  - role: user
+    content: "Hi, I'm getting a UV fault on our GS1 drive. What should I check?"
+  - role: user
+    content: "It's a small 1HP motor on a conveyor, 230V single phase input"
+  - role: user
+    content: "The voltage at the disconnect reads 218V"

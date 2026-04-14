@@ -1,0 +1,17 @@
+id: danfoss_motor_overload_31
+description: "Danfoss VLT alarm 10 motor ETR overtemp — motor thermal model calibration"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [overload, motor, thermal, overtemp, cooling, ETR]
+forbidden_keywords: [PowerFlex, GS20, AutomationDirect, Yaskawa]
+expected_vendor: Danfoss
+wo_expected: false
+safety_expected: false
+tags: [vfd, overload, danfoss, motor-thermal, sprint-a]
+turns:
+  - role: user
+    content: "Danfoss VLT showing alarm 10, motor overtemperature ETR"
+  - role: user
+    content: "Motor nameplate says 15HP 460V 18.5A, self-cooled"
+  - role: user
+    content: "Running at low speed most of the time, about 15Hz"

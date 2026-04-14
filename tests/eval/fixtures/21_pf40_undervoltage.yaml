@@ -1,0 +1,17 @@
+id: pf40_undervoltage_21
+description: "PowerFlex 40 F4 undervoltage — voltage sag during production"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [undervoltage, F4, voltage, input, supply, sag]
+forbidden_keywords: [GS10, AutomationDirect, Yaskawa]
+expected_vendor: Rockwell Automation
+wo_expected: false
+safety_expected: false
+tags: [vfd, undervoltage, pf40, allen-bradley, sprint-a]
+turns:
+  - role: user
+    content: "PowerFlex 40 keeps tripping F4, happens randomly throughout the day"
+  - role: user
+    content: "230V single phase, in a facility with a lot of welders"
+  - role: user
+    content: "Seems to happen more when the welders are running"

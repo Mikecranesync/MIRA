@@ -1,0 +1,19 @@
+id: pf520_hw_overcurrent_17
+description: "PowerFlex 520 F12 hardware overcurrent — IGBT protection, experienced tech"
+expected_final_state: DIAGNOSIS
+max_turns: 8
+expected_keywords: [overcurrent, F12, IGBT, motor, cable]
+forbidden_keywords: [GS10, GS20, AutomationDirect, Yaskawa]
+expected_vendor: Rockwell Automation
+wo_expected: false
+safety_expected: false
+tags: [vfd, overcurrent, pf520, allen-bradley, sprint-a]
+turns:
+  - role: user
+    content: "PF520 faulting on F12, hardware overcurrent"
+  - role: user
+    content: "10HP motor, cable run 300ft, new installation"
+  - role: user
+    content: "Megged the motor, reads 500 megohms phase to ground"
+  - role: user
+    content: "Output reactor installed per spec"

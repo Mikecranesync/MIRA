@@ -1,0 +1,17 @@
+id: gs2_overvoltage_13
+description: "GS2 VFD overvoltage during deceleration — braking resistor diagnosis"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [overvoltage, decel, braking, resistor, ramp]
+forbidden_keywords: [PowerFlex, Yaskawa, Danfoss]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+tags: [vfd, overvoltage, gs2, braking, sprint-a]
+turns:
+  - role: user
+    content: "GS2 drive trips on OV every time the motor decelerates"
+  - role: user
+    content: "Decel time is set to 3 seconds, 5HP motor, high-inertia load"
+  - role: user
+    content: "No braking resistor installed"

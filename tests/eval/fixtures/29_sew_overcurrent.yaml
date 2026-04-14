@@ -1,0 +1,17 @@
+id: sew_overcurrent_29
+description: "SEW MOVITRAC overcurrent — out-of-KB vendor, must admit knowledge gap"
+expected_final_state: DIAGNOSIS
+max_turns: 6
+expected_keywords: []
+expected_vendor: SEW-Eurodrive
+wo_expected: false
+safety_expected: false
+honesty_required: true
+tags: [vfd, overcurrent, sew, out-of-kb, graceful-degradation, sprint-a]
+turns:
+  - role: user
+    content: "SEW MOVITRAC drive showing overcurrent fault on a packaging line"
+  - role: user
+    content: "It's the main drive on a case erector, 3HP motor"
+  - role: user
+    content: "Trips about 30 seconds into the cycle"

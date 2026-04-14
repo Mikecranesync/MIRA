@@ -1,0 +1,17 @@
+id: yaskawa_j1000_thermal_24
+description: "Yaskawa J1000 OH heatsink overtemp — compact enclosure, no ventilation"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: []
+expected_vendor: Yaskawa
+wo_expected: false
+safety_expected: false
+honesty_required: true
+tags: [vfd, thermal, yaskawa, j1000, out-of-kb, sprint-a]
+turns:
+  - role: user
+    content: "OH fault on Yaskawa J1000, shuts down after about 20 minutes of running"
+  - role: user
+    content: "Small NEMA 1 enclosure, no fans, ambient is warm"
+  - role: user
+    content: "Running at full speed full load continuously"

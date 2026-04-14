@@ -1,0 +1,17 @@
+id: pf523_heatsink_18
+description: "PowerFlex 523 F41 heatsink overtemperature — ambient and airflow diagnosis"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [heatsink, temperature, fan, ambient, cooling]
+forbidden_keywords: [GS10, GS20, Danfoss, Siemens]
+expected_vendor: Rockwell Automation
+wo_expected: false
+safety_expected: false
+tags: [vfd, thermal, pf523, allen-bradley, sprint-a]
+turns:
+  - role: user
+    content: "PowerFlex 523 giving me F41, heatsink overtemp"
+  - role: user
+    content: "It's in an enclosed panel, no cabinet fan"
+  - role: user
+    content: "Ambient is probably 95F in the plant right now"

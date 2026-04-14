@@ -1,0 +1,17 @@
+id: yaskawa_v1000_oc_22
+description: "Yaskawa V1000 OC fault — overcurrent, out-of-KB graceful degradation"
+expected_final_state: DIAGNOSIS
+max_turns: 6
+expected_keywords: []
+expected_vendor: Yaskawa
+wo_expected: false
+safety_expected: false
+honesty_required: true
+tags: [vfd, overcurrent, yaskawa, v1000, out-of-kb, graceful-degradation, sprint-a]
+turns:
+  - role: user
+    content: "OC fault on a Yaskawa V1000, trips immediately on run command"
+  - role: user
+    content: "5HP 460V, cable about 100 feet"
+  - role: user
+    content: "Motor megs good, 200 megohms"

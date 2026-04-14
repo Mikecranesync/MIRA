@@ -1,0 +1,17 @@
+id: gs20_phase_loss_16
+description: "GS20 VFD input phase loss — cross-vendor confusion guard with similar Siemens symptom"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [phase, input, fuse, voltage, supply]
+forbidden_keywords: [SINAMICS, Siemens, G120, PowerFlex]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+tags: [vfd, phase-loss, gs20, cross-vendor, sprint-a]
+turns:
+  - role: user
+    content: "PHL fault on our GS20 drive"
+  - role: user
+    content: "480V three-phase, the drive was just installed yesterday"
+  - role: user
+    content: "All three phases read about 478V at the disconnect"

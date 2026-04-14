@@ -1,0 +1,17 @@
+id: yaskawa_ga500_gf_25
+description: "Yaskawa GA500 GF ground fault — cross-vendor guard, must not cite Allen-Bradley docs"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [ground fault, insulation, motor, cable]
+forbidden_keywords: [PowerFlex, Allen-Bradley, Rockwell, GS20, AutomationDirect]
+expected_vendor: Yaskawa
+wo_expected: false
+safety_expected: false
+tags: [vfd, ground-fault, yaskawa, ga500, cross-vendor, sprint-a]
+turns:
+  - role: user
+    content: "GF fault on a Yaskawa GA500"
+  - role: user
+    content: "7.5HP motor, wash-down application, outdoor installation"
+  - role: user
+    content: "The fault is intermittent, happens mostly on rainy days"

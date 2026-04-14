@@ -1,0 +1,17 @@
+id: pf525_ground_fault_19
+description: "PowerFlex 525 F13 ground fault — cross-vendor guard against GS20 confusion"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [ground fault, F13, insulation, megger, PowerFlex]
+forbidden_keywords: [GS10, GS20, AutomationDirect, DURApulse]
+expected_vendor: Rockwell Automation
+wo_expected: false
+safety_expected: false
+tags: [vfd, ground-fault, pf525, allen-bradley, cross-vendor, sprint-a]
+turns:
+  - role: user
+    content: "F13 on a PF525, ground fault detected"
+  - role: user
+    content: "Motor is about 5 years old, outdoor wash-down area"
+  - role: user
+    content: "Last megger test was 6 months ago, passed at that time"

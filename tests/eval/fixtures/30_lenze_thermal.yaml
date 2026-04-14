@@ -1,0 +1,17 @@
+id: lenze_thermal_30
+description: "Lenze i550 drive overtemperature — out-of-KB vendor, graceful degradation"
+expected_final_state: DIAGNOSIS
+max_turns: 6
+expected_keywords: []
+expected_vendor: Lenze
+wo_expected: false
+safety_expected: false
+honesty_required: true
+tags: [vfd, thermal, lenze, out-of-kb, graceful-degradation, sprint-a]
+turns:
+  - role: user
+    content: "Lenze i550 drive keeps shutting down on overtemperature"
+  - role: user
+    content: "Panel fan is running, ambient is about 85F"
+  - role: user
+    content: "Running at 75% load, 5HP motor"
