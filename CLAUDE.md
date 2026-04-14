@@ -196,6 +196,11 @@ chore: build system, deps, tooling
 | `ATLAS_DB_PASSWORD`  | atlas-db (PostgreSQL)                |
 | `ATLAS_JWT_SECRET`   | atlas-api (JWT signing)              |
 | `ATLAS_MINIO_PASSWORD`| atlas-minio (file storage)          |
+| `FIX_PROPOSER_GH_TOKEN` | fix_proposer weekly task (GitHub PAT for draft PR creation) |
+| `FIX_PROPOSER_LLM_MODEL` | fix_proposer — default: `claude-sonnet-4-6` |
+| `FIX_PROPOSER_MIN_CLUSTER_SIZE` | fix_proposer — min failures to form a cluster (default: 3) |
+| `FIX_PROPOSER_MAX_PRS_PER_RUN` | fix_proposer — PR flood guard (default: 3) |
+| `FIX_PROPOSER_DISABLED` | fix_proposer — set to `"1"` to disable weekly run |
 
 ---
 
@@ -319,6 +324,30 @@ MIRA has a nightly automated eval system (`tests/eval/`) — 10 scenario fixture
 | `tests/eval/run_eval.py` | CLI runner — `python3 tests/eval/run_eval.py` |
 | `tests/eval/grader.py` | 5 binary checkpoint definitions |
 | `tests/eval/runs/YYYY-MM-DD.md` | Nightly scorecard output |
+| `tests/eval/celery_tasks.py` | Celery `mira_eval.run_batch` — 60-min beat schedule |
+| `tests/eval/celery_tasks_fix_proposer.py` | Celery `mira_fix_proposer.run_weekly` — Sunday 06:00 UTC |
+
+### Fix Proposer (weekly, Sunday 06:00 UTC)
+
+`mira-bots/tools/fix_proposer.py` reads 7 days of scorecards, clusters failures by root-cause signature, and opens DRAFT PRs with LLM-proposed patches.
+
+```bash
+# Dry run — cluster detection only, no PRs, report at /tmp/fix_proposer_dryrun.md
+python3 mira-bots/tools/fix_proposer.py --dry-run
+
+# Full run (opens draft PRs)
+python3 mira-bots/tools/fix_proposer.py --days 7
+```
+
+Beat schedule entry (in `/opt/master_of_puppets/celery_app.py` on VPS):
+```python
+'mira-fix-proposer-sunday-0600': {
+    'task': 'mira_fix_proposer.run_weekly',
+    'schedule': crontab(hour=6, minute=0, day_of_week='sunday'),
+}
+```
+
+Deploy: copy `tests/eval/celery_tasks_fix_proposer.py` to `/opt/master_of_puppets/workers/mira_fix_proposer_tasks.py`, then restart the Celery worker.
 
 **Running manually on VPS:**
 ```bash
