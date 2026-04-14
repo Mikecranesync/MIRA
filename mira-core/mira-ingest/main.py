@@ -10,13 +10,20 @@ import re
 import sqlite3
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image
 from pydantic import BaseModel
+
+from crawl_verifier import (
+    OUTCOME_SUCCESS,
+    classify_historical,
+    list_verifications,
+    verify_crawl,
+)
 
 logger = logging.getLogger("mira-ingest")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -757,8 +764,9 @@ async def scrape_trigger(body: ScrapeTriggerRequest, background_tasks: Backgroun
 async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> None:
     """
     Background: map manufacturer site → filter model-relevant URLs →
-    scrape top 3 docs → ingest each into Open WebUI KB → notify Telegram.
+    scrape top 3 docs → ingest each into Open WebUI KB → verify crawl quality → notify Telegram.
     """
+    started_at = datetime.now(timezone.utc).isoformat()
     logger.info("[%s] Starting scrape for %r %r", job_id, body.manufacturer, body.model)
 
     # 1. Pick the base URL for this manufacturer
@@ -770,6 +778,7 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
             break
 
     use_apify = bool(APIFY_API_KEY) and not FIRECRAWL_API_KEY
+    apify_run_id = ""
 
     if not base_url:
         logger.info(
@@ -779,18 +788,33 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
             "Apify" if use_apify else "Firecrawl",
         )
         if use_apify:
-            scraped_docs = await _apify_search_model(job_id, body.manufacturer, body.model)
+            scraped_docs, apify_run_id = await _apify_search_model(
+                job_id, body.manufacturer, body.model
+            )
         else:
             scraped_docs = await _firecrawl_search_model(job_id, body.manufacturer, body.model)
     else:
         # Map the manufacturer's doc site, then filter for this model
         if use_apify:
-            scraped_docs = await _apify_map_and_scrape(job_id, base_url, body.model)
+            scraped_docs, apify_run_id = await _apify_map_and_scrape(
+                job_id, base_url, body.model
+            )
         else:
             scraped_docs = await _firecrawl_map_and_scrape(job_id, base_url, body.model)
 
     if not scraped_docs:
         logger.warning("[%s] No docs found for %r %r", job_id, body.manufacturer, body.model)
+        # Still run verification if we have an Apify run ID — records the EMPTY/FAILED outcome
+        if use_apify and apify_run_id:
+            await verify_crawl(
+                job_id=job_id,
+                apify_run_id=apify_run_id,
+                manufacturer=body.manufacturer,
+                model=body.model,
+                kb_writes=0,
+                kb_write_attempts=0,
+                started_at=started_at,
+            )
         await _notify_telegram(
             body.chat_id,
             f"I searched for documentation on *{body.equipment_id}* but didn't find "
@@ -798,7 +822,9 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
         )
         return
 
-    # 2. Ingest each scraped doc into Open WebUI KB
+    # 2. Ingest each scraped doc into Open WebUI KB — track KB write outcomes
+    kb_write_attempts = 0
+    kb_writes = 0
     ingested = 0
     for doc in scraped_docs[:3]:
         try:
@@ -806,23 +832,60 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
             content = doc.get("content", "")
             if len(content) < 100:
                 continue
-            await _ingest_scraped_text(fname, content, equipment_type=body.model[:40])
-            ingested += 1
+            kb_write_attempts += 1
+            ok = await _ingest_scraped_text(
+                fname, content, equipment_type=body.model[:40], run_id=apify_run_id or job_id
+            )
+            if ok:
+                kb_writes += 1
+                ingested += 1
         except Exception as e:
             logger.error("[%s] Ingest failed for %s: %s", job_id, doc.get("filename"), e)
 
     logger.info(
-        "[%s] Ingested %d/%d docs for %r", job_id, ingested, len(scraped_docs), body.equipment_id
+        "[%s] Ingested %d/%d docs for %r (kb_writes=%d/%d)",
+        job_id,
+        ingested,
+        len(scraped_docs),
+        body.equipment_id,
+        kb_writes,
+        kb_write_attempts,
     )
 
-    # 3. Notify the technician
+    # 3. Crawl verification — classify outcome, persist record
+    verification: dict = {}
+    if use_apify and apify_run_id:
+        try:
+            verification = await verify_crawl(
+                job_id=job_id,
+                apify_run_id=apify_run_id,
+                manufacturer=body.manufacturer,
+                model=body.model,
+                kb_writes=kb_writes,
+                kb_write_attempts=kb_write_attempts,
+                started_at=started_at,
+            )
+        except Exception as exc:
+            logger.error("[%s] Crawl verification failed (non-fatal): %s", job_id, exc)
+
+    crawl_outcome = verification.get("outcome", "") if verification else ""
+
+    # 4. Notify the technician — honest message based on verified outcome
     if body.chat_id:
-        if ingested > 0:
+        if crawl_outcome == OUTCOME_SUCCESS and ingested > 0:
             msg = (
                 f"*New knowledge added* ✅\n"
                 f"I found and indexed *{ingested}* document(s) for *{body.equipment_id}*.\n\n"
                 f"Ask me anything about this equipment — I now have manufacturer documentation.\n\n"
                 f"_Tip: ask about fault codes, wiring, specs, or replacement parts._"
+            )
+        elif crawl_outcome in ("LOW_QUALITY", "SHELL_ONLY") or (
+            not crawl_outcome and ingested > 0
+        ):
+            msg = (
+                f"I found pages for *{body.equipment_id}* but the content was listing "
+                f"pages rather than actual manual documentation. "
+                f"Send me a PDF manual directly and I'll index it immediately."
             )
         else:
             msg = (
@@ -952,8 +1015,13 @@ def _apify_items_to_docs(job_id: str, items: list, model: str) -> list[dict]:
     return results[:5]
 
 
-async def _apify_map_and_scrape(job_id: str, base_url: str, model: str) -> list[dict]:
-    """Crawl a known manufacturer doc site with Apify, filter by model tokens."""
+async def _apify_map_and_scrape(
+    job_id: str, base_url: str, model: str
+) -> tuple[list[dict], str]:
+    """Crawl a known manufacturer doc site with Apify, filter by model tokens.
+
+    Returns (docs, apify_run_id). run_id is "" on failure.
+    """
     import urllib.parse as _up
 
     model_tokens = [t.lower() for t in re.split(r"[\s\-_/]+", model) if len(t) > 2]
@@ -968,31 +1036,37 @@ async def _apify_map_and_scrape(job_id: str, base_url: str, model: str) -> list[
         "globs": globs if globs else [{"glob": "**/*.pdf"}, {"glob": "**/*manual*"}],
     }
 
-    def _run_sync() -> list:
+    def _run_sync() -> tuple[list, str]:
         from apify_client import ApifyClient  # type: ignore
 
         client = ApifyClient(APIFY_API_KEY)
         run = client.actor("apify/website-content-crawler").call(
             run_input=run_input, timeout_secs=180
         )
+        run_id = (run or {}).get("id", "")
         dataset_id = (run or {}).get("defaultDatasetId")
         if not dataset_id:
-            return []
-        return list(client.dataset(dataset_id).list_items().items)
+            return [], run_id
+        return list(client.dataset(dataset_id).list_items().items), run_id
 
     loop = asyncio.get_event_loop()
     try:
-        items = await loop.run_in_executor(None, _run_sync)
+        items, apify_run_id = await loop.run_in_executor(None, _run_sync)
     except Exception as e:
         logger.error("[%s] Apify map+scrape failed: %s", job_id, e)
-        return []
+        return [], ""
 
     logger.info("[%s] Apify returned %d items from %s", job_id, len(items), base_url)
-    return _apify_items_to_docs(job_id, items, model)
+    return _apify_items_to_docs(job_id, items, model), apify_run_id
 
 
-async def _apify_search_model(job_id: str, manufacturer: str, model: str) -> list[dict]:
-    """Use Apify to crawl a DuckDuckGo search when no known manufacturer base URL exists."""
+async def _apify_search_model(
+    job_id: str, manufacturer: str, model: str
+) -> tuple[list[dict], str]:
+    """Use Apify to crawl a DuckDuckGo search when no known manufacturer base URL exists.
+
+    Returns (docs, apify_run_id). run_id is "" on failure.
+    """
     import urllib.parse as _up
 
     encoded = _up.quote_plus(f"{manufacturer} {model} manual datasheet")
@@ -1006,33 +1080,43 @@ async def _apify_search_model(job_id: str, manufacturer: str, model: str) -> lis
         "outputFormats": ["markdown"],
     }
 
-    def _run_sync() -> list:
+    def _run_sync() -> tuple[list, str]:
         from apify_client import ApifyClient  # type: ignore
 
         client = ApifyClient(APIFY_API_KEY)
         run = client.actor("apify/website-content-crawler").call(
             run_input=run_input, timeout_secs=120
         )
+        run_id = (run or {}).get("id", "")
         dataset_id = (run or {}).get("defaultDatasetId")
         if not dataset_id:
-            return []
-        return list(client.dataset(dataset_id).list_items().items)
+            return [], run_id
+        return list(client.dataset(dataset_id).list_items().items), run_id
 
     loop = asyncio.get_event_loop()
     try:
-        items = await loop.run_in_executor(None, _run_sync)
+        items, apify_run_id = await loop.run_in_executor(None, _run_sync)
     except Exception as e:
         logger.error("[%s] Apify search failed: %s", job_id, e)
-        return []
+        return [], ""
 
     logger.info("[%s] Apify search returned %d items", job_id, len(items))
-    return _apify_items_to_docs(job_id, items, manufacturer)
+    return _apify_items_to_docs(job_id, items, manufacturer), apify_run_id
 
 
-async def _ingest_scraped_text(filename: str, content: str, equipment_type: str = "") -> None:
-    """Push scraped markdown text to Open WebUI KB via the existing collection routing."""
+async def _ingest_scraped_text(
+    filename: str,
+    content: str,
+    equipment_type: str = "",
+    run_id: str = "",
+) -> bool:
+    """Push scraped markdown text to Open WebUI KB via the existing collection routing.
+
+    Returns True if the KB file/add call returned HTTP 200/201, False otherwise.
+    run_id is used for log correlation with the crawl verifier.
+    """
     if not OPENWEBUI_URL or not OPENWEBUI_API_KEY:
-        return
+        return False
 
     col_name, col_desc = _route_collection(filename, equipment_type or None)
     collection_id = await _get_or_create_kb_collection(col_name, col_desc)
@@ -1042,24 +1126,54 @@ async def _ingest_scraped_text(filename: str, content: str, equipment_type: str 
         headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
 
     encoded = content.encode("utf-8")
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            f"{OPENWEBUI_URL}/api/v1/files/",
-            headers=headers,
-            files={"file": (filename, encoded, "text/plain")},
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{OPENWEBUI_URL}/api/v1/files/",
+                headers=headers,
+                files={"file": (filename, encoded, "text/plain")},
+            )
+            resp.raise_for_status()
+            file_id = resp.json().get("id")
+    except Exception as exc:
+        logger.error(
+            "KB file upload failed run_id=%s filename=%s: %s", run_id or "?", filename, exc
         )
-        resp.raise_for_status()
-        file_id = resp.json().get("id")
+        return False
 
-    if file_id:
+    if not file_id:
+        return False
+
+    kb_ok = False
+    try:
         async with httpx.AsyncClient(timeout=15) as client:
-            await client.post(
+            kb_resp = await client.post(
                 f"{OPENWEBUI_URL}/api/v1/knowledge/{collection_id}/file/add",
                 headers={**headers, "Content-Type": "application/json"},
                 json={"file_id": file_id},
             )
+            kb_ok = kb_resp.status_code in (200, 201)
+            if not kb_ok:
+                logger.warning(
+                    "KB file/add returned %d run_id=%s filename=%s: %s",
+                    kb_resp.status_code,
+                    run_id or "?",
+                    filename,
+                    kb_resp.text[:200],
+                )
+    except Exception as exc:
+        logger.error(
+            "KB file/add failed run_id=%s filename=%s: %s", run_id or "?", filename, exc
+        )
 
-    logger.info("Scraped text ingested: %s → collection=%s", filename, col_name)
+    logger.info(
+        "Scraped text ingested: %s → collection=%s kb_ok=%s run_id=%s",
+        filename,
+        col_name,
+        kb_ok,
+        run_id or "?",
+    )
+    return kb_ok
 
 
 async def _notify_telegram(chat_id: str, message: str) -> None:
@@ -1078,6 +1192,49 @@ async def _notify_telegram(chat_id: str, message: str) -> None:
                 logger.warning("Telegram notify failed: %d %s", resp.status_code, resp.text[:200])
     except Exception as e:
         logger.warning("Telegram notify error (non-fatal): %s", e)
+
+
+# ---------------------------------------------------------------------------
+# Crawl verification endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/ingest/crawl-verifications")
+async def get_crawl_verifications(limit: int = 50):
+    """Return the most recent crawl verification records (newest first).
+
+    Used by the eval loop, future dashboard, and manual inspection.
+    Each record contains: run_id, manufacturer, model, outcome, page_count,
+    shell_ratio, content_density, model_keyword_hit, kb_writes, timestamps.
+    """
+    records = list_verifications(limit=min(limit, 200))
+    return {
+        "count": len(records),
+        "records": records,
+    }
+
+
+class HistoricalClassifyRequest(BaseModel):
+    apify_run_id: str
+    manufacturer: str
+    model: str
+    job_id: str = "historical"
+
+
+@app.post("/ingest/crawl-classify-historical")
+async def classify_historical_run(body: HistoricalClassifyRequest):
+    """Classify a historical Apify run after-the-fact.
+
+    Used for retroactive analysis of past crawls (e.g. Yaskawa V1000 Brgo1xN4QLjhr0Pgc).
+    Fetches the dataset from Apify, runs the quality gate, and writes a verification record.
+    """
+    result = await classify_historical(
+        apify_run_id=body.apify_run_id,
+        manufacturer=body.manufacturer,
+        model=body.model,
+        job_id=body.job_id,
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------
