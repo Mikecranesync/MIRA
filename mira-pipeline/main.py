@@ -218,11 +218,47 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if not last_user_msg and not photo_b64:
         raise HTTPException(400, "No user message found")
 
-    # Open WebUI sends synthetic "suggest follow-ups" requests after each exchange.
-    # These must NOT touch the GSD engine — they advance the FSM and corrupt state.
-    if last_user_msg.lstrip().startswith("### Task:") or last_user_msg.lstrip().startswith(
-        "Suggest "
-    ):
+    # Open WebUI sends synthetic task messages that must NOT touch the GSD engine.
+    # There are two distinct subtypes with different correct responses:
+    #
+    # 1. "### Task: Continue generating …" — the Continue button.  OW expects the
+    #    response to be the continued text, not empty.  Return the last assistant
+    #    turn verbatim so the UI shows something and the FSM does not advance.
+    #
+    # 2. All other "### Task:" / "Suggest " variants — follow-up suggestions,
+    #    title generation, etc.  Return empty; OW discards these internally.
+    stripped_msg = last_user_msg.lstrip()
+    if stripped_msg.startswith("### Task: Continue"):
+        # P0-1 FIX: find the last assistant message in history and echo it back.
+        last_assistant = ""
+        for msg in reversed(req.messages):
+            if msg.role == "assistant":
+                content = msg.content
+                if isinstance(content, list):
+                    last_assistant = " ".join(
+                        p.get("text", "") for p in content
+                        if isinstance(p, dict) and p.get("type") == "text"
+                    ).strip()
+                else:
+                    last_assistant = str(content)
+                break
+        logger.info("P0-1 CONTINUE intercepted — echoing last assistant turn (%d chars)", len(last_assistant))
+        return {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "mira-diagnostic",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": last_assistant},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
+    if stripped_msg.startswith("### Task:") or stripped_msg.startswith("Suggest "):
         logger.info("SKIP synthetic follow-up request: %s", last_user_msg[:60])
         return {
             "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
