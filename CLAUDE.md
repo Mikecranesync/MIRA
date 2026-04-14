@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v2.5.2
+**Version:** v2.6.0
 **Updated:** 2026-04-14
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
@@ -252,6 +252,14 @@ chore: build system, deps, tooling
 
 ## Release Notes
 
+### v2.6.0 (2026-04-14) — LLM-as-judge eval layer — closes #217 (Karpathy alignment P0)
+- **`tests/eval/judge.py`** — Cross-model LLM judge. Four Likert dimensions (1–5): `groundedness`, `helpfulness`, `tone`, `instruction_following`. Routes judge calls away from the response generator: Claude-generated → Groq judge; Groq/Cerebras-generated → Claude judge; unknown → Claude. Implements ADR-0010 gap #1.
+- **`tests/eval/run_eval.py`** — Judge integration: `run_scenario()` calls `judge.grade()` once per scenario (last response, last user question). Scorecard gains four judge columns + aggregate summary section with trend arrows vs. previous run. Raw judge JSON written to `{scorecard_stem}-judge.jsonl`. `EVAL_DISABLE_JUDGE=1` skips all judge calls.
+- **`tests/eval/celery_tasks.py`** — New `mira_eval.run_batch_with_judge` task (03:00 UTC nightly). Hourly `mira_eval.run_batch` now explicitly sets `EVAL_DISABLE_JUDGE=1` (fast/cheap). Separate lock files — nightly judge run does not block hourly run.
+- **`tests/eval/test_judge.py`** — 12 offline unit tests (mocked APIs). Covers: disabled mode, provider routing (5 cases), JSON parsing + validation, red-team keyword-stuffed gibberish (scores ≤2 on groundedness/helpfulness), pass case (scores ≥4 all dimensions), Pilz manual-miss (instruction_following ≤2).
+- **`tests/eval/fixtures/11_pilz_manual_miss.yaml`** — Regression guard for `GET_DOCUMENTATION` intent. Reconstructed from chat `b500953b` (2026-04-14 Pilz forensic). Verifies "find a manual" returns vendor URL, not a diagnostic question. Judge target for `instruction_following` validation.
+- **Deploy:** No container restart needed. `judge.py` calls external APIs (Groq/Anthropic) directly from the eval subprocess. VPS Celery worker needs restart to register `mira_eval.run_batch_with_judge` task + add Beat schedule entry.
+
 ### v2.5.2 (2026-04-14) — Hotfix: Apify crawlerType enum fix (closes #230)
 - **`crawlerType: playwright:chrome`** — Fixed invalid enum value `"playwright"` in `crawl_routes.yaml` and `route_fallback.py`. Apify rejects bare `"playwright"`; valid values are `playwright:chrome`, `playwright:firefox`, `playwright:adaptive`. Confirmed from e2e Pilz job `2f78ae8b`.
 - **`route_fallback.py` reads from YAML** — `crawlerType` sourced from `params.get("crawlerType", "playwright:chrome")` instead of hardcoded.
@@ -311,29 +319,76 @@ chore: build system, deps, tooling
 
 ## Continuous Eval Loop
 
-MIRA has a nightly automated eval system (`tests/eval/`) — 10 scenario fixtures, 5 binary checkpoints per scenario, running at 02:00 UTC on VPS.
+MIRA has two automated eval tiers — 11 scenario fixtures, 5 binary checkpoints + 4 LLM-as-judge
+dimensions (v2.6.0+).
 
 | Path | Purpose |
 |------|---------|
-| `tests/eval/fixtures/` | YAML scenario fixtures (10 as of Week 1) |
+| `tests/eval/fixtures/` | YAML scenario fixtures (11 as of v2.6.0) |
 | `tests/eval/run_eval.py` | CLI runner — `python3 tests/eval/run_eval.py` |
 | `tests/eval/grader.py` | 5 binary checkpoint definitions |
-| `tests/eval/runs/YYYY-MM-DD.md` | Nightly scorecard output |
+| `tests/eval/judge.py` | LLM-as-judge — 4 Likert dimensions, cross-model routing |
+| `tests/eval/test_judge.py` | Offline unit tests for judge (mocked APIs) |
+| `tests/eval/celery_tasks.py` | Celery tasks: hourly (no judge) + nightly (with judge) |
+| `tests/eval/runs/YYYY-MM-DD.md` | Hourly scorecard (binary checkpoints only) |
+| `tests/eval/runs/YYYY-MM-DDTHHMM-judge.md` | Nightly scorecard (checkpoints + judge scores) |
+| `tests/eval/runs/YYYY-MM-DDTHHMM-judge.jsonl` | Raw judge JSON (one object per scenario) |
 
-**Running manually on VPS:**
+### Running manually
+
 ```bash
-cd /opt/mira && python3 tests/eval/run_eval.py
-# Scorecard written to tests/eval/runs/YYYY-MM-DD.md
+# Full eval with judge (default — reads GROQ_API_KEY / ANTHROPIC_API_KEY from Doppler):
+cd /opt/mira && doppler run --project factorylm --config prd -- python3 tests/eval/run_eval.py
+
+# Fast eval without judge (same as hourly Celery run):
+cd /opt/mira && EVAL_DISABLE_JUDGE=1 python3 tests/eval/run_eval.py
+
+# Dry run — fixture loading only, no HTTP calls:
+cd /opt/mira && python3 tests/eval/run_eval.py --dry-run
+
 # Logs: /var/log/mira-eval.log
 ```
 
-**Adding a scenario:** Copy any file in `tests/eval/fixtures/`, edit the `turns` and ground-truth fields, save as `NN_description.yaml`. It runs automatically on next nightly eval.
+### Judge environment variables
 
-**Baseline (2026-04-14):** 8/10 pass. Known failures:
+| Var | Purpose | Default |
+|-----|---------|---------|
+| `EVAL_DISABLE_JUDGE` | Set `"1"` to skip all judge calls (hourly cheap mode) | `"0"` (enabled) |
+| `GROQ_API_KEY` | Judge provider when response generated by Claude | — |
+| `ANTHROPIC_API_KEY` | Judge provider when response generated by Groq/Cerebras | — |
+| `GEMINI_API_KEY` | Optional judge (currently blocked — key returns 403) | — |
+| `GROQ_MODEL` | Groq judge model | `llama-3.3-70b-versatile` |
+| `CLAUDE_MODEL` | Claude judge model | `claude-sonnet-4-6` |
+
+### Cross-model judge routing (ADR-0010)
+
+Judge calls are routed AWAY from the provider that generated the response:
+- Claude-generated → Groq judge (fallback: Gemini)
+- Groq/Cerebras/Gemini-generated → Claude judge
+- Unknown origin → Claude judge (fallback: Groq)
+
+### Celery Beat schedules (on VPS: /opt/master_of_puppets/celery_app.py)
+
+```python
+from celery.schedules import crontab
+# Hourly — binary checkpoints only, no judge
+'mira-eval-every-60-min': {'task': 'mira_eval.run_batch', 'schedule': 3600.0}
+# Nightly 03:00 UTC — checkpoints + LLM-as-judge
+'mira-eval-nightly-with-judge': {'task': 'mira_eval.run_batch_with_judge', 'schedule': crontab(hour=3, minute=0)}
+```
+
+### Adding a scenario
+
+Copy any file in `tests/eval/fixtures/`, edit the `turns` and ground-truth fields, save as
+`NN_description.yaml`. It runs automatically. Optional field: `judge_generated_by: "groq"` to
+override cross-model routing for a specific fixture.
+
+**Baseline (2026-04-14):** 8/11 pass (binary). Known failures:
 - `gs20_cross_vendor_03` — pipeline says Allen-Bradley PowerFlex for GS20 (cross-vendor hallucination)
 - `yaskawa_out_of_kb_04` — no honesty signal for uncovered equipment
+- `pilz_manual_miss_11` — regression guard for GET_DOCUMENTATION intent (v2.4.0 fix)
 
-**Design doc:** `docs/plans/auto-research-eval-loop.md`
+**Design doc:** `docs/adr/0010-karpathy-eval-alignment.md`
 
 ---
 

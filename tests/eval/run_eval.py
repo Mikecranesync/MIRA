@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
-"""MIRA Eval Runner — Week-1 MVP.
+"""MIRA Eval Runner — v2.6.0 with LLM-as-judge.
 
 Fires each scenario fixture through mira-pipeline, runs 5 binary checkpoints,
-writes a markdown scorecard to tests/eval/runs/YYYY-MM-DD.md.
+optionally calls an LLM-as-judge for four quality dimensions, and writes a
+markdown scorecard to tests/eval/runs/.
 
 Usage (from repo root on VPS):
     # Against live VPS pipeline (via docker exec — no port mapping required):
     python3 tests/eval/run_eval.py
+
+    # With judge enabled (same as above — judge is on by default):
+    python3 tests/eval/run_eval.py
+
+    # Disable judge (hourly cheap mode):
+    EVAL_DISABLE_JUDGE=1 python3 tests/eval/run_eval.py
 
     # Against a local pipeline (dev):
     PIPELINE_URL=http://localhost:9099 python3 tests/eval/run_eval.py
@@ -23,6 +30,7 @@ Environment:
     EVAL_CHAT_PREFIX     Prefix for chat_id isolation (default: "eval").
     MIRA_DB_PATH         Path to mira.db SQLite (default: /opt/mira/data/mira.db on VPS).
     DOCKER_CONTAINER     Container name for docker-exec mode (default: mira-pipeline-saas).
+    EVAL_DISABLE_JUDGE   Set to "1" to skip LLM-as-judge (hourly fast mode).
 """
 
 from __future__ import annotations
@@ -46,7 +54,8 @@ import yaml
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from tests.eval.grader import ScenarioGrade, grade_scenario
+from tests.eval.grader import ScenarioGrade, grade_scenario  # noqa: E402
+from tests.eval.judge import DIMENSIONS, Judge, JudgeResult  # noqa: E402
 
 logger = logging.getLogger("mira-eval")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -181,10 +190,15 @@ def _load_fixtures(fixtures_dir: Path) -> list[dict]:
 # ── Scenario runner ───────────────────────────────────────────────────────────
 
 
-def run_scenario(fixture: dict, dry_run: bool = False) -> ScenarioGrade:
-    """Execute a single scenario fixture and return a ScenarioGrade.
+def run_scenario(
+    fixture: dict,
+    dry_run: bool = False,
+    judge: Judge | None = None,
+) -> tuple[ScenarioGrade, JudgeResult | None]:
+    """Execute a single scenario fixture and return (ScenarioGrade, JudgeResult | None).
 
     Each scenario gets a unique chat_id so FSM sessions are isolated.
+    judge is called once per scenario (on the last response, last user question).
     """
     run_id = uuid.uuid4().hex[:8]
     chat_id = f"{EVAL_CHAT_PREFIX}-{fixture['id']}-{run_id}"
@@ -198,11 +212,7 @@ def run_scenario(fixture: dict, dry_run: bool = False) -> ScenarioGrade:
 
     if dry_run:
         logger.info("[DRY RUN] %s — %d user turns (no HTTP calls)", fixture["id"], len(user_turns))
-        # Return a synthetic grade with all checkpoints passing for fixture validation
-        from tests.eval.grader import (
-            CheckpointResult,
-            ScenarioGrade,
-        )
+        from tests.eval.grader import CheckpointResult
         grade = ScenarioGrade(
             scenario_id=fixture["id"],
             final_fsm_state="(dry-run)",
@@ -216,7 +226,7 @@ def run_scenario(fixture: dict, dry_run: bool = False) -> ScenarioGrade:
             CheckpointResult("cp_no_5xx", True, "dry-run"),
             CheckpointResult("cp_turn_budget", True, "dry-run"),
         ]
-        return grade
+        return grade, None
 
     logger.info("Running scenario: %s (chat_id=%s)", fixture["id"], chat_id)
 
@@ -236,15 +246,13 @@ def run_scenario(fixture: dict, dry_run: bool = False) -> ScenarioGrade:
         latencies_ms.append(latency)
         logger.info("  -> HTTP %d, %dms, %d chars", status, latency, len(reply))
 
-        # Brief pause between turns to avoid hammering
         if i < len(user_turns) - 1:
             time.sleep(0.5)
 
-    # Read FSM state after all turns
     final_state = _read_fsm_state(chat_id)
     logger.info("  Final FSM state: %s", final_state)
 
-    return grade_scenario(
+    grade = grade_scenario(
         fixture=fixture,
         final_fsm_state=final_state,
         responses=responses,
@@ -252,6 +260,26 @@ def run_scenario(fixture: dict, dry_run: bool = False) -> ScenarioGrade:
         http_statuses=http_statuses,
         user_turn_count=len(user_turns),
     )
+
+    # ── LLM-as-judge (once per scenario) ──────────────────────────────────────
+    judge_result: JudgeResult | None = None
+    if judge and not judge.disabled:
+        last_response = responses[-1] if responses else ""
+        last_user_question = user_turns[-1]["content"] if user_turns else ""
+        # RAG context is not exposed by the pipeline OpenAI-compat response —
+        # pass empty string; judge prompt handles this as "no KB chunks retrieved".
+        rag_context = ""
+        generated_by = fixture.get("judge_generated_by", "unknown")
+
+        judge_result = judge.grade(
+            response=last_response,
+            rag_context=rag_context,
+            user_question=last_user_question,
+            generated_by=generated_by,
+            scenario_id=fixture["id"],
+        )
+
+    return grade, judge_result
 
 
 # ── Scorecard writer ──────────────────────────────────────────────────────────
@@ -264,9 +292,20 @@ _CHECKPOINT_LABELS = [
     "Turn budget",
 ]
 
+_JUDGE_LABELS = ["Grnd", "Help", "Tone", "Inst"]
+_JUDGE_LABEL_MAP = dict(zip(DIMENSIONS, _JUDGE_LABELS))
+
 
 def _icon(passed: bool) -> str:
     return "PASS" if passed else "FAIL"
+
+
+def _score_cell(result: JudgeResult | None, dim: str) -> str:
+    """Format a single judge score cell for the scorecard table."""
+    if result is None or result.error:
+        return "—"
+    score = result.scores.get(dim)
+    return str(score) if score is not None else "—"
 
 
 def write_scorecard(
@@ -275,17 +314,26 @@ def write_scorecard(
     output_path: Path,
     prev_path: Path | None,
     dry_run: bool,
+    judge_results: list[JudgeResult | None] | None = None,
+    judge_raw_path: Path | None = None,
 ) -> None:
-    """Write markdown scorecard to output_path."""
+    """Write markdown scorecard to output_path.
+
+    If judge_results is provided, four additional score columns are appended to
+    the results table and an aggregate judge summary section is written at the bottom.
+    Raw judge JSON is written to judge_raw_path (one JSON object per line).
+    """
     total = len(grades)
     total_passed = sum(1 for g in grades if g.passed)
     pass_rate = 100 * total_passed / total if total else 0
+    has_judge = bool(judge_results and any(r is not None for r in judge_results))
 
     lines = [
         f"# MIRA Eval Scorecard — {run_date}",
         "",
         f"**Pass rate:** {total_passed}/{total} scenarios ({pass_rate:.0f}%)",
         f"**Mode:** {'DRY RUN' if dry_run else 'LIVE'}",
+        f"**Judge:** {'enabled' if has_judge else 'disabled (EVAL_DISABLE_JUDGE=1)'}",
         f"**Checkpoints:** {' / '.join(_CHECKPOINT_LABELS)}",
         "",
     ]
@@ -293,23 +341,99 @@ def write_scorecard(
     if dry_run:
         lines.append("> DRY RUN — no HTTP calls made, fixture loading validated only.\n")
 
-    # Summary table
-    lines += [
-        "## Results",
-        "",
-        "| Scenario | " + " | ".join(_CHECKPOINT_LABELS) + " | Score | FSM State |",
-        "|----------|" + "|".join(["-" * (len(l) + 2) for l in _CHECKPOINT_LABELS]) + "|-------|-----------|",
-    ]
+    # ── Summary table ─────────────────────────────────────────────────────────
+    judge_header = " | ".join(_JUDGE_LABELS) if has_judge else ""
+    judge_sep = "|".join([":---:"] * len(_JUDGE_LABELS)) if has_judge else ""
 
-    for g in grades:
+    header = "| Scenario | " + " | ".join(_CHECKPOINT_LABELS)
+    sep = "|----------|" + "|".join(["-" * (len(lbl) + 2) for lbl in _CHECKPOINT_LABELS])
+    if has_judge:
+        header += " | " + judge_header
+        sep += "|" + judge_sep
+    header += " | Score | FSM State |"
+    sep += "|-------|-----------|"
+
+    lines += ["## Results", "", header, sep]
+
+    jr_list = judge_results if judge_results else [None] * len(grades)
+    for g, jr in zip(grades, jr_list):
         cp_cells = " | ".join(_icon(c.passed) for c in g.checkpoints)
+        judge_cells = ""
+        if has_judge:
+            judge_cells = " | " + " | ".join(_score_cell(jr, dim) for dim in DIMENSIONS)
         state_cell = g.final_fsm_state or "?"
-        row = f"| `{g.scenario_id}` | {cp_cells} | {g.score} | {state_cell} |"
+        row = f"| `{g.scenario_id}` | {cp_cells}{judge_cells} | {g.score} | {state_cell} |"
         lines.append(row)
 
     lines += [""]
 
-    # Detail section for failures
+    # ── Judge aggregate summary ───────────────────────────────────────────────
+    if has_judge:
+        scored = [jr for jr in jr_list if jr is not None and jr.succeeded]
+        if scored:
+            avg_by_dim = {
+                dim: sum(jr.scores[dim] for jr in scored) / len(scored)
+                for dim in DIMENSIONS
+            }
+            lines += [
+                "## Judge Summary",
+                "",
+                f"*{len(scored)}/{len(grades)} scenarios scored "
+                f"({'all' if len(scored) == len(grades) else 'partial'} coverage)*",
+                "",
+            ]
+
+            # Aggregate line
+            agg = " | ".join(f"{_JUDGE_LABEL_MAP[d]} {avg_by_dim[d]:.1f}" for d in DIMENSIONS)
+            lines.append(f"**Average scores:** {agg}")
+            lines.append("")
+
+            # Trend vs previous run — look for previous judge data in raw JSONL
+            if prev_path and prev_path.exists():
+                prev_judge_path = prev_path.with_suffix("").with_name(
+                    prev_path.stem + "-judge.jsonl"
+                )
+                if prev_judge_path.exists():
+                    try:
+                        prev_scored = [json.loads(ln) for ln in prev_judge_path.read_text().splitlines() if ln.strip()]
+                        prev_avgs: dict[str, float] = {}
+                        for dim in DIMENSIONS:
+                            vals = [r["scores"][dim] for r in prev_scored if r.get("scores", {}).get(dim)]
+                            if vals:
+                                prev_avgs[dim] = sum(vals) / len(vals)
+                        if prev_avgs:
+                            trend_parts = []
+                            for dim in DIMENSIONS:
+                                if dim in prev_avgs:
+                                    delta = avg_by_dim[dim] - prev_avgs[dim]
+                                    arrow = "▲" if delta > 0.1 else ("▼" if delta < -0.1 else "→")
+                                    trend_parts.append(
+                                        f"{_JUDGE_LABEL_MAP[dim]} {arrow}{delta:+.1f}"
+                                    )
+                            if trend_parts:
+                                lines.append(f"**Trend vs previous:** {' | '.join(trend_parts)}")
+                                lines.append("")
+                    except Exception as e:
+                        logger.warning("Could not read previous judge data for trend: %s", e)
+
+            # Per-scenario notes for failed or low-scoring results
+            low_threshold = 2
+            low_scoring = [
+                (jr, g) for jr, g in zip(jr_list, grades)
+                if jr and jr.succeeded and any(v <= low_threshold for v in jr.scores.values())
+            ]
+            if low_scoring:
+                lines += ["### Low-Scoring Scenarios (≤2 on any dimension)", ""]
+                for jr, g in low_scoring:
+                    lines.append(f"**`{g.scenario_id}`** (judge: {jr.judge_provider}/{jr.judge_model})")
+                    for dim in DIMENSIONS:
+                        score = jr.scores.get(dim, 0)
+                        if score <= low_threshold:
+                            note = jr.notes.get(dim, "")
+                            lines.append(f"  - {_JUDGE_LABEL_MAP[dim]} = {score}: {note}")
+                    lines.append("")
+
+    # ── Failures (binary checkpoint failures) ─────────────────────────────────
     failures = [g for g in grades if not g.passed]
     if failures:
         lines += ["## Failures", ""]
@@ -323,7 +447,7 @@ def write_scorecard(
                 lines.append(f"- Last response: `{preview}...`")
             lines.append("")
 
-    # Diff vs previous run
+    # ── Diff vs previous run ──────────────────────────────────────────────────
     if prev_path and prev_path.exists():
         prev_text = prev_path.read_text()
         prev_ids = set(re.findall(r"`([\w_]+)`", prev_text))
@@ -344,7 +468,7 @@ def write_scorecard(
                     lines.append(f"- {sid}")
                 lines.append("")
 
-    # Timing summary
+    # ── Timing summary ────────────────────────────────────────────────────────
     if any(g.latency_ms_total for g in grades):
         total_ms = sum(g.latency_ms_total for g in grades)
         lines += [
@@ -361,12 +485,21 @@ def write_scorecard(
     output_path.write_text("\n".join(lines) + "\n")
     logger.info("Scorecard written to %s", output_path)
 
+    # ── Raw judge JSONL ───────────────────────────────────────────────────────
+    if has_judge and judge_raw_path:
+        judge_raw_path.parent.mkdir(parents=True, exist_ok=True)
+        with judge_raw_path.open("w") as f:
+            for jr in jr_list:
+                if jr is not None:
+                    f.write(json.dumps(jr.to_dict()) + "\n")
+        logger.info("Raw judge JSON written to %s", judge_raw_path)
+
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="MIRA eval runner — Week-1 MVP")
+    parser = argparse.ArgumentParser(description="MIRA eval runner — v2.6.0 with LLM-as-judge")
     parser.add_argument("--dry-run", action="store_true", help="Load fixtures only, no HTTP calls")
     parser.add_argument(
         "--output", default=str(RUNS_DIR),
@@ -393,9 +526,16 @@ def main() -> int:
         output_dir = output_arg
         output_path = output_dir / f"{run_date}.md"
 
+    # Sibling JSONL for raw judge output
+    judge_raw_path = output_path.with_suffix("").with_name(output_path.stem + "-judge.jsonl")
+
     # Find previous scorecard for diff
     existing = sorted(output_dir.glob("*.md"))
-    prev_path = existing[-2] if output_path in existing and len(existing) >= 2 else (existing[-1] if existing else None)
+    prev_path = (
+        existing[-2]
+        if output_path in existing and len(existing) >= 2
+        else (existing[-1] if existing else None)
+    )
 
     # Load fixtures
     fixtures = _load_fixtures(Path(args.fixtures))
@@ -404,16 +544,38 @@ def main() -> int:
         return 1
     logger.info("Loaded %d fixtures from %s", len(fixtures), args.fixtures)
 
+    # Initialise judge (respects EVAL_DISABLE_JUDGE env var)
+    judge = Judge()
+    judge_enabled = not (judge.disabled or args.dry_run)
+    if judge_enabled:
+        logger.info("LLM-as-judge enabled — scores will be appended to scorecard")
+    else:
+        logger.info("LLM-as-judge disabled")
+
     # Run scenarios
     grades: list[ScenarioGrade] = []
+    judge_results: list[JudgeResult | None] = []
+
     for fixture in fixtures:
-        grade = run_scenario(fixture, dry_run=args.dry_run)
+        grade, jr = run_scenario(fixture, dry_run=args.dry_run, judge=judge if judge_enabled else None)
         grades.append(grade)
+        judge_results.append(jr)
         status = "PASS" if grade.passed else "FAIL"
-        logger.info("%s %s (%s)", status, grade.scenario_id, grade.score)
+        judge_summary = ""
+        if jr and jr.succeeded:
+            judge_summary = f" judge_avg={jr.average:.1f}"
+        logger.info("%s %s (%s)%s", status, grade.scenario_id, grade.score, judge_summary)
 
     # Write scorecard
-    write_scorecard(grades, run_date, output_path, prev_path, dry_run=args.dry_run)
+    write_scorecard(
+        grades,
+        run_date,
+        output_path,
+        prev_path,
+        dry_run=args.dry_run,
+        judge_results=judge_results if judge_enabled else None,
+        judge_raw_path=judge_raw_path if judge_enabled else None,
+    )
 
     # Exit non-zero if any scenario failed (useful for CI)
     failed = sum(1 for g in grades if not g.passed)
