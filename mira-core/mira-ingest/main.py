@@ -14,16 +14,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
-from PIL import Image
-from pydantic import BaseModel
-
 from crawl_verifier import (
     OUTCOME_SUCCESS,
     classify_historical,
     list_verifications,
     verify_crawl,
 )
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from PIL import Image
+from pydantic import BaseModel
 from route_fallback import RETRY_ON, run_fallback
 
 logger = logging.getLogger("mira-ingest")
