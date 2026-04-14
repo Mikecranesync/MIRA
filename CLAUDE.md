@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v2.5.2
+**Version:** v2.7.0
 **Updated:** 2026-04-14
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
@@ -252,6 +252,15 @@ chore: build system, deps, tooling
 
 ## Release Notes
 
+### v2.7.0 (2026-04-14) — Active learning loop: production 👎 → fixtures → draft PR (closes #219)
+- **`mira-bots/tools/active_learner.py`** — `ActiveLearner` class: scans `feedback_log` for `/bad` entries, reconstructs conversations from `interactions`, anonymizes via Claude (PII stripped, vendor/model preserved), infers eval pass criteria with confidence gate (default: 0.6), generates YAML fixtures matching existing eval schema.
+- **`tests/eval/active_learning_tasks.py`** — Celery `shared_task` `mira_active_learning.run_nightly` at 04:00 UTC. File-based lock (30-min stale timeout). Honors `ACTIVE_LEARNING_DISABLED=1` env var.
+- **`tests/eval/fixtures/auto-generated/`** — Fixture staging area. Draft PR opened to this path; reviewed fixtures promoted to `tests/eval/fixtures/` with sequential numbering.
+- **Draft PR format**: one commit per run, PR title `auto: active-learning fixtures from YYYY-MM-DD feedback (N new)`, body includes fixture table + review checklist + hashed source chat_ids.
+- **Anonymization**: company names → `FACILITY_A/B`, personal names → `TECH_A/B`, locations → `BUILDING_X`. Vendor/model/fault codes preserved verbatim. `anonymization_notes` field in every fixture for audit.
+- **`ACTIVE_LEARNING_GH_TOKEN`** — New Doppler secret required: GitHub PAT with `contents:write` + `pull_requests:write`.
+- **Eval still 10/10** — Active learner runs independently; does not affect existing eval harness.
+
 ### v2.5.2 (2026-04-14) — Hotfix: Apify crawlerType enum fix (closes #230)
 - **`crawlerType: playwright:chrome`** — Fixed invalid enum value `"playwright"` in `crawl_routes.yaml` and `route_fallback.py`. Apify rejects bare `"playwright"`; valid values are `playwright:chrome`, `playwright:firefox`, `playwright:adaptive`. Confirmed from e2e Pilz job `2f78ae8b`.
 - **`route_fallback.py` reads from YAML** — `crawlerType` sourced from `params.get("crawlerType", "playwright:chrome")` instead of hardcoded.
@@ -334,6 +343,56 @@ cd /opt/mira && python3 tests/eval/run_eval.py
 - `yaskawa_out_of_kb_04` — no honesty signal for uncovered equipment
 
 **Design doc:** `docs/plans/auto-research-eval-loop.md`
+
+---
+
+## Active Learning Loop (v2.7.0)
+
+Nightly Celery task at **04:00 UTC** (after judge-enabled eval at 03:00): scans `feedback_log` for
+`/bad` ratings since last run, anonymizes each conversation via Claude, infers pass criteria from
+the rating reason, generates a YAML eval fixture, and opens a **draft GitHub PR** to
+`tests/eval/fixtures/auto-generated/`. Reviewers promote fixtures to `tests/eval/fixtures/` after
+verifying anonymization and criteria accuracy.
+
+| Path | Purpose |
+|------|---------|
+| `mira-bots/tools/active_learner.py` | Core `ActiveLearner` class |
+| `tests/eval/active_learning_tasks.py` | Celery `mira_active_learning.run_nightly` task |
+| `tests/eval/fixtures/auto-generated/` | Draft fixtures pending review |
+| `mira-bots/tests/tools/test_active_learner.py` | Unit tests |
+
+**Beat schedule entry** (add to `/opt/master_of_puppets/celery_app.py`):
+```python
+from celery.schedules import crontab
+'mira-active-learning-nightly': {
+    'task': 'mira_active_learning.run_nightly',
+    'schedule': crontab(hour=4, minute=0),
+}
+```
+
+**Env vars** (add to Doppler `factorylm/prd`):
+
+| Var | Required | Default | Notes |
+|-----|----------|---------|-------|
+| `ACTIVE_LEARNING_GH_TOKEN` | YES | — | GitHub PAT with `contents:write` + `pull_requests:write` |
+| `ACTIVE_LEARNING_DISABLED` | no | `0` | Set to `1` to skip without removing beat schedule |
+| `ACTIVE_LEARNING_MIN_CONFIDENCE` | no | `0.6` | Drop fixture if Claude criteria confidence < threshold |
+| `ACTIVE_LEARNING_MAX_FIXTURES_PER_RUN` | no | `10` | Cap fixtures per nightly run (keeps PR reviewable) |
+| `ACTIVE_LEARNING_STATE_PATH` | no | `/opt/mira/data/active_learning_state.json` | Checkpoint file |
+
+**Deploy:** Copy `tests/eval/active_learning_tasks.py` to
+`/opt/master_of_puppets/workers/mira_active_learning_tasks.py`, then restart the
+`master_of_puppets` Celery worker:
+```bash
+cp tests/eval/active_learning_tasks.py /opt/master_of_puppets/workers/
+supervisorctl restart master_of_puppets_worker
+```
+
+**Dry-run** (inspect output before first PR):
+```bash
+cd /opt/mira && MIRA_DB_PATH=/opt/mira/data/mira.db \
+  python3 mira-bots/tools/active_learner.py --dry-run --output /tmp/active_learning_dryrun
+```
 
 ---
 
