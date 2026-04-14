@@ -2,7 +2,7 @@ id: asset_change_mid_session_08
 description: "User corrects the asset model mid-conversation — FSM must adapt without losing context"
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: [GS20]
+expected_keywords: [GS20, motor, loaded, overcurrent, fault, pump]
 forbidden_keywords: []
 expected_vendor: AutomationDirect
 wo_expected: false
