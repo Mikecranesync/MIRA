@@ -1,0 +1,17 @@
+id: gs4_overload_15
+description: "GS4 VFD motor overload — mechanical binding suspected"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [overload, current, motor, load, binding]
+forbidden_keywords: [Siemens, ABB, Danfoss]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+tags: [vfd, overload, gs4, mechanical, sprint-a]
+turns:
+  - role: user
+    content: "OL fault on a GS4 VFD, trips after about 30 seconds of running"
+  - role: user
+    content: "Motor was running fine last week, nothing changed on the electrical side"
+  - role: user
+    content: "It's driving a mixer, the product consistency changed recently"

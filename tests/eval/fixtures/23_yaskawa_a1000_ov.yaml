@@ -1,0 +1,17 @@
+id: yaskawa_a1000_ov_23
+description: "Yaskawa A1000 OV overvoltage — regenerative load, braking chopper diagnosis"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [overvoltage, braking, decel, regenerat]
+forbidden_keywords: [PowerFlex, GS20, AutomationDirect]
+expected_vendor: Yaskawa
+wo_expected: false
+safety_expected: false
+tags: [vfd, overvoltage, yaskawa, a1000, braking, sprint-a]
+turns:
+  - role: user
+    content: "A1000 faulting OV during decel, high-inertia fan application"
+  - role: user
+    content: "Decel ramp is 10 seconds, motor is 25HP"
+  - role: user
+    content: "Dynamic braking option is installed but I'm not sure if it's configured"
