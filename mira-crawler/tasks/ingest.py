@@ -134,52 +134,72 @@ def ingest_url(self, url: str, manufacturer: str = "",
     inserted = 0
     skipped = 0
 
-    for i, chunk in enumerate(chunks):
-        chunk_idx = chunk.get("chunk_index", i)
+    # Open ONE NeonDB connection per document — the quality gate's semantic
+    # dedup stage runs one SELECT per chunk. Reusing the connection avoids
+    # 1 TLS handshake per chunk (#112). Fail-open if connection fails.
+    from ingest.store import _engine
 
-        # Dedup
-        if chunk_exists(tenant_id, url, chunk_idx):
-            skipped += 1
-            continue
+    dedup_conn = None
+    try:
+        dedup_conn = _engine().connect()
+    except Exception as e:
+        logger.warning("Could not open shared dedup connection (fail open): %s", e)
 
-        # Progress logging every 50 chunks
-        if (i + 1) % 50 == 0:
-            logger.info("Embedding chunk %d/%d for %s...", i + 1, total, url[:60])
+    try:
+        for i, chunk in enumerate(chunks):
+            chunk_idx = chunk.get("chunk_index", i)
 
-        embedding = embed_text(
-            chunk["text"],
-            ollama_url=ollama_url,
-            model=embed_model,
-        )
-        if embedding is None:
-            continue
-
-        # Quality gate: content filter → relevance → semantic dedup
-        try:
-            from ingest.quality import quality_gate
-            passed, reason = quality_gate(chunk, embedding, tenant_id)
-            if not passed:
-                logger.debug("Quality gate rejected chunk %d: %s", chunk_idx, reason)
+            # Dedup
+            if chunk_exists(tenant_id, url, chunk_idx):
                 skipped += 1
                 continue
-        except Exception as e:
-            logger.warning("Quality gate error (fail open): %s", e)
 
-        entry_id = insert_chunk(
-            tenant_id=tenant_id,
-            content=chunk["text"],
-            embedding=embedding,
-            source_url=url,
-            source_type=source_type,
-            manufacturer=manufacturer,
-            model_number=model,
-            page_num=chunk.get("page_num"),
-            section=chunk.get("section", ""),
-            chunk_index=chunk_idx,
-            chunk_type=chunk.get("chunk_type", "text"),
-        )
-        if entry_id:
-            inserted += 1
+            # Progress logging every 50 chunks
+            if (i + 1) % 50 == 0:
+                logger.info("Embedding chunk %d/%d for %s...", i + 1, total, url[:60])
+
+            embedding = embed_text(
+                chunk["text"],
+                ollama_url=ollama_url,
+                model=embed_model,
+            )
+            if embedding is None:
+                continue
+
+            # Quality gate: content filter → relevance → semantic dedup
+            try:
+                from ingest.quality import quality_gate
+                passed, reason = quality_gate(
+                    chunk, embedding, tenant_id, conn=dedup_conn
+                )
+                if not passed:
+                    logger.debug("Quality gate rejected chunk %d: %s", chunk_idx, reason)
+                    skipped += 1
+                    continue
+            except Exception as e:
+                logger.warning("Quality gate error (fail open): %s", e)
+
+            entry_id = insert_chunk(
+                tenant_id=tenant_id,
+                content=chunk["text"],
+                embedding=embedding,
+                source_url=url,
+                source_type=source_type,
+                manufacturer=manufacturer,
+                model_number=model,
+                page_num=chunk.get("page_num"),
+                section=chunk.get("section", ""),
+                chunk_index=chunk_idx,
+                chunk_type=chunk.get("chunk_type", "text"),
+            )
+            if entry_id:
+                inserted += 1
+    finally:
+        if dedup_conn is not None:
+            try:
+                dedup_conn.close()
+            except Exception:
+                pass
 
     logger.info(
         "Completed %s: %d inserted, %d skipped, %d total chunks",
