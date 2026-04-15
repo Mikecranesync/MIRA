@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v2.7.0
+**Version:** v3.4.0
 **Updated:** 2026-04-14
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `INFERENCE_BACKEND=local` → Open WebUI → qwen2.5vl:7b
@@ -322,6 +322,54 @@ chore: build system, deps, tooling
 - **LlamaIndex RAG upgrade** — PRD complete (`MIRA_LlamaIndex_RAG_PRD.docx.md`). Replaces hand-rolled RAG in rag_worker.py with LlamaIndex orchestration. Ready to build.
 - **Bot quality tuning** — RAG quality gate (0.70 threshold), NeonDB-only retrieval, Nemotron reranking active. Next: fix intent guard false positives.
 - **Pilz forensic follow-ups** — Issue #207 filed: per-call tenant_id in Celery ingest, structured model extraction, model-level KB coverage check, mira-gsd logger propagation to docker logs.
+
+---
+
+## Offline Testing (v3.4.0)
+
+Run the full diagnostic pipeline in-process — no VPS, no Docker, no SSH.
+LLM calls go to real Groq/Claude/Gemini. NeonDB recall is live (Neon is hosted separately).
+
+**Load secrets first:** `doppler run --project factorylm --config prd -- python3 tests/eval/offline_run.py ...`
+
+### 4 Commands Mike Uses Every Day
+
+```bash
+# 1. Drop a nameplate photo — see vendor/model extraction + FSM in <30s
+python3 tests/eval/offline_run.py --photo nameplate.jpg
+
+# 2. Fire a fresh diagnostic conversation from a seed
+python3 tests/eval/offline_run.py \
+    --scenario "Yaskawa V1000 OC fault, resetting doesn't help" \
+    --synthetic-user
+
+# 3. Full nightly-equivalent run in ~2 min (text + photos + judge)
+python3 tests/eval/offline_run.py --suite full --judge
+
+# 4. Debug a production failure offline (no VPS needed)
+python3 tests/eval/replay.py --file tests/eval/fixtures/replay/pilz_safety_relay.json
+```
+
+### Suites
+| Flag | Fixtures | Description |
+|------|----------|-------------|
+| `--suite text` | 30+ `NN_*.yaml` + `vfd_*.yaml` | Standard text scenarios (default) |
+| `--suite photos` | 4 photo YAMLs | Nameplate vision pipeline |
+| `--suite full` | All of the above | Complete nightly-equivalent run |
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `tests/eval/offline_run.py` | One-command CLI entry point |
+| `tests/eval/local_pipeline.py` | In-process GSDEngine runner |
+| `tests/eval/synthetic_user.py` | LLM-as-technician agent (Karpathy pattern) |
+| `tests/eval/replay.py` | Replay production sessions offline |
+| `tests/eval/fixtures/photos/` | Synthetic nameplate images + YAML fixtures |
+| `tests/eval/fixtures/replay/` | Production session JSON dumps for offline replay |
+
+### Replay session dumps
+- `pilz_safety_relay.json` — Pilz PNOZ X3 door switch fail-to-reset (forensic: v2.4.1)
+- `distribution_block_livework.json` — Live-work hazard caught by safety keywords (forensic: v2.4.1)
 
 ---
 

@@ -1,0 +1,36 @@
+{
+  "chat_id": "demo-pilz-safety-relay-001",
+  "exported_at": "2026-04-14T03:12:00+00:00",
+  "source_db": "production-vps-mira.db",
+  "note": "Reconstructed demo session — Pilz PNOZ X3 safety relay, contactor dropped out after door switch reset. Forensic session used in Pilz hotfix (v2.4.1).",
+  "turns": [
+    {
+      "user_message": "Pilz safety relay dropped out, contactor is off",
+      "assistant_reply": "I can help you troubleshoot the Pilz safety relay issue. Before we dive in, I need to understand the situation better.\n\nWhat's the current state of the system? Please select:\n1. The relay dropped out during normal operation (unexpected)\n2. The relay dropped out after a safety event (door, E-stop, light curtain)\n3. The relay won't reset after a safety event was cleared\n4. This is a new installation that never came up",
+      "fsm_state": "Q1",
+      "response_time_ms": 1842,
+      "created_at": "2026-04-14T03:12:05+00:00"
+    },
+    {
+      "user_message": "2",
+      "assistant_reply": "The relay dropped out after a safety event — that's expected behavior. The relay needs to be manually reset once the safety condition is clear.\n\nWhich safety device triggered it?\n1. Emergency stop button\n2. Safety door / interlock switch\n3. Light curtain or safety mat\n4. Not sure which device",
+      "fsm_state": "Q2",
+      "response_time_ms": 1654,
+      "created_at": "2026-04-14T03:12:18+00:00"
+    },
+    {
+      "user_message": "door switch, but we reset it and the relay won't come back",
+      "assistant_reply": "The door switch is cleared but the relay won't reset — let's find out why.\n\nOn the PNOZ X3 front panel, which LED indicators are lit right now?\n1. S1 and S2 LEDs both green — both input channels confirmed\n2. Only one green LED — one channel is still open\n3. No green LEDs — both channels still showing open\n4. Power LED is off — no power to relay",
+      "fsm_state": "Q2",
+      "response_time_ms": 1921,
+      "created_at": "2026-04-14T03:12:45+00:00"
+    },
+    {
+      "user_message": "only one green light",
+      "assistant_reply": "One channel is still seeing an open circuit — the relay won't reset until both S1 and S2 see a closed contact simultaneously.\n\nFor the PNOZ X3 with dual-channel wiring:\n- **S1** and **S2** must BOTH be closed within the same monitoring cycle\n- A common cause is a broken wire or failed contact on one channel\n\nCheck these in order:\n1. Inspect the door switch wiring for both channels — look for a loose terminal on the side that's still open\n2. Confirm the door is fully latched (magnetic contacts need full engagement)\n3. Check the PNOZ X3 terminal blocks S11/S12 and S21/S22 for loose screws\n4. Use a multimeter to verify continuity on the open channel (S1 or S2 side)\n\nWhich channel side shows no green? The one on the left (S1) or right (S2)?",
+      "fsm_state": "DIAGNOSIS",
+      "response_time_ms": 2341,
+      "created_at": "2026-04-14T03:13:10+00:00"
+    }
+  ]
+}
