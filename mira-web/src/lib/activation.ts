@@ -65,24 +65,32 @@ export async function finalizeActivation(
   let atlasUserId = tenant.atlas_user_id;
   let atlasToken = "";
   let atlasStatus: "ok" | "failed" = tenant.atlas_provisioning_status === "ok" ? "ok" : "failed";
+  const firstName = tenant.first_name || tenant.email.split("@")[0];
 
   // Step A: Atlas provisioning — skip if already ok (idempotent retry)
   if (tenant.atlas_provisioning_status !== "ok") {
     try {
       const password = deps.deriveAtlasPassword(tenant.id);
-      const firstName = tenant.first_name || tenant.email.split("@")[0];
       const company = tenant.company || `${tenant.email.split("@")[0]}'s Plant`;
       const atlas = await deps.signupUser(tenant.email, password, firstName, "", company);
       atlasCompanyId = atlas.companyId;
       atlasUserId = atlas.userId;
       atlasToken = atlas.accessToken;
-      await deps.updateTenantAtlas(tenant.id, atlasCompanyId, atlasUserId, "ok");
-      await deps.recordProvisioningAttempt(tenant.id, null);
+      try {
+        await deps.updateTenantAtlas(tenant.id, atlasCompanyId, atlasUserId, "ok");
+        await deps.recordProvisioningAttempt(tenant.id, null);
+      } catch (dbErr) {
+        console.error("[activation] bookkeeping (atlas-ok) failed:", dbErr);
+      }
       atlasStatus = "ok";
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await deps.updateTenantAtlas(tenant.id, 0, 0, "failed");
-      await deps.recordProvisioningAttempt(tenant.id, msg);
+      try {
+        await deps.updateTenantAtlas(tenant.id, 0, 0, "failed");
+        await deps.recordProvisioningAttempt(tenant.id, msg);
+      } catch (dbErr) {
+        console.error("[activation] bookkeeping (atlas-failed) failed:", dbErr);
+      }
       return { atlas: "failed", demo: "pending", email: "pending", token: null };
     }
   }
@@ -98,17 +106,28 @@ export async function finalizeActivation(
   }
 
   // Step C: Activation email
-  const token = await deps.signToken({
-    tenantId: tenant.id,
-    email: tenant.email,
-    tier: "active",
-    atlasCompanyId,
-    atlasUserId,
-  });
-  const firstName = tenant.first_name || tenant.email.split("@")[0];
-  const sent = await deps.sendActivatedEmail(tenant.email, firstName, tenant.company, token);
-  const emailStatus: "sent" | "failed" = sent ? "sent" : "failed";
-  await deps.updateTenantEmailStatus(tenant.id, emailStatus);
+  let token: string | null = null;
+  let emailStatus: "sent" | "failed" = "failed";
+  try {
+    token = await deps.signToken({
+      tenantId: tenant.id,
+      email: tenant.email,
+      tier: "active",
+      atlasCompanyId,
+      atlasUserId,
+    });
+    const sent = await deps.sendActivatedEmail(tenant.email, firstName, tenant.company, token);
+    emailStatus = sent ? "sent" : "failed";
+    await deps.updateTenantEmailStatus(tenant.id, emailStatus);
+  } catch (err) {
+    console.error("[activation] step C (email) failed:", err);
+    emailStatus = "failed";
+    try {
+      await deps.updateTenantEmailStatus(tenant.id, "failed");
+    } catch (dbErr) {
+      console.error("[activation] bookkeeping (email-failed) failed:", dbErr);
+    }
+  }
 
   return { atlas: atlasStatus, demo: demoStatus, email: emailStatus, token };
 }

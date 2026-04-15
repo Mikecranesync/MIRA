@@ -106,4 +106,36 @@ describe("finalizeActivation", () => {
     expect(deps.sendActivatedEmail).toHaveBeenCalled();
     expect(result.email).toBe("sent");
   });
+
+  test("signToken throws: atlas + seed still succeed, email=failed, token=null", async () => {
+    const deps = makeDeps({
+      signToken: mock(async () => { throw new Error("jwt secret missing"); }),
+    });
+    const result = await finalizeActivation(baseTenant, deps);
+    expect(result.atlas).toBe("ok");
+    expect(result.demo).toBe("ok");
+    expect(result.email).toBe("failed");
+    expect(result.token).toBeNull();
+    expect(deps.updateTenantEmailStatus).toHaveBeenCalledWith("t_123", "failed");
+  });
+
+  test("updateTenantAtlas throws on ok-path: result still atlas=ok (bookkeeping errors swallowed)", async () => {
+    const deps = makeDeps({
+      updateTenantAtlas: mock(async () => { throw new Error("neon blip"); }),
+    });
+    // Does NOT reject — bookkeeping swallow means the activation result is still structured.
+    const result = await finalizeActivation(baseTenant, deps);
+    expect(result.atlas).toBe("ok");   // signup succeeded; status row may be stale but activation logic continues
+    expect(result.email).toBe("sent"); // email still sends
+  });
+
+  test("sendActivatedEmail throws: result email=failed, no crash", async () => {
+    const deps = makeDeps({
+      sendActivatedEmail: mock(async () => { throw new Error("resend 500"); }),
+    });
+    const result = await finalizeActivation(baseTenant, deps);
+    expect(result.atlas).toBe("ok");
+    expect(result.demo).toBe("ok");
+    expect(result.email).toBe("failed");
+  });
 });
