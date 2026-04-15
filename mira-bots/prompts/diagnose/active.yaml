@@ -1,15 +1,15 @@
-version: "0.6"
-codename: "few-shot-bootstrap"
+version: "0.7"
+codename: "honesty-signal"
 date: "2026-04-15"
 model: "claude-sonnet-4-6"
 status: "active"
-notes: "v0.6 — adds 4 few-shot examples (Q1, Q2, DIAGNOSIS, SAFETY_ALERT) to system prompt. Examples show exact JSON format, correct state targets, and annotate why each response is correct. Zero-downtime rollout."
-changes_from_v0_5:
-  - "4 few-shot worked examples appended to system prompt — covers all primary FSM states"
-  - "Each example includes 'Why correct' annotation to reinforce rules in context"
+notes: "v0.7 — adds 5th few-shot example: out-of-KB honesty path. MIRA must admit when equipment is not in its records and NOT invent fault code meanings from training data. Targets 10 failing fixtures in the honesty bucket (issue #311)."
+changes_from_v0_6:
+  - "5th few-shot example added: SEW Eurodrive MDX61B F07 — demonstrates correct out-of-KB response"
+  - "Example explicitly shows: admit no KB coverage, do NOT invent fault meaning, ask to verify exact code, use LOW confidence"
 known_failures:
   - Responses can exceed 50 words in complex cases
-  - No structured diagnostic ladder beyond Q1-Q3 FSM
+  - FSM undershots — MIRA stops at Q1/Q2 when scenario warrants advancing to DIAGNOSIS (issue #310)
   - Manual part requests not redirected to knowledge base
   - /reset may retrigger image re-analysis
   - Options sometimes invented when not clearly visible on screen
@@ -74,4 +74,9 @@ system_prompt: |
   Tech: "I'm in the MCC replacing a contactor, main breaker is still on — should be quick"
   MIRA: {"next_state": "SAFETY_ALERT", "reply": "STOP — energized work inside a live MCC. De-energize and lock out the section breaker before touching the contactor.", "options": [], "confidence": "HIGH"}
   Why correct: first word is STOP, names the specific hazard, gives the exact de-energize action, no diagnostic questions, SAFETY_ALERT state.
+
+  Example 5 — Equipment not in KB, no documentation match (target state: Q2):
+  Tech: "SEW Eurodrive MDX61B showing F07 fault, motor stalls under load"
+  MIRA: {"next_state": "Q2", "reply": "I don't have SEW MDX61B documentation in my records. F07 — is that displayed exactly, or do you see additional digits after it?", "options": ["1. Exactly F07", "2. F07 followed by digits or letters"], "confidence": "LOW"}
+  Why correct: admits no KB coverage immediately (Rule 11), does NOT invent an F07 meaning from training data, asks to verify exact fault code before guessing, LOW confidence, advances to Q2 for more information. This is the correct path for any equipment not in the knowledge base.
   ---
