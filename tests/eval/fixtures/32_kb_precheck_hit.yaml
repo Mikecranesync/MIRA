@@ -1,0 +1,18 @@
+id: kb_precheck_hit_32
+description: >
+  KB pre-check hit — user requests GS20 manual, KB already has ≥3 chunks for
+  AutomationDirect GS20. MIRA must respond with existing KB content and NOT
+  fire a scrape trigger. Validates the wasted-crawl gap fix (v3.2.0).
+  Proof: KB_PRE_CHECK_HIT appears in pipeline logs, no SCRAPE_TRIGGER log.
+expected_final_state: IDLE
+max_turns: 2
+expected_keywords: [documentation, knowledge base, GS20, AutomationDirect]
+forbidden_keywords: [crawl, searching, queued, minutes]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [documentation, gs20, kb-precheck, no-crawl, v3.2.0]
+turns:
+  - role: user
+    content: "Do you have the manual for an AutomationDirect GS20?"

@@ -461,3 +461,110 @@ def recall_knowledge(
     except Exception as exc:
         logger.warning("NeonDB recall failed: %s", exc)
         return []
+
+
+def kb_has_coverage(
+    vendor: str,
+    query: str,
+    tenant_id: str,
+    min_chunks: int = 3,
+) -> tuple[bool, list[dict]]:
+    """Check if NeonDB has sufficient documentation chunks for vendor + optional model.
+
+    vendor: manufacturer name (e.g. "AutomationDirect", "Pilz")
+    query: raw user query — product names are extracted for model-scoped check
+    tenant_id: caller's tenant (also searches shared OEM pool)
+    min_chunks: minimum chunks required to consider KB covered (default 3)
+
+    Returns (True, chunks) if covered — chunks are up to min_chunks sample rows.
+    Returns (False, []) if not covered or on any error. Never raises.
+    """
+    url = os.environ.get("NEON_DATABASE_URL")
+    if not url or not vendor or not tenant_id:
+        return False, []
+
+    try:
+        from sqlalchemy import create_engine, text  # noqa: PLC0415
+        from sqlalchemy.pool import NullPool  # noqa: PLC0415
+    except ImportError:
+        return False, []
+
+    try:
+        engine = create_engine(
+            url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        vendor_pat = f"%{vendor}%"
+        fetch_limit = min_chunks + 2
+
+        with engine.connect() as conn:
+            # Model-scoped check first — user named a specific model
+            model_hints = _extract_product_names(query)
+            if model_hints:
+                model_pat = f"%{model_hints[0]}%"
+                rows = conn.execute(
+                    text("""
+                        SELECT content, manufacturer, model_number
+                        FROM knowledge_entries
+                        WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
+                          AND manufacturer ILIKE :vendor
+                          AND model_number ILIKE :model
+                        ORDER BY id DESC
+                        LIMIT :lim
+                    """),
+                    {
+                        "tid": tenant_id,
+                        "shared_tid": SHARED_TENANT_ID,
+                        "vendor": vendor_pat,
+                        "model": model_pat,
+                        "lim": fetch_limit,
+                    },
+                ).mappings().fetchall()
+                chunks = [dict(r) for r in rows]
+                if len(chunks) >= min_chunks:
+                    logger.info(
+                        "KB_PRE_CHECK_HIT vendor=%r model=%r chunks=%d",
+                        vendor,
+                        model_hints[0],
+                        len(chunks),
+                    )
+                    return True, chunks[:min_chunks]
+
+            # Manufacturer-only check — any docs for this vendor?
+            rows = conn.execute(
+                text("""
+                    SELECT content, manufacturer, model_number
+                    FROM knowledge_entries
+                    WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
+                      AND manufacturer ILIKE :vendor
+                    ORDER BY id DESC
+                    LIMIT :lim
+                """),
+                {
+                    "tid": tenant_id,
+                    "shared_tid": SHARED_TENANT_ID,
+                    "vendor": vendor_pat,
+                    "lim": fetch_limit,
+                },
+            ).mappings().fetchall()
+            chunks = [dict(r) for r in rows]
+            if len(chunks) >= min_chunks:
+                logger.info(
+                    "KB_PRE_CHECK_HIT vendor=%r model=* chunks=%d",
+                    vendor,
+                    len(chunks),
+                )
+                return True, chunks[:min_chunks]
+
+            logger.info(
+                "KB_PRE_CHECK_MISS vendor=%r query_models=%s chunks_found=%d",
+                vendor,
+                model_hints or [],
+                len(chunks),
+            )
+            return False, []
+    except Exception as exc:
+        logger.warning("kb_has_coverage failed: %s", exc)
+        return False, []

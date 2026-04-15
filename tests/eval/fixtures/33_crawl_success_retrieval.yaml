@@ -1,0 +1,22 @@
+id: crawl_success_retrieval_33
+description: >
+  KB miss + crawl success — user requests Pilz PNOZ X3 manual. KB has no coverage
+  initially. MIRA must respond immediately with pilz.com URL and queue a crawl.
+  Follow-up question (2 turns later) should use freshly indexed Pilz chunks.
+  Validates KB_PRE_CHECK_MISS log → SCRAPE_TRIGGER log → retrieval on Turn 2.
+  Note: Turn 2 timing assumes crawl completed within test window; in CI the
+  follow-up verifies the crawl was triggered, not that chunks are available yet.
+expected_final_state: IDLE
+max_turns: 3
+expected_keywords: [pilz.com, Pilz, PNOZ, manual, documentation]
+forbidden_keywords: []
+expected_vendor: Pilz
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [documentation, pilz, pnoz-x3, kb-precheck-miss, crawl-trigger, v3.2.0]
+turns:
+  - role: user
+    content: "Can you find a manual for the Pilz PNOZ X3?"
+  - role: user
+    content: "What are the safe state outputs on the PNOZ X3?"

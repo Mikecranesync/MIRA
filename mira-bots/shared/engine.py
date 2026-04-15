@@ -22,6 +22,7 @@ from .guardrails import (
     vendor_support_url,
 )
 from .inference.router import InferenceRouter
+from .neon_recall import kb_has_coverage
 from .nemotron import NemotronClient
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
@@ -437,11 +438,91 @@ class Supervisor:
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, "IDLE")
 
-        # Documentation intent: respond with vendor URL immediately + async crawl
+        # Documentation intent: KB pre-check → serve or crawl → honest failure
         if not photo_b64 and intent == "documentation":
+            import asyncio
+
             combined = f"{message} {state.get('asset_identified', '')}".strip()
             url = vendor_support_url(combined)
             mfr = vendor_name_from_text(combined) or ""
+
+            # --- KB pre-check: skip the crawl if we already have coverage ---
+            covered, kb_chunks = kb_has_coverage(mfr, combined, resolved_tenant or "")
+            if covered:
+                sample = kb_chunks[0]["content"][:500].strip() if kb_chunks else ""
+                label = (
+                    f"{mfr} {kb_chunks[0].get('model_number', '')}".strip()
+                    if kb_chunks
+                    else (mfr or "that equipment")
+                )
+                reply = f"I have documentation for {label} in my knowledge base already.\n\n"
+                if sample:
+                    reply += f"{sample}\n\n"
+                reply += "What specifically do you need to know?"
+                logger.info(
+                    "KB_PRE_CHECK_HIT chat_id=%s manufacturer=%r chunks=%d — skipping crawl",
+                    chat_id,
+                    mfr,
+                    len(kb_chunks),
+                )
+                self._record_exchange(chat_id, state, message, reply)
+                tl_flush()
+                return self._make_result(reply, "high", trace_id, state["state"])
+
+            # --- Check pending crawl: did a previous crawl for this vendor finish? ---
+            ctx = state.get("context") or {}
+            pending = ctx.get("pending_crawl", {})
+            pending_vendor = pending.get("vendor", "")
+            if pending and pending_vendor and mfr and pending_vendor.lower() == mfr.lower():
+                age_s = time.time() - pending.get("fired_at", 0)
+                if age_s < 90:
+                    # Crawl likely still running — tell the user to check back
+                    reply = (
+                        f"I'm still searching for {mfr} documentation — it usually takes "
+                        f"a couple of minutes.\n\n"
+                        f"Try again shortly, or describe what you're seeing and I'll help "
+                        f"based on what I know."
+                    )
+                    logger.info(
+                        "KB_PRE_CHECK_PENDING chat_id=%s vendor=%r age_s=%.0f",
+                        chat_id,
+                        mfr,
+                        age_s,
+                    )
+                    self._record_exchange(chat_id, state, message, reply)
+                    tl_flush()
+                    return self._make_result(reply, "low", trace_id, state["state"])
+
+                # Crawl is old enough — check its outcome
+                outcome = await self._check_crawl_outcome(mfr)
+                _FAILED_OUTCOMES = {"EMPTY", "LOW_QUALITY", "SHELL_ONLY", "FAILED"}
+                if outcome in _FAILED_OUTCOMES:
+                    vendor_label = mfr or "that equipment"
+                    reply = (
+                        f"I tried finding the {vendor_label} manual through multiple sources "
+                        f"but couldn't locate it online.\n\n"
+                        f"If you have the PDF, you can upload it directly — I'll ingest it "
+                        f"so it's available for future questions. Otherwise I can still help "
+                        f"based on general industrial knowledge — just describe what you're seeing."
+                    )
+                    logger.info(
+                        "CRAWL_FAILURE_REPORTED chat_id=%s vendor=%r outcome=%s",
+                        chat_id,
+                        mfr,
+                        outcome,
+                    )
+                    # Clear the stale pending crawl so next request tries fresh
+                    ctx.pop("pending_crawl", None)
+                    state["context"] = ctx
+                    self._record_exchange(chat_id, state, message, reply)
+                    tl_flush()
+                    return self._make_result(reply, "low", trace_id, state["state"])
+
+                # Outcome is success or unknown — fall through to re-fire or normal response
+                ctx.pop("pending_crawl", None)
+                state["context"] = ctx
+
+            # --- Fire crawl + respond immediately with vendor URL ---
             if url:
                 reply = (
                     f"I don't have documentation for that equipment in my knowledge "
@@ -458,11 +539,17 @@ class Supervisor:
                     "document type.\n\n"
                     "I've queued a search — ask me again shortly."
                 )
-            import asyncio
 
             asyncio.create_task(
                 self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id)
             )
+
+            # Store pending crawl so next doc request can check its outcome
+            if mfr:
+                ctx = state.get("context") or {}
+                ctx["pending_crawl"] = {"vendor": mfr, "fired_at": time.time()}
+                state["context"] = ctx
+
             logger.info(
                 "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s",
                 chat_id,
@@ -1044,6 +1131,29 @@ class Supervisor:
                 )
         except Exception as e:
             logger.warning("SCRAPE_TRIGGER failed (non-fatal): %s", e)
+
+    async def _check_crawl_outcome(self, manufacturer: str) -> str | None:
+        """Query /ingest/crawl-verifications for the most recent record matching manufacturer.
+
+        Returns the outcome code (e.g. "SUCCESS", "EMPTY", "LOW_QUALITY", "SHELL_ONLY",
+        "FAILED") or None if the ingest service is unreachable or has no record yet.
+        """
+        url = f"{self._ingest_base_url}/ingest/crawl-verifications?limit=20"
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(url)
+            if resp.status_code != 200:
+                return None
+            records = resp.json().get("records", [])
+            mfr_lower = manufacturer.lower()
+            for record in records:
+                rec_mfr = record.get("manufacturer", "").lower()
+                if mfr_lower in rec_mfr or rec_mfr in mfr_lower:
+                    return record.get("outcome")
+            return None
+        except Exception as e:
+            logger.debug("_check_crawl_outcome failed (non-fatal): %s", e)
+            return None
 
     _STOP_WORDS = frozenset(
         {
