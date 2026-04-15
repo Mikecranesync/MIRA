@@ -33,6 +33,11 @@ export interface Tenant {
   atlas_company_id: number;
   atlas_user_id: number;
   atlas_provisioning_status: string;
+  activation_email_status: string;    // 'pending' | 'sent' | 'failed'
+  demo_seed_status: string;           // 'pending' | 'ok' | 'failed'
+  provisioning_attempts: number;
+  provisioning_last_attempt_at: string | null;
+  provisioning_last_error: string | null;
   created_at: string;
 }
 
@@ -48,7 +53,10 @@ export async function findTenantByEmail(
     SELECT id, email, company, tier, first_name,
            stripe_customer_id, stripe_subscription_id,
            atlas_password, atlas_company_id, atlas_user_id,
-           atlas_provisioning_status, created_at
+           atlas_provisioning_status,
+           activation_email_status, demo_seed_status,
+           provisioning_attempts, provisioning_last_attempt_at,
+           provisioning_last_error, created_at
     FROM plg_tenants WHERE email = ${email} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
@@ -61,7 +69,10 @@ export async function findTenantById(
     SELECT id, email, company, tier, first_name,
            stripe_customer_id, stripe_subscription_id,
            atlas_password, atlas_company_id, atlas_user_id,
-           atlas_provisioning_status, created_at
+           atlas_provisioning_status,
+           activation_email_status, demo_seed_status,
+           provisioning_attempts, provisioning_last_attempt_at,
+           provisioning_last_error, created_at
     FROM plg_tenants WHERE id = ${tenantId} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
@@ -74,7 +85,10 @@ export async function findTenantByStripeCustomerId(
     SELECT id, email, company, tier, first_name,
            stripe_customer_id, stripe_subscription_id,
            atlas_password, atlas_company_id, atlas_user_id,
-           atlas_provisioning_status, created_at
+           atlas_provisioning_status,
+           activation_email_status, demo_seed_status,
+           provisioning_attempts, provisioning_last_attempt_at,
+           provisioning_last_error, created_at
     FROM plg_tenants WHERE stripe_customer_id = ${stripeCustomerId} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
@@ -160,6 +174,35 @@ export async function getTenantCmmsTier(tenantId: string): Promise<string> {
   const rows = await db`
     SELECT cmms_tier FROM plg_tenants WHERE id = ${tenantId} LIMIT 1`;
   return (rows[0]?.cmms_tier as string) || "base";
+}
+
+export async function updateTenantEmailStatus(
+  tenantId: string,
+  status: "pending" | "sent" | "failed",
+): Promise<void> {
+  const db = sql();
+  await db`UPDATE plg_tenants SET activation_email_status = ${status} WHERE id = ${tenantId}`;
+}
+
+export async function updateTenantSeedStatus(
+  tenantId: string,
+  status: "pending" | "ok" | "failed",
+): Promise<void> {
+  const db = sql();
+  await db`UPDATE plg_tenants SET demo_seed_status = ${status} WHERE id = ${tenantId}`;
+}
+
+export async function recordProvisioningAttempt(
+  tenantId: string,
+  error: string | null,
+): Promise<void> {
+  const db = sql();
+  await db`
+    UPDATE plg_tenants
+       SET provisioning_attempts = provisioning_attempts + 1,
+           provisioning_last_attempt_at = NOW(),
+           provisioning_last_error = ${error}
+     WHERE id = ${tenantId}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,6 +291,28 @@ export async function ensureSchema(): Promise<void> {
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS cmms_tier TEXT NOT NULL DEFAULT 'base'`;
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS cmms_provider TEXT`;
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS cmms_config_json TEXT`;
+
+  // Activation tracking (issue #296)
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS activation_email_status TEXT NOT NULL DEFAULT 'pending'`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS demo_seed_status TEXT NOT NULL DEFAULT 'pending'`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS provisioning_attempts INTEGER NOT NULL DEFAULT 0`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS provisioning_last_attempt_at TIMESTAMPTZ`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS provisioning_last_error TEXT`;
+
+  // Backfill: existing active tenants with atlas='ok' had email+seed succeed historically.
+  // Mark them 'sent'/'ok' so /api/me doesn't show a false "unfinished setup" banner.
+  await db`
+    UPDATE plg_tenants
+       SET activation_email_status = 'sent', demo_seed_status = 'ok'
+     WHERE tier = 'active'
+       AND atlas_provisioning_status = 'ok'
+       AND activation_email_status = 'pending'`;
+
+  // Index for admin-health stuck-tenant detection
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_plg_tenants_activation_stuck
+      ON plg_tenants (tier, atlas_provisioning_status, activation_email_status)
+      WHERE tier = 'active'`;
 
   await db`
     CREATE TABLE IF NOT EXISTS plg_query_log (
