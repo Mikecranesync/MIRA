@@ -1,0 +1,28 @@
+# Oracle Cloud overrides — routes Ollama to Bravo via Tailscale.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.oracle.yml up -d
+services:
+  open-webui:
+    environment:
+      - OLLAMA_BASE_URL=http://100.86.236.11:11434
+    extra_hosts:
+      - "host.docker.internal:100.86.236.11"
+
+  mira-mcpo:
+    image: mira-core-mira-mcpo:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.mcpo
+
+  mira-ingest:
+    environment:
+      - OLLAMA_BASE_URL=http://100.86.236.11:11434
+    ports:
+      - "8002:8001"
+    extra_hosts:
+      - "host.docker.internal:100.86.236.11"
+
+  mira-pipeline:
+    environment:
+      - OLLAMA_BASE_URL=http://100.86.236.11:11434
+    extra_hosts:
+      - "host.docker.internal:100.86.236.11"
