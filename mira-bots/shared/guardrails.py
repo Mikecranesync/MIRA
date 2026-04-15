@@ -3,6 +3,8 @@
 Pure Python, zero external dependencies.
 """
 
+from __future__ import annotations
+
 import random
 import re
 
@@ -188,6 +190,18 @@ _EQUIPMENT_NAME_RE = re.compile(
 # Regex for common fault code patterns (F-201, CE2, OC, OL, etc.)
 _FAULT_CODE_RE = re.compile(
     r"\b[A-Z]{1,3}[-]?\d{1,4}\b"  # e.g. F-201, CE2, OC1, EF
+)
+
+# Educational question prefixes — messages that start with these are asking *about*
+# a safety concept, not reporting an active hazard.  They bypass the safety
+# short-circuit so the RAG path can answer them with real procedure info.
+# "I need to de-energize this panel, what are the steps?" vs
+# "there are exposed wires near the panel" — only the second is an active report.
+_EDUCATIONAL_QUESTION_RE = re.compile(
+    r"^(what|when|where|why|how|which|who|can you|could you|"
+    r"is it|are there|does|do you|the |an |a[\s']|during |per |under |"
+    r"define|explain|describe|list|what'?s)\b",
+    re.IGNORECASE,
 )
 
 GREETING_PATTERNS = {
@@ -633,8 +647,13 @@ def classify_intent(message: str) -> str:
     msg = strip_mentions(message).lower().strip()
     msg_expanded = expand_abbreviations(msg)
 
+    # Safety short-circuit: only fires for active hazard reports, not educational
+    # questions about safety concepts.  Educational framing ("what is arc flash",
+    # "how do I perform LOTO", "the restricted approach boundary is defined as")
+    # routes to industrial so RAG can provide real procedure information.
     if any(kw in msg for kw in SAFETY_KEYWORDS):
-        return "safety"
+        if not _EDUCATIONAL_QUESTION_RE.match(msg):
+            return "safety"
 
     if any(pat in msg for pat in HELP_PATTERNS):
         return "help"
