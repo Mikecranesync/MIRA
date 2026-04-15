@@ -1,0 +1,15 @@
+{
+  "type": "ZoneHeater",
+  "version": "1.0.0",
+  "description": "Electrically-heated zone in an industrial oven.",
+  "properties": [
+    {"name": "zoneTemperature", "engineeringUnit": "degF", "normalRangeMin": 350.0, "normalRangeMax": 425.0, "alarmHigh": 450.0, "alarmLow": 300.0, "description": "Measured zone temperature."},
+    {"name": "setpoint", "engineeringUnit": "degF", "normalRangeMin": 350.0, "normalRangeMax": 425.0, "alarmHigh": 425.0, "alarmLow": 300.0, "description": "Operator-commanded temperature setpoint."},
+    {"name": "heaterOutputPct", "engineeringUnit": "percent", "normalRangeMin": 0.0, "normalRangeMax": 100.0, "alarmHigh": 100.0, "alarmLow": 0.0, "description": "Heater element duty cycle."}
+  ],
+  "relationships": [
+    {"edge": "partOf", "targetType": "Oven"},
+    {"edge": "adjacentTo", "targetType": "ZoneHeater"},
+    {"edge": "monitoredBy", "targetType": "Thermocouple"}
+  ]
+}
