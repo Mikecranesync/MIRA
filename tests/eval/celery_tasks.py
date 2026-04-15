@@ -1,9 +1,10 @@
 """MIRA Eval Celery Tasks — continuous eval harness.
 
-Two tasks:
+Three tasks:
 
   mira_eval.run_batch             — Hourly, judge DISABLED (fast/cheap deterministic eval).
   mira_eval.run_batch_with_judge  — Nightly at 03:00 UTC, judge ENABLED (full quality eval).
+  mira_synth.generate_nightly     — Nightly at 02:00 UTC, synthetic pair generation (runs before judge).
 
 This file is deployed to /opt/master_of_puppets/workers/mira_eval_tasks.py
 on the VPS. It registers as a shared_task so it binds to whatever Celery
@@ -20,6 +21,10 @@ Beat schedule entries (in /opt/master_of_puppets/celery_app.py):
     'mira-eval-nightly-with-judge': {
         'task': 'mira_eval.run_batch_with_judge',
         'schedule': crontab(hour=3, minute=0),
+    },
+    'mira-synth-nightly': {
+        'task': 'mira_synth.generate_nightly',
+        'schedule': crontab(hour=2, minute=0),
     }
 
 Concurrency guard: file-based lock at /tmp/mira_eval.lock.
@@ -50,6 +55,7 @@ MIRA_DIR = Path(os.getenv("MIRA_DIR", "/opt/mira"))
 EVAL_LOG = Path("/var/log/mira-eval.log")
 LOCK_FILE = Path("/tmp/mira_eval.lock")
 JUDGE_LOCK_FILE = Path("/tmp/mira_eval_judge.lock")
+SYNTH_LOCK_FILE = Path("/tmp/mira_synth.lock")
 LOCK_MAX_AGE_S = 900  # 15 min — stale lock timeout
 
 
@@ -219,3 +225,100 @@ def run_eval_batch_with_judge() -> dict:
         return {"status": "error", "reason": str(e), "ts": ts}
     finally:
         _release_lock(JUDGE_LOCK_FILE)
+
+
+@shared_task(name="mira_synth.generate_nightly", max_retries=0, ignore_result=False)
+def generate_nightly_pairs() -> dict:
+    """Nightly synthetic pair generation at 02:00 UTC (1 hour before judge eval).
+
+    Runs synthetic_pair_gen.py to generate fixtures for tests/eval/fixtures/synthetic/
+    and DPO JSONL to /opt/mira/data/dpo_pairs/. Commits new fixtures to main.
+
+    Beat schedule: crontab(hour=2, minute=0) — 02:00 UTC.
+    Requires ANTHROPIC_API_KEY in environment.
+    """
+    if not _acquire_lock(SYNTH_LOCK_FILE):
+        return {"status": "skipped", "reason": "synth_lock_held"}
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M")
+    fixture_dir = MIRA_DIR / "tests" / "eval" / "fixtures" / "synthetic"
+    dpo_dir = MIRA_DIR / "data" / "dpo_pairs"
+    synth_log = EVAL_LOG.parent / "mira-synth.log"
+
+    try:
+        result = subprocess.run(
+            [
+                "python3",
+                str(MIRA_DIR / "mira-bots" / "tools" / "synthetic_pair_gen.py"),
+                "--fixture-dir", str(fixture_dir),
+                "--dpo-dir", str(dpo_dir),
+            ],
+            cwd=MIRA_DIR,
+            capture_output=True,
+            text=True,
+            timeout=600,
+            env={**os.environ},
+        )
+
+        with synth_log.open("a") as f:
+            f.write(f"\n=== mira_synth.generate_nightly {ts} UTC ===\n")
+            if result.stdout:
+                f.write(result.stdout)
+            if result.stderr:
+                f.write(result.stderr)
+
+        if result.returncode != 0:
+            logger.error("Synthetic pair gen errored (rc=%d)", result.returncode)
+            return {"status": "error", "rc": result.returncode, "ts": ts}
+
+        # Parse output to get counts
+        try:
+            summary = __import__("json").loads(result.stdout.strip().split("\n")[-1])
+        except Exception:
+            summary = {}
+
+        fixture_count = summary.get("fixture_count", 0)
+        if fixture_count == 0:
+            logger.info("Synthetic gen produced 0 fixtures — nothing to commit")
+            return {"status": "ok", "fixture_count": 0, "ts": ts}
+
+        # Stage + commit new fixtures and DPO JSONL
+        subprocess.run(
+            ["git", "add",
+             str(fixture_dir),
+             str(dpo_dir)],
+            cwd=MIRA_DIR, check=True,
+        )
+        commit_r = subprocess.run(
+            ["git", "commit", "-m",
+             f"auto: {fixture_count} synthetic eval fixtures + DPO pairs ({ts} UTC)\n\n"
+             "Signed-off-by: mira-synth-bot <eval@mira.local>"],
+            cwd=MIRA_DIR, capture_output=True, text=True,
+        )
+        if commit_r.returncode != 0:
+            logger.warning("Synth commit failed (nothing to commit?): %s", commit_r.stderr[:200])
+            return {"status": "ok_no_commit", "fixture_count": fixture_count, "ts": ts}
+
+        push_r = subprocess.run(
+            ["git", "push", "origin", "main"],
+            cwd=MIRA_DIR, capture_output=True, text=True, timeout=60,
+        )
+        if push_r.returncode != 0:
+            logger.warning("Synth push failed: %s", push_r.stderr[:200])
+
+        logger.info("Nightly synth complete: %d fixtures, %d DPO pairs", fixture_count, summary.get("dpo_count", 0))
+        return {
+            "status": "ok",
+            "fixture_count": fixture_count,
+            "dpo_count": summary.get("dpo_count", 0),
+            "ts": ts,
+        }
+
+    except subprocess.TimeoutExpired as e:
+        logger.error("Synthetic pair gen timed out: %s", e)
+        return {"status": "error", "reason": "timeout", "ts": ts}
+    except Exception as e:
+        logger.error("Synthetic pair gen unexpected error: %s", e)
+        return {"status": "error", "reason": str(e), "ts": ts}
+    finally:
+        _release_lock(SYNTH_LOCK_FILE)

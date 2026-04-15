@@ -242,6 +242,8 @@ def run_scenario(
 
     logger.info("Running scenario: %s (chat_id=%s)", fixture["id"], chat_id)
 
+    turn_log: list[dict] = []
+
     for i, turn in enumerate(user_turns):
         content = turn["content"]
         logger.info("  Turn %d: %s", i + 1, content[:60])
@@ -256,12 +258,15 @@ def run_scenario(
         responses.append(reply)
         http_statuses.append(status)
         latencies_ms.append(latency)
-        logger.info("  -> HTTP %d, %dms, %d chars", status, latency, len(reply))
+
+        fsm_after = _read_fsm_state(chat_id)
+        turn_log.append({"turn": i + 1, "user_msg": content, "fsm_state": fsm_after})
+        logger.info("  -> HTTP %d, %dms, %d chars, fsm=%s", status, latency, len(reply), fsm_after)
 
         if i < len(user_turns) - 1:
             time.sleep(0.5)
 
-    final_state = _read_fsm_state(chat_id)
+    final_state = turn_log[-1]["fsm_state"] if turn_log else _read_fsm_state(chat_id)
     logger.info("  Final FSM state: %s", final_state)
 
     grade = grade_scenario(
@@ -289,6 +294,7 @@ def run_scenario(
             user_question=last_user_question,
             generated_by=generated_by,
             scenario_id=fixture["id"],
+            conversation_history=turn_log if len(turn_log) > 1 else None,
         )
 
     return grade, judge_result
@@ -304,7 +310,7 @@ _CHECKPOINT_LABELS = [
     "Turn budget",
 ]
 
-_JUDGE_LABELS = ["Grnd", "Help", "Tone", "Inst"]
+_JUDGE_LABELS = ["Grnd", "Help", "Tone", "Inst", "Flow"]
 _JUDGE_LABEL_MAP = dict(zip(DIMENSIONS, _JUDGE_LABELS))
 
 

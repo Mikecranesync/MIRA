@@ -5,11 +5,12 @@ Routes judge calls AWAY from the provider that generated the response:
   - Groq/Cerebras/Gemini-generated → judge with Claude
   - unknown           → Claude first (highest-quality judge), Groq fallback
 
-Four dimensions on a 1–5 Likert scale:
+Five dimensions on a 1–5 Likert scale:
   groundedness         — does response reflect KB chunks or admit no KB (no invented facts)?
   helpfulness          — would a technician on-site actually be able to act on this?
   tone                 — concise, confident, appropriate for industrial maintenance context?
   instruction_following — did response honor the user's actual ask?
+  conversational_flow  — did MIRA advance FSM state logically, ask ≤1 question per turn, avoid repeating itself?
 
 Scoring rubric:
   5 = Excellent — fully meets the dimension criteria
@@ -50,23 +51,24 @@ _ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 _ANTHROPIC_VERSION = "2023-06-01"
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
-DIMENSIONS = ("groundedness", "helpfulness", "tone", "instruction_following")
+DIMENSIONS = ("groundedness", "helpfulness", "tone", "instruction_following", "conversational_flow")
 
 # ── Judge prompt ──────────────────────────────────────────────────────────────
 
 _JUDGE_PROMPT = """\
 You are grading a maintenance-technician AI assistant's response. Be strict but fair.
 
-Context — what the user asked:
+{conversation_history_section}\
+Context — what the user asked (final turn):
 {user_question}
 
 Retrieved knowledge base chunks (may be empty — model had no KB coverage):
 {rag_context}
 
-Assistant's response to grade:
+Assistant's final response to grade:
 {response_text}
 
-Grade on four dimensions. Each dimension gets an integer score 1–5 and a one-sentence justification.
+Grade on five dimensions. Each dimension gets an integer score 1–5 and a one-sentence justification.
 
 Rubric:
   5 = Excellent — fully meets the dimension criteria
@@ -87,13 +89,17 @@ not cheerful AI-assistant fluff? Does it treat the technician as a professional?
   instruction_following: Did the response honor the user's actual ask? For example, if the user \
 asked "find me a manual", did the response provide a manual-seeking answer (vendor URL, doc \
 reference) rather than deflecting with another diagnostic question?
+  conversational_flow: Did MIRA advance the FSM state logically turn-by-turn (not stall, not \
+skip, not repeat the same question)? Did each turn contain exactly one question? Did the \
+conversation progress toward diagnosis rather than looping?
 
 Return ONLY valid JSON — no markdown, no explanation outside the JSON:
 {{
   "groundedness": {{"score": <1-5>, "note": "<one sentence>"}},
   "helpfulness": {{"score": <1-5>, "note": "<one sentence>"}},
   "tone": {{"score": <1-5>, "note": "<one sentence>"}},
-  "instruction_following": {{"score": <1-5>, "note": "<one sentence>"}}
+  "instruction_following": {{"score": <1-5>, "note": "<one sentence>"}},
+  "conversational_flow": {{"score": <1-5>, "note": "<one sentence>"}}
 }}"""
 
 
@@ -277,6 +283,19 @@ class Judge:
             notes[dim] = str(entry.get("note", ""))
         return scores, notes
 
+    @staticmethod
+    def _build_history_section(conversation_history: list[dict] | None) -> str:
+        """Format turn log into a condensed history prefix for the judge prompt."""
+        if not conversation_history:
+            return ""
+        lines = ["Conversation history (condensed):"]
+        for i, turn in enumerate(conversation_history, start=1):
+            user = (turn.get("user_msg") or "")[:120]
+            state = turn.get("fsm_state") or "?"
+            lines.append(f"  Turn {i}: user said \"{user}\" → FSM advanced to {state}")
+        lines.append("")
+        return "\n".join(lines) + "\n\n"
+
     def grade(
         self,
         response: str,
@@ -284,15 +303,18 @@ class Judge:
         user_question: str,
         generated_by: str = "unknown",
         scenario_id: str = "unknown",
+        conversation_history: list[dict] | None = None,
     ) -> JudgeResult:
-        """Grade a single response across four dimensions.
+        """Grade a single response across five dimensions.
 
         Args:
-            response:      The assistant's response text to grade.
-            rag_context:   Retrieved KB chunks (empty string if no KB available).
-            user_question: The user's primary ask (last user turn recommended).
-            generated_by:  Provider that generated the response ("claude", "groq", etc.).
-            scenario_id:   Fixture ID for logging and tracking.
+            response:              The assistant's response text to grade.
+            rag_context:           Retrieved KB chunks (empty string if no KB available).
+            user_question:         The user's primary ask (last user turn recommended).
+            generated_by:          Provider that generated the response ("claude", "groq", etc.).
+            scenario_id:           Fixture ID for logging and tracking.
+            conversation_history:  Optional list of {turn, user_msg, fsm_state} dicts for
+                                   multi-turn context. Enables conversational_flow scoring.
 
         Returns:
             JudgeResult with scores, notes, and judge metadata.
@@ -334,7 +356,9 @@ class Judge:
             judge_model,
         )
 
+        history_section = self._build_history_section(conversation_history)
         prompt = _JUDGE_PROMPT.format(
+            conversation_history_section=history_section,
             user_question=user_question or "(none)",
             rag_context=rag_context or "(no KB chunks retrieved — model had no KB coverage)",
             response_text=response or "(empty response)",
