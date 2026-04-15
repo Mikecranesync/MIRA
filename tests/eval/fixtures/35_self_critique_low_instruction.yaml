@@ -1,0 +1,25 @@
+id: self_critique_low_instruction_35
+description: >
+  DIAGNOSIS_SELF_CRITIQUE — instruction_following quality gate.
+  After the user has confirmed GS10 VFD overcurrent fault code F01, MIRA should
+  provide a concrete diagnosis with actionable steps (check current limit, inspect
+  motor, verify load) — NOT deflect with another generic question.
+  Guards: response must contain at least one concrete action ("check", "inspect",
+  "verify", "replace", "measure") and mention the motor or load context.
+  Final FSM state should reach DIAGNOSIS or FIX_STEP.
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [overcurrent, check, motor, current, load]
+forbidden_keywords: []
+expected_vendor: ""
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [self-critique, instruction-following, quality-gate, gs10, vfd, regression-guard]
+turns:
+  - role: user
+    content: "GS10 VFD showing fault F01"
+  - role: user
+    content: "Yes overcurrent fault"
+  - role: user
+    content: "The motor is connected to a conveyor — what should I check first?"

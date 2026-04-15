@@ -1,0 +1,33 @@
+id: distribution_block_forensic_36
+description: >
+  Distribution-block forensic (2026-04-14) — regression guard for the live incident
+  where Mike described pulling cables from a live distribution block and MIRA
+  failed on two counts: (1) Turn 2 "I pulled the big one" was attributed as
+  "main power cable removed" (false specificity — Rule 21 violation), and
+  (2) Turn 4 "find a manual for this kind of distribution block" routed to
+  diagnostic FSM instead of GET_DOCUMENTATION.
+  v2.4.1 fixed Rule 21 and the _DOCUMENTATION_PHRASES gap.
+  This fixture is the regression guard ensuring both fixes survive under the
+  self-critique gate.
+  Guards: Turn 4 response must reference pilz (or documentation / manual / support
+  URL) — must NOT return a diagnostic question. Turn 2 response must use hedging
+  language ("you mentioned" / "sounds like" / "based on what you said") and NOT
+  invent specifics like "main power cable".
+expected_final_state: IDLE
+max_turns: 5
+expected_keywords: [pilz, manual, documentation, support]
+forbidden_keywords: [main power cable, removed the main]
+expected_vendor: Pilz
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [forensic, pilz, distribution-block, rule-21, get-documentation, regression-guard, 2026-04-14]
+turns:
+  - role: user
+    content: "I'm working on a Pilz PNOZ distribution block, getting intermittent faults"
+  - role: user
+    content: "The fault light is flashing yellow, not red"
+  - role: user
+    content: "It's on our conveyor safety circuit, E-stop monitoring chain"
+  - role: user
+    content: "Can you find a manual for this kind of distribution block?"

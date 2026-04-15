@@ -49,6 +49,25 @@ _LOW_CONF_SIGNALS = re.compile(
 _JSON_RE = re.compile(r'\{[^{}]*"reply"[^{}]*\}', re.DOTALL)
 
 STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
+# ---------------------------------------------------------------------------
+# Diagnosis self-critique quality gate
+# ---------------------------------------------------------------------------
+_CRITIQUE_DISABLED = os.getenv("MIRA_DISABLE_SELF_CRITIQUE", "0") == "1"
+_CRITIQUE_THRESHOLD = int(os.getenv("MIRA_CRITIQUE_THRESHOLD", "3"))
+_CRITIQUE_MAX_ATTEMPTS = int(os.getenv("MIRA_CRITIQUE_MAX_ATTEMPTS", "2"))
+# Compact judge prompt — returns only the three actionable dims to keep token cost low.
+_CRITIQUE_PROMPT = """\
+Score this maintenance-AI response. Return ONLY valid JSON — no markdown, no prose.
+
+User asked: {question}
+
+AI responded: {response}
+
+Rate each on 1-5 (5=excellent, 3=acceptable, <3=needs revision):
+
+{{"groundedness":{{"score":<1-5>,"note":"<12 words max: reflects KB or admits gap?>"}},\
+"helpfulness":{{"score":<1-5>,"note":"<12 words max: technician can act on this?>"}},\
+"instruction_following":{{"score":<1-5>,"note":"<12 words max: honored the user's actual ask?>"}}}}"""
 ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"})
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 # How many turns the session photo stays available for follow-up questions
@@ -97,6 +116,8 @@ _STATE_ALIASES: dict[str, str] = {
     "COMPLETE": "RESOLVED",
     "DONE": "RESOLVED",
     "CLOSED": "RESOLVED",
+    # Internal self-critique state — LLMs should not propose this; if they do, map to DIAGNOSIS
+    "DIAGNOSIS_REVISION": "DIAGNOSIS",
 }
 
 
@@ -722,6 +743,90 @@ class Supervisor:
 
         state = self._advance_state(state, parsed)
 
+        # ---------------------------------------------------------------------------
+        # Diagnosis self-critique quality gate (AutoGen-style nudge loop)
+        # Runs only on DIAGNOSIS state, text-only turns, caps at _CRITIQUE_MAX_ATTEMPTS.
+        # ---------------------------------------------------------------------------
+        if (
+            state["state"] == "DIAGNOSIS"
+            and not photo_b64
+            and not _CRITIQUE_DISABLED
+        ):
+            ctx_sc = state.get("context") or {}
+            revision_attempts = ctx_sc.get("revision_attempts", 0)
+
+            if revision_attempts < _CRITIQUE_MAX_ATTEMPTS:
+                scores = await self._self_critique_diagnosis(
+                    parsed["reply"], message, chat_id
+                )
+                low_dims = [d for d, s in scores.items() if s < _CRITIQUE_THRESHOLD]
+
+                if low_dims:
+                    revision_attempts += 1
+                    ctx_sc["revision_attempts"] = revision_attempts
+                    ctx_sc["revision_critique"] = {
+                        "dims": low_dims,
+                        "attempts": revision_attempts,
+                        "scores": scores,
+                    }
+                    state["context"] = ctx_sc
+                    logger.info(
+                        "SELF_CRITIQUE_TRIGGERED chat_id=%s dims=%s scores=%s attempt=%d",
+                        chat_id,
+                        low_dims,
+                        {d: scores[d] for d in low_dims},
+                        revision_attempts,
+                    )
+
+                    if "groundedness" in low_dims:
+                        # Need more info from the user → ask a targeted clarifying
+                        # question and park in DIAGNOSIS_REVISION.
+                        note = scores.get("groundedness_note", "")
+                        clarifying_q = (
+                            "Before I can give you a confident diagnosis, could you "
+                            "share one more detail — what exact fault code, alarm "
+                            "number, or behaviour is the equipment showing right now? "
+                            "(e.g. fault light colour, code displayed, or what it does "
+                            "when the fault occurs)"
+                        )
+                        if note:
+                            clarifying_q += f"\n\n*(My confidence was limited because: {note})*"
+                        state["state"] = "DIAGNOSIS_REVISION"
+                        parsed["reply"] = clarifying_q
+                    else:
+                        # Helpfulness / instruction gap — regenerate inline without
+                        # asking the user for anything.
+                        critique_hint = "; ".join(
+                            f"{d} score={scores[d]}" for d in low_dims
+                        )
+                        revised_message = (
+                            f"[Quality note: previous answer had low {critique_hint}. "
+                            f"Regenerate: be more specific, concrete, and actionable. "
+                            f"User question: {message[:200]}]\n\n{message}"
+                        )
+                        try:
+                            raw2, parsed2 = await self._call_with_correction(
+                                revised_message, state, None, tenant_id=resolved_tenant
+                            )
+                            if raw2 is not None and parsed2.get("reply"):
+                                parsed = parsed2
+                                logger.info(
+                                    "SELF_CRITIQUE_REVISED chat_id=%s attempt=%d",
+                                    chat_id,
+                                    revision_attempts,
+                                )
+                        except Exception as exc:
+                            logger.warning(
+                                "SELF_CRITIQUE_REVISION_FAILED chat_id=%s error=%s",
+                                chat_id,
+                                exc,
+                            )
+                else:
+                    # Quality is acceptable — reset revision counter.
+                    ctx_sc.pop("revision_attempts", None)
+                    ctx_sc.pop("revision_critique", None)
+                    state["context"] = ctx_sc
+
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
@@ -906,6 +1011,54 @@ class Supervisor:
             linked_chunks,
         )
         return reply
+
+    async def _self_critique_diagnosis(
+        self, reply: str, user_question: str, chat_id: str
+    ) -> dict:
+        """Score a DIAGNOSIS reply on 3 quality dimensions via the router cascade.
+
+        Returns a dict mapping dimension name → score (1-5), e.g.:
+            {"groundedness": 4, "helpfulness": 2, "instruction_following": 3}
+
+        Returns {} on any failure — always fails open so that a judge error never
+        blocks a response from reaching the user.
+        """
+        if not self.router.enabled:
+            return {}
+        prompt = _CRITIQUE_PROMPT.format(
+            question=user_question[:300],
+            response=reply[:600],
+        )
+        try:
+            text, _ = await self.router.complete(
+                [{"role": "user", "content": prompt}],
+                max_tokens=256,
+                session_id=f"{chat_id}_critique",
+            )
+        except Exception as exc:
+            logger.warning("SELF_CRITIQUE_CALL_FAILED chat_id=%s error=%s", chat_id, exc)
+            return {}
+
+        if not text:
+            return {}
+
+        try:
+            # Strip markdown fences if present
+            clean = re.sub(r"```(?:json)?\s*|\s*```", "", text).strip()
+            data = json.loads(clean)
+            return {
+                dim: int(data[dim]["score"])
+                for dim in ("groundedness", "helpfulness", "instruction_following")
+                if dim in data and isinstance(data[dim], dict) and "score" in data[dim]
+            }
+        except Exception as exc:
+            logger.warning(
+                "SELF_CRITIQUE_PARSE_FAILED chat_id=%s error=%s text=%r",
+                chat_id,
+                exc,
+                text[:120],
+            )
+            return {}
 
     async def _call_with_correction(
         self,
@@ -1445,7 +1598,7 @@ class Supervisor:
     # ------------------------------------------------------------------
 
     _VALID_STATES = frozenset(
-        STATE_ORDER + ["ASSET_IDENTIFIED", "ELECTRICAL_PRINT", "SAFETY_ALERT"]
+        STATE_ORDER + ["ASSET_IDENTIFIED", "ELECTRICAL_PRINT", "SAFETY_ALERT", "DIAGNOSIS_REVISION"]
     )
 
     def _advance_state(self, state: dict, parsed: dict) -> dict:
@@ -1481,6 +1634,10 @@ class Supervisor:
         else:
             if current == "ASSET_IDENTIFIED":
                 state["state"] = "Q1"
+            elif current == "DIAGNOSIS_REVISION":
+                # No LLM-proposed state while in revision — treat as DIAGNOSIS so the
+                # self-critique gate can run again on the regenerated response.
+                state["state"] = "DIAGNOSIS"
             elif current in STATE_ORDER:
                 idx = STATE_ORDER.index(current)
                 if idx + 1 < len(STATE_ORDER):
