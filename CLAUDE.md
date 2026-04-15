@@ -148,7 +148,7 @@ bash install/smoke_test.sh
 6. **Docker images:** Pinned to exact version SHA or semver tag. Never `:latest` or `:main`.
 7. **Build tool:** Claude Code. All implementation prompts written as Claude Code instructions.
 8. **Commits:** Conventional commit format (`feat/fix/security/docs/refactor/test/chore/BREAKING`).
-9. **Config 4 deferred:** No Modbus, PLC, or VFD code until Config 1 MVP ships.
+9. ~~**Config 4 deferred:** No Modbus, PLC, or VFD code until Config 1 MVP ships.~~ **DEPRECATED 2026-04-15.** MVP definition (see `docs/vision/`) requires OPC UA discovery + PLC integration via MIRA Connect (Problem 7). Hard Constraint rescinded.
 
 ---
 
@@ -317,6 +317,7 @@ chore: build system, deps, tooling
 
 ## Where to Resume
 
+- **🎯 MVP vision (2026-04-15+)** — Canonical product spec is `docs/vision/2026-04-15-mira-manufacturing-gaps.md`. 12 problems define the MVP. Current alignment: 3/10 per `docs/vision/mvp-gap-analysis.md`. Next highest-priority build items (unblocking order): (1) ISA-95 path + `data_type` column on `knowledge_entries`, (2) tribal_knowledge auto-capture on FSM RESOLVED, (3) SM Profile schema + typed relationships, (4) approval-gated FSM, (5) FewShotTrainer, (6) quality metadata on telemetry, (7) MIRA Connect OPC UA wizard (biggest, ~6wk), (8) CESMII Marketplace publish. See `docs/vision/mvp-gap-analysis.md` for full per-problem delta + sizing. Phase 0 (RAG + bots + photos + $97/mo funnel) stays as foundation.
 - **`feature/vim` branch** — Merged to main. VIM phases 1A→4 + mira-crawler phases 1→4 + Docling adapter all integrated.
 - **Photo pipeline on Bravo** — 3,694 confirmed equipment photos in `~/takeout_staging/ollama_confirmed/`. Ready for KB ingest at scale.
 - **LlamaIndex RAG upgrade** — PRD complete (`MIRA_LlamaIndex_RAG_PRD.docx.md`). Replaces hand-rolled RAG in rag_worker.py with LlamaIndex orchestration. Ready to build.
