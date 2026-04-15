@@ -461,3 +461,89 @@ def recall_knowledge(
     except Exception as exc:
         logger.warning("NeonDB recall failed: %s", exc)
         return []
+
+
+# ---------------------------------------------------------------------------
+# KB coverage pre-check
+# ---------------------------------------------------------------------------
+
+# Minimum number of chunks that must exist for a vendor to be considered
+# "covered" in the knowledge base.  Configurable so ops can tune without deploy.
+KB_COVERAGE_MIN_CHUNKS = int(os.getenv("MIRA_KB_COVERAGE_MIN_CHUNKS", "3"))
+
+
+def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]:
+    """Return (True, reason) if the KB has ≥KB_COVERAGE_MIN_CHUNKS chunks for vendor.
+
+    Uses a direct COUNT query against NeonDB — no embedding required.
+    Checks both tenant-scoped entries and the shared OEM pool.
+
+    Args:
+        vendor: Manufacturer name (e.g. "AutomationDirect", "Yaskawa").
+        model:  Model string — currently used only for logging (future: row filter).
+        tenant_id: Active tenant for the conversation.
+
+    Returns:
+        (True,  "kb_N_chunks")         — KB has coverage, N ≥ KB_COVERAGE_MIN_CHUNKS
+        (False, "kb_only_N_chunks")    — KB exists but below threshold
+        (False, "no_vendor")           — vendor is blank / undetectable
+        (False, "no_neon_url")         — NEON_DATABASE_URL not set
+        (False, "error_<ExcType>")     — any DB failure
+    Never raises.
+    """
+    vendor_clean = vendor.strip()
+    if not vendor_clean:
+        return False, "no_vendor"
+
+    url = os.environ.get("NEON_DATABASE_URL")
+    if not url:
+        return False, "no_neon_url"
+
+    try:
+        from sqlalchemy import create_engine, text  # noqa: PLC0415
+        from sqlalchemy.pool import NullPool  # noqa: PLC0415
+
+        engine = create_engine(
+            url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    SELECT COUNT(*) AS cnt
+                    FROM knowledge_entries
+                    WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
+                      AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
+                      AND embedding IS NOT NULL
+                    """
+                ),
+                {
+                    "tid": tenant_id,
+                    "shared_tid": SHARED_TENANT_ID,
+                    "vendor_pat": f"%{vendor_clean}%",
+                },
+            ).fetchone()
+        count = int(row[0]) if row else 0
+        if count >= KB_COVERAGE_MIN_CHUNKS:
+            logger.info(
+                "KB_PRE_CHECK_HIT vendor=%r model=%r count=%d threshold=%d",
+                vendor_clean,
+                model,
+                count,
+                KB_COVERAGE_MIN_CHUNKS,
+            )
+            return True, f"kb_{count}_chunks"
+        logger.info(
+            "KB_PRE_CHECK_MISS vendor=%r model=%r count=%d threshold=%d",
+            vendor_clean,
+            model,
+            count,
+            KB_COVERAGE_MIN_CHUNKS,
+        )
+        return False, f"kb_only_{count}_chunks"
+    except Exception as exc:
+        logger.warning("kb_has_coverage failed: %s", exc)
+        return False, f"error_{type(exc).__name__}"

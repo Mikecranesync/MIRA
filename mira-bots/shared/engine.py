@@ -1,11 +1,13 @@
 """MIRA Supervisor — Orchestrates workers, manages FSM state, routes intent."""
 
+import asyncio
 import json
 import logging
 import os
 import re
 import sqlite3
 import time
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -23,6 +25,7 @@ from .guardrails import (
 )
 from .inference.router import InferenceRouter
 from .nemotron import NemotronClient
+from .neon_recall import kb_has_coverage
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
@@ -384,6 +387,11 @@ class Supervisor:
                 ctx.pop("photo_turn", None)
                 state["context"] = ctx
 
+        # Phase 3 — honest crawl-failure prefix: check if a prior doc-crawl exhausted
+        _honest_prefix = ""
+        if not photo_b64:
+            _honest_prefix = await self._check_pending_doc_job(chat_id, state)
+
         # Always-on guardrail: safety and off-topic bypass ALL conversation state
         if not photo_b64:
             sc = state.get("context", {}).get("session_context", {})
@@ -405,6 +413,7 @@ class Supervisor:
                     chat_id,
                     session_photo=_session_photo,
                     tenant_id=resolved_tenant,
+                    honest_prefix=_honest_prefix,
                 )
 
             intent = classify_intent(message)
@@ -437,11 +446,37 @@ class Supervisor:
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, "IDLE")
 
-        # Documentation intent: respond with vendor URL immediately + async crawl
+        # Documentation intent: KB pre-check → skip crawl if already covered
         if not photo_b64 and intent == "documentation":
             combined = f"{message} {state.get('asset_identified', '')}".strip()
             url = vendor_support_url(combined)
             mfr = vendor_name_from_text(combined) or ""
+
+            # Phase 2 — KB pre-check: skip crawl when we already have coverage
+            kb_covered, kb_reason = kb_has_coverage(mfr, combined, resolved_tenant or "")
+            if kb_covered:
+                reply = (
+                    "I already have documentation indexed for that equipment — just "
+                    "ask me about fault codes, specs, or wiring and I'll pull from "
+                    "it directly."
+                )
+                logger.info(
+                    "KB_PRE_CHECK_HIT chat_id=%s manufacturer=%r reason=%s",
+                    chat_id,
+                    mfr,
+                    kb_reason,
+                )
+                self._record_exchange(chat_id, state, message, reply)
+                tl_flush()
+                return self._make_result(reply, "medium", trace_id, state["state"])
+
+            # KB miss — queue crawl and store pending marker for honest-failure check
+            logger.info(
+                "KB_PRE_CHECK_MISS chat_id=%s manufacturer=%r reason=%s — queuing crawl",
+                chat_id,
+                mfr,
+                kb_reason,
+            )
             if url:
                 reply = (
                     f"I don't have documentation for that equipment in my knowledge "
@@ -458,7 +493,15 @@ class Supervisor:
                     "document type.\n\n"
                     "I've queued a search — ask me again shortly."
                 )
-            import asyncio
+
+            # Store pending doc job so next turn can check for crawl failure
+            ctx = state.get("context") or {}
+            ctx["pending_doc_job"] = {
+                "vendor": mfr,
+                "query": combined[:120],
+                "queued_at": datetime.now(timezone.utc).isoformat(),
+            }
+            state["context"] = ctx
 
             asyncio.create_task(
                 self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id)
@@ -742,6 +785,9 @@ class Supervisor:
         self._save_state(chat_id, state)
 
         formatted = self._format_reply(parsed)
+        # Phase 3 — prepend honest crawl-failure message if a prior doc-crawl exhausted.
+        if _honest_prefix:
+            formatted = _honest_prefix + formatted
         tl_flush()
         return self._make_result(
             formatted,
@@ -962,6 +1008,7 @@ class Supervisor:
         chat_id: str,
         session_photo: str = None,
         tenant_id: str | None = None,
+        honest_prefix: str = "",
     ) -> dict:
         """Route a session follow-up through the RAG pipeline without intent filtering.
 
@@ -998,12 +1045,95 @@ class Supervisor:
         state["context"] = ctx
         self._save_state(chat_id, state)
         formatted = self._format_reply(parsed)
+        if honest_prefix:
+            formatted = honest_prefix + formatted
         return self._make_result(
             formatted,
             self._infer_confidence(formatted),
             None,
             state["state"],
         )
+
+    async def _check_pending_doc_job(self, chat_id: str, state: dict) -> str:
+        """Check if a previous doc-crawl job for this chat finished with exhausted fallback.
+
+        Returns an honest-failure prefix string to prepend to the reply, or "" if
+        there is nothing to report (still pending, succeeded, or no job queued).
+        Clears the pending marker from state on any terminal outcome.
+        Never raises — failures are non-fatal.
+        """
+        ctx = state.get("context") or {}
+        pending = ctx.get("pending_doc_job")
+        if not pending:
+            return ""
+
+        # Expire stale pending markers after 30 minutes — crawl cannot still be running
+        queued_at_str = pending.get("queued_at", "")
+        try:
+            queued_at = datetime.fromisoformat(queued_at_str)
+            if datetime.now(timezone.utc) - queued_at > timedelta(minutes=30):
+                ctx.pop("pending_doc_job", None)
+                state["context"] = ctx
+                logger.info("DOC_JOB_EXPIRED chat_id=%s queued_at=%s", chat_id, queued_at_str)
+                return ""
+        except (ValueError, TypeError):
+            ctx.pop("pending_doc_job", None)
+            state["context"] = ctx
+            return ""
+
+        # Poll GET /ingest/crawl-verifications (last 50 records) and filter by vendor.
+        # /crawl-status/{chat_id} does not exist — crawl_runs has no chat_id column.
+        vendor = pending.get("vendor", "")
+        vendor_lower = vendor.lower()
+        _FAILED_OUTCOMES = {"LOW_QUALITY", "SHELL_ONLY", "EMPTY", "FAILED"}
+        queued_at_dt = datetime.fromisoformat(queued_at_str)
+
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(
+                    f"{self._ingest_base_url}/ingest/crawl-verifications"
+                )
+            if resp.status_code != 200:
+                return ""
+            records = resp.json()
+        except Exception as exc:
+            logger.debug("DOC_JOB_CHECK failed (non-fatal): %s", exc)
+            return ""
+
+        for rec in records:
+            rec_mfr = (rec.get("manufacturer") or "").lower()
+            if vendor_lower and vendor_lower not in rec_mfr and rec_mfr not in vendor_lower:
+                continue
+            finished_at = rec.get("finished_at")
+            if not finished_at:
+                continue  # still running
+            try:
+                finished_dt = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
+                if finished_dt < queued_at_dt:
+                    continue  # this run predates our request
+            except (ValueError, TypeError):
+                continue
+            outcome = rec.get("outcome", "")
+            if outcome == "SUCCESS":
+                ctx.pop("pending_doc_job", None)
+                state["context"] = ctx
+                logger.info("DOC_JOB_SUCCESS chat_id=%s vendor=%r", chat_id, vendor)
+                return ""
+            if outcome in _FAILED_OUTCOMES:
+                ctx.pop("pending_doc_job", None)
+                state["context"] = ctx
+                logger.info(
+                    "DOC_JOB_EXHAUSTED chat_id=%s vendor=%r outcome=%s",
+                    chat_id, vendor, outcome,
+                )
+                return (
+                    f"I tried multiple sources but couldn't find the "
+                    f"{vendor or 'equipment'} manual online. "
+                    f"Want to upload the PDF directly?\n\n"
+                )
+
+        # No completed run yet — crawl still running, leave marker
+        return ""
 
     async def _fire_scrape_trigger(
         self,
