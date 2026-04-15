@@ -1,7 +1,7 @@
 # MIRA v1 Customer-Ready Scope
 
 **Date:** 2026-04-14
-**Status:** DRAFT — needs Mike review before feature freeze (#272)
+**Status:** APPROVED — Mike confirmed pricing + customer definition 2026-04-15
 **Closes:** #270
 **Prerequisite for:** #272 (feature freeze until 5 paying users)
 
@@ -144,6 +144,8 @@ The buyer signs and pays. The user adopts (or kills) the product with word-of-mo
 | **B — Per-site flat rate** | $499/mo per facility (up to 50 users) | Easy to sell to managers who hate per-seat. | Mid-size plants (30–100 techs). Manager-friendly. |
 | **C — Starter pack + overage** | $299/mo (up to 10 seats) + $25/seat over 10 | Low barrier to start. Scales with customer. | Pilot-friendly. Best for "let us try it for 3 months." |
 
+**DECIDED: Option B — $499/mo per facility flat rate.**
+
 **Recommended: Option B — $499/mo per facility (flat rate).**
 
 Reasoning: Maintenance managers don't want to count seats. They want one line on the P&L. A flat facility rate removes the "how many licenses do I need?" conversation. $499/mo = $5,988/yr — well within discretionary budget for a plant manager, no capital approval needed. At 5 customers that's $2,495 MRR / $29,940 ARR — meaningful proof before scaling pricing.
@@ -153,6 +155,8 @@ Annual prepay discount: 2 months free ($4,990/yr vs. $5,988 M2M).
 ---
 
 ## 6. The 5-Paying-Customer Definition
+
+**DECIDED: 5 paying customers per criteria below. Each criterion is non-negotiable.**
 
 A customer counts toward the v1 milestone if ALL of the following are true:
 
@@ -224,4 +228,4 @@ Before the first paying customer goes live, ALL of the following must be true:
 
 ---
 
-*This doc is a working draft. Mike should edit sections 5 (pricing) and 6 (customer definition) before it drives any sales conversations. Section 4 (use cases) should be validated against actual system behavior before demo prep begins.*
+*Section 4 (use cases) should be validated against actual system behavior before demo prep begins.*
