@@ -24,7 +24,7 @@ Mike's stated decision rule: **default to Tailscale Funnel unless it's clearly b
 
 ## Goal
 
-One ADR at `docs/adr/0011-transport-choice.md` containing:
+One ADR at `docs/adr/0012-transport-choice.md` containing:
 
 1. Measured outcomes for each pass/fail gate (Funnel, and Cloudflare if needed).
 2. Transport decision: Funnel or Cloudflare Tunnel.
@@ -106,7 +106,7 @@ Single-process server. The spike tests **transport**, not application code.
 | 8 | At T+24h, pull UptimeRobot %, Gate 4 p95, capture numbers. | 10 min |
 | 9 | **Decision branch.** All gates green → step 11. Any red → step 10. | — |
 | 10 | Repeat steps 1–8 against Cloudflare Tunnel. Same domain, same gates. | 25 min active + 24h passive |
-| 11 | Write ADR `docs/adr/0011-transport-choice.md` per §Decision matrix below. | 30 min |
+| 11 | Write ADR `docs/adr/0012-transport-choice.md` per §Decision matrix below. | 30 min |
 | 12 | Tear down: remove DNS row, delete UptimeRobot monitor, `tailscale funnel 443 off`, kill server. Keep cert (reused in sub-project 2). | 10 min |
 
 ## Decision matrix
@@ -127,7 +127,7 @@ Single-process server. The spike tests **transport**, not application code.
 
 - `docs/superpowers/specs/2026-04-15-transport-spike-design.md` — this spec
 - `tools/spike/hello_server.py` (~40 lines) — created during spike execution
-- `docs/adr/0011-transport-choice.md` — created at procedure step 11
+- `docs/adr/0012-transport-choice.md` — created at procedure step 11
 
 No changes to `docker-compose.saas.yml`, `mira-web/`, Doppler config, or any production runtime.
 

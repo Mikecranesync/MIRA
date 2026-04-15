@@ -4,7 +4,7 @@
 
 **Goal:** Stand up a hello-world HTTPS endpoint on Bravo behind Tailscale Funnel, run 5 pass/fail gates over a 24h window, and write an ADR that decides (a) Tailscale Funnel vs. Cloudflare Tunnel as the public transport for issue #294, and (b) Stripe webhook placement.
 
-**Architecture:** Single-process Python `http.server` on Bravo Mac Mini bound to a Tailscale-issued cert for `spike.factorylm.com`. Tailscale Funnel exposes port 443. UptimeRobot pings every minute for 24h. `hey` runs webhook-shaped POST load tests at staggered intervals. If any Funnel gate fails, repeat against Cloudflare Tunnel. Output: ADR `docs/adr/0011-transport-choice.md`.
+**Architecture:** Single-process Python `http.server` on Bravo Mac Mini bound to a Tailscale-issued cert for `spike.factorylm.com`. Tailscale Funnel exposes port 443. UptimeRobot pings every minute for 24h. `hey` runs webhook-shaped POST load tests at staggered intervals. If any Funnel gate fails, repeat against Cloudflare Tunnel. Output: ADR `docs/adr/0012-transport-choice.md`.
 
 **Tech Stack:** Tailscale (cert + funnel), Python 3 stdlib (`http.server`, `ssl`), `hey` load generator, UptimeRobot (free tier), Bash/zsh on macOS, optional Cloudflare Tunnel (`cloudflared`) as fallback.
 
@@ -22,7 +22,7 @@
 | `tools/spike/test_hello_server.py` | Pytest unit tests for the three handlers | Task 2 |
 | `tools/spike/hey_body.json` | JSON body used by `hey` for Gate 4 POST load test | Task 6 |
 | `tools/spike/uptime_report.md` | Manual capture of measurements (plan tier, sleep settings, Gate 3 %, Gate 4 p95, screenshots paths) | Task 1, appended through Task 7 |
-| `docs/adr/0011-transport-choice.md` | Final ADR — transport decision + Stripe placement | Task 9 |
+| `docs/adr/0012-transport-choice.md` | Final ADR — transport decision + Stripe placement | Task 9 |
 
 No production runtime files modified. No changes to `docker-compose.saas.yml`, Doppler, or any service in `mira-*/`.
 
@@ -644,10 +644,10 @@ git commit -m "chore(spike): Cloudflare Tunnel <milestone> results"
 
 ---
 
-## Task 9: Write ADR 0011 — transport choice
+## Task 9: Write ADR 0012 — transport choice
 
 **Files:**
-- Create: `docs/adr/0011-transport-choice.md`
+- Create: `docs/adr/0012-transport-choice.md`
 
 - [ ] **Step 1: Read the template.**
 
@@ -670,10 +670,10 @@ From `tools/spike/uptime_report.md`:
 
 - [ ] **Step 3: Write the ADR.**
 
-Create `docs/adr/0011-transport-choice.md`:
+Create `docs/adr/0012-transport-choice.md`:
 
 ```markdown
-# ADR 0011: Transport Choice for VPS→Bravo Migration
+# ADR 0012: Transport Choice for VPS→Bravo Migration
 
 **Status:** Accepted
 **Date:** <YYYY-MM-DD>
@@ -728,15 +728,15 @@ Fill in every `<...>` from `tools/spike/uptime_report.md`. Do NOT leave any angl
 - [ ] **Step 4: Verify no placeholders remain.**
 
 ```bash
-grep -nE '<[^>]+>' docs/adr/0011-transport-choice.md
+grep -nE '<[^>]+>' docs/adr/0012-transport-choice.md
 # Expected: no output. Any output is a placeholder you forgot to fill.
 ```
 
 - [ ] **Step 5: Commit.**
 
 ```bash
-git add docs/adr/0011-transport-choice.md
-git commit -m "docs: ADR-0011 transport choice for issue #294 (sub-project 1 outcome)"
+git add docs/adr/0012-transport-choice.md
+git commit -m "docs: ADR-0012 transport choice for issue #294 (sub-project 1 outcome)"
 ```
 
 ---
