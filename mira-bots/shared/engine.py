@@ -102,6 +102,49 @@ _STATE_ALIASES: dict[str, str] = {
     "CLOSED": "RESOLVED",
 }
 
+# ---------------------------------------------------------------------------
+# Manual-lookup gathering subroutine constants
+# ---------------------------------------------------------------------------
+# Phrases that signal the user wants to abandon the manual search.
+_MANUAL_ESCAPE_PHRASES = frozenset({
+    "skip",
+    "back",
+    "nevermind",
+    "never mind",
+    "back to troubleshooting",
+    "back to diagnosis",
+    "forget it",
+    "doesn't matter",
+    "no manual",
+    "drop it",
+    "cancel",
+    "ignore",
+    "go back",
+    "cancel that",
+    "not important",
+    "never mind the manual",
+})
+
+# Signals that the user is resuming a diagnostic conversation.
+_DIAGNOSIS_SIGNAL_RE = re.compile(
+    r"\b(?:fault|error|code|alarm|trips?|overload|won'?t start|not working|"
+    r"shuts? off|shutting|blink(?:ing)?|flash(?:ing)?|hz|rpm|amps?|volts?|"
+    r"f\d+|e\d+|overheat|overcurrent|undervoltage|overvoltage|no power|"
+    r"actually|symptom|problem|issue|broken)\b",
+    re.IGNORECASE,
+)
+
+# Vendor names used by the specificity heuristic.
+_KNOWN_VENDORS: frozenset[str] = frozenset({
+    "pilz", "siemens", "allen-bradley", "allen bradley", "rockwell",
+    "schneider", "abb", "yaskawa", "danfoss", "vacon", "mitsubishi",
+    "omron", "delta", "lenze", "nord", "baldor", "weg", "leeson",
+    "marathon", "emerson", "control techniques", "nidec", "eaton",
+    "square d", "fuji", "toshiba", "hitachi", "automationdirect",
+    "automation direct", "keyence", "banner", "turck", "ifm", "sick",
+    "phoenix contact", "weidmuller", "murr", "idec",
+})
+
 
 def format_diagnostic_response(
     equipment_id: str, key_observation: str, question: str, options: list
@@ -119,6 +162,20 @@ def deduplicate_options(reply_text: str, keyboard_options: list) -> str:
     for opt in keyboard_options:
         reply_text = re.sub(rf"\n\d+\.\s+{re.escape(opt)}", "", reply_text)
     return reply_text.strip()
+
+
+def _looks_like_model_number(text: str) -> str:
+    """Return the first model-number-like token from *text*, or ''.
+
+    A model number must contain both at least one letter and at least one
+    digit (e.g. "GS20", "X3", "FC-302", "VLT-FC302").  Pure-letter and
+    pure-digit tokens are excluded unless the caller handles them separately.
+    """
+    for raw in re.split(r"[\s,;]+", text):
+        tok = re.sub(r"[^\w-]", "", raw)
+        if len(tok) >= 2 and re.search(r"[A-Za-z]", tok) and re.search(r"\d", tok):
+            return tok
+    return ""
 
 
 class Supervisor:
@@ -283,6 +340,30 @@ class Supervisor:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _is_doc_specific(vendor: str, text: str) -> bool:
+        """Return True if *text* is specific enough to crawl usefully.
+
+        Requires both:
+        - a vendor name present in _KNOWN_VENDORS (either extracted or in text)
+        - at least one model-number token OR a standalone ≥2-digit number
+
+        The second fallback covers cases like "PowerFlex 525" where the model
+        designator is pure digits (525, 70, 700, etc.).  Vague requests like
+        "the safety relay" or "this VFD" still return False.
+        """
+        text_lower = text.lower()
+        vendor_known = bool(vendor) and any(
+            v in vendor.lower() or v in text_lower for v in _KNOWN_VENDORS
+        )
+        if not vendor_known:
+            return False
+        # Primary: mixed letter+digit token (GS20, FC-302, X3, ACS580).
+        if _looks_like_model_number(text):
+            return True
+        # Fallback: standalone ≥2-digit number (525, 70, 700, 120 ...).
+        return bool(re.search(r"\b\d{2,}\b", text))
+
+    @staticmethod
     def _infer_confidence(reply: str) -> str:
         """Infer confidence level from reply text.
 
@@ -392,6 +473,17 @@ class Supervisor:
         if not photo_b64:
             _honest_prefix = await self._check_pending_doc_job(chat_id, state)
 
+        # Manual-lookup gathering subroutine intercept — must run before guardrail /
+        # intent checks so we don't re-classify a gathering answer as "documentation".
+        if not photo_b64 and state["state"] == "MANUAL_LOOKUP_GATHERING":
+            result = await self._handle_manual_lookup_gathering(
+                chat_id, message, state, trace_id, resolved_tenant
+            )
+            if result is not None:
+                return result
+            # None → diagnosis signal detected; subroutine restored prior FSM state
+            # and cleared the gathering payload — fall through to normal diagnostic flow.
+
         # Always-on guardrail: safety and off-topic bypass ALL conversation state
         if not photo_b64:
             sc = state.get("context", {}).get("session_context", {})
@@ -446,75 +538,22 @@ class Supervisor:
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, "IDLE")
 
-        # Documentation intent: KB pre-check → skip crawl if already covered
+        # Documentation intent: specificity check → gathering subroutine or KB pre-check
         if not photo_b64 and intent == "documentation":
             combined = f"{message} {state.get('asset_identified', '')}".strip()
-            url = vendor_support_url(combined)
             mfr = vendor_name_from_text(combined) or ""
 
-            # Phase 2 — KB pre-check: skip crawl when we already have coverage
-            kb_covered, kb_reason = kb_has_coverage(mfr, combined, resolved_tenant or "")
-            if kb_covered:
-                reply = (
-                    "I already have documentation indexed for that equipment — just "
-                    "ask me about fault codes, specs, or wiring and I'll pull from "
-                    "it directly."
-                )
-                logger.info(
-                    "KB_PRE_CHECK_HIT chat_id=%s manufacturer=%r reason=%s",
-                    chat_id,
-                    mfr,
-                    kb_reason,
-                )
-                self._record_exchange(chat_id, state, message, reply)
-                tl_flush()
-                return self._make_result(reply, "medium", trace_id, state["state"])
-
-            # KB miss — queue crawl and store pending marker for honest-failure check
-            logger.info(
-                "KB_PRE_CHECK_MISS chat_id=%s manufacturer=%r reason=%s — queuing crawl",
-                chat_id,
-                mfr,
-                kb_reason,
-            )
-            if url:
-                reply = (
-                    f"I don't have documentation for that equipment in my knowledge "
-                    f"base yet.\n\n"
-                    f"You can find it here: {url}\n\n"
-                    f"I've queued a crawl to pull the manual automatically — ask me "
-                    f"again in a couple of minutes and I'll have more specific information."
-                )
-            else:
-                reply = (
-                    "I don't have documentation for that equipment in my knowledge "
-                    "base yet.\n\n"
-                    "Try searching the manufacturer's website for the model number and "
-                    "document type.\n\n"
-                    "I've queued a search — ask me again shortly."
+            # Specificity gate — vague requests ("the safety relay", "this VFD") enter
+            # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
+            if not self._is_doc_specific(mfr, combined):
+                return await self._enter_manual_lookup_gathering(
+                    chat_id, message, state, trace_id, mfr
                 )
 
-            # Store pending doc job so next turn can check for crawl failure
-            ctx = state.get("context") or {}
-            ctx["pending_doc_job"] = {
-                "vendor": mfr,
-                "query": combined[:120],
-                "queued_at": datetime.now(timezone.utc).isoformat(),
-            }
-            state["context"] = ctx
-
-            asyncio.create_task(
-                self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id)
+            # Specific enough — Phase 2 KB pre-check + crawl
+            return await self._do_documentation_lookup(
+                chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
             )
-            logger.info(
-                "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s",
-                chat_id,
-                mfr,
-                url,
-            )
-            self._record_exchange(chat_id, state, message, reply)
-            tl_flush()
-            return self._make_result(reply, "low", trace_id, state["state"])
 
         # Photo path: delegate to vision worker, then route
         _photo_continues_session = False
@@ -1053,6 +1092,307 @@ class Supervisor:
             None,
             state["state"],
         )
+
+    # ------------------------------------------------------------------
+    # Manual-lookup gathering subroutine
+    # ------------------------------------------------------------------
+
+    async def _enter_manual_lookup_gathering(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        initial_vendor: str,
+    ) -> dict:
+        """Set FSM to MANUAL_LOOKUP_GATHERING and ask for the first missing field."""
+        ctx = state.get("context") or {}
+        gathered: dict = {}
+        if initial_vendor:
+            gathered["vendor"] = initial_vendor
+
+        ctx["manual_lookup_gathering"] = {
+            "collected": gathered,
+            "attempts": 0,
+            "prior_state": state["state"],
+        }
+        state["state"] = "MANUAL_LOOKUP_GATHERING"
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+
+        if not initial_vendor:
+            reply = (
+                "I want to find that manual for you. "
+                "What's the **brand or manufacturer**? "
+                "(You can also say 'back to troubleshooting' anytime.)"
+            )
+        else:
+            reply = (
+                f"Got it — {initial_vendor}. "
+                "What's the **exact model number**? "
+                "It's usually printed on the nameplate. "
+                "(Say 'skip' to try with what I have, or 'back to troubleshooting' "
+                "to drop the manual search.)"
+            )
+
+        logger.info(
+            "MANUAL_LOOKUP_GATHERING_ENTER chat_id=%s vendor=%r model=None attempts=0",
+            chat_id,
+            initial_vendor or "",
+        )
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(reply, "none", trace_id, "MANUAL_LOOKUP_GATHERING")
+
+    async def _handle_manual_lookup_gathering(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        resolved_tenant: str,
+    ) -> dict | None:
+        """Handle a user turn while FSM is in MANUAL_LOOKUP_GATHERING.
+
+        Returns a reply dict when the subroutine handles the turn fully.
+        Returns None when a diagnosis signal is detected — caller should restore
+        prior state and fall through to normal diagnostic processing.
+        Never raises.
+        """
+        ctx = state.get("context") or {}
+        gathering = ctx.get("manual_lookup_gathering", {})
+        collected: dict = gathering.get("collected", {})
+        attempts: int = gathering.get("attempts", 0)
+        prior_state: str = gathering.get("prior_state", "IDLE")
+
+        msg_lower = message.lower().strip()
+
+        # ---- Escape detection --------------------------------------------------
+        # Pure diagnosis signals → return None so process_full falls through.
+        has_diagnosis_signal = bool(_DIAGNOSIS_SIGNAL_RE.search(message))
+        # Explicit escape phrases.
+        has_escape_phrase = any(phrase in msg_lower for phrase in _MANUAL_ESCAPE_PHRASES)
+
+        if has_diagnosis_signal and not has_escape_phrase:
+            # User is describing a fault, not answering our question.  Restore state
+            # silently so the normal diagnostic flow handles this turn.
+            ctx.pop("manual_lookup_gathering", None)
+            state["state"] = prior_state
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            logger.info(
+                "MANUAL_LOOKUP_GATHERING_ESCAPED chat_id=%s reason=diagnosis_signal",
+                chat_id,
+            )
+            return None  # fall through
+
+        if has_escape_phrase:
+            ctx.pop("manual_lookup_gathering", None)
+            state["state"] = prior_state
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            logger.info(
+                "MANUAL_LOOKUP_GATHERING_ESCAPED chat_id=%s reason=user_said_back",
+                chat_id,
+            )
+            reply = (
+                "OK, back to the diagnosis. "
+                "What fault or symptom were you seeing?"
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, prior_state)
+
+        # ---- Extract info from this turn ----------------------------------------
+        new_vendor = vendor_name_from_text(message) or ""
+        new_model = _looks_like_model_number(message)
+
+        # If we're already waiting for the model specifically (vendor in hand) and
+        # _looks_like_model_number found nothing, accept any short non-stopword token.
+        # This covers user answers like "525" or just "PNOZ-X3".
+        if not new_model and collected.get("vendor"):
+            _STOP = {
+                "the", "a", "an", "is", "it", "its", "my", "our", "for",
+                "that", "this", "model", "number", "type", "unit",
+            }
+            for tok in message.split():
+                tok_clean = re.sub(r"[^\w-]", "", tok).strip()
+                if len(tok_clean) >= 2 and tok_clean.lower() not in _STOP:
+                    new_model = tok_clean
+                    break
+
+        if new_vendor and not collected.get("vendor"):
+            collected["vendor"] = new_vendor
+        if new_model and not collected.get("model"):
+            collected["model"] = new_model
+
+        gathered_vendor = collected.get("vendor", "")
+        gathered_model = collected.get("model", "")
+        logger.info(
+            "MANUAL_LOOKUP_GATHERING_PROVIDED chat_id=%s vendor=%r model=%r",
+            chat_id,
+            gathered_vendor,
+            gathered_model,
+        )
+
+        # ---- Now specific enough → proceed to KB pre-check + crawl ----------------
+        if gathered_vendor and gathered_model:
+            ctx.pop("manual_lookup_gathering", None)
+            state["state"] = prior_state
+            state["context"] = ctx
+            return await self._do_documentation_lookup(
+                chat_id,
+                message,
+                state,
+                trace_id,
+                resolved_tenant,
+                vendor_override=gathered_vendor,
+                model_override=gathered_model,
+            )
+
+        # ---- Still missing info — ask for next field or give up ------------------
+        attempts += 1
+        gathering["collected"] = collected
+        gathering["attempts"] = attempts
+        ctx["manual_lookup_gathering"] = gathering
+        state["context"] = ctx
+
+        if attempts >= 2:
+            # Give up — proceed with whatever we have.
+            logger.info(
+                "MANUAL_LOOKUP_GATHERING_GAVE_UP chat_id=%s attempts=%d",
+                chat_id,
+                attempts,
+            )
+            ctx.pop("manual_lookup_gathering", None)
+            state["state"] = prior_state
+            state["context"] = ctx
+            return await self._do_documentation_lookup(
+                chat_id,
+                message,
+                state,
+                trace_id,
+                resolved_tenant,
+                vendor_override=gathered_vendor,
+                low_confidence=True,
+            )
+
+        # Ask for the next missing piece.
+        self._save_state(chat_id, state)
+        if not gathered_vendor:
+            reply = (
+                "I want to find that manual for you. "
+                "What's the **brand or manufacturer**? "
+                "(You can also say 'back to troubleshooting' anytime.)"
+            )
+        else:
+            reply = (
+                f"Got it — {gathered_vendor}. "
+                "What's the **exact model number**? "
+                "It's usually printed on the nameplate. "
+                "(Say 'skip' to try with what I have, or 'back to troubleshooting' "
+                "to drop the manual search.)"
+            )
+
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(reply, "none", trace_id, "MANUAL_LOOKUP_GATHERING")
+
+    async def _do_documentation_lookup(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        resolved_tenant: str,
+        *,
+        vendor_override: str = "",
+        model_override: str = "",
+        low_confidence: bool = False,
+    ) -> dict:
+        """Phase 2 KB pre-check + async crawl trigger.
+
+        Consolidated from the old in-line documentation intent block so both the
+        direct (specific request) path and the gathering subroutine share one code path.
+        Never raises.
+        """
+        asset = state.get("asset_identified", "")
+        combined = " ".join(
+            filter(None, [vendor_override, model_override, message, asset])
+        ).strip()
+        mfr = vendor_override or vendor_name_from_text(combined) or ""
+        url = vendor_support_url(combined)
+
+        # Phase 2 — KB pre-check: skip crawl when we already have coverage.
+        kb_covered, kb_reason = kb_has_coverage(mfr, combined, resolved_tenant or "")
+        if kb_covered:
+            reply = (
+                "I already have documentation indexed for that equipment — just "
+                "ask me about fault codes, specs, or wiring and I'll pull from "
+                "it directly."
+            )
+            logger.info(
+                "KB_PRE_CHECK_HIT chat_id=%s manufacturer=%r reason=%s",
+                chat_id,
+                mfr,
+                kb_reason,
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(reply, "medium", trace_id, state["state"])
+
+        # KB miss — queue crawl and store pending marker for honest-failure check.
+        logger.info(
+            "KB_PRE_CHECK_MISS chat_id=%s manufacturer=%r reason=%s — queuing crawl",
+            chat_id,
+            mfr,
+            kb_reason,
+        )
+        low_conf_note = ""
+        if low_confidence:
+            low_conf_note = (
+                f"\n\nI tried with what I had ({mfr or 'no vendor'} / "
+                f"{model_override or 'no model'}). "
+                "If you can grab the model number from the nameplate, I'll have "
+                "a much better shot."
+            )
+        if url:
+            reply = (
+                f"I don't have documentation for that equipment in my knowledge "
+                f"base yet.\n\n"
+                f"You can find it here: {url}\n\n"
+                f"I've queued a crawl to pull the manual automatically — ask me "
+                f"again in a couple of minutes and I'll have more specific "
+                f"information.{low_conf_note}"
+            )
+        else:
+            reply = (
+                "I don't have documentation for that equipment in my knowledge "
+                "base yet.\n\n"
+                "Try searching the manufacturer's website for the model number "
+                "and document type.\n\n"
+                f"I've queued a search — ask me again shortly.{low_conf_note}"
+            )
+
+        ctx = state.get("context") or {}
+        ctx["pending_doc_job"] = {
+            "vendor": mfr,
+            "query": combined[:120],
+            "queued_at": datetime.now(timezone.utc).isoformat(),
+        }
+        state["context"] = ctx
+        asyncio.create_task(
+            self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id)
+        )
+        logger.info(
+            "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s",
+            chat_id,
+            mfr,
+            url,
+        )
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(reply, "low", trace_id, state["state"])
 
     async def _check_pending_doc_job(self, chat_id: str, state: dict) -> str:
         """Check if a previous doc-crawl job for this chat finished with exhausted fallback.

@@ -1,0 +1,22 @@
+id: manual_lookup_escape_33
+description: >
+  MANUAL_LOOKUP_GATHERING subroutine — escape hatch back to diagnosis.
+  Turn 1: "find me the manual for the drive" (no vendor, no model → vague).
+  Turn 2: MIRA asks for vendor → user says "back to troubleshooting".
+  Guard: MIRA must acknowledge the escape and restore diagnostic state;
+  FSM must return to IDLE (prior state); response must contain "back" and
+  "diagnosis" (or similar), NOT continue asking for vendor.
+expected_final_state: IDLE
+max_turns: 3
+expected_keywords: [back, diagnosis]
+forbidden_keywords: [manufacturer, brand, model number]
+expected_vendor: ""
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [manual-lookup, escape, subroutine, regression-guard]
+turns:
+  - role: user
+    content: "find me the manual for the drive"
+  - role: user
+    content: "back to troubleshooting"

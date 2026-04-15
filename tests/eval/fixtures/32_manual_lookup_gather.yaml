@@ -1,0 +1,26 @@
+id: manual_lookup_gather_32
+description: >
+  MANUAL_LOOKUP_GATHERING subroutine — vague manual request collects vendor then model.
+  Turn 1: "find me the manual for the safety relay" (no vendor, no model → vague).
+  Turn 2: MIRA asks for vendor → user replies "Pilz".
+  Turn 3: MIRA asks for model → user replies "PNOZ X3".
+  Turn 4: MIRA confirms it is looking and fires the crawl.
+  Guards: subroutine must NOT forward to crawl on Turn 1 (too vague); must
+  reach crawl on Turn 3 when vendor + model are both known; final response must
+  reference Pilz and documentation / manual.
+expected_final_state: IDLE
+max_turns: 4
+expected_keywords: [pilz, pnoz, manual, documentation]
+forbidden_keywords: [error, failed]
+expected_vendor: Pilz
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [manual-lookup, gathering, pilz, pnoz, subroutine, regression-guard]
+turns:
+  - role: user
+    content: "find me the manual for the safety relay"
+  - role: user
+    content: "Pilz"
+  - role: user
+    content: "PNOZ X3"
