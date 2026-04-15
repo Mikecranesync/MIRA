@@ -682,6 +682,41 @@
       const cmmsBtn = document.getElementById('cmms-btn');
       if (cmmsBtn) cmmsBtn.href = '/api/cmms/login?token=' + encodeURIComponent(token);
 
+      // Activation-status banner (issue #296) — if any provisioning step failed,
+      // surface it with a Retry button instead of silently leaving the user stuck.
+      fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (me) {
+          if (!me || !me.provisioning || me.provisioning.ready) return;
+          var msg;
+          if (me.provisioning.atlas !== 'ok') {
+            msg = "We're still finishing your CMMS setup.";
+          } else if (me.provisioning.email !== 'sent') {
+            msg = "Login email didn't send — resend it or use this page.";
+          } else {
+            msg = "Setup isn't finished yet.";
+          }
+          var banner = document.createElement('div');
+          banner.setAttribute('role', 'alert');
+          banner.style.cssText = 'background:#3a2a00;color:#ffd27a;padding:12px 16px;border-bottom:1px solid #8a6600;font:500 14px/1.5 system-ui,sans-serif;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;';
+          banner.innerHTML = '<span>' + msg + '</span>';
+          var btn = document.createElement('button');
+          btn.textContent = 'Retry now';
+          btn.style.cssText = 'background:#ffd27a;color:#1a1a1a;border:none;padding:6px 14px;border-radius:4px;font-weight:600;cursor:pointer;';
+          btn.addEventListener('click', function () {
+            btn.disabled = true; btn.textContent = 'Retrying…';
+            fetch('/api/activation/retry', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+              .then(function (r) {
+                if (r.ok) { location.reload(); return; }
+                if (r.status === 429) { btn.disabled = false; btn.textContent = 'Cooldown — wait a minute'; return; }
+                btn.disabled = false; btn.textContent = 'Retry failed — email support@factorylm.com';
+              });
+          });
+          banner.appendChild(btn);
+          document.body.insertBefore(banner, document.body.firstChild);
+        })
+        .catch(function () { /* silent — /api/me may be 401/403/500; page still works */ });
+
       // Build 20 fuel-gauge segments
       const SEG_COUNT = 20;
       const segments = [];
