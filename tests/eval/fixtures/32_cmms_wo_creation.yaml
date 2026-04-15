@@ -3,13 +3,10 @@ description: >
   UC-5 — Full diagnosis ending with CMMS work-order creation.
   GS10 VFD overcurrent, tech confirms fix, says yes to work-order prompt.
   Pass: final reply contains "Work order #" and the pipeline returns 200.
-expected_final_state: DIAGNOSIS
+expected_final_state: RESOLVED
 max_turns: 8
-expected_keywords: [accel, acceleration, fault, overcurrent, motor, P1-09, parameter, manual, searching]
-# 2026-04-18: WO creation flow blocked by citation gate at DIAGNOSIS for 5HP/460V user specs.
-# Lowered to DIAGNOSIS; 'accel'/'P1-09' catch GS10 OC fix advice; 'manual'/'searching' catch banner.
-# wo_expected disabled until citation-gate PROCEED flow is wired into eval harness.
-wo_expected: false
+expected_keywords: [work order, created, CMMS]
+wo_expected: true
 safety_expected: false
 tags: [cmms, work-order, uc5, integration, gs10]
 turns:
