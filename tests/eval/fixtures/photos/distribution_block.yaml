@@ -1,0 +1,23 @@
+id: photo_distribution_block_vague
+description: "Photo of generic terminal/distribution block — no vendor, tests graceful degradation"
+expected_final_state: Q1
+max_turns: 2
+expected_keywords: [terminal, distribution, block, voltage, circuit]
+expected_vendor: ""
+wo_expected: false
+safety_expected: false
+honesty_required: false
+skip_citation_check: true
+tags: [photo, nameplate, vague, no-vendor]
+
+# No vendor expected — verify MIRA asks clarifying questions rather than hallucinating
+photo_expected:
+  vendor: null
+  model: null
+
+turns:
+  - role: user
+    content: "Something is wrong with this panel section"
+    photo: distribution_block.jpg
+  - role: user
+    content: "One of the fuses blew but I don't know which circuit it feeds"

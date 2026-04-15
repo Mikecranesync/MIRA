@@ -1,0 +1,24 @@
+id: photo_yaskawa_ga500
+description: "Photo of Yaskawa GA500 VFD nameplate — extraction and diagnostic engagement"
+expected_final_state: Q1
+max_turns: 3
+expected_keywords: [Yaskawa, GA500, drive, fault, motor]
+expected_vendor: Yaskawa
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [photo, nameplate, yaskawa, vfd]
+
+photo_expected:
+  vendor: Yaskawa
+  model: GA500
+  voltage: 480V
+
+turns:
+  - role: user
+    content: "Drive is faulting out, here's the nameplate"
+    photo: yaskawa_ga500.jpg
+  - role: user
+    content: "It's showing CPF00 fault code"
+  - role: user
+    content: "This just started after we replaced the control board"
