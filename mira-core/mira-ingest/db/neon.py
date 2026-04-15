@@ -197,12 +197,17 @@ def get_pending_urls() -> list[dict[str, Any]]:
     """
     results: list[dict[str, Any]] = []
     with _engine().connect() as conn:
-        # source_fingerprints: atoms_created = 0, skip example.com sentinel
+        # source_fingerprints: atoms_created = 0, skip example.com sentinel and
+        # generic search/product pages that never contain extractable manual content.
         rows = (
             conn.execute(
                 text(
                     "SELECT id, url, source_type FROM source_fingerprints "
-                    "WHERE atoms_created = 0 AND url NOT LIKE 'https://example.com%'"
+                    "WHERE atoms_created = 0 "
+                    "AND url NOT LIKE 'https://example.com%' "
+                    "AND url NOT LIKE '%google.com%' "
+                    "AND url NOT LIKE '%/search?q=%' "
+                    "AND url NOT LIKE '%/catalog/search%'"
                 )
             )
             .mappings()
@@ -221,12 +226,17 @@ def get_pending_urls() -> list[dict[str, Any]]:
                 }
             )
 
-        # manual_cache: pdf_stored = false
+        # manual_cache: pdf_stored = false, skip Google search queries and catalog
+        # search pages that were queued by discover_manuals but are not direct docs.
         rows = (
             conn.execute(
                 text(
                     "SELECT id, manual_url, manufacturer, model, manual_title "
-                    "FROM manual_cache WHERE pdf_stored = false AND manual_url IS NOT NULL"
+                    "FROM manual_cache "
+                    "WHERE pdf_stored = false AND manual_url IS NOT NULL "
+                    "AND manual_url NOT LIKE '%google.com%' "
+                    "AND manual_url NOT LIKE '%/search?q=%' "
+                    "AND manual_url NOT LIKE '%/catalog/search%'"
                 )
             )
             .mappings()

@@ -551,12 +551,21 @@ def detect_session_followup(message: str, session_context: dict, fsm_state: str)
     Fires when: state is not IDLE, session_context exists, and message
     contains a signal word suggesting the technician is continuing the session
     (e.g. asking for a link, referencing something MIRA said earlier).
+
+    Explicit documentation requests ("can you find a manual for this?") are
+    NOT treated as session followups — they must flow through classify_intent()
+    so the documentation routing (vendor URL + scrape trigger) fires correctly
+    even mid-session.  SESSION_FOLLOWUP_SIGNALS includes "manual" which would
+    otherwise intercept these requests.
     """
     if fsm_state == "IDLE":
         return False
     if not session_context:
         return False
     msg_lower = message.lower()
+    # Don't intercept explicit documentation requests — let classify_intent() handle them.
+    if any(phrase in msg_lower for phrase in _DOCUMENTATION_PHRASES):
+        return False
     return any(sig in msg_lower for sig in SESSION_FOLLOWUP_SIGNALS)
 
 
@@ -655,20 +664,17 @@ def classify_intent(message: str) -> str:
         if not _EDUCATIONAL_QUESTION_RE.match(msg):
             return "safety"
 
-    if any(pat in msg for pat in HELP_PATTERNS):
-        return "help"
-
     # Documentation retrieval — checked BEFORE industrial so "manual" in
     # INTENT_KEYWORDS doesn't swallow explicit document requests.
     if any(phrase in msg for phrase in _DOCUMENTATION_PHRASES):
         return "documentation"
 
-    # Industrial signals — check BEFORE greeting to avoid false positives on
-    # messages like "hi my vfd is down" (17 chars, contains "hi" greeting word
-    # but also has "down" in INTENT_KEYWORDS). The original ordering checked
-    # greetings first to avoid "hi" triggering "hmi", but that's not a real
-    # risk: expand_abbreviations("hi") stays "hi" and substring matching
-    # checks INTENT_KEYWORDS-in-text, not text-in-INTENT_KEYWORDS.
+    # Industrial signals — check BEFORE help/greeting to avoid false positives
+    # on messages like "can you help me diagnose this VFD fault?" (contains
+    # "can you help" from HELP_PATTERNS but also has industrial keywords) or
+    # "hi my vfd is down" (contains greeting word but also industrial signal).
+    # Rule: if any industrial signal is present, route to industrial regardless
+    # of social framing.
     if any(kw in msg_expanded for kw in INTENT_KEYWORDS):
         return "industrial"
 
@@ -679,6 +685,10 @@ def classify_intent(message: str) -> str:
     # Equipment brand/model name match (PowerFlex, Micro820, etc.)
     if _EQUIPMENT_NAME_RE.search(message):
         return "industrial"
+
+    # Help — only reached if no industrial/fault/equipment signal found
+    if any(pat in msg for pat in HELP_PATTERNS):
+        return "help"
 
     # Short greetings — only reached if no industrial signal was found
     words = set(msg.split())
@@ -717,14 +727,26 @@ def check_output(response: str, intent: str, has_photo: bool = False) -> str:
     return response
 
 
+# These two-letter abbreviations are also common English words/syllables.
+# Only expand them when they appear in uppercase (DO, DI, AI, AO) to avoid
+# false positives like "what can you do" expanding to "what can you digital output".
+_UPPERCASE_ONLY_ABBREVS = frozenset({"do", "di", "ai", "ao"})
+
+
 def expand_abbreviations(message: str) -> str:
     """Expand maintenance technician shorthand before vector search."""
     words = message.split()
     expanded = []
     for word in words:
-        key = word.lower().strip(".,!?;:")
+        bare = word.strip(".,!?;:")
+        key = bare.lower()
         if key in MAINTENANCE_ABBREVIATIONS:
-            expanded.append(MAINTENANCE_ABBREVIATIONS[key])
+            # Short abbreviations that are also common English words require
+            # uppercase in the original text to trigger expansion.
+            if key in _UPPERCASE_ONLY_ABBREVS and not bare.isupper():
+                expanded.append(word)
+            else:
+                expanded.append(MAINTENANCE_ABBREVIATIONS[key])
         else:
             expanded.append(word)
     return " ".join(expanded)
