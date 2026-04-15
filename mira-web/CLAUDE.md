@@ -57,10 +57,17 @@ bun test             # Run tests
 |-------|------|---------|
 | `POST /api/register` | None | Create pending tenant, start nurture |
 | `GET /api/checkout` | None | Stripe Checkout redirect (from payment email) |
-| `POST /api/stripe/webhook` | Stripe sig | Handle payment events |
+| `POST /api/stripe/webhook` | Stripe sig | Handle payment events; calls `finalizeActivation` (lib/activation.ts) |
 | `GET /api/billing-portal` | JWT | Stripe Customer Portal |
-| `GET /api/me` | Active | User profile + quota |
+| `GET /api/me` | Active | User profile + quota + `provisioning` status (atlas/demo/email/attempts/ready) |
+| `POST /api/activation/retry` | Active | Re-run `finalizeActivation` for current tenant (1/min cooldown, issue #296) |
+| `GET /api/admin/activation-health` | `x-admin-token` header | List tenants stuck >10min in non-ok provisioning state (requires `PLG_ADMIN_TOKEN` env) |
 | `POST /api/mira/chat` | Active | AI chat via mira-sidecar |
+
+## Env Vars (additions)
+| Var | Purpose |
+|-----|---------|
+| `PLG_ADMIN_TOKEN` | Bearer token for `/api/admin/activation-health`. Generate a random string and set in Doppler `factorylm/prd`. |
 
 ## PRDs
 - `MIRA/PRDS/factorylm-plg-funnel.md` — PLG funnel spec
