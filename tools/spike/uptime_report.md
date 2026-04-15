@@ -48,8 +48,25 @@ Funnel command recognized (available on current Tailscale client). Plan tier not
 ## Gate 1 — Custom domain binds (Task 4)
 TBD-Task-4
 
-## Gate 2 — Bandwidth headroom (Task 1)
-**PASS** — Tailscale Funnel is available on the Free tier and carries no explicit per-month bandwidth cap at our expected traffic level (≤ 5 GB/mo floor per spike scope Q3). To be re-confirmed against Tailscale admin console if quota concerns arise.
+## Gate 2 — Tailscale plan tier / Funnel availability (Task 1)
+**FAIL — HARD BLOCKER.** Probed `tailscale funnel --bg 65500` over SSH from Windows on 2026-04-15T09:15Z. Response:
+
+```
+Funnel is not available on the Starter plan.
+Upgrade to a different plan to get access to Funnel:
+https://login.tailscale.com/admin/settings/billing/plans
+```
+
+Tailnet `cranesync.com` is on the Starter plan, which does not include Funnel at all. This is a subscription gate, not a feature-flag toggle. No amount of measurement can move this gate.
+
+**Implication for spike (per spec §Decision matrix):** Any red Funnel gate → run Cloudflare Tunnel against the same gates. Gate 2 red by forfeit → Cloudflare Tunnel path is now the primary measurement target for this spike.
+
+**Decision required from Mike:**
+- (a) Upgrade Tailscale plan (Personal Pro ≤3 users = free, Premium = $18/user/mo includes Funnel) and retry all 5 gates against Funnel.
+- (b) Accept the forfeit and run the spike exclusively against Cloudflare Tunnel. Stripe webhook placement decision then uses Cloudflare's Gate 3 measurement.
+- (c) Defer the spike entirely until the plan question is resolved.
+
+Noted: operator permissions on the tailnet are fine — every tailscale command ran over SSH without sudo. The only blocker is subscription tier.
 
 ## Gate 3 — 24h reachability (Task 5 start → Task 7 capture)
 TBD-Task-7 (UptimeRobot %)
