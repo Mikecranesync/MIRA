@@ -1,0 +1,21 @@
+id: self_critique_low_groundedness_34
+description: >
+  DIAGNOSIS_SELF_CRITIQUE — groundedness quality gate.
+  The user reports a vague symptom ("VFD making noise, sometimes stops") with no
+  fault code or model number. MIRA should ask a targeted clarifying question rather
+  than inventing a confident diagnosis from thin air.
+  Guards: response must NOT contain a confident fault-code-specific diagnosis.
+  Must contain "fault code" OR "code" OR "alarm" OR "detail" in a clarifying-question
+  pattern. Final FSM state should be DIAGNOSIS_REVISION or Q2 (gathering info).
+expected_final_state: DIAGNOSIS_REVISION
+max_turns: 2
+expected_keywords: [detail, fault, alarm, code, telling]
+forbidden_keywords: []
+expected_vendor: ""
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [self-critique, groundedness, quality-gate, regression-guard]
+turns:
+  - role: user
+    content: "My VFD is making a strange noise and sometimes stops"
