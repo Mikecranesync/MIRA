@@ -32,7 +32,13 @@ export interface ActivationDeps {
     id: string,
     status: "pending" | "ok" | "failed",
   ) => Promise<void>;
-  signToken: (payload: object) => Promise<string>;
+  signToken: (payload: {
+    tenantId: string;
+    email: string;
+    tier: string;
+    atlasCompanyId: number;
+    atlasUserId: number;
+  }) => Promise<string>;
   sendActivatedEmail: (
     email: string,
     firstName: string,
