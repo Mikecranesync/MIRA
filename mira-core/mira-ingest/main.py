@@ -17,7 +17,9 @@ import httpx
 from crawl_verifier import (
     OUTCOME_SUCCESS,
     classify_historical,
+    get_crawl_status,
     list_verifications,
+    upsert_crawl_status,
     verify_crawl,
 )
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
@@ -967,7 +969,19 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
         except Exception as exc:
             logger.error("[%s] Fallback chain failed (non-fatal): %s", job_id, exc)
 
-    # 5. Notify the technician — honest message based on verified outcome
+    # 5. Persist terminal job status for Phase 3 honest-failure check on next user turn
+    strategies_count = len(fallback_result.get("strategies_tried", [])) if fallback_result else 0
+    if body.chat_id:
+        upsert_crawl_status(
+            chat_id=body.chat_id,
+            job_id=job_id,
+            vendor=body.manufacturer,
+            model=body.model,
+            final_outcome=crawl_outcome or "EMPTY",
+            strategies_tried=strategies_count,
+        )
+
+    # 6. Notify the technician — honest message based on verified outcome
     if body.chat_id:
         if crawl_outcome == OUTCOME_SUCCESS and ingested > 0:
             msg = (
@@ -1286,6 +1300,19 @@ async def _notify_telegram(chat_id: str, message: str) -> None:
 # ---------------------------------------------------------------------------
 # Crawl verification endpoints
 # ---------------------------------------------------------------------------
+
+
+@app.get("/ingest/crawl-status/{chat_id}")
+async def get_crawl_status_endpoint(chat_id: str):
+    """Return the terminal crawl outcome for a chat_id's most recent job.
+
+    Called by the engine on every user turn to check whether a prior doc-crawl
+    finished (successfully or exhausted).  Possible status values:
+      "success"   — at least one strategy succeeded; KB was updated
+      "exhausted" — all strategies tried, nothing ingested
+      "not_found" — no record for this chat_id (job still pending or never triggered)
+    """
+    return get_crawl_status(chat_id)
 
 
 @app.get("/ingest/crawl-verifications")

@@ -164,6 +164,20 @@ def _get_verify_db() -> sqlite3.Connection:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_crawl_runs_run_id ON crawl_runs(run_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_crawl_runs_outcome ON crawl_runs(outcome)")
+        # Phase 3 — per-chat job status table (one row per chat_id, overwritten on each job)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS crawl_job_status (
+                chat_id         TEXT PRIMARY KEY,
+                job_id          TEXT NOT NULL,
+                vendor          TEXT NOT NULL DEFAULT '',
+                model           TEXT NOT NULL DEFAULT '',
+                final_outcome   TEXT NOT NULL,
+                strategies_tried INTEGER NOT NULL DEFAULT 0,
+                finished_at     TEXT NOT NULL
+            )
+            """
+        )
         conn.commit()
         _db_initialized = True
     return conn
@@ -522,3 +536,96 @@ async def classify_historical(
         kb_writes=0,
         kb_write_attempts=0,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — per-chat crawl job status (honest failure feedback)
+# ---------------------------------------------------------------------------
+
+
+def upsert_crawl_status(
+    chat_id: str,
+    job_id: str,
+    vendor: str,
+    model: str,
+    final_outcome: str,
+    strategies_tried: int = 0,
+) -> None:
+    """Write (or overwrite) the terminal outcome for a chat_id's most recent crawl job.
+
+    Called at the end of _run_scrape_and_ingest in main.py after all fallbacks complete.
+    The engine queries this via GET /ingest/crawl-status/{chat_id} on the next user turn.
+    Never raises — failures are non-fatal.
+    """
+    if not chat_id:
+        return
+    try:
+        conn = _get_verify_db()
+        conn.execute(
+            """
+            INSERT INTO crawl_job_status (chat_id, job_id, vendor, model, final_outcome,
+                                          strategies_tried, finished_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(chat_id) DO UPDATE SET
+                job_id          = excluded.job_id,
+                vendor          = excluded.vendor,
+                model           = excluded.model,
+                final_outcome   = excluded.final_outcome,
+                strategies_tried = excluded.strategies_tried,
+                finished_at     = excluded.finished_at
+            """,
+            (
+                chat_id,
+                job_id,
+                vendor or "",
+                model or "",
+                final_outcome,
+                strategies_tried,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        conn.commit()
+        conn.close()
+        logger.info(
+            "CRAWL_JOB_STATUS chat_id=%s job_id=%s outcome=%s strategies=%d",
+            chat_id,
+            job_id,
+            final_outcome,
+            strategies_tried,
+        )
+    except Exception as exc:
+        logger.warning("upsert_crawl_status failed (non-fatal): %s", exc)
+
+
+def get_crawl_status(chat_id: str) -> dict[str, Any]:
+    """Return the latest crawl job status for a chat_id.
+
+    Returns dict with keys: status ("pending"|"success"|"exhausted"), vendor, model,
+    strategies_tried, finished_at.
+    Returns {"status": "not_found"} if no record exists.
+    Never raises.
+    """
+    if not chat_id:
+        return {"status": "not_found"}
+    try:
+        conn = _get_verify_db()
+        row = conn.execute(
+            "SELECT * FROM crawl_job_status WHERE chat_id = ?",
+            (chat_id,),
+        ).fetchone()
+        conn.close()
+        if not row:
+            return {"status": "not_found"}
+        outcome = row["final_outcome"]
+        status = "success" if outcome == OUTCOME_SUCCESS else "exhausted"
+        return {
+            "status": status,
+            "vendor": row["vendor"],
+            "model": row["model"],
+            "final_outcome": outcome,
+            "strategies_tried": row["strategies_tried"],
+            "finished_at": row["finished_at"],
+        }
+    except Exception as exc:
+        logger.warning("get_crawl_status failed (non-fatal): %s", exc)
+        return {"status": "not_found"}
