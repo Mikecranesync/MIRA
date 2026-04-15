@@ -1,0 +1,125 @@
+────────────────────────── MIRA Offline Test Harness ───────────────────────────
+backend=claude  neon=ok  anthropic=ok  groq=ok
+─── Scenario: Allen-Bradley PF525 F004 undervoltage, just replaced contactor ───
+Running synthetic user conversation...
+WARNING mira-gsd: Ollama embed failed: [Errno 8] nodename nor servname provided, or not known
+WARNING mira-gsd: gemini HTTP 403 (auth): [{
+  "error": {
+    "code": 403,
+    "message": "Your project has been denied access. Please contact support.",
+    "status": "PERMISSION_DENIED"
+  }
+}
+]
+WARNING mira-gsd: Ollama embed failed: [Errno 8] nodename nor servname provided, or not known
+WARNING mira-gsd: gemini HTTP 429 (rate_limit): [{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota e
+WARNING mira-gsd: kb_has_coverage failed: No module named 'sqlalchemy'
+WARNING mira-gsd: SCRAPE_TRIGGER failed (non-fatal): [Errno 8] nodename nor servname provided, or not known
+WARNING mira-gsd: Ollama embed failed: [Errno 8] nodename nor servname provided, or not known
+WARNING mira-gsd: gemini HTTP 429 (rate_limit): [{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota e
+WARNING mira-gsd: Ollama embed failed: [Errno 8] nodename nor servname provided, or not known
+WARNING mira-gsd: gemini HTTP 429 (rate_limit): [{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota e
+WARNING mira-gsd: Ollama embed failed: [Errno 8] nodename nor servname provided, or not known
+WARNING mira-gsd: gemini HTTP 429 (rate_limit): [{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota e
+WARNING mira-gsd: Ollama embed failed: [Errno 8] nodename nor servname provided, or not known
+WARNING mira-gsd: gemini HTTP 429 (rate_limit): [{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota e
+  Tech: "Hey, got an issue with a PF525 F004, just swapped out the contactor but
+still getting undervoltage faults, what's the first thing I should check?"
+
+  MIRA (1015ms): I don't have documentation for this equipment in my knowledge 
+base. Based on general knowledge (not from specific documentation), when 
+troubleshooting undervoltage faults after a contactor swap, it's often helpful 
+to verify the voltage supply. What is the measured voltage at the input to the 
+PF525 F004?
+
+1. 1. Check the voltage at the contactor terminals
+2. 2. Verify the supply voltage at the circ
+
+  Tech: Gonna check the voltage at the contactor terminals first. Haven't 
+checked that yet. Can you tell me what it should be reading?
+
+  MIRA (6041ms): I don't have specific documentation for the PF525 F004, but 
+based on general knowledge, the expected voltage reading can vary depending on 
+the system configuration. Can you tell me what voltage the contactor is rated 
+for or what the system's nominal voltage is supposed to be?
+
+1. 120V
+2. 240V
+3. 480V
+
+  Tech: It's 240V, that's what the label says. Honestly not sure if that's what 
+it's supposed to be reading though, can you just find me the manual for this?
+
+  MIRA (8ms): I want to find that manual for you. What's the **brand or 
+manufacturer**? (You can also say 'back to troubleshooting' anytime.)
+
+  Tech: Allen-Bradley, that's what's on the label. Can you just find the manual 
+for the PF525 F004, don't got all day to stand around.
+
+  MIRA (7ms): I don't have documentation for that equipment in my knowledge base
+yet.
+
+You can find it here: rockwellautomation.com/support
+
+I've queued a crawl to pull the manual automatically — ask me again in a couple 
+of minutes and I'll have more specific information.
+
+  Tech: Can't wait that long, machine's down and we're losing production. Can 
+you just give me some general ideas to check, like is the voltage supposed to be
+steady or can it fluctuate?
+
+  MIRA (6619ms): Based on general knowledge, for a 240V system, the voltage 
+should be relatively steady, but some fluctuation is normal. Would you expect 
+the voltage to be within a certain percentage range of the nominal voltage, like
+5% or 10%?
+
+1. 10%
+2. Not sure
+3. Other
+
+  Tech: Yeah, 10% sounds right. Honestly not sure, but that's what I've heard 
+before. Can we just get to the fix, this thing's been down for too long already.
+
+  MIRA (6612ms): Let's try to isolate the issue. Since you've replaced the 
+contactor and still get undervoltage faults, do you think the problem might be 
+with the voltage supply to the contactor or with the contactor itself?
+
+1. 1. Check the voltage supply
+2. 2. Verify contactor installation
+3. 3. Inspect wiring for damage
+4. 4. Check for other system faults
+
+  Tech: Voltage supply, yeah. That's what I'm thinkin', maybe it's not gettin' 
+the 240 it needs. Gonna check the breaker, see if it's trippin' or if the 
+voltage's droppin' somewhere.
+
+  MIRA (6184ms): You're checking the breaker and voltage supply, that's a good 
+step. Are you going to check the wiring between the breaker and the contactor 
+for any signs of damage or corrosion?
+
+  Tech: Haven't checked the wiring yet, gonna do that next. Honestly not sure 
+what I'm lookin' for, just gonna make sure it's not damaged or nothin'. Can you 
+tell me what kind of damage I should be lookin' for?
+
+  MIRA (6603ms): Based on general knowledge, you might want to look for signs of
+wear, corrosion, or physical damage like cuts, burns, or overheating. Are you 
+going to use a multimeter to check for any voltage drops or resistance issues in
+the wiring?
+
+  Final FSM state: Q1
+  Turns: 8

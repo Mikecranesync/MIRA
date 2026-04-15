@@ -2,7 +2,7 @@ id: vfd_ab_03_pf525_wrong_model
 description: "User says PF525 but describes encoder feedback fault (PF755-only feature) — cross-model contamination test"
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: [PowerFlex, 525, encoder, model]
+expected_keywords: [PowerFlex, "525", encoder, model]
 forbidden_keywords: [Parameter 421, Parameter 492, Safety option, dual-port, EtherNet/IP adapter]
 expected_vendor: Allen-Bradley
 wo_expected: false

@@ -1,0 +1,43 @@
+Failures parsed: 59
+Clusters (>=3 same mode): 4
+
+  Cluster ID: 'cp_reached_state-state-str-expected-str'
+  Checkpoint: cp_reached_state | Reason signature: state=str, expected=str
+  Count: 34
+  Scenarios:
+    gs10_overcurrent_01: State='Q1', expected='Q2'
+    pf525_f004_02: State='Q1', expected='DIAGNOSIS'
+    gs20_cross_vendor_03: State='Q1', expected='DIAGNOSIS'
+    yaskawa_out_of_kb_04: State='Q1', expected='DIAGNOSIS'
+    vague_opener_stuck_state_05: State='Q1', expected='Q2'
+    full_diagnosis_happy_path_07: State='Q1', expected='DIAGNOSIS'
+
+  Cluster ID: 'cp_keyword_match-no-honesty-signal-possible-hal'
+  Checkpoint: cp_keyword_match | Reason signature: no honesty signal — possible hallucinati
+  Count: 14
+  Scenarios:
+    yaskawa_v1000_oc_22: No honesty signal — possible hallucination
+    yaskawa_j1000_thermal_24: No honesty signal — possible hallucination
+    yaskawa_ga700_encoder_26: No honesty signal — possible hallucination
+    sew_overcurrent_29: No honesty signal — possible hallucination
+    lenze_thermal_30: No honesty signal — possible hallucination
+    vfd_abb_01_acs580_fault_2310: No honesty signal — possible hallucination
+
+  Cluster ID: 'cp_pipeline_active-no-call-exceeded-100ms-possibl'
+  Checkpoint: cp_pipeline_active | Reason signature: no call exceeded 100ms — possible trivia
+  Count: 4
+  Scenarios:
+    manual_lookup_gather_32: No call exceeded 100ms — possible trivial response
+    manual_lookup_escape_33: No call exceeded 100ms — possible trivial response
+    vfd_ab_04_pf70_find_manual: No call exceeded 100ms — possible trivial response
+    vfd_abb_02_acs880_find_manual: No call exceeded 100ms — possible trivial response
+
+  Cluster ID: 'cp_keyword_match-no-match-from-list'
+  Checkpoint: cp_keyword_match | Reason signature: no match from list
+  Count: 3
+  Scenarios:
+    pf520_hw_overcurrent_17: No match from ['overcurrent', 'F12', 'IGBT', 'motor', 'cable']
+    yaskawa_ga500_gf_25: No match from ['ground fault', 'insulation', 'motor', 'cable']
+    self_critique_low_groundedness_34: No match from ['detail', 'fault', 'alarm', 'code', 'telling']
+
+[dry-run] No PRs opened.

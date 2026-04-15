@@ -378,7 +378,7 @@ def write_offline_scorecard(
             lines.append(f"### {g.scenario_id}")
             for cp in g.checkpoints:
                 if not cp.passed:
-                    lines.append(f"- **{cp.name}**: {cp.reason}")
+                    lines.append(f"- **{cp.name}** FAILED: {cp.reason}")
             if g.error:
                 lines.append(f"- Photo extraction: {g.error}")
             lines.append("")

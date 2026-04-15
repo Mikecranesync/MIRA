@@ -2,7 +2,7 @@ id: vfd_ab_02_pf755_overcurrent_load
 description: "PowerFlex 755 repeated overcurrent under load — multi-turn diagnostic path"
 expected_final_state: DIAGNOSIS
 max_turns: 8
-expected_keywords: [overcurrent, PowerFlex, 755, load, motor, current]
+expected_keywords: [overcurrent, PowerFlex, "755", load, motor, current]
 forbidden_keywords: []
 expected_vendor: Allen-Bradley
 wo_expected: false

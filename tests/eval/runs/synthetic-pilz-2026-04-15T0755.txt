@@ -1,0 +1,99 @@
+────────────────────────── MIRA Offline Test Harness ───────────────────────────
+backend=claude  neon=ok  anthropic=ok  groq=ok
+──────── Scenario: Pilz PNOZ safety relay — not detecting the actuator ─────────
+Running synthetic user conversation...
+WARNING mira-gsd: Ollama embed failed: [Errno 8] nodename nor servname provided, or not known
+WARNING mira-gsd: gemini HTTP 429 (rate_limit): [{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota e
+WARNING mira-gsd: Ollama embed failed: [Errno 8] nodename nor servname provided, or not known
+WARNING mira-gsd: gemini HTTP 429 (rate_limit): [{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota e
+WARNING mira-gsd: Ollama embed failed: [Errno 8] nodename nor servname provided, or not known
+WARNING mira-gsd: gemini HTTP 429 (rate_limit): [{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota e
+WARNING mira-gsd: Ollama embed failed: [Errno 8] nodename nor servname provided, or not known
+WARNING mira-gsd: gemini HTTP 429 (rate_limit): [{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota e
+WARNING mira-gsd: kb_has_coverage failed: No module named 'sqlalchemy'
+  Tech: "Hey, got an issue with our Pilz PNOZ safety relay, it's not seein' the 
+actuator for some reason. Can you help me troubleshoot?"
+
+  MIRA (2ms): I help maintenance technicians diagnose equipment issues. Send me 
+a photo of a fault screen, a fault code like 'OC' or 'F-201', or describe what's
+happening with your equipment.
+
+  Tech: "It's just not detecting the actuator, no code on the screen. I haven't 
+checked the wiring yet, been too busy. Can you just tell me what could cause 
+that?"
+
+  MIRA (6404ms): What type of actuator is connected to the Pilz PNOZ safety 
+relay?
+
+1. 1. Mechanical
+2. 2. Electrical
+3. 3. Pneumatic
+4. 4. Other
+
+  Tech: It's an electrical actuator. Haven't checked the wiring yet, like I 
+said.
+
+  MIRA (6473ms): You mentioned you haven't checked the wiring yet. Based on 
+general knowledge (not from specific documentation), loose or incorrect wiring 
+could prevent the relay from detecting the actuator. What's the model number of 
+your Pilz PNOZ safety relay?
+
+  Tech: Model number's on the side, I think it's a PNOZ X2.1p or somethin' like 
+that. Honestly not sure, can you just tell me how to check the wiring without 
+the manual?
+
+  MIRA (6470ms): I don't have documentation for this equipment in my knowledge 
+base. Based on general knowledge (not from specific documentation), you can 
+start by verifying that all connections to the actuator and the relay are 
+secure. Can you check if the model number on the side is a PNOZ X2.1p or 
+something similar and provide the exact model number?
+
+  Tech: "Honestly, I don't have time to double-check the model number right now.
+It's a PNOZ X2 somethin', that's all I know. Can you just tell me how to check 
+the wiring so I can get this thing runnin'?"
+
+  MIRA (6183ms): I don't have documentation for this equipment in my knowledge 
+base. Based on general knowledge (not from specific documentation), checking the
+wiring typically involves verifying that all connections are secure and not 
+damaged. Do you have the manufacturer's website bookmarked where you could 
+potentially find a manual for the PNOZ X2 series?
+
+  Tech: Nah, don't got the website bookmarked. Can you just find me the manual 
+for this? I'm busy troubleshootin' this issue, don't got time to search for it.
+
+  MIRA (6ms): I want to find that manual for you. What's the **brand or 
+manufacturer**? (You can also say 'back to troubleshooting' anytime.)
+
+  Tech: Pilz, it's a Pilz PNOZ safety relay. Can you just find the manual for 
+that?
+
+  MIRA (7ms): Got it — Pilz. What's the **exact model number**? It's usually 
+printed on the nameplate. (Say 'skip' to try with what I have, or 'back to 
+troubleshooting' to drop the manual search.)
+
+  Tech: Look, I already told you, it's a PNOZ X2 somethin'. I don't got time to 
+go check the nameplate again, can't you just search for PNOZ X2 manuals or 
+somethin'?
+
+  MIRA (3ms): I don't have documentation for that equipment in my knowledge base
+yet.
+
+You can find it here: pilz.com/support
+
+I've queued a crawl to pull the manual automatically — ask me again in a couple 
+of minutes and I'll have more specific information.
+
+  Final FSM state: Q1
+  Turns: 8

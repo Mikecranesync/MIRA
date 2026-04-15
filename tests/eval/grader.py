@@ -209,12 +209,12 @@ def cp_keyword_match(
     if not expected_kws:
         return CheckpointResult("cp_keyword_match", True, "No keywords required")
 
-    matched = [kw for kw in expected_kws if kw.lower() in resp_lower]
+    matched = [kw for kw in expected_kws if str(kw).lower() in resp_lower]
     passed = len(matched) > 0
 
     # Forbidden keyword check (fail if any forbidden term appears)
     forbidden = fixture.get("forbidden_keywords", [])
-    violations = [f for f in forbidden if f.lower() in resp_lower]
+    violations = [f for f in forbidden if str(f).lower() in resp_lower]
     if violations:
         return CheckpointResult(
             "cp_keyword_match",
