@@ -60,3 +60,31 @@ def test_hook_echoes_post_body(server: int):
 def test_unknown_path_returns_404(server: int):
     status, _ = _get(server, "/nope")
     assert status == 404
+
+
+def test_hook_invalid_content_length_returns_400(server: int):
+    conn = HTTPConnection("127.0.0.1", server, timeout=2)
+    # Send raw request with a malformed Content-Length header; must not 500.
+    conn.request(
+        "POST",
+        "/hook",
+        body=b"{}",
+        headers={"Content-Type": "application/json", "Content-Length": "notanumber"},
+    )
+    resp = conn.getresponse()
+    resp.read()
+    conn.close()
+    assert resp.status == 400
+
+
+def test_hook_oversized_body_returns_413(server: int):
+    conn = HTTPConnection("127.0.0.1", server, timeout=2)
+    # Advertise a body larger than the 1 MiB cap. Server must reject before reading.
+    conn.putrequest("POST", "/hook")
+    conn.putheader("Content-Type", "application/json")
+    conn.putheader("Content-Length", str(1024 * 1024 + 1))
+    conn.endheaders()
+    resp = conn.getresponse()
+    resp.read()
+    conn.close()
+    assert resp.status == 413

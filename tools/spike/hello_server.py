@@ -13,7 +13,9 @@ from __future__ import annotations
 import json
 import ssl
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+
+MAX_BODY_BYTES = 1024 * 1024  # 1 MiB cap for POST /hook bodies
 
 
 class SpikeHandler(BaseHTTPRequestHandler):
@@ -37,7 +39,17 @@ class SpikeHandler(BaseHTTPRequestHandler):
         if self.path != "/hook":
             self._send(404, b"not found")
             return
-        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._send(400, b"invalid content-length")
+            return
+        if length < 0:
+            self._send(400, b"invalid content-length")
+            return
+        if length > MAX_BODY_BYTES:
+            self._send(413, b"payload too large")
+            return
         raw = self.rfile.read(length) if length else b"{}"
         try:
             payload = json.loads(raw or b"{}")
@@ -51,7 +63,9 @@ class SpikeHandler(BaseHTTPRequestHandler):
 
 
 def build_server(addr: tuple[str, int]) -> HTTPServer:
-    return HTTPServer(addr, SpikeHandler)
+    # ThreadingHTTPServer is a subclass of HTTPServer — return type stays compatible.
+    # Threaded so UptimeRobot health checks don't serialize behind slow `hey` clients.
+    return ThreadingHTTPServer(addr, SpikeHandler)
 
 
 def serve_tls(host: str, port: int, certfile: str, keyfile: str) -> None:
