@@ -1,9 +1,11 @@
 # Transport Spike — Measurements Report
 
+**Status:** 🅿️ **PARKED 2026-04-15** — Mike paid the DigitalOcean VPS renewal; production stays on VPS. This spike preserved as a documented backup path for when VPS renewal is next evaluated. See §Parking notes at bottom.
+
 **Spike start (UTC):** 2026-04-15T08:52:52Z
-**Branch:** `worktree-issue-294-transport-spike`
+**Branch:** `worktree-issue-294-transport-spike` — not to be merged until unparked.
 **Driver:** Claude (remote via `ssh bravo`) + Mike (registrar, UptimeRobot, Bravo-local sudo, phone cellular check)
-**Issue:** [#294](https://github.com/Mikecranesync/MIRA/issues/294)
+**Issue:** [#294](https://github.com/Mikecranesync/MIRA/issues/294) — moved back to Todo on parking.
 
 ---
 
@@ -80,4 +82,29 @@ TBD-Task-4
 ---
 
 ## Cloudflare run (only if any Funnel gate fails)
-TBD-Task-8
+Not executed — spike parked before this branch was opened.
+
+---
+
+## Parking notes (2026-04-15T09:25Z)
+
+**Decision:** Mike paid the DigitalOcean VPS for another cycle; production stays on VPS. This spike is preserved as a fully-documented backup path so that when the next VPS renewal comes up, we can pick up from here without re-doing the thinking.
+
+**What's preserved on this branch:**
+- `docs/superpowers/specs/2026-04-15-transport-spike-design.md` (on main) — the design spec with 5 gates and decision matrix. Still valid.
+- `docs/superpowers/plans/2026-04-15-transport-spike.md` (on main) — the 10-task implementation plan. Still valid, with the caveat that Task 4 / 8 need rewiring if Cloudflare is chosen over Funnel.
+- `tools/spike/hello_server.py` + tests (this branch) — hello-world HTTPS server, reviewed, bounded, threaded. Reusable for either transport.
+- `tools/spike/uptime_report.md` (this file) — pre-flight baseline + Gate 2 finding.
+- PR #295 — parked as DRAFT. Not to be merged.
+
+**Open decisions when unparked:**
+1. Tailscale plan question. Current tailnet `cranesync.com` is on Starter, which does not include Funnel. Options: Personal Pro (free, ≤3 users, keeps single-vendor story), Premium (paid, adds $216/yr), or abandon Funnel in favor of Cloudflare Tunnel (free, adds one vendor surface).
+2. If Cloudflare is chosen: the 10-task plan's Task 4 needs replacement with `cloudflared tunnel` setup. Everything else (server, DNS CNAME, Gates 3/4/5, ADR) carries over unchanged.
+3. Stripe webhook placement — same decision matrix applies, now gated on whichever transport is measured.
+
+**Resume checklist:**
+- Re-probe Bravo environment (`ssh bravo` — confirm repo path, tailnet, funnel availability if plan changed).
+- Resolve open decision 1 above.
+- If Funnel is unblocked: continue at Task 3 (DNS CNAME). Everything else in the plan still applies.
+- If Cloudflare is chosen: the server + tests stay; replace Task 4's `tailscale cert / funnel` commands with `cloudflared tunnel create / route dns / run`.
+- Reopen #294 on kanban (move from Todo → In Progress) and attach this PR.
