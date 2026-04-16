@@ -27,10 +27,11 @@ def _load_prompt_meta() -> dict:
         return {
             "codename": data.get("codename", "unknown"),
             "version": str(data.get("version", "unknown")),
+            "system_prompt": data.get("system_prompt", ""),
         }
     except Exception as e:
         logger.warning("Failed to load prompt metadata from %s: %s", _PROMPT_PATH, e)
-        return {"codename": "unknown", "version": "unknown"}
+        return {"codename": "unknown", "version": "unknown", "system_prompt": ""}
 
 
 logger = logging.getLogger("mira-gsd")
@@ -176,6 +177,8 @@ class RAGWorker:
         self._last_sources: list[str] = []
         self._last_distances: list[float] = []
         self._prompt_meta = _load_prompt_meta()
+        # Use system_prompt from active.yaml; fall back to hardcoded if YAML is missing
+        self._system_prompt = self._prompt_meta["system_prompt"] or GSD_SYSTEM_PROMPT
 
     async def process(
         self,
@@ -313,7 +316,7 @@ class RAGWorker:
         photo_b64: str = None,
     ) -> list[dict]:
         """Build prompt with explicitly injected reranked chunks."""
-        system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
+        system_content = self._system_prompt + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"
@@ -385,7 +388,7 @@ class RAGWorker:
                 Injects an explicit honesty directive so the LLM admits it has no
                 documentation rather than hallucinating specifics.
         """
-        system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
+        system_content = self._system_prompt + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"
