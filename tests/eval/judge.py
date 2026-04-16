@@ -378,6 +378,25 @@ class Judge:
         except httpx.HTTPStatusError as e:
             msg = f"HTTP {e.response.status_code}: {e.response.text[:300]}"
             logger.error("Judge HTTP error (%s): %s", provider, msg)
+            # Claude billing/quota errors → fall back to Groq automatically
+            if provider == "claude" and e.response.status_code in (400, 402, 429) and self._groq_key:
+                logger.warning(
+                    "Claude judge failed (HTTP %d) — falling back to Groq",
+                    e.response.status_code,
+                )
+                try:
+                    raw_text = self._call_groq(prompt)
+                    data = self._parse_json(raw_text)
+                    scores, notes = self._validate_result(data)
+                    return JudgeResult(
+                        scenario_id=scenario_id,
+                        judge_model=self._groq_model,
+                        judge_provider="groq",
+                        scores=scores,
+                        notes=notes,
+                    )
+                except Exception as fallback_e:
+                    logger.error("Groq fallback also failed: %s", fallback_e)
             return JudgeResult(
                 scenario_id=scenario_id,
                 judge_model=judge_model,

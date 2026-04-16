@@ -339,6 +339,7 @@ def write_scorecard(
     dry_run: bool,
     judge_results: list[JudgeResult | None] | None = None,
     judge_raw_path: Path | None = None,
+    remote_pipeline_warning: bool = False,
 ) -> None:
     """Write markdown scorecard to output_path.
 
@@ -360,6 +361,14 @@ def write_scorecard(
         f"**Checkpoints:** {' / '.join(_CHECKPOINT_LABELS)}",
         "",
     ]
+
+    if remote_pipeline_warning:
+        lines.append(
+            "> **WARNING — REMOTE PIPELINE:** `PIPELINE_URL` points to a remote host but "
+            "`MIRA_DB_PATH` is local. `cp_reached_state` reads FSM state from the local DB "
+            "which does NOT reflect the remote pipeline — all FSM states will show IDLE. "
+            "Binary pass/fail counts are unreliable. Run from the VPS for accurate results.\n"
+        )
 
     if dry_run:
         lines.append("> DRY RUN — no HTTP calls made, fixture loading validated only.\n")
@@ -539,15 +548,34 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    # Detect remote PIPELINE_URL — FSM state reads from local MIRA_DB_PATH won't match
+    # the remote pipeline's state, so cp_reached_state will always report IDLE.
+    _remote_pipeline = bool(
+        PIPELINE_URL
+        and not PIPELINE_URL.startswith("http://localhost")
+        and not PIPELINE_URL.startswith("http://127.0.0.1")
+    )
+    if _remote_pipeline:
+        logger.warning(
+            "PIPELINE_URL=%s is remote. cp_reached_state reads from local "
+            "MIRA_DB_PATH=%s — FSM state will always be IDLE. "
+            "Appending -remote suffix to output file to avoid overwriting VPS scorecards.",
+            PIPELINE_URL,
+            MIRA_DB_PATH,
+        )
+
     # Support --output as either a directory or a direct .md file path
     run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     output_arg = Path(args.output)
     if args.output.endswith(".md"):
         output_path = output_arg
         output_dir = output_path.parent
+        if _remote_pipeline and not output_path.stem.endswith("-remote"):
+            output_path = output_path.with_name(output_path.stem + "-remote.md")
     else:
         output_dir = output_arg
-        output_path = output_dir / f"{run_date}.md"
+        suffix = "-remote" if _remote_pipeline else ""
+        output_path = output_dir / f"{run_date}{suffix}.md"
 
     # Sibling JSONL for raw judge output
     judge_raw_path = output_path.with_suffix("").with_name(output_path.stem + "-judge.jsonl")
@@ -598,6 +626,7 @@ def main() -> int:
         dry_run=args.dry_run,
         judge_results=judge_results if judge_enabled else None,
         judge_raw_path=judge_raw_path if judge_enabled else None,
+        remote_pipeline_warning=_remote_pipeline,
     )
 
     # Exit non-zero if any scenario failed (useful for CI)
