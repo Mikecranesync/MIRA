@@ -15,7 +15,8 @@
         "serial": null,
         "component_type": "HMI tablet"
       },
-      "notes": "Rugged HMI tablet showing Stardust Racers ride alarm system \u2014 active alarms for GEN-BB, FBH-HH faults. Tablet manufacturer not legible from photo."
+      "notes": "Rugged HMI tablet showing Stardust Racers ride alarm system \u2014 active alarms for GEN-BB, FBH-HH fault. Screen face only, no hardware nameplate visible.",
+      "filename": "PXL_20260219_043746450.jpg"
     },
     {
       "id": "case1_photo_02",
@@ -23,12 +24,13 @@
       "ground_truth": {
         "classification": "ELECTRICAL_PRINT",
         "make": "MACK RIDES",
-        "model": "2400WK0266_HDW_AB01",
+        "model": "2400WK0266_HDW_AB01_US_250115",
         "catalog": "2400WK0266",
         "serial": "N/A",
         "component_type": "electrical drawing"
       },
-      "notes": "Macro of laptop screen showing PDF title block. File: 2400WK0266_HDW_AB01_US_250115.pdf. Customer: Universal Orlando. Project: Racing Coaster."
+      "notes": "Macro of laptop screen showing PDF in browser. File: 2400WK0266_HDW_AB01_US_250115.pdf open in Edge. Title block and cable overview section visible. Customer: Universal Orlando. Project: Racing Coaster (Stardust Racers).",
+      "filename": "PXL_20260219_045141856.MACRO_FOCUS.jpg"
     },
     {
       "id": "case1_photo_03",
@@ -41,7 +43,8 @@
         "serial": "N/A",
         "component_type": "electrical schematic"
       },
-      "notes": "Temperature monitoring schematic. ZIEHL (Ziehl-Abegg) component block visible. PT100 sensor wiring. EMIS logo in title block."
+      "notes": "Temperature monitoring schematic macro. ZIEHL component block visible: model HSR230K0, part 7321958. PT100 sensor wiring. EMIS title block shows sheet 1095 page 14, project Racing Coaster, customer Universal Orlando.",
+      "filename": "PXL_20260219_045632544.MACRO_FOCUS.jpg"
     },
     {
       "id": "case1_photo_04",
@@ -54,7 +57,8 @@
         "serial": "N/A",
         "component_type": "electrical schematic"
       },
-      "notes": "Power distribution and sensor wiring schematic. Multiple junction boxes with PT100 connections. EMIS title block top and bottom."
+      "notes": "Full-page temperature monitoring schematic (wide view). Multiple PT100 sensor channels shown. EMIS title block at top and bottom. MACK RIDES project. Junction box wiring layout.",
+      "filename": "PXL_20260219_045640877.jpg"
     },
     {
       "id": "case1_photo_05",
@@ -67,7 +71,8 @@
         "serial": "N/A",
         "component_type": "electrical schematic"
       },
-      "notes": "Motor circuit schematic, page 1098 of 3742. Macro close-up. EMIS title block at bottom."
+      "notes": "Macro close-up of motor circuit schematic in PDF viewer showing page 1098 of 3742. EMIS title block at bottom. Part of the 2400WK0266 drawing package for Racing Coaster.",
+      "filename": "PXL_20260219_045647225.MACRO_FOCUS.jpg"
     },
     {
       "id": "case1_photo_06",
@@ -80,7 +85,8 @@
         "serial": "N/A",
         "component_type": "electrical schematic"
       },
-      "notes": "Contactor and safety relay circuit. Components 43.1, 43.2 visible. Shows contactor coil circuits with overload and safety interlocks. EMIS title block."
+      "notes": "Contactor and safety relay circuit. Safety core schematic, sheet 1089 page 2. Components -K3.1, -K3.2 (contactor 1+2 enable brake) and PROSAFE relay visible. MACK RIDES / EMIS, project Racing Coaster, customer Universal Orlando.",
+      "filename": "PXL_20260219_045654220.jpg"
     },
     {
       "id": "case1_photo_07",
@@ -93,7 +99,8 @@
         "serial": "N/A",
         "component_type": "bill of materials"
       },
-      "notes": "Hardware BOM/parts list. Manufacturers listed: Phoenix Contact, Hager, Lapp, Rittal. File: 2400WK0266_HDW_AB01_US_250115.pdf."
+      "notes": "Hardware BOM/parts list spreadsheet on Windows laptop. Manufacturers visible: Phoenix Contact (WAZU 184.2012.01, ST 2.5-TWIN), Hager, ZIEHL-ABEGG (highlighted), Eaton, Rittal. File 2400WK0266_HDW_AB01_US_250115.pdf.",
+      "filename": "PXL_20260219_045719632.jpg"
     },
     {
       "id": "case1_photo_08",
@@ -106,7 +113,8 @@
         "serial": "N/A",
         "component_type": "cable overview"
       },
-      "notes": "Macro close-up of cable overview section. Editor: Raphael Reichenbach. Date: 15.01.2025. Customer: Universal Orlando. Revision AB01. Components: MLM 16, MSR220K6."
+      "notes": "Macro close-up of cable overview title block. Editor: Raphael Reichenbach. Date: 15.01.2025. Revision: AB01. Customer: Universal Orlando. MACK RIDES logo. Drawing/catalog number 10172 clearly visible.",
+      "filename": "PXL_20260219_045737047.MACRO_FOCUS.jpg"
     },
     {
       "id": "case1_photo_09",
@@ -119,7 +127,8 @@
         "serial": "N/A",
         "component_type": "electrical schematic"
       },
-      "notes": "Full schematic page \u2014 same layout as photo 04. Multiple junction boxes with PT100 sensors, power distribution. EMIS title blocks top and bottom."
+      "notes": "Full temperature monitoring schematic page \u2014 same layout as photo 04. Multiple PT100 channel blocks across top, junction box wiring below. MACK RIDES / EMIS title blocks. Project Racing Coaster, customer Universal Orlando.",
+      "filename": "PXL_20260219_045802513.MP.jpg"
     },
     {
       "id": "gp_motor_001",
