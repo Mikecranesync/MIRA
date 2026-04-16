@@ -22,9 +22,11 @@ import yaml
 
 import sys
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+# mira-bots/ has a hyphen and can't be imported as a package.
+# Add mira-bots/ itself to the path so sub-packages are importable directly.
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from mira_bots.tools.active_learner import ActiveLearner
+from tools.active_learner import ActiveLearner
 
 
 # ── Fixtures (pytest, not eval) ───────────────────────────────────────────────
