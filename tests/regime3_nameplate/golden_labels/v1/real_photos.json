@@ -23,9 +23,9 @@
       "ground_truth": {
         "classification": "ELECTRICAL_PRINT",
         "make": "MACK RIDES",
-        "model": null,
+        "model": "2400WK0266_HDW_AB01",
         "catalog": "2400WK0266",
-        "serial": null,
+        "serial": "N/A",
         "component_type": "electrical drawing"
       },
       "notes": "Macro of laptop screen showing PDF title block. File: 2400WK0266_HDW_AB01_US_250115.pdf. Customer: Universal Orlando. Project: Racing Coaster."
@@ -38,7 +38,7 @@
         "make": "EMIS",
         "model": null,
         "catalog": null,
-        "serial": null,
+        "serial": "N/A",
         "component_type": "electrical schematic"
       },
       "notes": "Temperature monitoring schematic. ZIEHL (Ziehl-Abegg) component block visible. PT100 sensor wiring. EMIS logo in title block."
@@ -51,7 +51,7 @@
         "make": "EMIS",
         "model": null,
         "catalog": null,
-        "serial": null,
+        "serial": "N/A",
         "component_type": "electrical schematic"
       },
       "notes": "Power distribution and sensor wiring schematic. Multiple junction boxes with PT100 connections. EMIS title block top and bottom."
@@ -64,7 +64,7 @@
         "make": "EMIS",
         "model": null,
         "catalog": null,
-        "serial": null,
+        "serial": "N/A",
         "component_type": "electrical schematic"
       },
       "notes": "Motor circuit schematic, page 1098 of 3742. Macro close-up. EMIS title block at bottom."
@@ -77,7 +77,7 @@
         "make": "EMIS",
         "model": null,
         "catalog": null,
-        "serial": null,
+        "serial": "N/A",
         "component_type": "electrical schematic"
       },
       "notes": "Contactor and safety relay circuit. Components 43.1, 43.2 visible. Shows contactor coil circuits with overload and safety interlocks. EMIS title block."
@@ -90,7 +90,7 @@
         "make": "MACK RIDES",
         "model": null,
         "catalog": "2400WK0266",
-        "serial": null,
+        "serial": "N/A",
         "component_type": "bill of materials"
       },
       "notes": "Hardware BOM/parts list. Manufacturers listed: Phoenix Contact, Hager, Lapp, Rittal. File: 2400WK0266_HDW_AB01_US_250115.pdf."
@@ -103,7 +103,7 @@
         "make": "MACK RIDES",
         "model": null,
         "catalog": "10172",
-        "serial": null,
+        "serial": "N/A",
         "component_type": "cable overview"
       },
       "notes": "Macro close-up of cable overview section. Editor: Raphael Reichenbach. Date: 15.01.2025. Customer: Universal Orlando. Revision AB01. Components: MLM 16, MSR220K6."
@@ -116,7 +116,7 @@
         "make": "EMIS",
         "model": null,
         "catalog": null,
-        "serial": null,
+        "serial": "N/A",
         "component_type": "electrical schematic"
       },
       "notes": "Full schematic page \u2014 same layout as photo 04. Multiple junction boxes with PT100 sensors, power distribution. EMIS title blocks top and bottom."

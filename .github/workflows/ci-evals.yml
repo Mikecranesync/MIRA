@@ -45,10 +45,11 @@ jobs:
             --ignore=tests/regime5_nemotron/
 
   # Tier C: Full evaluation — only on schedule or manual dispatch
+  # Requires BRAVO self-hosted runner for Docker service access
   eval-full:
     name: Full Evaluation
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     needs: eval-fast
     steps:
       - uses: actions/checkout@v4

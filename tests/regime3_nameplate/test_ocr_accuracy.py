@@ -166,11 +166,20 @@ async def regime3_runner(
       - offline: score mock extraction against ground truth (validation only)
       - live: call VisionWorker.process() on actual photos
     """
-    labels_path = TESTS_ROOT / "regime3_nameplate" / "golden_labels" / "v1" / "sample_tags.json"
-    with open(labels_path) as f:
-        data = json.load(f)
+    labels_dir = TESTS_ROOT / "regime3_nameplate" / "golden_labels" / "v1"
 
-    cases = data["cases"]
+    with open(labels_dir / "sample_tags.json") as f:
+        sample_data = json.load(f)
+    cases = list(sample_data["cases"])
+
+    # Merge in annotated real-photo cases (case1_photo_*) from real_photos.json
+    real_labels_path = labels_dir / "real_photos.json"
+    if real_labels_path.exists():
+        with open(real_labels_path) as f:
+            real_data = json.load(f)
+        case1_cases = [c for c in real_data["cases"] if c["id"].startswith("case1_photo_")]
+        cases.extend(case1_cases)
+
     results: list[CaseResult] = []
 
     for case in cases:
