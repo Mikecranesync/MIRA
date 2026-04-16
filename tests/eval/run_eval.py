@@ -15,8 +15,13 @@ Usage (from repo root on VPS):
     # Disable judge (hourly cheap mode):
     EVAL_DISABLE_JUDGE=1 python3 tests/eval/run_eval.py
 
-    # Against a local pipeline (dev):
-    PIPELINE_URL=http://localhost:9099 python3 tests/eval/run_eval.py
+    # Against a local pipeline (CHARLIE/dev — required for correct FSM state tracking):
+    MIRA_DB_PATH=/Users/charlienode/MIRA/mira-bridge/data/mira.db \
+    PIPELINE_URL=http://localhost:9099 EVAL_DISABLE_JUDGE=1 \
+    doppler run --project factorylm --config prd -- python3 tests/eval/run_eval.py
+    # NOTE: PIPELINE_URL must be set when running locally. Default (empty) uses
+    # docker-exec inside mira-pipeline-saas which writes to a different /data volume
+    # than the host-side MIRA_DB_PATH — causing _read_fsm_state() to always return IDLE.
 
     # Dry run (no actual HTTP calls — sanity check fixture loading):
     python3 tests/eval/run_eval.py --dry-run
