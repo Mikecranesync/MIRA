@@ -489,11 +489,19 @@ async def _rest_ingest_pdf(request):
         with open(save_path, "wb") as fh:
             fh.write(pdf_bytes)
 
-        tenant_id = MIRA_TENANT_ID or "default"
+        form_tenant_raw = form.get("tenant_id")
+        form_tenant = form_tenant_raw.strip() if isinstance(form_tenant_raw, str) else ""
+        if form_tenant:
+            tenant_id, tenant_source = form_tenant, "form"
+        elif MIRA_TENANT_ID:
+            tenant_id, tenant_source = MIRA_TENANT_ID, "env"
+        else:
+            tenant_id, tenant_source = "default", "default"
+
         chunks = _ingest_pdf(save_path, tenant_id, equipment_type)
         sys.stderr.write(
             f"INFO: Ingested {chunks} chunks from {filename} "
-            f"(type={equipment_type}, tenant={tenant_id})\n"
+            f"(type={equipment_type}, tenant={tenant_id}, tenant_source={tenant_source})\n"
         )
         return JSONResponse(
             {

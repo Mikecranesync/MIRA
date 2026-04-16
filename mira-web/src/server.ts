@@ -736,6 +736,7 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
 
   const forwarded = new FormData();
   forwarded.append("file", file, file.name || "upload.pdf");
+  forwarded.append("tenant_id", user.sub);
   const equipmentType = form.get("equipment_type");
   if (typeof equipmentType === "string" && equipmentType.trim()) {
     forwarded.append("equipment_type", equipmentType.trim());
@@ -743,9 +744,6 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
 
   const started = Date.now();
   try {
-    // NOTE: mira-mcp currently derives tenant_id from its own MIRA_TENANT_ID
-    // env var (global), not from the form. Per-tenant isolation for uploads
-    // is a known gap tracked separately from this funnel.
     const resp = await fetch(`${MIRA_MCP_URL()}/ingest/pdf`, {
       method: "POST",
       headers: { Authorization: `Bearer ${mcpKey}` },
