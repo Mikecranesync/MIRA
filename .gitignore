@@ -2,6 +2,10 @@
 mira_copy/outputs/*
 !mira_copy/outputs/.gitkeep
 
+# Session ephemera — PR/issue drafts, one-off probe scripts, worktree parent
+.tmp_*
+.claude/worktrees/
+
 # Secrets — NEVER commit these
 .env
 *.env.local
