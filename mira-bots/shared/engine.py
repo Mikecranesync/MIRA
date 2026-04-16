@@ -72,6 +72,9 @@ Rate each on 1-5 (5=excellent, 3=acceptable, <3=needs revision):
 "helpfulness":{{"score":<1-5>,"note":"<12 words max: technician can act on this?>"}},\
 "instruction_following":{{"score":<1-5>,"note":"<12 words max: honored the user's actual ask?>"}}}}"""
 ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"})
+_Q_STATES = frozenset({"Q1", "Q2", "Q3"})
+# After this many consecutive Q-state turns the FSM forces a commit to DIAGNOSIS.
+_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 # How many turns the session photo stays available for follow-up questions
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
@@ -147,6 +150,13 @@ _MANUAL_ESCAPE_PHRASES = frozenset({
 })
 
 # Signals that the user is resuming a diagnostic conversation.
+# Detects honesty prefix the model should emit for out-of-KB vendors.
+# Used by the programmatic honesty-prefix injection in process_full().
+_HONESTY_PREFIX_RE = re.compile(
+    r"I don'?t have\b.{0,60}(?:documentation|records|knowledge base)",
+    re.IGNORECASE,
+)
+
 _DIAGNOSIS_SIGNAL_RE = re.compile(
     r"\b(?:fault|error|code|alarm|trips?|overload|won'?t start|not working|"
     r"shuts? off|shutting|blink(?:ing)?|flash(?:ing)?|hz|rpm|amps?|volts?|"
@@ -824,6 +834,31 @@ class Supervisor:
                     parsed["reply"] = f"{asset_key} — {parsed['reply']}"
 
         state = self._advance_state(state, parsed)
+
+        # ---------------------------------------------------------------------------
+        # Programmatic honesty prefix — out-of-KB vendors reaching DIAGNOSIS
+        # Rule 22 in the prompt is unreliable; inject deterministically here.
+        # Fires when: (1) state is DIAGNOSIS, (2) RAG found 0 chunks (no_kb),
+        # (3) reply doesn't already start with the honesty statement.
+        # ---------------------------------------------------------------------------
+        if (
+            state["state"] == "DIAGNOSIS"
+            and not photo_b64
+            and self.rag._last_no_kb
+            and parsed.get("reply")
+            and not _HONESTY_PREFIX_RE.search(parsed["reply"][:120])
+        ):
+            asset = state.get("asset_identified", "")
+            vendor = vendor_name_from_text(asset) if asset else None
+            label = vendor or "this equipment"
+            parsed["reply"] = (
+                f"I don't have {label} documentation in my records. {parsed['reply']}"
+            )
+            logger.info(
+                "HONESTY_PREFIX_INJECTED chat_id=%s vendor=%r",
+                chat_id,
+                label,
+            )
 
         # ---------------------------------------------------------------------------
         # Diagnosis self-critique quality gate (AutoGen-style nudge loop)
@@ -2115,6 +2150,24 @@ class Supervisor:
 
         if state["state"] in ("RESOLVED", "SAFETY_ALERT"):
             state["final_state"] = state["state"]
+
+        # Q-trap guard: if the FSM has been in Q-states for _MAX_Q_ROUNDS consecutive
+        # turns, force a commit to DIAGNOSIS so the technician gets an answer.
+        ctx_q = state.get("context") or {}
+        if current in _Q_STATES and state["state"] in _Q_STATES:
+            ctx_q["q_rounds"] = ctx_q.get("q_rounds", 0) + 1
+            if ctx_q["q_rounds"] >= _MAX_Q_ROUNDS:
+                logger.info(
+                    "Q_TRAP_COMMIT chat_id=%s q_rounds=%d current=%s → DIAGNOSIS",
+                    state.get("chat_id", "?"),
+                    ctx_q["q_rounds"],
+                    state["state"],
+                )
+                state["state"] = "DIAGNOSIS"
+                ctx_q["q_rounds"] = 0
+        elif state["state"] not in _Q_STATES:
+            ctx_q.pop("q_rounds", None)
+        state["context"] = ctx_q
 
         if not state.get("fault_category"):
             for cat in (

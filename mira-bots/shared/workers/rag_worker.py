@@ -175,6 +175,7 @@ class RAGWorker:
         self._ingest_url = os.environ.get("INGEST_BASE_URL", "http://mira-ingest:8001").rstrip("/")
         self._last_sources: list[str] = []
         self._last_distances: list[float] = []
+        self._last_no_kb: bool = False
         self._prompt_meta = _load_prompt_meta()
 
     async def process(
@@ -282,6 +283,7 @@ class RAGWorker:
 
             # Stage 3: Build prompt with (reranked) chunks → call LLM
             if chunk_texts:
+                self._last_no_kb = False
                 messages = self._build_prompt_with_chunks(
                     state,
                     rewritten,
@@ -290,6 +292,7 @@ class RAGWorker:
                 )
             else:
                 no_kb = retrieval_attempted and not photo_b64
+                self._last_no_kb = no_kb
                 if no_kb:
                     logger.info(
                         "NO_KB_COVERAGE asset=%r — honesty directive injected",
