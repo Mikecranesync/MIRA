@@ -698,20 +698,20 @@ app.get("/demo/tenant-work-orders", requireActive, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Manual Ingest Proxy — forwards PDF uploads to mira-mcp
+// Manual Ingest Proxy — forwards PDF uploads to mira-ingest/ingest/document-kb
+//
+// This is the production RAG ingest path: PDFs land in Open WebUI KB
+// collections (Docling extraction + embedding), which mira-pipeline reads
+// from at chat time. The earlier mira-mcp/ingest/pdf endpoint wrote to a
+// local openviking store that was never queried by the RAG reader (#337).
 // ---------------------------------------------------------------------------
 
 const INGEST_MAX_BYTES = 50 * 1024 * 1024;
-const MIRA_MCP_URL = () =>
-  process.env.MIRA_MCP_URL || "http://mira-mcp:8001";
+const MIRA_INGEST_URL = () =>
+  process.env.MIRA_INGEST_URL || "http://mira-ingest:8001";
 
 app.post("/api/ingest/manual", requireActive, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
-  const mcpKey = process.env.MCP_REST_API_KEY || "";
-  if (!mcpKey) {
-    console.error("[ingest-manual] MCP_REST_API_KEY not set");
-    return c.json({ error: "Ingest service not configured" }, 500);
-  }
 
   let form: FormData;
   try {
@@ -744,9 +744,8 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
 
   const started = Date.now();
   try {
-    const resp = await fetch(`${MIRA_MCP_URL()}/ingest/pdf`, {
+    const resp = await fetch(`${MIRA_INGEST_URL()}/ingest/document-kb`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${mcpKey}` },
       body: forwarded,
     });
     const latencyMs = Date.now() - started;
