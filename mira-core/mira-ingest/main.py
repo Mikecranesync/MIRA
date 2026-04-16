@@ -79,7 +79,7 @@ DESCRIBE_SYSTEM = (
     '  "description": 1-2 sentence plain-language summary a technician can read at a glance.\n'
     "Return ONLY the JSON object — no prose before or after. "
     "If the image is a nameplate only, put the device name in component, the read-out "
-    "text in symptom, and \"nameplate\" in condition. Never invent fault codes."
+    'text in symptom, and "nameplate" in condition. Never invent fault codes.'
 )
 
 
@@ -121,6 +121,7 @@ def _parse_structured_description(raw: str) -> dict:
         }
     except (json.JSONDecodeError, TypeError):
         return default
+
 
 app = FastAPI(title="mira-ingest")
 
@@ -489,14 +490,19 @@ async def ingest_photo(
         image_vector = []
 
     # Embed text vector (non-fatal) — combine structured fields for richer embedding
-    text_for_embed = " ".join(
-        v for v in (
-            structured["component"],
-            structured["symptom"],
-            structured["condition"],
-            description,
-        ) if v
-    ).strip() or description
+    text_for_embed = (
+        " ".join(
+            v
+            for v in (
+                structured["component"],
+                structured["symptom"],
+                structured["condition"],
+                description,
+            )
+            if v
+        ).strip()
+        or description
+    )
     try:
         text_vector = await _embed_text(text_for_embed)
     except Exception as e:

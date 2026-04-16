@@ -43,9 +43,13 @@ import {
   updateTenantTier,
   updateTenantStripe,
   updateTenantAtlas,
+  updateTenantEmailStatus,
+  updateTenantSeedStatus,
+  recordProvisioningAttempt,
   findTenantByStripeCustomerId,
   ensureSchema,
 } from "./lib/quota.js";
+import { finalizeActivation } from "./lib/activation.js";
 import {
   queryMira,
   buildSSEStream,
@@ -488,7 +492,6 @@ app.post("/api/stripe/webhook", async (c) => {
         ? session.subscription
         : session.subscription?.id || "";
 
-      // Update tenant with Stripe IDs and activate
       await updateTenantStripe(tenantId, customerId, subscriptionId);
       await updateTenantTier(tenantId, "active");
       console.log("[stripe-webhook] Tenant activated:", tenantId);
@@ -499,50 +502,18 @@ app.post("/api/stripe/webhook", async (c) => {
         break;
       }
 
-      // Provision Atlas CMMS user
-      let atlasCompanyId = 0;
-      let atlasUserId = 0;
-      let atlasToken = "";
-      try {
-        const password = deriveAtlasPassword(tenantId);
-        const atlas = await signupUser(
-          String(tenant.email),
-          password,
-          tenant.first_name || String(tenant.email).split("@")[0],
-          "",
-          String(tenant.company) || `${String(tenant.email).split("@")[0]}'s Plant`
-        );
-        atlasCompanyId = atlas.companyId;
-        atlasUserId = atlas.userId;
-        atlasToken = atlas.accessToken;
-        await updateTenantAtlas(tenantId, atlasCompanyId, atlasUserId, "ok");
-        console.log("[stripe-webhook] Atlas provisioned: company=%d user=%d", atlasCompanyId, atlasUserId);
-      } catch (err) {
-        console.error("[stripe-webhook] Atlas provisioning failed:", err);
-        await updateTenantAtlas(tenantId, 0, 0, "failed");
-      }
-
-      // Seed demo data scoped to the tenant's Atlas company
-      seedDemoData(atlasToken || undefined, tenantId).catch((err) =>
-        console.error("[stripe-webhook] Demo seed failed:", err)
-      );
-
-      // Send "you're in" email with login link
-      const token = await signToken({
-        tenantId,
-        email: String(tenant.email),
-        tier: "active",
-        atlasCompanyId,
-        atlasUserId,
+      const result = await finalizeActivation(tenant, {
+        signupUser,
+        updateTenantAtlas,
+        seedDemoData,
+        updateTenantSeedStatus,
+        signToken,
+        sendActivatedEmail,
+        updateTenantEmailStatus,
+        recordProvisioningAttempt,
+        deriveAtlasPassword,
       });
-      sendActivatedEmail(
-        String(tenant.email),
-        tenant.first_name || String(tenant.email).split("@")[0],
-        String(tenant.company),
-        token
-      ).catch((err) =>
-        console.error("[stripe-webhook] Activated email failed:", err)
-      );
+      console.log("[stripe-webhook] Activation result for %s:", tenantId, result);
       break;
     }
 
@@ -631,13 +602,81 @@ app.get("/api/cmms/login", requireActive, async (c) => {
 // User profile (active subscribers only)
 app.get("/api/me", requireActive, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
+  const tenant = await findTenantById(user.sub);
+  if (!tenant) return c.json({ error: "Tenant not found" }, 404);
   const quota = await getQuota(user.sub, "active");
+  const provisioning = {
+    atlas: tenant.atlas_provisioning_status,
+    demo: tenant.demo_seed_status,
+    email: tenant.activation_email_status,
+    attempts: tenant.provisioning_attempts,
+    last_error: tenant.provisioning_last_error,
+    ready: tenant.atlas_provisioning_status === "ok"
+        && tenant.activation_email_status !== "pending",
+  };
   return c.json({
     tenantId: user.sub,
     email: user.email,
     tier: "active",
     quota,
+    provisioning,
   });
+});
+
+const RETRY_COOLDOWN_MS = 60_000;
+const lastActivationRetry = new Map<string, number>();
+
+app.post("/api/activation/retry", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  const now = Date.now();
+  const prev = lastActivationRetry.get(user.sub) ?? 0;
+  if (now - prev < RETRY_COOLDOWN_MS) {
+    return c.json({ error: "Cooldown — try again in a minute" }, 429);
+  }
+  lastActivationRetry.set(user.sub, now);
+
+  const tenant = await findTenantById(user.sub);
+  if (!tenant) return c.json({ error: "Tenant not found" }, 404);
+
+  const result = await finalizeActivation(tenant, {
+    signupUser,
+    updateTenantAtlas,
+    seedDemoData,
+    updateTenantSeedStatus,
+    signToken,
+    sendActivatedEmail,
+    updateTenantEmailStatus,
+    recordProvisioningAttempt,
+    deriveAtlasPassword,
+  });
+  console.log("[activation-retry] %s:", user.sub, result);
+  return c.json({ result });
+});
+
+const ADMIN_TOKEN = () => process.env.PLG_ADMIN_TOKEN || "";
+
+app.get("/api/admin/activation-health", async (c) => {
+  const token = c.req.header("x-admin-token");
+  if (!token || token !== ADMIN_TOKEN()) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  const { neon } = await import("@neondatabase/serverless");
+  const url = process.env.NEON_DATABASE_URL;
+  if (!url) return c.json({ error: "DB not configured" }, 500);
+  const sql = neon(url);
+  const stuck = await sql`
+    SELECT id, email, atlas_provisioning_status, activation_email_status,
+           demo_seed_status, provisioning_attempts, provisioning_last_error,
+           provisioning_last_attempt_at, created_at
+      FROM plg_tenants
+     WHERE tier = 'active'
+       AND (atlas_provisioning_status <> 'ok'
+            OR activation_email_status <> 'sent'
+            OR demo_seed_status = 'failed')
+       AND created_at < NOW() - INTERVAL '10 minutes'
+     ORDER BY created_at DESC
+     LIMIT 100`;
+  return c.json({ count: stuck.length, tenants: stuck });
 });
 
 // Query quota (active subscribers only)

@@ -127,24 +127,26 @@ _STATE_ALIASES: dict[str, str] = {
 # Manual-lookup gathering subroutine constants
 # ---------------------------------------------------------------------------
 # Phrases that signal the user wants to abandon the manual search.
-_MANUAL_ESCAPE_PHRASES = frozenset({
-    "skip",
-    "back",
-    "nevermind",
-    "never mind",
-    "back to troubleshooting",
-    "back to diagnosis",
-    "forget it",
-    "doesn't matter",
-    "no manual",
-    "drop it",
-    "cancel",
-    "ignore",
-    "go back",
-    "cancel that",
-    "not important",
-    "never mind the manual",
-})
+_MANUAL_ESCAPE_PHRASES = frozenset(
+    {
+        "skip",
+        "back",
+        "nevermind",
+        "never mind",
+        "back to troubleshooting",
+        "back to diagnosis",
+        "forget it",
+        "doesn't matter",
+        "no manual",
+        "drop it",
+        "cancel",
+        "ignore",
+        "go back",
+        "cancel that",
+        "not important",
+        "never mind the manual",
+    }
+)
 
 # Signals that the user is resuming a diagnostic conversation.
 _DIAGNOSIS_SIGNAL_RE = re.compile(
@@ -156,15 +158,48 @@ _DIAGNOSIS_SIGNAL_RE = re.compile(
 )
 
 # Vendor names used by the specificity heuristic.
-_KNOWN_VENDORS: frozenset[str] = frozenset({
-    "pilz", "siemens", "allen-bradley", "allen bradley", "rockwell",
-    "schneider", "abb", "yaskawa", "danfoss", "vacon", "mitsubishi",
-    "omron", "delta", "lenze", "nord", "baldor", "weg", "leeson",
-    "marathon", "emerson", "control techniques", "nidec", "eaton",
-    "square d", "fuji", "toshiba", "hitachi", "automationdirect",
-    "automation direct", "keyence", "banner", "turck", "ifm", "sick",
-    "phoenix contact", "weidmuller", "murr", "idec",
-})
+_KNOWN_VENDORS: frozenset[str] = frozenset(
+    {
+        "pilz",
+        "siemens",
+        "allen-bradley",
+        "allen bradley",
+        "rockwell",
+        "schneider",
+        "abb",
+        "yaskawa",
+        "danfoss",
+        "vacon",
+        "mitsubishi",
+        "omron",
+        "delta",
+        "lenze",
+        "nord",
+        "baldor",
+        "weg",
+        "leeson",
+        "marathon",
+        "emerson",
+        "control techniques",
+        "nidec",
+        "eaton",
+        "square d",
+        "fuji",
+        "toshiba",
+        "hitachi",
+        "automationdirect",
+        "automation direct",
+        "keyence",
+        "banner",
+        "turck",
+        "ifm",
+        "sick",
+        "phoenix contact",
+        "weidmuller",
+        "murr",
+        "idec",
+    }
+)
 
 
 def format_diagnostic_response(
@@ -829,18 +864,12 @@ class Supervisor:
         # Diagnosis self-critique quality gate (AutoGen-style nudge loop)
         # Runs only on DIAGNOSIS state, text-only turns, caps at _CRITIQUE_MAX_ATTEMPTS.
         # ---------------------------------------------------------------------------
-        if (
-            state["state"] == "DIAGNOSIS"
-            and not photo_b64
-            and not _CRITIQUE_DISABLED
-        ):
+        if state["state"] == "DIAGNOSIS" and not photo_b64 and not _CRITIQUE_DISABLED:
             ctx_sc = state.get("context") or {}
             revision_attempts = ctx_sc.get("revision_attempts", 0)
 
             if revision_attempts < _CRITIQUE_MAX_ATTEMPTS:
-                scores = await self._self_critique_diagnosis(
-                    parsed["reply"], message, chat_id
-                )
+                scores = await self._self_critique_diagnosis(parsed["reply"], message, chat_id)
                 low_dims = [d for d, s in scores.items() if s < _CRITIQUE_THRESHOLD]
 
                 if low_dims:
@@ -878,9 +907,7 @@ class Supervisor:
                     else:
                         # Helpfulness / instruction gap — regenerate inline without
                         # asking the user for anything.
-                        critique_hint = "; ".join(
-                            f"{d} score={scores[d]}" for d in low_dims
-                        )
+                        critique_hint = "; ".join(f"{d} score={scores[d]}" for d in low_dims)
                         revised_message = (
                             f"[Quality note: previous answer had low {critique_hint}. "
                             f"Regenerate: be more specific, concrete, and actionable. "
@@ -1097,9 +1124,7 @@ class Supervisor:
         )
         return reply
 
-    async def _self_critique_diagnosis(
-        self, reply: str, user_question: str, chat_id: str
-    ) -> dict:
+    async def _self_critique_diagnosis(self, reply: str, user_question: str, chat_id: str) -> dict:
         """Score a DIAGNOSIS reply on 3 quality dimensions via the router cascade.
 
         Returns a dict mapping dimension name → score (1-5), e.g.:
@@ -1348,10 +1373,7 @@ class Supervisor:
                 "MANUAL_LOOKUP_GATHERING_ESCAPED chat_id=%s reason=user_said_back",
                 chat_id,
             )
-            reply = (
-                "OK, back to the diagnosis. "
-                "What fault or symptom were you seeing?"
-            )
+            reply = "OK, back to the diagnosis. What fault or symptom were you seeing?"
             self._record_exchange(chat_id, state, message, reply)
             tl_flush()
             return self._make_result(reply, "none", trace_id, prior_state)
@@ -1365,8 +1387,21 @@ class Supervisor:
         # This covers user answers like "525" or just "PNOZ-X3".
         if not new_model and collected.get("vendor"):
             _STOP = {
-                "the", "a", "an", "is", "it", "its", "my", "our", "for",
-                "that", "this", "model", "number", "type", "unit",
+                "the",
+                "a",
+                "an",
+                "is",
+                "it",
+                "its",
+                "my",
+                "our",
+                "for",
+                "that",
+                "this",
+                "model",
+                "number",
+                "type",
+                "unit",
             }
             for tok in message.split():
                 tok_clean = re.sub(r"[^\w-]", "", tok).strip()
@@ -1470,9 +1505,7 @@ class Supervisor:
         Never raises.
         """
         asset = state.get("asset_identified", "")
-        combined = " ".join(
-            filter(None, [vendor_override, model_override, message, asset])
-        ).strip()
+        combined = " ".join(filter(None, [vendor_override, model_override, message, asset])).strip()
         mfr = vendor_override or vendor_name_from_text(combined) or ""
         url = vendor_support_url(combined)
 
@@ -1534,9 +1567,7 @@ class Supervisor:
             "queued_at": datetime.now(timezone.utc).isoformat(),
         }
         state["context"] = ctx
-        asyncio.create_task(
-            self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id)
-        )
+        asyncio.create_task(self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id))
         logger.info(
             "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s",
             chat_id,
@@ -1583,9 +1614,7 @@ class Supervisor:
 
         try:
             async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.get(
-                    f"{self._ingest_base_url}/ingest/crawl-verifications"
-                )
+                resp = await client.get(f"{self._ingest_base_url}/ingest/crawl-verifications")
             if resp.status_code != 200:
                 return ""
             records = resp.json()
@@ -1617,7 +1646,9 @@ class Supervisor:
                 state["context"] = ctx
                 logger.info(
                     "DOC_JOB_EXHAUSTED chat_id=%s vendor=%r outcome=%s",
-                    chat_id, vendor, outcome,
+                    chat_id,
+                    vendor,
+                    outcome,
                 )
                 return (
                     f"I tried multiple sources but couldn't find the "
