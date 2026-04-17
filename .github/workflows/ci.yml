@@ -115,7 +115,7 @@ jobs:
           pytest mira-bots/tests/ -v \
             --ignore=mira-bots/tests/test_slack_relay.py \
             --cov=mira-bots/shared --cov-report=term-missing \
-            --cov-fail-under=25
+            --cov-fail-under=30
 
   architecture-check:
     name: Architecture Check
@@ -229,9 +229,17 @@ jobs:
       - name: Build mira-bot-slack
         run: |
           docker buildx build \
-            -f mira-bots/slack/Dockerfile mira-bots/
+            -f mira-bots/slack/Dockerfile mira-bots/ \
+            -t mira-slack:scan --load
+
+      - name: Scan mira-bot-slack
+        run: trivy image --severity HIGH,CRITICAL --exit-code 1 mira-slack:scan
 
       - name: Build mira-mcp
         run: |
           docker buildx build \
-            -f mira-mcp/Dockerfile mira-mcp/
+            -f mira-mcp/Dockerfile mira-mcp/ \
+            -t mira-mcp:scan --load
+
+      - name: Scan mira-mcp
+        run: trivy image --severity HIGH,CRITICAL --exit-code 1 mira-mcp:scan

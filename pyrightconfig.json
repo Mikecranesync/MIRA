@@ -20,6 +20,6 @@
   "reportGeneralClassIssues": false,
   "reportOptionalMemberAccess": false,
   "reportOptionalSubscript": false,
-  "reportArgumentType": false,
-  "reportReturnType": false
+  "reportArgumentType": "warning",
+  "reportReturnType": "warning"
 }
