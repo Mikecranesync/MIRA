@@ -14,3 +14,5 @@ turns:
     content: "Having issues with my Danfoss VLT FC 360, keeps tripping on alarm"
   - role: user
     content: "Can't find any documentation for it either, searched the Danfoss site"
+  - role: user
+    content: "It trips every time within 5 seconds of starting, display just shows alarm light"

@@ -51,6 +51,31 @@ MANUFACTURER_TARGETS = [
         "crawler_type": "playwright:chrome",
         "max_pages": 150,
     },
+    # ── Added for eval #374: out-of-KB vendor coverage ──────────────
+    {
+        "manufacturer": "Yaskawa",
+        "start_url": "https://www.yaskawa.com/products/drives/ac-drives/v1000",
+        "crawler_type": "playwright:chrome",
+        "max_pages": 200,
+    },
+    {
+        "manufacturer": "Danfoss",
+        "start_url": "https://www.danfoss.com/en/service-and-support/downloads/dds/frequency-converters/",
+        "crawler_type": "playwright:chrome",
+        "max_pages": 200,
+    },
+    {
+        "manufacturer": "SEW Eurodrive",
+        "start_url": "https://www.sew-eurodrive.com/support/software-download-area.html",
+        "crawler_type": "playwright:chrome",
+        "max_pages": 150,
+    },
+    {
+        "manufacturer": "Lenze",
+        "start_url": "https://www.lenze.com/en/service/downloads/",
+        "crawler_type": "playwright:chrome",
+        "max_pages": 150,
+    },
 ]
 
 MANUAL_LINK_SELECTOR = (

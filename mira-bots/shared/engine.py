@@ -60,6 +60,19 @@ _MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
 _CRITIQUE_DISABLED = os.getenv("MIRA_DISABLE_SELF_CRITIQUE", "0") == "1"
 _CRITIQUE_THRESHOLD = int(os.getenv("MIRA_CRITIQUE_THRESHOLD", "3"))
 _CRITIQUE_MAX_ATTEMPTS = int(os.getenv("MIRA_CRITIQUE_MAX_ATTEMPTS", "2"))
+# Patterns that indicate the user has already supplied fault/alarm specifics.
+# If any match in the conversation history + current message, skip the
+# groundedness clarifying question — the critique is scoring on incomplete context.
+_FAULT_INFO_RE = re.compile(
+    r"""
+    (?:[A-Z]{1,3}-?\d{3,})              # F30001, AL-14, E001
+    | \b[A-Z]{2,3}\b(?=\s+fault)        # OC fault, OL fault (common VFD 2-letter codes)
+    | \b(?:fault\s+code|alarm\s+(?:code|number)|error\s+code|fault\s+number)\b
+    | \b(?:tripping\s+on|tripped\s+on|showing\s+(?:fault|error|alarm))\b
+    | \b(?:displays?|shows?|reading)\s+[A-Z0-9]{2,}  # "shows OC", "displays F7"
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 # Compact judge prompt — returns only the three actionable dims to keep token cost low.
 _CRITIQUE_PROMPT = """\
 Score this maintenance-AI response. Return ONLY valid JSON — no markdown, no prose.
@@ -906,20 +919,44 @@ class Supervisor:
                     )
 
                     if "groundedness" in low_dims:
-                        # Need more info from the user → ask a targeted clarifying
-                        # question and park in DIAGNOSIS_REVISION.
-                        note = scores.get("groundedness_note", "")
-                        clarifying_q = (
-                            "Before I can give you a confident diagnosis, could you "
-                            "share one more detail — what exact fault code, alarm "
-                            "number, or behaviour is the equipment showing right now? "
-                            "(e.g. fault light colour, code displayed, or what it does "
-                            "when the fault occurs)"
-                        )
-                        if note:
-                            clarifying_q += f"\n\n*(My confidence was limited because: {note})*"
-                        state["state"] = "DIAGNOSIS_REVISION"
-                        parsed["reply"] = clarifying_q
+                        # Before asking for more info, check whether the user
+                        # already supplied fault/alarm specifics in this session.
+                        # The critique only sees the current message, so it can
+                        # score groundedness low even when a fault code appeared
+                        # in an earlier turn (e.g. "showing F30001" in turn 1).
+                        ctx_hist = state.get("context") or {}
+                        history_turns = ctx_hist.get("history", [])
+                        combined_history = " ".join(
+                            t.get("content", "") for t in history_turns[-8:]
+                        ) + " " + message
+                        fault_info_present = bool(_FAULT_INFO_RE.search(combined_history))
+
+                        if fault_info_present:
+                            # Critique was wrong — user already gave us enough.
+                            # Treat as acceptable; clear revision counter.
+                            ctx_sc.pop("revision_attempts", None)
+                            ctx_sc.pop("revision_critique", None)
+                            state["context"] = ctx_sc
+                            logger.info(
+                                "SELF_CRITIQUE_GROUNDEDNESS_SUPPRESSED chat_id=%s"
+                                " (fault info found in history)",
+                                chat_id,
+                            )
+                        else:
+                            # Need more info from the user → ask a targeted
+                            # clarifying question and park in DIAGNOSIS_REVISION.
+                            note = scores.get("groundedness_note", "")
+                            clarifying_q = (
+                                "Before I can give you a confident diagnosis, could you "
+                                "share one more detail — what exact fault code, alarm "
+                                "number, or behaviour is the equipment showing right now? "
+                                "(e.g. fault light colour, code displayed, or what it does "
+                                "when the fault occurs)"
+                            )
+                            if note:
+                                clarifying_q += f"\n\n*(My confidence was limited because: {note})*"
+                            state["state"] = "DIAGNOSIS_REVISION"
+                            parsed["reply"] = clarifying_q
                     else:
                         # Helpfulness / instruction gap — regenerate inline without
                         # asking the user for anything.
