@@ -1,4 +1,5 @@
 """Tests for ISA-95 + data_type extensions on knowledge_entries (issue #312)."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -228,9 +229,7 @@ def test_recall_no_filters_uses_base_where(engine_patch):
 @patch.object(neon, "_engine")
 def test_recall_with_isa95_prefix_adds_like_clause(engine_patch):
     conn = _install_engine_mock(engine_patch)
-    neon.recall_knowledge(
-        [0.1], "t1", isa95_prefix="AcmePlant/Line2/"
-    )
+    neon.recall_knowledge([0.1], "t1", isa95_prefix="AcmePlant/Line2/")
     sql_text, params = _sql_and_params(conn)
     assert "isa95_path LIKE" in sql_text
     assert params["prefix"] == "AcmePlant/Line2/"

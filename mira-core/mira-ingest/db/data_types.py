@@ -4,6 +4,7 @@ Used by the ingest + recall paths to scope retrieval by the semantic
 type of knowledge (manual vs live telemetry vs fault event vs tribal
 knowledge captured from tech resolution, etc.).
 """
+
 from __future__ import annotations
 
 MANUAL = "manual"

@@ -2,6 +2,7 @@
 Python packages. This conftest puts `mira-ingest/` on sys.path so test
 files can `from db import neon, data_types`.
 """
+
 from __future__ import annotations
 
 import sys
