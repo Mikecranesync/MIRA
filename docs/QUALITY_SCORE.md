@@ -29,10 +29,10 @@
 | Dep automation | Dependabot | ✅ Weekly (pip, npm, Docker, GHA) | Maintain |
 | Property tests | hypothesis | ✅ 11 property tests | Add FSM properties |
 | Image scanning | trivy | ✅ CI-enforced (HIGH/CRITICAL) | Maintain |
-| Agent review | agent-to-agent | ❌ Not configured | Phase 5 |
-| Garbage collection | scheduled cleanup | ❌ Not configured | Phase 5 |
+| Agent review | review_hook.sh | ✅ PostToolUse (10 checks) | Add rules |
+| Garbage collection | gc.sh | ✅ Manual + dry-run | Cron on Alpha |
 
-## Score: 8.5 / 10
+## Score: 9 / 10
 
 **Strengths:** CLAUDE.md + sidecar docs, wiki (Karpathy pattern), CI pipeline (5 jobs), ruff hooks, 5-regime test framework, Doppler secrets management.
 
