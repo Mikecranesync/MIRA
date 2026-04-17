@@ -43,8 +43,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import base64
-import json
 import logging
 import os
 import sys
@@ -62,16 +60,17 @@ import yaml  # noqa: E402
 
 from tests.eval.grader import ScenarioGrade, grade_scenario  # noqa: E402
 from tests.eval.judge import DIMENSIONS, Judge, JudgeResult  # noqa: E402
-from tests.eval.local_pipeline import LocalPipeline, image_to_b64, _PHOTOS_DIR  # noqa: E402
+from tests.eval.local_pipeline import LocalPipeline, image_to_b64  # noqa: E402
 
 # ── Rich display ──────────────────────────────────────────────────────────────
 
 try:
+    from rich import box  # noqa: F401
     from rich.console import Console
-    from rich.table import Table
     from rich.panel import Panel
-    from rich.text import Text
-    from rich import box
+    from rich.table import Table  # noqa: F401
+    from rich.text import Text  # noqa: F401
+
     _HAS_RICH = True
 except ImportError:
     _HAS_RICH = False
@@ -95,8 +94,7 @@ def _load_text_fixtures() -> list[dict]:
     fixtures = []
     seen: set[str] = set()
     candidates = sorted(
-        list(_FIXTURES_DIR.glob("[0-9][0-9]_*.yaml"))
-        + list(_FIXTURES_DIR.glob("vfd_*.yaml"))
+        list(_FIXTURES_DIR.glob("[0-9][0-9]_*.yaml")) + list(_FIXTURES_DIR.glob("vfd_*.yaml"))
     )
     for path in candidates:
         if str(path) in seen:
@@ -180,9 +178,7 @@ async def run_scenario_oneof(
 
     if use_synthetic_user:
         _print_info("Running synthetic user conversation...")
-        result = await run_synthetic_conversation(
-            pipeline, scenario, max_turns=8, verbose=False
-        )
+        result = await run_synthetic_conversation(pipeline, scenario, max_turns=8, verbose=False)
         _print_transcript(result["transcript"])
         _print_kv("Final FSM state", result["final_fsm_state"])
         _print_kv("Turns", str(result["turns"]))
@@ -205,8 +201,13 @@ async def run_scenario_oneof(
         chat_id = f"scenario-{uuid.uuid4().hex[:8]}"
         reply, status, latency = await pipeline.call(chat_id, scenario)
         if _HAS_RICH:
-            _console.print(Panel(reply, title=f"MIRA — HTTP {status}  {latency}ms",
-                                 border_style="green" if status == 200 else "red"))
+            _console.print(
+                Panel(
+                    reply,
+                    title=f"MIRA — HTTP {status}  {latency}ms",
+                    border_style="green" if status == 200 else "red",
+                )
+            )
         else:
             print(f"\n{reply}")
         _print_kv("FSM state", pipeline.fsm_state(chat_id))
@@ -242,15 +243,23 @@ async def run_suite(
             )
             # Build compatible structure for grader
             responses = [t["content"] for t in result["transcript"] if t["role"] == "mira"]
-            http_statuses = [t.get("http_status", 200) for t in result["transcript"] if t["role"] == "mira"]
-            latencies_ms = [t.get("latency_ms", 0) for t in result["transcript"] if t["role"] == "mira"]
+            http_statuses = [
+                t.get("http_status", 200) for t in result["transcript"] if t["role"] == "mira"
+            ]
+            latencies_ms = [
+                t.get("latency_ms", 0) for t in result["transcript"] if t["role"] == "mira"
+            ]
             final_state = result["final_fsm_state"]
             user_turn_count = result["turns"]
         else:
             # Standard scripted fixture run
-            responses, http_statuses, latencies_ms, final_state = await pipeline.run_scenario(
-                fixture, chat_id_prefix="offline"
-            )
+            (
+                responses,
+                http_statuses,
+                latencies_ms,
+                final_state,
+                last_chunks,
+            ) = await pipeline.run_scenario(fixture, chat_id_prefix="offline")
             user_turn_count = len([t for t in fixture.get("turns", []) if t["role"] == "user"])
 
         grade = grade_scenario(
@@ -260,6 +269,7 @@ async def run_suite(
             latencies_ms=latencies_ms,
             http_statuses=http_statuses,
             user_turn_count=user_turn_count,
+            retrieved_chunks=last_chunks if last_chunks else None,
         )
         grades.append(grade)
 
@@ -337,7 +347,7 @@ def write_offline_scorecard(
     lines = [
         f"# MIRA Offline Eval — {run_date}",
         "",
-        f"**Suite:** {suite}  |  **Pass rate:** {passed}/{total} ({100*passed//total if total else 0}%)",
+        f"**Suite:** {suite}  |  **Pass rate:** {passed}/{total} ({100 * passed // total if total else 0}%)",
         f"**Mode:** offline in-process  |  **Judge:** {'enabled' if has_judge else 'disabled'}",
         f"**Total runtime:** {total_seconds:.1f}s",
         "",
@@ -361,9 +371,7 @@ def write_offline_scorecard(
         cp_cells = " | ".join("✓" if p else "✗" for p in cps)
         judge_cells = ""
         if has_judge and jr and jr.succeeded:
-            judge_cells = " | " + " | ".join(
-                str(jr.scores.get(d, "—")) for d in DIMENSIONS
-            )
+            judge_cells = " | " + " | ".join(str(jr.scores.get(d, "—")) for d in DIMENSIONS)
         mark = "✓" if g.passed else "✗"
         row = f"| `{g.scenario_id}` {mark} | {cp_cells}{judge_cells} | {g.score} |"
         lines.append(row)
@@ -394,6 +402,7 @@ def write_offline_scorecard(
     # Regression diff vs previous run
     if prev_path and prev_path.exists():
         import re
+
         prev_text = prev_path.read_text()
         prev_passing = set(re.findall(r"`([\w_]+)` ✓", prev_text))
         curr_passing = {g.scenario_id for g in grades if g.passed}
@@ -426,7 +435,7 @@ def _print_header(title: str) -> None:
     if _HAS_RICH:
         _console.rule(f"[bold cyan]{title}[/bold cyan]")
     else:
-        print(f"\n{'='*60}\n{title}\n{'='*60}")
+        print(f"\n{'=' * 60}\n{title}\n{'=' * 60}")
 
 
 def _print_info(msg: str) -> None:
@@ -453,10 +462,7 @@ def _print_kv(key: str, value: str) -> None:
 def _print_progress(idx: int, total: int, scenario_id: str, is_photo: bool) -> None:
     tag = "[photo]" if is_photo else ""
     if _HAS_RICH:
-        _console.print(
-            f"[dim]({idx}/{total})[/dim] [bold]{scenario_id}[/bold] "
-            f"[cyan]{tag}[/cyan]"
-        )
+        _console.print(f"[dim]({idx}/{total})[/dim] [bold]{scenario_id}[/bold] [cyan]{tag}[/cyan]")
     else:
         print(f"  ({idx}/{total}) {scenario_id} {tag}")
 
@@ -473,8 +479,7 @@ def _print_scenario_result(grade: ScenarioGrade, jr: JudgeResult | None) -> None
         mark = "✓" if passed else "✗"
         _console.print(
             f"    [{color}]{mark}[/{color}] {score_str} FSM={grade.final_fsm_state}"
-            f"{judge_str}"
-            + (f"\n    [dim]{grade.error}[/dim]" if grade.error else "")
+            f"{judge_str}" + (f"\n    [dim]{grade.error}[/dim]" if grade.error else "")
         )
     else:
         mark = "PASS" if passed else "FAIL"
@@ -507,9 +512,7 @@ def _print_judge_result(jr: JudgeResult) -> None:
         _print_error(f"Judge error: {jr.error}")
         return
     if _HAS_RICH:
-        dim_str = "  ".join(
-            f"[bold]{d[:4]}=[/bold]{jr.scores.get(d, '?')}" for d in DIMENSIONS
-        )
+        dim_str = "  ".join(f"[bold]{d[:4]}=[/bold]{jr.scores.get(d, '?')}" for d in DIMENSIONS)
         _console.print(f"\n  [bold]Judge scores:[/bold] {dim_str}  avg={jr.average:.1f}")
     else:
         print(f"\n  Judge: {jr.scores}  avg={jr.average:.1f}")
@@ -529,11 +532,12 @@ def _print_final_summary(
         _console.rule("[bold]Summary[/bold]")
         color = "green" if passed == total else ("yellow" if passed > total * 0.8 else "red")
         _console.print(
-            f"  [{color}]{passed}/{total} PASSED[/{color}]"
-            f"  |  {total_seconds:.1f}s total"
+            f"  [{color}]{passed}/{total} PASSED[/{color}]  |  {total_seconds:.1f}s total"
         )
         if failures:
-            _console.print(f"  [red]Failures:[/red] {', '.join(g.scenario_id for g in failures[:5])}")
+            _console.print(
+                f"  [red]Failures:[/red] {', '.join(g.scenario_id for g in failures[:5])}"
+            )
         has_judge = any(jr and jr.succeeded for jr in judge_results)
         if has_judge:
             scored = [jr for jr in judge_results if jr and jr.succeeded]
@@ -541,7 +545,7 @@ def _print_final_summary(
             _console.print(f"  Judge avg: {avg:.2f}/5.0")
         _console.print(f"  Scorecard: [link]{scorecard_path}[/link]")
     else:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"RESULT: {passed}/{total} passed  ({total_seconds:.1f}s)")
         if failures:
             print(f"Failures: {', '.join(g.scenario_id for g in failures[:5])}")
@@ -663,9 +667,7 @@ async def _async_main(args: argparse.Namespace) -> int:
         pipeline, fixtures, judge, args.synthetic_user
     )
 
-    scorecard_path = write_offline_scorecard(
-        grades, judge_results, total_seconds, suite, prev_path
-    )
+    scorecard_path = write_offline_scorecard(grades, judge_results, total_seconds, suite, prev_path)
 
     _print_final_summary(grades, judge_results, total_seconds, scorecard_path)
 

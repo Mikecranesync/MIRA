@@ -130,24 +130,26 @@ _STATE_ALIASES: dict[str, str] = {
 # Manual-lookup gathering subroutine constants
 # ---------------------------------------------------------------------------
 # Phrases that signal the user wants to abandon the manual search.
-_MANUAL_ESCAPE_PHRASES = frozenset({
-    "skip",
-    "back",
-    "nevermind",
-    "never mind",
-    "back to troubleshooting",
-    "back to diagnosis",
-    "forget it",
-    "doesn't matter",
-    "no manual",
-    "drop it",
-    "cancel",
-    "ignore",
-    "go back",
-    "cancel that",
-    "not important",
-    "never mind the manual",
-})
+_MANUAL_ESCAPE_PHRASES = frozenset(
+    {
+        "skip",
+        "back",
+        "nevermind",
+        "never mind",
+        "back to troubleshooting",
+        "back to diagnosis",
+        "forget it",
+        "doesn't matter",
+        "no manual",
+        "drop it",
+        "cancel",
+        "ignore",
+        "go back",
+        "cancel that",
+        "not important",
+        "never mind the manual",
+    }
+)
 
 # Signals that the user is resuming a diagnostic conversation.
 # Detects honesty prefix the model should emit for out-of-KB vendors.
@@ -166,15 +168,48 @@ _DIAGNOSIS_SIGNAL_RE = re.compile(
 )
 
 # Vendor names used by the specificity heuristic.
-_KNOWN_VENDORS: frozenset[str] = frozenset({
-    "pilz", "siemens", "allen-bradley", "allen bradley", "rockwell",
-    "schneider", "abb", "yaskawa", "danfoss", "vacon", "mitsubishi",
-    "omron", "delta", "lenze", "nord", "baldor", "weg", "leeson",
-    "marathon", "emerson", "control techniques", "nidec", "eaton",
-    "square d", "fuji", "toshiba", "hitachi", "automationdirect",
-    "automation direct", "keyence", "banner", "turck", "ifm", "sick",
-    "phoenix contact", "weidmuller", "murr", "idec",
-})
+_KNOWN_VENDORS: frozenset[str] = frozenset(
+    {
+        "pilz",
+        "siemens",
+        "allen-bradley",
+        "allen bradley",
+        "rockwell",
+        "schneider",
+        "abb",
+        "yaskawa",
+        "danfoss",
+        "vacon",
+        "mitsubishi",
+        "omron",
+        "delta",
+        "lenze",
+        "nord",
+        "baldor",
+        "weg",
+        "leeson",
+        "marathon",
+        "emerson",
+        "control techniques",
+        "nidec",
+        "eaton",
+        "square d",
+        "fuji",
+        "toshiba",
+        "hitachi",
+        "automationdirect",
+        "automation direct",
+        "keyence",
+        "banner",
+        "turck",
+        "ifm",
+        "sick",
+        "phoenix contact",
+        "weidmuller",
+        "murr",
+        "idec",
+    }
+)
 
 
 def format_diagnostic_response(
@@ -478,6 +513,23 @@ class Supervisor:
         message = strip_mentions(message)
 
         state = self._load_state(chat_id)
+
+        # Citation gate — PROCEED override: tech explicitly accepts LLM best-guess mode.
+        # Must run before all other checks so the tech can unlock a blocked session.
+        if message.strip().upper() in ("PROCEED", "OVERRIDE", "BEST GUESS", "CONTINUE ANYWAY"):
+            ctx = state.get("context") or {}
+            ctx["override_mode"] = True
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            tl_flush()
+            return self._make_result(
+                "⚠️ **BEST-GUESS MODE** — No manual on file. Proceeding with LLM training "
+                "knowledge only. Results are not verified against documentation. "
+                "Re-ask your question.",
+                "none",
+                trace_id,
+                state["state"],
+            )
 
         # Photo persistence: load stored session photo for text follow-ups
         _session_photo = None
@@ -812,6 +864,11 @@ class Supervisor:
             tl_flush()
             return self._make_result(parsed["reply"], "none", trace_id)
 
+        # Read KB coverage status from RAG worker (set during process() call above)
+        _kb_cover = self.rag.kb_status
+        _kb_gate_status = _kb_cover.get("status", "unknown")
+        _kb_gate_citations = _kb_cover.get("citations", [])
+
         # Output guardrails
         intent = classify_intent(message)
         parsed["reply"] = check_output(parsed["reply"], intent, has_photo=bool(photo_b64))
@@ -836,46 +893,109 @@ class Supervisor:
         state = self._advance_state(state, parsed)
 
         # ---------------------------------------------------------------------------
-        # Programmatic honesty prefix — out-of-KB vendors reaching DIAGNOSIS
-        # Rule 22 in the prompt is unreliable; inject deterministically here.
-        # Fires when: (1) state is DIAGNOSIS, (2) RAG found 0 chunks (no_kb),
-        # (3) reply doesn't already start with the honesty statement.
+        # Citation gate — enforce KB coverage for technical advice states.
+        # UNCOVERED + no override → block with 🔴, fire scrape trigger, return early.
+        # PARTIAL → inject 🟡 banner + background scrape.
+        # COVERED → inject 🟢 banner + citation footer.
+        # Override mode (PROCEED already handled above) shows ⚠️ banner.
         # ---------------------------------------------------------------------------
-        if (
-            state["state"] == "DIAGNOSIS"
-            and not photo_b64
-            and self.rag._last_no_kb
-            and parsed.get("reply")
-            and not _HONESTY_PREFIX_RE.search(parsed["reply"][:120])
-        ):
+        _override_mode = (state.get("context") or {}).get("override_mode", False)
+        _technical_state = state["state"] in ("DIAGNOSIS", "FIX_STEP")
+
+        if _technical_state and not photo_b64:
             asset = state.get("asset_identified", "")
             vendor = vendor_name_from_text(asset) if asset else None
-            label = vendor or "this equipment"
-            parsed["reply"] = (
-                f"I don't have {label} documentation in my records. {parsed['reply']}"
-            )
-            logger.info(
-                "HONESTY_PREFIX_INJECTED chat_id=%s vendor=%r",
-                chat_id,
-                label,
-            )
+            vendor_label = vendor or "this equipment"
+
+            if _kb_gate_status == "uncovered" and not _override_mode:
+                # Hard gate — block response, fire scrape, prompt PROCEED
+                asyncio.create_task(
+                    self._fire_scrape_trigger(message, vendor_label, resolved_tenant or "", chat_id)
+                )
+                logger.info(
+                    "CITATION_GATE_BLOCKED chat_id=%s vendor=%r state=%s",
+                    chat_id,
+                    vendor_label,
+                    state["state"],
+                )
+                self._save_state(chat_id, state)
+                tl_flush()
+                return self._make_result(
+                    f"🔴 **No manual found for {vendor_label}.**\n"
+                    f"Searching for documentation now (check back in ~2 hours).\n\n"
+                    f"To continue with LLM best-guess (not manual-verified), type **PROCEED**.",
+                    "none",
+                    trace_id,
+                    state["state"],
+                )
+
+            elif _kb_gate_status == "partial" and not _override_mode:
+                mfr_label = (
+                    _kb_gate_citations[0]["manufacturer"] if _kb_gate_citations else vendor_label
+                )
+                asyncio.create_task(
+                    self._fire_scrape_trigger(message, vendor_label, resolved_tenant or "", chat_id)
+                )
+                parsed["reply"] = (
+                    f"🟡 **KB: Partial coverage** — {mfr_label} (searching for more)\n\n"
+                    + parsed.get("reply", "")
+                )
+                logger.info(
+                    "CITATION_GATE_PARTIAL chat_id=%s vendor=%r",
+                    chat_id,
+                    vendor_label,
+                )
+
+            elif _kb_gate_status == "covered" and not _override_mode:
+                mfr = _kb_gate_citations[0]["manufacturer"] if _kb_gate_citations else ""
+                mdl = _kb_gate_citations[0]["model_number"] if _kb_gate_citations else ""
+                cov_label = f"{mfr} {mdl}".strip() or vendor_label
+                parsed["reply"] = f"🟢 **KB: {cov_label}**\n\n" + parsed.get("reply", "")
+                logger.info(
+                    "CITATION_GATE_COVERED chat_id=%s vendor=%r",
+                    chat_id,
+                    cov_label,
+                )
+
+            elif _override_mode:
+                parsed["reply"] = (
+                    "⚠️ **BEST-GUESS MODE** — No manual. LLM estimate only, "
+                    "not verified against documentation.\n\n" + parsed.get("reply", "")
+                )
+
+            # Append citations footer for covered/partial
+            if (
+                _kb_gate_status in ("covered", "partial")
+                and _kb_gate_citations
+                and not _override_mode
+            ):
+                footer_parts = []
+                for c in _kb_gate_citations[:2]:
+                    c_label = f"{c['manufacturer']} {c['model_number']}".strip()
+                    c_section = c.get("section", "")
+                    if c_section:
+                        c_label += f", {c_section}"
+                    url = c.get("source_url", "")
+                    if url:
+                        footer_parts.append(f"[{c_label}]({url})")
+                    elif c_label:
+                        footer_parts.append(c_label)
+                if footer_parts:
+                    parsed["reply"] = (
+                        parsed.get("reply", "")
+                        + f"\n\n---\n📚 *Source: {' · '.join(footer_parts)}*"
+                    )
 
         # ---------------------------------------------------------------------------
         # Diagnosis self-critique quality gate (AutoGen-style nudge loop)
         # Runs only on DIAGNOSIS state, text-only turns, caps at _CRITIQUE_MAX_ATTEMPTS.
         # ---------------------------------------------------------------------------
-        if (
-            state["state"] == "DIAGNOSIS"
-            and not photo_b64
-            and not _CRITIQUE_DISABLED
-        ):
+        if state["state"] == "DIAGNOSIS" and not photo_b64 and not _CRITIQUE_DISABLED:
             ctx_sc = state.get("context") or {}
             revision_attempts = ctx_sc.get("revision_attempts", 0)
 
             if revision_attempts < _CRITIQUE_MAX_ATTEMPTS:
-                scores = await self._self_critique_diagnosis(
-                    parsed["reply"], message, chat_id
-                )
+                scores = await self._self_critique_diagnosis(parsed["reply"], message, chat_id)
                 low_dims = [d for d, s in scores.items() if s < _CRITIQUE_THRESHOLD]
 
                 if low_dims:
@@ -913,9 +1033,7 @@ class Supervisor:
                     else:
                         # Helpfulness / instruction gap — regenerate inline without
                         # asking the user for anything.
-                        critique_hint = "; ".join(
-                            f"{d} score={scores[d]}" for d in low_dims
-                        )
+                        critique_hint = "; ".join(f"{d} score={scores[d]}" for d in low_dims)
                         revised_message = (
                             f"[Quality note: previous answer had low {critique_hint}. "
                             f"Regenerate: be more specific, concrete, and actionable. "
@@ -1132,9 +1250,7 @@ class Supervisor:
         )
         return reply
 
-    async def _self_critique_diagnosis(
-        self, reply: str, user_question: str, chat_id: str
-    ) -> dict:
+    async def _self_critique_diagnosis(self, reply: str, user_question: str, chat_id: str) -> dict:
         """Score a DIAGNOSIS reply on 3 quality dimensions via the router cascade.
 
         Returns a dict mapping dimension name → score (1-5), e.g.:
@@ -1383,10 +1499,7 @@ class Supervisor:
                 "MANUAL_LOOKUP_GATHERING_ESCAPED chat_id=%s reason=user_said_back",
                 chat_id,
             )
-            reply = (
-                "OK, back to the diagnosis. "
-                "What fault or symptom were you seeing?"
-            )
+            reply = "OK, back to the diagnosis. What fault or symptom were you seeing?"
             self._record_exchange(chat_id, state, message, reply)
             tl_flush()
             return self._make_result(reply, "none", trace_id, prior_state)
@@ -1400,8 +1513,21 @@ class Supervisor:
         # This covers user answers like "525" or just "PNOZ-X3".
         if not new_model and collected.get("vendor"):
             _STOP = {
-                "the", "a", "an", "is", "it", "its", "my", "our", "for",
-                "that", "this", "model", "number", "type", "unit",
+                "the",
+                "a",
+                "an",
+                "is",
+                "it",
+                "its",
+                "my",
+                "our",
+                "for",
+                "that",
+                "this",
+                "model",
+                "number",
+                "type",
+                "unit",
             }
             for tok in message.split():
                 tok_clean = re.sub(r"[^\w-]", "", tok).strip()
@@ -1505,9 +1631,7 @@ class Supervisor:
         Never raises.
         """
         asset = state.get("asset_identified", "")
-        combined = " ".join(
-            filter(None, [vendor_override, model_override, message, asset])
-        ).strip()
+        combined = " ".join(filter(None, [vendor_override, model_override, message, asset])).strip()
         mfr = vendor_override or vendor_name_from_text(combined) or ""
         url = vendor_support_url(combined)
 
@@ -1569,9 +1693,7 @@ class Supervisor:
             "queued_at": datetime.now(timezone.utc).isoformat(),
         }
         state["context"] = ctx
-        asyncio.create_task(
-            self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id)
-        )
+        asyncio.create_task(self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id))
         logger.info(
             "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s",
             chat_id,
@@ -1618,9 +1740,7 @@ class Supervisor:
 
         try:
             async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.get(
-                    f"{self._ingest_base_url}/ingest/crawl-verifications"
-                )
+                resp = await client.get(f"{self._ingest_base_url}/ingest/crawl-verifications")
             if resp.status_code != 200:
                 return ""
             records = resp.json()
@@ -1652,7 +1772,9 @@ class Supervisor:
                 state["context"] = ctx
                 logger.info(
                     "DOC_JOB_EXHAUSTED chat_id=%s vendor=%r outcome=%s",
-                    chat_id, vendor, outcome,
+                    chat_id,
+                    vendor,
+                    outcome,
                 )
                 return (
                     f"I tried multiple sources but couldn't find the "
