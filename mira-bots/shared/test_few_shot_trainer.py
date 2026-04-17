@@ -1,4 +1,5 @@
 """Tests for FewShotTrainer (issue #314)."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -238,9 +239,7 @@ def test_asset_without_comma_still_matches(tmp_path, malformed_asset):
             "INSERT INTO interactions (chat_id, user_message, bot_response, intent) "
             "VALUES ('c1', 'q', 'r', 'industrial')"
         )
-        dbc.execute(
-            "INSERT INTO feedback_log (chat_id, feedback) VALUES ('c1', 'good')"
-        )
+        dbc.execute("INSERT INTO feedback_log (chat_id, feedback) VALUES ('c1', 'good')")
     trainer = FewShotTrainer(db_path=str(db))
     if malformed_asset == "":
         # empty asset → vendor substring is empty, only matches empty vendor query

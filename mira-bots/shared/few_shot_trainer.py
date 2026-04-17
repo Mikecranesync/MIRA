@@ -29,6 +29,7 @@ Formula: boost = 1.0 + min(log1p(good_count) * 0.5, 2.0)
   20 -> ~2.522
   1k -> 3.000 (capped)
 """
+
 from __future__ import annotations
 
 import logging
@@ -83,7 +84,10 @@ class FewShotTrainer:
         self._cache[key] = (boost, now)
         logger.info(
             "few-shot lookup vendor=%s intent=%s good=%d boost=%.3f",
-            key[0], key[1], count, boost,
+            key[0],
+            key[1],
+            count,
+            boost,
         )
         return boost
 
@@ -175,6 +179,7 @@ class FewShotTrainer:
 
 def _cli() -> int:
     import argparse
+
     parser = argparse.ArgumentParser(description="FewShotTrainer inspection")
     parser.add_argument("--vendor", required=True)
     parser.add_argument("--intent", required=True)
@@ -184,9 +189,7 @@ def _cli() -> int:
     logging.basicConfig(level=logging.WARNING)
     trainer = FewShotTrainer(db_path=args.db_path)
     boost = trainer.confidence_boost(args.vendor, args.intent)
-    print(
-        f"vendor={args.vendor} intent={args.intent} boost={boost:.3f}"
-    )
+    print(f"vendor={args.vendor} intent={args.intent} boost={boost:.3f}")
     return 0
 
 
