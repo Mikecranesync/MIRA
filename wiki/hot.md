@@ -1,5 +1,10 @@
 # Hot Cache — 2026-04-17 — CHARLIE
 
+## eval-fixer run — 2026-04-17
+- Scorecard: 35/56 passing (62%) — parsed from `tests/eval/runs/2026-04-15-v0.8-final.md`
+- Action: issue-filed (GitHub #376)
+- 21 failures across 3 file clusters (engine.py 12, guardrails.py 17, prompts/diagnose/active.yaml 17); 20 patchable exceeded 15-fixture ceiling + multi-file hard stops both triggered. Dominant patterns: (1) 13 fixtures with no honesty signal — out-of-KB vendors hallucinating through DIAGNOSIS; (2) 10 fixtures with FSM stuck at Q1-Q3 instead of DIAGNOSIS/IDLE; (3) 1 safety escalation missing; (4) 1 cp_pipeline_active infra skip. Root cause likely: citation gate `_compute_kb_status()` 🟡 PROCEED threshold too permissive for zero-chunk vendors.
+
 ## Just Finished (this session)
 
 - **Autonomous eval-fixer agent** — ADR-0010 Enhancement 5 implemented
