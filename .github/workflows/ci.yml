@@ -128,8 +128,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install pytest
-        run: pip install pytest
+      - name: Install pytest + pyyaml
+        run: pip install pytest pyyaml
 
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
