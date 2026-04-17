@@ -164,6 +164,14 @@ _KNOWN_VENDORS: frozenset[str] = frozenset({
     "square d", "fuji", "toshiba", "hitachi", "automationdirect",
     "automation direct", "keyence", "banner", "turck", "ifm", "sick",
     "phoenix contact", "weidmuller", "murr", "idec",
+    # Model-series aliases — map to their vendor via VENDOR_SUPPORT_URLS
+    "fr-",          # Mitsubishi inverter series (FR-E700, FR-D720, FR-A700, FR-F800)
+    "micromaster",  # Siemens MICROMASTER series
+    "sinamics",     # Siemens SINAMICS series
+    "movitrac",     # SEW-Eurodrive
+    "movidrive",    # SEW-Eurodrive
+    "sew",          # SEW-Eurodrive brand
+    "i550",         # Lenze i550
 })
 
 
@@ -566,7 +574,11 @@ class Supervisor:
 
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
-            if not self._is_doc_specific(mfr, combined):
+            # Exception: if we're in an active session with asset_identified set and
+            # the vendor is known, we already have enough context — skip gathering.
+            session_asset = state.get("asset_identified", "")
+            has_session_context = bool(mfr) and bool(session_asset)
+            if not self._is_doc_specific(mfr, combined) and not has_session_context:
                 return await self._enter_manual_lookup_gathering(
                     chat_id, message, state, trace_id, mfr
                 )
@@ -1479,10 +1491,12 @@ class Supervisor:
         # Phase 2 — KB pre-check: skip crawl when we already have coverage.
         kb_covered, kb_reason = kb_has_coverage(mfr, combined, resolved_tenant or "")
         if kb_covered:
+            vendor_hint = f" for {mfr}" if mfr else ""
+            url_hint = f"\n\nOfficial docs: {url}" if url else ""
             reply = (
-                "I already have documentation indexed for that equipment — just "
-                "ask me about fault codes, specs, or wiring and I'll pull from "
-                "it directly."
+                f"I already have documentation{vendor_hint} indexed in my knowledge base — "
+                f"ask me about fault codes, specs, or wiring and I'll pull from "
+                f"it directly.{url_hint}"
             )
             logger.info(
                 "KB_PRE_CHECK_HIT chat_id=%s manufacturer=%r reason=%s",
@@ -1509,18 +1523,18 @@ class Supervisor:
                 "If you can grab the model number from the nameplate, I'll have "
                 "a much better shot."
             )
+        equip_ref = mfr or "that equipment"
         if url:
             reply = (
-                f"I don't have documentation for that equipment in my knowledge "
-                f"base yet.\n\n"
-                f"You can find it here: {url}\n\n"
-                f"I've queued a crawl to pull the manual automatically — ask me "
+                f"I don't have a manual for {equip_ref} indexed yet.\n\n"
+                f"You can find the manual here: {url}\n\n"
+                f"I've queued a crawl to pull it automatically — ask me "
                 f"again in a couple of minutes and I'll have more specific "
                 f"information.{low_conf_note}"
             )
         else:
             reply = (
-                "I don't have documentation for that equipment in my knowledge "
+                f"I don't have a manual for {equip_ref} in my knowledge "
                 "base yet.\n\n"
                 "Try searching the manufacturer's website for the model number "
                 "and document type.\n\n"

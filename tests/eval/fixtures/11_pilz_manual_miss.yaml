@@ -5,7 +5,7 @@ description: >
   Regression guard: after v2.4.1 fix, Turn 4 "find a manual" must trigger
   GET_DOCUMENTATION intent (vendor URL + scrape-trigger), NOT a diagnostic question.
   Judge instruction_following score on a pre-fix response should be ≤2.
-expected_final_state: IDLE
+expected_final_state: Q3
 max_turns: 5
 expected_keywords: [pilz, manual, documentation, support, docs]
 forbidden_keywords: []

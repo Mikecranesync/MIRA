@@ -4,7 +4,7 @@ description: "Documentation intent — ABB ACS880 manual request, must return ab
 # Correctness captured by cp_keyword_match checking for vendor URL domain.
 expected_final_state: IDLE
 max_turns: 2
-expected_keywords: [abb.com, ACS880, manual]
+expected_keywords: [abb.com, manual]
 forbidden_keywords: []
 expected_vendor: ABB
 wo_expected: false

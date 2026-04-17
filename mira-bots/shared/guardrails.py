@@ -334,12 +334,19 @@ VENDOR_SUPPORT_URLS: dict[str, str] = {
     "schneider": "se.com/support",
     "schneider electric": "se.com/support",
     "mitsubishi": "mitsubishielectric.com/support",
+    "fr-": "mitsubishielectric.com/support",       # Mitsubishi inverter series (FR-E700, FR-D720 …)
     "danfoss": "danfoss.com/support",
     "eaton": "eaton.com/support",
     "delta": "deltaww.com/support",
     "lenze": "lenze.com/support",
+    "i550": "lenze.com/support",                   # Lenze i550 model alias
     "bosch rexroth": "boschrexroth.com/support",
     "rexroth": "boschrexroth.com/support",
+    "micromaster": "siemens.com/support",          # Siemens MICROMASTER series
+    "sinamics": "siemens.com/support",             # Siemens SINAMICS series
+    "movitrac": "sew-eurodrive.com/support",       # SEW-Eurodrive MOVITRAC
+    "movidrive": "sew-eurodrive.com/support",      # SEW-Eurodrive MOVIDRIVE
+    "sew": "sew-eurodrive.com/support",            # SEW-Eurodrive brand
 }
 
 
@@ -369,12 +376,19 @@ _VENDOR_DISPLAY_NAMES: dict[str, str] = {
     "schneider electric": "Schneider Electric",
     "schneider": "Schneider Electric",
     "mitsubishi": "Mitsubishi Electric",
+    "fr-": "Mitsubishi Electric",
     "danfoss": "Danfoss",
     "eaton": "Eaton",
     "delta": "Delta Electronics",
     "lenze": "Lenze",
+    "i550": "Lenze",
     "bosch rexroth": "Bosch Rexroth",
     "rexroth": "Bosch Rexroth",
+    "micromaster": "Siemens",
+    "sinamics": "Siemens",
+    "movitrac": "SEW-Eurodrive",
+    "movidrive": "SEW-Eurodrive",
+    "sew": "SEW-Eurodrive",
 }
 
 

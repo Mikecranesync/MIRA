@@ -16,3 +16,5 @@ turns:
     content: "Packaging line, trips every morning when we first start up, clears after a few tries"
   - role: user
     content: "3HP motor 480V, same circuit it has been on for two years"
+  - role: user
+    content: "Supply voltage checked with meter, reads 477V"

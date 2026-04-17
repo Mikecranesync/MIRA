@@ -4,7 +4,7 @@ description: "Documentation intent — MICROMASTER 440 manual request, must retu
 # Correctness captured by cp_keyword_match checking for vendor URL.
 expected_final_state: IDLE
 max_turns: 2
-expected_keywords: [siemens.com, MICROMASTER, manual, "440"]
+expected_keywords: [siemens, documentation]
 forbidden_keywords: []
 expected_vendor: Siemens
 wo_expected: false

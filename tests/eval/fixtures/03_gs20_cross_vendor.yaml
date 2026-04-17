@@ -15,3 +15,5 @@ turns:
     content: "Just installed it last week, 3HP motor, trips immediately on start"
   - role: user
     content: "Output reactor is not installed, direct wiring to motor"
+  - role: user
+    content: "Running at full load, no load changes"

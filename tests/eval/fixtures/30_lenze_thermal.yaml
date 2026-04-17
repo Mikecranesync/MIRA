@@ -15,3 +15,5 @@ turns:
     content: "Panel fan is running, ambient is about 85F"
   - role: user
     content: "Running at 75% load, 5HP motor"
+  - role: user
+    content: "OK, what do you think is causing it?"

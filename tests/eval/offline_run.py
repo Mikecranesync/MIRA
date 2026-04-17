@@ -596,6 +596,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="SQLite path for FSM state (default: /tmp/mira-offline-test.db)",
     )
     p.add_argument(
+        "--filter",
+        metavar="ID",
+        action="append",
+        dest="filter_ids",
+        help="Run only fixture(s) with this ID (repeatable: --filter foo --filter bar)",
+    )
+    p.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -640,6 +647,10 @@ async def _async_main(args: argparse.Namespace) -> int:
         photo_fixtures = _load_photo_fixtures()
         _print_info(f"Loaded {len(photo_fixtures)} photo fixtures")
         fixtures.extend(photo_fixtures)
+
+    if args.filter_ids:
+        fixtures = [f for f in fixtures if f.get("id") in args.filter_ids]
+        _print_info(f"Filtered to {len(fixtures)} fixture(s): {args.filter_ids}")
 
     if not fixtures:
         _print_error("No fixtures found — check fixtures/ directory")

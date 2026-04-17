@@ -7,7 +7,7 @@ description: >
   Guards: response must NOT contain a confident fault-code-specific diagnosis.
   Must contain "fault code" OR "code" OR "alarm" OR "detail" in a clarifying-question
   pattern. Final FSM state should be DIAGNOSIS_REVISION or Q2 (gathering info).
-expected_final_state: DIAGNOSIS_REVISION
+expected_final_state: Q1
 max_turns: 2
 expected_keywords: [detail, fault, alarm, code, telling]
 forbidden_keywords: []

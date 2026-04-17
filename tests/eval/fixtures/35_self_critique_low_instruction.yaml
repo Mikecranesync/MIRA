@@ -23,3 +23,5 @@ turns:
     content: "Yes overcurrent fault"
   - role: user
     content: "The motor is connected to a conveyor — what should I check first?"
+  - role: user
+    content: "Ready to start checking"

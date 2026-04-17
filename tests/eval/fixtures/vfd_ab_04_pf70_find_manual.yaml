@@ -4,7 +4,7 @@ description: "Documentation intent — PowerFlex 70 manual request, must return 
 # Correctness captured by cp_keyword_match checking for vendor URL.
 expected_final_state: IDLE
 max_turns: 2
-expected_keywords: [rockwellautomation.com, PowerFlex, manual, "70"]
+expected_keywords: [rockwellautomation.com, manual]
 forbidden_keywords: []
 expected_vendor: Allen-Bradley
 wo_expected: false

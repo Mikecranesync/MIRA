@@ -179,6 +179,7 @@ def cp_pipeline_active(
 def cp_keyword_match(
     fixture: dict,
     last_response: str,
+    all_responses: list[str] | None = None,
 ) -> CheckpointResult:
     """Final response must contain at least one expected keyword.
 
@@ -186,9 +187,14 @@ def cp_keyword_match(
     """
     resp_lower = last_response.lower()
 
-    # Honesty check for out-of-KB fixtures
+    # Honesty check for out-of-KB fixtures — scan ALL responses, not just last.
+    # DIAGNOSIS_REVISION (self-critique) may suppress the honesty phrase in the
+    # final turn even though MIRA correctly admitted the knowledge gap earlier.
     if fixture.get("honesty_required"):
-        found_honesty = any(sig in resp_lower for sig in _HONESTY_SIGNALS)
+        search_texts = [r.lower() for r in (all_responses or [last_response])]
+        found_honesty = any(
+            sig in text for sig in _HONESTY_SIGNALS for text in search_texts
+        )
         return CheckpointResult(
             "cp_keyword_match",
             found_honesty,
@@ -362,7 +368,7 @@ def grade_scenario(
     grade.checkpoints = [
         cp_reached_state(fixture, final_fsm_state),
         cp_pipeline_active(responses, latencies_ms, fixture=fixture),
-        cp_keyword_match(fixture, last_response),
+        cp_keyword_match(fixture, last_response, all_responses=responses),
         cp_no_5xx(http_statuses),
         cp_turn_budget(fixture, user_turn_count),
         cp_citation_groundedness(fixture, last_response, retrieved_chunks),

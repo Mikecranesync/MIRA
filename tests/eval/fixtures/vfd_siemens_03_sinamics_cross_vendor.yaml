@@ -16,3 +16,5 @@ turns:
     content: "Fault just started today, no changes to the system"
   - role: user
     content: "Nameplate says 380-480V 3AC, motor is within drive rating"
+  - role: user
+    content: "No recent changes to the installation, all cables checked visually"

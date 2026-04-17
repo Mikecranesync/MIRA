@@ -421,6 +421,21 @@ class RAGWorker:
                 "--- END Q3 GATE ---\n"
             )
 
+        # No-KB + still gathering: skip remaining Q turns, commit to DIAGNOSIS now.
+        # Asking more questions is pointless when there are no docs to consult.
+        if no_kb_coverage and state.get("state") in {"Q1", "Q2", "Q3"}:
+            system_content += (
+                "\n--- NO-KB DIAGNOSIS GATE ---\n"
+                "The knowledge base has NO documentation for this equipment. "
+                "Gathering more information cannot help — there are no manuals to reference.\n"
+                "You MUST skip any remaining diagnostic questions and commit to a DIAGNOSIS response NOW:\n"
+                "1. Admit the knowledge gap first (see NO KB COVERAGE block below).\n"
+                "2. Offer general troubleshooting steps based on the fault type described so far.\n"
+                "3. Prefix all advice with: \"Based on general knowledge (not specific documentation)...\"\n"
+                "4. Set next_state to DIAGNOSIS. Do NOT ask Q2, Q3, or any other gathering question.\n"
+                "--- END NO-KB DIAGNOSIS GATE ---\n"
+            )
+
         # Honesty directive: retrieval ran but found nothing relevant
         if no_kb_coverage:
             asset = state.get("asset_identified", "")
@@ -440,7 +455,8 @@ class RAGWorker:
                 "3. Any general troubleshooting knowledge MUST be prefaced with: "
                 '"Based on general knowledge (not from specific documentation)..."\n'
                 f"4. {url_hint}\n"
-                "5. If they haven't provided the model number, ask for it so a manual can be sourced.\n"
+                "5. Set next_state to DIAGNOSIS. Do NOT ask another gathering question — "
+                "collecting more info serves no purpose without documentation.\n"
                 "6. Set confidence to LOW. Do not pretend to have specific documentation.\n"
                 "--- END NO KB COVERAGE ---\n"
             )

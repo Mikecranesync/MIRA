@@ -16,3 +16,5 @@ turns:
     content: "37kW, 480V, trips at full load, started after a motor swap last week"
   - role: user
     content: "New motor is same HP rating, same frame, same full load amps"
+  - role: user
+    content: "Motor nameplate parameters verified, all match drive settings"

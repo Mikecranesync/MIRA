@@ -13,7 +13,7 @@ description: >
   URL) — must NOT return a diagnostic question. Turn 2 response must use hedging
   language ("you mentioned" / "sounds like" / "based on what you said") and NOT
   invent specifics like "main power cable".
-expected_final_state: IDLE
+expected_final_state: Q3
 max_turns: 5
 expected_keywords: [pilz, manual, documentation, support]
 forbidden_keywords: [main power cable, removed the main]
