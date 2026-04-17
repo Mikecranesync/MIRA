@@ -26,6 +26,13 @@
 
 (To be populated as service pages are created)
 
+## References
+
+| Page | Summary |
+|------|---------|
+| [[references/kanban]] | GitHub Projects board — commands for session start + commit |
+| [[references/coding-principles]] | Karpathy-adapted agent coding rules (moved from CLAUDE.md) |
+
 ## Special Files
 
 | File | Purpose |
