@@ -904,11 +904,25 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
                 kb_write_attempts=0,
                 started_at=started_at,
             )
-        await _notify_telegram(
-            body.chat_id,
-            f"I searched for documentation on *{body.equipment_id}* but didn't find "
-            f"specific manufacturer docs. Try sending me a PDF manual directly.",
+        # Apify exhausted (e.g. memory cap) or returned nothing — try DDG/LLM fallback
+        # rather than giving up immediately. Synthetic "EMPTY" outcome seeds the chain.
+        logger.info("[%s] Primary scrape empty — attempting fallback strategies", job_id)
+        fallback_result = await run_fallback(
+            job_id=job_id,
+            manufacturer=body.manufacturer,
+            model=body.model,
+            base_url=base_url,
+            prev_verification={"outcome": "EMPTY", "apify_run_id": apify_run_id},
+            ingest_fn=_ingest_scraped_text,
+            verify_fn=verify_crawl,
+            started_at=started_at,
         )
+        if fallback_result.get("final_outcome") not in ("SUCCESS", "ACCEPTABLE"):
+            await _notify_telegram(
+                body.chat_id,
+                f"I searched for documentation on *{body.equipment_id}* but didn't find "
+                f"specific manufacturer docs. Try sending me a PDF manual directly.",
+            )
         return
 
     # 2. Ingest each scraped doc into Open WebUI KB — track KB write outcomes
