@@ -28,7 +28,7 @@
 - Create: `.github/semgrep.yml` (rule config)
 - Modify: `.github/workflows/ci.yml` (add job)
 
-- [ ] **Step 1: Create semgrep config with MIRA-specific rules**
+- [x] **Step 1: Create semgrep config with MIRA-specific rules**
 
 ```yaml
 # .github/semgrep.yml
@@ -100,7 +100,7 @@ rules:
     severity: ERROR
 ```
 
-- [ ] **Step 2: Add semgrep job to CI**
+- [x] **Step 2: Add semgrep job to CI**
 
 Add to `.github/workflows/ci.yml` after the `lint-and-type-check` job:
 
@@ -125,25 +125,25 @@ Add to `.github/workflows/ci.yml` after the `lint-and-type-check` job:
           sarif_file: semgrep.sarif
 ```
 
-- [ ] **Step 3: Run semgrep locally to find existing violations**
+- [x] **Step 3: Run semgrep locally to find existing violations**
 
 Run: `uvx semgrep --config .github/semgrep.yml mira-bots/ mira-core/ mira-mcp/ mira-crawler/ 2>&1 | tee /tmp/semgrep-baseline.txt`
 
 Expected: List of existing violations to triage (fix or suppress with `# nosemgrep` comments).
 
-- [ ] **Step 4: Fix or suppress all existing violations**
+- [x] **Step 4: Fix or suppress all existing violations**
 
 For each violation:
 - If it's a real bug → fix it
 - If it's a false positive → add `# nosemgrep: <rule-id>` with a reason comment
 - If it's in legacy code → suppress with a TODO comment and open an issue
 
-- [ ] **Step 5: Verify semgrep passes clean**
+- [x] **Step 5: Verify semgrep passes clean**
 
 Run: `uvx semgrep --config .github/semgrep.yml mira-bots/ mira-core/ mira-mcp/ mira-crawler/ --error`
 Expected: Exit code 0 (no errors)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit** *(deferred — bundling all Phase 1 into single commit)*
 
 ```bash
 git add .github/semgrep.yml .github/workflows/ci.yml
@@ -163,7 +163,7 @@ SARIF upload to GitHub Security tab for tracking."
 - Modify: `.github/workflows/ci.yml` (add job)
 - Modify: `.claude/settings.json` (add pre-commit hook)
 
-- [ ] **Step 1: Create gitleaks config**
+- [x] **Step 1: Create gitleaks config**
 
 ```toml
 # .gitleaks.toml
@@ -203,7 +203,7 @@ title = "MIRA gitleaks config"
   tags = ["key", "generic"]
 ```
 
-- [ ] **Step 2: Add gitleaks job to CI**
+- [x] **Step 2: Add gitleaks job to CI**
 
 Add to `.github/workflows/ci.yml`:
 
@@ -223,7 +223,7 @@ Add to `.github/workflows/ci.yml`:
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 ```
 
-- [ ] **Step 3: Add gitleaks as a Claude Code pre-commit hook**
+- [x] **Step 3: Add gitleaks as a Claude Code pre-commit hook**
 
 Edit `.claude/settings.json` to add a PreCommit hook:
 
@@ -245,12 +245,12 @@ Edit `.claude/settings.json` to add a PreCommit hook:
 }
 ```
 
-- [ ] **Step 4: Run historical scan on full repo**
+- [x] **Step 4: Run historical scan on full repo**
 
 Run: `uvx gitleaks detect --source . --config .gitleaks.toml --report-path /tmp/gitleaks-report.json --verbose`
 Expected: Report of any historical secret exposure. Rotate any found secrets immediately via Doppler.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit** *(deferred — bundling all Phase 1 into single commit)*
 
 ```bash
 git add .gitleaks.toml .github/workflows/ci.yml .claude/settings.json
@@ -268,7 +268,7 @@ bot tokens, generic API keys. Pre-commit hook via Claude Code settings."
 - Create: `.bandit.yml` (config)
 - Modify: `.github/workflows/ci.yml` (extend sast-scan job)
 
-- [ ] **Step 1: Create bandit config**
+- [x] **Step 1: Create bandit config**
 
 ```yaml
 # .bandit.yml
@@ -286,7 +286,7 @@ exclude_dirs:
   - mira-bots-phase3
 ```
 
-- [ ] **Step 2: Add bandit to the SAST scan job in CI**
+- [x] **Step 2: Add bandit to the SAST scan job in CI**
 
 Extend the `sast-scan` job:
 
@@ -304,12 +304,12 @@ Extend the `sast-scan` job:
             -c .bandit.yml --severity-level high
 ```
 
-- [ ] **Step 3: Run bandit locally, triage results**
+- [x] **Step 3: Run bandit locally, triage results**
 
 Run: `uvx bandit -r mira-bots/ mira-core/ mira-mcp/ mira-crawler/tasks/ -c .bandit.yml`
 Expected: List of findings. Fix HIGH severity, suppress LOW with `# nosec` + justification.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Commit** *(deferred — bundling all Phase 1 into single commit)*
 
 ```bash
 git add .bandit.yml .github/workflows/ci.yml

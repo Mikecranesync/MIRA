@@ -38,6 +38,52 @@ jobs:
             mira-core/mira-ingest/ \
             mira-mcp/
 
+  secrets-scan:
+    name: Secrets Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  sast-scan:
+    name: Security Scan (SAST)
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: .github/semgrep.yml
+          generateSarif: "1"
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: pip install "bandit[toml]==1.8.*"
+
+      - name: Run bandit
+        run: |
+          bandit -r mira-bots/shared/ mira-bots/telegram/ mira-bots/slack/ \
+            mira-core/mira-ingest/ mira-mcp/ \
+            -c .bandit.yml --severity-level high
+
   test-unit:
     name: Unit Tests
     runs-on: ubuntu-latest

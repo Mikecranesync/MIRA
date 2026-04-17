@@ -21,8 +21,8 @@
 | Layer | Tool | Status | Target |
 |-------|------|--------|--------|
 | Linting | ruff (check + format) | ✅ CI-enforced | Maintain |
-| SAST | semgrep + bandit | ❌ Not configured | Phase 1 |
-| Secrets scanning | gitleaks | ❌ Not configured | Phase 1 |
+| SAST | semgrep + bandit | ✅ CI-enforced | Maintain |
+| Secrets scanning | gitleaks | ✅ CI + pre-commit hook | Maintain |
 | Type checking | pyright | ❌ Not configured | Phase 2 |
 | Coverage | pytest-cov | ❌ Not measuring | Phase 2 |
 | Architecture | import-linter | ❌ Not configured | Phase 3 |
