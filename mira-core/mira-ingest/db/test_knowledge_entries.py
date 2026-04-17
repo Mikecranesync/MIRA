@@ -5,9 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from db import data_types
-from db import neon
-
+from db import data_types, neon
 
 # ---------------------------------------------------------------------------
 # data_types module
