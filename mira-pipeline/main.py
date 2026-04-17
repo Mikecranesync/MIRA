@@ -278,7 +278,7 @@ app.include_router(_eval_router)
 
 @app.middleware("http")
 async def _auth(request: Request, call_next):
-    if request.url.path in ("/health", "/v1/models", "/eval/latest", "/eval/list"):
+    if request.url.path in ("/health", "/v1/models", "/eval/latest", "/eval/list", "/webhook/signup"):
         return await call_next(request)
     if PIPELINE_API_KEY:
         auth = request.headers.get("Authorization", "")
@@ -790,3 +790,65 @@ def _stream_response(reply: str, completion_id: str, created: int):
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(_generate(), media_type="text/event-stream")
+
+
+# ── Webhook: new user signup notification ───────────────────────────────────
+
+_SMTP_HOST = "smtp.gmail.com"
+_SMTP_PORT = 587
+_GOOGLE_USER = os.getenv("GOOGLE_USER", "harpermichael37@gmail.com")
+_GOOGLE_APP_PASSWORD = os.getenv("GOOGLE_APP_PASSWORD", "")
+_ADMIN_EMAIL = os.getenv("OPENWEBUI_ADMIN_EMAIL", "mike@cranesync.com")
+
+
+@app.post("/webhook/signup")
+async def webhook_signup(request: Request):
+    """Receive Open WebUI signup webhook → email admin."""
+    if not _GOOGLE_APP_PASSWORD:
+        logger.warning("GOOGLE_APP_PASSWORD not set — signup notification skipped")
+        return {"status": "skipped", "reason": "no smtp credentials"}
+
+    try:
+        body = await request.json()
+    except Exception:
+        return {"status": "error", "reason": "invalid json"}
+
+    user_data = body.get("user", "{}")
+    if isinstance(user_data, str):
+        import json as _json
+        try:
+            user_data = _json.loads(user_data)
+        except Exception:
+            user_data = {}
+
+    user_name = user_data.get("name", body.get("message", "Unknown"))
+    user_email = user_data.get("email", "unknown")
+
+    subject = f"New MIRA signup: {user_name}"
+    text = (
+        f"New user signed up for MIRA:\n\n"
+        f"  Name:  {user_name}\n"
+        f"  Email: {user_email}\n"
+        f"  Role:  {user_data.get('role', 'user')}\n\n"
+        f"Login at app.factorylm.com to manage users."
+    )
+
+    import smtplib
+    from email.mime.text import MIMEText
+
+    try:
+        msg = MIMEText(text)
+        msg["Subject"] = subject
+        msg["From"] = _GOOGLE_USER
+        msg["To"] = _ADMIN_EMAIL
+
+        with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT) as server:
+            server.starttls()
+            server.login(_GOOGLE_USER, _GOOGLE_APP_PASSWORD)
+            server.sendmail(_GOOGLE_USER, _ADMIN_EMAIL, msg.as_string())
+
+        logger.info("Signup notification sent to %s for user %s", _ADMIN_EMAIL, user_email)
+        return {"status": "sent"}
+    except Exception as e:
+        logger.error("Failed to send signup notification: %s", e)
+        return {"status": "error", "reason": str(e)}
