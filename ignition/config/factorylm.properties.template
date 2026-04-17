@@ -176,5 +176,32 @@ DB_DATASOURCE=
 
 
 # =============================================================================
+# SECTION 9 — MIRA CONNECT (Cloud Relay)
+# Streams live tag data from Ignition to MIRA cloud for AI diagnostics.
+# Set after running activation from the ConnectSetup Perspective page.
+# =============================================================================
+
+# MIRA relay HTTP ingest endpoint.
+# Set automatically by the /api/connect WebDev activation handler.
+# Default: (empty — tag streaming disabled until activated)
+RELAY_URL=
+
+# Tenant UUID — identifies which MIRA customer this gateway belongs to.
+# Set automatically by the /api/connect WebDev activation handler.
+# Default: (empty — tag streaming disabled until activated)
+TENANT_ID=
+
+# Root tag folder to stream. All leaf tags under this folder are read and
+# sent to the relay every STREAM_INTERVAL_MS milliseconds.
+# Default: [default]Mira_Monitored
+STREAM_TAG_FOLDER=[default]Mira_Monitored
+
+# Equipment identifier written into the relay payload. Used to match tags
+# to equipment_status rows in mira.db.
+# Default: ignition-gateway
+STREAM_EQUIPMENT_ID=ignition-gateway
+
+
+# =============================================================================
 # END OF factorylm.properties
 # =============================================================================
