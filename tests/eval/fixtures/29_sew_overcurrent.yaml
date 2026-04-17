@@ -15,3 +15,5 @@ turns:
     content: "It's the main drive on a case erector, 3HP motor"
   - role: user
     content: "Trips about 30 seconds into the cycle"
+  - role: user
+    content: "So what do you think is causing the overcurrent?"

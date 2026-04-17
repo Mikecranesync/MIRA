@@ -272,6 +272,21 @@ class RAGWorker:
             ):
                 pass
 
+            # At Q3: if a prior turn confirmed no-KB for this vendor, suppress any
+            # generic chunks that passed quality gate — they aren't vendor-specific docs.
+            if (
+                state.get("state") == "Q3"
+                and chunk_texts
+                and state.get("context", {}).get("no_kb_confirmed")
+            ):
+                logger.info(
+                    "NO_KB_COVERAGE (persisted) — suppressing %d generic chunk(s) at Q3 "
+                    "for asset=%r, honesty+DIAGNOSIS gate will fire",
+                    len(chunk_texts),
+                    state.get("context", {}).get("no_kb_confirmed"),
+                )
+                chunk_texts = []
+
             # Stage 2: Nemotron rerank NeonDB chunks (before LLM call)
             rerank_query = rewritten
             if photo_b64 and state.get("asset_identified"):
@@ -298,6 +313,9 @@ class RAGWorker:
                         "NO_KB_COVERAGE asset=%r — honesty directive injected",
                         state.get("asset_identified", "unknown"),
                     )
+                    ctx = state.setdefault("context", {})
+                    if not ctx.get("no_kb_confirmed"):
+                        ctx["no_kb_confirmed"] = state.get("asset_identified", "unknown")
                 messages = self._build_prompt(state, rewritten, photo_b64, no_kb_coverage=no_kb)
             t0 = time.monotonic()
             raw = await self._call_llm(messages, model=model)
@@ -421,9 +439,9 @@ class RAGWorker:
                 "--- END Q3 GATE ---\n"
             )
 
-        # No-KB + still gathering: skip remaining Q turns, commit to DIAGNOSIS now.
-        # Asking more questions is pointless when there are no docs to consult.
-        if no_kb_coverage and state.get("state") in {"Q1", "Q2", "Q3"}:
+        # No-KB at Q3: the technician has answered enough questions; commit to DIAGNOSIS.
+        # Firing only at Q3 avoids cutting off useful gathering at Q1/Q2.
+        if no_kb_coverage and state.get("state") == "Q3":
             system_content += (
                 "\n--- NO-KB DIAGNOSIS GATE ---\n"
                 "The knowledge base has NO documentation for this equipment. "
