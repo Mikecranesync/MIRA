@@ -926,9 +926,11 @@ class Supervisor:
                         # in an earlier turn (e.g. "showing F30001" in turn 1).
                         ctx_hist = state.get("context") or {}
                         history_turns = ctx_hist.get("history", [])
-                        combined_history = " ".join(
-                            t.get("content", "") for t in history_turns[-8:]
-                        ) + " " + message
+                        combined_history = (
+                            " ".join(t.get("content", "") for t in history_turns[-8:])
+                            + " "
+                            + message
+                        )
                         fault_info_present = bool(_FAULT_INFO_RE.search(combined_history))
 
                         if fault_info_present:
