@@ -708,7 +708,12 @@ async def ingest_document_kb(
         tenant_id, tenant_source = MIRA_TENANT_ID, "env"
     else:
         tenant_id, tenant_source = "", "default"
-    logger.info("Document KB ingest tenant=%s source=%s filename=%s", tenant_id or "(none)", tenant_source, fname)
+    logger.info(
+        "Document KB ingest tenant=%s source=%s filename=%s",
+        tenant_id or "(none)",
+        tenant_source,
+        fname,
+    )
 
     # Tier limit check (fail open on DB errors — never block on infra failures)
     if tenant_id:
