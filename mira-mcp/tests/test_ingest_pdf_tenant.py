@@ -1,4 +1,5 @@
 """Tests for per-request tenant_id resolution in _rest_ingest_pdf (issue #334)."""
+
 from __future__ import annotations
 
 import sys
@@ -56,9 +57,7 @@ class _FakeRequest:
 
 async def test_form_tenant_wins_over_env(server_module, monkeypatch):
     monkeypatch.setattr(server_module, "MIRA_TENANT_ID", "env-tenant-uuid")
-    req = _FakeRequest(
-        {"file": _FakeFileField(), "tenant_id": "form-tenant-uuid"}
-    )
+    req = _FakeRequest({"file": _FakeFileField(), "tenant_id": "form-tenant-uuid"})
     resp = await server_module._rest_ingest_pdf(req)
     assert resp.status_code == 200
     assert len(server_module._test_ingest_calls) == 1

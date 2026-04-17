@@ -949,7 +949,7 @@ class Supervisor:
             _wo_draft = self._build_wo_draft(state)
             parsed["reply"] = parsed.get("reply", "").rstrip() + (
                 "\n\nShould I log a work order in the CMMS?"
-            ) 75d3d4e (feat(integration): Atlas CMMS work-order creation — UC-5 ship-blocker)
+            )
 
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
@@ -970,9 +970,7 @@ class Supervisor:
         if _wo_draft is not None:
             ctx["cmms_pending"] = True
             ctx["cmms_wo_draft"] = _wo_draft
-            logger.info(
-                "CMMS_WO_PENDING chat_id=%s title=%r", chat_id, _wo_draft.get("title")
-            )
+            logger.info("CMMS_WO_PENDING chat_id=%s title=%r", chat_id, _wo_draft.get("title"))
 
         state["context"] = ctx
 
@@ -996,8 +994,21 @@ class Supervisor:
 
     _CMMS_YES = frozenset(
         {
-            "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "y",
-            "log", "create", "do it", "log it", "create it", "go ahead", "please",
+            "yes",
+            "yeah",
+            "yep",
+            "yup",
+            "sure",
+            "ok",
+            "okay",
+            "y",
+            "log",
+            "create",
+            "do it",
+            "log it",
+            "create it",
+            "go ahead",
+            "please",
             "1",
         }
     )
@@ -1064,15 +1075,16 @@ class Supervisor:
         state["context"] = ctx
 
         msg_lower = message.strip().lower()
-        is_yes = (
-            msg_lower in self._CMMS_YES
-            or any(w in msg_lower for w in self._CMMS_YES if len(w) > 3)
+        is_yes = msg_lower in self._CMMS_YES or any(
+            w in msg_lower for w in self._CMMS_YES if len(w) > 3
         )
 
         if is_yes and wo_draft:
             try:
                 reply = await self._post_cmms_work_order(wo_draft)
-                logger.info("CMMS_WO_CREATED chat_id=%s wo_draft_title=%r", chat_id, wo_draft.get("title"))
+                logger.info(
+                    "CMMS_WO_CREATED chat_id=%s wo_draft_title=%r", chat_id, wo_draft.get("title")
+                )
             except Exception as e:
                 logger.error("CMMS WO creation failed for %s: %s", chat_id, e)
                 reply = (
