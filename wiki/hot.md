@@ -1,19 +1,31 @@
-# Hot Cache — 2026-04-16 — CHARLIE
+# Hot Cache — 2026-04-17 — CHARLIE
 
 ## Just Finished (this session)
 
-- **eval infra fixed** (commit d607f39) — judge.py fallback, remote-pipeline guard, VPS scorecards restored
+- **Autonomous eval-fixer agent** — ADR-0010 Enhancement 5 implemented
+  - `tests/eval/eval_watchdog.py` — parses latest scorecard into structured JSON failure report
+  - `.claude/agents/eval-fixer-instructions.md` — agent instructions: watchdog → classify → patch → offline verify → draft PR (or file issue)
+  - `.claude/agents/run-eval-fixer.sh` — launchd wrapper, `--max-budget-usd 1.00`
+  - `~/Library/LaunchAgents/com.mira.eval-fixer.plist` — fires at 01:00 local (≈05:00 UTC daily)
+  - Hard limits: ≤1 file changed, ≤50 lines, allowed targets only, NEVER touch fixtures/grader/SAFETY
+  - Scope gates: skip if >15 patchable failures or >1 file cluster → file GitHub issue instead
+  - E2E verified: watchdog parses both scorecard formats, claude CLI flags accepted, Bash tool works
 
-- **v0.9 prompt (honesty-diagnosis)** — 35/57 on VPS (below 40/56 merge threshold). Rule 22 was ignored by LLM — model omits honesty prefix even when it reaches DIAGNOSIS for out-of-KB vendors.
+- **Citation gate implemented** (commit 02dbf50, PR #345 → feat/training-loop-v1)
+  - Hard block at DIAGNOSIS/FIX_STEP when KB coverage is UNCOVERED (0 high-quality chunks sim ≥0.65)
+  - 🟢/🟡/🔴 banners injected deterministically in engine.py — not relying on LLM
+  - PROCEED override: tech types PROCEED → override_mode=True in FSM context → ⚠️ BEST-GUESS MODE
+  - Auto-ingest: `_fire_scrape_trigger()` fires on every 🔴 gate + 🟡 partial gate
+  - Citation footer (📚 Source: ...) appended for covered/partial with source URLs
+  - Rule 16 in GSD_SYSTEM_PROMPT hardened: LLM must BLOCK (not caveat) when no retrieved docs
+  - Open WebUI: WEBUI_CUSTOM_CSS red border added to docker-compose.yml as default safe state
+  - Chunk headers annotated with `[Source: mfr model — section]` in LLM context
 
-- **Diagnosis: Why honesty fails** (commit 9cf1f11 — partial fix)
-  - KB has vendor chunks for WRONG models: 26 Yaskawa (NULL model), 931 ABB (NULL model), 905 Siemens (model_number="SINAMICS"), 6 SEW (gearmotor, not VFD), 2 Danfoss (FC302 only)
-  - Vendor check passes (vendor IS in KB) → chunks not suppressed → `_last_no_kb = False`
-  - Programmatic injection (engine.py) never fires because trigger requires `_last_no_kb = True`
+- **Root cause of 7 honesty failures (prev session)**
+  - Vendor chunks in KB for WRONG models (NULL model_number) → vendor check passes → no suppression
+  - Citation gate bypasses this entirely — fires on similarity threshold, not vendor name match
 
-- **Implemented**: Programmatic honesty prefix injection in engine.py + `_last_no_kb` tracking in rag_worker.py + Prompt v1.0 (removed Rule 22, updated Example 7). v1.0 eval: 32/57 (regression from non-determinism, not code bug).
-
-- **Root blocker identified**: Need **model-level KB check** — extract model token from query (J1000, ACS580, G120) and verify it appears in chunk `model_number` fields. Risk: Yaskawa A1000 chunks stored as "CIMR-AU4A0058AAA" — literal "A1000" not present in model_number string.
+- **v1.0 eval** — 32/57 (56%) — programmatic injection never fired (trigger requires `_last_no_kb=True` which doesn't fire when wrong-model chunks pass cross-vendor check)
 
 ## Eval State
 
@@ -22,47 +34,45 @@
 | v0.6 (baseline) | 30/56 (54%) | pre-session baseline |
 | v0.8-final (VPS) | **35/56 (62%)** | real score, commits e3bc226 |
 | v0.9 (VPS, 2026-04-16) | 35/57 (61%) | Rule 22 not followed, honesty fixtures still fail |
-| v1.0 (VPS, 2026-04-16) | 32/57 (56%) | Programmatic injection correct but never fires; 3 DIAGNOSIS_REVISION regressions = Groq non-determinism |
+| v1.0 (VPS, 2026-04-16) | 32/57 (56%) | Programmatic injection never fires; 3 non-determinism regressions |
+| **citation-gate (pending)** | **TBD** | PR #345 — expect 39–42/57 if gate fires correctly |
 | Target | **40/57 (70%)** | Merge threshold for PR #297 |
 
-### 7 Persistent Honesty Failures (unchanged v0.8→v1.0)
+### 7 Honesty Failures (targeted by citation gate)
 `yaskawa_v1000_oc_22`, `yaskawa_j1000_thermal_24`, `yaskawa_ga700_encoder_26`, `sew_overcurrent_29`, `vfd_abb_01_acs580_fault_2310`, `vfd_abb_04_acs150_multi_turn`, `vfd_siemens_01_sinamics_g120_f30001`
 
-All reach DIAGNOSIS but omit the honesty prefix. All fail `cp_keyword_match: No honesty signal`.
+**Expected behavior after gate**: these now return 🔴 gate message instead of hallucinated advice.
+**Risk**: `cp_keyword_match` checks for honesty signal in reply text — gate reply includes "No manual found" which may or may not match the honesty regex. Verify eval criteria passes 🔴 gate messages.
 
-### Self-Critique Non-Determinism (3 scenarios)
+### Self-Critique Non-Determinism (3 scenarios, unchanged)
 `full_diagnosis_happy_path_07`, `reset_new_session_09`, `vfd_siemens_01` — fail intermittently when self-critique scores groundedness < threshold and parks FSM in DIAGNOSIS_REVISION.
 
 ## Machine State
 
-- **CHARLIE (this machine):** `feat/training-loop-v1` branch, 3 commits ahead of origin
-- **VPS (165.245.138.91):** mira-pipeline running v1.0 code (rebuilt container). eval-v1.0-programmatic-honesty.md = 32/57
+- **CHARLIE (this machine):** `feat/citation-gate` branch, pushed — PR #345 open against `feat/training-loop-v1`
+- **VPS (165.245.138.91):** mira-pipeline still running v1.0 code. Pull + rebuild needed to test citation gate.
 - **Bravo (100.86.236.11):** Ollama :11434 OK
 - **PLC Laptop (100.72.2.99):** PLC at 192.168.1.100 unreachable — physical check needed
 
-## Blocked
+## Blocked / Open
 
-- **PR #297 not merged** — Current best eval: 35/57 (v0.9). Needs 40/57. Root blocker: model-level KB check.
-- **Model-level KB check** — Issue #313 needs implementation. Risky: CIMR-AU4A0058AAA doesn't contain "A1000" literal → model check would incorrectly suppress chunks for A1000 queries.
-- **OW manual steps** — folder org, KB uploads, memory/channels/code execution toggles — require browser UI
+- **PR #297 (feat/training-loop-v1)** — not merged. Needs 40/57. Citation gate (PR #345) must merge to this branch first, then eval.
+- **Eval gate check** — need to verify `cp_keyword_match` regex accepts 🔴 gate message. If not, fixture pass criteria need updating.
+- **OW manual steps** — KB PDF uploads, admin toggle: Memory, Channels, Code Execution, Web Search — require browser UI
 - **mira-sidecar OEM migration** — 398 ChromaDB chunks need moving to OW KB
 - **mira-web → pipeline cutover** — mira-chat.ts still calls sidecar :5000/rag
 
 ## Next Steps (priority order)
 
-1. **Model-level KB check (issue #313)** — Implement in `rag_worker.py` `process()` after vendor check. Must solve the CIMR-AU4A0058AAA → A1000 alias problem. Options:
-   - Build vendor-model alias map (SEW→MOVITRAC, Yaskawa A1000→CIMR-A*, etc.)
-   - OR: check chunk CONTENT (not model_number field) for the queried model string
-   - OR: add `model_family` field to NeonDB schema and populate during ingest
-   Once implemented: run eval, expect 35+7=42/57 → merge PR #297
+1. **Merge PR #345** — review citation gate on feat/training-loop-v1
+2. **Run eval on VPS** after merge + container rebuild — check honesty fixture pass rate
+   - If `cp_keyword_match` fails on 🔴 gate replies: update fixture expected patterns to match "No manual found"
+   - Target: 40/57 (70%)
+3. **If 40/57 reached** → merge PR #297 to main
+4. **OW manual steps** — KB PDF uploads, admin toggle: Memory, Channels, Code Execution, Web Search
+5. **mira-sidecar OEM migration** — run tools/migrate_sidecar_oem_to_owui.py
 
-2. **Run `setup_owui_models.py`** on VPS (already synced): `doppler run --project factorylm --config prd -- python3 tools/owui_tools/setup_owui_models.py`
-
-3. **OW manual steps** — KB PDF uploads, admin toggle: Memory, Channels, Code Execution, Web Search
-
-4. **mira-sidecar OEM migration** — run tools/migrate_sidecar_oem_to_owui.py
-
-## Key NeonDB Facts (discovered this session)
+## Key NeonDB Facts
 ```
 Total chunks: ~68,000+
 Rockwell Automation: 13,686 chunks (main KB)
