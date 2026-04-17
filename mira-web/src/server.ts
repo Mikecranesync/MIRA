@@ -73,6 +73,12 @@ import {
   renderBlogIndex,
   renderFaultCodeIndex,
 } from "./lib/blog-renderer.js";
+import {
+  createActivationCode,
+  validateAndActivate,
+  getConnectionStatus,
+  ensureConnectSchema,
+} from "./lib/connect.js";
 import { FEATURES, renderFeaturePage } from "./lib/feature-renderer.js";
 import {
   getLiveFaultCodes,
@@ -960,13 +966,65 @@ app.post("/api/mira/chat", requireActive, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// MIRA Connect — factory-to-cloud activation
+// ---------------------------------------------------------------------------
+
+app.post("/api/connect/generate-code", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  try {
+    const code = await createActivationCode(user.sub);
+    return c.json({ code, expires_in: 3600 });
+  } catch (err) {
+    console.error("[connect] Code generation failed:", err);
+    return c.json({ error: "Failed to generate activation code" }, 500);
+  }
+});
+
+app.post("/api/connect/activate", async (c) => {
+  const body = await c.req.json();
+  const { code, agent_id, gateway_hostname } = body;
+
+  if (!code) return c.json({ error: "code is required" }, 400);
+
+  try {
+    const result = await validateAndActivate(
+      code,
+      agent_id || "unknown",
+      gateway_hostname || "unknown",
+    );
+    if (!result) {
+      return c.json({ error: "Invalid, expired, or already used code" }, 404);
+    }
+    return c.json({
+      status: "activated",
+      tenant_id: result.tenant_id,
+      relay_url: result.relay_url,
+    });
+  } catch (err) {
+    console.error("[connect] Activation failed:", err);
+    return c.json({ error: "Activation failed" }, 500);
+  }
+});
+
+app.get("/api/connect/status", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  try {
+    const status = await getConnectionStatus(user.sub);
+    return c.json(status);
+  } catch (err) {
+    console.error("[connect] Status check failed:", err);
+    return c.json({ error: "Status check failed" }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Startup
 // ---------------------------------------------------------------------------
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // Run schema migration on startup
-ensureSchema()
+Promise.all([ensureSchema(), ensureConnectSchema()])
   .then(() => console.log("[startup] NeonDB schema verified"))
   .catch((err) => console.warn("[startup] Schema migration skipped:", err));
 
