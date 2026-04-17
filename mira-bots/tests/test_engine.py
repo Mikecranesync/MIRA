@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from shared.engine import STATE_ORDER, Supervisor, _STATE_ALIASES
+from shared.engine import STATE_ORDER, Supervisor, _STATE_ALIASES, _FAULT_INFO_RE
 
 
 # ---------------------------------------------------------------------------
@@ -400,3 +400,36 @@ class TestStatePersistence:
         conn.close()
         assert row[0] == "up"
         assert row[1] == "helpful"
+
+
+# ---------------------------------------------------------------------------
+# _FAULT_INFO_RE — groundedness suppression guard (issue #372)
+# ---------------------------------------------------------------------------
+
+
+class TestFaultInfoRegex:
+    """Fault-info regex must detect fault codes so self-critique doesn't false-positive."""
+
+    def test_fault_code_format(self):
+        assert _FAULT_INFO_RE.search("SINAMICS G120 showing F30001 fault")
+
+    def test_alarm_keyword(self):
+        assert _FAULT_INFO_RE.search("drive showing alarm code AL-14")
+
+    def test_tripping_on(self):
+        assert _FAULT_INFO_RE.search("motor is tripping on OC")
+
+    def test_oc_fault_code(self):
+        assert _FAULT_INFO_RE.search("it shows OC on the display")
+
+    def test_no_match_on_generic_complaint(self):
+        assert not _FAULT_INFO_RE.search("the motor is not working correctly")
+
+    def test_no_match_on_vague_fault_mention(self):
+        assert not _FAULT_INFO_RE.search("there is a fault somewhere in the system")
+
+    def test_yaskawa_oc_format(self):
+        assert _FAULT_INFO_RE.search("Yaskawa V1000 giving OC fault on acceleration")
+
+    def test_danfoss_alarm4(self):
+        assert _FAULT_INFO_RE.search("FC102 showing Alarm 4")
