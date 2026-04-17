@@ -796,7 +796,7 @@ def _stream_response(reply: str, completion_id: str, created: int):
 
 _SMTP_HOST = "smtp.gmail.com"
 _SMTP_PORT = 587
-_GOOGLE_USER = os.getenv("GOOGLE_USER", "harpermichael37@gmail.com")
+_GOOGLE_USER = os.getenv("GOOGLE_USER", "mike@cranesync.com")
 _GOOGLE_APP_PASSWORD = os.getenv("GOOGLE_APP_PASSWORD", "")
 _ADMIN_EMAIL = os.getenv("OPENWEBUI_ADMIN_EMAIL", "mike@cranesync.com")
 
