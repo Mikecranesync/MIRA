@@ -14,6 +14,8 @@ from typing import Any
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
+from . import data_types as _data_types
+
 
 def _engine():
     url = os.environ.get("NEON_DATABASE_URL")
@@ -54,32 +56,51 @@ def get_tier_limits(tier: str) -> dict[str, Any] | None:
 
 
 def recall_knowledge(
-    embedding: list[float], tenant_id: str, limit: int = 5
+    embedding: list[float],
+    tenant_id: str,
+    limit: int = 5,
+    *,
+    isa95_prefix: str | None = None,
+    data_types: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """pgvector cosine similarity search over knowledge_entries."""
+    """pgvector cosine similarity search over knowledge_entries.
+
+    Optional filters (vision doc Problem 1):
+      isa95_prefix — scope to an ISA-95 subtree (e.g. 'Plant/Line2/').
+      data_types   — one of data_types.ALL values; multiple OK.
+    """
+    clauses = ["tenant_id = :tid", "embedding IS NOT NULL"]
+    params: dict[str, Any] = {
+        "emb": str(embedding),
+        "tid": tenant_id,
+        "lim": limit,
+    }
+    if isa95_prefix is not None:
+        clauses.append("isa95_path LIKE :prefix || '%'")
+        params["prefix"] = isa95_prefix
+    if data_types:
+        clauses.append("data_type = ANY(:dtypes)")
+        params["dtypes"] = list(data_types)
+    where = " AND ".join(clauses)
+    sql = f"""
+        SELECT
+            content,
+            manufacturer,
+            model_number,
+            equipment_type,
+            source_type,
+            isa95_path,
+            equipment_id,
+            data_type,
+            metadata,
+            1 - (embedding <=> cast(:emb AS vector)) AS similarity
+        FROM knowledge_entries
+        WHERE {where}
+        ORDER BY embedding <=> cast(:emb AS vector)
+        LIMIT :lim
+    """
     with _engine().connect() as conn:
-        rows = (
-            conn.execute(
-                text("""
-                SELECT
-                    content,
-                    manufacturer,
-                    model_number,
-                    equipment_type,
-                    source_type,
-                    metadata,
-                    1 - (embedding <=> cast(:emb AS vector)) AS similarity
-                FROM knowledge_entries
-                WHERE tenant_id = :tid
-                  AND embedding IS NOT NULL
-                ORDER BY embedding <=> cast(:emb AS vector)
-                LIMIT :lim
-            """),
-                {"emb": str(embedding), "tid": tenant_id, "lim": limit},
-            )
-            .mappings()
-            .fetchall()
-        )
+        rows = conn.execute(text(sql), params).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -129,6 +150,36 @@ def ensure_image_embedding_column() -> None:
 
         logging.getLogger("mira-ingest").warning(
             "image_embedding column migration failed (non-fatal): %s", exc
+        )
+
+
+def ensure_knowledge_hierarchy_columns() -> None:
+    """Additive migration: ISA-95 hierarchy columns (vision doc Problem 1).
+
+    Adds isa95_path, equipment_id, data_type to knowledge_entries and
+    creates btree indexes for (tenant_id, isa95_path) prefix scans and
+    (tenant_id, data_type) exact match. Idempotent.
+    """
+    statements = [
+        "ALTER TABLE knowledge_entries ADD COLUMN IF NOT EXISTS isa95_path TEXT",
+        "ALTER TABLE knowledge_entries ADD COLUMN IF NOT EXISTS equipment_id TEXT",
+        "ALTER TABLE knowledge_entries "
+        "ADD COLUMN IF NOT EXISTS data_type TEXT NOT NULL DEFAULT 'manual'",
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_entries_isa95_path "
+        "ON knowledge_entries (tenant_id, isa95_path text_pattern_ops)",
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_entries_data_type "
+        "ON knowledge_entries (tenant_id, data_type)",
+    ]
+    try:
+        with _engine().connect() as conn:
+            for stmt in statements:
+                conn.execute(text(stmt))
+            conn.commit()
+    except Exception as exc:
+        import logging
+
+        logging.getLogger("mira-ingest").warning(
+            "knowledge hierarchy migration failed (non-fatal): %s", exc
         )
 
 
@@ -303,8 +354,13 @@ def insert_knowledge_entry(
     section: str | None,
     source_type: str = "manual",
     chunk_type: str = "text",
+    *,
+    isa95_path: str | None = None,
+    equipment_id: str | None = None,
+    data_type: str = "manual",
 ) -> str:
     """Insert one chunk into knowledge_entries. Returns the new row id."""
+    _data_types.validate(data_type)
     entry_id = str(uuid.uuid4())
     meta = {
         "source_url": source_url,
@@ -319,11 +375,13 @@ def insert_knowledge_entry(
             INSERT INTO knowledge_entries
                 (id, tenant_id, source_type, manufacturer, model_number,
                  content, embedding, source_url, source_page, metadata,
-                 is_private, verified, chunk_type)
+                 is_private, verified, chunk_type,
+                 isa95_path, equipment_id, data_type)
             VALUES
                 (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                  :content, cast(:embedding AS vector), :source_url, :source_page, cast(:metadata AS jsonb),
-                 false, false, :chunk_type)
+                 false, false, :chunk_type,
+                 :isa95_path, :equipment_id, :data_type)
         """),
             {
                 "id": entry_id,
@@ -337,6 +395,9 @@ def insert_knowledge_entry(
                 "source_page": chunk_index,
                 "metadata": json.dumps(meta),
                 "chunk_type": chunk_type,
+                "isa95_path": isa95_path,
+                "equipment_id": equipment_id,
+                "data_type": data_type,
             },
         )
         conn.commit()
@@ -350,27 +411,44 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
     model_number, content, embedding, source_url, source_page, metadata,
     chunk_type.
 
+    Optional per-entry keys (vision doc Problem 1): isa95_path, equipment_id,
+    data_type (defaults to 'manual'). data_type is validated per entry.
+
     Returns count of rows inserted.
     """
     if not entries:
         return 0
+    prepared: list[dict] = []
+    for e in entries:
+        dt = e.get("data_type", "manual")
+        _data_types.validate(dt)
+        prepared.append(
+            {
+                **e,
+                "isa95_path": e.get("isa95_path"),
+                "equipment_id": e.get("equipment_id"),
+                "data_type": dt,
+            }
+        )
     with _engine().connect() as conn:
-        for entry in entries:
+        for entry in prepared:
             conn.execute(
                 text("""
                 INSERT INTO knowledge_entries
                     (id, tenant_id, source_type, manufacturer, model_number,
                      content, embedding, source_url, source_page, metadata,
-                     is_private, verified, chunk_type)
+                     is_private, verified, chunk_type,
+                     isa95_path, equipment_id, data_type)
                 VALUES
                     (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                      :content, cast(:embedding AS vector), :source_url, :source_page,
-                     cast(:metadata AS jsonb), false, false, :chunk_type)
+                     cast(:metadata AS jsonb), false, false, :chunk_type,
+                     :isa95_path, :equipment_id, :data_type)
             """),
                 entry,
             )
         conn.commit()
-    return len(entries)
+    return len(prepared)
 
 
 def mark_source_fingerprint_done(row_id: int, atoms_created: int) -> None:
