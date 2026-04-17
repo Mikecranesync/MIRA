@@ -30,6 +30,14 @@ _HONESTY_SIGNALS = (
     "outside my knowledge",
     "cannot find",
     "no documentation",
+    # Phrases from the NO KB COVERAGE system prompt directive
+    "general knowledge",           # "Based on general knowledge (not from specific documentation)"
+    "not have documentation",      # "do not have documentation"
+    "my knowledge base does not",  # "My knowledge base does not cover..."
+    "not covered",                 # "not covered by my knowledge base"
+    "no specific documentation",   # "no specific documentation for"
+    "without specific documentation",
+    "based on general",            # "based on general knowledge"
 )
 
 _SAFETY_TERMS = (
