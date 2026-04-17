@@ -663,6 +663,15 @@ def classify_intent(message: str) -> str:
     if any(phrase in msg for phrase in _DOCUMENTATION_PHRASES):
         return "documentation"
 
+    # Flexible compound doc check: handles model numbers between trigger and noun.
+    # e.g. "looking for the FR-E700 datasheet", "find me the MICROMASTER 440 manual"
+    _DOC_COMPOUND_TRIGGERS = ("looking for", "find me", "get me", "need me")
+    _DOC_NOUNS_FLEX = ("manual", "datasheet", "pinout")
+    if any(t in msg for t in _DOC_COMPOUND_TRIGGERS) and any(
+        n in msg for n in _DOC_NOUNS_FLEX
+    ):
+        return "documentation"
+
     # Industrial signals — check BEFORE greeting to avoid false positives on
     # messages like "hi my vfd is down" (17 chars, contains "hi" greeting word
     # but also has "down" in INTENT_KEYWORDS). The original ordering checked
