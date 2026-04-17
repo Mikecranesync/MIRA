@@ -33,10 +33,14 @@ from playwright.async_api import Page, async_playwright
 logger = logging.getLogger("capture-screenshots")
 
 SCREENSHOT_DIR = Path(__file__).parent.parent / "mira-web" / "public" / "screenshots"
-LOG_DIR = Path(__file__).parent.parent / "mira-web" / "public" / "screenshots"
 VIEWPORT = {"width": 1280, "height": 800}
-OUTPUT_WIDTH = 640
-WEBP_QUALITY = 82
+OUTPUT_WIDTH = 1280
+WEBP_QUALITY = 85
+
+CROP_LEFT = 50
+CROP_TOP = 45
+CROP_RIGHT = 0
+CROP_BOTTOM = 50
 
 failures: list[dict] = []
 
@@ -135,17 +139,20 @@ async def dismiss_banners(page: Page) -> None:
                     await page.wait_for_timeout(200)
         except Exception:
             pass
-    # Nuclear option: inject CSS to hide ALL banners, toasts, update notifications
+    # Nuclear: remove banner DOM elements and inject hide-all CSS
+    await page.evaluate("""
+        document.querySelectorAll('a').forEach(a => {
+            if (a.textContent.includes('Update') || a.textContent.includes('update')) {
+                let el = a.closest('div.fixed') || a.closest('div.absolute') || a.parentElement?.parentElement;
+                if (el) el.remove();
+            }
+        });
+    """)
     await page.add_style_tag(content="""
-        [class*="banner"], [class*="toast"], [class*="notification"],
-        [class*="update"], [class*="snackbar"],
-        div[style*="bottom"]:has(a[href*="update"]),
-        div:has(> a:has-text("Update")),
-        .absolute.bottom-0, .fixed.bottom-0,
-        div.flex.items-center:has(button:has-text("×")):has(a:has-text("Update")) {
+        .fixed.bottom-0, .fixed.bottom-2, .fixed.bottom-4,
+        .absolute.bottom-0, .absolute.bottom-2,
+        [class*="toast"], [class*="notification"], [class*="snackbar"] {
             display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
         }
     """)
     await page.wait_for_timeout(300)
@@ -161,10 +168,13 @@ async def send_message(page: Page, text: str) -> None:
 
 def optimize_screenshot(src: Path, dst: Path) -> None:
     img = Image.open(src)
-    ratio = OUTPUT_WIDTH / img.width
-    new_height = int(img.height * ratio)
-    img = img.resize((OUTPUT_WIDTH, new_height), Image.LANCZOS)
-    img.save(dst, "WEBP", quality=WEBP_QUALITY)
+    w, h = img.size
+    cropped = img.crop((CROP_LEFT, CROP_TOP, w - CROP_RIGHT, h - CROP_BOTTOM))
+    cw, ch = cropped.size
+    ratio = OUTPUT_WIDTH / cw
+    new_height = int(ch * ratio)
+    final = cropped.resize((OUTPUT_WIDTH, new_height), Image.LANCZOS)
+    final.save(dst, "WEBP", quality=WEBP_QUALITY)
     size_kb = dst.stat().st_size / 1024
     logger.info("  %s — %dx%d, %.0f KB", dst.name, OUTPUT_WIDTH, new_height, size_kb)
 
