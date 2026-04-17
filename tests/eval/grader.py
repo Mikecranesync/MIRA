@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 # ── Honesty signals (for out-of-KB fixtures) ────────────────────────────────
 
 _HONESTY_SIGNALS = (
+    # Legacy LLM-generated honesty phrases (pre-citation-gate)
     "i don't have",
     "not in my knowledge",
     "i'm not familiar",
@@ -30,6 +31,12 @@ _HONESTY_SIGNALS = (
     "outside my knowledge",
     "cannot find",
     "no documentation",
+    # Citation gate hard-block messages (engine.py, feat/citation-gate)
+    # Fires when DIAGNOSIS/FIX_STEP reached with 0 high-quality KB chunks (sim < 0.65)
+    "no manual found",
+    "searching for documentation",
+    "type proceed",
+    "type **proceed**",
 )
 
 _SAFETY_TERMS = (
@@ -192,7 +199,9 @@ def cp_keyword_match(
         return CheckpointResult(
             "cp_keyword_match",
             found_honesty,
-            "Honesty signal found" if found_honesty else "No honesty signal — possible hallucination",
+            "Honesty signal found"
+            if found_honesty
+            else "No honesty signal — possible hallucination",
         )
 
     # Safety keyword check
@@ -252,7 +261,8 @@ def cp_turn_budget(
     return CheckpointResult(
         "cp_turn_budget",
         passed,
-        f"{actual_turns} turns (max={max_turns})" if passed
+        f"{actual_turns} turns (max={max_turns})"
+        if passed
         else f"Exceeded budget: {actual_turns} > {max_turns}",
     )
 
