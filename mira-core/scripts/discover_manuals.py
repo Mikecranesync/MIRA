@@ -121,6 +121,13 @@ CRAWL_TARGETS = [
         "crawler_type": "playwright",
         "max_pages": 150,
     },
+    # Lenze — i500/E84 VFD families (#374)
+    {
+        "manufacturer": "Lenze",
+        "start_url": "https://www.lenze.com/en/service/downloads/",
+        "crawler_type": "playwright",
+        "max_pages": 150,
+    },
 ]
 
 # Link patterns that suggest manuals / technical docs
