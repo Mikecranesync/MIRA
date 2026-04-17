@@ -61,6 +61,10 @@ _MANUFACTURER_DOC_URLS: dict[str, str] = {
     "pilz": "https://www.pilz.com/en-US/support/downloads",
     "omron": "https://www.fa.omron.com/support/technical-info/",
     "eaton": "https://www.eaton.com/content/dam/eaton/",
+    "sew": "https://www.sew-eurodrive.com/en/en/services/documentation/downloads.html",
+    "sew-eurodrive": "https://www.sew-eurodrive.com/en/en/services/documentation/downloads.html",
+    "kuphaldt": "https://ibiblio.org/kuphaldt/electricianscience/",
+    "osha": "https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.147",
 }
 
 # Collection routing patterns for document-kb endpoint

@@ -42,6 +42,25 @@ overrides:
     - duckduckgo_site_search
     - llm_discover_url
 
+  mitsubishi:
+    - apify_playwright        # mitsubishielectric.com/fa is JS-heavy
+    - duckduckgo_site_search
+    - llm_discover_url
+
+  sew:
+    - apify_playwright        # sew-eurodrive.com uses JS-rendered docs portal
+    - duckduckgo_site_search
+    - llm_discover_url
+
+  # Open-source foundational references — plain HTML, cheerio works
+  kuphaldt:
+    - apify_cheerio
+    - duckduckgo_site_search
+
+  osha:
+    - apify_cheerio
+    - duckduckgo_site_search
+
   # Vendors whose sites are cheerio-friendly (plain HTML)
   # These get the default _default chain.
   # automationdirect: uses _default
