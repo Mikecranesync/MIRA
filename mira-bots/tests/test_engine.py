@@ -289,6 +289,57 @@ class TestAdvanceState:
 
 
 # ---------------------------------------------------------------------------
+# MANUAL_LOOKUP_GATHERING escape — issue #371
+# ---------------------------------------------------------------------------
+
+
+class TestManualLookupGatheringEscape:
+    """Guards the fix: uncovered-vendor doc requests skip gathering and land in IDLE."""
+
+    def _make_state(self, fsm_state: str) -> dict:
+        return {
+            "state": fsm_state,
+            "asset_identified": "",
+            "context": {},
+            "exchange_count": 0,
+            "fault_category": None,
+            "final_state": None,
+        }
+
+    def test_is_doc_specific_requires_model_number(self, supervisor):
+        """Vendor known but no model number → not specific enough (triggers gathering)."""
+        assert not supervisor._is_doc_specific("Pilz", "find a manual for pilz safety relay")
+
+    def test_is_doc_specific_with_model_passes(self, supervisor):
+        """Vendor + model number → specific enough (bypasses gathering)."""
+        assert supervisor._is_doc_specific("Pilz", "pilz PNOZ X3 manual")
+
+    def test_doc_lookup_kb_miss_transitions_to_idle(self, supervisor, tmp_path):
+        """_do_documentation_lookup KB miss must save IDLE state (fixes pilz_11, dist_36)."""
+        import asyncio
+
+        state = self._make_state("Q3")
+        state["asset_identified"] = "Pilz PNOZ distribution block"
+        chat_id = "test-pilz-idle"
+
+        with (
+            patch("shared.engine.kb_has_coverage", return_value=(False, "no vendor match")),
+            patch("shared.engine.vendor_support_url", return_value=""),
+            patch.object(supervisor, "_fire_scrape_trigger", new_callable=AsyncMock),
+        ):
+            result = asyncio.run(
+                supervisor._do_documentation_lookup(
+                    chat_id, "find a manual", state, "trace-1", "default",
+                    vendor_override="Pilz",
+                )
+            )
+
+        assert result["next_state"] == "IDLE", "KB miss must transition to IDLE"
+        loaded = supervisor._load_state(chat_id)
+        assert loaded["state"] == "IDLE", "IDLE must be persisted to DB"
+
+
+# ---------------------------------------------------------------------------
 # _format_reply
 # ---------------------------------------------------------------------------
 

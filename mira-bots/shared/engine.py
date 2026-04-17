@@ -606,6 +606,15 @@ class Supervisor:
             combined = f"{message} {state.get('asset_identified', '')}".strip()
             mfr = vendor_name_from_text(combined) or ""
 
+            # Fast-path: if KB has no coverage for this vendor, gathering a model
+            # number won't help — skip straight to the honest "no docs" response.
+            if mfr:
+                kb_covered, _ = kb_has_coverage(mfr, combined, resolved_tenant or "")
+                if not kb_covered:
+                    return await self._do_documentation_lookup(
+                        chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
+                    )
+
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
             if not self._is_doc_specific(mfr, combined):
@@ -1698,6 +1707,9 @@ class Supervisor:
             "query": combined[:120],
             "queued_at": datetime.now(timezone.utc).isoformat(),
         }
+        # Doc request handled — return to IDLE so the session doesn't stay
+        # stuck in a mid-diagnostic state after the "no docs" response.
+        state["state"] = "IDLE"
         state["context"] = ctx
         asyncio.create_task(self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id))
         logger.info(
@@ -1708,7 +1720,7 @@ class Supervisor:
         )
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
-        return self._make_result(reply, "low", trace_id, state["state"])
+        return self._make_result(reply, "low", trace_id, "IDLE")
 
     async def _check_pending_doc_job(self, chat_id: str, state: dict) -> str:
         """Check if a previous doc-crawl job for this chat finished with exhausted fallback.
