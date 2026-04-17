@@ -772,6 +772,136 @@
     }
     .slideshow:hover::after { border-color: rgba(240,160,0,0.18); }
 
+    /* ── Screenshot gallery ── */
+    .sg-gallery {
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      overflow: hidden;
+      height: 280px;
+    }
+    .sg-item {
+      flex: 1;
+      min-width: 0;
+      transition: flex 0.3s cubic-bezier(0.16,1,0.3,1);
+      cursor: pointer;
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+    .sg-item:hover {
+      flex: 3;
+      box-shadow: 0 0 24px rgba(240,160,0,0.15);
+      border-color: rgba(240,160,0,0.3);
+    }
+    .sg-item img {
+      width: 100%;
+      height: 280px;
+      object-fit: cover;
+      display: block;
+    }
+    .sg-caption {
+      display: block;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.35);
+      margin-top: 8px;
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    }
+    .sg-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 16px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.8));
+      color: #e8eaf0;
+      font-size: 13px;
+      line-height: 1.4;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+    .sg-item:hover .sg-overlay { opacity: 1; }
+
+    /* Lightbox */
+    .sg-lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(8px);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      pointer-events: none;
+    }
+    .sg-lightbox.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .sg-lightbox-inner {
+      max-width: 960px;
+      width: 90vw;
+      position: relative;
+    }
+    .sg-lightbox-img {
+      width: 100%;
+      border-radius: 10px;
+      display: block;
+    }
+    .sg-lightbox-desc {
+      color: rgba(255,255,255,0.8);
+      font-size: 15px;
+      line-height: 1.6;
+      margin-top: 16px;
+    }
+    .sg-lightbox-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 16px;
+      padding: 9px 18px;
+      background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%);
+      color: #0a0a08;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 6px;
+      text-decoration: none;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .sg-lightbox-close {
+      position: absolute;
+      top: -40px;
+      right: 0;
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.6);
+      font-size: 24px;
+      cursor: pointer;
+      padding: 8px;
+    }
+
+    @media (max-width: 768px) {
+      .sg-gallery {
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        gap: 12px;
+        height: auto;
+      }
+      .sg-item {
+        flex: none;
+        width: 75vw;
+        scroll-snap-align: start;
+      }
+      .sg-item img { height: 200px; }
+      .sg-lightbox-inner { width: 95vw; }
+    }
+
     /* ── CTA section ── */
     .cta-section {
       padding: 120px 0;
@@ -973,130 +1103,52 @@
           </div>
         </div>
 
-        <div class="slideshow fade-in" role="link" tabindex="0" data-href="/feature/fault-diagnosis" aria-label="Fault Diagnosis walkthrough — click for full feature page">
-          <div class="slideshow-slides">
-            <div class="slide active">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">01/04</span>INCOMING — FAULT CODE</span>
-                  <span class="fc-badge fc-badge-green">SIGNAL</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">User</span><span class="fc-value">Line 3 tech — iPhone</span></div>
-                <div class="fc-row"><span class="fc-label">Input</span><span class="fc-value">F-012 on PowerFlex 753</span></div>
-                <div class="fc-row"><span class="fc-label">Context</span><span class="fc-value">Second trip today, same fault</span></div>
-                <div class="fc-row"><span class="fc-label">Mode</span><span class="fc-value">Voice + typed</span></div>
-              </div>
-            </div>
-            <div class="slide">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">02/04</span>MIRA — SEARCHING</span>
-                  <span class="fc-badge fc-badge-amber">PROCESSING</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">Matched</span><span class="fc-value">PF753 Manual §6.2</span></div>
-                <div class="fc-row"><span class="fc-label">Candidates</span><span class="fc-value">4 → 1 ranked</span></div>
-                <div class="fc-row"><span class="fc-label">Confidence</span><span class="fc-value">94% — high</span></div>
-                <div class="fc-row"><span class="fc-label">Latency</span><span class="fc-value" style="color:#00d4aa">612 ms to first token</span></div>
-              </div>
-            </div>
-            <div class="slide">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">03/04</span>CITED ANSWER</span>
-                  <span class="fc-badge fc-badge-green">DELIVERED</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">Fault</span><span class="fc-value">F-012 — Overcurrent</span></div>
-                <div class="fc-row"><span class="fc-label">Root cause</span><span class="fc-value">Mechanical load spike at startup</span></div>
-                <div class="fc-row"><span class="fc-label">Action</span><span class="fc-value">Accel ramp P042 → 4.5s</span></div>
-                <div class="fc-row"><span class="fc-label">Source</span><span class="fc-value" style="color:#00d4aa">[§6.2 PF753 Manual p.81]</span></div>
-              </div>
-            </div>
-            <div class="slide">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">04/04</span>WORK ORDER — CREATED</span>
-                  <span class="fc-badge fc-badge-amber">AUTO</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">Asset</span><span class="fc-value">Line 3 PowerFlex 753</span></div>
-                <div class="fc-row"><span class="fc-label">Priority</span><span class="fc-value" style="color:#f0a000">MEDIUM</span></div>
-                <div class="fc-row"><span class="fc-label">Assigned</span><span class="fc-value">On-call technician</span></div>
-                <div class="fc-row"><span class="fc-label">Logged</span><span class="fc-value" style="color:#00d4aa">14:02 · your-cmms</span></div>
-              </div>
-            </div>
+        <div class="sg-gallery fade-in" aria-label="Fault Diagnosis screenshots">
+          <div class="sg-item" data-description="Type or voice a fault code into chat. MIRA searches your uploaded OEM manuals and returns a cited answer in seconds." data-feature-url="/feature/fault-diagnosis">
+            <img src="/public/screenshots/fault-diagnosis-01.webp" alt="User asks MIRA about PowerFlex F-012 fault code" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">Ask any fault code</div>
+            <span class="sg-caption">Ask a fault code</span>
           </div>
-          <div class="slideshow-controls">
-            <div class="slideshow-dots" role="tablist" aria-label="Fault Diagnosis slide navigation">
-              <button class="slide-dot active" aria-label="Slide 1 of 4: Incoming fault code" data-idx="0"></button>
-              <button class="slide-dot" aria-label="Slide 2 of 4: Mira searching" data-idx="1"></button>
-              <button class="slide-dot" aria-label="Slide 3 of 4: Cited answer" data-idx="2"></button>
-              <button class="slide-dot" aria-label="Slide 4 of 4: Work order created" data-idx="3"></button>
-            </div>
-            <span class="slideshow-hint">Click for walkthrough &rarr;</span>
+          <div class="sg-item" data-description="MIRA matches the fault code to your specific OEM manual section, ranks candidates by confidence, and streams the answer in real time." data-feature-url="/feature/fault-diagnosis">
+            <img src="/public/screenshots/fault-diagnosis-02.webp" alt="MIRA streaming a diagnostic response with manual citations" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">Real-time diagnosis</div>
+            <span class="sg-caption">Real-time diagnosis</span>
+          </div>
+          <div class="sg-item" data-description="Every answer cites a specific page in your OEM manual. Root cause, corrective action, and source — verified, not hallucinated." data-feature-url="/feature/fault-diagnosis">
+            <img src="/public/screenshots/fault-diagnosis-03.webp" alt="Full diagnostic response with root cause and manual citation" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">Cited answer</div>
+            <span class="sg-caption">Cited answer</span>
+          </div>
+          <div class="sg-item" data-description="MIRA auto-creates a work order from the diagnosis — asset, description, priority, and parts already filled in." data-feature-url="/feature/fault-diagnosis">
+            <img src="/public/screenshots/fault-diagnosis-04.webp" alt="Work order auto-created from MIRA diagnostic conversation" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">Auto work order</div>
+            <span class="sg-caption">Auto work order</span>
           </div>
         </div>
       </div>
 
       <div class="feature reverse fade-in" id="how-it-works">
         <!-- Demo left, text right (reversed grid) -->
-        <div class="slideshow" role="link" tabindex="0" data-href="/feature/cmms-integration" aria-label="CMMS Integration walkthrough — click for full feature page">
-          <div class="slideshow-slides">
-            <div class="slide active">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">01/04</span>ACTION DETECTED</span>
-                  <span class="fc-badge fc-badge-green">SIGNAL</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">Source</span><span class="fc-value">Mira chat — Line 3 tech</span></div>
-                <div class="fc-row"><span class="fc-label">Trigger</span><span class="fc-value">"Replace J2 encoder cable"</span></div>
-                <div class="fc-row"><span class="fc-label">Context</span><span class="fc-value">Photo + fault cited</span></div>
-                <div class="fc-row"><span class="fc-label">Severity</span><span class="fc-value" style="color:#ff5d5d">HIGH — downtime risk</span></div>
-              </div>
-            </div>
-            <div class="slide">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">02/04</span>ASSET LOOKUP</span>
-                  <span class="fc-badge fc-badge-green">MATCHED</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">Asset</span><span class="fc-value">Conveyor Drive #3 — Motor</span></div>
-                <div class="fc-row"><span class="fc-label">Last service</span><span class="fc-value">47 days ago</span></div>
-                <div class="fc-row"><span class="fc-label">Uptime</span><span class="fc-value" style="color:#00d4aa">94.2% YTD</span></div>
-                <div class="fc-row"><span class="fc-label">PM due</span><span class="fc-value">In 11 days</span></div>
-              </div>
-            </div>
-            <div class="slide">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">03/04</span>WORK ORDER DRAFTED</span>
-                  <span class="fc-badge fc-badge-amber">READY</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">Parts</span><span class="fc-value">A06B-6117-K003 cable</span></div>
-                <div class="fc-row"><span class="fc-label">Est. time</span><span class="fc-value">45 minutes</span></div>
-                <div class="fc-row"><span class="fc-label">Tools</span><span class="fc-value">M4 hex, zip ties, meter</span></div>
-                <div class="fc-row"><span class="fc-label">Priority</span><span class="fc-value" style="color:#f0a000">HIGH</span></div>
-              </div>
-            </div>
-            <div class="slide">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">04/04</span>YOUR CMMS — SYNCED</span>
-                  <span class="fc-badge fc-badge-green">LIVE</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">Status</span><span class="fc-value" style="color:#f0a000">HIGH PRIORITY</span></div>
-                <div class="fc-row"><span class="fc-label">Kanban</span><span class="fc-value">Today's Queue</span></div>
-                <div class="fc-row"><span class="fc-label">Assigned</span><span class="fc-value">Mike H. — first available</span></div>
-                <div class="fc-row"><span class="fc-label">Notified</span><span class="fc-value" style="color:#00d4aa">Your CMMS notifications</span></div>
-              </div>
-            </div>
+        <div class="sg-gallery" aria-label="CMMS Integration screenshots">
+          <div class="sg-item" data-description="See all open, in-progress, and completed work orders in one view. AI-generated work orders appear alongside manually created ones." data-feature-url="/feature/cmms-integration">
+            <img src="/public/screenshots/cmms-integration-01.webp" alt="Atlas CMMS work order list with open and active orders" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">Work order list</div>
+            <span class="sg-caption">Work order list</span>
           </div>
-          <div class="slideshow-controls">
-            <div class="slideshow-dots" role="tablist" aria-label="CMMS Integration slide navigation">
-              <button class="slide-dot active" aria-label="Slide 1 of 4: Action detected" data-idx="0"></button>
-              <button class="slide-dot" aria-label="Slide 2 of 4: Asset lookup" data-idx="1"></button>
-              <button class="slide-dot" aria-label="Slide 3 of 4: Work order drafted" data-idx="2"></button>
-              <button class="slide-dot" aria-label="Slide 4 of 4: Your CMMS synced" data-idx="3"></button>
-            </div>
-            <span class="slideshow-hint">Click for walkthrough &rarr;</span>
+          <div class="sg-item" data-description="Each work order includes the AI-generated description, identified parts, estimated repair time, and priority — ready for the technician." data-feature-url="/feature/cmms-integration">
+            <img src="/public/screenshots/cmms-integration-02.webp" alt="Work order detail showing AI-generated description and parts" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">Work order detail</div>
+            <span class="sg-caption">Work order detail</span>
+          </div>
+          <div class="sg-item" data-description="Your equipment registry with real-time status indicators. MIRA knows your assets and matches faults to the right equipment automatically." data-feature-url="/feature/cmms-integration">
+            <img src="/public/screenshots/cmms-integration-03.webp" alt="Equipment asset registry with status indicators" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">Asset registry</div>
+            <span class="sg-caption">Asset registry</span>
+          </div>
+          <div class="sg-item" data-description="Preventive maintenance schedules with due dates, intervals, and compliance tracking. Never miss a PM again." data-feature-url="/feature/cmms-integration">
+            <img src="/public/screenshots/cmms-integration-04.webp" alt="Preventive maintenance schedule calendar view" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">PM schedules</div>
+            <span class="sg-caption">PM schedules</span>
           </div>
         </div>
 
@@ -1135,65 +1187,26 @@
           </div>
         </div>
 
-        <div class="slideshow" role="link" tabindex="0" data-href="/feature/voice-vision" aria-label="Voice + Vision walkthrough — click for full feature page">
-          <div class="slideshow-slides">
-            <div class="slide active">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">01/04</span>VOICE INPUT — FIELD</span>
-                  <span class="fc-badge fc-badge-green">MIC LIVE</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">User</span><span class="fc-value">"Hey Mira — E-731 on axis 2"</span></div>
-                <div class="fc-row"><span class="fc-label">Language</span><span class="fc-value">en-US · offline STT</span></div>
-                <div class="fc-row"><span class="fc-label">Noise</span><span class="fc-value">72 dBA — shop floor</span></div>
-                <div class="fc-row"><span class="fc-label">Confidence</span><span class="fc-value" style="color:#00d4aa">98% transcription</span></div>
-              </div>
-            </div>
-            <div class="slide">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">02/04</span>PHOTO — UPLOADED</span>
-                  <span class="fc-badge fc-badge-amber">COMPRESSED</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">File</span><span class="fc-value">encoder_cable_j2.jpg</span></div>
-                <div class="fc-row"><span class="fc-label">Size</span><span class="fc-value">2.1 MB → 380 KB</span></div>
-                <div class="fc-row"><span class="fc-label">Camera</span><span class="fc-value">iPhone 15 · back lens</span></div>
-                <div class="fc-row"><span class="fc-label">Upload</span><span class="fc-value">3 seconds over LTE</span></div>
-              </div>
-            </div>
-            <div class="slide">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">03/04</span>IDENTIFIED</span>
-                  <span class="fc-badge fc-badge-green">MATCHED</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">Component</span><span class="fc-value">FANUC J2 encoder cable</span></div>
-                <div class="fc-row"><span class="fc-label">Series</span><span class="fc-value">A06B-6117 family</span></div>
-                <div class="fc-row"><span class="fc-label">Issue</span><span class="fc-value" style="color:#f0a000">Bend radius failure</span></div>
-                <div class="fc-row"><span class="fc-label">Location</span><span class="fc-value">At cable clamp — CN2 side</span></div>
-              </div>
-            </div>
-            <div class="slide">
-              <div class="feature-card">
-                <div class="feature-card-header">
-                  <span><span class="feature-card-step">04/04</span>ANSWER — READ BACK</span>
-                  <span class="fc-badge fc-badge-green">SPEAKING</span>
-                </div>
-                <div class="fc-row"><span class="fc-label">Voice</span><span class="fc-value">Kokoro TTS · 180 wpm</span></div>
-                <div class="fc-row"><span class="fc-label">Script</span><span class="fc-value">"Replace cable, reroute 4× dia..."</span></div>
-                <div class="fc-row"><span class="fc-label">Duration</span><span class="fc-value">11 seconds</span></div>
-                <div class="fc-row"><span class="fc-label">Work order</span><span class="fc-value" style="color:#00d4aa">Auto-created</span></div>
-              </div>
-            </div>
+        <div class="sg-gallery fade-in" aria-label="Voice and Vision screenshots">
+          <div class="sg-item" data-description="Upload a photo of an equipment nameplate, fault screen, or damaged component. MIRA's vision model identifies it instantly." data-feature-url="/feature/voice-vision">
+            <img src="/public/screenshots/voice-vision-01.webp" alt="Photo upload of equipment nameplate in Open WebUI chat" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">Photo upload</div>
+            <span class="sg-caption">Photo upload</span>
           </div>
-          <div class="slideshow-controls">
-            <div class="slideshow-dots" role="tablist" aria-label="Voice and Vision slide navigation">
-              <button class="slide-dot active" aria-label="Slide 1 of 4: Voice input" data-idx="0"></button>
-              <button class="slide-dot" aria-label="Slide 2 of 4: Photo uploaded" data-idx="1"></button>
-              <button class="slide-dot" aria-label="Slide 3 of 4: Identified" data-idx="2"></button>
-              <button class="slide-dot" aria-label="Slide 4 of 4: Answer read back" data-idx="3"></button>
-            </div>
-            <span class="slideshow-hint">Click for walkthrough &rarr;</span>
+          <div class="sg-item" data-description="MIRA identifies the manufacturer, model, and part number from the photo — cross-referencing your equipment history and OEM documentation." data-feature-url="/feature/voice-vision">
+            <img src="/public/screenshots/voice-vision-02.webp" alt="MIRA identifying equipment from uploaded photo" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">Component identified</div>
+            <span class="sg-caption">Component identified</span>
+          </div>
+          <div class="sg-item" data-description="Full diagnostic response with part numbers, replacement instructions, and manual citations — all from a single photo." data-feature-url="/feature/voice-vision">
+            <img src="/public/screenshots/voice-vision-03.webp" alt="Full diagnostic response with part cross-reference from photo" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">Full diagnosis</div>
+            <span class="sg-caption">Full diagnosis</span>
+          </div>
+          <div class="sg-item" data-description="Complete conversation showing the photo analysis, diagnostic steps, and recommended actions — all hands-free via voice." data-feature-url="/feature/voice-vision">
+            <img src="/public/screenshots/voice-vision-04.webp" alt="Complete conversation thread with photo and diagnostic response" loading="lazy" width="640" height="400">
+            <div class="sg-overlay">Voice + photo flow</div>
+            <span class="sg-caption">Voice + photo flow</span>
           </div>
         </div>
       </div>
@@ -1323,83 +1336,48 @@
       document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
     })();
 
-    // ── Feature slideshow carousels ───────────────────────────────────
+    // ── Screenshot gallery lightbox ──────────────────────────────────────
     (function () {
-      const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const INTERVAL_MS = 5500;
-      const RESUME_DELAY_MS = 9000;
+      let lightbox = null;
 
-      document.querySelectorAll('.slideshow').forEach(show => {
-        const slides = show.querySelectorAll('.slide');
-        const dots = show.querySelectorAll('.slide-dot');
-        if (slides.length === 0) return;
+      function openLightbox(item) {
+        if (lightbox) closeLightbox();
+        const img = item.querySelector('img');
+        const desc = item.dataset.description || '';
+        const url = item.dataset.featureUrl || '';
 
-        let idx = 0;
-        let paused = false;
-        let timer = null;
-        let resumeTimer = null;
+        lightbox = document.createElement('div');
+        lightbox.className = 'sg-lightbox active';
+        lightbox.innerHTML =
+          '<div class="sg-lightbox-inner">' +
+            '<button class="sg-lightbox-close" aria-label="Close">&times;</button>' +
+            '<img class="sg-lightbox-img" src="' + img.src + '" alt="' + img.alt + '">' +
+            '<p class="sg-lightbox-desc">' + desc + '</p>' +
+            (url ? '<a class="sg-lightbox-cta" href="' + url + '">See full feature &rarr;</a>' : '') +
+          '</div>';
 
-        function go(n) {
-          idx = ((n % slides.length) + slides.length) % slides.length;
-          slides.forEach((s, j) => s.classList.toggle('active', j === idx));
-          dots.forEach((d, j) => d.classList.toggle('active', j === idx));
-        }
-        function start() {
-          if (REDUCED || timer) return;
-          timer = setInterval(() => { if (!paused) go(idx + 1); }, INTERVAL_MS);
-        }
-        function pause() { paused = true; }
-        function resume() { paused = false; }
-        function pauseThenResume() {
-          pause();
-          clearTimeout(resumeTimer);
-          resumeTimer = setTimeout(resume, RESUME_DELAY_MS);
-        }
+        document.body.appendChild(lightbox);
+        document.body.style.overflow = 'hidden';
 
-        show.addEventListener('mouseenter', pause);
-        show.addEventListener('mouseleave', resume);
-        show.addEventListener('focusin', pause);
-        show.addEventListener('focusout', resume);
-
-        dots.forEach((dot, i) => {
-          dot.addEventListener('click', (e) => {
-            e.stopPropagation();
-            go(i);
-            pauseThenResume();
-          });
+        lightbox.querySelector('.sg-lightbox-close').addEventListener('click', closeLightbox);
+        lightbox.addEventListener('click', function (e) {
+          if (e.target === lightbox) closeLightbox();
         });
+      }
 
-        show.addEventListener('click', (e) => {
-          if (e.target.closest('.slide-dot')) return;
-          const href = show.dataset.href;
-          if (href) window.location.href = href;
-        });
-        show.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            const href = show.dataset.href;
-            if (href) window.location.href = href;
-          } else if (e.key === 'ArrowRight') {
-            e.preventDefault();
-            go(idx + 1);
-            pauseThenResume();
-          } else if (e.key === 'ArrowLeft') {
-            e.preventDefault();
-            go(idx - 1);
-            pauseThenResume();
-          }
-        });
+      function closeLightbox() {
+        if (!lightbox) return;
+        document.body.style.overflow = '';
+        lightbox.remove();
+        lightbox = null;
+      }
 
-        start();
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeLightbox();
       });
 
-      // Pause all slideshows when tab hidden
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState !== 'visible') {
-          document.querySelectorAll('.slideshow').forEach(s => s.dispatchEvent(new Event('mouseenter')));
-        } else {
-          document.querySelectorAll('.slideshow').forEach(s => s.dispatchEvent(new Event('mouseleave')));
-        }
+      document.querySelectorAll('.sg-item').forEach(function (item) {
+        item.addEventListener('click', function () { openLightbox(item); });
       });
     })();
   </script>

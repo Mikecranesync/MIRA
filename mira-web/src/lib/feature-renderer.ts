@@ -21,6 +21,13 @@ export interface FeatureSlide {
   rows: Array<{ label: string; value: string; accent?: "amber" | "teal" | "red" }>;
 }
 
+export interface FeatureScreenshot {
+  src: string;
+  alt: string;
+  caption: string;
+  description: string;
+}
+
 export interface FeatureBenefit {
   label: string;
   title: string;
@@ -35,6 +42,7 @@ export interface Feature {
   lede: string;
   longBody: string[];
   slides: FeatureSlide[];
+  screenshots: FeatureScreenshot[];
   benefits: FeatureBenefit[];
   videoEnvVar: string;
   videoCaption: string;
@@ -95,6 +103,12 @@ export const FEATURES: Record<string, Feature> = {
           { label: "Logged", value: "14:02 · atlas-cmms", accent: "teal" },
         ],
       },
+    ],
+    screenshots: [
+      { src: "/public/screenshots/fault-diagnosis-01.webp", alt: "User asks MIRA about PowerFlex F-012 fault code", caption: "Ask a fault code", description: "Type or voice a fault code into chat. MIRA searches your uploaded OEM manuals and returns a cited answer in seconds." },
+      { src: "/public/screenshots/fault-diagnosis-02.webp", alt: "MIRA streaming a diagnostic response with manual citations", caption: "Real-time diagnosis", description: "MIRA matches the fault code to your specific OEM manual section, ranks candidates by confidence, and streams the answer in real time." },
+      { src: "/public/screenshots/fault-diagnosis-03.webp", alt: "Full diagnostic response with root cause and manual citation", caption: "Cited answer", description: "Every answer cites a specific page in your OEM manual. Root cause, corrective action, and source — verified, not hallucinated." },
+      { src: "/public/screenshots/fault-diagnosis-04.webp", alt: "Work order auto-created from MIRA diagnostic conversation", caption: "Auto work order", description: "MIRA auto-creates a work order from the diagnosis — asset, description, priority, and parts already filled in." },
     ],
     benefits: [
       {
@@ -172,6 +186,12 @@ export const FEATURES: Record<string, Feature> = {
         ],
       },
     ],
+    screenshots: [
+      { src: "/public/screenshots/cmms-integration-01.webp", alt: "Atlas CMMS work order list with open and active orders", caption: "Work order list", description: "See all open, in-progress, and completed work orders in one view. AI-generated work orders appear alongside manually created ones." },
+      { src: "/public/screenshots/cmms-integration-02.webp", alt: "Work order detail showing AI-generated description and parts", caption: "Work order detail", description: "Each work order includes the AI-generated description, identified parts, estimated repair time, and priority — ready for the technician." },
+      { src: "/public/screenshots/cmms-integration-03.webp", alt: "Equipment asset registry with status indicators", caption: "Asset registry", description: "Your equipment registry with real-time status indicators. MIRA knows your assets and matches faults to the right equipment automatically." },
+      { src: "/public/screenshots/cmms-integration-04.webp", alt: "Preventive maintenance schedule calendar view", caption: "PM schedules", description: "Preventive maintenance schedules with due dates, intervals, and compliance tracking. Never miss a PM again." },
+    ],
     benefits: [
       {
         label: "AUTO",
@@ -247,6 +267,12 @@ export const FEATURES: Record<string, Feature> = {
           { label: "Work order", value: "Auto-created", accent: "teal" },
         ],
       },
+    ],
+    screenshots: [
+      { src: "/public/screenshots/voice-vision-01.webp", alt: "Photo upload of equipment nameplate in Open WebUI chat", caption: "Photo upload", description: "Upload a photo of an equipment nameplate, fault screen, or damaged component. MIRA's vision model identifies it instantly." },
+      { src: "/public/screenshots/voice-vision-02.webp", alt: "MIRA identifying equipment from uploaded photo", caption: "Component identified", description: "MIRA identifies the manufacturer, model, and part number from the photo — cross-referencing your equipment history and OEM documentation." },
+      { src: "/public/screenshots/voice-vision-03.webp", alt: "Full diagnostic response with part cross-reference from photo", caption: "Full diagnosis", description: "Full diagnostic response with part numbers, replacement instructions, and manual citations — all from a single photo." },
+      { src: "/public/screenshots/voice-vision-04.webp", alt: "Complete conversation thread with photo and diagnostic response", caption: "Voice + photo flow", description: "Complete conversation showing the photo analysis, diagnostic steps, and recommended actions — all hands-free via voice." },
     ],
     benefits: [
       {
@@ -351,6 +377,24 @@ function renderVideo(feature: Feature): string {
     </div>`;
 }
 
+function renderScreenshotGallery(screenshots: FeatureScreenshot[], featureSlug: string): string {
+  if (!screenshots.length) return "";
+  const items = screenshots
+    .map(
+      (s) => `
+      <div class="sg-item"
+           data-description="${escAttr(s.description)}"
+           data-feature-url="/feature/${escAttr(featureSlug)}">
+        <img src="${escAttr(s.src)}" alt="${escAttr(s.alt)}"
+             loading="lazy" width="640" height="400">
+        <div class="sg-overlay">${escHtml(s.caption)}</div>
+        <span class="sg-caption">${escHtml(s.caption)}</span>
+      </div>`,
+    )
+    .join("");
+  return `<div class="sg-gallery" aria-label="${escAttr(featureSlug)} screenshots">${items}</div>`;
+}
+
 function renderSlide(slide: FeatureSlide, index: number, total: number): string {
   const badgeClass = slide.badge ? `fc-badge fc-badge-${slide.badge.tone}` : "";
   const badgeHtml = slide.badge
@@ -414,9 +458,7 @@ export function renderFeaturePage(feature: Feature): string {
     },
   };
 
-  const slidesHtml = feature.slides
-    .map((s, i) => renderSlide(s, i, feature.slides.length))
-    .join("");
+  const galleryHtml = renderScreenshotGallery(feature.screenshots, feature.slug);
   const benefitsHtml = feature.benefits.map(renderBenefit).join("");
 
   return `<!DOCTYPE html>
@@ -966,6 +1008,28 @@ export function renderFeaturePage(feature: Feature): string {
       font-size: 13.5px;
     }
 
+    /* ── Screenshot gallery ── */
+    .sg-gallery { display: flex; gap: 8px; overflow: hidden; height: 280px; }
+    .sg-item { flex: 1; min-width: 0; transition: flex 0.3s cubic-bezier(0.16,1,0.3,1); cursor: pointer; position: relative; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.07); }
+    .sg-item:hover { flex: 3; box-shadow: 0 0 24px rgba(240,160,0,0.15); border-color: rgba(240,160,0,0.3); }
+    .sg-item img { width: 100%; height: 280px; object-fit: cover; display: block; }
+    .sg-caption { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.35); margin-top: 8px; font-family: var(--font-mono); }
+    .sg-overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: 16px; background: linear-gradient(transparent, rgba(0,0,0,0.8)); color: var(--text); font-size: 13px; line-height: 1.4; opacity: 0; transition: opacity 0.3s ease; pointer-events: none; }
+    .sg-item:hover .sg-overlay { opacity: 1; }
+    .sg-lightbox { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); opacity: 0; transition: opacity 0.2s ease; pointer-events: none; }
+    .sg-lightbox.active { opacity: 1; pointer-events: auto; }
+    .sg-lightbox-inner { max-width: 960px; width: 90vw; position: relative; }
+    .sg-lightbox-img { width: 100%; border-radius: 10px; display: block; }
+    .sg-lightbox-desc { color: rgba(255,255,255,0.8); font-size: 15px; line-height: 1.6; margin-top: 16px; }
+    .sg-lightbox-cta { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px; padding: 9px 18px; background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%); color: #0a0a08; font-size: 14px; font-weight: 500; border-radius: 6px; text-decoration: none; border: 1px solid rgba(255,255,255,0.12); }
+    .sg-lightbox-close { position: absolute; top: -40px; right: 0; background: none; border: none; color: rgba(255,255,255,0.6); font-size: 24px; cursor: pointer; padding: 8px; }
+    @media (max-width: 768px) {
+      .sg-gallery { overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; height: auto; }
+      .sg-item { flex: none; width: 75vw; scroll-snap-align: start; }
+      .sg-item img { height: 200px; }
+      .sg-lightbox-inner { width: 95vw; }
+    }
+
     /* ── Benefits grid ── */
     .feature-benefits { padding: 64px 0; border-top: 1px solid var(--border); }
     .feature-benefits h2 {
@@ -1177,7 +1241,7 @@ export function renderFeaturePage(feature: Feature): string {
           ${feature.longBody.map((p) => `<p>${escHtml(p)}</p>`).join("")}
         </div>
         <div class="feature-detail-slides fade-in">
-          ${slidesHtml}
+          ${galleryHtml}
         </div>
       </div>
     </section>
@@ -1262,6 +1326,40 @@ export function renderFeaturePage(feature: Feature): string {
       document.querySelectorAll('a.nav-cta').forEach(function (el) {
         el.href = '/api/cmms/login?token=' + encodeURIComponent(token);
         el.textContent = 'Open CMMS';
+      });
+    })();
+
+    // Screenshot gallery lightbox
+    (function () {
+      var lightbox = null;
+      function openLightbox(item) {
+        if (lightbox) closeLightbox();
+        var img = item.querySelector('img');
+        var desc = item.dataset.description || '';
+        var url = item.dataset.featureUrl || '';
+        lightbox = document.createElement('div');
+        lightbox.className = 'sg-lightbox active';
+        lightbox.innerHTML =
+          '<div class="sg-lightbox-inner">' +
+            '<button class="sg-lightbox-close" aria-label="Close">&times;</button>' +
+            '<img class="sg-lightbox-img" src="' + img.src + '" alt="' + img.alt + '">' +
+            '<p class="sg-lightbox-desc">' + desc + '</p>' +
+            (url ? '<a class="sg-lightbox-cta" href="' + url + '">See full feature &rarr;</a>' : '') +
+          '</div>';
+        document.body.appendChild(lightbox);
+        document.body.style.overflow = 'hidden';
+        lightbox.querySelector('.sg-lightbox-close').addEventListener('click', closeLightbox);
+        lightbox.addEventListener('click', function (e) { if (e.target === lightbox) closeLightbox(); });
+      }
+      function closeLightbox() {
+        if (!lightbox) return;
+        document.body.style.overflow = '';
+        lightbox.remove();
+        lightbox = null;
+      }
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeLightbox(); });
+      document.querySelectorAll('.sg-item').forEach(function (item) {
+        item.addEventListener('click', function () { openLightbox(item); });
       });
     })();
   </script>
