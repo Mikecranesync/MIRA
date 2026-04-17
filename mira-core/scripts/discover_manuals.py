@@ -82,8 +82,8 @@ CRAWL_TARGETS = [
     # SEW-Eurodrive — Conv-001 gearmotor fleet unit
     {
         "manufacturer": "SEW-Eurodrive",
-        "start_url": "https://download.sew-eurodrive.com/download/documentation/en",
-        "crawler_type": "cheerio",
+        "start_url": "https://www.sew-eurodrive.com/support/software-download-area.html",
+        "crawler_type": "playwright:chrome",
         "max_pages": 150,
     },
     # Ingersoll Rand — Comp-001 compressor fleet unit

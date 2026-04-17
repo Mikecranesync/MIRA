@@ -66,8 +66,8 @@ MANUFACTURER_TARGETS = [
     },
     {
         "manufacturer": "SEW Eurodrive",
-        "start_url": "https://download.sew-eurodrive.com",
-        "crawler_type": "cheerio",
+        "start_url": "https://www.sew-eurodrive.com/support/software-download-area.html",
+        "crawler_type": "playwright:chrome",
         "max_pages": 150,
     },
     {
