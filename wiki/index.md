@@ -6,6 +6,7 @@
 
 | Page | Summary |
 |------|---------|
+| [[nodes/alpha]] | Mac Mini — Celery orchestrator, observability stack, LinkedIn drafter |
 | [[nodes/bravo]] | Mac Mini M4 production host — Docker, Ollama, auto-recovery chain |
 | [[nodes/charlie]] | Mac Mini — Telegram bot host, Qdrant, Paperclip target |
 | [[nodes/vps]] | DigitalOcean VPS — factorylm.com, SaaS v1, Atlas CMMS |

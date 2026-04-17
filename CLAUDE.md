@@ -108,6 +108,20 @@ See local CLAUDE.md in each module for deep context.
 | atlas-db | 5433 | cmms-net |
 | mira-web | 3200→3000 | core-net, cmms-net |
 
+## Node Map
+
+| Node | Hostname | User | Role | Tailscale IP | LAN IP | Subnet |
+|------|----------|------|------|-------------|--------|--------|
+| Alpha | Michaels-Mac-mini-2 | factorylm | Orchestrator (Celery) | 100.107.140.12 | 192.168.4.28 | 192.168.4.x |
+| Bravo | FactoryLM-Bravo | bravonode | Compute (Ollama) | 100.86.236.11 | 192.168.1.11 | 192.168.1.x |
+| Charlie | CharlieNodes-Mac-mini | charlienode | KB Host (MIRA) | 100.70.49.126 | 192.168.1.12 | 192.168.1.x |
+
+**Connectivity:** Alpha↔Bravo/Charlie via Tailscale only (different subnets). Bravo↔Charlie via LAN (same subnet) with Tailscale fallback.
+**SSH keys:** stored in Doppler `factorylm/prd` as `SSH_{NODE}_{PRIVATE_KEY,PUBLIC_KEY,CONFIG,AUTHORIZED_KEYS}`.
+**Canonical source:** `deployment/network.yml`
+
+---
+
 ## Start / Stop
 
 ```bash
