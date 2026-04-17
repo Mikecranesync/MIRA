@@ -17,7 +17,8 @@ echo "=== eval-fixer started $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> "$LOG"
 cd "$REPO"
 
 # Pull latest code so the agent sees up-to-date scorecards and source
-git pull --ff-only origin main >> "$LOG" 2>&1 || {
+CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || echo main)"
+git pull --ff-only origin "$CURRENT_BRANCH" >> "$LOG" 2>&1 || {
   echo "git pull failed — proceeding with local state" >> "$LOG"
 }
 
