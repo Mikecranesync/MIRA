@@ -49,7 +49,7 @@ CRAWL_TARGETS = [
     {
         "manufacturer": "Siemens",
         "start_url": "https://support.industry.siemens.com/cs/ww/en/ps/15338",
-        "crawler_type": "playwright",
+        "crawler_type": "playwright:chrome",
         "max_pages": 150,
     },
     {
@@ -67,7 +67,7 @@ CRAWL_TARGETS = [
     {
         "manufacturer": "Mitsubishi Electric",
         "start_url": "https://dl.mitsubishielectric.com",
-        "crawler_type": "playwright",
+        "crawler_type": "playwright:chrome",
         "max_pages": 150,
     },
     # GS10 is the centerpiece of the demo F05 escalation pattern (Pump-001);
@@ -90,7 +90,7 @@ CRAWL_TARGETS = [
     {
         "manufacturer": "Ingersoll Rand",
         "start_url": "https://www.ingersollrand.com/en-us/service-and-support/technical-library",
-        "crawler_type": "playwright",
+        "crawler_type": "playwright:chrome",
         "max_pages": 100,
     },
     # Dake — Press-001 hydraulic press fleet unit
@@ -104,28 +104,28 @@ CRAWL_TARGETS = [
     {
         "manufacturer": "FANUC",
         "start_url": "https://www.fanucamerica.com/support",
-        "crawler_type": "playwright",
+        "crawler_type": "playwright:chrome",
         "max_pages": 100,
     },
     # Yaskawa — A1000/V1000/J1000/GA500/GA700 VFD families
     {
         "manufacturer": "Yaskawa",
         "start_url": "https://www.yaskawa.com/downloads/search-manuals",
-        "crawler_type": "playwright",
+        "crawler_type": "playwright:chrome",
         "max_pages": 150,
     },
     # Danfoss — VLT FC Series (seeded fault codes)
     {
         "manufacturer": "Danfoss",
         "start_url": "https://www.danfoss.com/en/service-and-support/downloads",
-        "crawler_type": "playwright",
+        "crawler_type": "playwright:chrome",
         "max_pages": 150,
     },
     # Lenze — i500/E84 VFD families (#374)
     {
         "manufacturer": "Lenze",
         "start_url": "https://www.lenze.com/en/service/downloads/",
-        "crawler_type": "playwright",
+        "crawler_type": "playwright:chrome",
         "max_pages": 150,
     },
 ]
