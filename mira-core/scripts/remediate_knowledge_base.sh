@@ -105,7 +105,13 @@ SF_RESET=$(psql "$NEON_DATABASE_URL" -t -A -c \
     "UPDATE source_fingerprints SET atoms_created = 0 RETURNING 1" 2>/dev/null | wc -l)
 log "Reset ${SF_RESET} source_fingerprints rows"
 
-# ---- Step 5: Re-ingest ----
+# ---- Step 5: Seed manual_cache with known direct PDF URLs ----
+
+log "Seeding manual_cache with known direct PDF URLs (bypasses Apify for crawler-blocked vendors)..."
+cd "$REPO_ROOT"
+python3 mira-core/scripts/seed_manual_cache.py 2>&1 | tee -a "$LOG_FILE"
+
+# ---- Step 6: Re-ingest ----
 
 log "Starting re-ingest with Docling + sentence-aware chunking..."
 log "Log file: ${LOG_FILE}"
@@ -113,7 +119,7 @@ log "Log file: ${LOG_FILE}"
 cd "$REPO_ROOT"
 python3 mira-core/scripts/ingest_manuals.py 2>&1 | tee -a "$LOG_FILE"
 
-# ---- Step 6: Post-ingest verification ----
+# ---- Step 7: Post-ingest verification ----
 
 log ""
 log "=== Post-Ingest Verification ==="
@@ -147,7 +153,7 @@ psql "$NEON_DATABASE_URL" -c \
      WHERE tenant_id = '${TENANT_ID}'
      GROUP BY manufacturer ORDER BY chunks DESC LIMIT 15" 2>/dev/null | tee -a "$LOG_FILE"
 
-# ---- Step 7: Re-extract fault codes ----
+# ---- Step 8: Re-extract fault codes ----
 
 log "Re-extracting fault codes from clean chunks..."
 python3 mira-core/scripts/extract_fault_codes.py 2>&1 | tee -a "$LOG_FILE"
@@ -156,7 +162,7 @@ NEW_FC=$(psql "$NEON_DATABASE_URL" -t -A -c \
     "SELECT COUNT(*) FROM fault_codes WHERE tenant_id = '${TENANT_ID}'" 2>/dev/null || echo "0")
 log "fault_codes: ${NEW_FC} rows (was ${FC_COUNT})"
 
-# ---- Step 8: Reminder ----
+# ---- Step 9: Reminder ----
 
 log ""
 log "=== REMEDIATION COMPLETE ==="
