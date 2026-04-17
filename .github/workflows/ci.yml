@@ -204,15 +204,27 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
       - name: Build mira-ingest
         run: |
           docker buildx build \
-            -f mira-core/mira-ingest/Dockerfile mira-core/mira-ingest/
+            -f mira-core/mira-ingest/Dockerfile mira-core/mira-ingest/ \
+            -t mira-ingest:scan --load
+
+      - name: Scan mira-ingest
+        run: trivy image --severity HIGH,CRITICAL --exit-code 1 mira-ingest:scan
 
       - name: Build mira-bot-telegram
         run: |
           docker buildx build \
-            -f mira-bots/telegram/Dockerfile mira-bots/
+            -f mira-bots/telegram/Dockerfile mira-bots/ \
+            -t mira-telegram:scan --load
+
+      - name: Scan mira-bot-telegram
+        run: trivy image --severity HIGH,CRITICAL --exit-code 1 mira-telegram:scan
 
       - name: Build mira-bot-slack
         run: |

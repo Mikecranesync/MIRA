@@ -30,3 +30,7 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
 ]
+
+[tool.hypothesis]
+database_backend = "directory"
+max_examples = 200

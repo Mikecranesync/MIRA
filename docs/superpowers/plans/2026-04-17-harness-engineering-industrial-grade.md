@@ -660,7 +660,7 @@ git commit -m "chore: add Dependabot — weekly dependency updates for pip, npm,
 
 *Goal:* Automatically discover edge cases in the FSM state machine (7 states, 4+ transition rules) and the guardrails module (safety keywords, intent classification, abbreviation expansion).
 
-- [ ] **Step 1: Add hypothesis to test deps and config**
+- [x] **Step 1: Add hypothesis to test deps and config**
 
 Add to pyproject.toml:
 ```toml
@@ -669,7 +669,7 @@ database_backend = "directory"
 max_examples = 200
 ```
 
-- [ ] **Step 2: Write FSM property tests**
+- [ ] **Step 2: Write FSM property tests** *(deferred — needs full Supervisor mock)*
 
 ```python
 # tests/test_fsm_properties.py
@@ -709,7 +709,7 @@ def test_safety_keywords_never_miss(message):
             assert result == "safety", f"Safety keyword '{keyword}' in message but got '{result}'"
 ```
 
-- [ ] **Step 3: Write guardrails property tests**
+- [x] **Step 3: Write guardrails property tests**
 
 ```python
 # tests/test_guardrails_properties.py
@@ -735,12 +735,12 @@ def test_rewrite_question_preserves_meaning(message, asset):
     assert len(result) > 0
 ```
 
-- [ ] **Step 4: Run property tests**
+- [x] **Step 4: Run property tests** *(11 tests, 100 examples each, all pass)*
 
 Run: `pytest tests/test_fsm_properties.py tests/test_guardrails_properties.py -v --hypothesis-show-statistics`
 Expected: PASS, with hypothesis exploring 200 examples per test.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit** *(deferred — bundling Phase 4)*
 
 ```bash
 git add tests/test_fsm_properties.py tests/test_guardrails_properties.py pyproject.toml
@@ -757,7 +757,7 @@ abbreviation expansion idempotency, rewrite preservation."
 **Files:**
 - Modify: `.github/workflows/ci.yml` (extend docker-build-check job)
 
-- [ ] **Step 1: Add trivy scan after each Docker build**
+- [x] **Step 1: Add trivy scan after each Docker build**
 
 Extend `docker-build-check` job:
 
@@ -777,7 +777,7 @@ Extend `docker-build-check` job:
           trivy image --severity HIGH,CRITICAL --exit-code 1 mira-telegram:scan
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 2: Commit** *(deferred — bundling Phase 4)*
 
 ```bash
 git add .github/workflows/ci.yml

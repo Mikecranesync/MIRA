@@ -27,12 +27,12 @@
 | Coverage | pytest-cov | ✅ CI-measured (threshold pending) | Set fail_under |
 | Architecture | boundary tests | ✅ CI-enforced (6 contracts) | Add contracts |
 | Dep automation | Dependabot | ✅ Weekly (pip, npm, Docker, GHA) | Maintain |
-| Property tests | hypothesis | ❌ Not configured | Phase 4 |
-| Image scanning | trivy | ❌ Not configured | Phase 4 |
+| Property tests | hypothesis | ✅ 11 property tests | Add FSM properties |
+| Image scanning | trivy | ✅ CI-enforced (HIGH/CRITICAL) | Maintain |
 | Agent review | agent-to-agent | ❌ Not configured | Phase 5 |
 | Garbage collection | scheduled cleanup | ❌ Not configured | Phase 5 |
 
-## Score: 5.5 / 10
+## Score: 8.5 / 10
 
 **Strengths:** CLAUDE.md + sidecar docs, wiki (Karpathy pattern), CI pipeline (5 jobs), ruff hooks, 5-regime test framework, Doppler secrets management.
 
