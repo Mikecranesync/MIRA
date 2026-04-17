@@ -56,6 +56,7 @@ STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
 # ---------------------------------------------------------------------------
 # Diagnosis self-critique quality gate
 # ---------------------------------------------------------------------------
+_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
 _CRITIQUE_DISABLED = os.getenv("MIRA_DISABLE_SELF_CRITIQUE", "0") == "1"
 _CRITIQUE_THRESHOLD = int(os.getenv("MIRA_CRITIQUE_THRESHOLD", "3"))
 _CRITIQUE_MAX_ATTEMPTS = int(os.getenv("MIRA_CRITIQUE_MAX_ATTEMPTS", "2"))
@@ -2274,6 +2275,23 @@ class Supervisor:
                 idx = STATE_ORDER.index(current)
                 if idx + 1 < len(STATE_ORDER):
                     state["state"] = STATE_ORDER[idx + 1]
+
+        # Q-trap escape: if stuck in Q-states too long, force DIAGNOSIS
+        q_states = {"Q1", "Q2", "Q3"}
+        ctx = state.get("context") if isinstance(state.get("context"), dict) else {}
+        if state["state"] in q_states:
+            ctx["q_rounds"] = ctx.get("q_rounds", 0) + 1
+            if ctx["q_rounds"] >= _MAX_Q_ROUNDS:
+                logger.info(
+                    "Q-trap escape: %d Q-rounds reached (max %d) — forcing DIAGNOSIS",
+                    ctx["q_rounds"],
+                    _MAX_Q_ROUNDS,
+                )
+                state["state"] = "DIAGNOSIS"
+                ctx["q_rounds"] = 0
+        elif current in q_states and state["state"] not in q_states:
+            ctx["q_rounds"] = 0
+        state["context"] = ctx
 
         if state["state"] in ("RESOLVED", "SAFETY_ALERT"):
             state["final_state"] = state["state"]

@@ -172,11 +172,13 @@ class TestAdvanceState:
         return {"state": current, "exchange_count": 0, "final_state": None, "fault_category": None}
 
     def test_normal_progression(self, supervisor):
-        """IDLE → Q1 → Q2 → Q3 → DIAGNOSIS → FIX_STEP → RESOLVED"""
+        """IDLE → Q1 → Q2 → DIAGNOSIS (Q-trap fires at 3 Q-rounds) → FIX_STEP → RESOLVED"""
         state = self._make_state("IDLE")
-        for expected in ["Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]:
+        state["context"] = {}
+        # Auto-advance: IDLE→Q1→Q2→Q3, but Q-trap fires at round 3 → DIAGNOSIS
+        for expected in ["Q1", "Q2", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]:
             state = supervisor._advance_state(state, {"reply": "test", "next_state": None})
-            assert state["state"] == expected
+            assert state["state"] == expected, f"Expected {expected}, got {state['state']}"
 
     def test_llm_proposed_state(self, supervisor):
         state = self._make_state("Q1")
@@ -254,6 +256,30 @@ class TestAdvanceState:
         state = self._make_state("Q2")
         state = supervisor._advance_state(state, {"reply": "test", "next_state": "Q4"})
         assert state["state"] == "Q3"
+
+    def test_q_trap_escape_forces_diagnosis(self, supervisor):
+        """After MAX_Q_ROUNDS consecutive Q-state rounds, FSM must force DIAGNOSIS."""
+        state = self._make_state("Q1")
+        state["context"] = {"q_rounds": 0}
+        # Simulate LLM proposing Q-states repeatedly
+        for _ in range(2):
+            state = supervisor._advance_state(state, {"reply": "test", "next_state": "Q2"})
+        # Third round should trigger escape
+        state = supervisor._advance_state(state, {"reply": "test", "next_state": "Q3"})
+        assert state["state"] == "DIAGNOSIS", "Q-trap escape should force DIAGNOSIS after 3 Q-rounds"
+
+    def test_q_rounds_reset_on_exit(self, supervisor):
+        """q_rounds counter resets when FSM leaves Q-states."""
+        state = self._make_state("Q2")
+        state["context"] = {"q_rounds": 2}
+        state = supervisor._advance_state(state, {"reply": "test", "next_state": "DIAGNOSIS"})
+        assert state["state"] == "DIAGNOSIS"
+        assert state["context"]["q_rounds"] == 0
+
+    def test_q_trap_env_override(self):
+        """MIRA_MAX_Q_ROUNDS env var should control the threshold."""
+        from shared.engine import _MAX_Q_ROUNDS
+        assert _MAX_Q_ROUNDS == 3  # default
 
     def test_resolved_at_end_of_chain(self, supervisor):
         state = self._make_state("RESOLVED")
