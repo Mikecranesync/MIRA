@@ -325,6 +325,18 @@ class RAGWorker:
         if state.get("fault_category"):
             system_content += f"Fault category: {state['fault_category']}\n"
 
+        # Q3 hard cap: the technician has answered three gathering questions.
+        # Force DIAGNOSIS — never a fourth gathering turn.
+        if state.get("state") == "Q3":
+            system_content += (
+                "\n--- Q3 DIAGNOSIS GATE ---\n"
+                "The technician has now answered your third diagnostic question (Q3). "
+                "You MUST commit to a probable root cause in this response. "
+                "Set next_state to DIAGNOSIS. Do NOT set next_state to Q3. "
+                "A fourth gathering question is never valid.\n"
+                "--- END Q3 GATE ---\n"
+            )
+
         # Inject reranked chunks as reference context
         system_content += "\n--- RETRIEVED REFERENCE DOCUMENTS ---\n"
         for i, chunk in enumerate(chunks, 1):
@@ -396,6 +408,18 @@ class RAGWorker:
             system_content += f"Asset identified: {state['asset_identified']}\n"
         if state.get("fault_category"):
             system_content += f"Fault category: {state['fault_category']}\n"
+
+        # Q3 hard cap: the technician has answered three gathering questions.
+        # Force DIAGNOSIS — never a fourth gathering turn.
+        if state.get("state") == "Q3":
+            system_content += (
+                "\n--- Q3 DIAGNOSIS GATE ---\n"
+                "The technician has now answered your third diagnostic question (Q3). "
+                "You MUST commit to a probable root cause in this response. "
+                "Set next_state to DIAGNOSIS. Do NOT set next_state to Q3. "
+                "A fourth gathering question is never valid.\n"
+                "--- END Q3 GATE ---\n"
+            )
 
         # Honesty directive: retrieval ran but found nothing relevant
         if no_kb_coverage:
