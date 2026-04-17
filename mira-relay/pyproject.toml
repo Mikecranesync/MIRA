@@ -1,0 +1,23 @@
+[project]
+name = "mira-relay"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "starlette>=0.45,<1",
+    "uvicorn[standard]>=0.34,<1",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "httpx"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
