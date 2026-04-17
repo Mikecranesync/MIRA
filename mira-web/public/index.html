@@ -783,17 +783,50 @@
     .sg-item {
       flex: 1;
       min-width: 0;
-      transition: flex 0.3s cubic-bezier(0.16,1,0.3,1);
+      transition: flex 0.3s cubic-bezier(0.16,1,0.3,1), box-shadow 0.3s ease;
       cursor: pointer;
       position: relative;
-      border-radius: 8px;
+      border-radius: 10px;
       overflow: hidden;
-      border: 1px solid rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .sg-item::before {
+      content: '';
+      position: absolute;
+      inset: -20px;
+      background: radial-gradient(ellipse at 50% 60%, rgba(240,160,0,0.10), transparent 70%);
+      z-index: -1;
+      filter: blur(30px);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
     }
     .sg-item:hover {
       flex: 3;
-      box-shadow: 0 0 24px rgba(240,160,0,0.15);
-      border-color: rgba(240,160,0,0.3);
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5), 0 0 30px rgba(240,160,0,0.12);
+      border-color: rgba(240,160,0,0.25);
+    }
+    .sg-item:hover::before {
+      opacity: 1;
+    }
+    .sg-callout {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 5px;
+      padding: 3px 9px;
+      font-size: 10px;
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      color: rgba(255,255,255,0.85);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      pointer-events: none;
+      z-index: 2;
     }
     .sg-item img {
       width: 100%;
@@ -1105,22 +1138,26 @@
 
         <div class="sg-gallery fade-in" aria-label="Fault Diagnosis screenshots">
           <div class="sg-item" data-description="Type or voice a fault code into chat. MIRA searches your uploaded OEM manuals and returns a cited answer in seconds." data-feature-url="/feature/fault-diagnosis">
-            <img src="/public/screenshots/fault-diagnosis-01.webp" alt="User asks MIRA about PowerFlex F-012 fault code" loading="lazy" width="640" height="400">
+            <span class="sg-callout">Query typed</span>
+            <img src="/public/screenshots/fault-diagnosis-01.webp" alt="User asks MIRA about PowerFlex F-012 fault code" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">Ask any fault code</div>
             <span class="sg-caption">Ask a fault code</span>
           </div>
           <div class="sg-item" data-description="MIRA matches the fault code to your specific OEM manual section, ranks candidates by confidence, and streams the answer in real time." data-feature-url="/feature/fault-diagnosis">
-            <img src="/public/screenshots/fault-diagnosis-02.webp" alt="MIRA streaming a diagnostic response with manual citations" loading="lazy" width="640" height="400">
+            <span class="sg-callout">MIRA thinking</span>
+            <img src="/public/screenshots/fault-diagnosis-02.webp" alt="MIRA streaming a diagnostic response with manual citations" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">Real-time diagnosis</div>
             <span class="sg-caption">Real-time diagnosis</span>
           </div>
           <div class="sg-item" data-description="Every answer cites a specific page in your OEM manual. Root cause, corrective action, and source — verified, not hallucinated." data-feature-url="/feature/fault-diagnosis">
-            <img src="/public/screenshots/fault-diagnosis-03.webp" alt="Full diagnostic response with root cause and manual citation" loading="lazy" width="640" height="400">
+            <span class="sg-callout">Cited diagnosis</span>
+            <img src="/public/screenshots/fault-diagnosis-03.webp" alt="Full diagnostic response with root cause and manual citation" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">Cited answer</div>
             <span class="sg-caption">Cited answer</span>
           </div>
           <div class="sg-item" data-description="MIRA auto-creates a work order from the diagnosis — asset, description, priority, and parts already filled in." data-feature-url="/feature/fault-diagnosis">
-            <img src="/public/screenshots/fault-diagnosis-04.webp" alt="Work order auto-created from MIRA diagnostic conversation" loading="lazy" width="640" height="400">
+            <span class="sg-callout">Work order created</span>
+            <img src="/public/screenshots/fault-diagnosis-04.webp" alt="Work order auto-created from MIRA diagnostic conversation" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">Auto work order</div>
             <span class="sg-caption">Auto work order</span>
           </div>
@@ -1131,22 +1168,26 @@
         <!-- Demo left, text right (reversed grid) -->
         <div class="sg-gallery" aria-label="CMMS Integration screenshots">
           <div class="sg-item" data-description="See all open, in-progress, and completed work orders in one view. AI-generated work orders appear alongside manually created ones." data-feature-url="/feature/cmms-integration">
-            <img src="/public/screenshots/cmms-integration-01.webp" alt="Atlas CMMS work order list with open and active orders" loading="lazy" width="640" height="400">
+            <span class="sg-callout">Open work orders</span>
+            <img src="/public/screenshots/cmms-integration-01.webp" alt="Atlas CMMS work order list with open and active orders" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">Work order list</div>
             <span class="sg-caption">Work order list</span>
           </div>
           <div class="sg-item" data-description="Each work order includes the AI-generated description, identified parts, estimated repair time, and priority — ready for the technician." data-feature-url="/feature/cmms-integration">
-            <img src="/public/screenshots/cmms-integration-02.webp" alt="Work order detail showing AI-generated description and parts" loading="lazy" width="640" height="400">
+            <span class="sg-callout">Order detail</span>
+            <img src="/public/screenshots/cmms-integration-02.webp" alt="Work order detail showing AI-generated description and parts" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">Work order detail</div>
             <span class="sg-caption">Work order detail</span>
           </div>
           <div class="sg-item" data-description="Your equipment registry with real-time status indicators. MIRA knows your assets and matches faults to the right equipment automatically." data-feature-url="/feature/cmms-integration">
-            <img src="/public/screenshots/cmms-integration-03.webp" alt="Equipment asset registry with status indicators" loading="lazy" width="640" height="400">
+            <span class="sg-callout">Asset registry</span>
+            <img src="/public/screenshots/cmms-integration-03.webp" alt="Equipment asset registry with status indicators" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">Asset registry</div>
             <span class="sg-caption">Asset registry</span>
           </div>
           <div class="sg-item" data-description="Preventive maintenance schedules with due dates, intervals, and compliance tracking. Never miss a PM again." data-feature-url="/feature/cmms-integration">
-            <img src="/public/screenshots/cmms-integration-04.webp" alt="Preventive maintenance schedule calendar view" loading="lazy" width="640" height="400">
+            <span class="sg-callout">PM schedules</span>
+            <img src="/public/screenshots/cmms-integration-04.webp" alt="Preventive maintenance schedule calendar view" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">PM schedules</div>
             <span class="sg-caption">PM schedules</span>
           </div>
@@ -1189,22 +1230,26 @@
 
         <div class="sg-gallery fade-in" aria-label="Voice and Vision screenshots">
           <div class="sg-item" data-description="Upload a photo of an equipment nameplate, fault screen, or damaged component. MIRA's vision model identifies it instantly." data-feature-url="/feature/voice-vision">
-            <img src="/public/screenshots/voice-vision-01.webp" alt="Photo upload of equipment nameplate in Open WebUI chat" loading="lazy" width="640" height="400">
+            <span class="sg-callout">Photo attached</span>
+            <img src="/public/screenshots/voice-vision-01.webp" alt="Photo upload of equipment nameplate in Open WebUI chat" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">Photo upload</div>
             <span class="sg-caption">Photo upload</span>
           </div>
           <div class="sg-item" data-description="MIRA identifies the manufacturer, model, and part number from the photo — cross-referencing your equipment history and OEM documentation." data-feature-url="/feature/voice-vision">
-            <img src="/public/screenshots/voice-vision-02.webp" alt="MIRA identifying equipment from uploaded photo" loading="lazy" width="640" height="400">
+            <span class="sg-callout">Nameplate uploaded</span>
+            <img src="/public/screenshots/voice-vision-02.webp" alt="MIRA identifying equipment from uploaded photo" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">Component identified</div>
             <span class="sg-caption">Component identified</span>
           </div>
           <div class="sg-item" data-description="Full diagnostic response with part numbers, replacement instructions, and manual citations — all from a single photo." data-feature-url="/feature/voice-vision">
-            <img src="/public/screenshots/voice-vision-03.webp" alt="Full diagnostic response with part cross-reference from photo" loading="lazy" width="640" height="400">
+            <span class="sg-callout">Component identified</span>
+            <img src="/public/screenshots/voice-vision-03.webp" alt="Full diagnostic response with part cross-reference from photo" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">Full diagnosis</div>
             <span class="sg-caption">Full diagnosis</span>
           </div>
           <div class="sg-item" data-description="Complete conversation showing the photo analysis, diagnostic steps, and recommended actions — all hands-free via voice." data-feature-url="/feature/voice-vision">
-            <img src="/public/screenshots/voice-vision-04.webp" alt="Complete conversation thread with photo and diagnostic response" loading="lazy" width="640" height="400">
+            <span class="sg-callout">Follow-up diagnosis</span>
+            <img src="/public/screenshots/voice-vision-04.webp" alt="Complete conversation thread with photo and diagnostic response" loading="lazy" width="1280" height="800">
             <div class="sg-overlay">Voice + photo flow</div>
             <span class="sg-caption">Voice + photo flow</span>
           </div>
