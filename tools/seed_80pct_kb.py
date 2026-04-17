@@ -152,9 +152,10 @@ def main() -> None:
         sys.exit(1)
 
     # Prefer explicit override, then VPS base URL, then localhost
+    server_base = os.getenv("MIRA_SERVER_BASE_URL", "").rstrip("/")
     base_url = (
         os.getenv("MIRA_INGEST_URL")
-        or (os.getenv("MIRA_SERVER_BASE_URL", "").rstrip("/") + ":8002")
+        or (f"{server_base}:8002" if server_base.startswith("http") else "")
         or "http://localhost:8002"
     )
     ingest_url = _ingest_url(base_url)
