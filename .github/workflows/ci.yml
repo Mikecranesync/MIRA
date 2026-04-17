@@ -128,8 +128,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install pytest
-        run: pip install pytest
+      - name: Install pytest + pyyaml
+        run: pip install pytest pyyaml
 
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
@@ -171,7 +171,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pytest pytest-asyncio pyyaml
+          pip install pytest pytest-asyncio pyyaml hypothesis
           pip install -r mira-core/mira-ingest/requirements.txt
           pip install -r mira-bots/telegram/requirements.txt
           pip install chromadb
