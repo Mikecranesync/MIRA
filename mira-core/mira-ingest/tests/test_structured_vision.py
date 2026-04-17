@@ -4,8 +4,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 # Add mira-ingest to path so we can import main's helpers without running the app
 INGEST_ROOT = Path(__file__).parent.parent
 if str(INGEST_ROOT) not in sys.path:
