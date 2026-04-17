@@ -25,8 +25,8 @@
 | Secrets scanning | gitleaks | ✅ CI + pre-commit hook | Maintain |
 | Type checking | pyright | ✅ CI-enforced (basic mode) | Tighten rules |
 | Coverage | pytest-cov | ✅ CI-measured (threshold pending) | Set fail_under |
-| Architecture | import-linter | ❌ Not configured | Phase 3 |
-| Dep automation | Dependabot | ❌ Not configured | Phase 3 |
+| Architecture | boundary tests | ✅ CI-enforced (6 contracts) | Add contracts |
+| Dep automation | Dependabot | ✅ Weekly (pip, npm, Docker, GHA) | Maintain |
 | Property tests | hypothesis | ❌ Not configured | Phase 4 |
 | Image scanning | trivy | ❌ Not configured | Phase 4 |
 | Agent review | agent-to-agent | ❌ Not configured | Phase 5 |

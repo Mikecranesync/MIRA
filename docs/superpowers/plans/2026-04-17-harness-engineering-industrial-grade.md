@@ -488,7 +488,7 @@ Threshold starts at 50%, ratchet up as tests are added."
 - Create: `.importlinter` (config)
 - Modify: `.github/workflows/ci.yml` (add job)
 
-- [ ] **Step 1: Create import-linter config**
+- [x] **Step 1: Create architecture boundary tests** *(adapted: test_architecture.py instead of import-linter — monorepo has non-standard package layout)*
 
 ```ini
 # .importlinter
@@ -535,7 +535,7 @@ forbidden_modules =
     mira_core.mira_ingest.db
 ```
 
-- [ ] **Step 2: Add to CI**
+- [x] **Step 2: Add to CI**
 
 ```yaml
   architecture-check:
@@ -551,12 +551,12 @@ forbidden_modules =
       - run: lint-imports
 ```
 
-- [ ] **Step 3: Run locally, fix violations**
+- [x] **Step 3: Run locally, fix violations** *(all 6 contracts pass clean)*
 
 Run: `uvx import-linter --config .importlinter`
 Expected: Some violations from cross-module imports. Fix by moving shared code to a shared package or adding explicit interface modules.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Commit** *(deferred — bundling Phase 3)*
 
 ```bash
 git add .importlinter .github/workflows/ci.yml
@@ -573,7 +573,7 @@ no direct imports of mira_core internals."
 **Files:**
 - Create: `.github/dependabot.yml`
 
-- [ ] **Step 1: Create Dependabot config**
+- [x] **Step 1: Create Dependabot config**
 
 ```yaml
 # .github/dependabot.yml
@@ -636,7 +636,7 @@ updates:
     open-pull-requests-limit: 3
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 2: Commit** *(deferred — bundling Phase 3)*
 
 ```bash
 git add .github/dependabot.yml
