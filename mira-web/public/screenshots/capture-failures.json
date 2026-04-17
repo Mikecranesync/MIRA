@@ -3,12 +3,6 @@
     "feature": "cmms-integration",
     "shot": "all",
     "error": "PLG_ATLAS_ADMIN_USER not set \u2014 using chat fallback (lower quality)",
-    "ts": "2026-04-17T17:11:49.213062+00:00"
-  },
-  {
-    "feature": "voice-vision",
-    "shot": "01-upload",
-    "error": "No sample image found in tests/fixtures/ or demo/",
-    "ts": "2026-04-17T17:12:30.858481+00:00"
+    "ts": "2026-04-17T17:24:37.753230+00:00"
   }
 ]

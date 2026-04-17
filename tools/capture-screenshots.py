@@ -47,20 +47,64 @@ def log_failure(feature: str, shot: str, error: str) -> None:
     logger.warning("FAILURE [%s/%s]: %s", feature, shot, error)
 
 
-async def wait_for_response(page: Page, timeout_ms: int = 45000) -> bool:
+async def wait_for_response(page: Page, timeout_ms: int = 90000) -> bool:
     """Wait for MIRA response to finish streaming. Returns True if response appeared."""
     try:
         await page.wait_for_selector('[class*="prose"]', state="visible", timeout=timeout_ms)
     except Exception:
         return False
-    await page.wait_for_timeout(2000)
-    for _ in range(30):
+    # Wait for actual text content (not just loading indicator)
+    for _ in range(15):
+        await page.wait_for_timeout(1000)
+        text_len = await page.evaluate("""
+            (() => {
+                const el = document.querySelector('[class*="prose"]');
+                return el ? el.innerText.trim().length : 0;
+            })()
+        """)
+        if text_len > 50:
+            break
+    # Wait for streaming to finish (stop button disappears)
+    for _ in range(60):
         await page.wait_for_timeout(1000)
         stop_btns = await page.query_selector_all('button[aria-label="Stop"]')
         if not stop_btns:
             break
-    await page.wait_for_timeout(1000)
+    await page.wait_for_timeout(1500)
     return True
+
+
+async def enable_tools(page: Page) -> None:
+    """Click the tools icon and enable MIRA Equipment Tools if available."""
+    try:
+        buttons = await page.query_selector_all("button")
+        for b in buttons:
+            if not await b.is_visible():
+                continue
+            box = await b.bounding_box()
+            if not box or box["y"] < 300:
+                continue
+            inner = await b.evaluate("el => el.innerHTML")
+            if "M12" in inner and "circle" in inner and box["x"] > 330 and box["x"] < 380:
+                await b.click()
+                await page.wait_for_timeout(800)
+                break
+
+        tools_link = await page.query_selector("text=Tools")
+        if tools_link:
+            await tools_link.click()
+            await page.wait_for_timeout(800)
+            checkbox = await page.query_selector('input[type="checkbox"]')
+            if checkbox and not await checkbox.is_checked():
+                await checkbox.click()
+                await page.wait_for_timeout(500)
+                logger.info("Enabled MIRA Equipment Tools")
+            await page.keyboard.press("Escape")
+            await page.wait_for_timeout(300)
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(300)
+    except Exception as e:
+        log_failure("setup", "enable-tools", str(e))
 
 
 async def start_new_chat(page: Page, base_url: str) -> None:
@@ -70,12 +114,12 @@ async def start_new_chat(page: Page, base_url: str) -> None:
     await page.reload(wait_until="networkidle")
     await page.wait_for_timeout(3000)
     await dismiss_banners(page)
+    await enable_tools(page)
 
 
 async def dismiss_banners(page: Page) -> None:
     """Aggressively close all banners, popups, and toasts."""
     await page.wait_for_timeout(500)
-    # The update banner has an × button inside it
     for sel in [
         'button:has-text("×")',
         'button[aria-label="Close"]',
@@ -91,11 +135,18 @@ async def dismiss_banners(page: Page) -> None:
                     await page.wait_for_timeout(200)
         except Exception:
             pass
-    # Hide banner via JS as fallback
-    await page.evaluate("""
-        document.querySelectorAll('[class*="banner"], [class*="toast"], [class*="notification"]').forEach(el => {
-            el.style.display = 'none';
-        });
+    # Nuclear option: inject CSS to hide ALL banners, toasts, update notifications
+    await page.add_style_tag(content="""
+        [class*="banner"], [class*="toast"], [class*="notification"],
+        [class*="update"], [class*="snackbar"],
+        div[style*="bottom"]:has(a[href*="update"]),
+        div:has(> a:has-text("Update")),
+        .absolute.bottom-0, .fixed.bottom-0,
+        div.flex.items-center:has(button:has-text("×")):has(a:has-text("Update")) {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+        }
     """)
     await page.wait_for_timeout(300)
 
