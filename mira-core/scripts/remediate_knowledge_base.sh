@@ -105,7 +105,13 @@ SF_RESET=$(psql "$NEON_DATABASE_URL" -t -A -c \
     "UPDATE source_fingerprints SET atoms_created = 0 RETURNING 1" 2>/dev/null | wc -l)
 log "Reset ${SF_RESET} source_fingerprints rows"
 
-# ---- Step 5: Re-ingest ----
+# ---- Step 5: Seed manual_cache with known direct PDF URLs ----
+
+log "Seeding manual_cache with known direct PDF URLs (bypasses Apify for crawler-blocked vendors)..."
+cd "$REPO_ROOT"
+python3 mira-core/scripts/seed_manual_cache.py 2>&1 | tee -a "$LOG_FILE"
+
+# ---- Step 6: Re-ingest ----
 
 log "Starting re-ingest with Docling + sentence-aware chunking..."
 log "Log file: ${LOG_FILE}"
@@ -113,7 +119,7 @@ log "Log file: ${LOG_FILE}"
 cd "$REPO_ROOT"
 python3 mira-core/scripts/ingest_manuals.py 2>&1 | tee -a "$LOG_FILE"
 
-# ---- Step 6: Post-ingest verification ----
+# ---- Step 7: Post-ingest verification ----
 
 log ""
 log "=== Post-Ingest Verification ==="
