@@ -23,8 +23,8 @@
 | Linting | ruff (check + format) | ✅ CI-enforced | Maintain |
 | SAST | semgrep + bandit | ✅ CI-enforced | Maintain |
 | Secrets scanning | gitleaks | ✅ CI + pre-commit hook | Maintain |
-| Type checking | pyright | ❌ Not configured | Phase 2 |
-| Coverage | pytest-cov | ❌ Not measuring | Phase 2 |
+| Type checking | pyright | ✅ CI-enforced (basic mode) | Tighten rules |
+| Coverage | pytest-cov | ✅ CI-measured (threshold pending) | Set fail_under |
 | Architecture | import-linter | ❌ Not configured | Phase 3 |
 | Dep automation | Dependabot | ❌ Not configured | Phase 3 |
 | Property tests | hypothesis | ❌ Not configured | Phase 4 |

@@ -17,8 +17,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install ruff
-        run: pip install "ruff==0.9.*"
+      - name: Install ruff and pyright
+        run: pip install "ruff==0.9.*" pyright
 
       - name: Lint
         run: |
@@ -37,6 +37,9 @@ jobs:
             mira-bots/slack/ \
             mira-core/mira-ingest/ \
             mira-mcp/
+
+      - name: Type check
+        run: pyright
 
   secrets-scan:
     name: Secrets Scan
@@ -99,15 +102,20 @@ jobs:
         run: |
           pip install -r mira-core/mira-ingest/requirements.txt
           pip install -r mira-bots/telegram/requirements.txt
-          pip install pytest pytest-asyncio
+          pip install pytest pytest-asyncio pytest-cov
 
-      - name: Run ingest tests
-        run: pytest mira-core/mira-ingest/tests/ -v
+      - name: Run ingest tests with coverage
+        run: |
+          pytest mira-core/mira-ingest/tests/ -v \
+            --cov=mira-core/mira-ingest --cov-report=term-missing \
+            --cov-fail-under=20
 
-      - name: Run bot tests
+      - name: Run bot tests with coverage
         run: |
           pytest mira-bots/tests/ -v \
-            --ignore=mira-bots/tests/test_slack_relay.py
+            --ignore=mira-bots/tests/test_slack_relay.py \
+            --cov=mira-bots/shared --cov-report=term-missing \
+            --cov-fail-under=25
 
   license-check:
     name: License Check

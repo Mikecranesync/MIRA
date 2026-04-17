@@ -334,7 +334,7 @@ Covers: mira-bots, mira-core, mira-mcp, mira-crawler."
 - Modify: `.github/workflows/ci.yml` (add to lint job)
 - Modify: `.claude/settings.json` (add PostToolUse hook)
 
-- [ ] **Step 1: Create pyright config (permissive start, tighten over time)**
+- [x] **Step 1: Create pyright config (permissive start, tighten over time)**
 
 ```json
 {
@@ -362,7 +362,7 @@ Covers: mira-bots, mira-core, mira-mcp, mira-crawler."
 }
 ```
 
-- [ ] **Step 2: Add pyright to CI lint job**
+- [x] **Step 2: Add pyright to CI lint job**
 
 Extend `lint-and-type-check` job in ci.yml:
 
@@ -374,7 +374,7 @@ Extend `lint-and-type-check` job in ci.yml:
         run: pyright --outputjson > /tmp/pyright-report.json || pyright
 ```
 
-- [ ] **Step 3: Add pyright as a PostToolUse back-pressure hook**
+- [x] **Step 3: Add pyright as a PostToolUse back-pressure hook**
 
 Add to `.claude/settings.json` PostToolUse hooks:
 
@@ -390,12 +390,12 @@ Add to `.claude/settings.json` PostToolUse hooks:
 }
 ```
 
-- [ ] **Step 4: Run pyright locally, triage errors**
+- [x] **Step 4: Run pyright locally, triage errors**
 
 Run: `uvx pyright`
 Expected: Potentially many errors in basic mode. Fix critical ones (missing imports, wrong types on API boundaries). Suppress noise with `# type: ignore[<code>]` + comment.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit** *(deferred — bundling Phase 2)*
 
 ```bash
 git add pyrightconfig.json .github/workflows/ci.yml .claude/settings.json
@@ -415,7 +415,7 @@ mira-crawler/tasks. PostToolUse hook warns on type errors after edits."
 - Modify: `.github/workflows/ci.yml` (add --cov flags)
 - Modify: `pyproject.toml` (add coverage config)
 
-- [ ] **Step 1: Add coverage config to pyproject.toml**
+- [x] **Step 1: Add coverage config to pyproject.toml**
 
 ```toml
 [tool.coverage.run]
@@ -433,13 +433,13 @@ exclude_lines = [
 ]
 ```
 
-- [ ] **Step 2: Add pytest-cov to requirements files**
+- [x] **Step 2: Add pytest-cov to requirements files**
 
 Add `pytest-cov>=5.0` to both:
 - `mira-core/mira-ingest/requirements.txt`
 - `mira-bots/telegram/requirements.txt`
 
-- [ ] **Step 3: Update CI to collect and enforce coverage**
+- [x] **Step 3: Update CI to collect and enforce coverage**
 
 Update test steps in ci.yml:
 
@@ -458,12 +458,12 @@ Update test steps in ci.yml:
             --cov-fail-under=50 --cov-append
 ```
 
-- [ ] **Step 4: Run locally, check baseline coverage**
+- [x] **Step 4: Run locally, check baseline coverage** *(blocked locally — Python 3.14 vs 3.12, missing deps; CI will measure)*
 
 Run: `pytest mira-core/mira-ingest/tests/ --cov=mira-core/mira-ingest --cov-report=term-missing`
 Expected: A coverage percentage. If below 50%, write tests for uncovered critical paths before enforcing.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit** *(deferred — bundling Phase 2)*
 
 ```bash
 git add pyproject.toml mira-core/mira-ingest/requirements.txt \

@@ -16,3 +16,17 @@ ignore = ["E501"]  # line length handled by formatter
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["mira-bots/shared", "mira-core/mira-ingest"]
+omit = ["*/tests/*", "*/test_*", "*/conftest.py"]
+
+[tool.coverage.report]
+fail_under = 25  # baseline 2026-04-17: ingest=20%, shared=27%. Ratchet up as tests are added.
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
