@@ -1,54 +1,43 @@
-# Hot Cache — 2026-04-16 — CHARLIE Node (MES Track Kickoff)
+# Hot Cache — 2026-04-17T19:00 — Alpha
 
 ## Just Finished
-- Created MES track issues #327–#330 (Week 1 MQTT, Week 2 ISA-95, cross-session memory, ADR-0012)
-- Created label `mes-track` on Mikecranesync/MIRA
-- Created `docs/mes-architecture-adr-0012` branch with ADR-0012 + mes-stack-diagram.md
-- PR in progress for ADR-0012 docs
+- Read updated CLAUDE.md — conformed to wiki protocol, inference cascade change (Groq→Cerebras→Claude)
+- Created `wiki/nodes/alpha.md` — Alpha was the only node missing from the wiki
+- Brought the wiki current after 9 days of unreported work (see log.md for full list)
 
-## MES Track Overview (Walker Reynolds UNS Framework)
-Full architecture decision: `docs/adr/0012-mes-architecture-walker-uns-framework.md`
-Stack diagram: `docs/architecture/mes-stack-diagram.md`
-
-| Issue | Week | What | Status |
-|-------|------|------|--------|
-| #327 | Week 1 | Mosquitto MQTT broker + UNS topic schema | OPEN |
-| #328 | Week 2 | ISA-95 asset namespace + NeonDB registry | OPEN |
-| #321 | Week 3 | OEE calculator service (60s tick) | OPEN |
-| #322 | Week 4 | Work order CRUD + scheduling model | OPEN |
-| #323 | Week 5 | Downtime tracking (auto + manual + NLP) | OPEN |
-| #324 | Week 6 | Atlas CMMS bidirectional sync | OPEN |
-| #325 | Week 7 | Open WebUI fleet OEE dashboard | OPEN |
-| #326 | Week 8 | MES integration test suite | OPEN |
-| #329 | Cross | Cross-session equipment memory | OPEN |
-| #330 | Cross | ADR-0012 tracking issue | OPEN |
-
-## Eval Status (2026-04-15 v0.8)
-- **Score: 8/56 (14%)** — FAR below 40/56 target
-- FSM stuck in IDLE across nearly all scenarios — `cp_reached_state` failing everywhere
-- Only 2 perfect: `safety_escalation_06`, `pilz_manual_miss_11`
-- Root cause: FSM state transition bug (engine not advancing past IDLE)
-- PR #297 (training loop): DO NOT merge — eval regression, not improvement
-
-## Current Branch (CHARLIE/MIRA)
-- `docs/mes-architecture-adr-0012` — ADR + stack diagram, ready to push + PR
-- `feat/training-loop-v1` — main MIRA repo branch, 6 commits ahead of main
-
-## PR Triage Needed
-- **PR #279** — CONFLICTING — Atlas CMMS work orders (rebase needed)
-- **PR #281** — CONFLICTING — Vendor coverage data (rebase needed)
-- **PRs #315, #316, #317** — Lint fail, feature freeze violations → label `post-5-users` + close
-- **PR #297** — Training loop: eval is 8/56 (FAIL, threshold was 40/56) → DO NOT merge, needs FSM fix first
+## Work Done Since Last Hot Cache (2026-04-08)
+- **Reddit→TG pipeline** — built `tools/reddit_tg_pipeline/`, PR #117 merged to main
+- **CI fully repaired** — lint, unit tests, docker build, eval offline all green (PR #119). First green CI on main in 4+ days.
+- **LinkedIn draft Celery task** — `mira-crawler/tasks/linkedin.py`, Frankie Fihn framework, warm-up-aware weighted rotation via `weights.yml`. Observability stack brought live (Flower :5555, Grafana :3001, Prometheus :9090).
+- **SSH mesh established** — full bidirectional Alpha↔Bravo↔Charlie. Fixed wrong usernames in SSH configs. Hopped Alpha→Charlie→Bravo to push keys.
+- **SSH keys + configs stored in Doppler** — 13 secrets: `SSH_{NODE}_{PRIVATE_KEY,PUBLIC_KEY,CONFIG,AUTHORIZED_KEYS}` + `SSH_NETWORK_TOPOLOGY`
+- **Network topology file** — `deployment/network.yml` (canonical, machine-readable)
+- **Node Map added to CLAUDE.md** — table with all 3 nodes, IPs, users, roles
 
 ## Machine State
-- **CHARLIE (192.168.1.12):** MIRA repo on feat/training-loop-v1, pensive-williams worktree on docs/mes-architecture-adr-0012
-- **Qdrant** :8000 running
-- **SCADA stack** 4 Docker containers running (factorylm-modbus/plc/diagnosis/hmi)
-- **Nautobot** :8443 running (Colima)
+- **Alpha (100.107.140.12):** On main at d0b6af1+. Docker running. Celery + observability containers were running but may have stopped (session spans multiple days). LinkedIn draft task registered but blocked on Anthropic API credits (balance too low). Sleep not hardened.
+- **Bravo (100.86.236.11):** SSH working from Alpha. Ollama running (4 models: qwen2.5vl, nomic-embed-text, mira, glm-ocr). Docker containers presumably running per last check.
+- **Charlie (100.70.49.126):** SSH working from Alpha. 13 containers running (atlas-cmms, mira-bots, mira-core, mira-ingest, etc.). Teams/WhatsApp/Reddit bots restarting (pending cloud setup).
+- **VPS (165.245.138.91):** No changes this session.
 
-## Next Actions
-1. Push `docs/mes-architecture-adr-0012` + open PR (this session)
-2. Add all 4 new issues to project board
-3. Fix FSM IDLE regression (eval 8/56 → target 40/56) — new issue needed
-4. Rebase PR #279 + #281 onto main
-5. Close #315 #316 #317 as post-5-users
+## Uncommitted Work
+- `deployment/network.yml` — new (network topology)
+- `wiki/nodes/alpha.md` — new
+- `wiki/hot.md` — updated (this file)
+- `wiki/log.md` — updated
+- `wiki/index.md` — updated
+
+## Blocked
+- **LinkedIn draft generation** — Anthropic API credits exhausted. Task is wired and registered; will work once credits are topped up at console.anthropic.com.
+- **PLC at 192.168.1.100** — still unreachable, needs physical check
+- **Charlie Doppler keychain** — still locked, needs local terminal session
+- **Teams + WhatsApp bots** — code-complete, pending Azure/Meta cloud setup
+- **Alpha sleep hardening** — needs `sudo pmset -a sleep 0 disksleep 0 displaysleep 0 womp 1`
+
+## Next (any machine)
+1. Top up Anthropic API credits → verify LinkedIn draft generation end-to-end
+2. Set up Trigger.dev cron for `linkedin.draft_post` (Mon/Wed/Fri 12:00 UTC) — upstream moved scheduling from Celery Beat to Trigger.dev
+3. Commit wiki + network topology changes, push to main
+4. Harden Alpha sleep settings (requires sudo)
+5. Fix Charlie Doppler keychain (requires local terminal)
+6. Create wiki pages for services (mira-core, mira-ingest, etc.)

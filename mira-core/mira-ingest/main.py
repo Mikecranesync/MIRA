@@ -663,12 +663,18 @@ async def ingest_document_kb(
     filename: str = Form(default=None),
     collection_hint: str = Form(default=None),
     equipment_type: str = Form(default=None),
+    tenant_id: str = Form(default=""),
 ):
     """Upload a PDF to Open WebUI Knowledge Base.
 
     Open WebUI handles text extraction, chunking, and embedding via its
     configured engine (pypdf default; Docling when DOCLING_SERVER_URL is set).
     No local parsing is performed here.
+
+    `tenant_id` resolution order (vision doc problem 11):
+      1. form field (per-request, from the authenticated caller)
+      2. MIRA_TENANT_ID env var (global, legacy nightly scripts)
+      3. empty (no tier check, shared collection)
 
     Returns JSON: {status, filename, collection_id, collection_name, file_id, processing_status}
     """
@@ -695,8 +701,21 @@ async def ingest_document_kb(
             detail=f"File exceeds 20MB limit ({len(raw) // MB}MB)",
         )
 
+    form_tenant = (tenant_id or "").strip()
+    if form_tenant:
+        tenant_id, tenant_source = form_tenant, "form"
+    elif MIRA_TENANT_ID:
+        tenant_id, tenant_source = MIRA_TENANT_ID, "env"
+    else:
+        tenant_id, tenant_source = "", "default"
+    logger.info(
+        "Document KB ingest tenant=%s source=%s filename=%s",
+        tenant_id or "(none)",
+        tenant_source,
+        fname,
+    )
+
     # Tier limit check (fail open on DB errors — never block on infra failures)
-    tenant_id = MIRA_TENANT_ID
     if tenant_id:
         try:
             from db.neon import check_tier_limit

@@ -24,6 +24,13 @@ const BASE_URL = () =>
 
 /**
  * Create a Stripe Checkout session for $97/mo beta subscription.
+ *
+ * Accounts V2 (Stripe's newer account architecture) rejects Checkout sessions
+ * that pass `customer_email` alone in test mode — the Customer must exist
+ * before the session is created. We reuse an existing Customer if one with
+ * the same email is found, otherwise create one, then pass `customer: id`.
+ * This pattern also works on legacy accounts and in live mode.
+ *
  * Returns the Checkout URL for redirect.
  */
 export async function createCheckoutSession(
@@ -34,10 +41,21 @@ export async function createCheckoutSession(
   if (!priceId) throw new Error("STRIPE_PRICE_ID not set");
 
   const stripe = getStripe();
+
+  const existing = await stripe.customers.list({ email, limit: 1 });
+  const customerId =
+    existing.data[0]?.id ??
+    (
+      await stripe.customers.create({
+        email,
+        metadata: { tenant_id: tenantId },
+      })
+    ).id;
+
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     line_items: [{ price: priceId, quantity: 1 }],
-    customer_email: email,
+    customer: customerId,
     metadata: { tenant_id: tenantId },
     subscription_data: {
       metadata: { tenant_id: tenantId },

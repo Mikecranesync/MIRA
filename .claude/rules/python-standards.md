@@ -1,6 +1,6 @@
 ---
 name: python-standards
-description: MIRA Python coding standards — Python 3.12, ruff, line length, HTTP client, YAML, SQLAlchemy, pytest asyncio
+description: MIRA Python coding standards — Python 3.12, ruff, httpx, async, NeonDB
 ---
 
 # Python Standards
@@ -8,152 +8,57 @@ description: MIRA Python coding standards — Python 3.12, ruff, line length, HT
 Source of truth: `pyproject.toml` at repo root.
 
 ## Runtime
-
-- **Python version:** 3.12
-- **Package manager:** `uv` (NOT pip, poetry, or conda)
+- **Python 3.12** | **Package manager:** `uv` (NOT pip, poetry, conda)
 
 ## Linter / Formatter: ruff
-
-Use `ruff`, NOT flake8, pylint, or black.
-
-```toml
-[tool.ruff]
-line-length = 100
-target-version = "py312"
-exclude = ["mira-bots-phase1", "mira-bots-phase2", "mira-bots-phase3", "archives"]
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I"]
-ignore = ["E501"]  # line length handled by formatter
-```
-
-**Run:**
+Use `ruff`, NOT flake8, pylint, or black. Config in `pyproject.toml`.
 ```bash
 ruff check --fix path/to/file.py
 ruff format path/to/file.py
 ```
-
-**CI gate:** `ruff check .` must pass before merge.
+CI gate: `ruff check .` must pass before merge.
 
 ## HTTP Client: httpx
-
 Use `httpx` for all HTTP calls, NOT `requests` or `urllib`.
-
 ```python
-import httpx
-
-# Async (preferred)
 async with httpx.AsyncClient(timeout=60) as client:
     resp = await client.post(url, json=payload, headers=headers)
     resp.raise_for_status()
-
-# Sync (scripts only)
-with httpx.Client(timeout=30) as client:
-    resp = client.get(url)
 ```
 
-## YAML Loading
-
-Always use `yaml.safe_load()`, NEVER `yaml.load()`:
-
-```python
-import yaml
-
-with open(path) as f:
-    data = yaml.safe_load(f)
-```
+## YAML: always `yaml.safe_load()`, NEVER `yaml.load()`
 
 ## SQLAlchemy (NeonDB only)
-
-Use `NullPool` — Neon's PgBouncer handles pooling. Never use connection pooling on the application side.
-
+`NullPool` — Neon's PgBouncer handles pooling. Never pool application-side.
 ```python
-from sqlalchemy import create_engine, text
-from sqlalchemy.pool import NullPool
-
-engine = create_engine(
-    os.environ["NEON_DATABASE_URL"],
-    poolclass=NullPool,
-    connect_args={"sslmode": "require"},
-    pool_pre_ping=True,
-)
+engine = create_engine(url, poolclass=NullPool, connect_args={"sslmode": "require"}, pool_pre_ping=True)
 ```
-
-For SQLite (local state): use `sqlite3` stdlib directly (not SQLAlchemy). Always set WAL mode:
-```python
-db = sqlite3.connect(db_path)
-db.execute("PRAGMA journal_mode=WAL")
-```
+For SQLite: `sqlite3` stdlib directly, always `PRAGMA journal_mode=WAL`.
 
 ## Async
-
-- Use `asyncio` throughout — all bot handlers, engine calls, and HTTP calls are async
-- `pytest-asyncio` with `asyncio_mode = "auto"` (set in `pyproject.toml`)
-- Never use `asyncio.run()` inside async functions — only at entry points
-
-```toml
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-```
+- `asyncio` throughout — all bot handlers, engine calls, HTTP calls
+- `asyncio_mode = "auto"` in `pyproject.toml`
+- Never `asyncio.run()` inside async functions — only at entry points
 
 ## Type Hints
-
-Use modern Python 3.12 style:
-
-```python
-# Use built-in generics (not typing module)
-def foo(items: list[str]) -> dict[str, int]: ...
-def bar(x: str | None) -> None: ...
-
-# Use from __future__ import annotations for forward references
-from __future__ import annotations
-```
+Modern Python 3.12: `list[str]`, `dict[str, int]`, `str | None`. Use `from __future__ import annotations` for forward refs.
 
 ## Logging
-
-Use `logging` stdlib, NOT `print()`:
-
-```python
-import logging
-logger = logging.getLogger("mira-gsd")  # use service-specific name
-
-logger.info("CLAUDE_CALL model=%s latency_ms=%d", model, ms)
-logger.warning("Fallback triggered: %s", reason)
-logger.error("LLM call failed: %s", e)
-```
+`logging` stdlib, NOT `print()`. Service-specific logger names: `logging.getLogger("mira-gsd")`.
 
 ## Error Handling
-
 - Catch specific exceptions, not bare `except:`
-- Log errors with context before re-raising or returning fallback
-- LLM calls always return a fallback value on error — never raise to the user
-
-```python
-try:
-    result = await client.post(...)
-    result.raise_for_status()
-except httpx.HTTPStatusError as e:
-    logger.error("HTTP %s: %s", e.response.status_code, e.response.text[:200])
-    return ""
-except Exception as e:
-    logger.error("Unexpected error: %s", e)
-    return ""
-```
+- Log with context before re-raising or returning fallback
+- LLM calls always return fallback on error — never raise to user
 
 ## Imports
-
-- Standard library first, then third-party, then local (ruff `I` rules enforce this)
-- Local imports use relative paths within a package (`from .guardrails import ...`)
-- Bot adapters use absolute imports from `shared` (`from shared.gsd_engine import GSDEngine`)
+- stdlib → third-party → local (ruff `I` enforces)
+- Relative within packages (`from .guardrails import ...`)
+- Bot adapters: absolute from `shared` (`from shared.gsd_engine import GSDEngine`)
 
 ## Secrets
-
 Never hardcode or default to real values:
 ```python
-# WRONG
-api_key = os.getenv("ANTHROPIC_API_KEY", "sk-ant-...")
-
-# CORRECT
 api_key = os.getenv("ANTHROPIC_API_KEY", "")
 if not api_key:
     logger.warning("ANTHROPIC_API_KEY not set — Claude backend disabled")

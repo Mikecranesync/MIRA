@@ -24,6 +24,7 @@ from .guardrails import (
     vendor_support_url,
 )
 from .inference.router import InferenceRouter
+from .integrations.atlas_cmms import AtlasCMMSClient
 from .nemotron import NemotronClient
 from .neon_recall import kb_has_coverage
 from .telemetry import flush as tl_flush
@@ -55,6 +56,7 @@ STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
 # ---------------------------------------------------------------------------
 # Diagnosis self-critique quality gate
 # ---------------------------------------------------------------------------
+_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
 _CRITIQUE_DISABLED = os.getenv("MIRA_DISABLE_SELF_CRITIQUE", "0") == "1"
 _CRITIQUE_THRESHOLD = int(os.getenv("MIRA_CRITIQUE_THRESHOLD", "3"))
 _CRITIQUE_MAX_ATTEMPTS = int(os.getenv("MIRA_CRITIQUE_MAX_ATTEMPTS", "2"))
@@ -504,6 +506,11 @@ class Supervisor:
 
         state = self._load_state(chat_id)
 
+        # CMMS pending: user is answering the work-order creation prompt — handle before
+        # any option resolution, session-followup detection, or intent classification.
+        if (state.get("context") or {}).get("cmms_pending") and not photo_b64:
+            return await self._handle_cmms_pending(chat_id, message, state, trace_id)
+
         # Photo persistence: load stored session photo for text follow-ups
         _session_photo = None
         if not photo_b64:
@@ -936,6 +943,15 @@ class Supervisor:
                     ctx_sc.pop("revision_critique", None)
                     state["context"] = ctx_sc
 
+        # RESOLVED hook: append work-order prompt so next turn is intercepted.
+        # Amend parsed["reply"] now so both history and formatted output include it.
+        _wo_draft = None
+        if state["state"] == "RESOLVED":
+            _wo_draft = self._build_wo_draft(state)
+            parsed["reply"] = parsed.get("reply", "").rstrip() + (
+                "\n\nShould I log a work order in the CMMS?"
+            )
+
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
@@ -950,6 +966,12 @@ class Supervisor:
             sc["last_question"] = parsed["reply"][:200]
             sc["last_options"] = parsed.get("options", [])
             ctx["session_context"] = sc
+
+        # Persist work-order draft so _handle_cmms_pending can use it next turn.
+        if _wo_draft is not None:
+            ctx["cmms_pending"] = True
+            ctx["cmms_wo_draft"] = _wo_draft
+            logger.info("CMMS_WO_PENDING chat_id=%s title=%r", chat_id, _wo_draft.get("title"))
 
         state["context"] = ctx
 
@@ -966,6 +988,116 @@ class Supervisor:
             trace_id,
             state["state"],
         )
+
+    # ------------------------------------------------------------------
+    # CMMS work-order integration
+    # ------------------------------------------------------------------
+
+    _CMMS_YES = frozenset(
+        {
+            "yes",
+            "yeah",
+            "yep",
+            "yup",
+            "sure",
+            "ok",
+            "okay",
+            "y",
+            "log",
+            "create",
+            "do it",
+            "log it",
+            "create it",
+            "go ahead",
+            "please",
+            "1",
+        }
+    )
+
+    def _build_wo_draft(self, state: dict) -> dict:
+        """Construct work-order title/description from resolved diagnostic state."""
+        asset = (state.get("asset_identified") or "Unknown equipment")[:120]
+        fault = state.get("fault_category") or "corrective"
+        title = f"[MIRA] {asset[:60]} — {fault} action"
+
+        ctx = state.get("context") or {}
+        history = ctx.get("history", [])
+        lines = []
+        for turn in history[-6:]:
+            role = (turn.get("role") or "").upper()
+            content = (turn.get("content") or "")[:400]
+            lines.append(f"{role}: {content}")
+        summary = "\n".join(lines)
+
+        description = (
+            f"MIRA Diagnostic Session\n"
+            f"Equipment: {asset}\n"
+            f"Fault category: {fault}\n\n"
+            f"Conversation summary:\n{summary}"
+        )
+
+        _HIGH_PRIORITY_FAULTS = {"power", "thermal", "hydraulic"}
+        priority = "HIGH" if fault in _HIGH_PRIORITY_FAULTS else "MEDIUM"
+
+        return {
+            "title": title[:100],
+            "description": description[:2000],
+            "priority": priority,
+            "asset_label": asset,
+        }
+
+    async def _post_cmms_work_order(self, wo_draft: dict) -> str:
+        """Call AtlasCMMSClient to create a work order. Returns confirmation string."""
+        client = AtlasCMMSClient(base_url=self.mcp_base_url, api_key=self.mcp_api_key)
+        result = await client.create_work_order(
+            title=wo_draft["title"],
+            description=wo_draft["description"],
+            priority=wo_draft["priority"],
+            asset_id=0,
+            category="CORRECTIVE",
+        )
+        if "error" in result:
+            raise RuntimeError(result["error"])
+        wo_id = result.get("id", "unknown")
+        asset = wo_draft.get("asset_label", "equipment")
+        return f"Work order #{wo_id} created. Asset: {asset}."
+
+    async def _handle_cmms_pending(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+    ) -> dict:
+        """Handle the yes/no response to the work-order creation prompt."""
+        ctx = state.get("context") or {}
+        wo_draft = ctx.pop("cmms_wo_draft", {})
+        ctx.pop("cmms_pending", None)
+        state["context"] = ctx
+
+        msg_lower = message.strip().lower()
+        is_yes = msg_lower in self._CMMS_YES or any(
+            w in msg_lower for w in self._CMMS_YES if len(w) > 3
+        )
+
+        if is_yes and wo_draft:
+            try:
+                reply = await self._post_cmms_work_order(wo_draft)
+                logger.info(
+                    "CMMS_WO_CREATED chat_id=%s wo_draft_title=%r", chat_id, wo_draft.get("title")
+                )
+            except Exception as e:
+                logger.error("CMMS WO creation failed for %s: %s", chat_id, e)
+                reply = (
+                    "I wasn't able to create the work order — please log it manually. "
+                    "The diagnosis is complete."
+                )
+        else:
+            reply = "Understood — no work order logged. Let me know if you need anything else."
+
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(reply, "none", trace_id, "RESOLVED")
 
     def reset(self, chat_id: str) -> None:
         """Reset conversation to IDLE state."""
@@ -2143,6 +2275,23 @@ class Supervisor:
                 idx = STATE_ORDER.index(current)
                 if idx + 1 < len(STATE_ORDER):
                     state["state"] = STATE_ORDER[idx + 1]
+
+        # Q-trap escape: if stuck in Q-states too long, force DIAGNOSIS
+        q_states = {"Q1", "Q2", "Q3"}
+        ctx = state.get("context") if isinstance(state.get("context"), dict) else {}
+        if state["state"] in q_states:
+            ctx["q_rounds"] = ctx.get("q_rounds", 0) + 1
+            if ctx["q_rounds"] >= _MAX_Q_ROUNDS:
+                logger.info(
+                    "Q-trap escape: %d Q-rounds reached (max %d) — forcing DIAGNOSIS",
+                    ctx["q_rounds"],
+                    _MAX_Q_ROUNDS,
+                )
+                state["state"] = "DIAGNOSIS"
+                ctx["q_rounds"] = 0
+        elif current in q_states and state["state"] not in q_states:
+            ctx["q_rounds"] = 0
+        state["context"] = ctx
 
         if state["state"] in ("RESOLVED", "SAFETY_ALERT"):
             state["final_state"] = state["state"]

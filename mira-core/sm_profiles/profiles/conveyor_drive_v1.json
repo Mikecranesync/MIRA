@@ -1,0 +1,16 @@
+{
+  "type": "ConveyorDrive",
+  "version": "1.0.0",
+  "description": "Variable-frequency drive controlling a conveyor motor.",
+  "properties": [
+    {"name": "outputFrequency", "engineeringUnit": "Hz", "normalRangeMin": 45.0, "normalRangeMax": 65.0, "alarmHigh": 70.0, "alarmLow": 40.0, "description": "Drive output frequency."},
+    {"name": "motorCurrent", "engineeringUnit": "A", "normalRangeMin": 2.0, "normalRangeMax": 15.0, "alarmHigh": 18.0, "alarmLow": 0.5, "description": "Motor current draw."},
+    {"name": "dcBusVoltage", "engineeringUnit": "V", "normalRangeMin": 580.0, "normalRangeMax": 700.0, "alarmHigh": 810.0, "alarmLow": 420.0, "description": "DC bus voltage."},
+    {"name": "heatsinkTemp", "engineeringUnit": "degC", "normalRangeMin": 30.0, "normalRangeMax": 70.0, "alarmHigh": 85.0, "alarmLow": 0.0, "description": "IGBT heatsink temperature."}
+  ],
+  "relationships": [
+    {"edge": "partOf", "targetType": "ConveyorLine"},
+    {"edge": "monitoredBy", "targetType": "VibrationSensor"},
+    {"edge": "feedsInto", "targetType": "Motor"}
+  ]
+}
