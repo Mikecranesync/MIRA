@@ -1,6 +1,6 @@
 # Celery worker dependencies for mira-crawler
 celery==5.4.0
-redis==5.2.1
+redis==7.4.0
 
 # Ingest pipeline
 httpx>=0.27.0
