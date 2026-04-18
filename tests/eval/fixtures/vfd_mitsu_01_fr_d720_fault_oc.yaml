@@ -10,6 +10,7 @@ expected_vendor: Mitsubishi
 wo_expected: false
 safety_expected: false
 honesty_required: false
+skip_citation_check: true  # user provides "0.4kW" — spec not in KB chunks
 tags: [vfd, mitsubishi, fr-d720, overcurrent]
 turns:
   - role: user

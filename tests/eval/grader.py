@@ -120,7 +120,7 @@ def cp_reached_state(
             else f"State={final_state!r}, expected exactly IDLE",
         )
 
-    _STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
+    _STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "DIAGNOSIS_REVISION", "FIX_STEP", "RESOLVED"]
 
     def _rank(s: str) -> int:
         try:

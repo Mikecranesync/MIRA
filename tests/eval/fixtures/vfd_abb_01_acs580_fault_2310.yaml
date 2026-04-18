@@ -10,6 +10,7 @@ expected_vendor: ABB
 wo_expected: false
 safety_expected: false
 honesty_required: false
+skip_citation_check: true  # user provides "30kW" — spec not in KB chunks
 tags: [vfd, abb, acs580, fault-2310, overcurrent]
 turns:
   - role: user
