@@ -153,7 +153,7 @@ psql "$NEON_DATABASE_URL" -c \
      WHERE tenant_id = '${TENANT_ID}'
      GROUP BY manufacturer ORDER BY chunks DESC LIMIT 15" 2>/dev/null | tee -a "$LOG_FILE"
 
-# ---- Step 7: Re-extract fault codes ----
+# ---- Step 8: Re-extract fault codes ----
 
 log "Re-extracting fault codes from clean chunks..."
 python3 mira-core/scripts/extract_fault_codes.py 2>&1 | tee -a "$LOG_FILE"
@@ -162,7 +162,7 @@ NEW_FC=$(psql "$NEON_DATABASE_URL" -t -A -c \
     "SELECT COUNT(*) FROM fault_codes WHERE tenant_id = '${TENANT_ID}'" 2>/dev/null || echo "0")
 log "fault_codes: ${NEW_FC} rows (was ${FC_COUNT})"
 
-# ---- Step 8: Reminder ----
+# ---- Step 9: Reminder ----
 
 log ""
 log "=== REMEDIATION COMPLETE ==="
