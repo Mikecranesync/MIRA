@@ -1,12 +1,15 @@
 /**
- * Mira AI chat — SSE proxy to mira-sidecar /rag endpoint.
+ * Mira AI chat — SSE proxy to mira-pipeline /v1/chat/completions endpoint.
  *
- * The sidecar accepts POST /rag { query, asset_id, tag_snapshot, context }
- * and returns { answer, sources }. This module wraps it in SSE for the browser.
+ * The pipeline accepts POST /v1/chat/completions (OpenAI-compat) and returns
+ * choices[0].message.content. This module wraps it in SSE for the browser.
+ *
+ * Migrated from mira-sidecar :5000/rag → mira-pipeline :9099 (ADR-0008).
  */
 
-const SIDECAR_URL =
-  process.env.SIDECAR_URL || "http://mira-sidecar:5000";
+const PIPELINE_URL =
+  process.env.PIPELINE_URL || "http://mira-pipeline:9099";
+const PIPELINE_API_KEY = process.env.PIPELINE_API_KEY || "";
 
 export interface MiraChatRequest {
   query: string;
@@ -26,32 +29,66 @@ export interface MiraChatResponse {
 }
 
 /**
- * Call mira-sidecar /rag and return the structured response.
+ * Call mira-pipeline /v1/chat/completions and return the structured response.
+ * Sources are parsed from the 📚 citation footer injected by the citation gate.
  */
 export async function queryMira(
   req: MiraChatRequest
 ): Promise<MiraChatResponse> {
-  const resp = await fetch(`${SIDECAR_URL}/rag`, {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (PIPELINE_API_KEY) {
+    headers["Authorization"] = `Bearer ${PIPELINE_API_KEY}`;
+  }
+
+  const userContent = req.assetId
+    ? `[Asset: ${req.assetId}] ${req.query}`
+    : req.query;
+
+  const resp = await fetch(`${PIPELINE_URL}/v1/chat/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
-      query: req.query,
-      asset_id: req.assetId || "",
-      tag_snapshot: {},
-      context: "",
+      model: "mira-diagnostic",
+      messages: [{ role: "user", content: userContent }],
+      stream: false,
     }),
   });
 
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`Sidecar /rag failed (${resp.status}): ${text}`);
+    throw new Error(`Pipeline /v1/chat/completions failed (${resp.status}): ${text}`);
   }
 
   const data = await resp.json();
+  const answer: string = data.choices?.[0]?.message?.content || "Unable to generate a response.";
+
   return {
-    answer: data.answer || "Unable to generate a response.",
-    sources: data.sources || [],
+    answer,
+    sources: parseCitationFooter(answer),
   };
+}
+
+/**
+ * Parse 📚 citation footer lines injected by the engine citation gate.
+ * Format: "📚 Source: Manufacturer Model — Section (url)"
+ */
+function parseCitationFooter(answer: string): MiraSource[] {
+  const sources: MiraSource[] = [];
+  const lines = answer.split("\n");
+  for (const line of lines) {
+    const match = line.match(/^📚 Source:\s*(.+?)(?:\s*\((.+?)\))?\s*$/);
+    if (match) {
+      sources.push({
+        file: match[2] || "",
+        page: "",
+        excerpt: match[1].trim(),
+        brain: "pipeline",
+      });
+    }
+  }
+  return sources;
 }
 
 /**
