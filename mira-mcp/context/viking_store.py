@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sqlite3
+import uuid
 
 logger = logging.getLogger("mira-mcp")
 
@@ -21,6 +22,18 @@ try:
 except ImportError:
     _USE_OPENVIKING = False
     logger.warning("openviking not installed — using sqlite keyword-cosine fallback")
+
+# Lazy-initialised SyncOpenViking client (v0.2.6+)
+_ov_client = None
+
+
+def _get_ov_client():
+    """Return a lazily-initialised SyncOpenViking client."""
+    global _ov_client
+    if _ov_client is None:
+        _ov_client = openviking.SyncOpenViking(path=VIKING_STORE_PATH)
+        _ov_client.initialize()
+    return _ov_client
 
 
 # ---------------------------------------------------------------------------
@@ -66,8 +79,11 @@ def ingest_text(text: str, store_key: str, metadata: dict = None) -> int:
     """Store a text chunk under store_key. Returns row id."""
     meta = metadata or {}
     if _USE_OPENVIKING:
-        store = openviking.open(store_key, create=True)
-        return store.add(text, metadata=meta)
+        client = _get_ov_client()
+        chunk_uri = f"{store_key}/{uuid.uuid4().hex[:12]}"
+        client.mkdir(store_key)
+        client.write(uri=chunk_uri, content=text)
+        return 1
 
     db_path = _fallback_db_path()
     _ensure_fallback_db(db_path)
@@ -128,9 +144,13 @@ def retrieve(query: str, tenant_id: str, top_k: int = 5) -> list[dict]:
 
     if _USE_OPENVIKING:
         try:
-            store = openviking.open(store_key, create=False)
-            results = store.search(query, top_k=top_k)
-            return [{"content": r.text, "score": r.score, "metadata": r.metadata} for r in results]
+            client = _get_ov_client()
+            result = client.search(query, target_uri=store_key, limit=top_k)
+            hits = list(result.resources) + list(result.memories)
+            return [
+                {"content": r.abstract, "score": r.score, "metadata": {"uri": r.uri}}
+                for r in hits[:top_k]
+            ]
         except Exception as e:
             logger.warning("openviking.search failed: %s — falling back to sqlite", e)
 
