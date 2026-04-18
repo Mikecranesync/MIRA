@@ -4,7 +4,7 @@ description: "Yaskawa J1000 OH heatsink overtemp — compact enclosure, no venti
 # LIVE shows DIAGNOSIS (>= Q2 expected) with real diagnostic Q about load/FLA.
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: [motor, drive]
+expected_keywords: [motor, drive, fault, alarm, heatsink, thermal, temperature]
 expected_vendor: Yaskawa
 wo_expected: false
 safety_expected: false

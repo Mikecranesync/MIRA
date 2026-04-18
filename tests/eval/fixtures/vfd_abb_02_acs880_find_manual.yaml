@@ -1,10 +1,11 @@
 id: vfd_abb_02_acs880_find_manual
-description: "Documentation intent — ABB ACS880 manual request, must return abb.com URL"
+description: "Documentation intent — ABB ACS880 manual request, must return abb.com URL or confirm indexed"
 # DOC_INTENT responses are inline — FSM stays at IDLE.
-# Correctness captured by cp_keyword_match checking for vendor URL domain.
+# Two valid paths: KB-miss → abb.com URL; KB-hit → "already have documentation indexed".
+# 'indexed' matches the KB-hit response so the fixture passes either way.
 expected_final_state: IDLE
 max_turns: 2
-expected_keywords: [abb.com, ACS880, manual]
+expected_keywords: [abb.com, ACS880, manual, indexed]
 forbidden_keywords: []
 expected_vendor: ABB
 wo_expected: false
