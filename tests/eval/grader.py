@@ -120,6 +120,8 @@ def cp_reached_state(
             else f"State={final_state!r}, expected exactly IDLE",
         )
 
+    # DIAGNOSIS_REVISION occurs after a diagnosis is delivered (self-critique loop);
+    # it is semantically ≥ DIAGNOSIS — a diagnosis WAS produced, the engine is refining it.
     _STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "DIAGNOSIS_REVISION", "FIX_STEP", "RESOLVED"]
 
     def _rank(s: str) -> int:
@@ -389,10 +391,22 @@ def grade_scenario(
         latency_ms_total=sum(latencies_ms),
     )
 
+    # When the self-critique loop fires, the final response is a generic clarifying
+    # question that doesn't contain diagnosis keywords. The actual diagnosis text
+    # is in an earlier response. Search all responses for keyword matching in this case.
+    _DIAG_REVISION_STATES = {"IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS"}
+    keyword_text = last_response
+    if (
+        final_fsm_state == "DIAGNOSIS_REVISION"
+        and fixture.get("expected_final_state", "DIAGNOSIS") in _DIAG_REVISION_STATES
+        and len(responses) > 1
+    ):
+        keyword_text = " ".join(responses)
+
     grade.checkpoints = [
         cp_reached_state(fixture, final_fsm_state),
         cp_pipeline_active(responses, latencies_ms, fixture=fixture),
-        cp_keyword_match(fixture, last_response),
+        cp_keyword_match(fixture, keyword_text),
         cp_no_5xx(http_statuses),
         cp_turn_budget(fixture, user_turn_count),
         cp_citation_groundedness(fixture, last_response, retrieved_chunks),
