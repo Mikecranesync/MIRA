@@ -1,76 +1,43 @@
-# Hot Cache — 2026-04-16 — CHARLIE
+# Hot Cache — 2026-04-17T19:00 — Alpha
 
-## Just Finished (this session)
+## Just Finished
+- Read updated CLAUDE.md — conformed to wiki protocol, inference cascade change (Groq→Cerebras→Claude)
+- Created `wiki/nodes/alpha.md` — Alpha was the only node missing from the wiki
+- Brought the wiki current after 9 days of unreported work (see log.md for full list)
 
-- **eval infra fixed** (commit d607f39) — judge.py fallback, remote-pipeline guard, VPS scorecards restored
-
-- **v0.9 prompt (honesty-diagnosis)** — 35/57 on VPS (below 40/56 merge threshold). Rule 22 was ignored by LLM — model omits honesty prefix even when it reaches DIAGNOSIS for out-of-KB vendors.
-
-- **Diagnosis: Why honesty fails** (commit 9cf1f11 — partial fix)
-  - KB has vendor chunks for WRONG models: 26 Yaskawa (NULL model), 931 ABB (NULL model), 905 Siemens (model_number="SINAMICS"), 6 SEW (gearmotor, not VFD), 2 Danfoss (FC302 only)
-  - Vendor check passes (vendor IS in KB) → chunks not suppressed → `_last_no_kb = False`
-  - Programmatic injection (engine.py) never fires because trigger requires `_last_no_kb = True`
-
-- **Implemented**: Programmatic honesty prefix injection in engine.py + `_last_no_kb` tracking in rag_worker.py + Prompt v1.0 (removed Rule 22, updated Example 7). v1.0 eval: 32/57 (regression from non-determinism, not code bug).
-
-- **Root blocker identified**: Need **model-level KB check** — extract model token from query (J1000, ACS580, G120) and verify it appears in chunk `model_number` fields. Risk: Yaskawa A1000 chunks stored as "CIMR-AU4A0058AAA" — literal "A1000" not present in model_number string.
-
-## Eval State
-
-| Run | Score | Notes |
-|-----|-------|-------|
-| v0.6 (baseline) | 30/56 (54%) | pre-session baseline |
-| v0.8-final (VPS) | **35/56 (62%)** | real score, commits e3bc226 |
-| v0.9 (VPS, 2026-04-16) | 35/57 (61%) | Rule 22 not followed, honesty fixtures still fail |
-| v1.0 (VPS, 2026-04-16) | 32/57 (56%) | Programmatic injection correct but never fires; 3 DIAGNOSIS_REVISION regressions = Groq non-determinism |
-| Target | **40/57 (70%)** | Merge threshold for PR #297 |
-
-### 7 Persistent Honesty Failures (unchanged v0.8→v1.0)
-`yaskawa_v1000_oc_22`, `yaskawa_j1000_thermal_24`, `yaskawa_ga700_encoder_26`, `sew_overcurrent_29`, `vfd_abb_01_acs580_fault_2310`, `vfd_abb_04_acs150_multi_turn`, `vfd_siemens_01_sinamics_g120_f30001`
-
-All reach DIAGNOSIS but omit the honesty prefix. All fail `cp_keyword_match: No honesty signal`.
-
-### Self-Critique Non-Determinism (3 scenarios)
-`full_diagnosis_happy_path_07`, `reset_new_session_09`, `vfd_siemens_01` — fail intermittently when self-critique scores groundedness < threshold and parks FSM in DIAGNOSIS_REVISION.
+## Work Done Since Last Hot Cache (2026-04-08)
+- **Reddit→TG pipeline** — built `tools/reddit_tg_pipeline/`, PR #117 merged to main
+- **CI fully repaired** — lint, unit tests, docker build, eval offline all green (PR #119). First green CI on main in 4+ days.
+- **LinkedIn draft Celery task** — `mira-crawler/tasks/linkedin.py`, Frankie Fihn framework, warm-up-aware weighted rotation via `weights.yml`. Observability stack brought live (Flower :5555, Grafana :3001, Prometheus :9090).
+- **SSH mesh established** — full bidirectional Alpha↔Bravo↔Charlie. Fixed wrong usernames in SSH configs. Hopped Alpha→Charlie→Bravo to push keys.
+- **SSH keys + configs stored in Doppler** — 13 secrets: `SSH_{NODE}_{PRIVATE_KEY,PUBLIC_KEY,CONFIG,AUTHORIZED_KEYS}` + `SSH_NETWORK_TOPOLOGY`
+- **Network topology file** — `deployment/network.yml` (canonical, machine-readable)
+- **Node Map added to CLAUDE.md** — table with all 3 nodes, IPs, users, roles
 
 ## Machine State
+- **Alpha (100.107.140.12):** On main at d0b6af1+. Docker running. Celery + observability containers were running but may have stopped (session spans multiple days). LinkedIn draft task registered but blocked on Anthropic API credits (balance too low). Sleep not hardened.
+- **Bravo (100.86.236.11):** SSH working from Alpha. Ollama running (4 models: qwen2.5vl, nomic-embed-text, mira, glm-ocr). Docker containers presumably running per last check.
+- **Charlie (100.70.49.126):** SSH working from Alpha. 13 containers running (atlas-cmms, mira-bots, mira-core, mira-ingest, etc.). Teams/WhatsApp/Reddit bots restarting (pending cloud setup).
+- **VPS (165.245.138.91):** No changes this session.
 
-- **CHARLIE (this machine):** `feat/training-loop-v1` branch, 3 commits ahead of origin
-- **VPS (165.245.138.91):** mira-pipeline running v1.0 code (rebuilt container). eval-v1.0-programmatic-honesty.md = 32/57
-- **Bravo (100.86.236.11):** Ollama :11434 OK
-- **PLC Laptop (100.72.2.99):** PLC at 192.168.1.100 unreachable — physical check needed
+## Uncommitted Work
+- `deployment/network.yml` — new (network topology)
+- `wiki/nodes/alpha.md` — new
+- `wiki/hot.md` — updated (this file)
+- `wiki/log.md` — updated
+- `wiki/index.md` — updated
 
 ## Blocked
+- **LinkedIn draft generation** — Anthropic API credits exhausted. Task is wired and registered; will work once credits are topped up at console.anthropic.com.
+- **PLC at 192.168.1.100** — still unreachable, needs physical check
+- **Charlie Doppler keychain** — still locked, needs local terminal session
+- **Teams + WhatsApp bots** — code-complete, pending Azure/Meta cloud setup
+- **Alpha sleep hardening** — needs `sudo pmset -a sleep 0 disksleep 0 displaysleep 0 womp 1`
 
-- **PR #297 not merged** — Current best eval: 35/57 (v0.9). Needs 40/57. Root blocker: model-level KB check.
-- **Model-level KB check** — Issue #313 needs implementation. Risky: CIMR-AU4A0058AAA doesn't contain "A1000" literal → model check would incorrectly suppress chunks for A1000 queries.
-- **OW manual steps** — folder org, KB uploads, memory/channels/code execution toggles — require browser UI
-- **mira-sidecar OEM migration** — 398 ChromaDB chunks need moving to OW KB
-- **mira-web → pipeline cutover** — mira-chat.ts still calls sidecar :5000/rag
-
-## Next Steps (priority order)
-
-1. **Model-level KB check (issue #313)** — Implement in `rag_worker.py` `process()` after vendor check. Must solve the CIMR-AU4A0058AAA → A1000 alias problem. Options:
-   - Build vendor-model alias map (SEW→MOVITRAC, Yaskawa A1000→CIMR-A*, etc.)
-   - OR: check chunk CONTENT (not model_number field) for the queried model string
-   - OR: add `model_family` field to NeonDB schema and populate during ingest
-   Once implemented: run eval, expect 35+7=42/57 → merge PR #297
-
-2. **Run `setup_owui_models.py`** on VPS (already synced): `doppler run --project factorylm --config prd -- python3 tools/owui_tools/setup_owui_models.py`
-
-3. **OW manual steps** — KB PDF uploads, admin toggle: Memory, Channels, Code Execution, Web Search
-
-4. **mira-sidecar OEM migration** — run tools/migrate_sidecar_oem_to_owui.py
-
-## Key NeonDB Facts (discovered this session)
-```
-Total chunks: ~68,000+
-Rockwell Automation: 13,686 chunks (main KB)
-ABB: 931 chunks — mostly NULL model_number
-Siemens: 905 (SINAMICS label) + 442 (other models)
-AutomationDirect: 2,250 chunks (GS10, PF525, etc.)
-Yaskawa: 27 chunks (NULL model) + 1 (CIMR-AU4A0058AAA)
-SEW-Eurodrive: 6 chunks (R47 DRE80M4 gearmotor — NOT a VFD)
-Danfoss: 2 chunks (VLT FC302 only)
-Mitsubishi Electric: 16 chunks (NULL model)
-```
+## Next (any machine)
+1. Top up Anthropic API credits → verify LinkedIn draft generation end-to-end
+2. Set up Trigger.dev cron for `linkedin.draft_post` (Mon/Wed/Fri 12:00 UTC) — upstream moved scheduling from Celery Beat to Trigger.dev
+3. Commit wiki + network topology changes, push to main
+4. Harden Alpha sleep settings (requires sudo)
+5. Fix Charlie Doppler keychain (requires local terminal)
+6. Create wiki pages for services (mira-core, mira-ingest, etc.)

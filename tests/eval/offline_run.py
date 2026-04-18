@@ -615,8 +615,16 @@ async def _async_main(args: argparse.Namespace) -> int:
         f"backend={os.getenv('INFERENCE_BACKEND', 'cloud')}  "
         f"neon={'ok' if os.getenv('NEON_DATABASE_URL') else 'MISSING'}  "
         f"anthropic={'ok' if os.getenv('ANTHROPIC_API_KEY') else 'MISSING'}  "
-        f"groq={'ok' if os.getenv('GROQ_API_KEY') else 'MISSING'}"
+        f"groq={'ok' if os.getenv('GROQ_API_KEY') else 'MISSING'}  "
+        f"gemini={'ok' if os.getenv('GEMINI_API_KEY') else 'skip'}"
     )
+
+    # Skip Gemini in eval runs — free-tier 429 rate limits cause cascade
+    # fallthrough on every call, slowing the suite and producing inconsistent
+    # results.  Groq is the eval-stable provider (fast, high quota).
+    if os.getenv("GEMINI_API_KEY") and not os.getenv("EVAL_KEEP_GEMINI"):
+        logger.warning("Disabling Gemini for eval run (set EVAL_KEEP_GEMINI=1 to override)")
+        os.environ.pop("GEMINI_API_KEY", None)
 
     pipeline = LocalPipeline(db_path=args.db, verbose=args.verbose)
 

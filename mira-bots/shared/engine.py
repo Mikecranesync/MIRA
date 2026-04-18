@@ -24,6 +24,7 @@ from .guardrails import (
     vendor_support_url,
 )
 from .inference.router import InferenceRouter
+from .integrations.atlas_cmms import AtlasCMMSClient
 from .nemotron import NemotronClient
 from .neon_recall import kb_has_coverage
 from .telemetry import flush as tl_flush
@@ -55,9 +56,23 @@ STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
 # ---------------------------------------------------------------------------
 # Diagnosis self-critique quality gate
 # ---------------------------------------------------------------------------
+_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
 _CRITIQUE_DISABLED = os.getenv("MIRA_DISABLE_SELF_CRITIQUE", "0") == "1"
 _CRITIQUE_THRESHOLD = int(os.getenv("MIRA_CRITIQUE_THRESHOLD", "3"))
 _CRITIQUE_MAX_ATTEMPTS = int(os.getenv("MIRA_CRITIQUE_MAX_ATTEMPTS", "2"))
+# Patterns that indicate the user has already supplied fault/alarm specifics.
+# If any match in the conversation history + current message, skip the
+# groundedness clarifying question — the critique is scoring on incomplete context.
+_FAULT_INFO_RE = re.compile(
+    r"""
+    (?:[A-Z]{1,3}-?\d{3,})              # F30001, AL-14, E001
+    | \b[A-Z]{2,3}\b(?=\s+fault)        # OC fault, OL fault (common VFD 2-letter codes)
+    | \b(?:fault\s+code|alarm\s+(?:code|number)|error\s+code|fault\s+number)\b
+    | \b(?:tripping\s+on|tripped\s+on|showing\s+(?:fault|error|alarm))\b
+    | \b(?:displays?|shows?|reading)\s+[A-Z0-9]{2,}  # "shows OC", "displays F7"
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 # Compact judge prompt — returns only the three actionable dims to keep token cost low.
 _CRITIQUE_PROMPT = """\
 Score this maintenance-AI response. Return ONLY valid JSON — no markdown, no prose.
@@ -531,6 +546,11 @@ class Supervisor:
                 state["state"],
             )
 
+        # CMMS pending: user is answering the work-order creation prompt — handle before
+        # any option resolution, session-followup detection, or intent classification.
+        if (state.get("context") or {}).get("cmms_pending") and not photo_b64:
+            return await self._handle_cmms_pending(chat_id, message, state, trace_id)
+
         # Photo persistence: load stored session photo for text follow-ups
         _session_photo = None
         if not photo_b64:
@@ -625,6 +645,15 @@ class Supervisor:
         if not photo_b64 and intent == "documentation":
             combined = f"{message} {state.get('asset_identified', '')}".strip()
             mfr = vendor_name_from_text(combined) or ""
+
+            # Fast-path: if KB has no coverage for this vendor, gathering a model
+            # number won't help — skip straight to the honest "no docs" response.
+            if mfr:
+                kb_covered, _ = kb_has_coverage(mfr, combined, resolved_tenant or "")
+                if not kb_covered:
+                    return await self._do_documentation_lookup(
+                        chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
+                    )
 
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
@@ -1016,20 +1045,46 @@ class Supervisor:
                     )
 
                     if "groundedness" in low_dims:
-                        # Need more info from the user → ask a targeted clarifying
-                        # question and park in DIAGNOSIS_REVISION.
-                        note = scores.get("groundedness_note", "")
-                        clarifying_q = (
-                            "Before I can give you a confident diagnosis, could you "
-                            "share one more detail — what exact fault code, alarm "
-                            "number, or behaviour is the equipment showing right now? "
-                            "(e.g. fault light colour, code displayed, or what it does "
-                            "when the fault occurs)"
+                        # Before asking for more info, check whether the user
+                        # already supplied fault/alarm specifics in this session.
+                        # The critique only sees the current message, so it can
+                        # score groundedness low even when a fault code appeared
+                        # in an earlier turn (e.g. "showing F30001" in turn 1).
+                        ctx_hist = state.get("context") or {}
+                        history_turns = ctx_hist.get("history", [])
+                        combined_history = (
+                            " ".join(t.get("content", "") for t in history_turns[-8:])
+                            + " "
+                            + message
                         )
-                        if note:
-                            clarifying_q += f"\n\n*(My confidence was limited because: {note})*"
-                        state["state"] = "DIAGNOSIS_REVISION"
-                        parsed["reply"] = clarifying_q
+                        fault_info_present = bool(_FAULT_INFO_RE.search(combined_history))
+
+                        if fault_info_present:
+                            # Critique was wrong — user already gave us enough.
+                            # Treat as acceptable; clear revision counter.
+                            ctx_sc.pop("revision_attempts", None)
+                            ctx_sc.pop("revision_critique", None)
+                            state["context"] = ctx_sc
+                            logger.info(
+                                "SELF_CRITIQUE_GROUNDEDNESS_SUPPRESSED chat_id=%s"
+                                " (fault info found in history)",
+                                chat_id,
+                            )
+                        else:
+                            # Need more info from the user → ask a targeted
+                            # clarifying question and park in DIAGNOSIS_REVISION.
+                            note = scores.get("groundedness_note", "")
+                            clarifying_q = (
+                                "Before I can give you a confident diagnosis, could you "
+                                "share one more detail — what exact fault code, alarm "
+                                "number, or behaviour is the equipment showing right now? "
+                                "(e.g. fault light colour, code displayed, or what it does "
+                                "when the fault occurs)"
+                            )
+                            if note:
+                                clarifying_q += f"\n\n*(My confidence was limited because: {note})*"
+                            state["state"] = "DIAGNOSIS_REVISION"
+                            parsed["reply"] = clarifying_q
                     else:
                         # Helpfulness / instruction gap — regenerate inline without
                         # asking the user for anything.
@@ -1062,6 +1117,15 @@ class Supervisor:
                     ctx_sc.pop("revision_critique", None)
                     state["context"] = ctx_sc
 
+        # RESOLVED hook: append work-order prompt so next turn is intercepted.
+        # Amend parsed["reply"] now so both history and formatted output include it.
+        _wo_draft = None
+        if state["state"] == "RESOLVED":
+            _wo_draft = self._build_wo_draft(state)
+            parsed["reply"] = parsed.get("reply", "").rstrip() + (
+                "\n\nShould I log a work order in the CMMS?"
+            )
+
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
@@ -1076,6 +1140,12 @@ class Supervisor:
             sc["last_question"] = parsed["reply"][:200]
             sc["last_options"] = parsed.get("options", [])
             ctx["session_context"] = sc
+
+        # Persist work-order draft so _handle_cmms_pending can use it next turn.
+        if _wo_draft is not None:
+            ctx["cmms_pending"] = True
+            ctx["cmms_wo_draft"] = _wo_draft
+            logger.info("CMMS_WO_PENDING chat_id=%s title=%r", chat_id, _wo_draft.get("title"))
 
         state["context"] = ctx
 
@@ -1092,6 +1162,116 @@ class Supervisor:
             trace_id,
             state["state"],
         )
+
+    # ------------------------------------------------------------------
+    # CMMS work-order integration
+    # ------------------------------------------------------------------
+
+    _CMMS_YES = frozenset(
+        {
+            "yes",
+            "yeah",
+            "yep",
+            "yup",
+            "sure",
+            "ok",
+            "okay",
+            "y",
+            "log",
+            "create",
+            "do it",
+            "log it",
+            "create it",
+            "go ahead",
+            "please",
+            "1",
+        }
+    )
+
+    def _build_wo_draft(self, state: dict) -> dict:
+        """Construct work-order title/description from resolved diagnostic state."""
+        asset = (state.get("asset_identified") or "Unknown equipment")[:120]
+        fault = state.get("fault_category") or "corrective"
+        title = f"[MIRA] {asset[:60]} — {fault} action"
+
+        ctx = state.get("context") or {}
+        history = ctx.get("history", [])
+        lines = []
+        for turn in history[-6:]:
+            role = (turn.get("role") or "").upper()
+            content = (turn.get("content") or "")[:400]
+            lines.append(f"{role}: {content}")
+        summary = "\n".join(lines)
+
+        description = (
+            f"MIRA Diagnostic Session\n"
+            f"Equipment: {asset}\n"
+            f"Fault category: {fault}\n\n"
+            f"Conversation summary:\n{summary}"
+        )
+
+        _HIGH_PRIORITY_FAULTS = {"power", "thermal", "hydraulic"}
+        priority = "HIGH" if fault in _HIGH_PRIORITY_FAULTS else "MEDIUM"
+
+        return {
+            "title": title[:100],
+            "description": description[:2000],
+            "priority": priority,
+            "asset_label": asset,
+        }
+
+    async def _post_cmms_work_order(self, wo_draft: dict) -> str:
+        """Call AtlasCMMSClient to create a work order. Returns confirmation string."""
+        client = AtlasCMMSClient(base_url=self.mcp_base_url, api_key=self.mcp_api_key)
+        result = await client.create_work_order(
+            title=wo_draft["title"],
+            description=wo_draft["description"],
+            priority=wo_draft["priority"],
+            asset_id=0,
+            category="CORRECTIVE",
+        )
+        if "error" in result:
+            raise RuntimeError(result["error"])
+        wo_id = result.get("id", "unknown")
+        asset = wo_draft.get("asset_label", "equipment")
+        return f"Work order #{wo_id} created. Asset: {asset}."
+
+    async def _handle_cmms_pending(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+    ) -> dict:
+        """Handle the yes/no response to the work-order creation prompt."""
+        ctx = state.get("context") or {}
+        wo_draft = ctx.pop("cmms_wo_draft", {})
+        ctx.pop("cmms_pending", None)
+        state["context"] = ctx
+
+        msg_lower = message.strip().lower()
+        is_yes = msg_lower in self._CMMS_YES or any(
+            w in msg_lower for w in self._CMMS_YES if len(w) > 3
+        )
+
+        if is_yes and wo_draft:
+            try:
+                reply = await self._post_cmms_work_order(wo_draft)
+                logger.info(
+                    "CMMS_WO_CREATED chat_id=%s wo_draft_title=%r", chat_id, wo_draft.get("title")
+                )
+            except Exception as e:
+                logger.error("CMMS WO creation failed for %s: %s", chat_id, e)
+                reply = (
+                    "I wasn't able to create the work order — please log it manually. "
+                    "The diagnosis is complete."
+                )
+        else:
+            reply = "Understood — no work order logged. Let me know if you need anything else."
+
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(reply, "none", trace_id, "RESOLVED")
 
     def reset(self, chat_id: str) -> None:
         """Reset conversation to IDLE state."""
@@ -1692,6 +1872,9 @@ class Supervisor:
             "query": combined[:120],
             "queued_at": datetime.now(timezone.utc).isoformat(),
         }
+        # Doc request handled — return to IDLE so the session doesn't stay
+        # stuck in a mid-diagnostic state after the "no docs" response.
+        state["state"] = "IDLE"
         state["context"] = ctx
         asyncio.create_task(self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id))
         logger.info(
@@ -1702,7 +1885,7 @@ class Supervisor:
         )
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
-        return self._make_result(reply, "low", trace_id, state["state"])
+        return self._make_result(reply, "low", trace_id, "IDLE")
 
     async def _check_pending_doc_job(self, chat_id: str, state: dict) -> str:
         """Check if a previous doc-crawl job for this chat finished with exhausted fallback.
@@ -2269,6 +2452,23 @@ class Supervisor:
                 idx = STATE_ORDER.index(current)
                 if idx + 1 < len(STATE_ORDER):
                     state["state"] = STATE_ORDER[idx + 1]
+
+        # Q-trap escape: if stuck in Q-states too long, force DIAGNOSIS
+        q_states = {"Q1", "Q2", "Q3"}
+        ctx = state.get("context") if isinstance(state.get("context"), dict) else {}
+        if state["state"] in q_states:
+            ctx["q_rounds"] = ctx.get("q_rounds", 0) + 1
+            if ctx["q_rounds"] >= _MAX_Q_ROUNDS:
+                logger.info(
+                    "Q-trap escape: %d Q-rounds reached (max %d) — forcing DIAGNOSIS",
+                    ctx["q_rounds"],
+                    _MAX_Q_ROUNDS,
+                )
+                state["state"] = "DIAGNOSIS"
+                ctx["q_rounds"] = 0
+        elif current in q_states and state["state"] not in q_states:
+            ctx["q_rounds"] = 0
+        state["context"] = ctx
 
         if state["state"] in ("RESOLVED", "SAFETY_ALERT"):
             state["final_state"] = state["state"]

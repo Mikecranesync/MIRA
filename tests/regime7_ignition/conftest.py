@@ -93,6 +93,7 @@ def _build_java_mocks():
     mock_file.return_value.mkdirs.return_value = True
     java_io.File = mock_file
     java_io.FileInputStream = MagicMock()
+    java_io.FileOutputStream = MagicMock()
 
     # java.util.Properties mock
     mock_props = MagicMock()
@@ -116,6 +117,7 @@ def _build_java_mocks():
         "java.io": java_io,
         "java.util": java_util,
         "java.io.FileInputStream": java_io.FileInputStream,
+        "java.io.FileOutputStream": java_io.FileOutputStream,
         "java.util.Properties": java_util.Properties,
         "java.io.File": java_io.File,
         "java.util.Date": java_util.Date,
@@ -165,6 +167,7 @@ def mock_ignition_system():
 
     # system.net
     system.net = MagicMock()
+    system.net.getHostName = MagicMock(return_value="test-gateway")
 
     # Inject system into sys.modules
     sys.modules["system"] = system

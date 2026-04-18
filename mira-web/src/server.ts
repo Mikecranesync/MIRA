@@ -43,9 +43,13 @@ import {
   updateTenantTier,
   updateTenantStripe,
   updateTenantAtlas,
+  updateTenantEmailStatus,
+  updateTenantSeedStatus,
+  recordProvisioningAttempt,
   findTenantByStripeCustomerId,
   ensureSchema,
 } from "./lib/quota.js";
+import { finalizeActivation } from "./lib/activation.js";
 import {
   queryMira,
   buildSSEStream,
@@ -69,6 +73,12 @@ import {
   renderBlogIndex,
   renderFaultCodeIndex,
 } from "./lib/blog-renderer.js";
+import {
+  createActivationCode,
+  validateAndActivate,
+  getConnectionStatus,
+  ensureConnectSchema,
+} from "./lib/connect.js";
 import { FEATURES, renderFeaturePage } from "./lib/feature-renderer.js";
 import {
   getLiveFaultCodes,
@@ -488,7 +498,6 @@ app.post("/api/stripe/webhook", async (c) => {
         ? session.subscription
         : session.subscription?.id || "";
 
-      // Update tenant with Stripe IDs and activate
       await updateTenantStripe(tenantId, customerId, subscriptionId);
       await updateTenantTier(tenantId, "active");
       console.log("[stripe-webhook] Tenant activated:", tenantId);
@@ -499,50 +508,18 @@ app.post("/api/stripe/webhook", async (c) => {
         break;
       }
 
-      // Provision Atlas CMMS user
-      let atlasCompanyId = 0;
-      let atlasUserId = 0;
-      let atlasToken = "";
-      try {
-        const password = deriveAtlasPassword(tenantId);
-        const atlas = await signupUser(
-          String(tenant.email),
-          password,
-          tenant.first_name || String(tenant.email).split("@")[0],
-          "",
-          String(tenant.company) || `${String(tenant.email).split("@")[0]}'s Plant`
-        );
-        atlasCompanyId = atlas.companyId;
-        atlasUserId = atlas.userId;
-        atlasToken = atlas.accessToken;
-        await updateTenantAtlas(tenantId, atlasCompanyId, atlasUserId, "ok");
-        console.log("[stripe-webhook] Atlas provisioned: company=%d user=%d", atlasCompanyId, atlasUserId);
-      } catch (err) {
-        console.error("[stripe-webhook] Atlas provisioning failed:", err);
-        await updateTenantAtlas(tenantId, 0, 0, "failed");
-      }
-
-      // Seed demo data scoped to the tenant's Atlas company
-      seedDemoData(atlasToken || undefined, tenantId).catch((err) =>
-        console.error("[stripe-webhook] Demo seed failed:", err)
-      );
-
-      // Send "you're in" email with login link
-      const token = await signToken({
-        tenantId,
-        email: String(tenant.email),
-        tier: "active",
-        atlasCompanyId,
-        atlasUserId,
+      const result = await finalizeActivation(tenant, {
+        signupUser,
+        updateTenantAtlas,
+        seedDemoData,
+        updateTenantSeedStatus,
+        signToken,
+        sendActivatedEmail,
+        updateTenantEmailStatus,
+        recordProvisioningAttempt,
+        deriveAtlasPassword,
       });
-      sendActivatedEmail(
-        String(tenant.email),
-        tenant.first_name || String(tenant.email).split("@")[0],
-        String(tenant.company),
-        token
-      ).catch((err) =>
-        console.error("[stripe-webhook] Activated email failed:", err)
-      );
+      console.log("[stripe-webhook] Activation result for %s:", tenantId, result);
       break;
     }
 
@@ -631,13 +608,81 @@ app.get("/api/cmms/login", requireActive, async (c) => {
 // User profile (active subscribers only)
 app.get("/api/me", requireActive, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
+  const tenant = await findTenantById(user.sub);
+  if (!tenant) return c.json({ error: "Tenant not found" }, 404);
   const quota = await getQuota(user.sub, "active");
+  const provisioning = {
+    atlas: tenant.atlas_provisioning_status,
+    demo: tenant.demo_seed_status,
+    email: tenant.activation_email_status,
+    attempts: tenant.provisioning_attempts,
+    last_error: tenant.provisioning_last_error,
+    ready: tenant.atlas_provisioning_status === "ok"
+        && tenant.activation_email_status !== "pending",
+  };
   return c.json({
     tenantId: user.sub,
     email: user.email,
     tier: "active",
     quota,
+    provisioning,
   });
+});
+
+const RETRY_COOLDOWN_MS = 60_000;
+const lastActivationRetry = new Map<string, number>();
+
+app.post("/api/activation/retry", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  const now = Date.now();
+  const prev = lastActivationRetry.get(user.sub) ?? 0;
+  if (now - prev < RETRY_COOLDOWN_MS) {
+    return c.json({ error: "Cooldown — try again in a minute" }, 429);
+  }
+  lastActivationRetry.set(user.sub, now);
+
+  const tenant = await findTenantById(user.sub);
+  if (!tenant) return c.json({ error: "Tenant not found" }, 404);
+
+  const result = await finalizeActivation(tenant, {
+    signupUser,
+    updateTenantAtlas,
+    seedDemoData,
+    updateTenantSeedStatus,
+    signToken,
+    sendActivatedEmail,
+    updateTenantEmailStatus,
+    recordProvisioningAttempt,
+    deriveAtlasPassword,
+  });
+  console.log("[activation-retry] %s:", user.sub, result);
+  return c.json({ result });
+});
+
+const ADMIN_TOKEN = () => process.env.PLG_ADMIN_TOKEN || "";
+
+app.get("/api/admin/activation-health", async (c) => {
+  const token = c.req.header("x-admin-token");
+  if (!token || token !== ADMIN_TOKEN()) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  const { neon } = await import("@neondatabase/serverless");
+  const url = process.env.NEON_DATABASE_URL;
+  if (!url) return c.json({ error: "DB not configured" }, 500);
+  const sql = neon(url);
+  const stuck = await sql`
+    SELECT id, email, atlas_provisioning_status, activation_email_status,
+           demo_seed_status, provisioning_attempts, provisioning_last_error,
+           provisioning_last_attempt_at, created_at
+      FROM plg_tenants
+     WHERE tier = 'active'
+       AND (atlas_provisioning_status <> 'ok'
+            OR activation_email_status <> 'sent'
+            OR demo_seed_status = 'failed')
+       AND created_at < NOW() - INTERVAL '10 minutes'
+     ORDER BY created_at DESC
+     LIMIT 100`;
+  return c.json({ count: stuck.length, tenants: stuck });
 });
 
 // Query quota (active subscribers only)
@@ -659,20 +704,20 @@ app.get("/demo/tenant-work-orders", requireActive, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Manual Ingest Proxy — forwards PDF uploads to mira-mcp
+// Manual Ingest Proxy — forwards PDF uploads to mira-ingest/ingest/document-kb
+//
+// This is the production RAG ingest path: PDFs land in Open WebUI KB
+// collections (Docling extraction + embedding), which mira-pipeline reads
+// from at chat time. The earlier mira-mcp/ingest/pdf endpoint wrote to a
+// local openviking store that was never queried by the RAG reader (#337).
 // ---------------------------------------------------------------------------
 
 const INGEST_MAX_BYTES = 50 * 1024 * 1024;
-const MIRA_MCP_URL = () =>
-  process.env.MIRA_MCP_URL || "http://mira-mcp:8001";
+const MIRA_INGEST_URL = () =>
+  process.env.MIRA_INGEST_URL || "http://mira-ingest:8001";
 
 app.post("/api/ingest/manual", requireActive, async (c) => {
   const user = c.get("user") as MiraTokenPayload;
-  const mcpKey = process.env.MCP_REST_API_KEY || "";
-  if (!mcpKey) {
-    console.error("[ingest-manual] MCP_REST_API_KEY not set");
-    return c.json({ error: "Ingest service not configured" }, 500);
-  }
 
   let form: FormData;
   try {
@@ -697,6 +742,7 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
 
   const forwarded = new FormData();
   forwarded.append("file", file, file.name || "upload.pdf");
+  forwarded.append("tenant_id", user.sub);
   const equipmentType = form.get("equipment_type");
   if (typeof equipmentType === "string" && equipmentType.trim()) {
     forwarded.append("equipment_type", equipmentType.trim());
@@ -704,12 +750,8 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
 
   const started = Date.now();
   try {
-    // NOTE: mira-mcp currently derives tenant_id from its own MIRA_TENANT_ID
-    // env var (global), not from the form. Per-tenant isolation for uploads
-    // is a known gap tracked separately from this funnel.
-    const resp = await fetch(`${MIRA_MCP_URL()}/ingest/pdf`, {
+    const resp = await fetch(`${MIRA_INGEST_URL()}/ingest/document-kb`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${mcpKey}` },
       body: forwarded,
     });
     const latencyMs = Date.now() - started;
@@ -924,13 +966,65 @@ app.post("/api/mira/chat", requireActive, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// MIRA Connect — factory-to-cloud activation
+// ---------------------------------------------------------------------------
+
+app.post("/api/connect/generate-code", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  try {
+    const code = await createActivationCode(user.sub);
+    return c.json({ code, expires_in: 3600 });
+  } catch (err) {
+    console.error("[connect] Code generation failed:", err);
+    return c.json({ error: "Failed to generate activation code" }, 500);
+  }
+});
+
+app.post("/api/connect/activate", async (c) => {
+  const body = await c.req.json();
+  const { code, agent_id, gateway_hostname } = body;
+
+  if (!code) return c.json({ error: "code is required" }, 400);
+
+  try {
+    const result = await validateAndActivate(
+      code,
+      agent_id || "unknown",
+      gateway_hostname || "unknown",
+    );
+    if (!result) {
+      return c.json({ error: "Invalid, expired, or already used code" }, 404);
+    }
+    return c.json({
+      status: "activated",
+      tenant_id: result.tenant_id,
+      relay_url: result.relay_url,
+    });
+  } catch (err) {
+    console.error("[connect] Activation failed:", err);
+    return c.json({ error: "Activation failed" }, 500);
+  }
+});
+
+app.get("/api/connect/status", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  try {
+    const status = await getConnectionStatus(user.sub);
+    return c.json(status);
+  } catch (err) {
+    console.error("[connect] Status check failed:", err);
+    return c.json({ error: "Status check failed" }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Startup
 // ---------------------------------------------------------------------------
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // Run schema migration on startup
-ensureSchema()
+Promise.all([ensureSchema(), ensureConnectSchema()])
   .then(() => console.log("[startup] NeonDB schema verified"))
   .catch((err) => console.warn("[startup] Schema migration skipped:", err));
 

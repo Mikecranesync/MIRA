@@ -76,6 +76,7 @@ if _CRAWLER_DIR not in sys.path:
     sys.path.insert(0, _CRAWLER_DIR)
 
 from db.neon import (  # noqa: E402
+    ensure_knowledge_hierarchy_columns,
     get_pending_urls,
     insert_knowledge_entries_batch,
     knowledge_entry_exists,
@@ -545,6 +546,8 @@ def main() -> None:
         help="Ingest all PDFs from a local directory instead of NeonDB URL queue",
     )
     args = parser.parse_args()
+
+    ensure_knowledge_hierarchy_columns()
 
     if not MIRA_TENANT_ID:
         log.error("MIRA_TENANT_ID env var not set — aborting")

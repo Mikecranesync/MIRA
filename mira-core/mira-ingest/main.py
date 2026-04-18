@@ -79,7 +79,7 @@ DESCRIBE_SYSTEM = (
     '  "description": 1-2 sentence plain-language summary a technician can read at a glance.\n'
     "Return ONLY the JSON object — no prose before or after. "
     "If the image is a nameplate only, put the device name in component, the read-out "
-    "text in symptom, and \"nameplate\" in condition. Never invent fault codes."
+    'text in symptom, and "nameplate" in condition. Never invent fault codes.'
 )
 
 
@@ -121,6 +121,7 @@ def _parse_structured_description(raw: str) -> dict:
         }
     except (json.JSONDecodeError, TypeError):
         return default
+
 
 app = FastAPI(title="mira-ingest")
 
@@ -489,14 +490,19 @@ async def ingest_photo(
         image_vector = []
 
     # Embed text vector (non-fatal) — combine structured fields for richer embedding
-    text_for_embed = " ".join(
-        v for v in (
-            structured["component"],
-            structured["symptom"],
-            structured["condition"],
-            description,
-        ) if v
-    ).strip() or description
+    text_for_embed = (
+        " ".join(
+            v
+            for v in (
+                structured["component"],
+                structured["symptom"],
+                structured["condition"],
+                description,
+            )
+            if v
+        ).strip()
+        or description
+    )
     try:
         text_vector = await _embed_text(text_for_embed)
     except Exception as e:
@@ -657,12 +663,18 @@ async def ingest_document_kb(
     filename: str = Form(default=None),
     collection_hint: str = Form(default=None),
     equipment_type: str = Form(default=None),
+    tenant_id: str = Form(default=""),
 ):
     """Upload a PDF to Open WebUI Knowledge Base.
 
     Open WebUI handles text extraction, chunking, and embedding via its
     configured engine (pypdf default; Docling when DOCLING_SERVER_URL is set).
     No local parsing is performed here.
+
+    `tenant_id` resolution order (vision doc problem 11):
+      1. form field (per-request, from the authenticated caller)
+      2. MIRA_TENANT_ID env var (global, legacy nightly scripts)
+      3. empty (no tier check, shared collection)
 
     Returns JSON: {status, filename, collection_id, collection_name, file_id, processing_status}
     """
@@ -689,8 +701,21 @@ async def ingest_document_kb(
             detail=f"File exceeds 20MB limit ({len(raw) // MB}MB)",
         )
 
+    form_tenant = (tenant_id or "").strip()
+    if form_tenant:
+        tenant_id, tenant_source = form_tenant, "form"
+    elif MIRA_TENANT_ID:
+        tenant_id, tenant_source = MIRA_TENANT_ID, "env"
+    else:
+        tenant_id, tenant_source = "", "default"
+    logger.info(
+        "Document KB ingest tenant=%s source=%s filename=%s",
+        tenant_id or "(none)",
+        tenant_source,
+        fname,
+    )
+
     # Tier limit check (fail open on DB errors — never block on infra failures)
-    tenant_id = MIRA_TENANT_ID
     if tenant_id:
         try:
             from db.neon import check_tier_limit
@@ -879,11 +904,25 @@ async def _run_scrape_and_ingest(job_id: str, body: ScrapeTriggerRequest) -> Non
                 kb_write_attempts=0,
                 started_at=started_at,
             )
-        await _notify_telegram(
-            body.chat_id,
-            f"I searched for documentation on *{body.equipment_id}* but didn't find "
-            f"specific manufacturer docs. Try sending me a PDF manual directly.",
+        # Apify exhausted (e.g. memory cap) or returned nothing — try DDG/LLM fallback
+        # rather than giving up immediately. Synthetic "EMPTY" outcome seeds the chain.
+        logger.info("[%s] Primary scrape empty — attempting fallback strategies", job_id)
+        fallback_result = await run_fallback(
+            job_id=job_id,
+            manufacturer=body.manufacturer,
+            model=body.model,
+            base_url=base_url,
+            prev_verification={"outcome": "EMPTY", "apify_run_id": apify_run_id},
+            ingest_fn=_ingest_scraped_text,
+            verify_fn=verify_crawl,
+            started_at=started_at,
         )
+        if fallback_result.get("final_outcome") not in ("SUCCESS", "ACCEPTABLE"):
+            await _notify_telegram(
+                body.chat_id,
+                f"I searched for documentation on *{body.equipment_id}* but didn't find "
+                f"specific manufacturer docs. Try sending me a PDF manual directly.",
+            )
         return
 
     # 2. Ingest each scraped doc into Open WebUI KB — track KB write outcomes

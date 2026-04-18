@@ -14,3 +14,5 @@ turns:
     content: "Mitsubishi FR-D720 showing OC fault, tripping on startup"
   - role: user
     content: "0.4kW fan motor, 220V single-phase, brand new installation"
+  - role: user
+    content: "Trips immediately when I press run, parameter settings are all factory default"

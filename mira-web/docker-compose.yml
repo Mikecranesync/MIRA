@@ -13,6 +13,8 @@ services:
       - PLG_JWT_SECRET=${PLG_JWT_SECRET}
       - PLG_ATLAS_ADMIN_USER=${PLG_ATLAS_ADMIN_USER:-}
       - PLG_ATLAS_ADMIN_PASSWORD=${PLG_ATLAS_ADMIN_PASSWORD:-}
+      - ATLAS_PASSWORD_DERIVATION_KEY=${ATLAS_PASSWORD_DERIVATION_KEY:-}
+      - PLG_ADMIN_TOKEN=${PLG_ADMIN_TOKEN:-}
       - ATLAS_API_URL=${ATLAS_API_URL:-http://atlas-api:8080}
       - SIDECAR_URL=${SIDECAR_URL:-http://mira-sidecar:5000}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
@@ -31,6 +33,7 @@ services:
       - LOOM_URL_5=${LOOM_URL_5:-}
       - LOOM_UPLOAD_URL=${LOOM_UPLOAD_URL:-}
       - MIRA_MCP_URL=${MIRA_MCP_URL:-http://mira-mcp:8001}
+      - MIRA_INGEST_URL=${MIRA_INGEST_URL:-http://mira-ingest:8001}
     networks:
       - core-net
       - cmms-net
