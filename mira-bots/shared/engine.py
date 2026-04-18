@@ -27,6 +27,7 @@ from .inference.router import InferenceRouter
 from .integrations.atlas_cmms import AtlasCMMSClient
 from .nemotron import NemotronClient
 from .neon_recall import kb_has_coverage
+from .session_memory import load_session, save_session
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
@@ -615,6 +616,28 @@ class Supervisor:
                 state["state"],
             )
 
+        # Cross-session equipment memory: if this is a fresh session (IDLE,
+        # no asset), check NeonDB for a prior asset context from a previous
+        # chat session so the tech doesn't have to re-identify the equipment.
+        if state["state"] == "IDLE" and not state.get("asset_identified"):
+            prior = load_session(chat_id)
+            if prior:
+                state["asset_identified"] = prior["asset_id"]
+                ctx = state.get("context") or {}
+                sc = ctx.setdefault("session_context", {})
+                sc["equipment_type"] = prior["asset_id"]
+                sc["restored_from_memory"] = True
+                if prior.get("open_wo_id"):
+                    sc["open_wo_id"] = prior["open_wo_id"]
+                if prior.get("last_seen_fault"):
+                    sc["last_seen_fault"] = prior["last_seen_fault"]
+                state["context"] = ctx
+                logger.info(
+                    "session_memory: restored asset=%s for chat_id=%s",
+                    prior["asset_id"],
+                    chat_id,
+                )
+
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
         if (state.get("context") or {}).get("cmms_pending") and not photo_b64:
@@ -793,6 +816,13 @@ class Supervisor:
             first_sentence = full_vision.split(".")[0].strip()
             state["asset_identified"] = (
                 first_sentence[:120] if first_sentence else full_vision[:120]
+            )
+
+            # Persist asset context to NeonDB for cross-session recall
+            save_session(
+                chat_id,
+                state["asset_identified"],
+                last_seen_fault=state.get("fault_category"),
             )
 
             # Save photo to disk for follow-up turns
@@ -1498,6 +1528,9 @@ class Supervisor:
         }
         state["asset_identified"] = f"{manufacturer}, {model}"
         state["context"] = ctx
+
+        # Persist asset context to NeonDB for cross-session recall
+        save_session(chat_id, state["asset_identified"])
 
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
@@ -2652,6 +2685,13 @@ class Supervisor:
                         "pressure": "hydraulic",
                     }
                     state["fault_category"] = normalized.get(cat, cat)
+                    # Update cross-session memory with the latest fault category
+                    if state.get("asset_identified"):
+                        save_session(
+                            state["chat_id"],
+                            state["asset_identified"],
+                            last_seen_fault=state["fault_category"],
+                        )
                     break
 
         state["exchange_count"] += 1
