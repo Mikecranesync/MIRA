@@ -25,11 +25,13 @@ os.environ.setdefault("MIRA_TENANT_ID", "test-tenant")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Stub heavy optional deps
+# Note: do NOT stub 'telegram' or 'telegram.ext' here — python-telegram-bot is
+# installed in CI and other tests (test_image_downscale, test_typing_indicator)
+# import telegram.constants directly. Stubbing it with MagicMock poisons
+# sys.modules for the whole session and breaks those tests.
 for _mod in (
     "PIL",
     "PIL.Image",
-    "telegram",
-    "telegram.ext",
     "slack_sdk",
     "slack_sdk.web.async_client",
     "slack_sdk.errors",
