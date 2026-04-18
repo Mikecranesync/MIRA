@@ -144,21 +144,20 @@ async def step_gsd_engine(photo_path: Path) -> dict:
         sys.path.insert(0, bots_path)
 
     try:
-        from shared.gsd_engine import GSDEngine
+        from shared.engine import Supervisor
     except ImportError as e:
-        logger.error("  %s  Cannot import GSDEngine: %s", FAIL, e)
+        logger.error("  %s  Cannot import Supervisor: %s", FAIL, e)
         return {}
 
     db_path = "/tmp/e2e_test_mira.db"
-    engine = GSDEngine(
+    engine = Supervisor(
         db_path=db_path,
         openwebui_url=OPENWEBUI_URL,
         api_key=OPENWEBUI_KEY,
         collection_id=os.environ.get("KNOWLEDGE_COLLECTION_ID", ""),
         vision_model=os.environ.get("VISION_MODEL", "qwen2.5vl:7b"),
         tenant_id=MIRA_TENANT_ID,
-        ingest_url=INGEST_URL,
-        mcp_url=MCP_URL,
+        mcp_base_url=MCP_URL,
     )
 
     photo_b64 = base64.b64encode(photo_path.read_bytes()).decode()
@@ -170,8 +169,8 @@ async def step_gsd_engine(photo_path: Path) -> dict:
             photo_b64=photo_b64,
         )
         elapsed = time.monotonic() - t0
-        asset = engine._supervisor.rag._last_sources[:1]
-        top_score = max(engine._supervisor.rag._last_distances, default=0.0)
+        asset = engine.rag._last_sources[:1]
+        top_score = max(engine.rag._last_distances, default=0.0)
         logger.info(
             "  %s  reply=%r  top_rag_score=%.3f  (%.1fs)",
             PASS, reply[:100], top_score, elapsed,
@@ -180,7 +179,7 @@ async def step_gsd_engine(photo_path: Path) -> dict:
             "reply": reply,
             "top_rag_score": top_score,
             "kb_gap_flagged": top_score < float(os.environ.get("MIRA_KB_GAP_THRESHOLD", "0.45")),
-            "asset_identified": engine._supervisor._load_state(TEST_CHAT_ID).get("asset_identified", ""),
+            "asset_identified": engine._load_state(TEST_CHAT_ID).get("asset_identified", ""),
         }
     except Exception as e:
         logger.error("  %s  GSD engine error: %s", FAIL, e)
@@ -270,21 +269,20 @@ async def step_followup_chat(photo_path: Path, asset_identified: str) -> dict:
         sys.path.insert(0, bots_path)
 
     try:
-        from shared.gsd_engine import GSDEngine
+        from shared.engine import Supervisor
     except ImportError as e:
-        logger.error("  %s  Cannot import GSDEngine: %s", FAIL, e)
+        logger.error("  %s  Cannot import Supervisor: %s", FAIL, e)
         return {}
 
     db_path = "/tmp/e2e_test_mira.db"  # same session DB as step 2
-    engine = GSDEngine(
+    engine = Supervisor(
         db_path=db_path,
         openwebui_url=OPENWEBUI_URL,
         api_key=OPENWEBUI_KEY,
         collection_id=os.environ.get("KNOWLEDGE_COLLECTION_ID", ""),
         vision_model=os.environ.get("VISION_MODEL", "qwen2.5vl:7b"),
         tenant_id=MIRA_TENANT_ID,
-        ingest_url=INGEST_URL,
-        mcp_url=MCP_URL,
+        mcp_base_url=MCP_URL,
     )
 
     question = "What are the common fault codes for this drive and how do I clear them?"
@@ -292,7 +290,7 @@ async def step_followup_chat(photo_path: Path, asset_identified: str) -> dict:
     try:
         reply = await engine.process(chat_id=TEST_CHAT_ID, message=question)
         elapsed = time.monotonic() - t0
-        top_score = max(engine._supervisor.rag._last_distances, default=0.0)
+        top_score = max(engine.rag._last_distances, default=0.0)
 
         # Evidence: reply should contain a fault code or "Source:" citation
         has_fault_ref = any(

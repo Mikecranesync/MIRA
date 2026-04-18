@@ -40,7 +40,7 @@ CORE_COMPOSE_PATH = str(MIRA_CORE_ROOT / "docker-compose.yml")
 
 MANIFEST_100_PATH = str(_ROOT / "telegram_test_runner" / "test_manifest_100.yaml")
 MANIFEST_V2_PATH = str(_ROOT / "v2_test_harness" / "manifest_v2.yaml")
-GSD_ENGINE_PATH = str(_ROOT / "telegram" / "gsd_engine.py")
+ENGINE_PATH = str(_ROOT / "shared" / "engine.py")
 INGEST_MAIN_PATH = str(MIRA_CORE_ROOT / "mira-ingest" / "main.py")
 
 
@@ -88,7 +88,7 @@ async def run_all(args) -> tuple[list, list | None, list, object]:
     # Phase 1 — generate manifest
     if not args.skip_generate:
         if is_stale(MANIFEST_V2_PATH):
-            new_cases = generate_cases(MANIFEST_100_PATH, GSD_ENGINE_PATH, INGEST_MAIN_PATH)
+            new_cases = generate_cases(MANIFEST_100_PATH, ENGINE_PATH, INGEST_MAIN_PATH)
             write_manifest_v2(MANIFEST_100_PATH, new_cases, MANIFEST_V2_PATH)
         else:
             print(f"manifest_v2.yaml is fresh — reusing")

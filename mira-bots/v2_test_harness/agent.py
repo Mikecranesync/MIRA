@@ -99,8 +99,8 @@ def get_next_version(current_tag: str, changed_files: list[str]) -> str:
     # Major bump: judge_v2.py or runner.py changed
     if any("judge_v2.py" in f or "runner.py" in f for f in changed_files):
         return _bump_major(current_tag)
-    # Minor bump: mira-ingest/main.py DESCRIBE_SYSTEM or gsd_engine.py changed
-    if any("mira-ingest/main.py" in f or "gsd_engine.py" in f for f in changed_files):
+    # Minor bump: mira-ingest/main.py DESCRIBE_SYSTEM or engine.py changed
+    if any("mira-ingest/main.py" in f or "engine.py" in f for f in changed_files):
         return _bump_minor(current_tag)
     # Patch bump: only manifest or report changed
     return _bump_patch(current_tag)

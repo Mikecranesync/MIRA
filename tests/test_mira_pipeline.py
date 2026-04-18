@@ -17,12 +17,12 @@ _mock_gsd_engine_cls.return_value = _mock_gsd_engine_inst
 
 
 def _setup_shared_mock():
-    """Insert mock shared module so main.py can import from shared.gsd_engine."""
+    """Insert mock shared module so main.py can import from shared.engine."""
     shared = ModuleType("shared")
-    shared.gsd_engine = ModuleType("shared.gsd_engine")
-    shared.gsd_engine.GSDEngine = _mock_gsd_engine_cls  # type: ignore[attr-defined]
+    shared.engine = ModuleType("shared.engine")
+    shared.engine.Supervisor = _mock_gsd_engine_cls  # type: ignore[attr-defined]
     sys.modules["shared"] = shared
-    sys.modules["shared.gsd_engine"] = shared.gsd_engine
+    sys.modules["shared.engine"] = shared.engine
 
 
 _setup_shared_mock()

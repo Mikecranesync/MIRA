@@ -215,16 +215,17 @@ def phase2_session_check() -> dict:
 # ---------------------------------------------------------------------------
 
 async def _run_gsd_engine_smoke() -> list[dict]:
-    """5 smoke cases via GSDEngine direct. 2-turn exchange to push FSM into DIAGNOSIS."""
-    sys.path.insert(0, str(_TELEGRAM_DIR))
+    """5 smoke cases via Supervisor direct. 2-turn exchange to push FSM into DIAGNOSIS."""
+    if str(_BOTS_ROOT) not in sys.path:
+        sys.path.insert(0, str(_BOTS_ROOT))
     try:
-        from gsd_engine import GSDEngine  # type: ignore
+        from shared.engine import Supervisor
     except ImportError as e:
-        print(f"  GSDEngine import failed: {e}")
+        print(f"  Supervisor import failed: {e}")
         return []
 
     db_path = f"/tmp/mira_tg_smoke_{int(time.time())}.db"
-    engine = GSDEngine(
+    engine = Supervisor(
         db_path=db_path,
         openwebui_url=os.getenv("OPENWEBUI_BASE_URL",
             os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":3000"),
@@ -316,7 +317,7 @@ def _layer_b_bot_api(bot_info: dict) -> dict:
 
 def phase3b_smoke_test(bot_info: dict) -> dict:
     print("\n=== PHASE 3B: Two-Layer Smoke Test ===")
-    print("\n  [Layer A] GSDEngine Direct — 5 smoke cases")
+    print("\n  [Layer A] Supervisor Direct — 5 smoke cases")
 
     gsd_results = asyncio.run(_run_gsd_engine_smoke())
 

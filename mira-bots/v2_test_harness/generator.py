@@ -1,6 +1,6 @@
 """
 generator.py — Codebase-aware 20-case generator.
-Parses live gsd_engine.py to find coverage gaps, outputs YAML cases.
+Parses live engine.py to find coverage gaps, outputs YAML cases.
 """
 import ast
 import time
@@ -9,9 +9,9 @@ from pathlib import Path
 import yaml
 
 
-def parse_gsd_engine_keywords(gsd_engine_path: str) -> dict:
-    """Return {print_kws, intent_kws, fault_cats} parsed from gsd_engine.py."""
-    text = Path(gsd_engine_path).read_text()
+def parse_engine_keywords(engine_path: str) -> dict:
+    """Return {print_kws, intent_kws, fault_cats} parsed from engine.py."""
+    text = Path(engine_path).read_text()
     tree = ast.parse(text)
     result = {"print_kws": set(), "intent_kws": set(), "fault_cats": set()}
     for node in ast.walk(tree):
@@ -51,7 +51,7 @@ def find_gaps(covered: set, available: set) -> list:
 
 def generate_cases(
     manifest_100_path: str,
-    gsd_engine_path: str,
+    engine_path: str,
     ingest_main_path: str,
 ) -> list[dict]:
     """Return the 20 generated test cases."""

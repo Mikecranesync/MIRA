@@ -56,13 +56,14 @@ class _FakeSocketHandler:
 _aiohttp.AsyncSocketModeHandler = _FakeSocketHandler
 
 # ---------------------------------------------------------------------------
-# Stub gsd_engine so the module doesn't touch the filesystem on import
+# Stub shared.engine so the module doesn't touch the filesystem on import
 # ---------------------------------------------------------------------------
 
-_gsd = _stub("gsd_engine")
+_shared = _stub("shared")
+_engine_mod = _stub("shared.engine")
 
 
-class _FakeGSDEngine:
+class _FakeSupervisor:
     def __init__(self, **kwargs):
         pass
 
@@ -73,7 +74,8 @@ class _FakeGSDEngine:
         pass
 
 
-_gsd.GSDEngine = _FakeGSDEngine
+_engine_mod.Supervisor = _FakeSupervisor
+_shared.engine = _engine_mod
 
 # ---------------------------------------------------------------------------
 # Set required env vars then import the bot module

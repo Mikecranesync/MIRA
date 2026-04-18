@@ -1,7 +1,7 @@
 """Async runner for MIRA synthetic user evaluation.
 
 Fires synthetic questions at both MIRA inference paths:
-  - Bot path  (via Supervisor / GSDEngine) — sequential (SQLite limit)
+  - Bot path  (via Supervisor) — sequential (SQLite limit)
   - Sidecar path (via httpx POST /rag) — parallel with asyncio.Semaphore
 
 Usage:

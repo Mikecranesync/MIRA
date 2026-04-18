@@ -1,22 +1,23 @@
 """
-telegram_probe.py — Tests GSDEngine path (10 cases). Advisory only, never blocks release.
-Graceful degradation: Telethon → GSDEngine direct → skipped.
+telegram_probe.py — Tests Supervisor path (10 cases). Advisory only, never blocks release.
+Graceful degradation: Telethon → Supervisor direct → skipped.
 """
 import asyncio
 import base64
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 _HERE = Path(__file__).parent
-_TELEGRAM = _HERE.parent / "telegram"
+_MIRA_BOTS = _HERE.parent
 
 
 @dataclass
 class ProbeResult:
     results: list[dict] = field(default_factory=list)
-    path_used: str = "skipped"      # "telethon" | "gsd_engine_direct" | "skipped"
+    path_used: str = "skipped"      # "telethon" | "supervisor_direct" | "skipped"
     skipped: bool = False
     skip_reason: str = ""
 
@@ -28,13 +29,13 @@ async def probe_cases(cases_10: list[dict], artifacts_dir: str) -> ProbeResult:
         if session_path:
             return await _probe_via_telethon(session_path, cases_10)
 
-        # Try GSDEngine direct
-        import sys
-        sys.path.insert(0, str(_TELEGRAM))
+        # Try Supervisor direct
+        if str(_MIRA_BOTS) not in sys.path:
+            sys.path.insert(0, str(_MIRA_BOTS))
         try:
-            from gsd_engine import GSDEngine  # noqa: F401
+            from shared.engine import Supervisor  # noqa: F401
         except ImportError as e:
-            return ProbeResult(skipped=True, skip_reason=f"GSDEngine import failed: {e}")
+            return ProbeResult(skipped=True, skip_reason=f"Supervisor import failed: {e}")
 
         webui_url = os.getenv("PROBE_OPENWEBUI_URL",
             os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":3000")
@@ -42,7 +43,7 @@ async def probe_cases(cases_10: list[dict], artifacts_dir: str) -> ProbeResult:
         if not reachable:
             return ProbeResult(skipped=True, skip_reason=f"OpenWebUI not reachable at {webui_url}")
 
-        return await _probe_via_gsd_engine(cases_10)
+        return await _probe_via_supervisor(cases_10)
 
     except Exception as exc:
         return ProbeResult(skipped=True, skip_reason=f"Unexpected error: {exc}")
@@ -88,14 +89,12 @@ async def _check_webui_reachable(url: str) -> bool:
         return False
 
 
-async def _probe_via_gsd_engine(cases: list[dict]) -> ProbeResult:
-    """Direct GSDEngine.process() calls."""
-    import sys
-    sys.path.insert(0, str(_TELEGRAM))
-    from gsd_engine import GSDEngine  # type: ignore
+async def _probe_via_supervisor(cases: list[dict]) -> ProbeResult:
+    """Direct Supervisor.process() calls."""
+    from shared.engine import Supervisor
 
     db_path = f"/tmp/mira_probe_{int(time.time())}.db"
-    engine = GSDEngine(
+    engine = Supervisor(
         db_path=db_path,
         openwebui_url=os.getenv("PROBE_OPENWEBUI_URL",
             os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":3000"),
@@ -121,7 +120,7 @@ async def _probe_via_gsd_engine(cases: list[dict]) -> ProbeResult:
         results.append({
             "case": case.get("name", f"probe_{i}"),
             "reply": reply,
-            "path": "gsd_engine_direct",
+            "path": "supervisor_direct",
         })
 
     try:
@@ -129,7 +128,7 @@ async def _probe_via_gsd_engine(cases: list[dict]) -> ProbeResult:
     except OSError:
         pass
 
-    return ProbeResult(results=results, path_used="gsd_engine_direct", skipped=False)
+    return ProbeResult(results=results, path_used="supervisor_direct", skipped=False)
 
 
 async def _probe_via_telethon(session_path: str, cases: list[dict]) -> ProbeResult:

@@ -1,6 +1,6 @@
 """Local in-process pipeline runner for offline testing.
 
-Instantiates GSDEngine directly in Python — no Docker, no VPS, zero network hop
+Instantiates Supervisor directly in Python — no Docker, no VPS, zero network hop
 to bot adapters.  Production code paths run in-process:
 
   - InferenceRouter → Groq / Claude / Gemini (real LLM calls, real API keys)
@@ -49,7 +49,7 @@ if str(_MIRA_BOTS) not in sys.path:
 
 
 class LocalPipeline:
-    """In-process GSDEngine runner.
+    """In-process Supervisor runner.
 
     Drop-in replacement for the VPS HTTP pipeline used by run_eval.py.
     Returns (reply, http_status, latency_ms) tuples so existing graders work
@@ -128,9 +128,9 @@ class LocalPipeline:
                 )
 
         # Import after path setup so mira-bots/ is on sys.path
-        from shared.gsd_engine import GSDEngine  # noqa: PLC0415
+        from shared.engine import Supervisor  # noqa: PLC0415
 
-        self._engine = GSDEngine(
+        self._engine = Supervisor(
             db_path=self.db_path,
             openwebui_url=_openwebui_url,
             api_key=_api_key,
