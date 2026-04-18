@@ -18,7 +18,7 @@
  *   GET  /api/quota               → Daily query quota status (active only)
  *   POST /api/ingest/manual       → Proxy PDF upload to mira-mcp (active only)
  *   GET  /demo/work-orders        → Static ticker data (no auth)
- *   POST /api/mira/chat           → SSE AI chat via mira-sidecar (active only)
+ *   POST /api/mira/chat           → SSE AI chat via mira-pipeline (active only)
  *   GET  /demo/tenant-work-orders → Real WOs for authenticated user (active only)
  */
 
@@ -926,7 +926,7 @@ app.post("/api/mira/chat", requireActive, async (c) => {
     // Log query and decrement quota
     await logQuery(user.sub, query);
 
-    // Call mira-sidecar
+    // Call mira-pipeline
     const response = await queryMira({
       query,
       assetId: body.assetId || "",
