@@ -107,6 +107,7 @@
     <div class="topbar-right" id="topbar-right">
       <a href="/blog" style="font-size:13px;color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms">Blog</a>
       <a href="/blog/fault-codes" style="font-size:13px;color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms">Fault Codes</a>
+      <a href="/api/cmms/login" style="font-size:13px;color:rgba(255,255,255,0.5);text-decoration:none;transition:color 150ms">Sign in</a>
       <span id="topbar-user" style="font-size:var(--text-xs);color:var(--text-muted);display:none"></span>
     </div>
   </nav>
@@ -122,16 +123,16 @@
       <!-- Signup Form -->
       <div class="signup-card" id="signup-form-wrap">
         <div class="form-row">
+          <label for="f-firstname">First name</label>
+          <input type="text" id="f-firstname" placeholder="Mike" autocomplete="given-name">
+        </div>
+        <div class="form-row">
           <label for="f-email">Work email</label>
           <input type="email" id="f-email" placeholder="you@yourplant.com" autocomplete="email" required>
         </div>
         <div class="form-row">
           <label for="f-company">Company / Facility name</label>
           <input type="text" id="f-company" placeholder="Acme Manufacturing" autocomplete="organization" required>
-        </div>
-        <div class="form-row">
-          <label for="f-firstname">First name</label>
-          <input type="text" id="f-firstname" placeholder="Mike" autocomplete="given-name">
         </div>
         <div class="form-row" style="margin-top:12px">
           <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:var(--text-sm);color:var(--text-secondary)">
@@ -141,8 +142,8 @@
         </div>
         <div id="form-error" class="form-error"></div>
         <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
-          <i data-lucide="zap" style="width:16px;height:16px"></i>
-          Join the Beta — $97/mo
+          <i data-lucide="play-circle" style="width:16px;height:16px"></i>
+          Watch the 60-second demo
         </button>
         <p style="margin:8px 0 0;font-size:var(--text-xs);color:var(--text-muted);text-align:center">Site license — unlimited users. Cancel anytime.</p>
       </div>
