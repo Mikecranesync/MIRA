@@ -4,7 +4,8 @@ description: "ABB ACS150 multi-turn — asset tag to symptom to diagnosis across
 # LIVE shows DIAGNOSIS with FLA/nameplate check Q — real KB response.
 expected_final_state: DIAGNOSIS
 max_turns: 10
-expected_keywords: [motor, current]
+expected_keywords: [motor, current, manual, documentation]
+# 'manual'/'documentation' match citation gate banner if ACS150 not in KB
 forbidden_keywords: []
 expected_vendor: ABB
 wo_expected: false

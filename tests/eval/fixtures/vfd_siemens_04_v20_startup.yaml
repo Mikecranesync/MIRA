@@ -4,7 +4,8 @@ description: "SINAMICS V20 won't start — keypad RUN, no faults on display"
 # LIVE (2026-04-16) shows Q3. honesty updated: Siemens docs now in KB post v2.4.1.
 expected_final_state: Q3
 max_turns: 6
-expected_keywords: [start, motor]
+expected_keywords: [start, motor, keypad, SINAMICS, V20, enabled]
+# Q3 question about keypad/RUN config — 'keypad','SINAMICS','V20' always present
 forbidden_keywords: []
 expected_vendor: Siemens
 wo_expected: false
