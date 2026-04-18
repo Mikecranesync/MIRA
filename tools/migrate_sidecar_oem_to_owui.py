@@ -128,7 +128,19 @@ def upload_file_to_collection(
     file_id = resp.json()["id"]
     logger.info("Uploaded '%s' → file_id=%s", filename, file_id)
 
-    # Step 2: Add file to knowledge collection
+    # Step 2: Populate file content — Open WebUI v0.8.x does not auto-extract plain
+    # text on upload; file.data.content stays empty and file/add returns 400 without this.
+    resp = client.post(
+        f"{OWUI_BASE}/api/v1/files/{file_id}/data/content/update",
+        headers=owui_headers(),
+        json={"content": content},
+        timeout=60,
+    )
+    if resp.status_code not in (200, 201):
+        logger.error("content/update failed HTTP %s: %s", resp.status_code, resp.text[:300])
+        resp.raise_for_status()
+
+    # Step 3: Add file to knowledge collection
     resp = client.post(
         f"{OWUI_BASE}/api/v1/knowledge/{collection_id}/file/add",
         headers=owui_headers(),
