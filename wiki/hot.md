@@ -5,7 +5,8 @@
 - **feat/training-loop-v1 deployed to VPS**: rebuilt mira-pipeline-saas with `doppler run` — healthy, serving on :9099
 - **VPS eval: 53/57 (93%)** — up from 34/57 on main. 4 failures are all keyword_match only (FSM, pipeline, 5xx, budget all PASS). Scorecard: `tests/eval/runs/2026-04-18.md`
 - **8 fixture improvements committed**: citation gate banner keywords + Groq expected_final_state fixes
-- **Next**: OEM migration (say "run the OEM migration"), then BFG+HTTPS
+- **OEM migration**: ✅ COMPLETE — 398/398 chunks uploaded to "OEM Library — MIRA Shared" (id=bb7cca00). Fix required: `content/update` step before `file/add` (Open WebUI v0.8.x bug). Sidecar can be stopped; DO NOT delete mira_mira-chroma volume until Brain2 tenant docs confirmed migrated.
+- **Next**: BFG+HTTPS
 
 ## Session — 2026-04-18 (BRAVO)
 - **PR #384 opened**: `feat/citation-gate` → `feat/training-loop-v1` — 5 post-gate fixes (SAFETY_ALERT, Ollama fallback, grader DIAGNOSIS_REVISION, OEM migration update)
