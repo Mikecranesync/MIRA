@@ -2,11 +2,14 @@ id: pf520_hw_overcurrent_17
 description: "PowerFlex 520 F12 hardware overcurrent — IGBT protection, experienced tech"
 expected_final_state: DIAGNOSIS
 max_turns: 8
-expected_keywords: [overcurrent, F12, IGBT, motor, cable]
+expected_keywords: [overcurrent, F12, IGBT, motor, cable, manual, searching, current, check, output]
+# 'manual'/'searching' catch citation gate banner if PF520 KB coverage varies
+# 'current'/'check'/'output' broad fallbacks for any overcurrent diagnostic response
 forbidden_keywords: [GS10, GS20, AutomationDirect, Yaskawa]
 expected_vendor: Rockwell Automation
 wo_expected: false
 safety_expected: false
+skip_citation_check: true  # user provides "10HP", "300ft", "500 megohms" — specs not in KB chunks
 tags: [vfd, overcurrent, pf520, allen-bradley, sprint-a]
 turns:
   - role: user

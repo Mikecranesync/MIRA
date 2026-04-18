@@ -102,9 +102,12 @@ _STATE_ALIASES: dict[str, str] = {
     "DIAGNOSTIC": "DIAGNOSIS",
     "DIAGNOSIS_SUMMARY": "DIAGNOSIS",
     "FAULT_ANALYSIS": "DIAGNOSIS",
+    "FAULT_IDENTIFIED": "DIAGNOSIS",  # fault identified → ready for diagnosis
     "ANALYZING": "DIAGNOSIS",
     "ANALYSIS": "DIAGNOSIS",
     "ROOT_CAUSE": "DIAGNOSIS",
+    "FAULT_INVESTIGATION": "Q2",  # mid-investigation → Q2 (still gathering)
+    "INVESTIGATING": "Q2",
     # Question variants
     "TROUBLESHOOT": "Q1",
     "TROUBLESHOOTING": "Q1",
@@ -113,6 +116,8 @@ _STATE_ALIASES: dict[str, str] = {
     "INQUIRY": "Q1",
     "NEED_MORE_INFO": "Q1",
     "NEED_INFO": "Q1",
+    "NEED_MODEL_NUMBER": "Q1",  # request for model clarification
+    "PARAMETER_INQUIRY": "IDLE",  # pure parameter lookup — no diagnostic session
     "PARAMETER_IDENTIFIED": "Q1",
     "READING_IDENTIFIED": "Q1",
     "INSTALLATION_GUIDANCE": "FIX_STEP",

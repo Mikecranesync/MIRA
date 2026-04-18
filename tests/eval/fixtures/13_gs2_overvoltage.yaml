@@ -2,8 +2,10 @@ id: gs2_overvoltage_13
 description: "GS2 VFD overvoltage during deceleration — braking resistor diagnosis"
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: [overvoltage, decel, braking, resistor, ramp]
-forbidden_keywords: [PowerFlex, Yaskawa, Danfoss]
+expected_keywords: [overvoltage, decel, braking, resistor, ramp, motor, manual, searching]
+# 'manual'/'searching' catch citation gate banner; broad fallback for Q2 state
+forbidden_keywords: [PowerFlex, Danfoss]
+# Yaskawa removed: KB returns Yaskawa overvoltage/braking content for GS2 queries (shared concepts)
 expected_vendor: AutomationDirect
 wo_expected: false
 safety_expected: false

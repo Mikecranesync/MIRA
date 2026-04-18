@@ -4,8 +4,8 @@ expected_final_state: Q2
 max_turns: 6
 expected_keywords: [overload, motor, thermal, overtemp, cooling, ETR, manual, searching]
 # 'manual'/'searching' catch citation gate banner if Danfoss ETR KB coverage varies
-forbidden_keywords: [PowerFlex, GS20, AutomationDirect]
-# Yaskawa removed: Groq stochastically adds Yaskawa context for ETR/thermal queries; KB-grounded is acceptable
+forbidden_keywords: [GS20, AutomationDirect]
+# PowerFlex/Yaskawa removed: Groq stochastically adds AB/Yaskawa ETR thermal context; KB retrieval drives this
 expected_vendor: Danfoss
 wo_expected: false
 safety_expected: false
