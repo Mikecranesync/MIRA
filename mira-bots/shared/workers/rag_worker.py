@@ -574,20 +574,29 @@ class RAGWorker:
             return []
 
     async def _embed_ollama(self, text: str) -> list[float] | None:
-        """Embed text via Ollama nomic-embed-text (768-dim, matches NeonDB vectors)."""
-        ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+        """Embed text via Ollama nomic-embed-text (768-dim, matches NeonDB vectors).
+
+        Tries OLLAMA_BASE_URL first (default: host.docker.internal for Docker deployments),
+        then falls back to localhost:11434 for local/offline runs outside Docker.
+        """
+        primary_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
         embed_model = os.environ.get("EMBED_TEXT_MODEL", "nomic-embed-text:latest")
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.post(
-                    f"{ollama_url}/api/embeddings",
-                    json={"model": embed_model, "prompt": text},
-                )
-                resp.raise_for_status()
-                return resp.json()["embedding"]
-        except Exception as e:
-            logger.warning("Ollama embed failed: %s", e)
-            return None
+        candidates = [primary_url]
+        if primary_url != "http://localhost:11434":
+            candidates.append("http://localhost:11434")
+        for ollama_url in candidates:
+            try:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    resp = await client.post(
+                        f"{ollama_url}/api/embeddings",
+                        json={"model": embed_model, "prompt": text},
+                    )
+                    resp.raise_for_status()
+                    return resp.json()["embedding"]
+            except Exception as e:
+                logger.debug("Ollama embed failed at %s: %s", ollama_url, e)
+        logger.warning("Ollama embed failed on all candidates: %s", candidates)
+        return None
 
     async def _call_llm(self, messages: list[dict], model: str = None) -> str:
         """Call LLM — cloud cascade (Groq→Cerebras→Claude) then Open WebUI fallback."""

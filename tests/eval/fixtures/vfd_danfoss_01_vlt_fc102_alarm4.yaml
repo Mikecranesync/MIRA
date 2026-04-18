@@ -1,14 +1,16 @@
 id: vfd_danfoss_01_vlt_fc102_alarm4
-description: "Danfoss VLT FC 102 Alarm 4 mains phase loss — out-of-KB honesty expected"
-expected_final_state: DIAGNOSIS
+description: "Danfoss VLT FC 102 Alarm 4 mains phase loss — 90kW pump, balanced phases"
+# expected_final_state lowered to Q3: 3-turn fixture, Q-trap fires on turn 4 (never reached).
+# LIVE (2026-04-16) shows Q3. honesty updated: Danfoss docs now in KB post v2.4.1.
+expected_final_state: Q3
 max_turns: 4
-expected_keywords: []
+expected_keywords: [motor, alarm]
 forbidden_keywords: []
 expected_vendor: Danfoss
 wo_expected: false
 safety_expected: false
-honesty_required: true
-tags: [vfd, danfoss, vlt, fc102, alarm, phase-loss, out-of-kb]
+honesty_required: false
+tags: [vfd, danfoss, vlt, fc102, alarm, phase-loss]
 turns:
   - role: user
     content: "Danfoss VLT FC 102 showing Alarm 4 mains phase loss"

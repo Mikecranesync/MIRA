@@ -643,8 +643,21 @@ class Supervisor:
 
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
         if not photo_b64 and intent == "documentation":
-            combined = f"{message} {state.get('asset_identified', '')}".strip()
+            asset = state.get("asset_identified") or ""
+            combined = f"{message} {asset}".strip()
             mfr = vendor_name_from_text(combined) or ""
+
+            # If no vendor found yet and no asset_identified, scan recent history.
+            # Covers "Can you find a manual for this?" mid-session where user
+            # named the equipment 2-3 turns ago but asset_identified was never set.
+            if not mfr and not asset:
+                ctx_h = state.get("context") or {}
+                history = ctx_h.get("history", [])
+                # Last 4 messages (2 exchanges) — enough to catch recent vendor mentions
+                history_tail = " ".join(t.get("content", "") for t in history[-4:])
+                mfr = vendor_name_from_text(history_tail) or ""
+                if mfr:
+                    combined = f"{message} {history_tail}".strip()
 
             # Fast-path: if KB has no coverage for this vendor, gathering a model
             # number won't help — skip straight to the honest "no docs" response.
@@ -657,12 +670,21 @@ class Supervisor:
 
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
-            if not self._is_doc_specific(mfr, combined):
+            # Exception: if we're in an active session AND vendor is known from context
+            # (history extraction above), proceed to doc lookup — the crawl is useful
+            # and we don't need to ask the tech for vendor they already told us.
+            in_active_session = state["state"] not in ("IDLE",)
+            vendor_from_context = mfr and not vendor_name_from_text(
+                f"{message} {asset}".strip()
+            )  # True when mfr came from history (not current message or asset_identified)
+            if not self._is_doc_specific(mfr, combined) and not (
+                in_active_session and vendor_from_context
+            ):
                 return await self._enter_manual_lookup_gathering(
                     chat_id, message, state, trace_id, mfr
                 )
 
-            # Specific enough — Phase 2 KB pre-check + crawl
+            # Specific enough (or vendor known from session context) — Phase 2 KB pre-check + crawl
             return await self._do_documentation_lookup(
                 chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
             )
@@ -1876,12 +1898,17 @@ class Supervisor:
         # stuck in a mid-diagnostic state after the "no docs" response.
         state["state"] = "IDLE"
         state["context"] = ctx
+        # Reset session to IDLE — KB miss means no diagnosis can proceed.
+        # Allows tech to start fresh after being redirected to manufacturer docs.
+        prior_state = state["state"]
+        state["state"] = "IDLE"
         asyncio.create_task(self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id))
         logger.info(
-            "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s",
+            "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s prior_state=%s → IDLE",
             chat_id,
             mfr,
             url,
+            prior_state,
         )
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
@@ -2416,8 +2443,13 @@ class Supervisor:
         current = state["state"]
         reply_lower = parsed.get("reply", "").lower()
 
+        # Safety override: fire when LLM explicitly sets next_state OR when the reply
+        # starts with "STOP" (per safety protocol — Rule SAFETY OVERRIDE).
+        # Do NOT trigger on incidental mention of safety keywords in diagnostic text
+        # (e.g. "Check for melted insulation" is a valid diagnostic step, not a hazard).
+        _reply_starts_stop = reply_lower.lstrip().startswith("stop")
         if (
-            any(kw in reply_lower for kw in SAFETY_KEYWORDS)
+            (_reply_starts_stop and any(kw in reply_lower for kw in SAFETY_KEYWORDS))
             or parsed.get("next_state") == "SAFETY_ALERT"
         ):
             state["state"] = "SAFETY_ALERT"

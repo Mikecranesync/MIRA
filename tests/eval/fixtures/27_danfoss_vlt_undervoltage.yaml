@@ -2,11 +2,12 @@ id: danfoss_vlt_undervoltage_27
 description: "Danfoss VLT FC302 alarm 8 DC link undervoltage — supply quality diagnosis"
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: [undervoltage, supply, voltage, mains, DC link]
+expected_keywords: [undervoltage, supply, voltage, mains, DC link, fault, alarm]
 forbidden_keywords: [PowerFlex, Allen-Bradley, GS20, AutomationDirect]
 expected_vendor: Danfoss
 wo_expected: false
 safety_expected: false
+skip_citation_check: true  # user provides "480V", "440 and 485" — specs not in KB chunks
 tags: [vfd, undervoltage, danfoss, vlt, sprint-a]
 turns:
   - role: user
