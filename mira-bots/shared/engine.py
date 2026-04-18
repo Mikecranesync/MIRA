@@ -623,17 +623,39 @@ class Supervisor:
 
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
         if not photo_b64 and intent == "documentation":
-            combined = f"{message} {state.get('asset_identified', '')}".strip()
+            asset = state.get("asset_identified") or ""
+            combined = f"{message} {asset}".strip()
             mfr = vendor_name_from_text(combined) or ""
+
+            # If no vendor found yet and no asset_identified, scan recent history.
+            # Covers "Can you find a manual for this?" mid-session where user
+            # named the equipment 2-3 turns ago but asset_identified was never set.
+            if not mfr and not asset:
+                ctx_h = state.get("context") or {}
+                history = ctx_h.get("history", [])
+                # Last 4 messages (2 exchanges) — enough to catch recent vendor mentions
+                history_tail = " ".join(t.get("content", "") for t in history[-4:])
+                mfr = vendor_name_from_text(history_tail) or ""
+                if mfr:
+                    combined = f"{message} {history_tail}".strip()
 
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
-            if not self._is_doc_specific(mfr, combined):
+            # Exception: if we're in an active session AND vendor is known from context
+            # (history extraction above), proceed to doc lookup — the crawl is useful
+            # and we don't need to ask the tech for vendor they already told us.
+            in_active_session = state["state"] not in ("IDLE",)
+            vendor_from_context = mfr and not vendor_name_from_text(
+                f"{message} {asset}".strip()
+            )  # True when mfr came from history (not current message or asset_identified)
+            if not self._is_doc_specific(mfr, combined) and not (
+                in_active_session and vendor_from_context
+            ):
                 return await self._enter_manual_lookup_gathering(
                     chat_id, message, state, trace_id, mfr
                 )
 
-            # Specific enough — Phase 2 KB pre-check + crawl
+            # Specific enough (or vendor known from session context) — Phase 2 KB pre-check + crawl
             return await self._do_documentation_lookup(
                 chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
             )
@@ -1693,16 +1715,21 @@ class Supervisor:
             "queued_at": datetime.now(timezone.utc).isoformat(),
         }
         state["context"] = ctx
+        # Reset session to IDLE — KB miss means no diagnosis can proceed.
+        # Allows tech to start fresh after being redirected to manufacturer docs.
+        prior_state = state["state"]
+        state["state"] = "IDLE"
         asyncio.create_task(self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id))
         logger.info(
-            "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s",
+            "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s prior_state=%s → IDLE",
             chat_id,
             mfr,
             url,
+            prior_state,
         )
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
-        return self._make_result(reply, "low", trace_id, state["state"])
+        return self._make_result(reply, "low", trace_id, "IDLE")
 
     async def _check_pending_doc_job(self, chat_id: str, state: dict) -> str:
         """Check if a previous doc-crawl job for this chat finished with exhausted fallback.
