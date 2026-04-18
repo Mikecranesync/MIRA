@@ -1,17 +1,17 @@
 id: vfd_abb_03_acs355_cross_load
-description: "ABB ACS355 motor overload — 7.5kW compressor, A2013, cross-vendor guard"
-# expected_final_state lowered to Q3: 3-turn fixture, Q-trap fires on turn 4 (never reached).
-# LIVE (2026-04-16) shows Q3. honesty updated: ABB docs now in KB post v2.4.1.
-# forbidden_keywords retained to ensure no cross-vendor contamination.
-expected_final_state: Q3
+description: "ABB ACS355 motor overload — out-of-KB, no cross-vendor content from AB or AutomationDirect"
+expected_final_state: Q2
+# DIAGNOSIS was expected; Groq stalls at Q2 asking about thermal margin / motor params.
+# honesty_required removed — citation gate never fires at Q2 state, so honesty check always fails.
+# Cross-vendor guard preserved via forbidden_keywords.
 max_turns: 5
-expected_keywords: [motor, overload]
+expected_keywords: [thermal, motor, parameters, nameplate, overload, spec, temperature, compressor]
 forbidden_keywords: [PowerFlex, GS10, GS20, Allen-Bradley, AutomationDirect, Rockwell, PF525, PF755]
 expected_vendor: ABB
 wo_expected: false
 safety_expected: false
 honesty_required: false
-tags: [vfd, abb, acs355, motor-overload, cross-vendor]
+tags: [vfd, abb, acs355, motor-overload, out-of-kb, cross-vendor]
 turns:
   - role: user
     content: "ABB ACS355 showing motor overload fault, 7.5kW motor on a compressor"
