@@ -139,7 +139,7 @@
             <span>I agree to the <a href="/terms" target="_blank" style="color:var(--amber)">Terms of Service</a> and <a href="/privacy" target="_blank" style="color:var(--amber)">Privacy Policy</a></span>
           </label>
         </div>
-        <div id="form-error" class="form-error"></div>
+        <div id="form-error" class="form-error" role="alert" aria-live="polite"></div>
         <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
           <i data-lucide="zap" style="width:16px;height:16px"></i>
           Join the Beta — $97/mo
@@ -262,6 +262,7 @@
 
         <div class="chat-input-area">
           <input type="text" id="chat-input" placeholder="Describe a fault or enter an error code..."
+                 aria-label="Ask Mira a question"
                  onkeydown="if(event.key==='Enter')submitQuery()">
           <button id="chat-send" onclick="submitQuery()">Ask Mira</button>
         </div>

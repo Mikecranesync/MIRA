@@ -69,7 +69,7 @@
       --border-hi:    rgba(255,255,255,0.12);
       --text:         #e8eaf0;
       --text-dim:     rgba(255,255,255,0.5);
-      --text-faint:   rgba(255,255,255,0.28);
+      --text-faint:   rgba(255,255,255,0.4);
       --text-label:   rgba(255,255,255,0.35);
       --amber:        #f0a000;
       --teal:         #00d4aa;
@@ -124,6 +124,8 @@
 
     @media (prefers-reduced-motion: reduce) {
       .fade-in { opacity: 1; transform: none; transition: none; }
+      .cta-start-pulse { animation: none; }
+      .demo-cursor { animation: none; }
     }
 
     /* ── Navigation ── */
@@ -1076,7 +1078,7 @@
         </div>
 
         <!-- Product demo frame -->
-        <div class="hero-demo fade-in" aria-hidden="true">
+        <div class="hero-demo fade-in">
           <div class="demo-frame" role="img" aria-label="Mira chat interface demo">
             <div class="demo-frame-bar">
               <div class="demo-frame-dot"></div>
