@@ -772,170 +772,94 @@
     }
     .slideshow:hover::after { border-color: rgba(240,160,0,0.18); }
 
-    /* ── Conversation transcript (replaces sg-gallery) ── */
-    .conversation {
+    /* ── Screenshot gallery ── */
+    .sg-gallery {
       display: flex;
-      flex-direction: column;
-      gap: 16px;
-      max-width: 620px;
-      margin: 0 auto;
-      padding: 8px 0;
+      flex-direction: row;
+      gap: 8px;
+      overflow: hidden;
+      height: 280px;
+    }
+    .sg-item {
+      flex: 1;
+      min-width: 0;
+      transition: flex 0.3s cubic-bezier(0.16,1,0.3,1), box-shadow 0.3s ease;
+      cursor: pointer;
       position: relative;
-    }
-    .conv-turn {
-      display: flex;
-      gap: 10px;
-      opacity: 0;
-      transform: translateY(10px);
-      animation: conv-in 520ms cubic-bezier(0.16,1,0.3,1) forwards;
-    }
-    .conv-turn:nth-of-type(1) { animation-delay: 60ms; }
-    .conv-turn:nth-of-type(2) { animation-delay: 180ms; }
-    .conv-turn:nth-of-type(3) { animation-delay: 320ms; }
-    .conv-turn:nth-of-type(4) { animation-delay: 460ms; }
-    .conv-turn-tech { justify-content: flex-end; }
-    .conv-turn-mira { justify-content: flex-start; align-items: flex-start; }
-    .conv-avatar {
-      width: 28px; height: 28px; flex: none;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #f0a030 0%, #c97705 100%);
-      color: #0a0a08;
-      font-family: 'IBM Plex Mono', ui-monospace, monospace;
-      font-size: 11px; font-weight: 700;
-      display: grid; place-items: center;
-      box-shadow: 0 0 28px rgba(240,160,0,0.30), inset 0 1px 0 rgba(255,255,255,0.25);
-      margin-top: 4px;
-    }
-    .conv-bubble {
-      max-width: 460px;
-      padding: 13px 16px 14px;
-      border-radius: 16px;
-      font-size: 14px;
-      line-height: 1.55;
-      color: var(--text);
-      border: 1px solid var(--border);
-      background: var(--surface);
-      position: relative;
-    }
-    .conv-bubble p { margin: 0 0 6px; }
-    .conv-bubble p:last-child { margin-bottom: 0; }
-    .conv-bubble-tech {
-      background: rgba(255,255,255,0.045);
-      border-color: rgba(255,255,255,0.09);
-      border-radius: 16px 16px 4px 16px;
-      color: rgba(232,234,240,0.95);
-    }
-    .conv-bubble-mira {
-      background:
-        linear-gradient(180deg, rgba(240,160,0,0.055) 0%, rgba(19,20,26,0.96) 55%);
-      border-color: rgba(240,160,0,0.22);
-      border-radius: 16px 16px 16px 4px;
-      box-shadow:
-        0 14px 40px rgba(0,0,0,0.28),
-        0 0 60px -20px rgba(240,160,0,0.32);
-    }
-    .conv-meta {
-      font-family: 'IBM Plex Mono', ui-monospace, monospace;
-      font-size: 10px;
-      letter-spacing: 0.10em;
-      text-transform: uppercase;
-      color: var(--text-faint);
-      margin-bottom: 6px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .conv-meta strong {
-      color: var(--text-dim);
-      font-weight: 500;
-    }
-    .conv-meta-dot {
-      width: 4px; height: 4px;
-      border-radius: 50%;
-      background: var(--amber);
-      box-shadow: 0 0 6px rgba(240,160,0,0.6);
-    }
-    .conv-citation {
-      font-family: 'IBM Plex Mono', ui-monospace, monospace;
-      font-size: 11px;
-      color: var(--amber);
-      margin-top: 10px;
-      padding-top: 8px;
-      border-top: 1px solid rgba(240,160,0,0.14);
-      letter-spacing: 0.02em;
-    }
-    .conv-kbd {
-      font-family: 'IBM Plex Mono', ui-monospace, monospace;
-      font-size: 12px;
-      color: var(--amber);
-      background: rgba(240,160,0,0.10);
-      border: 1px solid rgba(240,160,0,0.20);
-      padding: 1px 6px;
-      border-radius: 4px;
-    }
-    .conv-attachment {
-      margin: 12px -4px -2px;
       border-radius: 10px;
       overflow: hidden;
       border: 1px solid rgba(255,255,255,0.08);
-      position: relative;
-      cursor: zoom-in;
-      box-shadow: 0 18px 44px rgba(0,0,0,0.38);
-      background: #0a0b0e;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
     }
-    .conv-attachment::before {
+    .sg-item::before {
       content: '';
       position: absolute;
-      inset: -30px;
-      background: radial-gradient(ellipse at 50% 50%, rgba(240,160,0,0.16), transparent 70%);
+      inset: -20px;
+      background: radial-gradient(ellipse at 50% 60%, rgba(240,160,0,0.10), transparent 70%);
       z-index: -1;
-      filter: blur(42px);
-      opacity: 0.7;
+      filter: blur(30px);
+      opacity: 0;
+      transition: opacity 0.4s ease;
       pointer-events: none;
     }
-    .conv-attachment img {
-      width: 100%;
-      display: block;
-      transition: transform 600ms cubic-bezier(0.16,1,0.3,1);
+    .sg-item:hover {
+      flex: 3;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5), 0 0 30px rgba(240,160,0,0.12);
+      border-color: rgba(240,160,0,0.25);
     }
-    .conv-attachment:hover img { transform: scale(1.02); }
-    .conv-attachment figcaption {
+    .sg-item:hover::before {
+      opacity: 1;
+    }
+    .sg-callout {
       position: absolute;
-      top: 10px; left: 10px;
+      top: 10px;
+      left: 10px;
       background: rgba(0,0,0,0.55);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border: 1px solid rgba(255,255,255,0.10);
       border-radius: 5px;
       padding: 3px 9px;
       font-size: 10px;
       font-family: 'IBM Plex Mono', ui-monospace, monospace;
-      color: rgba(255,255,255,0.82);
+      color: rgba(255,255,255,0.85);
       text-transform: uppercase;
-      letter-spacing: 0.10em;
+      letter-spacing: 0.08em;
       pointer-events: none;
       z-index: 2;
     }
-    .conv-zoom {
+    .sg-item img {
+      width: 100%;
+      height: 280px;
+      object-fit: cover;
+      display: block;
+    }
+    .sg-caption {
+      display: block;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.35);
+      margin-top: 8px;
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    }
+    .sg-overlay {
       position: absolute;
-      right: 10px; bottom: 10px;
-      width: 38%;
-      max-width: 240px;
-      border-radius: 6px;
-      border: 1px solid rgba(240,160,0,0.35);
-      box-shadow: 0 10px 28px rgba(0,0,0,0.55);
-      background: #0a0b0e;
-      transition: transform 400ms cubic-bezier(0.16,1,0.3,1);
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 16px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.8));
+      color: #e8eaf0;
+      font-size: 13px;
+      line-height: 1.4;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
     }
-    .conv-attachment:hover .conv-zoom { transform: scale(1.06); }
-    @keyframes conv-in {
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .conv-turn { animation: none; opacity: 1; transform: none; }
-    }
+    .sg-item:hover .sg-overlay { opacity: 1; }
 
-    /* Lightbox (kept — retargeted at .conv-attachment) */
+    /* Lightbox */
     .sg-lightbox {
       position: fixed;
       inset: 0;
@@ -943,10 +867,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(0,0,0,0.88);
-      backdrop-filter: blur(10px);
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(8px);
       opacity: 0;
-      transition: opacity 0.22s ease;
+      transition: opacity 0.2s ease;
       pointer-events: none;
     }
     .sg-lightbox.active {
@@ -954,18 +878,17 @@
       pointer-events: auto;
     }
     .sg-lightbox-inner {
-      max-width: 1100px;
-      width: 92vw;
+      max-width: 960px;
+      width: 90vw;
       position: relative;
     }
     .sg-lightbox-img {
       width: 100%;
       border-radius: 10px;
       display: block;
-      box-shadow: 0 40px 100px rgba(0,0,0,0.6);
     }
     .sg-lightbox-desc {
-      color: rgba(255,255,255,0.85);
+      color: rgba(255,255,255,0.8);
       font-size: 15px;
       line-height: 1.6;
       margin-top: 16px;
@@ -997,9 +920,18 @@
     }
 
     @media (max-width: 768px) {
-      .conversation { max-width: 100%; gap: 12px; }
-      .conv-bubble { max-width: 80vw; font-size: 13.5px; }
-      .conv-zoom { width: 48%; }
+      .sg-gallery {
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        gap: 12px;
+        height: auto;
+      }
+      .sg-item {
+        flex: none;
+        width: 75vw;
+        scroll-snap-align: start;
+      }
+      .sg-item img { height: 200px; }
       .sg-lightbox-inner { width: 95vw; }
     }
 
@@ -1194,8 +1126,9 @@
             Answers in seconds,<br>not hours
           </h2>
           <p class="feature-body">
-            Send a fault code at 2am. Get a cited answer, a ranked cause list, and a work order opened
-            in your CMMS — before the next shift walks in.
+            Tells you why it's failing, not just when. Send a fault code, describe a symptom,
+            or upload a photo — get a cited answer from your OEM manuals and your team's
+            repair history.
           </p>
           <div class="feature-stats">
             <span class="feature-stat">Catches faults at 2am</span>
@@ -1203,98 +1136,60 @@
           </div>
         </div>
 
-        <div class="conversation fade-in" aria-label="Fault Diagnosis — real technician conversation with MIRA">
-          <div class="conv-turn conv-turn-tech">
-            <div class="conv-bubble conv-bubble-tech">
-              <div class="conv-meta"><strong>Technician</strong> · 02:14 AM · Line 3</div>
-              <p>PowerFlex 753 on Line 3 tripped on fault <span class="conv-kbd">F-012</span> twice in the last 15 min — both right after startup. Root cause? And which params should I check?</p>
-            </div>
+        <div class="sg-gallery fade-in" aria-label="Fault Diagnosis screenshots">
+          <div class="sg-item" data-description="Type or voice a fault code into chat. MIRA searches your uploaded OEM manuals and returns a cited answer in seconds." data-feature-url="/feature/fault-diagnosis">
+            <span class="sg-callout">Query typed</span>
+            <img src="/public/screenshots/fault-diagnosis-01.webp" alt="User asks MIRA about PowerFlex F-012 fault code" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">Ask any fault code</div>
+            <span class="sg-caption">Ask a fault code</span>
           </div>
-          <div class="conv-turn conv-turn-mira">
-            <div class="conv-avatar" aria-hidden="true">M</div>
-            <div class="conv-bubble conv-bubble-mira">
-              <div class="conv-meta"><span class="conv-meta-dot"></span><strong>MIRA</strong> · answered in 1.8 s</div>
-              <p><span class="conv-kbd">F-012</span> on a PowerFlex 753 = <strong>motor overload trip</strong>. The drive hit its thermal I²t limit based on <span class="conv-kbd">F501</span> Motor OL Current × <span class="conv-kbd">F502</span> Motor OL Hertz.</p>
-              <p>Two trips inside 15 min of startup narrows it to three causes, ranked by likelihood:</p>
-              <p>&nbsp;&nbsp;1. <strong>F501 set too low</strong> vs. motor nameplate FLA — most common miscommissioning<br>
-              &nbsp;&nbsp;2. Blocked airflow / clogged motor fan<br>
-              &nbsp;&nbsp;3. Mechanical bind on the driven load</p>
-              <p>Check F501 against the nameplate FLA first — it's the fastest test.</p>
-              <p class="conv-citation">§4.3 PowerFlex 753 Programming Manual · p. 172</p>
-              <figure class="conv-attachment" data-description="MIRA returns a cited fault diagnosis in under 2 seconds — root cause, ranked likely causes, and the exact manual page." data-feature-url="/feature/fault-diagnosis">
-                <figcaption>Cited diagnosis</figcaption>
-                <img src="/public/screenshots/fault-diagnosis-03.webp" alt="MIRA cited answer for F-012 fault on PowerFlex 753" loading="lazy" width="1600" height="1000">
-                <img class="conv-zoom" src="/public/screenshots/fault-diagnosis-03-zoom.webp" alt="Zoom on MIRA answer text" loading="lazy" onerror="this.style.display='none'">
-              </figure>
-            </div>
+          <div class="sg-item" data-description="MIRA matches the fault code to your specific OEM manual section, ranks candidates by confidence, and streams the answer in real time." data-feature-url="/feature/fault-diagnosis">
+            <span class="sg-callout">MIRA thinking</span>
+            <img src="/public/screenshots/fault-diagnosis-02.webp" alt="MIRA streaming a diagnostic response with manual citations" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">Real-time diagnosis</div>
+            <span class="sg-caption">Real-time diagnosis</span>
           </div>
-          <div class="conv-turn conv-turn-tech">
-            <div class="conv-bubble conv-bubble-tech">
-              <p>Open a high-priority work order in Atlas — asset <span class="conv-kbd">VFD-L3-PF753</span>, on-call tech, include the param checks.</p>
-            </div>
+          <div class="sg-item" data-description="Every answer cites a specific page in your OEM manual. Root cause, corrective action, and source — verified, not hallucinated." data-feature-url="/feature/fault-diagnosis">
+            <span class="sg-callout">Cited diagnosis</span>
+            <img src="/public/screenshots/fault-diagnosis-03.webp" alt="Full diagnostic response with root cause and manual citation" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">Cited answer</div>
+            <span class="sg-caption">Cited answer</span>
           </div>
-          <div class="conv-turn conv-turn-mira">
-            <div class="conv-avatar" aria-hidden="true">M</div>
-            <div class="conv-bubble conv-bubble-mira">
-              <div class="conv-meta"><span class="conv-meta-dot"></span><strong>MIRA</strong> · Atlas CMMS · 0.6 s</div>
-              <p><strong>WO-1043 opened.</strong> Asset <span class="conv-kbd">VFD-L3-PF753</span> · Priority <strong>High</strong> · Assigned to on-call (B. Morales) · ETA 45 min.</p>
-              <p>Parameter checks from above copied into the description. His phone will ding in ~10 s.</p>
-              <figure class="conv-attachment" data-description="Work orders open straight from chat — asset, priority, assignment, and full diagnostic notes populated automatically." data-feature-url="/feature/fault-diagnosis">
-                <figcaption>Work order opened</figcaption>
-                <img src="/public/screenshots/fault-diagnosis-04.webp" alt="Work order WO-1043 auto-created in Atlas from the MIRA diagnosis" loading="lazy" width="1600" height="1000">
-                <img class="conv-zoom" src="/public/screenshots/fault-diagnosis-04-zoom.webp" alt="Zoom on work order confirmation" loading="lazy" onerror="this.style.display='none'">
-              </figure>
-            </div>
+          <div class="sg-item" data-description="MIRA auto-creates a work order from the diagnosis — asset, description, priority, and parts already filled in." data-feature-url="/feature/fault-diagnosis">
+            <span class="sg-callout">Work order created</span>
+            <img src="/public/screenshots/fault-diagnosis-04.webp" alt="Work order auto-created from MIRA diagnostic conversation" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">Auto work order</div>
+            <span class="sg-caption">Auto work order</span>
           </div>
         </div>
       </div>
 
       <div class="feature reverse fade-in" id="how-it-works">
         <!-- Demo left, text right (reversed grid) -->
-        <div class="conversation" aria-label="CMMS Integration — technician asks MIRA to pull work orders and PM schedule">
-          <div class="conv-turn conv-turn-tech">
-            <div class="conv-bubble conv-bubble-tech">
-              <div class="conv-meta"><strong>Technician</strong> · walking the floor</div>
-              <p>Show me every open work order — WO number, asset, priority, and age.</p>
-            </div>
+        <div class="sg-gallery" aria-label="CMMS Integration screenshots">
+          <div class="sg-item" data-description="See all open, in-progress, and completed work orders in one view. AI-generated work orders appear alongside manually created ones." data-feature-url="/feature/cmms-integration">
+            <span class="sg-callout">Open work orders</span>
+            <img src="/public/screenshots/cmms-integration-01.webp" alt="Atlas CMMS work order list with open and active orders" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">Work order list</div>
+            <span class="sg-caption">Work order list</span>
           </div>
-          <div class="conv-turn conv-turn-mira">
-            <div class="conv-avatar" aria-hidden="true">M</div>
-            <div class="conv-bubble conv-bubble-mira">
-              <div class="conv-meta"><span class="conv-meta-dot"></span><strong>MIRA</strong> · live from Atlas · 0.9 s</div>
-              <p><strong>6 open work orders:</strong></p>
-              <p>&nbsp;&nbsp;<span class="conv-kbd">WO-1042</span> · PUMP-L2 · <strong>Critical</strong> · 2 h<br>
-              &nbsp;&nbsp;<span class="conv-kbd">WO-1040</span> · VFD-L1 · High · 4 h<br>
-              &nbsp;&nbsp;<span class="conv-kbd">WO-1039</span> · CONV-B · Medium · 1 d<br>
-              &nbsp;&nbsp;<span class="conv-kbd">WO-1037</span> · CNC-12 · Medium · 2 d<br>
-              &nbsp;&nbsp;<span class="conv-kbd">WO-1033</span> · AIR-COMP · Low · 3 d<br>
-              &nbsp;&nbsp;<span class="conv-kbd">WO-1028</span> · PAL-04 · Low · 5 d</p>
-              <figure class="conv-attachment" data-description="MIRA pulls live work-order lists straight from the CMMS — no tab switching, no SQL, no training." data-feature-url="/feature/cmms-integration">
-                <figcaption>Open work orders</figcaption>
-                <img src="/public/screenshots/cmms-integration-01.webp" alt="MIRA returning live open work-order list from Atlas" loading="lazy" width="1600" height="1000">
-                <img class="conv-zoom" src="/public/screenshots/cmms-integration-01-zoom.webp" alt="Zoom on work order list" loading="lazy" onerror="this.style.display='none'">
-              </figure>
-            </div>
+          <div class="sg-item" data-description="Each work order includes the AI-generated description, identified parts, estimated repair time, and priority — ready for the technician." data-feature-url="/feature/cmms-integration">
+            <span class="sg-callout">Order detail</span>
+            <img src="/public/screenshots/cmms-integration-02.webp" alt="Work order detail showing AI-generated description and parts" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">Work order detail</div>
+            <span class="sg-caption">Work order detail</span>
           </div>
-          <div class="conv-turn conv-turn-tech">
-            <div class="conv-bubble conv-bubble-tech">
-              <p>Pull up the full details on <span class="conv-kbd">WO-1042</span>. Description, parts, estimated labor.</p>
-            </div>
+          <div class="sg-item" data-description="Your equipment registry with real-time status indicators. MIRA knows your assets and matches faults to the right equipment automatically." data-feature-url="/feature/cmms-integration">
+            <span class="sg-callout">Asset registry</span>
+            <img src="/public/screenshots/cmms-integration-03.webp" alt="Equipment asset registry with status indicators" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">Asset registry</div>
+            <span class="sg-caption">Asset registry</span>
           </div>
-          <div class="conv-turn conv-turn-mira">
-            <div class="conv-avatar" aria-hidden="true">M</div>
-            <div class="conv-bubble conv-bubble-mira">
-              <div class="conv-meta"><span class="conv-meta-dot"></span><strong>MIRA</strong> · WO-1042 detail · 0.7 s</div>
-              <p><strong>WO-1042 · PUMP-L2 · VFD overcurrent</strong></p>
-              <p>AI description: F-013 overcurrent on startup, 3 trips in 20 min. Likely stator short or blocked impeller — megger test will dictate parts.</p>
-              <p>Parts: <em>none pending</em> · Est. labor: 1.5 h diagnostic + 2–6 h repair · Tech: B. Morales<br>
-              Opened by MIRA from chat at 14:22 today.</p>
-              <figure class="conv-attachment" data-description="Each MIRA-generated work order lands in Atlas with a full diagnostic description — not a one-line summary." data-feature-url="/feature/cmms-integration">
-                <figcaption>Work order detail</figcaption>
-                <img src="/public/screenshots/cmms-integration-02.webp" alt="Full work-order detail from Atlas with AI-generated description" loading="lazy" width="1600" height="1000">
-                <img class="conv-zoom" src="/public/screenshots/cmms-integration-02-zoom.webp" alt="Zoom on work order detail" loading="lazy" onerror="this.style.display='none'">
-              </figure>
-            </div>
+          <div class="sg-item" data-description="Preventive maintenance schedules with due dates, intervals, and compliance tracking. Never miss a PM again." data-feature-url="/feature/cmms-integration">
+            <span class="sg-callout">PM schedules</span>
+            <img src="/public/screenshots/cmms-integration-04.webp" alt="Preventive maintenance schedule calendar view" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">PM schedules</div>
+            <span class="sg-caption">PM schedules</span>
           </div>
         </div>
 
@@ -1304,8 +1199,9 @@
             Work orders that<br>write themselves
           </h2>
           <p class="feature-body">
-            Ask for a work-order list, a PM schedule, or a full WO detail — in plain English, from
-            the chat. MIRA reads and writes to Atlas, MaintainX, Limble, or UpKeep. No rip-and-replace.
+            MIRA connects into your existing CMMS — MaintainX, Limble, or UpKeep.
+            Work orders MIRA creates flow straight into the system your techs already use.
+            No rip-and-replace.
           </p>
           <div class="feature-stats">
             <span class="feature-stat">MaintainX · Limble · UpKeep</span>
@@ -1321,8 +1217,9 @@
             Hands-free on the<br>shop floor
           </h2>
           <p class="feature-body">
-            Snap a nameplate. Ask a follow-up with your voice. MIRA identifies the component,
-            ranks failure modes, and reads the triage out loud — no hands, no laptop, no lost context.
+            Talk to Mira hands-free with voice input. Upload a photo of the fault —
+            Mira identifies the component, cross-references your equipment history,
+            and reads the answer back to you out loud.
           </p>
           <div class="feature-stats">
             <span class="feature-stat">Works on iPhone/Android</span>
@@ -1331,54 +1228,30 @@
           </div>
         </div>
 
-        <div class="conversation fade-in" aria-label="Voice + Vision — technician sends a nameplate photo and gets a cited diagnosis">
-          <div class="conv-turn conv-turn-tech">
-            <div class="conv-bubble conv-bubble-tech">
-              <div class="conv-meta"><strong>Technician</strong> · on the catwalk · 📷 photo sent</div>
-              <figure class="conv-attachment" data-description="Voice and photo input from anywhere on the shop floor — no typing, no laptops." data-feature-url="/feature/voice-vision">
-                <figcaption>Photo attached</figcaption>
-                <img src="/public/screenshots/voice-vision-01.webp" alt="Weathered nameplate photo attached in chat — TECO 3-phase induction motor" loading="lazy" width="1600" height="1000">
-              </figure>
-              <p style="margin-top:10px">Read every field on this plate — make, model, serial, HP, RPM. Top 3 failure modes for this class.</p>
-            </div>
+        <div class="sg-gallery fade-in" aria-label="Voice and Vision screenshots">
+          <div class="sg-item" data-description="Upload a photo of an equipment nameplate, fault screen, or damaged component. MIRA's vision model identifies it instantly." data-feature-url="/feature/voice-vision">
+            <span class="sg-callout">Photo attached</span>
+            <img src="/public/screenshots/voice-vision-01.webp" alt="Photo upload of equipment nameplate in Open WebUI chat" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">Photo upload</div>
+            <span class="sg-caption">Photo upload</span>
           </div>
-          <div class="conv-turn conv-turn-mira">
-            <div class="conv-avatar" aria-hidden="true">M</div>
-            <div class="conv-bubble conv-bubble-mira">
-              <div class="conv-meta"><span class="conv-meta-dot"></span><strong>MIRA</strong> · vision model · 2.1 s</div>
-              <p><strong>TECO AEEB 3-Phase Induction Motor</strong> · Wuxi TECO Elec. &amp; Mach. Co.<br>
-              Design <span class="conv-kbd">Q/320217ACV05</span> · Serial <span class="conv-kbd">320240R0200AGEE</span> · Weight 20 kg</p>
-              <p>Voltage / amps obscured on the plate — a cleaner photo or an OEM catalog lookup would fill them in.</p>
-              <p><strong>Top 3 failure modes</strong> at this frame class:</p>
-              <p>&nbsp;&nbsp;1. Bearing wear — audible growl, rising vibration trend<br>
-              &nbsp;&nbsp;2. Insulation degradation after humidity / washdown<br>
-              &nbsp;&nbsp;3. Winding imbalance from single-phase events</p>
-              <figure class="conv-attachment" data-description="MIRA reads the nameplate, matches the model, and ranks failure modes — all from one photo." data-feature-url="/feature/voice-vision">
-                <figcaption>Nameplate identified</figcaption>
-                <img src="/public/screenshots/voice-vision-03.webp" alt="MIRA identifying a TECO induction motor from a weathered nameplate photo" loading="lazy" width="1600" height="1000">
-                <img class="conv-zoom" src="/public/screenshots/voice-vision-03-zoom.webp" alt="Zoom on vision identification" loading="lazy" onerror="this.style.display='none'">
-              </figure>
-            </div>
+          <div class="sg-item" data-description="MIRA identifies the manufacturer, model, and part number from the photo — cross-referencing your equipment history and OEM documentation." data-feature-url="/feature/voice-vision">
+            <span class="sg-callout">Nameplate uploaded</span>
+            <img src="/public/screenshots/voice-vision-02.webp" alt="MIRA identifying equipment from uploaded photo" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">Component identified</div>
+            <span class="sg-caption">Component identified</span>
           </div>
-          <div class="conv-turn conv-turn-tech">
-            <div class="conv-bubble conv-bubble-tech">
-              <p>VFD on this motor is flashing red and tripping on overload at startup. Top 3 things to check <em>right now</em>, ranked. Tactical.</p>
-            </div>
+          <div class="sg-item" data-description="Full diagnostic response with part numbers, replacement instructions, and manual citations — all from a single photo." data-feature-url="/feature/voice-vision">
+            <span class="sg-callout">Component identified</span>
+            <img src="/public/screenshots/voice-vision-03.webp" alt="Full diagnostic response with part cross-reference from photo" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">Full diagnosis</div>
+            <span class="sg-caption">Full diagnosis</span>
           </div>
-          <div class="conv-turn conv-turn-mira">
-            <div class="conv-avatar" aria-hidden="true">M</div>
-            <div class="conv-bubble conv-bubble-mira">
-              <div class="conv-meta"><span class="conv-meta-dot"></span><strong>MIRA</strong> · 1.4 s · spoken aloud</div>
-              <p>&nbsp;&nbsp;1. <strong>Megger cold</strong>, line-to-line + line-to-ground. &lt;1 MΩ line-to-ground = winding fault.<br>
-              &nbsp;&nbsp;2. <strong>Uncouple the load</strong> and bump-start the motor alone. Clean start = fault is downstream.<br>
-              &nbsp;&nbsp;3. <strong>Clamp phase-to-phase amps.</strong> &gt;10 % imbalance = supply or contactor.</p>
-              <p>Start with 1 — fastest signal, safest, no downtime cost.</p>
-              <figure class="conv-attachment" data-description="Follow-ups stay in the same thread — MIRA keeps the motor context and answers the next question tactically." data-feature-url="/feature/voice-vision">
-                <figcaption>Tactical follow-up</figcaption>
-                <img src="/public/screenshots/voice-vision-04.webp" alt="MIRA giving a 3-step ranked triage for a motor overload fault" loading="lazy" width="1600" height="1000">
-                <img class="conv-zoom" src="/public/screenshots/voice-vision-04-zoom.webp" alt="Zoom on ranked triage" loading="lazy" onerror="this.style.display='none'">
-              </figure>
-            </div>
+          <div class="sg-item" data-description="Complete conversation showing the photo analysis, diagnostic steps, and recommended actions — all hands-free via voice." data-feature-url="/feature/voice-vision">
+            <span class="sg-callout">Follow-up diagnosis</span>
+            <img src="/public/screenshots/voice-vision-04.webp" alt="Complete conversation thread with photo and diagnostic response" loading="lazy" width="1280" height="800">
+            <div class="sg-overlay">Voice + photo flow</div>
+            <span class="sg-caption">Voice + photo flow</span>
           </div>
         </div>
       </div>
@@ -1508,14 +1381,13 @@
       document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
     })();
 
-    // ── Conversation attachment lightbox ─────────────────────────────────
+    // ── Screenshot gallery lightbox ──────────────────────────────────────
     (function () {
       let lightbox = null;
 
       function openLightbox(item) {
         if (lightbox) closeLightbox();
-        const img = item.querySelector('img:not(.conv-zoom)') || item.querySelector('img');
-        if (!img) return;
+        const img = item.querySelector('img');
         const desc = item.dataset.description || '';
         const url = item.dataset.featureUrl || '';
 
@@ -1525,7 +1397,7 @@
           '<div class="sg-lightbox-inner">' +
             '<button class="sg-lightbox-close" aria-label="Close">&times;</button>' +
             '<img class="sg-lightbox-img" src="' + img.src + '" alt="' + img.alt + '">' +
-            (desc ? '<p class="sg-lightbox-desc">' + desc + '</p>' : '') +
+            '<p class="sg-lightbox-desc">' + desc + '</p>' +
             (url ? '<a class="sg-lightbox-cta" href="' + url + '">See full feature &rarr;</a>' : '') +
           '</div>';
 
@@ -1549,7 +1421,7 @@
         if (e.key === 'Escape') closeLightbox();
       });
 
-      document.querySelectorAll('.conv-attachment').forEach(function (item) {
+      document.querySelectorAll('.sg-item').forEach(function (item) {
         item.addEventListener('click', function () { openLightbox(item); });
       });
     })();
