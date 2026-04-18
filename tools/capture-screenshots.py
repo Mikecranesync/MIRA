@@ -148,14 +148,27 @@ async def dismiss_banners(page: Page) -> None:
             pass
     # Nuclear: remove banner DOM elements and inject hide-all CSS
     await page.evaluate("""
+        // Remove any element whose text mentions a new version / update
+        for (const el of document.querySelectorAll('*')) {
+            const txt = el.textContent || '';
+            if (/new version|update available/i.test(txt)) {
+                const banner = el.closest('div.fixed') || el.closest('div.absolute')
+                    || el.closest('[class*="banner"]') || el.closest('[role="alert"]');
+                if (banner) { banner.remove(); continue; }
+            }
+        }
+        // Also strip <a> tags referencing updates (legacy fallback)
         document.querySelectorAll('a').forEach(a => {
-            if (a.textContent.includes('Update') || a.textContent.includes('update')) {
-                let el = a.closest('div.fixed') || a.closest('div.absolute') || a.parentElement?.parentElement;
-                if (el) el.remove();
+            if (/update/i.test(a.textContent)) {
+                let wrapper = a.closest('div.fixed') || a.closest('div.absolute')
+                    || a.parentElement?.parentElement;
+                if (wrapper) wrapper.remove();
             }
         });
     """)
     await page.add_style_tag(content="""
+        [class*="update"], [class*="Update"],
+        [class*="banner"], [class*="Banner"],
         .fixed.bottom-0, .fixed.bottom-2, .fixed.bottom-4,
         .absolute.bottom-0, .absolute.bottom-2,
         [class*="toast"], [class*="notification"], [class*="snackbar"] {
