@@ -41,10 +41,27 @@ _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "a
 _IPV4_RE = re.compile(
     r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"
 )
+_IPV6_RE = re.compile(
+    r"\b(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}\b"
+    r"|\b(?:[0-9a-f]{1,4}:){1,7}:"
+    r"|\b(?:[0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4}\b"
+    r"|::(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4}\b"
+    r"|::",
+    re.IGNORECASE,
+)
 _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
 _SERIAL_RE = re.compile(
     r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)[:\s#]*[A-Z0-9\-]{4,20}\b",
     re.IGNORECASE,
+)
+_EMAIL_RE = re.compile(
+    r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"
+)
+_PHONE_RE = re.compile(
+    r"(?<!\d)(?:\+?1[\s\-.]?)?\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}(?!\d)"
+)
+_SSN_RE = re.compile(
+    r"\b\d{3}[\-]\d{2}[\-]\d{4}\b"
 )
 
 # Warn when any LLM call exceeds this threshold — indicates context bloat
@@ -217,25 +234,30 @@ class InferenceRouter:
             )
 
     @staticmethod
+    def _scrub(text: str) -> str:
+        """Apply all PII regex substitutions to a string."""
+        text = _IPV4_RE.sub("[IP]", text)
+        text = _IPV6_RE.sub("[IP]", text)
+        text = _MAC_RE.sub("[MAC]", text)
+        text = _SERIAL_RE.sub("[SN]", text)
+        text = _EMAIL_RE.sub("[EMAIL]", text)
+        text = _SSN_RE.sub("[SSN]", text)
+        text = _PHONE_RE.sub("[PHONE]", text)
+        return text
+
+    @staticmethod
     def sanitize_context(messages: list[dict]) -> list[dict]:
-        """Strip IPs, MACs, serial numbers from message content before sending."""
+        """Strip PII (IPs, MACs, serial numbers, emails, phones, SSNs) from messages."""
         sanitized = []
         for msg in messages:
             content = msg.get("content", "")
             if isinstance(content, str):
-                content = _IPV4_RE.sub("[IP]", content)
-                content = _MAC_RE.sub("[MAC]", content)
-                content = _SERIAL_RE.sub("[SN]", content)
-                sanitized.append({**msg, "content": content})
+                sanitized.append({**msg, "content": InferenceRouter._scrub(content)})
             elif isinstance(content, list):
                 new_blocks = []
                 for block in content:
                     if block.get("type") == "text":
-                        text = block["text"]
-                        text = _IPV4_RE.sub("[IP]", text)
-                        text = _MAC_RE.sub("[MAC]", text)
-                        text = _SERIAL_RE.sub("[SN]", text)
-                        new_blocks.append({**block, "text": text})
+                        new_blocks.append({**block, "text": InferenceRouter._scrub(block["text"])})
                     else:
                         new_blocks.append(block)
                 sanitized.append({**msg, "content": new_blocks})

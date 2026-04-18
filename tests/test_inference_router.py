@@ -99,15 +99,94 @@ class TestSanitizeContext:
         assert "[IP]" in result[0]["content"]
         assert "192.168.1.50" not in result[0]["content"]
 
+    def test_strips_ipv4_preserves_normal_text(self):
+        msgs = [{"role": "user", "content": "version 3.2.1 is stable"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert result[0]["content"] == "version 3.2.1 is stable"
+
+    def test_strips_ipv6_full(self):
+        msgs = [{"role": "user", "content": "host at 2001:0db8:85a3:0000:0000:8a2e:0370:7334"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[IP]" in result[0]["content"]
+        assert "2001:" not in result[0]["content"]
+
+    def test_strips_ipv6_loopback(self):
+        msgs = [{"role": "user", "content": "listening on ::1"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[IP]" in result[0]["content"]
+
     def test_strips_mac(self):
         msgs = [{"role": "user", "content": "MAC is AA:BB:CC:DD:EE:FF"}]
         result = InferenceRouter.sanitize_context(msgs)
         assert "[MAC]" in result[0]["content"]
 
+    def test_strips_mac_dash_separator(self):
+        msgs = [{"role": "user", "content": "NIC AA-BB-CC-DD-EE-FF"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[MAC]" in result[0]["content"]
+
+    def test_mac_preserves_short_hex(self):
+        msgs = [{"role": "user", "content": "error code 0xDEAD"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[MAC]" not in result[0]["content"]
+
     def test_strips_serial(self):
         msgs = [{"role": "user", "content": "S/N ABC123DEF"}]
         result = InferenceRouter.sanitize_context(msgs)
         assert "[SN]" in result[0]["content"]
+
+    def test_strips_serial_long_form(self):
+        msgs = [{"role": "user", "content": "Serial Number: XYZ-9876"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[SN]" in result[0]["content"]
+
+    def test_serial_preserves_normal_text(self):
+        msgs = [{"role": "user", "content": "the server is running fine"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert result[0]["content"] == "the server is running fine"
+
+    def test_strips_email(self):
+        msgs = [{"role": "user", "content": "contact admin@factory.com for help"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[EMAIL]" in result[0]["content"]
+        assert "admin@factory.com" not in result[0]["content"]
+
+    def test_email_preserves_non_email(self):
+        msgs = [{"role": "user", "content": "use the @ symbol in code"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[EMAIL]" not in result[0]["content"]
+
+    def test_strips_phone_us(self):
+        msgs = [{"role": "user", "content": "Call 555-867-5309 for support"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[PHONE]" in result[0]["content"]
+        assert "555-867-5309" not in result[0]["content"]
+
+    def test_strips_phone_with_parens(self):
+        msgs = [{"role": "user", "content": "Call (555) 867-5309"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[PHONE]" in result[0]["content"]
+
+    def test_strips_phone_with_country_code(self):
+        msgs = [{"role": "user", "content": "Call +1-555-867-5309"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[PHONE]" in result[0]["content"]
+
+    def test_phone_preserves_short_numbers(self):
+        msgs = [{"role": "user", "content": "error 404 on port 8080"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[PHONE]" not in result[0]["content"]
+
+    def test_strips_ssn(self):
+        msgs = [{"role": "user", "content": "SSN 123-45-6789"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[SSN]" in result[0]["content"]
+        assert "123-45-6789" not in result[0]["content"]
+
+    def test_ssn_preserves_non_ssn_numbers(self):
+        msgs = [{"role": "user", "content": "order 12345-6789 shipped"}]
+        result = InferenceRouter.sanitize_context(msgs)
+        assert "[SSN]" not in result[0]["content"]
 
     def test_handles_multipart_content(self):
         msgs = [
@@ -122,6 +201,20 @@ class TestSanitizeContext:
         result = InferenceRouter.sanitize_context(msgs)
         text_block = result[0]["content"][0]
         assert "[IP]" in text_block["text"]
+
+    def test_multipart_strips_email_and_phone(self):
+        msgs = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Email tech@acme.io or call 555-123-4567"},
+                ],
+            }
+        ]
+        result = InferenceRouter.sanitize_context(msgs)
+        text = result[0]["content"][0]["text"]
+        assert "[EMAIL]" in text
+        assert "[PHONE]" in text
 
 
 class TestHasImage:
