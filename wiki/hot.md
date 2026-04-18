@@ -1,4 +1,9 @@
-# Hot Cache — 2026-04-17 — CHARLIE
+# Hot Cache — 2026-04-18 — CHARLIE
+
+## eval-fixer run — 2026-04-18
+- Scorecard: 43/56 passing (77%) — parsed from `tests/eval/runs/2026-04-18T0459-offline-text.md`
+- Action: issue-filed (GitHub #382)
+- 13 patchable failures across 3 file clusters (engine.py 5, guardrails.py 9, prompts/diagnose/active.yaml 9) → multi-file hard stop triggered. Three sub-patterns: (A) 5 fixtures FSM stuck before DIAGNOSIS (Q1→Q2/Q3→DIAG progression); (B) 7 fixtures missing expected vendor vocabulary in response (likely downstream of A); (C) 2 Yaskawa fixtures leaking PowerFlex/Allen-Bradley text — regression in v2.4.0 cross-vendor guard for A1000 + GA500. Net +8 fixtures vs. 2026-04-17 (35→43) — citation-gate fixes landed, but new FSM + cross-vendor regressions surfaced.
 
 ## eval-fixer run — 2026-04-17
 - Scorecard: 35/56 passing (62%) — parsed from `tests/eval/runs/2026-04-15-v0.8-final.md`
