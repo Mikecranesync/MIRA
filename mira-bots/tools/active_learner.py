@@ -14,8 +14,8 @@ Environment:
     ANTHROPIC_API_KEY             Claude API key
     CLAUDE_MODEL                  Model override (default: claude-sonnet-4-6)
     ACTIVE_LEARNING_DISABLED      Set to 1 to disable (nightly task checks this)
-    ACTIVE_LEARNING_MIN_CONFIDENCE  Float 0-1 (default: 0.6)
-    ACTIVE_LEARNING_MAX_FIXTURES_PER_RUN  Int (default: 10)
+    ACTIVE_LEARNING_MIN_CONFIDENCE  Float 0-1 (default: 0.45; low-conf tagged needs_review)
+    ACTIVE_LEARNING_MAX_FIXTURES_PER_RUN  Int (default: 50)
 """
 
 from __future__ import annotations
@@ -114,8 +114,8 @@ class ActiveLearner:
         anthropic_api_key: str,
         claude_model: str = _DEFAULT_MODEL,
         repo: str = REPO,
-        min_confidence: float = 0.6,
-        max_fixtures_per_run: int = 10,
+        min_confidence: float = 0.45,
+        max_fixtures_per_run: int = 50,
     ) -> None:
         self.db_path = db_path
         self.state_path = state_path
@@ -125,6 +125,7 @@ class ActiveLearner:
         self.repo = repo
         self.min_confidence = min_confidence
         self.max_fixtures_per_run = max_fixtures_per_run
+        self.auto_land_confidence = 0.85  # ≥ this → commit direct; below → draft PR
 
     # ── State management ─────────────────────────────────────────────────────
 
@@ -272,6 +273,7 @@ class ActiveLearner:
         anon_result: dict,
         pass_criteria: dict,
         feedback_entry: dict,
+        inference_confidence: float = 0.0,
     ) -> tuple[str, str]:
         """Return (filename, yaml_content) for the auto-generated fixture."""
         date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -293,6 +295,7 @@ class ActiveLearner:
             "max_turns": len(user_turns) + 2,
             "expected_keywords": pass_criteria.get("expected_keywords", []),
             "expected_vendor": pass_criteria.get("expected_vendor") or "",
+            "inference_confidence": round(inference_confidence, 3),
             "wo_expected": False,
             "safety_expected": False,
             "tags": ["auto-generated", "active-learning", "needs-review"],
@@ -303,6 +306,49 @@ class ActiveLearner:
 
         content = yaml.dump(fixture, default_flow_style=False, allow_unicode=True, sort_keys=False)
         return filename, content
+
+    # ── Direct commit (high-confidence fixtures) ──────────────────────────────
+
+    def _commit_fixtures_direct(
+        self,
+        fixtures: list[tuple[str, str]],
+        mira_dir: str,
+    ) -> bool:
+        """Write high-confidence fixtures directly to tests/eval/fixtures/ and push.
+
+        Returns True on success. Used when inference_confidence ≥ auto_land_confidence.
+        """
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        n = len(fixtures)
+        try:
+            def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
+                return subprocess.run(cmd, cwd=mira_dir, capture_output=True, text=True, check=check)
+
+            fixtures_dir = Path(mira_dir) / "tests" / "eval" / "fixtures"
+            fixtures_dir.mkdir(parents=True, exist_ok=True)
+
+            for fname, content in fixtures:
+                (fixtures_dir / fname).write_text(content)
+
+            _run(["git", "add"] + [f"tests/eval/fixtures/{f}" for f, _ in fixtures])
+            _run(
+                ["git", "commit", "-m",
+                 f"auto: land {n} high-confidence active-learning fixture(s) ({date_str})\n\n"
+                 f"Signed-off-by: mira-active-learner <eval@mira.local>"],
+            )
+            env = {**os.environ, "GH_TOKEN": self.gh_token}
+            push_r = subprocess.run(
+                ["git", "push", "origin", "HEAD"],
+                cwd=mira_dir, capture_output=True, text=True, env=env,
+            )
+            if push_r.returncode != 0:
+                logger.error("Direct push failed: %s", push_r.stderr[:300])
+                return False
+            logger.info("Auto-landed %d fixture(s) directly to main", n)
+            return True
+        except Exception as e:
+            logger.error("_commit_fixtures_direct failed: %s", e)
+            return False
 
     # ── PR creation ───────────────────────────────────────────────────────────
 
@@ -455,13 +501,15 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
                 skipped += 1
                 continue
 
-            fname, content = self.generate_fixture(anon, criteria, entry)
-            new_fixtures.append((fname, content))
+            inf_conf = float(criteria.get("confidence", 0.0))
+            fname, content = self.generate_fixture(anon, criteria, entry, inference_confidence=inf_conf)
+            new_fixtures.append((fname, content, inf_conf))
             source_hashes.append(self._hash_chat_id(chat_id))
             fixture_infos.append({
                 "reason": reason[:80],
                 "anon_notes": anon.get("anonymization_notes", "")[:60],
                 "tldr": criteria.get("tldr", "")[:60],
+                "confidence": inf_conf,
             })
 
         logger.info(
@@ -469,13 +517,16 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
             len(new_fixtures), skipped,
         )
 
+        # Unpack 3-tuples
+        fixture_pairs = [(f, c) for f, c, _ in new_fixtures]
+
         # Dry-run: write to output_dir and stop
         if dry_run:
             out = Path(output_dir or "/tmp/active_learning_dryrun")
             out.mkdir(parents=True, exist_ok=True)
-            for fname, content in new_fixtures:
+            for fname, content, conf in new_fixtures:
                 (out / fname).write_text(content)
-                logger.info("DRY-RUN wrote: %s", out / fname)
+                logger.info("DRY-RUN wrote: %s (conf=%.2f)", out / fname, conf)
             self._save_state({"last_run_ts": run_ts})
             return {
                 "status": "dry_run",
@@ -489,18 +540,32 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
             self._save_state({"last_run_ts": run_ts})
             return {"status": "ok", "fixtures_generated": 0, "skipped": skipped, "ts": run_ts}
 
-        summary = {
-            "start_ts": checkpoint_ts or "all-time",
-            "end_ts": run_ts,
-            "fixture_infos": fixture_infos,
-            "source_hashes": source_hashes,
-        }
-        pr_url = await self.open_draft_pr(new_fixtures, summary, mira_dir)
+        # Split: high-confidence → direct commit; low-confidence → draft PR
+        high_conf = [(f, c) for f, c, conf in new_fixtures if conf >= self.auto_land_confidence]
+        low_conf = [(f, c) for f, c, conf in new_fixtures if conf < self.auto_land_confidence]
+
+        landed = 0
+        if high_conf:
+            ok = self._commit_fixtures_direct(high_conf, mira_dir)
+            landed = len(high_conf) if ok else 0
+
+        pr_url = None
+        if low_conf:
+            low_conf_infos = fixture_infos[len(high_conf):]
+            summary = {
+                "start_ts": checkpoint_ts or "all-time",
+                "end_ts": run_ts,
+                "fixture_infos": low_conf_infos,
+                "source_hashes": source_hashes[len(high_conf):],
+            }
+            pr_url = await self.open_draft_pr(low_conf, summary, mira_dir)
 
         self._save_state({"last_run_ts": run_ts})
         return {
             "status": "ok",
             "fixtures_generated": len(new_fixtures),
+            "auto_landed": landed,
+            "draft_pr_fixtures": len(low_conf),
             "skipped": skipped,
             "pr_url": pr_url,
             "ts": run_ts,
@@ -518,8 +583,8 @@ def _build_learner() -> ActiveLearner:
         gh_token=os.getenv("ACTIVE_LEARNING_GH_TOKEN", ""),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
         claude_model=os.getenv("CLAUDE_MODEL", _DEFAULT_MODEL),
-        min_confidence=float(os.getenv("ACTIVE_LEARNING_MIN_CONFIDENCE", "0.6")),
-        max_fixtures_per_run=int(os.getenv("ACTIVE_LEARNING_MAX_FIXTURES_PER_RUN", "10")),
+        min_confidence=float(os.getenv("ACTIVE_LEARNING_MIN_CONFIDENCE", "0.45")),
+        max_fixtures_per_run=int(os.getenv("ACTIVE_LEARNING_MAX_FIXTURES_PER_RUN", "50")),
     )
 
 

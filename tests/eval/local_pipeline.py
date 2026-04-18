@@ -198,6 +198,29 @@ class LocalPipeline:
         """Reset a session to IDLE state."""
         self._engine.reset(chat_id)
 
+    def last_kb_status(self) -> dict:
+        """Return KB coverage status from the most recent RAG call.
+
+        Reads directly from the RAGWorker's kb_status property — set during
+        each process() call by _compute_kb_status() (feat/citation-gate).
+        Returns {"status": "unknown", "citations": []} if not yet available.
+        """
+        try:
+            return self._engine._supervisor.rag.kb_status
+        except AttributeError:
+            return {"status": "unknown", "citations": []}
+
+    def last_retrieved_chunks(self) -> list[str]:
+        """Return text of chunks retrieved during the most recent RAG call.
+
+        Used by cp_citation_groundedness to verify numeric specs are grounded
+        in retrieved documentation rather than hallucinated from training data.
+        """
+        try:
+            return list(self._engine._supervisor.rag._last_sources)
+        except AttributeError:
+            return []
+
     # ── Interaction history ───────────────────────────────────────────────────
 
     def interaction_history(self, chat_id: str) -> list[dict[str, Any]]:
@@ -227,12 +250,15 @@ class LocalPipeline:
         fixture: dict,
         chat_id_prefix: str = "local",
         retrieved_chunks: list[str] | None = None,
-    ) -> tuple[list[str], list[int], list[int], str]:
+    ) -> tuple[list[str], list[int], list[int], str, list[str]]:
         """Run a complete scenario fixture through the local engine.
 
         Returns
         -------
-        (responses, http_statuses, latencies_ms, final_fsm_state)
+        (responses, http_statuses, latencies_ms, final_fsm_state, last_retrieved_chunks)
+
+        last_retrieved_chunks contains the RAG chunks from the final turn — used by
+        cp_citation_groundedness to verify numeric specs are grounded in retrieved docs.
         """
         import uuid
 
@@ -243,6 +269,7 @@ class LocalPipeline:
         responses: list[str] = []
         http_statuses: list[int] = []
         latencies_ms: list[int] = []
+        final_chunks: list[str] = []
 
         for i, turn in enumerate(user_turns):
             message = turn["content"]
@@ -260,13 +287,22 @@ class LocalPipeline:
             responses.append(reply)
             http_statuses.append(status)
             latencies_ms.append(latency)
+            # Capture chunks after each turn; last turn's chunks used for grading
+            final_chunks = self.last_retrieved_chunks()
 
             logger.info(
-                "  Turn %d/%d: %s→ %dms HTTP%d %d chars",
-                i + 1, len(user_turns), message[:40], latency, status, len(reply),
+                "  Turn %d/%d: %s→ %dms HTTP%d %d chars kb=%s chunks=%d",
+                i + 1,
+                len(user_turns),
+                message[:40],
+                latency,
+                status,
+                len(reply),
+                self.last_kb_status().get("status", "?"),
+                len(final_chunks),
             )
 
-        return responses, http_statuses, latencies_ms, self.fsm_state(chat_id)
+        return responses, http_statuses, latencies_ms, self.fsm_state(chat_id), final_chunks
 
 
 # ── Photo utilities ────────────────────────────────────────────────────────────
@@ -276,8 +312,9 @@ _PHOTOS_DIR = Path(__file__).parent / "fixtures" / "photos"
 
 def image_to_b64(path: str | Path) -> str:
     """Load an image file and return base64-encoded JPEG string."""
-    from PIL import Image
     import io
+
+    from PIL import Image
 
     with Image.open(path) as img:
         # Convert to RGB (handles RGBA, palette, etc.)
@@ -311,6 +348,7 @@ def _resolve_photo_path(photo_ref: str) -> Path | None:
 
 
 # ── Sync shim for non-async callers ───────────────────────────────────────────
+
 
 def call_sync(
     pipeline: LocalPipeline,

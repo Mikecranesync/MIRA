@@ -15,8 +15,13 @@ Usage (from repo root on VPS):
     # Disable judge (hourly cheap mode):
     EVAL_DISABLE_JUDGE=1 python3 tests/eval/run_eval.py
 
-    # Against a local pipeline (dev):
-    PIPELINE_URL=http://localhost:9099 python3 tests/eval/run_eval.py
+    # Against a local pipeline (CHARLIE/dev — required for correct FSM state tracking):
+    MIRA_DB_PATH=/Users/charlienode/MIRA/mira-bridge/data/mira.db \
+    PIPELINE_URL=http://localhost:9099 EVAL_DISABLE_JUDGE=1 \
+    doppler run --project factorylm --config prd -- python3 tests/eval/run_eval.py
+    # NOTE: PIPELINE_URL must be set when running locally. Default (empty) uses
+    # docker-exec inside mira-pipeline-saas which writes to a different /data volume
+    # than the host-side MIRA_DB_PATH — causing _read_fsm_state() to always return IDLE.
 
     # Dry run (no actual HTTP calls — sanity check fixture loading):
     python3 tests/eval/run_eval.py --dry-run
@@ -242,6 +247,8 @@ def run_scenario(
 
     logger.info("Running scenario: %s (chat_id=%s)", fixture["id"], chat_id)
 
+    turn_log: list[dict] = []
+
     for i, turn in enumerate(user_turns):
         content = turn["content"]
         logger.info("  Turn %d: %s", i + 1, content[:60])
@@ -256,12 +263,15 @@ def run_scenario(
         responses.append(reply)
         http_statuses.append(status)
         latencies_ms.append(latency)
-        logger.info("  -> HTTP %d, %dms, %d chars", status, latency, len(reply))
+
+        fsm_after = _read_fsm_state(chat_id)
+        turn_log.append({"turn": i + 1, "user_msg": content, "fsm_state": fsm_after})
+        logger.info("  -> HTTP %d, %dms, %d chars, fsm=%s", status, latency, len(reply), fsm_after)
 
         if i < len(user_turns) - 1:
             time.sleep(0.5)
 
-    final_state = _read_fsm_state(chat_id)
+    final_state = turn_log[-1]["fsm_state"] if turn_log else _read_fsm_state(chat_id)
     logger.info("  Final FSM state: %s", final_state)
 
     grade = grade_scenario(
@@ -289,6 +299,7 @@ def run_scenario(
             user_question=last_user_question,
             generated_by=generated_by,
             scenario_id=fixture["id"],
+            conversation_history=turn_log if len(turn_log) > 1 else None,
         )
 
     return grade, judge_result
@@ -304,7 +315,7 @@ _CHECKPOINT_LABELS = [
     "Turn budget",
 ]
 
-_JUDGE_LABELS = ["Grnd", "Help", "Tone", "Inst"]
+_JUDGE_LABELS = ["Grnd", "Help", "Tone", "Inst", "Flow"]
 _JUDGE_LABEL_MAP = dict(zip(DIMENSIONS, _JUDGE_LABELS))
 
 
@@ -328,6 +339,7 @@ def write_scorecard(
     dry_run: bool,
     judge_results: list[JudgeResult | None] | None = None,
     judge_raw_path: Path | None = None,
+    remote_pipeline_warning: bool = False,
 ) -> None:
     """Write markdown scorecard to output_path.
 
@@ -349,6 +361,14 @@ def write_scorecard(
         f"**Checkpoints:** {' / '.join(_CHECKPOINT_LABELS)}",
         "",
     ]
+
+    if remote_pipeline_warning:
+        lines.append(
+            "> **WARNING — REMOTE PIPELINE:** `PIPELINE_URL` points to a remote host but "
+            "`MIRA_DB_PATH` is local. `cp_reached_state` reads FSM state from the local DB "
+            "which does NOT reflect the remote pipeline — all FSM states will show IDLE. "
+            "Binary pass/fail counts are unreliable. Run from the VPS for accurate results.\n"
+        )
 
     if dry_run:
         lines.append("> DRY RUN — no HTTP calls made, fixture loading validated only.\n")
@@ -528,15 +548,34 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    # Detect remote PIPELINE_URL — FSM state reads from local MIRA_DB_PATH won't match
+    # the remote pipeline's state, so cp_reached_state will always report IDLE.
+    _remote_pipeline = bool(
+        PIPELINE_URL
+        and not PIPELINE_URL.startswith("http://localhost")
+        and not PIPELINE_URL.startswith("http://127.0.0.1")
+    )
+    if _remote_pipeline:
+        logger.warning(
+            "PIPELINE_URL=%s is remote. cp_reached_state reads from local "
+            "MIRA_DB_PATH=%s — FSM state will always be IDLE. "
+            "Appending -remote suffix to output file to avoid overwriting VPS scorecards.",
+            PIPELINE_URL,
+            MIRA_DB_PATH,
+        )
+
     # Support --output as either a directory or a direct .md file path
     run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     output_arg = Path(args.output)
     if args.output.endswith(".md"):
         output_path = output_arg
         output_dir = output_path.parent
+        if _remote_pipeline and not output_path.stem.endswith("-remote"):
+            output_path = output_path.with_name(output_path.stem + "-remote.md")
     else:
         output_dir = output_arg
-        output_path = output_dir / f"{run_date}.md"
+        suffix = "-remote" if _remote_pipeline else ""
+        output_path = output_dir / f"{run_date}{suffix}.md"
 
     # Sibling JSONL for raw judge output
     judge_raw_path = output_path.with_suffix("").with_name(output_path.stem + "-judge.jsonl")
@@ -587,6 +626,7 @@ def main() -> int:
         dry_run=args.dry_run,
         judge_results=judge_results if judge_enabled else None,
         judge_raw_path=judge_raw_path if judge_enabled else None,
+        remote_pipeline_warning=_remote_pipeline,
     )
 
     # Exit non-zero if any scenario failed (useful for CI)

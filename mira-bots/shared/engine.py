@@ -87,6 +87,9 @@ Rate each on 1-5 (5=excellent, 3=acceptable, <3=needs revision):
 "helpfulness":{{"score":<1-5>,"note":"<12 words max: technician can act on this?>"}},\
 "instruction_following":{{"score":<1-5>,"note":"<12 words max: honored the user's actual ask?>"}}}}"""
 ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"})
+_Q_STATES = frozenset({"Q1", "Q2", "Q3"})
+# After this many consecutive Q-state turns the FSM forces a commit to DIAGNOSIS.
+_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 # How many turns the session photo stays available for follow-up questions
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
@@ -164,6 +167,13 @@ _MANUAL_ESCAPE_PHRASES = frozenset(
 )
 
 # Signals that the user is resuming a diagnostic conversation.
+# Detects honesty prefix the model should emit for out-of-KB vendors.
+# Used by the programmatic honesty-prefix injection in process_full().
+_HONESTY_PREFIX_RE = re.compile(
+    r"I don'?t have\b.{0,60}(?:documentation|records|knowledge base)",
+    re.IGNORECASE,
+)
+
 _DIAGNOSIS_SIGNAL_RE = re.compile(
     r"\b(?:fault|error|code|alarm|trips?|overload|won'?t start|not working|"
     r"shuts? off|shutting|blink(?:ing)?|flash(?:ing)?|hz|rpm|amps?|volts?|"
@@ -519,6 +529,23 @@ class Supervisor:
 
         state = self._load_state(chat_id)
 
+        # Citation gate — PROCEED override: tech explicitly accepts LLM best-guess mode.
+        # Must run before all other checks so the tech can unlock a blocked session.
+        if message.strip().upper() in ("PROCEED", "OVERRIDE", "BEST GUESS", "CONTINUE ANYWAY"):
+            ctx = state.get("context") or {}
+            ctx["override_mode"] = True
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            tl_flush()
+            return self._make_result(
+                "⚠️ **BEST-GUESS MODE** — No manual on file. Proceeding with LLM training "
+                "knowledge only. Results are not verified against documentation. "
+                "Re-ask your question.",
+                "none",
+                trace_id,
+                state["state"],
+            )
+
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
         if (state.get("context") or {}).get("cmms_pending") and not photo_b64:
@@ -866,6 +893,11 @@ class Supervisor:
             tl_flush()
             return self._make_result(parsed["reply"], "none", trace_id)
 
+        # Read KB coverage status from RAG worker (set during process() call above)
+        _kb_cover = self.rag.kb_status
+        _kb_gate_status = _kb_cover.get("status", "unknown")
+        _kb_gate_citations = _kb_cover.get("citations", [])
+
         # Output guardrails
         intent = classify_intent(message)
         parsed["reply"] = check_output(parsed["reply"], intent, has_photo=bool(photo_b64))
@@ -888,6 +920,100 @@ class Supervisor:
                     parsed["reply"] = f"{asset_key} — {parsed['reply']}"
 
         state = self._advance_state(state, parsed)
+
+        # ---------------------------------------------------------------------------
+        # Citation gate — enforce KB coverage for technical advice states.
+        # UNCOVERED + no override → block with 🔴, fire scrape trigger, return early.
+        # PARTIAL → inject 🟡 banner + background scrape.
+        # COVERED → inject 🟢 banner + citation footer.
+        # Override mode (PROCEED already handled above) shows ⚠️ banner.
+        # ---------------------------------------------------------------------------
+        _override_mode = (state.get("context") or {}).get("override_mode", False)
+        _technical_state = state["state"] in ("DIAGNOSIS", "FIX_STEP")
+
+        if _technical_state and not photo_b64:
+            asset = state.get("asset_identified", "")
+            vendor = vendor_name_from_text(asset) if asset else None
+            vendor_label = vendor or "this equipment"
+
+            if _kb_gate_status == "uncovered" and not _override_mode:
+                # Hard gate — block response, fire scrape, prompt PROCEED
+                asyncio.create_task(
+                    self._fire_scrape_trigger(message, vendor_label, resolved_tenant or "", chat_id)
+                )
+                logger.info(
+                    "CITATION_GATE_BLOCKED chat_id=%s vendor=%r state=%s",
+                    chat_id,
+                    vendor_label,
+                    state["state"],
+                )
+                self._save_state(chat_id, state)
+                tl_flush()
+                return self._make_result(
+                    f"🔴 **No manual found for {vendor_label}.**\n"
+                    f"Searching for documentation now (check back in ~2 hours).\n\n"
+                    f"To continue with LLM best-guess (not manual-verified), type **PROCEED**.",
+                    "none",
+                    trace_id,
+                    state["state"],
+                )
+
+            elif _kb_gate_status == "partial" and not _override_mode:
+                mfr_label = (
+                    _kb_gate_citations[0]["manufacturer"] if _kb_gate_citations else vendor_label
+                )
+                asyncio.create_task(
+                    self._fire_scrape_trigger(message, vendor_label, resolved_tenant or "", chat_id)
+                )
+                parsed["reply"] = (
+                    f"🟡 **KB: Partial coverage** — {mfr_label} (searching for more)\n\n"
+                    + parsed.get("reply", "")
+                )
+                logger.info(
+                    "CITATION_GATE_PARTIAL chat_id=%s vendor=%r",
+                    chat_id,
+                    vendor_label,
+                )
+
+            elif _kb_gate_status == "covered" and not _override_mode:
+                mfr = _kb_gate_citations[0]["manufacturer"] if _kb_gate_citations else ""
+                mdl = _kb_gate_citations[0]["model_number"] if _kb_gate_citations else ""
+                cov_label = f"{mfr} {mdl}".strip() or vendor_label
+                parsed["reply"] = f"🟢 **KB: {cov_label}**\n\n" + parsed.get("reply", "")
+                logger.info(
+                    "CITATION_GATE_COVERED chat_id=%s vendor=%r",
+                    chat_id,
+                    cov_label,
+                )
+
+            elif _override_mode:
+                parsed["reply"] = (
+                    "⚠️ **BEST-GUESS MODE** — No manual. LLM estimate only, "
+                    "not verified against documentation.\n\n" + parsed.get("reply", "")
+                )
+
+            # Append citations footer for covered/partial
+            if (
+                _kb_gate_status in ("covered", "partial")
+                and _kb_gate_citations
+                and not _override_mode
+            ):
+                footer_parts = []
+                for c in _kb_gate_citations[:2]:
+                    c_label = f"{c['manufacturer']} {c['model_number']}".strip()
+                    c_section = c.get("section", "")
+                    if c_section:
+                        c_label += f", {c_section}"
+                    url = c.get("source_url", "")
+                    if url:
+                        footer_parts.append(f"[{c_label}]({url})")
+                    elif c_label:
+                        footer_parts.append(c_label)
+                if footer_parts:
+                    parsed["reply"] = (
+                        parsed.get("reply", "")
+                        + f"\n\n---\n📚 *Source: {' · '.join(footer_parts)}*"
+                    )
 
         # ---------------------------------------------------------------------------
         # Diagnosis self-critique quality gate (AutoGen-style nudge loop)
@@ -2346,6 +2472,24 @@ class Supervisor:
 
         if state["state"] in ("RESOLVED", "SAFETY_ALERT"):
             state["final_state"] = state["state"]
+
+        # Q-trap guard: if the FSM has been in Q-states for _MAX_Q_ROUNDS consecutive
+        # turns, force a commit to DIAGNOSIS so the technician gets an answer.
+        ctx_q = state.get("context") or {}
+        if current in _Q_STATES and state["state"] in _Q_STATES:
+            ctx_q["q_rounds"] = ctx_q.get("q_rounds", 0) + 1
+            if ctx_q["q_rounds"] >= _MAX_Q_ROUNDS:
+                logger.info(
+                    "Q_TRAP_COMMIT chat_id=%s q_rounds=%d current=%s → DIAGNOSIS",
+                    state.get("chat_id", "?"),
+                    ctx_q["q_rounds"],
+                    state["state"],
+                )
+                state["state"] = "DIAGNOSIS"
+                ctx_q["q_rounds"] = 0
+        elif state["state"] not in _Q_STATES:
+            ctx_q.pop("q_rounds", None)
+        state["context"] = ctx_q
 
         if not state.get("fault_category"):
             for cat in (

@@ -124,12 +124,15 @@ only covers one row or condition, explicitly state: "Note: this specification \
 may have additional ratings or conditions — verify the full table in the \
 source manual for your specific configuration." Do not pad incomplete \
 retrieval with generic explanations. Set confidence to MEDIUM.
-16. CITE YOUR SOURCE. When your answer is based on retrieved documentation, \
-end your reply with the source: "[Source: {manufacturer} {model_number}, \
-{section}]". Use the manufacturer and model_number labels from the retrieved \
-context tags. If no retrieved documents matched, say "Based on general \
-knowledge — no specific documentation found for this equipment." Do not mix \
-sourced and unsourced information without distinguishing them.
+16. CITATION REQUIRED. You MUST cite your source for any technical advice \
+(parameter values, fault codes, torque specs, timing, electrical specs). \
+Format: "According to [Manual Name], [Section]: ..." and end with \
+"[Source: {manufacturer} {model_number}, {section}]". \
+If no retrieved documents appear in the RETRIEVED REFERENCE DOCUMENTS section \
+above, do NOT give technical advice. Instead say exactly: \
+"I don't have documentation for this equipment in my records — searching now. \
+Type PROCEED to continue with my best estimate (not manual-verified)." \
+Never substitute training knowledge for missing documentation without this warning.
 
 SAFETY OVERRIDE \u2014 THE ONLY EXCEPTION:
 ONLY if the photo PHYSICALLY SHOWS one of these hazards VISIBLE IN THE IMAGE \
@@ -175,6 +178,9 @@ class RAGWorker:
         self._ingest_url = os.environ.get("INGEST_BASE_URL", "http://mira-ingest:8001").rstrip("/")
         self._last_sources: list[str] = []
         self._last_distances: list[float] = []
+        self._last_no_kb: bool = False
+        self._last_neon_chunks: list[dict] = []
+        self._kb_status: dict = {"status": "unknown", "citations": []}
         self._prompt_meta = _load_prompt_meta()
 
     async def process(
@@ -259,6 +265,8 @@ class RAGWorker:
 
             self._last_sources = chunk_texts
             self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
+            self._last_neon_chunks = neon_chunks
+            self._kb_status = self._compute_kb_status(neon_chunks, bool(chunk_texts))
 
             async with spans.vector_search(
                 rewritten, self._last_sources[:5], self._last_distances[:5]
@@ -282,6 +290,7 @@ class RAGWorker:
 
             # Stage 3: Build prompt with (reranked) chunks → call LLM
             if chunk_texts:
+                self._last_no_kb = False
                 messages = self._build_prompt_with_chunks(
                     state,
                     rewritten,
@@ -290,6 +299,7 @@ class RAGWorker:
                 )
             else:
                 no_kb = retrieval_attempted and not photo_b64
+                self._last_no_kb = no_kb
                 if no_kb:
                     logger.info(
                         "NO_KB_COVERAGE asset=%r — honesty directive injected",
@@ -304,6 +314,34 @@ class RAGWorker:
                 pass
 
             return raw
+
+    def _compute_kb_status(self, neon_chunks: list[dict], has_chunks: bool) -> dict:
+        """Classify KB coverage and extract source citations for the citation gate."""
+        if not has_chunks:
+            return {"status": "uncovered", "citations": []}
+        high_quality = [c for c in neon_chunks if c.get("similarity", 0) >= 0.65]
+        citations = []
+        for c in high_quality[:3]:
+            meta = c.get("metadata") or {}
+            citations.append(
+                {
+                    "manufacturer": c.get("manufacturer", ""),
+                    "model_number": c.get("model_number", ""),
+                    "source_url": c.get("source_url") or meta.get("source_url", ""),
+                    "section": meta.get("section", ""),
+                    "page_num": meta.get("page_num"),
+                }
+            )
+        if len(high_quality) >= 3:
+            return {"status": "covered", "citations": citations}
+        if high_quality:
+            return {"status": "partial", "citations": citations}
+        return {"status": "uncovered", "citations": []}
+
+    @property
+    def kb_status(self) -> dict:
+        """Current KB coverage status set during the last process() call."""
+        return self._kb_status
 
     def _build_prompt_with_chunks(
         self,
@@ -322,10 +360,22 @@ class RAGWorker:
         if state.get("fault_category"):
             system_content += f"Fault category: {state['fault_category']}\n"
 
-        # Inject reranked chunks as reference context
+        # Inject reranked chunks as reference context with source headers
         system_content += "\n--- RETRIEVED REFERENCE DOCUMENTS ---\n"
         for i, chunk in enumerate(chunks, 1):
-            system_content += f"[{i}] {chunk}\n"
+            nc = self._last_neon_chunks[i - 1] if i - 1 < len(self._last_neon_chunks) else {}
+            meta = nc.get("metadata") or {}
+            mfr = nc.get("manufacturer", "")
+            mdl = nc.get("model_number", "")
+            section = meta.get("section", "")
+            label_parts = [p for p in [mfr, mdl] if p]
+            label = " ".join(label_parts)
+            if section:
+                label += f" — {section}"
+            if label:
+                system_content += f"[{i}] [Source: {label}] {chunk}\n"
+            else:
+                system_content += f"[{i}] {chunk}\n"
         system_content += "--- END REFERENCES ---\n"
 
         messages = [{"role": "system", "content": system_content}]
