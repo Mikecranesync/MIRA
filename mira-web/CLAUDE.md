@@ -1,5 +1,11 @@
 # mira-web — Beta Onboarding Funnel
 
+## Process Gate
+
+Before editing any file under `mira-web/`, invoke the **frontend-design** skill.
+Scope: chat widget UI (`public/`), server routes (`server.js`), Docker/build config.
+Source: `.claude/memory/feedback_mira_chat_widget_skill.md`
+
 ## What This Is
 Customer-facing web service for FactoryLM's beta onboarding.
 Visitor clicks "Join the Beta" → enters email/name/company →
