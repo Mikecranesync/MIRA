@@ -363,6 +363,17 @@ class VisionWorker:
             conf = min(1.0, 0.55 + ocr_field_hits * 0.04)
             return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
 
+        # Vision structural detection: "table with specifications" or "specifications for"
+        # catches VFD spec labels described by vision models using the equipment name
+        # ("AC Drive", "VFD") rather than the word "nameplate". This runs before the
+        # EQUIPMENT_FACE check so "drive" in the description doesn't override it.
+        _spec_table = (
+            "table" in vision_lower
+            and any(w in vision_lower for w in ("specification", "rating", "data sheet"))
+        ) or "specifications for" in vision_lower
+        if _spec_table:
+            return {"type": "NAMEPLATE", "confidence": 0.65}
+
         # Equipment faceplate keywords override everything — these are never drawings
         if any(kw in vision_lower for kw in EQUIPMENT_FACE_KEYWORDS):
             conf = min(1.0, 0.6 + equip_matches * 0.05)
