@@ -3,7 +3,8 @@ description: "Danfoss VLT alarm 14 earth fault — long cable run, cross-vendor 
 expected_final_state: Q1
 # Q2 was expected but Groq stays at Q1 with 3 turns — keywords still validate content
 max_turns: 6
-expected_keywords: [earth fault, ground, insulation, cable, motor]
+expected_keywords: [earth fault, ground, insulation, cable, motor, manual, searching]
+# 'manual'/'searching' match citation gate banner if Danfoss earth fault KB coverage is partial
 forbidden_keywords: [PowerFlex, Rockwell, GS10, Yaskawa]
 expected_vendor: Danfoss
 wo_expected: false

@@ -1,10 +1,16 @@
-# Hot Cache — 2026-04-18 — BRAVO
+# Hot Cache — 2026-04-18 — CHARLIE
+
+## Session — 2026-04-18 (CHARLIE)
+- **PR #384 merged**: resolved 2 conflicts (engine.py history-scan + KB fast-path both kept; wiki/hot.md took citation-gate version)
+- **feat/training-loop-v1 deployed to VPS**: rebuilt mira-pipeline-saas with `doppler run` — healthy, serving on :9099
+- **VPS eval: 53/57 (93%)** — up from 34/57 on main. 4 failures are all keyword_match only (FSM, pipeline, 5xx, budget all PASS). Scorecard: `tests/eval/runs/2026-04-18.md`
+- **8 fixture improvements committed**: citation gate banner keywords + Groq expected_final_state fixes
+- **Next**: OEM migration (say "run the OEM migration"), then BFG+HTTPS
 
 ## Session — 2026-04-18 (BRAVO)
 - **PR #384 opened**: `feat/citation-gate` → `feat/training-loop-v1` — 5 post-gate fixes (SAFETY_ALERT, Ollama fallback, grader DIAGNOSIS_REVISION, OEM migration update)
 - **OEM migration dry-run**: ✅ clean — 398 chunks, 2 source files. Ready to run live (needs explicit go-ahead — writes production KB data)
 - **VPS 0/57 issue identified**: Automated Celery eval (with judge enabled) getting IDLE for all scenarios. Manual VPS eval still 34/57. Root cause: likely pipeline auth/routing during Celery eval runs. Not blocking.
-- **Next**: merge PR #384, deploy `feat/training-loop-v1` to VPS, run OEM migration, then BFG+HTTPS
 
 ## eval-fixer run — 2026-04-18
 - Scorecard: 43/56 passing (77%) — parsed from `tests/eval/runs/2026-04-18T0459-offline-text.md`

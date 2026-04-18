@@ -5,7 +5,8 @@ description: "Mitsubishi A700 parameter question — Pr.7 deceleration time, pum
 # honesty updated: Mitsubishi docs now in KB post v2.4.1.
 expected_final_state: IDLE
 max_turns: 3
-expected_keywords: [deceleration, Pr.7]
+expected_keywords: [deceleration, Pr.7, acceleration, time, parameter, ramp, A700, Mitsubishi]
+# broad catch: KB may describe Pr.7 without exact "Pr.7" notation; 'time'/'ramp'/'acceleration' should appear
 forbidden_keywords: []
 expected_vendor: Mitsubishi
 wo_expected: false

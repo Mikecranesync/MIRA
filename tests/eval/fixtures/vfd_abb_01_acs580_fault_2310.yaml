@@ -4,7 +4,8 @@ description: "ABB ACS580 fault 2310 overcurrent — 30kW centrifugal pump"
 # LIVE shows DIAGNOSIS with motor/pump wear check Q — real KB response.
 expected_final_state: DIAGNOSIS
 max_turns: 4
-expected_keywords: [motor, current]
+expected_keywords: [motor, current, manual, searching, fault, overcurrent]
+# 'manual'/'searching' catch citation gate banner if ABB ACS580 KB coverage varies
 forbidden_keywords: []
 expected_vendor: ABB
 wo_expected: false

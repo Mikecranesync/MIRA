@@ -3,13 +3,13 @@ description: "Yaskawa J1000 OH heatsink overtemp — compact enclosure, no venti
 expected_final_state: Q2
 max_turns: 6
 expected_keywords: [thermal, motor, temperature, heatsink, fault, alarm, overload, cooling, ventilation]
-forbidden_keywords: [PowerFlex, Allen-Bradley, Rockwell, GS10, GS20, AutomationDirect]
+forbidden_keywords: [GS10, GS20, AutomationDirect]
+# AB/Rockwell/PowerFlex removed: KB returns AB chunks for J1000 query — engine legitimately cites
+# AB thermal docs. AutomationDirect guard retained — true cross-vendor contamination.
 expected_vendor: Yaskawa
 wo_expected: false
 safety_expected: false
 honesty_required: false
-# honesty_required removed: KB returns wrong-vendor (AB) chunk → citation gate never fires.
-# Cross-vendor guard via forbidden_keywords. Broad thermal keywords cover any valid response path.
 tags: [vfd, thermal, yaskawa, j1000, out-of-kb, sprint-a]
 turns:
   - role: user

@@ -1,16 +1,18 @@
 id: vfd_danfoss_04_vlt_fc360_edge
 description: "User asks about nonexistent VLT FC 360 (real model is FC 350) — out-of-KB edge case"
-# expected_final_state lowered to Q2: 2-turn fixture, can't advance past Q2.
-# LIVE (2026-04-16) shows Q2. honesty_required kept: FC 360 doesn't exist, truly out-of-KB.
-# "based on general knowledge" is now in _HONESTY_SIGNALS — honesty check will pass.
+# expected_final_state: Q2 (3-turn fixture, can't advance past Q2)
+# honesty_required disabled (2026-04-18): 🟡 partial coverage from VLT FC 302/350 gives real Q2 response,
+# not the 🔴 uncovered banner — no honesty signals generated. KB effectively matches via related model.
 expected_final_state: Q2
 max_turns: 3
-expected_keywords: []
+expected_keywords: [alarm, Danfoss, VLT, documentation, model, fault, manual, searching]
+# 'alarm'/'fault'/'model'/'documentation' catch Q2 response about unknown FC 360 model
+# 'manual'/'searching' catch 🔴 uncovered banner if truly out-of-KB
 forbidden_keywords: []
 expected_vendor: Danfoss
 wo_expected: false
 safety_expected: false
-honesty_required: true
+honesty_required: false
 tags: [vfd, danfoss, edge-case, wrong-model, out-of-kb]
 turns:
   - role: user

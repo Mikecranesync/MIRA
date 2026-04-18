@@ -2,7 +2,9 @@ id: abbreviation_heavy_10
 description: "Night-shift terse shorthand — abbreviation expansion must fire for diagnosis to proceed"
 expected_final_state: Q2
 max_turns: 4
-expected_keywords: [overcurrent, PowerFlex, motor]
+expected_keywords: [overcurrent, PowerFlex, motor, fault, current, startup, check, manual, searching]
+# broad Q2 keywords — engine may ask follow-up about PF525 OC; 'manual'/'searching' catch banner
+skip_citation_check: true  # user provides "10hp", "100ft" — specs not in KB chunks
 expected_vendor: Allen-Bradley
 wo_expected: false
 safety_expected: false

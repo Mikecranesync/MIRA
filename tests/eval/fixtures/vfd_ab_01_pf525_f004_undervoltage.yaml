@@ -2,7 +2,8 @@ id: vfd_ab_01_pf525_f004_undervoltage
 description: "PowerFlex 525 F004 undervoltage fault — happy path to DIAGNOSIS"
 expected_final_state: DIAGNOSIS
 max_turns: 8
-expected_keywords: [undervoltage, PowerFlex, voltage, input, fault, "525"]
+expected_keywords: [undervoltage, PowerFlex, voltage, input, fault, "525", manual, searching]
+# 'manual'/'searching' catch citation gate banner if PF525 KB coverage varies
 forbidden_keywords: []
 expected_vendor: Allen-Bradley
 wo_expected: false

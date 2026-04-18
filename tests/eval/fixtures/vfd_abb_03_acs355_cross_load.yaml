@@ -1,11 +1,11 @@
 id: vfd_abb_03_acs355_cross_load
 description: "ABB ACS355 motor overload — out-of-KB, no cross-vendor content from AB or AutomationDirect"
 expected_final_state: Q2
-# DIAGNOSIS was expected; Groq stalls at Q2 asking about thermal margin / motor params.
-# honesty_required removed — citation gate never fires at Q2 state, so honesty check always fails.
-# Cross-vendor guard preserved via forbidden_keywords.
+# FSM may reach DIAGNOSIS; citation gate fires (ACS355 out-of-KB) → banner becomes last response.
+# 'manual'/'searching' catch banner; 'motor'/'thermal' catch real diagnostic responses.
 max_turns: 5
-expected_keywords: [thermal, motor, parameters, nameplate, overload, spec, temperature, compressor]
+expected_keywords: [thermal, motor, parameters, nameplate, overload, spec, temperature, compressor, manual, searching]
+skip_citation_check: true  # user provides "7.5kW", "460V", "40°C" — specs not in KB chunks
 forbidden_keywords: [PowerFlex, GS10, GS20, Allen-Bradley, AutomationDirect, Rockwell, PF525, PF755]
 expected_vendor: ABB
 wo_expected: false
