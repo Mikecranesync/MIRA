@@ -1,14 +1,16 @@
 id: vfd_abb_04_acs150_multi_turn
-description: "ABB ACS150 multi-turn — asset tag to symptom to diagnosis across 6 turns, out-of-KB honesty"
+description: "ABB ACS150 multi-turn — asset tag to symptom to diagnosis across 6 turns"
+# honesty_required updated: ABB docs now in KB post v2.4.1 (2026-04-18).
+# LIVE shows DIAGNOSIS with FLA/nameplate check Q — real KB response.
 expected_final_state: DIAGNOSIS
 max_turns: 10
-expected_keywords: []
+expected_keywords: [motor, current]
 forbidden_keywords: []
 expected_vendor: ABB
 wo_expected: false
 safety_expected: false
-honesty_required: true
-tags: [vfd, abb, acs150, multi-turn, out-of-kb]
+honesty_required: false
+tags: [vfd, abb, acs150, multi-turn]
 turns:
   - role: user
     content: "Asset tag PUMP-07, the VFD is acting up"

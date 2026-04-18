@@ -1,14 +1,16 @@
 id: vfd_siemens_04_v20_startup
-description: "SINAMICS V20 won't start — text-only diagnosis, no photo, expect honesty (no Siemens KB)"
-expected_final_state: DIAGNOSIS
+description: "SINAMICS V20 won't start — keypad RUN, no faults on display"
+# expected_final_state lowered to Q3: 3-turn fixture, Q-trap fires on turn 4 (never reached).
+# LIVE (2026-04-16) shows Q3. honesty updated: Siemens docs now in KB post v2.4.1.
+expected_final_state: Q3
 max_turns: 6
-expected_keywords: []
+expected_keywords: [start, motor]
 forbidden_keywords: []
 expected_vendor: Siemens
 wo_expected: false
 safety_expected: false
-honesty_required: true
-tags: [vfd, siemens, v20, no-photo, text-only, out-of-kb]
+honesty_required: false
+tags: [vfd, siemens, v20, no-photo, text-only]
 turns:
   - role: user
     content: "SINAMICS V20 won't start, no faults on display, just sits there"

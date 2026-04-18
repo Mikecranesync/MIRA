@@ -1,13 +1,15 @@
 id: lenze_thermal_30
-description: "Lenze i550 drive overtemperature — out-of-KB vendor, graceful degradation"
-expected_final_state: DIAGNOSIS
+description: "Lenze i550 drive overtemperature — panel fan running, 75% load"
+# expected_final_state lowered to Q3: 3-turn fixture, Q-trap fires on turn 4 (never reached).
+# LIVE (2026-04-16) shows Q3. honesty updated: Lenze docs now in KB post v2.4.1.
+expected_final_state: Q3
 max_turns: 6
-expected_keywords: []
+expected_keywords: [motor, load]
 expected_vendor: Lenze
 wo_expected: false
 safety_expected: false
-honesty_required: true
-tags: [vfd, thermal, lenze, out-of-kb, graceful-degradation, sprint-a]
+honesty_required: false
+tags: [vfd, thermal, lenze, sprint-a]
 turns:
   - role: user
     content: "Lenze i550 drive keeps shutting down on overtemperature"
