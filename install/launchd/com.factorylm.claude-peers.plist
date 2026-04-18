@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.factorylm.claude-peers</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/Shared/.bun/bin/bun</string>
+    <string>run</string>
+    <string>broker.ts</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/Shared/claude-peers-mcp</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CLAUDE_PEERS_HOST</key>
+    <string>0.0.0.0</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/Users/Shared/.bun/bin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/claude-peers-broker.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/claude-peers-broker.err.log</string>
+</dict>
+</plist>

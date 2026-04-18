@@ -1,0 +1,34 @@
+--- a/broker.ts
++++ b/broker.ts
+@@ -24,6 +24,7 @@ import type {
+
+ const PORT = parseInt(process.env.CLAUDE_PEERS_PORT ?? "7899", 10);
++const HOST = process.env.CLAUDE_PEERS_HOST ?? "127.0.0.1";
+ const DB_PATH = process.env.CLAUDE_PEERS_DB ?? `${process.env.HOME}/.claude-peers.db`;
+
+ // --- Database setup ---
+@@ -226,7 +227,7 @@ function handleUnregister(body: { id: string }): void {
+
+ Bun.serve({
+   port: PORT,
+-  hostname: "127.0.0.1",
++  hostname: HOST,
+   async fetch(req) {
+     const url = new URL(req.url);
+     const path = url.pathname;
+@@ -270,4 +271,4 @@ Bun.serve({
+   },
+ });
+
+-console.error(`[claude-peers broker] listening on 127.0.0.1:${PORT} (db: ${DB_PATH})`);
++console.error(`[claude-peers broker] listening on ${HOST}:${PORT} (db: ${DB_PATH})`);
+--- a/server.ts
++++ b/server.ts
+@@ -37,7 +37,8 @@ import {
+
+ const BROKER_PORT = parseInt(process.env.CLAUDE_PEERS_PORT ?? "7899", 10);
+-const BROKER_URL = `http://127.0.0.1:${BROKER_PORT}`;
++const BROKER_HOST = process.env.CLAUDE_PEERS_BROKER_HOST ?? "127.0.0.1";
++const BROKER_URL = `http://${BROKER_HOST}:${BROKER_PORT}`;
+ const POLL_INTERVAL_MS = 1000;
+ const HEARTBEAT_INTERVAL_MS = 15_000;
