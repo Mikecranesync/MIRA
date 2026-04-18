@@ -2260,8 +2260,13 @@ class Supervisor:
         current = state["state"]
         reply_lower = parsed.get("reply", "").lower()
 
+        # Safety override: fire when LLM explicitly sets next_state OR when the reply
+        # starts with "STOP" (per safety protocol — Rule SAFETY OVERRIDE).
+        # Do NOT trigger on incidental mention of safety keywords in diagnostic text
+        # (e.g. "Check for melted insulation" is a valid diagnostic step, not a hazard).
+        _reply_starts_stop = reply_lower.lstrip().startswith("stop")
         if (
-            any(kw in reply_lower for kw in SAFETY_KEYWORDS)
+            (_reply_starts_stop and any(kw in reply_lower for kw in SAFETY_KEYWORDS))
             or parsed.get("next_state") == "SAFETY_ALERT"
         ):
             state["state"] = "SAFETY_ALERT"
