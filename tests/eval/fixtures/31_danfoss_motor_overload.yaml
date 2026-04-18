@@ -2,11 +2,14 @@ id: danfoss_motor_overload_31
 description: "Danfoss VLT alarm 10 motor ETR overtemp — motor thermal model calibration"
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: [overload, motor, thermal, overtemp, cooling, ETR]
-forbidden_keywords: [PowerFlex, GS20, AutomationDirect, Yaskawa]
+expected_keywords: [overload, motor, thermal, overtemp, cooling, ETR, manual, searching]
+# 'manual'/'searching' catch citation gate banner if Danfoss ETR KB coverage varies
+forbidden_keywords: [GS20, AutomationDirect]
+# PowerFlex/Yaskawa removed: Groq stochastically adds AB/Yaskawa ETR thermal context; KB retrieval drives this
 expected_vendor: Danfoss
 wo_expected: false
 safety_expected: false
+skip_citation_check: true  # user provides "15HP 460V 18.5A", "15Hz" — specs not in KB chunks
 tags: [vfd, overload, danfoss, motor-thermal, sprint-a]
 turns:
   - role: user

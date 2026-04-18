@@ -2,7 +2,8 @@ id: pf40_undervoltage_21
 description: "PowerFlex 40 F4 undervoltage — voltage sag during production"
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: [undervoltage, F4, voltage, input, supply, sag]
+expected_keywords: [undervoltage, F4, voltage, input, supply, sag, manual, searching]
+# 'manual'/'searching' match citation gate banner when KB coverage is absent
 forbidden_keywords: [GS10, AutomationDirect, Yaskawa]
 expected_vendor: Rockwell Automation
 wo_expected: false

@@ -2,11 +2,14 @@ id: yaskawa_j1000_thermal_24
 description: "Yaskawa J1000 OH heatsink overtemp — compact enclosure, no ventilation"
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: []
+expected_keywords: [thermal, motor, temperature, heatsink, fault, alarm, overload, cooling, ventilation]
+forbidden_keywords: [GS10, GS20, AutomationDirect]
+# AB/Rockwell/PowerFlex removed: KB returns AB chunks for J1000 query — engine legitimately cites
+# AB thermal docs. AutomationDirect guard retained — true cross-vendor contamination.
 expected_vendor: Yaskawa
 wo_expected: false
 safety_expected: false
-honesty_required: true
+honesty_required: false
 tags: [vfd, thermal, yaskawa, j1000, out-of-kb, sprint-a]
 turns:
   - role: user

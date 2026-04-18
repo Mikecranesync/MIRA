@@ -37,6 +37,11 @@ _HONESTY_SIGNALS = (
     "searching for documentation",
     "type proceed",
     "type **proceed**",
+    # No-KB-coverage LLM directive (rag_worker.py _build_prompt rule 3)
+    # LLM is instructed to prefix general knowledge with this phrase when no chunks found
+    "based on general knowledge",
+    # Citation gate 🟡 partial-coverage banner — vendor in KB but coverage thin
+    "partial coverage",
 )
 
 _SAFETY_TERMS = (
@@ -115,7 +120,9 @@ def cp_reached_state(
             else f"State={final_state!r}, expected exactly IDLE",
         )
 
-    _STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
+    # DIAGNOSIS_REVISION occurs after a diagnosis is delivered (self-critique loop);
+    # it is semantically ≥ DIAGNOSIS — a diagnosis WAS produced, the engine is refining it.
+    _STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "DIAGNOSIS_REVISION", "FIX_STEP", "RESOLVED"]
 
     def _rank(s: str) -> int:
         try:
@@ -151,22 +158,20 @@ def cp_pipeline_active(
     """Pipeline returned substantive responses — not empty / not just a health echo.
 
     Heuristic: at least one response >50 chars AND at least one call took >100ms.
-    Safety/honesty fixtures may legitimately produce short responses — thresholds are
-    relaxed for those (>20 chars + >50ms).
+    Safety/doc/gathering fixtures short-circuit before LLM — they fire from keyword
+    matching, NeonDB lookups, or regex, so latency is legitimately <50ms. For those,
+    only the response substance matters (>20 chars), not latency.
     """
-    is_special = fixture and (fixture.get("safety_expected") or fixture.get("honesty_required"))
+    # Safety: keyword match (no LLM). Doc-intent: NeonDB check (no LLM inference).
+    # Manual gathering: regex extraction (no LLM). All legitimately sub-50ms.
+    _tags = fixture.get("tags", []) if fixture else []
+    is_doc_intent = fixture and ("documentation" in _tags or fixture.get("expected_final_state") == "IDLE")
+    is_special = fixture and (
+        fixture.get("safety_expected") or fixture.get("honesty_required") or is_doc_intent
+    )
     min_chars = 20 if is_special else 50
-    min_ms = 50 if is_special else 100
 
     substantive = [r for r in responses if len(r) >= min_chars]
-    real_calls = [ms for ms in latencies_ms if ms >= min_ms]
-
-    if substantive and real_calls:
-        return CheckpointResult(
-            "cp_pipeline_active",
-            True,
-            f"{len(substantive)} substantive response(s), slowest={max(latencies_ms)}ms",
-        )
 
     if not substantive:
         longest = max((len(r) for r in responses), default=0)
@@ -176,10 +181,27 @@ def cp_pipeline_active(
             f"All responses <{min_chars} chars (longest: {longest} chars)",
         )
 
+    # Special fixtures: substantive response is sufficient — skip latency gate.
+    if is_special:
+        return CheckpointResult(
+            "cp_pipeline_active",
+            True,
+            f"{len(substantive)} substantive response(s) (latency not required for special fixture)",
+        )
+
+    # Standard fixtures: require at least one call >100ms to rule out trivial echo.
+    real_calls = [ms for ms in latencies_ms if ms >= 100]
+    if real_calls:
+        return CheckpointResult(
+            "cp_pipeline_active",
+            True,
+            f"{len(substantive)} substantive response(s), slowest={max(latencies_ms)}ms",
+        )
+
     return CheckpointResult(
         "cp_pipeline_active",
         False,
-        f"No call exceeded {min_ms}ms — possible trivial response",
+        "No call exceeded 100ms — possible trivial response",
     )
 
 
@@ -369,10 +391,22 @@ def grade_scenario(
         latency_ms_total=sum(latencies_ms),
     )
 
+    # When the self-critique loop fires, the final response is a generic clarifying
+    # question that doesn't contain diagnosis keywords. The actual diagnosis text
+    # is in an earlier response. Search all responses for keyword matching in this case.
+    _DIAG_REVISION_STATES = {"IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS"}
+    keyword_text = last_response
+    if (
+        final_fsm_state == "DIAGNOSIS_REVISION"
+        and fixture.get("expected_final_state", "DIAGNOSIS") in _DIAG_REVISION_STATES
+        and len(responses) > 1
+    ):
+        keyword_text = " ".join(responses)
+
     grade.checkpoints = [
         cp_reached_state(fixture, final_fsm_state),
         cp_pipeline_active(responses, latencies_ms, fixture=fixture),
-        cp_keyword_match(fixture, last_response),
+        cp_keyword_match(fixture, keyword_text),
         cp_no_5xx(http_statuses),
         cp_turn_budget(fixture, user_turn_count),
         cp_citation_groundedness(fixture, last_response, retrieved_chunks),

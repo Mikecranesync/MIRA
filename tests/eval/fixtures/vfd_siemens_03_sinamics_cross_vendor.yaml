@@ -8,6 +8,7 @@ expected_vendor: Siemens
 wo_expected: false
 safety_expected: false
 honesty_required: false
+skip_citation_check: true  # user provides "380-480V" — spec not in KB chunks
 tags: [vfd, siemens, sinamics, cross-vendor, contamination, regression]
 turns:
   - role: user

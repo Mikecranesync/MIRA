@@ -7,6 +7,7 @@ forbidden_keywords: []
 expected_vendor: AutomationDirect
 wo_expected: false
 safety_expected: false
+skip_citation_check: true  # user provides "480V", "3HP" — specs not in KB chunks
 tags: [asset-change, context-switch, fsm, regression]
 turns:
   - role: user

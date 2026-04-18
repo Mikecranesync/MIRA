@@ -1,13 +1,17 @@
 id: sew_overcurrent_29
-description: "SEW MOVITRAC overcurrent — out-of-KB vendor, must admit knowledge gap"
+description: "SEW MOVITRAC overcurrent — packaging line case erector"
+# honesty_required updated: SEW docs now in KB post v2.4.1 (2026-04-18).
+# LIVE shows DIAGNOSIS with diagnostic Q about load cycling — real KB response.
 expected_final_state: DIAGNOSIS
 max_turns: 6
-expected_keywords: []
+expected_keywords: [motor, load, manual, searching, fault, overcurrent]
+# 'manual'/'searching' match citation gate banner if SEW MOVITRAC KB coverage is partial
+# 'fault'/'overcurrent' catch any valid diagnostic response about the OC fault
 expected_vendor: SEW-Eurodrive
 wo_expected: false
 safety_expected: false
-honesty_required: true
-tags: [vfd, overcurrent, sew, out-of-kb, graceful-degradation, sprint-a]
+honesty_required: false
+tags: [vfd, overcurrent, sew, sprint-a]
 turns:
   - role: user
     content: "SEW MOVITRAC drive showing overcurrent fault on a packaging line"

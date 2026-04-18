@@ -49,6 +49,21 @@ NAMEPLATE_KEYWORDS = {
     "name plate",
 }
 
+# Structured fields that appear on equipment nameplates — if ≥3 are found in OCR,
+# the image is a nameplate regardless of how the vision model describes it.
+# This catches VFD spec tables described as "AC Drive" by the vision model.
+NAMEPLATE_OCR_FIELDS = {
+    "hp", "horsepower", "kw",
+    "fla", "full load amp", "full-load amp",
+    "serial", "serial no", "ser. no",
+    "volts", "voltage", "vac", "vdc",
+    "hz", "frequency",
+    "rpm", "r.p.m",
+    "manufacturer", "mfr",
+    "model no", "model number", "catalog",
+    "enclosure", "nema",
+}
+
 # Keywords that indicate a physical component photo, NOT a drawing —
 # even if the faceplate has many readable text labels (OCR items > threshold)
 EQUIPMENT_FACE_KEYWORDS = {
@@ -338,6 +353,26 @@ class VisionWorker:
         if any(kw in ocr_text_lower for kw in NAMEPLATE_KEYWORDS):
             conf = min(1.0, 0.5 + nameplate_matches * 0.05)
             return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
+
+        # Structural nameplate detection: ≥3 nameplate fields in OCR → it's a nameplate
+        # even if the vision model calls it a "specifications table" or "AC drive".
+        # VFD and motor nameplates are often printed labels that vision models describe
+        # using the equipment name ("drive", "controller") rather than "nameplate".
+        ocr_field_hits = sum(1 for f in NAMEPLATE_OCR_FIELDS if f in ocr_text_lower)
+        if ocr_field_hits >= 3:
+            conf = min(1.0, 0.55 + ocr_field_hits * 0.04)
+            return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
+
+        # Vision structural detection: "table with specifications" or "specifications for"
+        # catches VFD spec labels described by vision models using the equipment name
+        # ("AC Drive", "VFD") rather than the word "nameplate". This runs before the
+        # EQUIPMENT_FACE check so "drive" in the description doesn't override it.
+        _spec_table = (
+            "table" in vision_lower
+            and any(w in vision_lower for w in ("specification", "rating", "data sheet"))
+        ) or "specifications for" in vision_lower
+        if _spec_table:
+            return {"type": "NAMEPLATE", "confidence": 0.65}
 
         # Equipment faceplate keywords override everything — these are never drawings
         if any(kw in vision_lower for kw in EQUIPMENT_FACE_KEYWORDS):

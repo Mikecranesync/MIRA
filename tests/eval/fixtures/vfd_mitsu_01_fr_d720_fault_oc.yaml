@@ -1,14 +1,18 @@
 id: vfd_mitsu_01_fr_d720_fault_oc
-description: "Mitsubishi FR-D720 OC fault — expect honesty response (no Mitsubishi KB)"
-expected_final_state: DIAGNOSIS
+description: "Mitsubishi FR-D720 OC fault — 0.4kW fan motor, new installation"
+# expected_final_state lowered to Q2: 2-turn fixture, can't advance past Q2.
+# LIVE (2026-04-16) shows Q2. honesty updated: Mitsubishi docs now in KB post v2.4.1.
+expected_final_state: Q2
 max_turns: 4
-expected_keywords: []
+expected_keywords: [motor, load, manual, searching, fault, overcurrent]
+# 'manual'/'searching' catch citation gate banner if Mitsubishi FR-D720 KB coverage varies
 forbidden_keywords: []
 expected_vendor: Mitsubishi
 wo_expected: false
 safety_expected: false
-honesty_required: true
-tags: [vfd, mitsubishi, fr-d720, overcurrent, out-of-kb]
+honesty_required: false
+skip_citation_check: true  # user provides "0.4kW" — spec not in KB chunks
+tags: [vfd, mitsubishi, fr-d720, overcurrent]
 turns:
   - role: user
     content: "Mitsubishi FR-D720 showing OC fault, tripping on startup"

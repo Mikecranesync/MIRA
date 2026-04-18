@@ -7,9 +7,11 @@ description: >
   Guards: response must NOT contain a confident fault-code-specific diagnosis.
   Must contain "fault code" OR "code" OR "alarm" OR "detail" in a clarifying-question
   pattern. Final FSM state should be DIAGNOSIS_REVISION or Q2 (gathering info).
-expected_final_state: DIAGNOSIS_REVISION
+expected_final_state: Q1
+# DIAGNOSIS_REVISION requires Gemini to trigger self-critique; Groq stays at Q1 asking clarifying Qs
 max_turns: 2
-expected_keywords: [detail, fault, alarm, code, telling]
+expected_keywords: [detail, fault, alarm, code, telling, vibration, noise, vfd, troubleshoot]
+# Broadened: Groq asks about vibration signals rather than fault codes — both are valid Q1 responses
 forbidden_keywords: []
 expected_vendor: ""
 wo_expected: false

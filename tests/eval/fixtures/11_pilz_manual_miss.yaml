@@ -1,13 +1,13 @@
 id: pilz_manual_miss_11
 description: >
-  Pilz distribution block forensic — user asks to "find a manual" mid-session.
+  Pilz distribution block forensic — user asks to "find a Pilz manual" mid-session.
   Reconstructed from chat b500953b (2026-04-14 incident).
-  Regression guard: after v2.4.1 fix, Turn 4 "find a manual" must trigger
-  GET_DOCUMENTATION intent (vendor URL + scrape-trigger), NOT a diagnostic question.
-  Judge instruction_following score on a pre-fix response should be ≤2.
-expected_final_state: IDLE
+  Regression guard (citation-gate era): doc intent mid-session triggers citation gate
+  banner at DIAGNOSIS state ("No manual found") — NOT a diagnostic question asking
+  "what fault code?" Expected IDLE updated to DIAGNOSIS since KB miss fires citation gate.
+expected_final_state: DIAGNOSIS
 max_turns: 5
-expected_keywords: [pilz, manual, documentation, support, docs]
+expected_keywords: [pilz, manual, documentation, support, docs, indexed, searching]
 forbidden_keywords: []
 expected_vendor: Pilz
 wo_expected: false
@@ -23,4 +23,4 @@ turns:
   - role: user
     content: "It's on our conveyor safety circuit, E-stop monitoring chain"
   - role: user
-    content: "Can you find a manual for this kind of distribution block?"
+    content: "Can you find the Pilz manual for this distribution block?"

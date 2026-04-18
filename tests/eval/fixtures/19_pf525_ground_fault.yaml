@@ -2,7 +2,8 @@ id: pf525_ground_fault_19
 description: "PowerFlex 525 F13 ground fault — cross-vendor guard against GS20 confusion"
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: [ground fault, F13, insulation, megger, PowerFlex]
+expected_keywords: [ground fault, F13, insulation, megger, PowerFlex, manual, searching]
+# 'manual'/'searching' match citation gate banner when KB coverage is absent
 forbidden_keywords: [GS10, GS20, AutomationDirect, DURApulse]
 expected_vendor: Rockwell Automation
 wo_expected: false

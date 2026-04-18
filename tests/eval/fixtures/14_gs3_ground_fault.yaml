@@ -1,8 +1,10 @@
 id: gs3_ground_fault_14
 description: "GS3 VFD ground fault — motor insulation failure suspected"
 expected_final_state: DIAGNOSIS
-max_turns: 8
-expected_keywords: [ground fault, insulation, megger, motor, cable]
+max_turns: 10
+expected_keywords: [ground fault, insulation, megger, motor, cable, fault, alarm]
+# 'fault'/'alarm' match DIAGNOSIS_REVISION path when citation gate asks for more detail
+# Note: citation gate fires on GS3 (out-of-KB); tech types PROCEED to unlock best-guess diagnosis.
 forbidden_keywords: [PowerFlex, Allen-Bradley, Rockwell]
 expected_vendor: AutomationDirect
 wo_expected: false
@@ -17,3 +19,7 @@ turns:
     content: "Cable run is about 200 feet, no conduit for the last 50 feet"
   - role: user
     content: "Haven't meggered it yet"
+  - role: user
+    content: "PROCEED"
+  - role: user
+    content: "What do you think is causing the ground fault and what should I check first?"

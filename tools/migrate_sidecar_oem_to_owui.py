@@ -81,7 +81,9 @@ def get_or_create_collection(client: httpx.Client) -> str:
     """Return the collection ID for TARGET_COLLECTION_NAME, creating it if absent."""
     resp = client.get(f"{OWUI_BASE}/api/v1/knowledge/", headers=owui_headers())
     resp.raise_for_status()
-    collections = resp.json()
+    body = resp.json()
+    # Open WebUI ≥1.x wraps the list in {"items": [...]}; older versions return a flat list
+    collections = body.get("items", body) if isinstance(body, dict) else body
     for c in collections:
         if c.get("name") == TARGET_COLLECTION_NAME:
             cid = c["id"]
@@ -101,26 +103,54 @@ def get_or_create_collection(client: httpx.Client) -> str:
     return cid
 
 
-def add_texts_to_collection(
-    client: httpx.Client, collection_id: str, texts: list[str], metadatas: list[dict]
-) -> None:
-    """POST a batch of text chunks to an Open WebUI knowledge collection."""
-    payload = {
-        "collection_id": collection_id,
-        "items": [
-            {"text": t, "metadata": m}
-            for t, m in zip(texts, metadatas, strict=True)
-        ],
-    }
+def upload_file_to_collection(
+    client: httpx.Client, collection_id: str, filename: str, content: str
+) -> str:
+    """Upload a text file to Open WebUI files API and add it to a knowledge collection.
+
+    Open WebUI ≥1.x replaced the /texts/add endpoint with a file-based API:
+      1. POST /api/v1/files/ (multipart) → file_id
+      2. POST /api/v1/knowledge/{id}/file/add {file_id} → adds to collection
+    """
+    # Auth header only — no Content-Type (httpx sets multipart boundary automatically)
+    auth_header = {"Authorization": f"Bearer {OWUI_KEY}"}
+
+    # Step 1: Upload file
     resp = client.post(
-        f"{OWUI_BASE}/api/v1/knowledge/{collection_id}/texts/add",
-        headers=owui_headers(),
-        json=payload,
+        f"{OWUI_BASE}/api/v1/files/",
+        headers=auth_header,
+        files={"file": (filename, content.encode("utf-8"), "text/plain")},
         timeout=120,
     )
     if resp.status_code not in (200, 201):
-        logger.error("Add texts failed HTTP %s: %s", resp.status_code, resp.text[:300])
+        logger.error("File upload failed HTTP %s: %s", resp.status_code, resp.text[:300])
         resp.raise_for_status()
+    file_id = resp.json()["id"]
+    logger.info("Uploaded '%s' → file_id=%s", filename, file_id)
+
+    # Step 2: Populate file content — Open WebUI v0.8.x does not auto-extract plain
+    # text on upload; file.data.content stays empty and file/add returns 400 without this.
+    resp = client.post(
+        f"{OWUI_BASE}/api/v1/files/{file_id}/data/content/update",
+        headers=owui_headers(),
+        json={"content": content},
+        timeout=60,
+    )
+    if resp.status_code not in (200, 201):
+        logger.error("content/update failed HTTP %s: %s", resp.status_code, resp.text[:300])
+        resp.raise_for_status()
+
+    # Step 3: Add file to knowledge collection
+    resp = client.post(
+        f"{OWUI_BASE}/api/v1/knowledge/{collection_id}/file/add",
+        headers=owui_headers(),
+        json={"file_id": file_id},
+        timeout=60,
+    )
+    if resp.status_code not in (200, 201):
+        logger.error("file/add failed HTTP %s: %s", resp.status_code, resp.text[:300])
+        resp.raise_for_status()
+    return file_id
 
 
 def load_progress() -> set[str]:
@@ -235,47 +265,44 @@ def run(dry_run: bool = False, resume: bool = False) -> None:
 
         collection_id = get_or_create_collection(client)
 
-        # ── 7. Upload in batches ─────────────────────────────────────────────
-        batch_texts: list[str] = []
-        batch_metas: list[dict] = []
-        batch_ids: list[str] = []
+        # ── 7. Group by source file and upload one file per source ──────────────
+        # Open WebUI ≥1.x uses file-based ingestion; group chunks by source_file,
+        # sort by chunk_index, concatenate, upload as .txt, add to collection.
+        from collections import defaultdict
+        by_file: dict[str, list[tuple[int, str, str]]] = defaultdict(list)
+        for cid, doc, meta in pending:
+            src = meta.get("source_file", "unknown.txt")
+            idx = meta.get("chunk_index", 0)
+            by_file[src].append((idx, cid, doc))
 
         uploaded = 0
         failed = 0
 
-        for i, (cid, doc, meta) in enumerate(pending):
-            # Enrich metadata for traceability
-            enriched_meta = {
-                **meta,
-                "migration_source": "mira-sidecar:shared_oem",
-                "original_chunk_id": cid,
-            }
-            batch_texts.append(doc)
-            batch_metas.append(enriched_meta)
-            batch_ids.append(cid)
+        for src_file, chunks in sorted(by_file.items()):
+            chunks.sort(key=lambda x: x[0])  # sort by chunk_index
+            chunk_ids = [c[1] for c in chunks]
+            # Skip if all already migrated
+            if all(cid in migrated_ids for cid in chunk_ids):
+                logger.info("Skipping '%s' — already migrated", src_file)
+                continue
 
-            if len(batch_texts) >= BATCH_SIZE or i == len(pending) - 1:
-                try:
-                    add_texts_to_collection(client, collection_id, batch_texts, batch_metas)
-                    for bid in batch_ids:
-                        migrated_ids.add(bid)
-                    uploaded += len(batch_texts)
-                    save_progress(migrated_ids)
-                    logger.info(
-                        "Progress: %d/%d uploaded (%.0f%%)",
-                        uploaded,
-                        len(pending),
-                        100 * uploaded / len(pending),
-                    )
-                except Exception as e:
-                    logger.error("Batch upload failed: %s — will retry on next run", e)
-                    failed += len(batch_texts)
-                finally:
-                    batch_texts.clear()
-                    batch_metas.clear()
-                    batch_ids.clear()
+            content = "\n\n".join(c[2] for c in chunks)
+            txt_name = Path(src_file).stem + "_oem_migrated.txt"
+            try:
+                upload_file_to_collection(client, collection_id, txt_name, content)
+                for cid in chunk_ids:
+                    migrated_ids.add(cid)
+                uploaded += len(chunks)
+                save_progress(migrated_ids)
+                logger.info(
+                    "Progress: %d/%d chunks uploaded (%.0f%%)",
+                    uploaded, len(pending), 100 * uploaded / len(pending),
+                )
+            except Exception as e:
+                logger.error("Upload failed for '%s': %s — will retry on next run", src_file, e)
+                failed += len(chunks)
 
-                time.sleep(0.2)  # light rate limiting
+            time.sleep(0.5)  # light rate limiting between files
 
     # ── 8. Summary ──────────────────────────────────────────────────────────
     logger.info("Migration complete: %d uploaded, %d failed", uploaded, failed)
