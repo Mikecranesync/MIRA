@@ -41,6 +41,7 @@ docker network create cmms-net  2>/dev/null || true
 mkdir -p ~/MIRA/mira-core/data/photos
 touch ~/MIRA/mira-core/mira.db
 mkdir -p ~/MIRA/mira-bridge/data
+touch ~/MIRA/mira-bridge/data/mira.db
 
 echo "==> [8/8] Pre-pull heavy images"
 docker pull ghcr.io/open-webui/open-webui:v0.8.10 &

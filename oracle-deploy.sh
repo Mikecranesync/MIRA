@@ -17,6 +17,12 @@ curl -s --max-time 5 http://100.86.236.11:11434/api/tags > /dev/null \
   && echo "    Bravo Ollama: OK" \
   || echo "    WARNING: Bravo unreachable — run 'sudo tailscale up' first"
 
+# Ensure SQLite DB files exist so Docker doesn't create them as directories
+mkdir -p ~/MIRA/mira-core/data/photos
+[ -f ~/MIRA/mira-core/mira.db ] || touch ~/MIRA/mira-core/mira.db
+mkdir -p ~/MIRA/mira-bridge/data
+[ -f ~/MIRA/mira-bridge/data/mira.db ] || touch ~/MIRA/mira-bridge/data/mira.db
+
 # MIRA core
 echo "==> MIRA core"
 cd ~/MIRA/mira-core
