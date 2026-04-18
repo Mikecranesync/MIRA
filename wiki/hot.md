@@ -1,4 +1,10 @@
-# Hot Cache — 2026-04-18 — CHARLIE
+# Hot Cache — 2026-04-18 — BRAVO
+
+## Session — 2026-04-18 (BRAVO)
+- **PR #384 opened**: `feat/citation-gate` → `feat/training-loop-v1` — 5 post-gate fixes (SAFETY_ALERT, Ollama fallback, grader DIAGNOSIS_REVISION, OEM migration update)
+- **OEM migration dry-run**: ✅ clean — 398 chunks, 2 source files. Ready to run live (needs explicit go-ahead — writes production KB data)
+- **VPS 0/57 issue identified**: Automated Celery eval (with judge enabled) getting IDLE for all scenarios. Manual VPS eval still 34/57. Root cause: likely pipeline auth/routing during Celery eval runs. Not blocking.
+- **Next**: merge PR #384, deploy `feat/training-loop-v1` to VPS, run OEM migration, then BFG+HTTPS
 
 ## eval-fixer run — 2026-04-18
 - Scorecard: 43/56 passing (77%) — parsed from `tests/eval/runs/2026-04-18T0459-offline-text.md`
