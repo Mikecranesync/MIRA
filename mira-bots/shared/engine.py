@@ -1432,11 +1432,49 @@ class Supervisor:
 
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
-        reply = (
-            f"Asset registered: {manufacturer} {model} — "
-            f"linked to {linked_chunks} OEM manual chunks. "
-            f"Ask me anything about this equipment."
-        )
+
+        # 5. Vision → RAG loop: immediately surface KB content after nameplate extraction.
+        # Fire an auto-query so the user gets a useful answer without a follow-up message.
+        # Only runs when the KB has linked chunks for this equipment.
+        rag_reply = ""
+        if linked_chunks > 0:
+            # If the user captioned the photo with a real question, use it.
+            # Otherwise fire a default fault/troubleshooting query.
+            _cap = message.strip()
+            _is_question = "?" in _cap or bool(
+                re.match(
+                    r"^(what|why|how|when|where|which|is |are |can |does |do )\b",
+                    _cap,
+                    re.IGNORECASE,
+                )
+            )
+            rag_query = _cap if (_cap and _is_question) else (
+                f"{manufacturer} {model} common faults troubleshooting"
+            )
+            try:
+                raw = await self.rag.process(
+                    rag_query,
+                    state,
+                    tenant_id=resolved_tenant,
+                )
+                parsed = self._parse_response(raw)
+                rag_reply = parsed.get("reply", "")
+            except Exception as e:
+                logger.warning("nameplate auto-RAG failed: %s", e)
+
+        if rag_reply:
+            reply = (
+                f"**{manufacturer} {model}** — asset registered, "
+                f"{linked_chunks} manual chunks linked.\n\n"
+                f"{rag_reply}"
+            )
+        else:
+            reply = (
+                f"Asset registered: {manufacturer} {model} — "
+                f"linked to {linked_chunks} OEM manual chunks. "
+                f"Ask me anything about this equipment."
+            )
+
         history.append({"role": "assistant", "content": reply})
         if len(history) > HISTORY_LIMIT:
             history = history[-HISTORY_LIMIT:]
@@ -1444,11 +1482,12 @@ class Supervisor:
         state["context"] = ctx
 
         logger.info(
-            "NAMEPLATE_FLOW tenant=%s manufacturer=%s model=%s linked_chunks=%d",
+            "NAMEPLATE_FLOW tenant=%s manufacturer=%s model=%s linked_chunks=%d auto_rag=%s",
             resolved_tenant,
             manufacturer,
             model,
             linked_chunks,
+            bool(rag_reply),
         )
         return reply
 
