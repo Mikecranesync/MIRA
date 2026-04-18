@@ -34,13 +34,14 @@ MIRA/
 ├── mira-pipeline/   # OpenAI-compat API wrapping GSDEngine — active VPS chat path
 ├── mira-web/        # PLG funnel — Hono/Bun, Stripe, /cmms landing + Mira AI chat
 ├── mira-cmms/       # Atlas CMMS — work orders, PM scheduling, asset registry
-├── mira-hud/        # AR HUD desktop app (Express + Socket.IO)
 ├── mira-sidecar/    # ⚠️ LEGACY — ChromaDB RAG, superseded by mira-pipeline (ADR-0008)
 ├── wiki/            # LLM-maintained ops wiki (Karpathy pattern) — Obsidian vault
 ├── tests/           # 5-regime testing framework (76 offline tests, 39 golden cases)
 ├── docs/            # PRD, ADRs, C4 diagrams, runbooks, CHANGELOG, env-vars, known-issues
 ├── tools/           # Photo pipeline, Google Drive ingest, migration scripts
-└── plc/             # PLC program files
+├── plc/             # PLC program files
+└── archives/
+    └── mira-hud/    # ⚠️ ARCHIVED — AR HUD + VIM (no live users, GH #258)
 ```
 
 See local CLAUDE.md in each module for deep context.

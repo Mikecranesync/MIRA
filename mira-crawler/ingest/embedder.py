@@ -1,7 +1,7 @@
 """Ollama batch embedder for document chunks.
 
 Uses nomic-embed-text:v1.5 via Ollama REST API. Matches the pattern
-in mira-core/mira-ingest/main.py and mira-hud/vim/db_adapter.py.
+in mira-core/mira-ingest/main.py.
 
 Retry with exponential backoff. Never crashes on Ollama failure —
 returns None for failed embeddings so callers can skip or fallback.

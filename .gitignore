@@ -19,8 +19,8 @@ bravo/Send to Bravo/
 MIRA test case 1/
 tools/ingest_local_pdfs.py
 
-# HUD session logs
-mira-hud/vision_backend/logs/
+# HUD session logs (archived)
+archives/mira-hud/vision_backend/logs/
 
 # Telethon sessions
 *.session

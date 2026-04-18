@@ -1,5 +1,8 @@
 # MIRA HMI Co-Pilot — Installation Guide
 
+> **⚠️ ARCHIVED** — This guide references `mira-sidecar/` which has been superseded by `mira-pipeline` (ADR-0008).
+> The AR HUD module has been moved to `archives/mira-hud/`. See [GH #258](https://github.com/Mikecranesync/MIRA/issues/258).
+
 Step-by-step installation for maintenance engineers. No Python knowledge required.
 
 ---

@@ -10,7 +10,7 @@ Each MIRA module falls into one of four layers. Dependencies flow **downward onl
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  PRESENTATION (user-facing surfaces)                     │
-│  mira-web · mira-hud · atlas-frontend                   │
+│  mira-web · atlas-frontend                               │
 ├─────────────────────────────────────────────────────────┤
 │  ADAPTERS (protocol translation → engine)                │
 │  mira-bots/{telegram,slack,reddit} · mira-pipeline       │
@@ -30,7 +30,7 @@ Each MIRA module falls into one of four layers. Dependencies flow **downward onl
 
 | Rule | Meaning |
 |------|---------|
-| Presentation → Adapters | Web/HUD call bot adapters or pipeline API, never engine directly |
+| Presentation → Adapters | Web calls bot adapters or pipeline API, never engine directly |
 | Adapters → Engine | Telegram/Slack adapters call GSDEngine, never infrastructure |
 | Engine → Infrastructure | GSDEngine calls NeonDB recall, Ollama embed, MCP tools |
 | Infrastructure → ∅ | Data stores and crawlers have no upward dependencies |
@@ -72,4 +72,4 @@ Alpha (Celery orchestrator) ──tailscale──→ Bravo (Ollama compute)
 | mira-pipeline | Adapter | mira-pipeline | 9099 | ✓ |
 | mira-bots/{tg,slack} | Adapter | mira-bot-{telegram,slack} | — | via shared |
 | mira-web | Presentation | mira-web | 3200→3000 | ✓ |
-| mira-hud | Presentation | — (standalone) | — | ✓ |
+| ~~mira-hud~~ | ~~Presentation~~ | — | — | archived → `archives/mira-hud/` |
