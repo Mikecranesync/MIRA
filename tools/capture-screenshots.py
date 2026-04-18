@@ -64,17 +64,25 @@ async def wait_for_response(page: Page, timeout_ms: int = 120000, min_chars: int
     except Exception:
         return False
     # Wait for substantive text content (not just loading indicator or 1-line clarifier)
-    for _ in range(30):
+    got_text = False
+    for _ in range(60):
         await page.wait_for_timeout(1000)
         text_len = await page.evaluate("""
             (() => {
                 const els = document.querySelectorAll('[class*="prose"]');
                 const last = els[els.length - 1];
-                return last ? last.innerText.trim().length : 0;
+                if (!last) return 0;
+                const txt = last.innerText.trim();
+                // Ignore loading indicators (typing dots, skeleton placeholders)
+                if (/^[\\s.·•…⋯]+$/.test(txt)) return 0;
+                return txt.length;
             })()
         """)
         if text_len > min_chars:
+            got_text = True
             break
+    if not got_text:
+        return False
     # Wait for streaming to finish (stop button disappears)
     for _ in range(90):
         await page.wait_for_timeout(1000)

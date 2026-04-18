@@ -129,7 +129,8 @@ def _build_providers() -> list[_Provider]:
     """Build the ordered provider list from environment variables."""
     providers: list[_Provider] = []
 
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    skip_gemini = os.getenv("SKIP_GEMINI", "").strip()
+    gemini_key = os.getenv("GEMINI_API_KEY", "") if not skip_gemini else ""
     if gemini_key:
         gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         providers.append(
