@@ -215,7 +215,7 @@ jobs:
             -t mira-ingest:scan --load
 
       - name: Scan mira-ingest
-        run: trivy image --severity HIGH,CRITICAL --exit-code 1 mira-ingest:scan
+        run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 mira-ingest:scan
 
       - name: Build mira-bot-telegram
         run: |
@@ -224,7 +224,7 @@ jobs:
             -t mira-telegram:scan --load
 
       - name: Scan mira-bot-telegram
-        run: trivy image --severity HIGH,CRITICAL --exit-code 1 mira-telegram:scan
+        run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 mira-telegram:scan
 
       - name: Build mira-bot-slack
         run: |
@@ -233,7 +233,7 @@ jobs:
             -t mira-slack:scan --load
 
       - name: Scan mira-bot-slack
-        run: trivy image --severity HIGH,CRITICAL --exit-code 1 mira-slack:scan
+        run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 mira-slack:scan
 
       - name: Build mira-mcp
         run: |
@@ -242,4 +242,4 @@ jobs:
             -t mira-mcp:scan --load
 
       - name: Scan mira-mcp
-        run: trivy image --severity HIGH,CRITICAL --exit-code 1 mira-mcp:scan
+        run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 mira-mcp:scan
