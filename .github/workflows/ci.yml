@@ -232,6 +232,8 @@ jobs:
         run: |
           docker buildx build \
             -f mira-core/mira-ingest/Dockerfile mira-core/mira-ingest/ \
+            --cache-from type=gha,scope=mira-ingest \
+            --cache-to type=gha,mode=max,scope=mira-ingest \
             -t mira-ingest:scan --load
 
       - name: Scan mira-ingest
@@ -241,6 +243,8 @@ jobs:
         run: |
           docker buildx build \
             -f mira-bots/telegram/Dockerfile mira-bots/ \
+            --cache-from type=gha,scope=mira-telegram \
+            --cache-to type=gha,mode=max,scope=mira-telegram \
             -t mira-telegram:scan --load
 
       - name: Scan mira-bot-telegram
@@ -250,6 +254,8 @@ jobs:
         run: |
           docker buildx build \
             -f mira-bots/slack/Dockerfile mira-bots/ \
+            --cache-from type=gha,scope=mira-slack \
+            --cache-to type=gha,mode=max,scope=mira-slack \
             -t mira-slack:scan --load
 
       - name: Scan mira-bot-slack
@@ -259,6 +265,8 @@ jobs:
         run: |
           docker buildx build \
             -f mira-mcp/Dockerfile mira-mcp/ \
+            --cache-from type=gha,scope=mira-mcp \
+            --cache-to type=gha,mode=max,scope=mira-mcp \
             -t mira-mcp:scan --load
 
       - name: Scan mira-mcp
