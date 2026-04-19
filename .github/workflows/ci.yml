@@ -106,17 +106,17 @@ jobs:
         run: |
           pip install -r mira-core/mira-ingest/requirements.txt
           pip install -r mira-bots/telegram/requirements.txt
-          pip install pytest pytest-asyncio pytest-cov
+          pip install pytest pytest-asyncio pytest-cov pytest-xdist
 
       - name: Run ingest tests with coverage
         run: |
-          pytest mira-core/mira-ingest/tests/ -v \
+          pytest mira-core/mira-ingest/tests/ -v -n auto \
             --cov=mira-core/mira-ingest --cov-report=term-missing \
             --cov-fail-under=20
 
       - name: Run bot tests with coverage
         run: |
-          pytest mira-bots/tests/ -v \
+          pytest mira-bots/tests/ -v -n auto \
             --ignore=mira-bots/tests/test_slack_relay.py \
             --cov=mira-bots/shared --cov-report=term-missing \
             --cov-fail-under=30
@@ -177,7 +177,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pytest pytest-asyncio pyyaml hypothesis
+          pip install pytest pytest-asyncio pytest-xdist pyyaml hypothesis
           pip install -r mira-core/mira-ingest/requirements.txt
           pip install -r mira-bots/telegram/requirements.txt
           pip install chromadb
@@ -188,8 +188,11 @@ jobs:
         #   (move to a dedicated integration job when sidecar stack is containerized in CI)
         # test_symlink_outside_base_returns_403 — latent path-traversal bug surfaced by
         #   this PR finally running the offline suite; tracked for dedicated fix
+        # -n auto (pytest-xdist) parallelises across runner CPUs; if any regime proves
+        # order-dependent, narrow that regime to `-n 0` with a one-line comment citing
+        # the shared-state bug.
         run: |
-          pytest tests/ -v -m "not network and not slow" \
+          pytest tests/ -v -n auto -m "not network and not slow" \
             --ignore=tests/regime5_nemotron/ \
             --ignore=tests/regime6_sidecar/ \
             --ignore=tests/test_mira_pipeline.py \
