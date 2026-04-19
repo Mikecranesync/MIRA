@@ -54,13 +54,26 @@ class TestInferConfidence:
         assert Supervisor._infer_confidence("") == "none"
 
     def test_high_confidence_signals(self):
-        assert Supervisor._infer_confidence("Replace the contactor and check wiring to terminal 3") == "high"
+        assert (
+            Supervisor._infer_confidence("Replace the contactor and check wiring to terminal 3")
+            == "high"
+        )
 
     def test_low_confidence_signals(self):
-        assert Supervisor._infer_confidence("It could be a faulty sensor, but I'm not sure without more info") == "low"
+        assert (
+            Supervisor._infer_confidence(
+                "It could be a faulty sensor, but I'm not sure without more info"
+            )
+            == "low"
+        )
 
     def test_mixed_signals_returns_medium(self):
-        assert Supervisor._infer_confidence("Replace the fuse — but it could be something else, not sure") == "medium"
+        assert (
+            Supervisor._infer_confidence(
+                "Replace the fuse — but it could be something else, not sure"
+            )
+            == "medium"
+        )
 
     def test_medium_length_no_signals(self):
         reply = "The motor is operating within normal parameters and all readings look standard for this equipment type."
@@ -70,10 +83,20 @@ class TestInferConfidence:
         assert Supervisor._infer_confidence("Looks fine to me.") == "none"
 
     def test_fault_code_is_high(self):
-        assert Supervisor._infer_confidence("Fault code F-201 indicates an overcurrent condition on the drive output") == "high"
+        assert (
+            Supervisor._infer_confidence(
+                "Fault code F-201 indicates an overcurrent condition on the drive output"
+            )
+            == "high"
+        )
 
     def test_lockout_is_high(self):
-        assert Supervisor._infer_confidence("Perform lockout tagout procedure before opening the panel") == "high"
+        assert (
+            Supervisor._infer_confidence(
+                "Perform lockout tagout procedure before opening the panel"
+            )
+            == "high"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +107,12 @@ class TestInferConfidence:
 class TestMakeResult:
     def test_basic_result(self):
         result = Supervisor._make_result("test reply", "high", "trace-123", "Q1")
-        assert result == {"reply": "test reply", "confidence": "high", "trace_id": "trace-123", "next_state": "Q1"}
+        assert result == {
+            "reply": "test reply",
+            "confidence": "high",
+            "trace_id": "trace-123",
+            "next_state": "Q1",
+        }
 
     def test_defaults(self):
         result = Supervisor._make_result("reply")
@@ -231,7 +259,9 @@ class TestAdvanceState:
 
     def test_all_aliases_map_to_valid_states(self, supervisor):
         for alias, canonical in _STATE_ALIASES.items():
-            assert canonical in supervisor._VALID_STATES, f"Alias '{alias}' maps to invalid state '{canonical}'"
+            assert canonical in supervisor._VALID_STATES, (
+                f"Alias '{alias}' maps to invalid state '{canonical}'"
+            )
 
     def test_invalid_state_holds_current(self, supervisor):
         state = self._make_state("Q2")
@@ -241,7 +271,9 @@ class TestAdvanceState:
     def test_safety_override_from_any_state(self, supervisor):
         for start_state in ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"]:
             state = self._make_state(start_state)
-            state = supervisor._advance_state(state, {"reply": "exposed wire near panel", "next_state": None})
+            state = supervisor._advance_state(
+                state, {"reply": "exposed wire near panel", "next_state": None}
+            )
             assert state["state"] == "SAFETY_ALERT", f"Safety override failed from {start_state}"
             assert state["final_state"] == "SAFETY_ALERT"
 
@@ -277,7 +309,9 @@ class TestAdvanceState:
 
     def test_fault_category_detected(self, supervisor):
         state = self._make_state("Q1")
-        state = supervisor._advance_state(state, {"reply": "The motor has a mechanical vibration issue"})
+        state = supervisor._advance_state(
+            state, {"reply": "The motor has a mechanical vibration issue"}
+        )
         assert state["fault_category"] == "mechanical"
 
     def test_fault_category_normalized(self, supervisor):
@@ -305,7 +339,9 @@ class TestAdvanceState:
             state = supervisor._advance_state(state, {"reply": "test", "next_state": "Q2"})
         # Third round should trigger escape
         state = supervisor._advance_state(state, {"reply": "test", "next_state": "Q3"})
-        assert state["state"] == "DIAGNOSIS", "Q-trap escape should force DIAGNOSIS after 3 Q-rounds"
+        assert state["state"] == "DIAGNOSIS", (
+            "Q-trap escape should force DIAGNOSIS after 3 Q-rounds"
+        )
 
     def test_q_rounds_reset_on_exit(self, supervisor):
         """q_rounds counter resets when FSM leaves Q-states."""
@@ -313,11 +349,13 @@ class TestAdvanceState:
         state["context"] = {"q_rounds": 2}
         state = supervisor._advance_state(state, {"reply": "test", "next_state": "DIAGNOSIS"})
         assert state["state"] == "DIAGNOSIS"
-        assert state["context"]["q_rounds"] == 0
+        # Either popped or explicitly reset to 0 — both are valid "reset" semantics.
+        assert state["context"].get("q_rounds", 0) == 0
 
     def test_q_trap_env_override(self):
         """MIRA_MAX_Q_ROUNDS env var should control the threshold."""
         from shared.engine import _MAX_Q_ROUNDS
+
         assert _MAX_Q_ROUNDS == 3  # default
 
     def test_resolved_at_end_of_chain(self, supervisor):
@@ -368,7 +406,11 @@ class TestManualLookupGatheringEscape:
         ):
             result = asyncio.run(
                 supervisor._do_documentation_lookup(
-                    chat_id, "find a manual", state, "trace-1", "default",
+                    chat_id,
+                    "find a manual",
+                    state,
+                    "trace-1",
+                    "default",
                     vendor_override="Pilz",
                 )
             )
@@ -393,7 +435,12 @@ class TestFormatReply:
         assert "1." not in result
 
     def test_multiple_options_appended(self, supervisor):
-        result = supervisor._format_reply({"reply": "Choose one:", "options": ["Check voltage", "Inspect wiring", "Call electrician"]})
+        result = supervisor._format_reply(
+            {
+                "reply": "Choose one:",
+                "options": ["Check voltage", "Inspect wiring", "Call electrician"],
+            }
+        )
         assert "1. Check voltage" in result
         assert "2. Inspect wiring" in result
         assert "3. Call electrician" in result
@@ -415,18 +462,30 @@ class TestStatePersistence:
         assert state["exchange_count"] == 0
 
     def test_save_and_load_roundtrip(self, supervisor):
-        state = {"state": "Q2", "exchange_count": 3, "asset_identified": "PowerFlex 525",
-                 "fault_category": "power", "final_state": None, "context": {},
-                 "voice_enabled": 0}
+        state = {
+            "state": "Q2",
+            "exchange_count": 3,
+            "asset_identified": "PowerFlex 525",
+            "fault_category": "power",
+            "final_state": None,
+            "context": {},
+            "voice_enabled": 0,
+        }
         supervisor._save_state("chat-456", state)
         loaded = supervisor._load_state("chat-456")
         assert loaded["state"] == "Q2"
         assert loaded["exchange_count"] == 3
 
     def test_reset_clears_state(self, supervisor):
-        state = {"state": "DIAGNOSIS", "exchange_count": 5, "asset_identified": "Motor",
-                 "fault_category": "mechanical", "final_state": None, "context": "{}",
-                 "voice_enabled": 0}
+        state = {
+            "state": "DIAGNOSIS",
+            "exchange_count": 5,
+            "asset_identified": "Motor",
+            "fault_category": "mechanical",
+            "final_state": None,
+            "context": "{}",
+            "voice_enabled": 0,
+        }
         supervisor._save_state("chat-789", state)
         supervisor.reset("chat-789")
         loaded = supervisor._load_state("chat-789")
@@ -435,7 +494,9 @@ class TestStatePersistence:
     def test_log_feedback(self, supervisor):
         supervisor.log_feedback("chat-100", "up", "helpful")
         conn = sqlite3.connect(supervisor.db_path)
-        row = conn.execute("SELECT feedback, reason FROM feedback_log WHERE chat_id = 'chat-100'").fetchone()
+        row = conn.execute(
+            "SELECT feedback, reason FROM feedback_log WHERE chat_id = 'chat-100'"
+        ).fetchone()
         conn.close()
         assert row[0] == "up"
         assert row[1] == "helpful"
