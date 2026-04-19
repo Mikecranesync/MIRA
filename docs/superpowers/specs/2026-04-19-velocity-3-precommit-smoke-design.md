@@ -10,6 +10,20 @@ depends-on: velocity-2-impact-graph-ci (no hard dependency; #2 just makes CI fas
 
 # Velocity #3 — Pre-Commit + On-Save Smoke Eval (Minimal Scope)
 
+## Implementation Note (2026-04-19, end-of-day)
+
+While building, discovered that `tests/eval/offline_run.py`'s "offline" path still makes real LLM calls — `EVAL_DISABLE_JUDGE=1` only skips the *judge*, not the response generator. A 18-case smoke at the LLM-response layer is 1.5-9 min, not <2 min.
+
+**Scope shift, captured before merge:**
+
+- **Pre-commit smoke** is now the existing **FSM unit tests** (`mira-bots/tests/test_engine.py`, `test_q_trap_guard.py`, `test_guardrails.py` — ~50 tests, no LLM, sub-30s). Catches the regression class PR #411 fixed (Q-trap default mismatch) directly.
+- **`tests/eval/smoke_set.txt`** is dropped — the FSM-pytest set is named directly in `.pre-commit-config.yaml`'s `entry`.
+- **`tools/precommit_smoke.py`** is dropped — pytest is the smoke runner.
+- **Watcher** keeps real eval scenarios (10 fixtures) — runs only on manual invocation, requires Doppler/API keys. This *is* the prompt-tweak feedback loop.
+- **`offline_run.run_subset`** addition is dropped — `tools/eval_watch.py` calls existing `run_suite` directly.
+
+The original requirements (R1–R11) below describe the brainstormed end state. The shipped code (`.pre-commit-config.yaml`, `tools/setup_precommit.sh`, `tools/eval_watch.py`, `tests/eval/watch_set.txt`) implements the revised scope. See `wiki/references/dev-loop.md` for the user-facing usage.
+
 ## Problem Frame
 
 CI catches regressions ~6–12 minutes after `git push`. By then the engineer has switched context, the prompt-tweak intent is gone, and the failure shows up in a notification. Cost of one prompt-tweak iteration today: **edit → push → wait 8 min → read failure → diagnose → repeat**.

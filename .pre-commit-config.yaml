@@ -1,0 +1,55 @@
+# MIRA pre-commit hooks — see docs/superpowers/specs/2026-04-19-velocity-3-precommit-smoke-design.md
+# Install: bash tools/setup_precommit.sh
+# Bypass: git commit --no-verify
+
+repos:
+  # Lint + format — same ruff version as CI
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Type check — same as CI's `pyright` invocation (no flags)
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.392
+    hooks:
+      - id: pyright
+
+  # Security — same .bandit.yml + severity-level as CI
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.2
+    hooks:
+      - id: bandit
+        args:
+          - "-r"
+          - "mira-bots/shared/"
+          - "mira-bots/telegram/"
+          - "mira-bots/slack/"
+          - "mira-core/mira-ingest/"
+          - "mira-mcp/"
+          - "-c"
+          - ".bandit.yml"
+          - "--severity-level"
+          - "high"
+        pass_filenames: false
+
+  # Secrets — git-level guard (complements .claude/settings.json's Claude-only PreToolUse hook)
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.27.2
+    hooks:
+      - id: gitleaks
+
+  # Local: FSM smoke — fast unit-test suite that catches the regression class
+  # PR #411 fixed (Q-trap default mismatch) before push. No LLM calls, no API keys.
+  # Runs only when *.py files are staged. Target: <30s wall.
+  - repo: local
+    hooks:
+      - id: fsm-smoke
+        name: FSM smoke (engine + Q-trap + guardrails unit tests)
+        entry: python -m pytest mira-bots/tests/test_engine.py mira-bots/tests/test_q_trap_guard.py mira-bots/tests/test_guardrails.py -q --no-header --no-cov -x
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-commit]

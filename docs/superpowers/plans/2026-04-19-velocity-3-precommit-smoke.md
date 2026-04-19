@@ -10,6 +10,21 @@ tags: [velocity, dx, pre-commit, eval]
 
 # Velocity #3 — Pre-Commit + On-Save Smoke Eval (minimal scope)
 
+## Implementation Note (2026-04-19, end-of-day)
+
+Discovered while building: `EVAL_DISABLE_JUDGE=1` only skips the judge, not the LLM response generator. An 18-case smoke at the LLM-response layer takes 1.5-9 min, not <2 min. **Plan revised before code shipped:**
+
+| Original plan | Shipped |
+|---|---|
+| 4 units (config + smoke + watcher + docs) | 3 units — Unit 2 (`precommit_smoke.py` + `smoke_set.txt`) replaced by direct `pytest` invocation in `.pre-commit-config.yaml` |
+| Pre-commit smoke = 18 eval fixtures via `EVAL_DISABLE_JUDGE=1` | Pre-commit smoke = `pytest mira-bots/tests/test_engine.py test_q_trap_guard.py test_guardrails.py` (FSM unit tests, no LLM, ~5-30s) |
+| `offline_run.run_subset` programmatic API addition | Not added — `tools/eval_watch.py` calls existing `run_suite` directly |
+| Watcher fixture set unchanged (10 cases) | Watcher fixture set unchanged (10 cases — requires Doppler/API keys, ~60s per loop) |
+
+Files shipped: `.pre-commit-config.yaml`, `tools/setup_precommit.sh`, `tools/eval_watch.py`, `tests/eval/watch_set.txt`, `wiki/references/dev-loop.md`, CLAUDE.md pointer line.
+
+The original Implementation Units below describe the brainstormed structure. Items dropped or simplified are flagged in their headers.
+
 ## Overview
 
 This PR delivers velocity survivor #3 from the 2026-04-19 dev-velocity roadmap:

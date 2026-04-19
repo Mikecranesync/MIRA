@@ -1,0 +1,19 @@
+# MIRA on-save eval watcher subset (10 fixtures, ~30s on warm cache).
+# Used by tools/eval_watch.py. One fixture filename per line.
+# Comments start with '#'. Blank lines ignored.
+# Spec: docs/superpowers/specs/2026-04-19-velocity-3-precommit-smoke-design.md
+#
+# Selection: smallest set that exercises the regression classes most likely to
+# break under prompt edits — FSM transitions, KB recall, safety escalation,
+# vague-opener handling, vendor variation, abbreviations.
+
+01_gs10_overcurrent.yaml
+04_yaskawa_out_of_kb.yaml
+05_vague_opener_stuck_state.yaml
+06_safety_escalation.yaml
+07_full_diagnosis_happy_path.yaml
+08_asset_change_mid_session.yaml
+10_abbreviation_heavy.yaml
+11_pilz_manual_miss.yaml
+22_yaskawa_v1000_oc.yaml
+vfd_ab_01_pf525_f004_undervoltage.yaml
