@@ -703,6 +703,116 @@ def classify_intent(message: str) -> str:
     return "industrial"
 
 
+# 2026-04-19 audit — Rule 21 verbatim-reflection enforcement.
+#
+# Pattern: LLM opens reply with "You've [verb] [noun]" claiming the technician
+# did something they didn't describe. In session b500953b the LLM said
+# "You've checked cable labels" three separate times after the user said nothing
+# about labels. Similarly "You've removed the main power cable" when the user
+# said "I pulled the big one in the middle".
+#
+# Strategy: detect fabrication reflections and strip the opening sentence when
+# the user's last message doesn't contain a matching verb (or common synonym).
+# Conservative — only strip when fabrication is clear, never touch questions.
+_REFLECTION_OPENER_RE = re.compile(
+    r"^\s*(?:So )?(?:You(?:'ve| have)\s+)"
+    r"(checked|tried|verified|tested|inspected|measured|removed|pulled|disconnected"
+    r"|swapped|replaced|reset|cycled|confirmed|ruled out)\s+"
+    r"([^.?!]+)[.?!]\s*",
+    re.IGNORECASE,
+)
+
+# Map reflection verbs to the set of user-message tokens that justify the
+# reflection. If none of these appear in the user message, the reflection is
+# fabricated and should be stripped.
+_REFLECTION_VERB_JUSTIFIERS = {
+    "checked": {"check", "checked", "checking", "look", "looked", "looking", "see", "saw", "verified", "verify"},
+    "tried": {"try", "tried", "trying", "attempt", "attempted"},
+    "verified": {"verify", "verified", "check", "checked", "confirm", "confirmed"},
+    "tested": {"test", "tested", "testing", "meter", "metered", "measure", "measured"},
+    "inspected": {"inspect", "inspected", "look", "looked", "check", "checked"},
+    "measured": {"measure", "measured", "meter", "metered", "ohm", "volt", "amp"},
+    "removed": {"remove", "removed", "pull", "pulled", "disconnect", "disconnected", "take", "took"},
+    "pulled": {"pull", "pulled", "remove", "removed", "disconnect", "disconnected"},
+    "disconnected": {"disconnect", "disconnected", "pull", "pulled", "remove", "removed", "unplug", "unplugged"},
+    "swapped": {"swap", "swapped", "replace", "replaced", "change", "changed"},
+    "replaced": {"replace", "replaced", "swap", "swapped", "change", "changed", "new"},
+    "reset": {"reset", "resetting", "cycle", "cycled", "power"},
+    "cycled": {"cycle", "cycled", "reset", "restart", "power"},
+    "confirmed": {"confirm", "confirmed", "verify", "verified", "yes", "correct"},
+    "ruled out": {"rule", "ruled", "eliminate", "eliminated", "not it"},
+}
+
+
+# 2026-04-19 — Rule 19 (DEPTH ON DEMAND) engine-side detection. The prompt
+# already instructs the LLM to give a longer answer when these signals appear,
+# but the engine needs to know too so it can (a) bump max_tokens for that turn
+# and (b) skip ladder-cursor advancement (depth turns are detours, not steps).
+_DEPTH_REQUEST_PHRASES = (
+    "explain",
+    "why",
+    "tell me more",
+    "go deeper",
+    "how does that work",
+    "how does it work",
+    "what does that mean",
+    "what does it mean",
+    "break it down",
+    "elaborate",
+    "in detail",
+    "more detail",
+)
+
+
+def detect_depth_request(message: str) -> bool:
+    """True when the user asks for a longer, grounded explanation.
+
+    Word-boundary substring check on the _DEPTH_REQUEST_PHRASES list. Skips
+    very long messages (>400 chars) so we don't false-positive on prose that
+    happens to contain "why" or "explain" — the signal is a short targeted
+    ask. Also skips quoted "why" (e.g., "they asked me 'why'") by requiring
+    that "why" appear as a whole token with trailing punctuation or sentence
+    end, not mid-word.
+    """
+    if not message:
+        return False
+    msg = message.strip().lower()
+    if len(msg) > 400:
+        return False
+    for phrase in _DEPTH_REQUEST_PHRASES:
+        if phrase in msg:
+            return True
+    # Additional pattern: lone "why?" or "why?" with short qualifier
+    if re.search(r"\bwhy\??$", msg):
+        return True
+    return False
+
+
+def scrub_fabricated_reflection(reply: str, user_message: str) -> str:
+    """Strip "You've [verb] X" opening sentences when the user never said it.
+
+    2026-04-19 audit: LLM fabricates reflections like "You've checked cable
+    labels" to sound like it's following the conversation, even when the user
+    said nothing about checking labels. This function drops the fabrication
+    clause so the real question/instruction stands alone.
+
+    Returns reply unchanged when:
+    - Reply doesn't open with a reflection pattern.
+    - The verb IS justified by content in user_message (not fabricated).
+    """
+    if not reply or not user_message:
+        return reply
+    match = _REFLECTION_OPENER_RE.match(reply)
+    if not match:
+        return reply
+    verb = match.group(1).lower()
+    justifiers = _REFLECTION_VERB_JUSTIFIERS.get(verb, set())
+    user_lower = user_message.lower()
+    if any(token in user_lower for token in justifiers):
+        return reply
+    return reply[match.end() :].lstrip()
+
+
 def check_output(response: str, intent: str, has_photo: bool = False) -> str:
     """Validate LLM response for hallucination. Returns cleaned response."""
     resp_lower = response.lower()

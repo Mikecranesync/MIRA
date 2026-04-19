@@ -541,6 +541,40 @@ class TestFormatReply:
         assert "The image shows" not in result
         assert "How can I help?" in result
 
+    def test_fabricated_reflection_stripped(self, supervisor):
+        # b500953b: MIRA said "You've checked cable labels" — user never said that
+        result = supervisor._format_reply(
+            {
+                "reply": "You've checked cable labels. Do the labels indicate which one is the power supply cable?",
+                "options": [],
+            },
+            user_message="Can you find a manual for this distribution block",
+        )
+        assert "You've checked" not in result
+        assert "Do the labels indicate which one is the power supply cable?" in result
+
+    def test_genuine_reflection_preserved(self, supervisor):
+        # When user DID say they checked, reflection is valid — keep it
+        result = supervisor._format_reply(
+            {
+                "reply": "You've checked the voltage. What did you measure?",
+                "options": [],
+            },
+            user_message="I checked the voltage on the terminals",
+        )
+        assert "You've checked" in result
+        assert "What did you measure?" in result
+
+    def test_reflection_without_user_message_preserved(self, supervisor):
+        # Backward compat: _format_reply without user_message leaves reflection alone
+        result = supervisor._format_reply(
+            {
+                "reply": "You've checked the voltage. What's next?",
+                "options": [],
+            }
+        )
+        assert result.startswith("You've checked")
+
 
 # ---------------------------------------------------------------------------
 # State persistence (SQLite)

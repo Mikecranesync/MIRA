@@ -119,6 +119,54 @@ class TestClassifyIntent:
         assert classify_intent("any documentation on this thing") == "documentation"
         assert classify_intent("show me the pinout for this sensor") == "documentation"
 
+    def test_depth_request_detector(self):
+        from shared.guardrails import detect_depth_request
+        assert detect_depth_request("why?")
+        assert detect_depth_request("explain why that matters")
+        assert detect_depth_request("tell me more about overcurrent")
+        assert detect_depth_request("go deeper on this")
+        assert detect_depth_request("what does that mean")
+        assert detect_depth_request("how does it work")
+        assert not detect_depth_request("F12 fault on the drive")
+        assert not detect_depth_request("")
+        # Long messages (>400 chars) don't trigger even if they contain "why"
+        long_msg = "The technician reported a fault at 3am why " + "x" * 400
+        assert not detect_depth_request(long_msg)
+
+    def test_scrub_fabricated_reflection(self):
+        from shared.guardrails import scrub_fabricated_reflection
+        # Fabricated — user never said they checked labels
+        r = scrub_fabricated_reflection(
+            "You've checked cable labels. What do they show?",
+            "Can you find a manual",
+        )
+        assert "You've checked" not in r
+        assert "What do they show?" in r
+        # Genuine — user said they checked
+        r2 = scrub_fabricated_reflection(
+            "You've checked the voltage. What did you measure?",
+            "I checked the voltage",
+        )
+        assert "You've checked" in r2
+        # "pulled" fabrication — user said "pulled the big one" but reply says "removed the main power cable"
+        r3 = scrub_fabricated_reflection(
+            "You've removed the main power cable. What voltage is on the block?",
+            "I just pulled the big one in the middle",
+        )
+        # "pulled" is in justifiers for "removed" verb — this SHOULD keep the reflection
+        # (we can't detect Rule 21 elevation from verb alone — that needs noun-match)
+        # So this test verifies the conservative behavior: don't strip when verb justified
+        assert "You've removed" in r3
+        # Non-reflection reply passes through unchanged
+        r4 = scrub_fabricated_reflection(
+            "What fault code is displayed?",
+            "vfd is down",
+        )
+        assert r4 == "What fault code is displayed?"
+        # Empty inputs
+        assert scrub_fabricated_reflection("", "hello") == ""
+        assert scrub_fabricated_reflection("Hello", "") == "Hello"
+
     def test_fault_code_pattern(self):
         assert classify_intent("What does F-201 mean") == "industrial"
 
