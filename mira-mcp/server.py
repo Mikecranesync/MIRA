@@ -54,7 +54,10 @@ if not MCP_REST_API_KEY:
     sys.stderr.write("ERROR: MCP_REST_API_KEY not set — REST :8001 will reject all requests\n")
     sys.stderr.flush()
 
-mcp = FastMCP("mira-mcp", description="MIRA equipment diagnostics tools")
+# FastMCP v3: constructor takes only the server name/identity.
+# Transport (host/port/SSE) is configured in run_http_async below.
+# The former `description=` kwarg is dropped — metadata lives in tool docstrings.
+mcp = FastMCP("mira-mcp")
 
 
 def _ensure_schema():
@@ -144,7 +147,7 @@ def _equipment_type_from_name(filename: str) -> str:
     return stem[:40] or "general"
 
 
-@mcp.tool()
+@mcp.tool
 def get_equipment_status(equipment_id: str = "") -> dict:
     """Get current status of equipment. Pass equipment_id to filter, or omit for all."""
     db = _get_db()
@@ -159,7 +162,7 @@ def get_equipment_status(equipment_id: str = "") -> dict:
     return {"equipment": rows}
 
 
-@mcp.tool()
+@mcp.tool
 def list_active_faults() -> dict:
     """List all currently active faults across all equipment."""
     db = _get_db()
@@ -171,7 +174,7 @@ def list_active_faults() -> dict:
     return {"active_faults": rows}
 
 
-@mcp.tool()
+@mcp.tool
 def get_fault_history(equipment_id: str = "", limit: int = 50) -> dict:
     """Get fault history. Optionally filter by equipment_id. Returns most recent first."""
     db = _get_db()
@@ -199,7 +202,7 @@ def get_fault_history(equipment_id: str = "", limit: int = 50) -> dict:
     return {"fault_history": rows, "viking_context": context_chunks}
 
 
-@mcp.tool()
+@mcp.tool
 def get_maintenance_notes(
     equipment_id: str = "", category: str = "", limit: int = 50
 ) -> list[dict]:
@@ -228,7 +231,7 @@ def get_maintenance_notes(
 # ── Diagnostic Case Recording (always-on, writes to internal Atlas store) ──
 
 
-@mcp.tool()
+@mcp.tool
 async def diagnostic_record_case(
     title: str,
     description: str,
@@ -259,7 +262,7 @@ async def diagnostic_record_case(
 # ── External CMMS Tools (write to customer's MaintainX/Limble/UpKeep) ──
 
 
-@mcp.tool()
+@mcp.tool
 async def cmms_write_work_order(
     title: str,
     description: str,
@@ -289,7 +292,7 @@ async def cmms_write_work_order(
     )
 
 
-@mcp.tool()
+@mcp.tool
 async def cmms_create_work_order(
     title: str,
     description: str,
@@ -311,7 +314,7 @@ async def cmms_create_work_order(
     return await diagnostic_record_case(title, description, priority, asset_id, category)
 
 
-@mcp.tool()
+@mcp.tool
 async def cmms_list_work_orders(status: str = "", limit: int = 20) -> dict:
     """List work orders. Uses external CMMS if configured, otherwise internal store."""
     adapter = _cmms or _atlas_internal
@@ -321,7 +324,7 @@ async def cmms_list_work_orders(status: str = "", limit: int = 20) -> dict:
     return {"work_orders": orders, "count": len(orders)}
 
 
-@mcp.tool()
+@mcp.tool
 async def cmms_complete_work_order(work_order_id: int, feedback: str = "") -> dict:
     """Mark a work order as complete. Uses external CMMS if configured, otherwise internal store."""
     adapter = _cmms or _atlas_internal
@@ -330,7 +333,7 @@ async def cmms_complete_work_order(work_order_id: int, feedback: str = "") -> di
     return await adapter.complete_work_order(str(work_order_id), feedback)
 
 
-@mcp.tool()
+@mcp.tool
 async def cmms_list_assets(limit: int = 50) -> dict:
     """List equipment assets. Uses external CMMS if configured, otherwise internal store."""
     adapter = _cmms or _atlas_internal
@@ -340,7 +343,7 @@ async def cmms_list_assets(limit: int = 50) -> dict:
     return {"assets": assets, "count": len(assets)}
 
 
-@mcp.tool()
+@mcp.tool
 async def cmms_get_asset(asset_id: int) -> dict:
     """Get details for a specific asset. Uses external CMMS if configured, otherwise internal store."""
     adapter = _cmms or _atlas_internal
@@ -349,7 +352,7 @@ async def cmms_get_asset(asset_id: int) -> dict:
     return await adapter.get_asset(str(asset_id))
 
 
-@mcp.tool()
+@mcp.tool
 async def cmms_list_pm_schedules(asset_id: int = 0, limit: int = 20) -> dict:
     """List preventive maintenance schedules. Uses external CMMS if configured, otherwise internal store."""
     adapter = _cmms or _atlas_internal
@@ -362,7 +365,7 @@ async def cmms_list_pm_schedules(asset_id: int = 0, limit: int = 20) -> dict:
     return {"pm_schedules": schedules, "count": len(schedules)}
 
 
-@mcp.tool()
+@mcp.tool
 async def cmms_health() -> dict:
     """Check CMMS API connectivity. Reports both internal and external status."""
     result = {}
@@ -377,7 +380,7 @@ async def cmms_health() -> dict:
     return result
 
 
-@mcp.tool()
+@mcp.tool
 async def create_asset_from_nameplate(
     tenant_id: str,
     manufacturer: str,
@@ -658,6 +661,15 @@ if __name__ == "__main__":
     async def main():
         rest_config = uvicorn.Config(rest_app, host="0.0.0.0", port=8001, log_level="info")
         rest_server = uvicorn.Server(rest_config)
-        await asyncio.gather(mcp.run_sse_async(), rest_server.serve())
+        # FastMCP v3: run_sse_async was removed. Use run_http_async with
+        # transport="sse" (legacy compat) — same wire format as v0.4 for
+        # existing MCP clients. Host/port come from FASTMCP_HOST/FASTMCP_PORT
+        # env if set; fall back to container defaults.
+        sse_host = os.environ.get("FASTMCP_HOST", "0.0.0.0")
+        sse_port = int(os.environ.get("FASTMCP_PORT", "8000"))
+        await asyncio.gather(
+            mcp.run_http_async(transport="sse", host=sse_host, port=sse_port),
+            rest_server.serve(),
+        )
 
     asyncio.run(main())
