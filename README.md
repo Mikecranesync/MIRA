@@ -1,63 +1,67 @@
 # MIRA — Maintenance Intelligence & Response Assistant
 
-AI-powered equipment fault diagnosis — delivered through Slack, Telegram, Teams, and WhatsApp.
+**AI-powered industrial maintenance diagnostics, delivered through the browser and every chat app your technicians already use.**
 
-## Quick Start
+MIRA diagnoses equipment faults in conversation. Scan a QR code on a machine, tell MIRA what's wrong, and get an answer grounded in that specific asset's manuals, history, and the collective experience of every technician who came before. Built for the plant floor — mobile-first, voice-capable, CMMS-integrated.
 
-```bash
-git clone https://github.com/factorylm/mira && cd mira
-cp .env.template .env  # fill in NODERED_PORT and any non-Doppler vars
-doppler run --project factorylm --config prd -- docker compose up -d
-```
+---
 
-Run the smoke test to verify all services are healthy:
+## Where do I go?
 
-```bash
-bash install/smoke_test.sh
-```
+### 🏭 I'm a customer / plant user
+- **Live product:** [app.factorylm.com](https://app.factorylm.com)
+- **Marketing site:** [factorylm.com](https://factorylm.com)
+- **Product documentation:** [docs/product/](docs/product/)
+  - [What is MIRA?](docs/product/what-is-mira.md)
+  - [Getting started](docs/product/getting-started.md)
+  - [QR asset tagging](docs/product/qr-system.md)
+  - [CMMS integration](docs/product/cmms-integration.md)
+  - [Troubleshooting](docs/product/troubleshooting.md)
 
-## Documentation
+### 👩‍💻 I'm a developer or operator
+- **Developer documentation:** [docs/developer/](docs/developer/)
+  - [Architecture overview](docs/developer/architecture.md)
+  - [Local setup](docs/developer/local-setup.md)
+  - [Deployment](docs/developer/deployment.md)
+  - [Contributing](docs/developer/contributing.md)
 
-- [Architecture & Setup](docs/README.md)
-- [Audit & System State](docs/AUDIT.md)
-- [PRD — Config 1 MVP](docs/PRD_v1.0.md)
-- [Slack Setup](docs/SETUP_SLACK.md)
-- [Teams Setup](docs/SETUP_TEAMS.md)
-- [WhatsApp Setup](docs/SETUP_WHATSAPP.md)
+### 🔧 Reference material
+- [All environment variables](docs/env-vars.md)
+- [Architecture Decision Records](docs/adr/)
+- [Runbooks](docs/runbooks/)
+- [Known issues](docs/known-issues.md)
+- [Changelog](docs/CHANGELOG.md)
 
-## Testing
+---
 
-### Offline Tests (76 tests, runs in <1s)
-```bash
-pytest tests/ -m "not network and not slow"
-```
+## What MIRA does, in one minute
 
-### Full Eval (requires live services on BRAVO)
-```bash
-doppler run --project factorylm --config prd -- python tests/synthetic_eval.py --regimes all
-```
+1. A technician walks up to a faulting machine.
+2. They scan a QR sticker on the equipment (or type in the asset tag, or upload a nameplate photo).
+3. MIRA opens a chat pre-loaded with the asset's vendor, model, service history, and recent faults.
+4. The technician describes the symptom — by voice or text.
+5. MIRA asks diagnostic questions, pulls the relevant page from the manual, and proposes a fix.
+6. When the fault is resolved, MIRA auto-generates the CMMS work order closeout. One tap to confirm.
 
-### CI
-- Every push: offline tests run automatically (`ci.yml`)
-- Nightly: full live eval on BRAVO runner (`ci-evals.yml`)
+Competitive differentiators: asset-scoped entry, industrial knowledge grounding (25K+ chunks across 100+ vendors), voice-first mobile UX, Atlas/MaintainX/Limble/Fiix CMMS integration.
 
-### Current Status
-| Regime | Status | Score |
-|--------|--------|-------|
-| 1 Telethon Replay | Runner needed | -- |
-| 2 RAG Triplets | Runner needed | -- |
-| 3 Nameplate Vision | Labels needed | -- |
-| 4 Question Evolution | Runner needed | -- |
-| 5 Nemotron Bulk | API key needed | -- |
+---
 
-## Requirements
+## Requirements (for self-hosting)
 
 - Docker + Docker Compose v2.20+
-- [Doppler CLI](https://docs.doppler.com/docs/install-cli) — all secrets managed via Doppler
-- Ollama running on host at `localhost:11434` (for local inference backend)
+- [Doppler CLI](https://docs.doppler.com/docs/install-cli) — all secrets via Doppler
+- Ollama running on host at `localhost:11434`
 - macOS (Apple Silicon preferred) or Linux
+- NeonDB account (free tier works for development)
+
+Full setup walkthrough: [docs/developer/local-setup.md](docs/developer/local-setup.md)
+
+---
 
 ## License
 
 Proprietary — Copyright (c) 2026 Cranesync. All rights reserved. See [LICENSE](LICENSE).
 Third-party bundled dependencies retain their original open-source licenses.
+
+For licensing inquiries: [mike@cranesync.com](mailto:mike@cranesync.com)
