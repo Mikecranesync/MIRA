@@ -1,6 +1,0 @@
-node_modules/
-mira/
-*.log
-.DS_Store
-.env
-vision_captures/
