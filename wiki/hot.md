@@ -1,4 +1,30 @@
-# Hot Cache — 2026-04-18 — CHARLIE
+# Hot Cache — 2026-04-18 evening — ALPHA
+
+## Session — 2026-04-18 evening (ALPHA, hamburger audit + P0 fixes)
+- **PR #387 merged** (`e069c84`): P0 #380 envelope leak fix (`strict=False` on every `json.loads` + regex safety net) + SAFETY_ALERT regression fix (`_safety_is_observational()` replaces over-strict "starts with STOP" gate from #498b43f) + Q-trap off-by-one + PIL stub poisoning in `test_citation_gate.py` and `test_q_trap_guard.py`.
+- **PR #394 merged** (`45e9538`): cosmetic fix — options render with doubled numbers ("1. 1. Drives") resolved by stripping LLM-prefixed numbering in `_format_reply`.
+- **Deploy disaster + recovery** (#390): Two `mira-pipeline` containers on prod — `mira-pipeline-saas` (from `docker-compose.saas.yml`, served via Docker DNS alias `mira-pipeline:9099` on `mira_mira-net`) AND a stale `mira-pipeline` from `mira-core/docker-compose.yml` bound to `127.0.0.1:9099`. OW resolved to the `-saas` container, so my first #387 deploy to the mira-core compose silently **no-op'd on prod**. Caught it by `grep -c "_safety_is_observational"` inside BOTH containers. **Retired the orphan** + rebuilt via the SaaS compose. Fix truly live post-retire.
+- **Hamburger audit findings**:
+  - Item 1 (intent guard #388) — **phantom**, fix already in main since PR #280 (2026-04-15). Closed + updated CLAUDE.md.
+  - Item 2 (OW Equipment Tools #389) — **phantom**, no "tools not enabled" error; engine returns clean prose on CMMS queries. Closed. Surfaced a real cosmetic (#394).
+  - Item 3 (duplicate pipelines #390) — **real + critical**, addressed (orphan retired, runbook updated via PR #395).
+- **VPS runbook now documents the MIRA SaaS stack + canonical deploy recipe** (`docker-compose.saas.yml`, not mira-core's).
+- **Kanban**: added 6 new items (#388 #389 #390 #391 #392 #393) + linked #288 #379 as hamburger punch-list. 388/389/390 done tonight.
+
+## Machine State (as of 2026-04-18 ~22:05 EDT)
+
+- **VPS (165.245.138.91)**: `mira-pipeline-saas` healthy, fix verified (`strict=False` + `_safety_is_observational` in deployed image). Orphan `mira-pipeline` container removed. `mira-core-saas`, `mira-mcp-saas`, `mira-ingest-saas`, `mira-web`, `mira-docling-saas` all healthy.
+- **Main branch**: `0be2e01` (CLAUDE.md docs) + `1567deb` docs-runbook PR #395 pending, options-fix in merge commit for #394.
+- **Kanban**: `In Progress` slot empty (all tonight's items closed/merged). Next Todo in priority order: #391 (eval judge), #392 (VPS CD), #393 (stale hot.md — updating now), #288 (photo fixtures), #379 (CVE).
+
+## Next Steps (priority order)
+
+1. **#391** — Eval Offline CI broken by `KeyError: 'conversational_flow'` in `tests/eval/test_judge.py`. Restore judge config or update fixture.
+2. **#392** — VPS CD: no auto-deploy on merge to main. Manual SSH-via-Charlie is single operator dependency.
+3. **#288** — Photo fixture coverage: 1 vision fixture vs 58 text. Primary user journey.
+4. **#379** — Trivy 9 HIGH CVEs in `mira-ingest` Debian base. Not in hot path but on attack surface.
+
+## Older sessions below
 
 ## Session — 2026-04-18 (CHARLIE, session 4)
 - **Offline eval: 56/57 (98%)** — up from 43/57 (75%) baseline. 8 runs, iterative fixture + engine fixes.
