@@ -86,6 +86,7 @@ import {
   getLiveBlogPosts,
   invalidateCache,
 } from "./lib/blog-db.js";
+import { m } from "./routes/m.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -122,10 +123,13 @@ setInterval(() => {
   refreshBlogContent();
 }, 5 * 60 * 1000);
 
-const app = new Hono();
+export const app = new Hono();
 
 // Middleware
 app.use("*", cors());
+
+// QR scan route — /m/:asset_tag
+app.route("/m", m);
 
 // ---------------------------------------------------------------------------
 // Static files
