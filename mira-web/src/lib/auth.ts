@@ -8,6 +8,7 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import type { Context, Next } from "hono";
 import { findTenantById } from "./quota.js";
+import { parseCookies } from "./cookie-session.js";
 
 export interface MiraTokenPayload extends JWTPayload {
   sub: string; // tenant_id (UUID)
@@ -57,13 +58,16 @@ export async function verifyToken(
 }
 
 /**
- * Hono middleware — reads JWT from Authorization header or ?token= query param.
+ * Hono middleware — reads JWT from Authorization header, ?token= query param,
+ * or `mira_session` cookie (lowest precedence so programmatic integrations
+ * aren't affected).
  * Sets c.set("user", payload) on success, returns 401 on failure.
  */
 export async function requireAuth(c: Context, next: Next) {
   const header = c.req.header("Authorization");
   const query = c.req.query("token");
-  const raw = header ? header.replace("Bearer ", "") : query;
+  const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
+  const raw = header ? header.replace("Bearer ", "") : query ?? cookie;
 
   if (!raw) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -83,11 +87,15 @@ export async function requireAuth(c: Context, next: Next) {
  * Returns 403 if tier is not active. Use for product routes (chat, CMMS).
  * Use requireAuth (not requireActive) for routes any authenticated user needs
  * (e.g., billing portal).
+ *
+ * Reads JWT from Authorization header, ?token= query, or `mira_session`
+ * cookie (lowest precedence).
  */
 export async function requireActive(c: Context, next: Next) {
   const header = c.req.header("Authorization");
   const query = c.req.query("token");
-  const raw = header ? header.replace("Bearer ", "") : query;
+  const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
+  const raw = header ? header.replace("Bearer ", "") : query ?? cookie;
 
   if (!raw) {
     return c.json({ error: "Unauthorized" }, 401);

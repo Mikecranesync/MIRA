@@ -26,6 +26,7 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { signToken, requireAuth, requireActive, type MiraTokenPayload } from "./lib/auth.js";
+import { buildSessionCookie } from "./lib/cookie-session.js";
 import {
   createWorkOrder,
   listWorkOrders,
@@ -393,6 +394,7 @@ app.post("/api/register", async (c) => {
           atlasCompanyId: 0,
           atlasUserId: 0,
         });
+        c.header("Set-Cookie", buildSessionCookie(token));
         return c.json({ success: true, token, tenantId: existing.id });
       }
       // Pending/churned — still in nurture or needs to resubscribe
