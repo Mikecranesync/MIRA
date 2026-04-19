@@ -30,6 +30,7 @@ async function jwt(): Promise<string> {
     tier: "active",
     atlasCompanyId: 1,
     atlasUserId: 100,
+    atlasRole: "USER",
   });
 }
 

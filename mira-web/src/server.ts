@@ -397,6 +397,7 @@ app.post("/api/register", async (c) => {
           tier: existing.tier,
           atlasCompanyId: 0,
           atlasUserId: 0,
+          atlasRole: "USER",
         });
         c.header("Set-Cookie", buildSessionCookie(token));
         return c.json({ success: true, token, tenantId: existing.id });

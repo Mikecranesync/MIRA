@@ -38,6 +38,7 @@ export interface ActivationDeps {
     tier: string;
     atlasCompanyId: number;
     atlasUserId: number;
+    atlasRole: "ADMIN" | "USER";
   }) => Promise<string>;
   sendActivatedEmail: (
     email: string,
@@ -121,6 +122,7 @@ export async function finalizeActivation(
       tier: "active",
       atlasCompanyId,
       atlasUserId,
+      atlasRole: "ADMIN",
     });
     const sent = await deps.sendActivatedEmail(tenant.email, firstName, tenant.company, token);
     emailStatus = sent ? "sent" : "failed";

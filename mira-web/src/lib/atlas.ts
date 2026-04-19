@@ -170,6 +170,51 @@ export async function createAsset(asset: {
   return resp.json();
 }
 
+export async function getAtlasUserRole(atlasUserId: number): Promise<"ADMIN" | "USER"> {
+  // Atlas returns user details including role name; fall back to USER on any failure.
+  try {
+    const res = await fetch(`${ATLAS_URL}/users/${atlasUserId}`, {
+      headers: { Authorization: `Bearer ${await adminToken()}` },
+    });
+    if (!res.ok) return "USER";
+    const data = (await res.json()) as { role?: { name?: string } };
+    const name = data.role?.name?.toUpperCase() ?? "";
+    return name.includes("ADMIN") ? "ADMIN" : "USER";
+  } catch {
+    return "USER";
+  }
+}
+
+export async function getAsset(atlasAssetId: number): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await fetch(`${ATLAS_URL}/assets/${atlasAssetId}`, {
+      headers: { Authorization: `Bearer ${await adminToken()}` },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export async function listAssets(limit: number = 100): Promise<Array<{ id: number; name: string }>> {
+  try {
+    const res = await fetch(`${ATLAS_URL}/assets/search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${await adminToken()}`,
+      },
+      body: JSON.stringify({ pageSize: limit, pageNum: 0 }),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { content?: Array<{ id: number; name: string }> };
+    return data.content ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * List work orders for a company (via admin token).
  */
