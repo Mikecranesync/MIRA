@@ -1,8 +1,13 @@
 # Design: Integrate MIR-97 (#329) + MIR-101 (#336)
 
 **Date:** 2026-04-19
-**Status:** Approved
+**Status:** Partially shipped — #329 merged (PR #401), #336 abandoned
 **Author:** Claude Opus 4.7 (brainstormed with Mike)
+
+## Outcome (post-hoc)
+
+- **#329 (cross-session equipment memory):** shipped in PR #401 (`f29553b` squashed to main; `e3e543b` merge to prod branch `feat/training-loop-v1` with conflicts resolved; deployed to VPS mira-pipeline-saas).
+- **#336 (openviking v0.2.6 fix):** abandoned. The agent branch called `client.write(uri=, content=)` on `SyncOpenViking`, but that method does not exist in openviking 0.2.6. Tests gave false confidence because they mocked a `write` method on MagicMock. Sqlite fallback already works in prod, so no user impact. GH #336 closed 2026-04-19 with explanation; revisit with `add_resource(path=temp_file, to=store_uri)` if the openviking path ever needs to be exercised.
 
 ## Summary
 
