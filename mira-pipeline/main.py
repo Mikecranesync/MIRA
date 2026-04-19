@@ -34,6 +34,7 @@ import threading
 
 from feedback_sync import run_loop as feedback_sync_loop
 from memory import ConversationMemory
+from qr_bridge import build_clear_cookie_header, process_pending_scan
 from shared.gsd_engine import GSDEngine
 
 # Explicit handler setup: logging.basicConfig() is a no-op once uvicorn has
@@ -433,6 +434,15 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         or "openwebui_anonymous"
     )
 
+    # QR Bridge — if the request carries a mira_pending_scan cookie (set by the
+    # scan redirect route in mira-web), look up the scan in NeonDB and seed
+    # session_memory so the engine's IDLE-state load_session() hook picks up
+    # the asset context on this turn.
+    cookie_header = request.headers.get("cookie")
+    seeded = process_pending_scan(cookie_header, chat_id)
+    if seeded:
+        logger.info("QR_BRIDGE chat_id=%s seeded from pending-scan cookie", chat_id)
+
     # P0-3: Route PDF attachments to mira-ingest before touching the GSD engine.
     # OW passes uploaded files in the request body under a "files" key that is
     # outside the OpenAI spec — captured via model_extra (extra="allow").
@@ -549,7 +559,7 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if req.stream:
         return _stream_response(reply, completion_id, created)
 
-    return {
+    response_dict = {
         "id": completion_id,
         "object": "chat.completion",
         "created": created,
@@ -563,6 +573,14 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         ],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }
+
+    # If a QR scan was seeded this turn, clear the one-shot cookie.
+    if seeded:
+        return JSONResponse(
+            content=response_dict,
+            headers={"Set-Cookie": build_clear_cookie_header()},
+        )
+    return response_dict
 
 
 # ── Debug: Session Photo — GET /v1/debug/photo/{chat_id} ────────────────────
