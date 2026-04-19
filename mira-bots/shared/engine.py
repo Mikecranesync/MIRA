@@ -87,6 +87,68 @@ Rate each on 1-5 (5=excellent, 3=acceptable, <3=needs revision):
 "instruction_following":{{"score":<1-5>,"note":"<12 words max: honored the user's actual ask?>"}}}}"""
 ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"})
 _Q_STATES = frozenset({"Q1", "Q2", "Q3"})
+
+# Diagnostic-instruction phrases that can legitimately precede a safety keyword
+# without implying an active hazard. "Check for melted insulation" is an
+# instruction to the tech, not a report that insulation is currently melted.
+_SAFETY_INSTRUCTION_PREFIXES: tuple[str, ...] = (
+    "check for ",
+    "check for any ",
+    "check for signs of ",
+    "check for evidence of ",
+    "look for ",
+    "look for any ",
+    "look for signs of ",
+    "look for evidence of ",
+    "inspect for ",
+    "inspect for any ",
+    "inspect for signs of ",
+    "test for ",
+    "test for any ",
+    "measure for ",
+    "verify no ",
+    "verify there is no ",
+    "verify there are no ",
+    "if you see ",
+    "if you observe ",
+    "if there is ",
+    "if there are ",
+    "if any ",
+    "any sign of ",
+    "signs of ",
+    "evidence of ",
+    "indication of ",
+    "before opening ",
+    "before touching ",
+    "before working ",
+)
+
+
+def _safety_is_observational(reply_lower: str) -> bool:
+    """Return True if any SAFETY_KEYWORDS occurrence in ``reply_lower`` is in
+    an observational (hazard-visible-now) context — i.e. NOT immediately
+    preceded by a diagnostic-instruction phrase like "check for" or "if you see".
+
+    Used by ``_advance_state`` to trigger SAFETY_ALERT on real hazard reports
+    while preserving valid diagnostic steps that incidentally name a safety
+    term (issue #386 regression fix).
+    """
+    for kw in SAFETY_KEYWORDS:
+        idx = 0
+        while True:
+            pos = reply_lower.find(kw, idx)
+            if pos == -1:
+                break
+            preceding = reply_lower[max(0, pos - 40) : pos].rstrip()
+            is_instruction = any(
+                preceding.endswith(pfx.rstrip()) for pfx in _SAFETY_INSTRUCTION_PREFIXES
+            )
+            if not is_instruction:
+                return True
+            idx = pos + len(kw)
+    return False
+
+
 # After this many consecutive Q-state turns the FSM forces a commit to DIAGNOSIS.
 _MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
@@ -1452,8 +1514,10 @@ class Supervisor:
                     re.IGNORECASE,
                 )
             )
-            rag_query = _cap if (_cap and _is_question) else (
-                f"{manufacturer} {model} common faults troubleshooting"
+            rag_query = (
+                _cap
+                if (_cap and _is_question)
+                else (f"{manufacturer} {model} common faults troubleshooting")
             )
             try:
                 raw = await self.rag.process(
@@ -2380,11 +2444,15 @@ class Supervisor:
         ``follow_ups``, ``tags``, ``title``, ``queries`` instead of the
         expected ``reply`` key. We attempt to salvage these into a valid
         response so the FSM doesn't stall.
+
+        ``strict=False`` on every ``json.loads`` tolerates unescaped control
+        characters (literal newlines, tabs) inside string values — LLMs emit
+        prose paragraph breaks this way constantly (P0 #380).
         """
         raw_stripped = raw.strip()
 
         try:
-            parsed = json.loads(raw_stripped)
+            parsed = json.loads(raw_stripped, strict=False)
             if isinstance(parsed, dict):
                 if "reply" in parsed:
                     return self._extract_parsed(parsed)
@@ -2401,7 +2469,7 @@ class Supervisor:
                 if block.startswith("json"):
                     block = block[4:].strip()
                 try:
-                    parsed = json.loads(block)
+                    parsed = json.loads(block, strict=False)
                     if isinstance(parsed, dict) and "reply" in parsed:
                         return self._extract_parsed(parsed)
                 except (json.JSONDecodeError, TypeError):
@@ -2412,7 +2480,7 @@ class Supervisor:
                 for j in range(len(raw_stripped), i, -1):
                     if raw_stripped[j - 1] == "}":
                         try:
-                            parsed = json.loads(raw_stripped[i:j])
+                            parsed = json.loads(raw_stripped[i:j], strict=False)
                             if isinstance(parsed, dict) and "reply" in parsed:
                                 return self._extract_parsed(parsed)
                         except (json.JSONDecodeError, TypeError):
@@ -2425,8 +2493,19 @@ class Supervisor:
             close_idx = clean.rfind("}")
             if close_idx > brace_idx:
                 clean = (clean[:brace_idx] + clean[close_idx + 1 :]).strip()
-        if not clean:
-            clean = raw_stripped
+        # Safety: never leak a raw JSON envelope to chat output. If the
+        # stripped prose is empty and the original looks envelope-shaped,
+        # last-ditch regex-pluck the reply value; otherwise substitute a
+        # generic formatting-error message (P0 #380). Empty input stays empty.
+        if not clean and raw_stripped:
+            reply_match = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)"', raw_stripped, re.DOTALL)
+            if reply_match:
+                try:
+                    clean = json.loads(f'"{reply_match.group(1)}"', strict=False)
+                except (json.JSONDecodeError, TypeError):
+                    clean = reply_match.group(1).replace("\\n", "\n").replace('\\"', '"')
+            else:
+                clean = "MIRA had trouble formatting that response. Please ask again."
         logger.warning("_parse_response fallback; raw=%r", raw_stripped[:200])
         return {"next_state": None, "reply": clean, "options": [], "confidence": "LOW"}
 
@@ -2486,15 +2565,12 @@ class Supervisor:
         current = state["state"]
         reply_lower = parsed.get("reply", "").lower()
 
-        # Safety override: fire when LLM explicitly sets next_state OR when the reply
-        # starts with "STOP" (per safety protocol — Rule SAFETY OVERRIDE).
-        # Do NOT trigger on incidental mention of safety keywords in diagnostic text
-        # (e.g. "Check for melted insulation" is a valid diagnostic step, not a hazard).
-        _reply_starts_stop = reply_lower.lstrip().startswith("stop")
-        if (
-            (_reply_starts_stop and any(kw in reply_lower for kw in SAFETY_KEYWORDS))
-            or parsed.get("next_state") == "SAFETY_ALERT"
-        ):
+        # Safety override: fire when LLM explicitly sets next_state OR when a
+        # safety keyword appears in the reply in an *observational* context
+        # (hazard visible now). Conditional/instructional mentions like
+        # "check for melted insulation" or "inspect for burn marks" are
+        # legitimate diagnostic steps and must NOT escalate — see #498b43f.
+        if parsed.get("next_state") == "SAFETY_ALERT" or _safety_is_observational(reply_lower):
             state["state"] = "SAFETY_ALERT"
             state["final_state"] = "SAFETY_ALERT"
             state["exchange_count"] += 1
@@ -2533,8 +2609,10 @@ class Supervisor:
 
         # Q-trap guard: if the FSM has been in Q-states for _MAX_Q_ROUNDS consecutive
         # turns, force a commit to DIAGNOSIS so the technician gets an answer.
+        # Count every entry into a Q-state (including the first one from a non-Q
+        # current) so IDLE→Q1→Q2→Q3 commits on round 3 rather than round 4.
         ctx_q = state.get("context") or {}
-        if current in _Q_STATES and state["state"] in _Q_STATES:
+        if state["state"] in _Q_STATES:
             ctx_q["q_rounds"] = ctx_q.get("q_rounds", 0) + 1
             if ctx_q["q_rounds"] >= _MAX_Q_ROUNDS:
                 logger.info(
@@ -2545,7 +2623,7 @@ class Supervisor:
                 )
                 state["state"] = "DIAGNOSIS"
                 ctx_q["q_rounds"] = 0
-        elif state["state"] not in _Q_STATES:
+        else:
             ctx_q.pop("q_rounds", None)
         state["context"] = ctx_q
 
