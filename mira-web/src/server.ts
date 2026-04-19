@@ -20,6 +20,8 @@
  *   GET  /demo/work-orders        → Static ticker data (no auth)
  *   POST /api/mira/chat           → SSE AI chat via mira-pipeline (active only)
  *   GET  /demo/tenant-work-orders → Real WOs for authenticated user (active only)
+ *   GET  /admin/qr-print          → Admin: list assets + select stickers (ADMIN only)
+ *   POST /api/admin/qr-print-batch → Admin: UPSERT tags + generate Avery 5163 PDF (ADMIN only)
  */
 
 import { Hono } from "hono";
@@ -87,6 +89,7 @@ import {
   invalidateCache,
 } from "./lib/blog-db.js";
 import { m } from "./routes/m.js";
+import { adminPages, adminApi } from "./routes/admin/qr-print.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -130,6 +133,10 @@ app.use("*", cors());
 
 // QR scan route — /m/:asset_tag
 app.route("/m", m);
+
+// Admin routes — QR print page + batch PDF endpoint
+app.route("/admin", adminPages); // handles GET /admin/qr-print
+app.route("/", adminApi);        // handles POST /api/admin/qr-print-batch
 
 // ---------------------------------------------------------------------------
 // Static files
