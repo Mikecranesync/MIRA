@@ -1,0 +1,110 @@
+
+=== Rockwell fetch run 2026-04-19T11:59:13.788597+00:00 ===
+[11:59:13] --- 2080-UM004: Micro820 Programmable Controllers User Manual ---
+
+=== Rockwell fetch run 2026-04-19T11:59:40.367343+00:00 ===
+[11:59:40] --- 2080-UM004: Micro820 Programmable Controllers User Manual ---
+[11:59:40] SKIP 2080-UM004 — already have 2080-UM004_-en-e.pdf
+[11:59:40] --- 2080-UM005: Micro830/850/870 Programmable Controllers User Manual ---
+[11:59:47] OK  2080-UM005 rev e <- https://literature.rockwellautomation.com/idc/groups/literature/documents/um/2080-um005_-en-e.pdf  (22703 KiB)
+[11:59:47] --- 2080-UM002: Micro800 External AC Power Supply User Manual ---
+[11:59:52] OK  2080-UM002 rev e <- https://literature.rockwellautomation.com/idc/groups/literature/documents/um/2080-um002_-en-e.pdf  (25623 KiB)
+[11:59:53] --- 2080-UM003: Micro800 Remote LCD Module User Manual ---
+[11:59:53] OK  2080-UM003 rev p <- https://literature.rockwellautomation.com/idc/groups/literature/documents/um/2080-um003_-en-p.pdf  (3983 KiB)
+[11:59:53] --- 2080-RM001: Micro800 Discrete/Analog/Specialty I/O Modules User Manual ---
+[11:59:58] OK  2080-RM001 rev e <- https://literature.rockwellautomation.com/idc/groups/literature/documents/rm/2080-rm001_-en-e.pdf  (33883 KiB)
+[11:59:59] --- 2080-RM002: Micro800 Plug-in Modules User Manual ---
+[12:00:04] OK  2080-RM002 rev e <- https://literature.rockwellautomation.com/idc/groups/literature/documents/rm/2080-rm002_-en-e.pdf  (20283 KiB)
+[12:00:04] --- 2080-RM003: Micro800 Programmable Controllers Instruction Set Reference ---
+[12:00:06] OK  2080-RM003 rev p <- https://literature.rockwellautomation.com/idc/groups/literature/documents/rm/2080-rm003_-en-p.pdf  (54988 KiB)
+[12:00:06] --- 2080-IN001: Micro820 Installation Instructions ---
+[12:00:06] OK  2080-IN001 rev p <- https://literature.rockwellautomation.com/idc/groups/literature/documents/in/2080-in001_-en-p.pdf  (426 KiB)
+[12:00:07] --- 2080-IN004: Micro820 Installation Instructions ---
+[12:00:22] MISS 2080-IN004 — no working URL found
+[12:00:22] --- 2080-SG001: Micro800 Family Selection Guide ---
+[12:00:23] OK  2080-SG001 rev p <- https://literature.rockwellautomation.com/idc/groups/literature/documents/sg/2080-sg001_-en-p.pdf  (3575 KiB)
+[12:00:23] --- 2080-WD005: Micro820 Wiring Diagrams ---
+[12:00:24] OK  2080-WD005 rev p <- https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/2080-wd005_-en-p.pdf  (654 KiB)
+[12:00:24] --- 2080-QR002: Micro800 Controllers Quick Reference ---
+[12:00:39] MISS 2080-QR002 — no working URL found
+[12:00:40] --- 2080-QS001: Micro820 Quick Start ---
+[12:00:44] OK  2080-QS001 rev e <- https://literature.rockwellautomation.com/idc/groups/literature/documents/qs/2080-qs001_-en-e.pdf  (5197 KiB)
+[12:00:45] --- 2080-AT002: Micro820 PLC Architecture Tech Note ---
+[12:00:59] MISS 2080-AT002 — no working URL found
+[12:01:00] --- 2080-PM001: Micro800 Programmable Controllers Programming Manual ---
+[12:01:15] MISS 2080-PM001 — no working URL found
+[12:01:16] --- 9328-UM001: Connected Components Workbench Software User Manual ---
+[12:01:30] MISS 9328-UM001 — no working URL found
+[12:01:30] --- 9328-QS003: Connected Components Workbench Quick Start ---
+[12:01:45] MISS 9328-QS003 — no working URL found
+[12:01:45] Rockwell run done: 11/17 publications acquired.
+
+=== GS10 fetch run 2026-04-19T12:35:12.815767+00:00 ===
+GET  https://cdn.automationdirect.com/static/manuals/gs10m/gs10m.pdf
+OK   GS10_UM.pdf  (32228 KiB)
+GET  https://cdn.automationdirect.com/static/specs/gs10specs.pdf
+  http 404 https://cdn.automationdirect.com/static/specs/gs10specs.pdf
+GET  https://cdn.automationdirect.com/static/manuals/gs10m/ch06.pdf
+  http 404 https://cdn.automationdirect.com/static/manuals/gs10m/ch06.pdf
+GS10 run done: 1/3 acquired.
+
+=== Ignition docs crawl 2026-04-19T14:05:08.491680+00:00 ===
+[14:05:17]   crawled 25 pages, 1.4 MiB
+[14:05:25]   crawled 50 pages, 2.8 MiB
+
+=== Apify doc search 2026-04-19T14:05:32.146734+00:00 ===
+[14:05:33]   crawled 75 pages, 4.8 MiB
+[14:05:41]   crawled 100 pages, 6.3 MiB
+[14:05:49]   crawled 125 pages, 8.0 MiB
+[14:05:57]   crawled 150 pages, 9.7 MiB
+[14:06:05]   crawled 175 pages, 11.3 MiB
+
+=== Apify doc search 2026-04-19T14:06:05.169128+00:00 ===
+--- 9328-UM001: Rockwell 9328-UM001 Connected Components Workbench User Manual filetype:pdf ---
+  apify fail: Monthly usage hard limit exceeded
+--- 9328-QS003: Rockwell 9328-QS003 CCW Quick Start filetype:pdf ---
+  apify fail: Monthly usage hard limit exceeded
+--- 2080-PM001: Rockwell 2080-PM001 Micro800 programming manual filetype:pdf ---
+  apify fail: Monthly usage hard limit exceeded
+--- 2080-AT002: Rockwell 2080-AT002 Micro820 architecture tech note filetype:pdf ---
+  apify fail: Monthly usage hard limit exceeded
+--- 2080-QR002: Rockwell 2080-QR002 Micro800 quick reference filetype:pdf ---
+  apify fail: Monthly usage hard limit exceeded
+--- 2080-IN004: Rockwell 2080-IN004 Micro820 installation instructions filetype:pdf ---
+  apify fail: Monthly usage hard limit exceeded
+--- 2080-RN024: Rockwell 2080-RN024 Micro820 firmware release notes filetype:pdf ---
+  apify fail: Monthly usage hard limit exceeded
+--- 1756-PM020: Rockwell 1756-PM020 Logix 5000 Structured Text Programming filetype:pdf ---
+  apify fail: Monthly usage hard limit exceeded
+Apify pass done: 0 new files.
+[14:06:13]   crawled 200 pages, 12.7 MiB
+[14:06:21]   crawled 225 pages, 14.2 MiB
+[14:06:29]   crawled 250 pages, 15.9 MiB
+[14:06:38]   crawled 275 pages, 17.1 MiB
+[14:06:46]   crawled 300 pages, 18.6 MiB
+[14:06:54]   crawled 325 pages, 20.3 MiB
+[14:07:02]   crawled 350 pages, 22.0 MiB
+[14:07:10]   crawled 375 pages, 23.5 MiB
+[14:07:14] http 404 https://www.docs.inductiveautomation.com/docs/8.3/appendix/scripting-functions/system-device/system-device-addDevice/system-device-addDevice
+[14:07:18]   crawled 400 pages, 25.0 MiB
+[14:07:26]   crawled 425 pages, 26.5 MiB
+[14:07:29] http 404 https://www.docs.inductiveautomation.com/docs/8.3/appendix/scripting-functions/system-historian/system-historian-queryValues
+[14:07:35]   crawled 450 pages, 27.9 MiB
+[14:07:43]   crawled 475 pages, 29.5 MiB
+[14:07:51]   crawled 500 pages, 31.0 MiB
+[14:07:59]   crawled 525 pages, 32.5 MiB
+[14:08:07]   crawled 550 pages, 34.0 MiB
+[14:08:15]   crawled 575 pages, 35.5 MiB
+[14:08:23]   crawled 600 pages, 37.1 MiB
+[14:08:24] Ignition crawl done: fetched=600 bytes=38877867 modbus_hit=True micro800_hit=True
+
+=== DDG fallback search 2026-04-19T14:37:53.211459+00:00 ===
+--- 9328-UM001: 9328-UM001 Connected Components Workbench filetype:pdf
+--- 9328-QS003: 9328-QS003 Connected Components Workbench Quick Start filetype:pdf
+--- 2080-PM001: 2080-PM001 Micro800 programming manual filetype:pdf
+--- 2080-AT002: 2080-AT002 Micro820 architecture tech note filetype:pdf
+--- 2080-QR002: 2080-QR002 Micro800 quick reference filetype:pdf
+--- 2080-IN004: 2080-IN004 Micro820 installation filetype:pdf
+--- 2080-RN024: 2080-RN024 Micro820 firmware release notes filetype:pdf
+--- 1756-PM020: 1756-PM020 Logix 5000 Structured Text Programming filetype:pdf
+DDG pass: 3 new files

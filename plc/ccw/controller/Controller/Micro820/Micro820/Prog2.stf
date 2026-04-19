@@ -1,0 +1,429 @@
+PROGRAM Prog2
+(* ================================================================ *)
+(*  MIRA Conveyor Control -- Micro820 2080-LC20-20QBB               *)
+(*  Version:  v5.0.2                                                *)
+(*  Date:     2026-03-18                                            *)
+(*  Author:   MIRA/Claude                                           *)
+(*                                                                  *)
+(*  Changelog:                                                      *)
+(*  v5.0.2 - ErrorID not accessible in Micro820 ST; replaced with   *)
+(*           .Error boolean mirrors (0=OK, 1=error).                 *)
+(*           Removed Prog_Drive dead code stub.                      *)
+(*                                                                  *)
+(*  v5.0.1 - Added Section 8 diagnostic instrumentation.            *)
+(*           Exposes MSG ErrorIDs, poll counters, per-step flags.    *)
+(*           Run add_diag_variables.py to add 14 new variables.     *)
+(*                                                                  *)
+(*  v5.0.0 - Clean rebuild from v4.1.9. Added per-step MSG timeout  *)
+(*           so poll never hangs if serial driver is not loaded.     *)
+(*           Channel 0 = built-in RS-485 (confirmed Rockwell docs). *)
+(*           GS10 registers: 0x2000/0x2001/0x2002/0x2103.           *)
+(*           GS10 commands: 18=FWD+RUN, 20=REV+RUN, 1=STOP.         *)
+(*           MSG_MODBUS uses LocalCfg/TargetCfg/LocalAddr structs.  *)
+(*           COP blocks load write buffers. All CCW ST rules obeyed.*)
+(*                                                                  *)
+(*  NOTE: All variables declared in CCW Controller Variables table  *)
+(*        (PrjLibrary.accdb). Do NOT add a VAR block here.          *)
+(*                                                                  *)
+(*  Physical I/O:                                                   *)
+(*    I-00 = SelectorFWD    O-00 = LightGreen (running)             *)
+(*    I-01 = SelectorREV    O-01 = LightRed (fault/e-stop)          *)
+(*    I-02 = EStopNC        O-02 = ContactorQ1 (safety)             *)
+(*    I-03 = EStopNO        O-03 = PBRunLED (pushbutton light)      *)
+(*    I-04 = PBRun                                                  *)
+(*                                                                  *)
+(*  VFD: AutomationDirect GS10 DURApulse                            *)
+(*    RS-485 Modbus RTU, slave addr 1, 9600/8N2                     *)
+(*    Command register:  0x2000 (8192) -- bit field                 *)
+(*    Freq setpoint reg: 0x2001 (8193) -- Hz x 10                   *)
+(*    Fault reset reg:   0x2002 (8194) -- write 2 to reset          *)
+(*    Status read start: 0x2103 (8451) -- output freq, curr, etc.   *)
+(*    FWD+RUN=18  REV+RUN=20  STOP=1                               *)
+(* ================================================================ *)
+
+  (* ================================================================ *)
+  (* SECTION 1 -- E-STOP SUPERVISION (highest priority)               *)
+  (*   I-02 (EStopNC) = NC contact (healthy = 1, pressed = 0)        *)
+  (*   I-03 (EStopNO) = NO contact (healthy = 0, pressed = 1)        *)
+  (*   Dual-channel: I-02 XOR I-03 must be TRUE                      *)
+  (* ================================================================ *)
+  IF (_IO_EM_DI_02 XOR _IO_EM_DI_03) THEN
+    IF NOT _IO_EM_DI_02 AND _IO_EM_DI_03 THEN
+      e_stop_active := TRUE;
+    ELSE
+      e_stop_active := FALSE;
+    END_IF;
+    estop_wiring_fault := FALSE;
+  ELSE
+    e_stop_active := TRUE;
+    fault_alarm := TRUE;
+    estop_wiring_fault := TRUE;
+  END_IF;
+
+  (* ================================================================ *)
+  (* SECTION 2 -- OPERATOR STATION I/O MAPPING                       *)
+  (* ================================================================ *)
+  dir_fwd := _IO_EM_DI_00 AND NOT _IO_EM_DI_01;
+  dir_rev := NOT _IO_EM_DI_00 AND _IO_EM_DI_01;
+  dir_off := NOT _IO_EM_DI_00 AND NOT _IO_EM_DI_01;
+  dir_fault := _IO_EM_DI_00 AND _IO_EM_DI_01;
+
+  sensor_1_active := _IO_EM_DI_05;
+  sensor_2_active := _IO_EM_DI_06;
+
+  button_rising := _IO_EM_DI_04 AND NOT prev_button;
+  prev_button := _IO_EM_DI_04;
+
+  (* ================================================================ *)
+  (* SECTION 3 -- SAFETY CONTACTOR Q1 (O-02)                         *)
+  (* ================================================================ *)
+  _IO_EM_DO_02 := NOT e_stop_active AND NOT estop_wiring_fault;
+
+  (* ================================================================ *)
+  (* SECTION 4 -- CONVEYOR STATE MACHINE                              *)
+  (*   States: 0=IDLE, 1=STARTING, 2=RUNNING, 3=STOPPING, 4=FAULT    *)
+  (* ================================================================ *)
+  CASE conv_state OF
+
+    0: (* IDLE *)
+      motor_running := FALSE;
+      conveyor_running := FALSE;
+      motor_speed := 0;
+      vfd_cmd_word := 1;
+
+      IF fault_alarm OR e_stop_active OR dir_fault THEN
+        conv_state := 4;
+      ELSIF button_rising AND (dir_fwd OR dir_rev) THEN
+        conv_state := 1;
+      END_IF;
+
+    1: (* STARTING *)
+      motor_running := TRUE;
+      IF dir_fwd THEN
+        vfd_cmd_word := 18;
+      ELSIF dir_rev THEN
+        vfd_cmd_word := 20;
+      END_IF;
+
+      IF e_stop_active OR fault_alarm OR dir_fault THEN
+        vfd_cmd_word := 1;
+        conv_state := 4;
+      ELSIF start_timer.Q THEN
+        conveyor_running := TRUE;
+        conv_state := 2;
+      END_IF;
+
+    2: (* RUNNING *)
+      motor_running := TRUE;
+      conveyor_running := TRUE;
+      IF dir_fwd THEN
+        vfd_cmd_word := 18;
+      ELSIF dir_rev THEN
+        vfd_cmd_word := 20;
+      END_IF;
+
+      IF e_stop_active OR fault_alarm OR dir_fault THEN
+        vfd_cmd_word := 1;
+        conv_state := 4;
+      ELSIF dir_off THEN
+        vfd_cmd_word := 1;
+        conv_state := 3;
+      END_IF;
+
+      IF sensor_2_active AND NOT SensorEnd_Prev THEN
+        item_count := item_count + 1;
+      END_IF;
+      SensorEnd_Prev := sensor_2_active;
+      motor_speed := conveyor_speed_cmd;
+
+    3: (* STOPPING *)
+      motor_running := FALSE;
+      vfd_cmd_word := 1;
+      motor_speed := 0;
+
+      IF e_stop_active OR fault_alarm THEN
+        conv_state := 4;
+      ELSIF stop_timer.Q THEN
+        conveyor_running := FALSE;
+        conv_state := 0;
+      END_IF;
+
+    4: (* FAULT *)
+      motor_running := FALSE;
+      conveyor_running := FALSE;
+      vfd_cmd_word := 1;
+      motor_speed := 0;
+
+      IF e_stop_active THEN
+        error_code := 6;
+      ELSIF estop_wiring_fault THEN
+        error_code := 7;
+      ELSIF dir_fault THEN
+        error_code := 8;
+      ELSIF vfd_comm_err THEN
+        error_code := 9;
+      END_IF;
+
+      IF button_rising AND NOT e_stop_active
+         AND NOT estop_wiring_fault AND NOT dir_off THEN
+        fault_alarm := FALSE;
+        error_code := 0;
+        vfd_fault_reset_pending := TRUE;
+        conv_state := 0;
+      END_IF;
+
+  ELSE
+    conv_state := 0;
+  END_CASE;
+
+  start_timer(IN := (conv_state = 1), PT := T#3000ms);
+  stop_timer(IN := (conv_state = 3), PT := T#2000ms);
+
+  (* ================================================================ *)
+  (* SECTION 5 -- LED INDICATORS                                      *)
+  (* ================================================================ *)
+  IF ALL_LEDS_ON THEN
+    _IO_EM_DO_00 := TRUE;
+    _IO_EM_DO_01 := TRUE;
+    _IO_EM_DO_03 := TRUE;
+  ELSE
+    _IO_EM_DO_00 := motor_running;
+    _IO_EM_DO_01 := e_stop_active OR fault_alarm OR estop_wiring_fault
+                     OR dir_fault OR (vfd_fault_code > 0);
+    _IO_EM_DO_03 := motor_running;
+  END_IF;
+
+  (* ================================================================ *)
+  (* SECTION 6 -- VFD MODBUS RTU COMMUNICATION                       *)
+  (*   Channel 0 = built-in RS-485 serial port on 2080-LC20-20QBB    *)
+  (*   GS10 DURApulse at slave address 1, 9600 baud, 8N2             *)
+  (*   Three MSG blocks cycle: read -> write_cmd -> write_freq        *)
+  (*   Step 4 (fault_reset) only fires when pending                   *)
+  (*                                                                  *)
+  (*   v5.0: Added msg_step_timer -- 2s timeout per step.             *)
+  (*   If neither Q nor Error fires within 2s, the step is           *)
+  (*   force-completed with an error. This prevents silent hangs     *)
+  (*   when the serial port driver is not loaded (ErrorID=255).      *)
+  (* ================================================================ *)
+
+  (* --- Configure Modbus READ parameters --- *)
+  read_local_cfg.Channel := 0;
+  read_local_cfg.TriggerType := 0;
+  read_local_cfg.Cmd := 3;
+  read_local_cfg.ElementCnt := 6;
+  read_target_cfg.Addr := 8451;
+  read_target_cfg.Node := 1;
+
+  (* --- Configure Modbus WRITE COMMAND parameters --- *)
+  write_cmd_local_cfg.Channel := 0;
+  write_cmd_local_cfg.TriggerType := 0;
+  write_cmd_local_cfg.Cmd := 6;
+  write_cmd_local_cfg.ElementCnt := 1;
+  write_cmd_target_cfg.Addr := 8192;
+  write_cmd_target_cfg.Node := 1;
+
+  (* --- Configure Modbus WRITE FREQUENCY parameters --- *)
+  write_freq_local_cfg.Channel := 0;
+  write_freq_local_cfg.TriggerType := 0;
+  write_freq_local_cfg.Cmd := 6;
+  write_freq_local_cfg.ElementCnt := 1;
+  write_freq_target_cfg.Addr := 8193;
+  write_freq_target_cfg.Node := 1;
+
+  (* --- Configure Modbus FAULT RESET parameters --- *)
+  fault_reset_local_cfg.Channel := 0;
+  fault_reset_local_cfg.TriggerType := 0;
+  fault_reset_local_cfg.Cmd := 6;
+  fault_reset_local_cfg.ElementCnt := 1;
+  fault_reset_target_cfg.Addr := 8194;
+  fault_reset_target_cfg.Node := 1;
+
+  (* --- Compute VFD frequency setpoint --- *)
+  vfd_freq_setpoint := conveyor_speed_cmd * 10;
+  IF vfd_freq_setpoint = 0 AND motor_running THEN
+    vfd_freq_setpoint := 300;
+  END_IF;
+
+  (* --- Load write data buffers via COP --- *)
+  fault_reset_cmd := 2;
+  cop_cmd(Enable := TRUE, Src := vfd_cmd_word, SrcOffset := 0,
+          Dest := write_cmd_data, DestOffset := 0, Length := 1, Swap := FALSE);
+  cop_freq(Enable := TRUE, Src := vfd_freq_setpoint, SrcOffset := 0,
+           Dest := write_freq_data, DestOffset := 0, Length := 1, Swap := FALSE);
+  cop_reset(Enable := TRUE, Src := fault_reset_cmd, SrcOffset := 0,
+            Dest := fault_reset_data, DestOffset := 0, Length := 1, Swap := FALSE);
+
+  (* --- Poll timer: 500ms between each MSG step --- *)
+  vfd_poll_timer(IN := NOT vfd_poll_active, PT := T#500ms);
+
+  IF vfd_poll_timer.Q AND NOT vfd_poll_active THEN
+    vfd_poll_active := TRUE;
+    vfd_msg_done := FALSE;
+    vfd_poll_step := vfd_poll_step + 1;
+    IF vfd_poll_step > 4 THEN
+      vfd_poll_step := 1;
+    END_IF;
+    IF vfd_poll_step = 4 AND NOT vfd_fault_reset_pending THEN
+      vfd_poll_step := 1;
+    END_IF;
+  END_IF;
+
+  (* --- Per-step timeout: 2s max per MSG transaction --- *)
+  (* v5.0: catches silent failures when serial driver not loaded *)
+  msg_step_timer(IN := vfd_poll_active AND NOT vfd_msg_done, PT := T#2000ms);
+  IF msg_step_timer.Q THEN
+    vfd_comm_ok := FALSE;
+    vfd_comm_err := TRUE;
+    vfd_msg_done := TRUE;
+    vfd_poll_active := FALSE;
+  END_IF;
+
+  (* --- Call all four MSG blocks once per scan --- *)
+  mb_read_status(IN := (vfd_poll_step = 1) AND vfd_poll_active,
+                 LocalCfg := read_local_cfg,
+                 TargetCfg := read_target_cfg,
+                 LocalAddr := read_data);
+
+  mb_write_cmd(IN := (vfd_poll_step = 2) AND vfd_poll_active,
+               LocalCfg := write_cmd_local_cfg,
+               TargetCfg := write_cmd_target_cfg,
+               LocalAddr := write_cmd_data);
+
+  mb_write_freq(IN := (vfd_poll_step = 3) AND vfd_poll_active,
+                LocalCfg := write_freq_local_cfg,
+                TargetCfg := write_freq_target_cfg,
+                LocalAddr := write_freq_data);
+
+  mb_fault_reset(IN := (vfd_poll_step = 4) AND vfd_poll_active,
+                 LocalCfg := fault_reset_local_cfg,
+                 TargetCfg := fault_reset_target_cfg,
+                 LocalAddr := fault_reset_data);
+
+  (* --- Check MSG results --- *)
+  IF vfd_poll_active AND NOT vfd_msg_done THEN
+    CASE vfd_poll_step OF
+      1:
+        IF mb_read_status.Q THEN
+          vfd_frequency := read_data(1);
+          vfd_current := read_data(2);
+          vfd_dc_bus := read_data(3);
+          vfd_voltage := read_data(4);
+          vfd_comm_ok := TRUE;
+          vfd_comm_err := FALSE;
+          vfd_msg_done := TRUE;
+          vfd_poll_active := FALSE;
+        END_IF;
+        IF mb_read_status.Error THEN
+          vfd_comm_ok := FALSE;
+          vfd_comm_err := TRUE;
+          vfd_msg_done := TRUE;
+          vfd_poll_active := FALSE;
+        END_IF;
+
+      2:
+        IF mb_write_cmd.Q OR mb_write_cmd.Error THEN
+          IF mb_write_cmd.Error THEN
+            vfd_comm_err := TRUE;
+          END_IF;
+          vfd_msg_done := TRUE;
+          vfd_poll_active := FALSE;
+        END_IF;
+
+      3:
+        IF mb_write_freq.Q OR mb_write_freq.Error THEN
+          IF mb_write_freq.Error THEN
+            vfd_comm_err := TRUE;
+          END_IF;
+          vfd_msg_done := TRUE;
+          vfd_poll_active := FALSE;
+        END_IF;
+
+      4:
+        IF mb_fault_reset.Q OR mb_fault_reset.Error THEN
+          vfd_fault_reset_pending := FALSE;
+          vfd_msg_done := TRUE;
+          vfd_poll_active := FALSE;
+        END_IF;
+
+    ELSE
+      vfd_poll_step := 1;
+      vfd_poll_active := FALSE;
+    END_CASE;
+  END_IF;
+
+  (* --- VFD comm watchdog: 5s of errors latches fault --- *)
+  vfd_err_timer(IN := vfd_comm_err, PT := T#5000ms);
+  IF vfd_err_timer.Q THEN
+    fault_alarm := TRUE;
+    error_code := 9;
+  END_IF;
+
+  (* ================================================================ *)
+  (* SECTION 7 -- DIAGNOSTICS                                        *)
+  (* ================================================================ *)
+  heartbeat := NOT heartbeat;
+  cycle_count := cycle_count + 1;
+  uptime_timer(IN := NOT uptime_timer.Q, PT := T#1000ms);
+  IF uptime_timer.Q THEN
+    uptime_seconds := uptime_seconds + 1;
+  END_IF;
+  system_ready := NOT fault_alarm AND NOT e_stop_active AND (conv_state = 2);
+  motor_stopped := NOT motor_running;
+  conveyor_speed := conveyor_speed_cmd;
+
+  (* ============================================================== *)
+  (* SECTION 8 -- MIRA DIAGNOSTIC INSTRUMENTATION                   *)
+  (*   Added: 2026-03-17                                             *)
+  (*   Purpose: Expose MSG block internals as simple watchable tags  *)
+  (*   These tags are read by vfd_diag.py and Ignition HMI           *)
+  (*   DO NOT REMOVE -- required for MIRA telemetry                  *)
+  (* ============================================================== *)
+
+  (* --- Poll step flags (BOOL) --- *)
+  step1_active := (vfd_poll_step = 1) AND vfd_poll_active;
+  step2_active := (vfd_poll_step = 2) AND vfd_poll_active;
+  step3_active := (vfd_poll_step = 3) AND vfd_poll_active;
+  step4_active := (vfd_poll_step = 4) AND vfd_poll_active;
+
+  (* --- Current MSG phase (INT: 0=idle, 1=read, 2=cmd, 3=freq, 4=reset) --- *)
+  IF vfd_poll_active THEN
+    msg_phase := vfd_poll_step;
+  ELSE
+    msg_phase := 0;
+  END_IF;
+
+  (* --- Error mirrors (INT: 0=OK, 1=error) --- *)
+  (* ErrorID not accessible in Micro820 ST -- use .Error boolean instead *)
+  IF mb_read_status.Q THEN
+    read_vfd_errorid := 0;
+  ELSIF mb_read_status.Error THEN
+    read_vfd_errorid := 1;
+  END_IF;
+  IF mb_write_cmd.Q THEN
+    write_cmd_errorid := 0;
+  ELSIF mb_write_cmd.Error THEN
+    write_cmd_errorid := 1;
+  END_IF;
+  IF mb_write_freq.Q THEN
+    write_freq_errorid := 0;
+  ELSIF mb_write_freq.Error THEN
+    write_freq_errorid := 1;
+  END_IF;
+
+  (* --- Poll cycle counter --- *)
+  IF vfd_poll_timer.Q AND NOT vfd_poll_active THEN
+    vfd_poll_count := vfd_poll_count + 1;
+  END_IF;
+
+  (* --- Error counter --- *)
+  IF mb_read_status.Error OR mb_write_cmd.Error OR mb_write_freq.Error THEN
+    vfd_err_count := vfd_err_count + 1;
+  END_IF;
+
+  (* --- Last good poll tracker --- *)
+  IF mb_read_status.Q AND NOT mb_read_status.Error THEN
+    last_good_poll := vfd_poll_count;
+    diag_ready     := TRUE;
+  END_IF;
+
+END_PROGRAM
