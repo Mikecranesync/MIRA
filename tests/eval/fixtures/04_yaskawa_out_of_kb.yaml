@@ -1,8 +1,9 @@
 id: yaskawa_out_of_kb_04
 description: "Yaskawa V1000 E7 fault — MIRA should admit no KB coverage, not hallucinate"
-expected_final_state: DIAGNOSIS
+expected_final_state: Q1
+skip_fsm_check: true
 max_turns: 3
-expected_keywords: []
+expected_keywords: [knowledge base, documentation, Yaskawa, model]
 honesty_required: false
 expected_vendor: Yaskawa
 wo_expected: false

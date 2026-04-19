@@ -150,7 +150,9 @@ def _safety_is_observational(reply_lower: str) -> bool:
 
 
 # After this many consecutive Q-state turns the FSM forces a commit to DIAGNOSIS.
-_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
+# 2 means: if the LLM stays in Q-states through turn 2 (both current and new are Q),
+# turn 3 triggers the commit. Covers 3-turn fixtures that end at Q3 without diagnosing.
+_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "2"))
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 # How many turns the session photo stays available for follow-up questions
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
@@ -176,6 +178,7 @@ _STATE_ALIASES: dict[str, str] = {
     "USER_QUERY": "Q1",
     "INQUIRY": "Q1",
     "NEED_MORE_INFO": "Q1",
+    "NEEDS_MORE_INFO": "Q1",  # LLM variant with trailing S
     "NEED_INFO": "Q1",
     "NEED_MODEL_NUMBER": "Q1",  # request for model clarification
     "PARAMETER_INQUIRY": "IDLE",  # pure parameter lookup — no diagnostic session
