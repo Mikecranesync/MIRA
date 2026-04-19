@@ -13,6 +13,10 @@ function db() {
 }
 
 beforeAll(async () => {
+  // PLG_JWT_SECRET lives in Doppler prd only. Inject a deterministic test
+  // secret when absent so the suite runs under --config dev (which has
+  // NEON_DATABASE_URL but not PLG_JWT_SECRET) and in ad-hoc local runs.
+  process.env.PLG_JWT_SECRET ??= "test-secret-for-m-route-integration-tests";
   const sql = db();
   await sql`DELETE FROM qr_scan_events WHERE tenant_id = ${TEST_TENANT}::uuid`;
   await sql`DELETE FROM asset_qr_tags WHERE tenant_id = ${TEST_TENANT}::uuid`;
