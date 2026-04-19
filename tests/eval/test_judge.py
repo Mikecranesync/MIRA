@@ -174,12 +174,14 @@ _GIBBERISH_JUDGE_RESPONSE = _mock_json_response(
         "helpfulness": 1,
         "tone": 2,
         "instruction_following": 2,
+        "conversational_flow": 1,
     },
     notes={
         "groundedness": "Response is a keyword loop with no grounded facts from retrieved chunks.",
         "helpfulness": "Repeating the same terms provides no actionable guidance for the technician.",
         "tone": "Reads as machine-generated spam rather than professional guidance.",
         "instruction_following": "Did not address the user's question coherently.",
+        "conversational_flow": "Reads as disconnected noise; no turn-taking or acknowledgement of the user.",
     },
 )
 
@@ -234,12 +236,14 @@ _HELPFUL_JUDGE_RESPONSE = _mock_json_response(
         "helpfulness": 5,
         "tone": 4,
         "instruction_following": 4,
+        "conversational_flow": 4,
     },
     notes={
         "groundedness": "Response cites specific parameter numbers consistent with GS10 documentation.",
         "helpfulness": "Provides three concrete diagnostic steps with specific parameter references.",
         "tone": "Concise and professional; treats technician as competent.",
         "instruction_following": "Addresses OC fault on startup directly with actionable steps.",
+        "conversational_flow": "Direct, clear reply; appropriate turn-taking and acknowledges the question.",
     },
 )
 
@@ -288,6 +292,7 @@ _PILZ_MISS_JUDGE_RESPONSE = _mock_json_response(
         "helpfulness": 2,
         "tone": 3,
         "instruction_following": 1,
+        "conversational_flow": 3,
     },
     notes={
         "groundedness": "Response asks for more information but does not invent facts.",
@@ -297,6 +302,7 @@ _PILZ_MISS_JUDGE_RESPONSE = _mock_json_response(
             "User explicitly asked to 'find a manual' — response returned a diagnostic "
             "question instead of a vendor URL or documentation reference. Direct instruction miss."
         ),
+        "conversational_flow": "Acknowledges the user's concern but steers them away from what they asked for.",
     },
 )
 
