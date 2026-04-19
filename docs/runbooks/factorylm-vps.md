@@ -66,6 +66,27 @@ ssh factorylm-prod "nginx -t && nginx -s reload"
 | infra_postgres_1 | 5432 (internal) | Shared pgvector PostgreSQL |
 | infra_redis_1 | 6379 (internal) | Shared Redis |
 
+### MIRA Stack (SaaS project — authoritative)
+Compose: **`/opt/mira/docker-compose.saas.yml`**. Project: `mira`.
+
+| Container | Role |
+|-----------|------|
+| mira-core-saas | Open WebUI — entrypoint for `app.factorylm.com`, port :3010 → :8080 |
+| mira-pipeline-saas | OpenAI-compatible GSDEngine wrapper — **serves chat** via Docker DNS alias `mira-pipeline:9099` on `mira_mira-net` |
+| mira-mcp-saas | FastMCP server — NeonDB recall, equipment tools |
+| mira-ingest-saas | Photo / PDF ingest service |
+| mira-docling-saas | PDF extraction |
+| mira-web | PLG funnel (Hono/Bun), port :3200 |
+
+**Deploy a mira change:**
+```bash
+cd /opt/mira && git pull origin main
+doppler run -p factorylm -c prd -- docker compose -f docker-compose.saas.yml build <service>
+doppler run -p factorylm -c prd -- docker compose -f docker-compose.saas.yml up -d --force-recreate <service>
+```
+
+**Retired 2026-04-18:** `mira-pipeline` from `/opt/mira/mira-core/docker-compose.yml` (was running on :9099 as an orphan — DNS collision made it invisible to OW). The `mira-core/docker-compose.yml` + `docker-compose.oracle.yml` files still exist but should not be used.
+
 ### Systemd services
 | Service | Purpose |
 |---------|---------|
