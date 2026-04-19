@@ -120,6 +120,7 @@ bash install/smoke_test.sh
 - **Skills:** `.claude/skills/`
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `~/.claude/plans/yes-giggly-floyd.md` — locked 2026-04-19 → 2026-07-19; do not propose work outside the 10 units
+- **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
 
 ---
 
