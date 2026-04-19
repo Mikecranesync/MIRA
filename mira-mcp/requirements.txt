@@ -1,4 +1,4 @@
-fastmcp==0.4.*
+fastmcp==3.2.*
 uvicorn==0.44.0
 starlette==0.52.1
 openviking==0.2.6
