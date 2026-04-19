@@ -150,10 +150,10 @@ def _safety_is_observational(reply_lower: str) -> bool:
     return False
 
 
-# After this many consecutive Q-state turns the FSM forces a commit to DIAGNOSIS.
-# 2 means: if the LLM stays in Q-states through turn 2 (both current and new are Q),
-# turn 3 triggers the commit. Covers 3-turn fixtures that end at Q3 without diagnosing.
-_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "2"))
+# After this many entries into a Q-state the FSM forces a commit to DIAGNOSIS.
+# Counting includes the first non-Q→Q transition, so IDLE→Q1→Q2→Q3 reaches
+# q_rounds=3 at Q3 and triggers. See #387 for the off-by-one fix.
+_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 # How many turns the session photo stays available for follow-up questions
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
