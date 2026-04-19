@@ -99,7 +99,7 @@ bash install/smoke_test.sh
 
 - **macOS keychain over SSH** — `docker build`/`doppler` fail on Bravo/Charlie. Workaround: `docker cp` + restart. Bravo fixed with `doppler configure set token-storage file`.
 - **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
-- **Intent guard false positives** — `classify_intent()` catches real maintenance questions as greetings. Test with realistic phrasing.
+- **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
 - **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
 - **Gemini key blocked** — 403 in Doppler. Cascade falls through to Groq/Claude.
 
