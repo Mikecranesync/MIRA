@@ -91,9 +91,21 @@ def test_qr_scan_events_has_required_columns():
 
 
 def test_case_insensitive_unique_on_asset_qr_tags():
-    """VFD-07 and vfd-07 must not both be insertable for the same tenant."""
-    with _engine().begin() as conn:
-        tid = "00000000-0000-0000-0000-000000000001"
+    """VFD-07 and vfd-07 must not both be insertable for the same tenant.
+
+    NOTE on transaction shape (applies to any future IntegrityError test —
+    Tasks 4, 7, 8 may copy this pattern):
+      Postgres aborts the current transaction when an IntegrityError fires.
+      If the failing INSERT and the cleanup DELETE share one engine.begin()
+      block, the cleanup DELETE dies with "current transaction is aborted".
+      Fix: (1) commit the seed row in its own transaction, (2) wrap the
+      failing INSERT in conn.begin_nested() (SAVEPOINT) so the outer tx
+      survives, (3) cleanup in a finally block in its own transaction.
+    """
+    tid = "00000000-0000-0000-0000-000000000001"
+    engine = _engine()
+    # Clean any prior state, then seed the first row in its own transaction.
+    with engine.begin() as conn:
         conn.execute(text("DELETE FROM asset_qr_tags WHERE tenant_id = :tid"), {"tid": tid})
         conn.execute(
             text(
@@ -102,15 +114,22 @@ def test_case_insensitive_unique_on_asset_qr_tags():
             ),
             {"tid": tid},
         )
-        with pytest.raises(Exception):
-            conn.execute(
-                text(
-                    "INSERT INTO asset_qr_tags (tenant_id, asset_tag, atlas_asset_id) "
-                    "VALUES (:tid, 'vfd-07', 2)"
-                ),
-                {"tid": tid},
-            )
-        conn.execute(text("DELETE FROM asset_qr_tags WHERE tenant_id = :tid"), {"tid": tid})
+    # Second INSERT must fail on the case-insensitive unique index. Use a
+    # nested SAVEPOINT so the outer transaction survives the integrity error.
+    try:
+        with engine.begin() as conn:
+            with pytest.raises(Exception):
+                with conn.begin_nested():
+                    conn.execute(
+                        text(
+                            "INSERT INTO asset_qr_tags (tenant_id, asset_tag, atlas_asset_id) "
+                            "VALUES (:tid, 'vfd-07', 2)"
+                        ),
+                        {"tid": tid},
+                    )
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM asset_qr_tags WHERE tenant_id = :tid"), {"tid": tid})
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
