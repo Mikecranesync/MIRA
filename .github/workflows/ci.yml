@@ -1,10 +1,35 @@
 name: CI
 
+# paths-ignore: docs-only changes skip the whole workflow.
+# The list below covers prose (markdown, wiki), the .claude config tree, and
+# image-only changes. Any PR or push that also touches code outside these
+# paths runs the full pipeline normally. Main pushes are always post-merge
+# (code flows through PRs), so a docs-only main push has no code to test —
+# the safety-net intent is preserved: any code-touching main push triggers
+# the full pipeline regardless of path filter.
 on:
   push:
     branches: [main, dev]
+    paths-ignore:
+      - 'docs/**'
+      - 'wiki/**'
+      - '**/*.md'
+      - '.claude/**'
+      - '**/*.webp'
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.gif'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'wiki/**'
+      - '**/*.md'
+      - '.claude/**'
+      - '**/*.webp'
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.gif'
 
 jobs:
   lint-and-type-check:
