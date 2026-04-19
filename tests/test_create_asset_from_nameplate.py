@@ -40,7 +40,12 @@ def _install_server_stubs() -> None:
             def __init__(self, *args, **kwargs):
                 pass
 
-            def tool(self):
+            def tool(self, *args, **kwargs):
+                # fastmcp 3.2 uses @mcp.tool (bare, no parens) — args[0] is the fn.
+                # Older fastmcp used @mcp.tool() — returns a decorator.
+                if args and callable(args[0]) and not kwargs:
+                    return args[0]
+
                 def decorator(fn):
                     return fn
 
