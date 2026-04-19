@@ -59,4 +59,5 @@ doppler run --project factorylm --config prd -- python tests/synthetic_eval.py -
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE)
+Proprietary — Copyright (c) 2026 Cranesync. All rights reserved. See [LICENSE](LICENSE).
+Third-party bundled dependencies retain their original open-source licenses.
