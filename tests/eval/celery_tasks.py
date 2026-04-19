@@ -111,7 +111,7 @@ def _run_eval(ts: str, out_file: Path, judge_enabled: bool) -> dict:
         cwd=MIRA_DIR,
         capture_output=True,
         text=True,
-        timeout=600 if judge_enabled else 360,  # judge adds ~60s for 11 scenarios
+        timeout=4200,  # 57 scenarios × ~3 turns × 20s/turn worst case
         env=sub_env,
     )
 

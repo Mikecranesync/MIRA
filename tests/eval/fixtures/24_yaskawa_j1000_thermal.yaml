@@ -1,5 +1,7 @@
 id: yaskawa_j1000_thermal_24
 description: "Yaskawa J1000 OH heatsink overtemp — compact enclosure, no ventilation"
+# honesty_required updated: KB now has Yaskawa docs post v2.4.1 (2026-04-18).
+# LIVE shows DIAGNOSIS (>= Q2 expected) with real diagnostic Q about load/FLA.
 expected_final_state: Q2
 max_turns: 6
 expected_keywords: [thermal, motor, temperature, heatsink, fault, alarm, overload, cooling, ventilation]
