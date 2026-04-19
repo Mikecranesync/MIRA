@@ -437,6 +437,18 @@ _DOCUMENTATION_PHRASES = (
     "find the documentation",
     "get documentation for",
     "find documentation for",
+    "is there a manual",  # 2026-04-19 audit: e4ced7d8 phrasing
+    "is there a datasheet",
+    "is there documentation",
+    "got a manual",
+    "got the manual",
+    "any manual",
+    "any documentation",
+    "any datasheet",
+    "show me the pin",  # "show me the pinout" / "show me the pin out"
+    "manual for this",  # fallback broad-match; safe post-v2.4.1 since it requires "for this"
+    "datasheet for this",
+    "documentation for this",
 )
 
 # Signals that the technician is under time or job pressure.
