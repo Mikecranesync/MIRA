@@ -161,6 +161,45 @@ class TestParseResponse:
         result = supervisor._parse_response(raw)
         assert result["options"] == ["A", "B", "C"]
 
+    def test_envelope_with_literal_newline_in_reply_p0_issue_380(self, supervisor):
+        # P0 #380: LLMs regularly emit envelopes with literal \n (U+000A)
+        # inside the reply string (paragraph breaks in prose). Strict json.loads
+        # rejects unescaped control chars, the fallback previously returned
+        # the entire raw envelope as the reply, leaking {"next_state":...}
+        # to chat output on production.
+        raw = (
+            '{"next_state": "ASSET_IDENTIFIED", "reply": "The image shows a '
+            "weathered metal plate for a TECO 3-PHASE INDUCTION MOTOR. "
+            "Visible text includes 'WUXI TECO Elec. & Mach. Co., Ltd.'.\n\n"
+            'To proceed, what would you like to prioritize?", '
+            '"options": ["1. Model number", "2. Voltage and current ratings", "3. Other"], '
+            '"confidence": "LOW"}'
+        )
+        result = supervisor._parse_response(raw)
+        assert result["next_state"] == "ASSET_IDENTIFIED"
+        assert result["reply"].startswith("The image shows")
+        assert '"next_state"' not in result["reply"]
+        assert '"reply"' not in result["reply"]
+        assert result["options"] == [
+            "1. Model number",
+            "2. Voltage and current ratings",
+            "3. Other",
+        ]
+
+    def test_envelope_parse_failure_never_leaks_raw_json_keys(self, supervisor):
+        # Defense: even if every parse path fails, the returned reply must
+        # never still contain JSON envelope structure. Users must never see
+        # \"next_state\": or \"reply\": verbatim on the wire.
+        raw = (
+            '{"next_state": "Q2", "reply": "line one\x01with control char", '
+            '"options": [], "confidence": "LOW"}'
+        )
+        # \x01 (SOH) is a control char; make sure lenient parsing still works
+        # OR the fallback scrubs it — either way, no envelope leak.
+        result = supervisor._parse_response(raw)
+        assert '"next_state"' not in result["reply"]
+        assert '"reply":' not in result["reply"]
+
 
 # ---------------------------------------------------------------------------
 # _advance_state

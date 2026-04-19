@@ -2380,11 +2380,15 @@ class Supervisor:
         ``follow_ups``, ``tags``, ``title``, ``queries`` instead of the
         expected ``reply`` key. We attempt to salvage these into a valid
         response so the FSM doesn't stall.
+
+        ``strict=False`` on every ``json.loads`` tolerates unescaped control
+        characters (literal newlines, tabs) inside string values — LLMs emit
+        prose paragraph breaks this way constantly (P0 #380).
         """
         raw_stripped = raw.strip()
 
         try:
-            parsed = json.loads(raw_stripped)
+            parsed = json.loads(raw_stripped, strict=False)
             if isinstance(parsed, dict):
                 if "reply" in parsed:
                     return self._extract_parsed(parsed)
@@ -2401,7 +2405,7 @@ class Supervisor:
                 if block.startswith("json"):
                     block = block[4:].strip()
                 try:
-                    parsed = json.loads(block)
+                    parsed = json.loads(block, strict=False)
                     if isinstance(parsed, dict) and "reply" in parsed:
                         return self._extract_parsed(parsed)
                 except (json.JSONDecodeError, TypeError):
@@ -2412,7 +2416,7 @@ class Supervisor:
                 for j in range(len(raw_stripped), i, -1):
                     if raw_stripped[j - 1] == "}":
                         try:
-                            parsed = json.loads(raw_stripped[i:j])
+                            parsed = json.loads(raw_stripped[i:j], strict=False)
                             if isinstance(parsed, dict) and "reply" in parsed:
                                 return self._extract_parsed(parsed)
                         except (json.JSONDecodeError, TypeError):
@@ -2425,8 +2429,19 @@ class Supervisor:
             close_idx = clean.rfind("}")
             if close_idx > brace_idx:
                 clean = (clean[:brace_idx] + clean[close_idx + 1 :]).strip()
-        if not clean:
-            clean = raw_stripped
+        # Safety: never leak a raw JSON envelope to chat output. If the
+        # stripped prose is empty and the original looks envelope-shaped,
+        # last-ditch regex-pluck the reply value; otherwise substitute a
+        # generic formatting-error message (P0 #380). Empty input stays empty.
+        if not clean and raw_stripped:
+            reply_match = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)"', raw_stripped, re.DOTALL)
+            if reply_match:
+                try:
+                    clean = json.loads(f'"{reply_match.group(1)}"', strict=False)
+                except (json.JSONDecodeError, TypeError):
+                    clean = reply_match.group(1).replace("\\n", "\n").replace('\\"', '"')
+            else:
+                clean = "MIRA had trouble formatting that response. Please ask again."
         logger.warning("_parse_response fallback; raw=%r", raw_stripped[:200])
         return {"next_state": None, "reply": clean, "options": [], "confidence": "LOW"}
 
