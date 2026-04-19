@@ -90,6 +90,7 @@ import {
 } from "./lib/blog-db.js";
 import { m } from "./routes/m.js";
 import { adminPages, adminApi } from "./routes/admin/qr-print.js";
+import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -137,6 +138,7 @@ app.route("/m", m);
 // Admin routes — QR print page + batch PDF endpoint
 app.route("/admin", adminPages); // handles GET /admin/qr-print
 app.route("/", adminApi);        // handles POST /api/admin/qr-print-batch
+app.route("/admin", qrAnalytics); // handles GET /admin/qr-analytics
 
 // ---------------------------------------------------------------------------
 // Static files
