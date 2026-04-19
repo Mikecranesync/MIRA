@@ -24,11 +24,10 @@ os.environ.setdefault("MIRA_TENANT_ID", "test-tenant")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# Stub heavy optional deps
-# Note: do NOT stub 'telegram' or 'telegram.ext' here — python-telegram-bot is
-# installed in CI and other tests (test_image_downscale, test_typing_indicator)
-# import telegram.constants directly. Stubbing it with MagicMock poisons
-# sys.modules for the whole session and breaks those tests.
+# Stub heavy optional deps — but ONLY if the real module isn't available.
+# Unconditional stubbing poisons sys.modules for later tests that need the
+# real module (e.g. test_image_downscale needs real PIL).
+# Do NOT stub 'telegram' or 'telegram.ext' either.
 for _mod in (
     "PIL",
     "PIL.Image",
@@ -37,7 +36,10 @@ for _mod in (
     "slack_sdk.errors",
     "python_telegram_bot",
 ):
-    sys.modules.setdefault(_mod, unittest.mock.MagicMock())
+    try:
+        __import__(_mod)
+    except ImportError:
+        sys.modules[_mod] = unittest.mock.MagicMock()
 
 from shared.workers.rag_worker import RAGWorker  # noqa: E402
 
