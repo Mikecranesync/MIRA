@@ -2658,7 +2658,14 @@ class Supervisor:
         """Format parsed response for display."""
         reply = parsed["reply"]
         options = parsed.get("options", [])
-        meaningful = [o for o in options if len(str(o).strip()) > 2]
+        # LLMs often pre-number their options ("1. Drives"). Strip any leading
+        # "N." / "N)" prefix so the enumerate() below doesn't emit "1. 1. Drives".
+        meaningful = [
+            re.sub(r"^\s*\d+[.):\-]\s*", "", str(o)).strip()
+            for o in options
+            if len(str(o).strip()) > 2
+        ]
+        meaningful = [o for o in meaningful if len(o) > 2]
         if meaningful and len(meaningful) >= 2:
             reply = deduplicate_options(reply, meaningful)
             reply += "\n\n" + "\n".join(f"{i + 1}. {opt}" for i, opt in enumerate(meaningful))
