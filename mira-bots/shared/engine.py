@@ -1452,8 +1452,10 @@ class Supervisor:
                     re.IGNORECASE,
                 )
             )
-            rag_query = _cap if (_cap and _is_question) else (
-                f"{manufacturer} {model} common faults troubleshooting"
+            rag_query = (
+                _cap
+                if (_cap and _is_question)
+                else (f"{manufacturer} {model} common faults troubleshooting")
             )
             try:
                 raw = await self.rag.process(
@@ -2506,10 +2508,9 @@ class Supervisor:
         # Do NOT trigger on incidental mention of safety keywords in diagnostic text
         # (e.g. "Check for melted insulation" is a valid diagnostic step, not a hazard).
         _reply_starts_stop = reply_lower.lstrip().startswith("stop")
-        if (
-            (_reply_starts_stop and any(kw in reply_lower for kw in SAFETY_KEYWORDS))
-            or parsed.get("next_state") == "SAFETY_ALERT"
-        ):
+        if (_reply_starts_stop and any(kw in reply_lower for kw in SAFETY_KEYWORDS)) or parsed.get(
+            "next_state"
+        ) == "SAFETY_ALERT":
             state["state"] = "SAFETY_ALERT"
             state["final_state"] = "SAFETY_ALERT"
             state["exchange_count"] += 1

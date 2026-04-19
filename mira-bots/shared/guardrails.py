@@ -43,7 +43,7 @@ SAFETY_KEYWORDS = [
     "pulling the breaker",
     "removing power",
     "cutting power",
-    "pull the power",      # "pull the power feed/cable while running" (added fix/eval)
+    "pull the power",  # "pull the power feed/cable while running" (added fix/eval)
     "pulling power",
     "live wire",
     "live circuit",
