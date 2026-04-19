@@ -55,9 +55,17 @@ def test_expand_abbreviations_returns_string(text):
 # Rewrite question: always returns non-empty string
 # ---------------------------------------------------------------------------
 
-@given(st.text(min_size=1, max_size=300), st.one_of(st.none(), st.text(min_size=1, max_size=50)))
+@given(
+    st.text(min_size=1, max_size=300).filter(lambda s: s.strip()),
+    st.one_of(st.none(), st.text(min_size=1, max_size=50)),
+)
 def test_rewrite_question_never_empty(message, asset):
-    """Rewritten question should always be a non-empty string."""
+    """Rewritten question is non-empty for any non-whitespace input.
+
+    Pure-whitespace inputs (incl. Unicode controls like '\\x85' NEXT LINE) are
+    not meaningful questions — match the input strategy used by
+    test_rewrite_question_contains_input_or_rewrite below.
+    """
     result = rewrite_question(message, asset)
     assert isinstance(result, str)
     assert len(result) > 0
