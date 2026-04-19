@@ -1,0 +1,25 @@
+{
+  "include": [
+    "mira-bots/shared",
+    "mira-core/mira-ingest",
+    "mira-mcp"
+  ],
+  "exclude": [
+    "mira-bots-phase1",
+    "mira-bots-phase2",
+    "mira-bots-phase3",
+    "archives",
+    "tests",
+    "tools",
+    "**/tests"
+  ],
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.12",
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "reportGeneralClassIssues": false,
+  "reportOptionalMemberAccess": false,
+  "reportOptionalSubscript": false,
+  "reportArgumentType": "warning",
+  "reportReturnType": "warning"
+}

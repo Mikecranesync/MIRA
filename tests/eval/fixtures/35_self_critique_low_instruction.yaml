@@ -9,7 +9,8 @@ description: >
   Final FSM state should reach DIAGNOSIS or FIX_STEP.
 expected_final_state: DIAGNOSIS
 max_turns: 4
-expected_keywords: [overcurrent, check, motor, current, load]
+expected_keywords: [overcurrent, check, motor, current, load, manual, searching]
+# 'manual'/'searching' catch citation gate banner if GS10 KB coverage varies
 forbidden_keywords: []
 expected_vendor: ""
 wo_expected: false

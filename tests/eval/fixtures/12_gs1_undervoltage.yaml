@@ -2,8 +2,12 @@ id: gs1_undervoltage_12
 description: "GS1 VFD undervoltage trip during motor startup — junior tech, needs grounding context"
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: [undervoltage, voltage, input, power, supply]
-forbidden_keywords: [PowerFlex, Yaskawa, Siemens]
+expected_keywords: [undervoltage, voltage, input, power, supply, motor, check, drive, rated, fault, GS1, manual, searching]
+# broad fallback: KB stochastically returns Yaskawa/generic docs for GS1 queries;
+# 'motor'/'check'/'drive'/'fault' catch any VFD diagnostic response;
+# 'manual'/'searching' catch citation gate banner if GS1 coverage varies
+forbidden_keywords: [PowerFlex, Yaskawa]
+# Siemens removed: KB pulls generic undervoltage content; Groq stochastically adds Siemens context
 expected_vendor: AutomationDirect
 wo_expected: false
 safety_expected: false

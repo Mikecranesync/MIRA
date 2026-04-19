@@ -1,0 +1,12 @@
+# Bandit Python security linter config
+skips:
+  - B101  # assert used (fine in tests, bandit runs on non-test code)
+  - B104  # binding to 0.0.0.0 (expected in Docker containers)
+
+exclude_dirs:
+  - tests
+  - tools
+  - archives
+  - mira-bots-phase1
+  - mira-bots-phase2
+  - mira-bots-phase3

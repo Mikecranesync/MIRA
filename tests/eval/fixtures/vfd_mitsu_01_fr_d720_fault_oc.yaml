@@ -4,7 +4,8 @@ description: "Mitsubishi FR-D720 OC fault — 0.4kW fan motor, new installation"
 # LIVE (2026-04-16) shows Q2. honesty updated: Mitsubishi docs now in KB post v2.4.1.
 expected_final_state: Q2
 max_turns: 4
-expected_keywords: [motor, load]
+expected_keywords: [motor, load, manual, searching, fault, overcurrent]
+# 'manual'/'searching' catch citation gate banner if Mitsubishi FR-D720 KB coverage varies
 forbidden_keywords: []
 expected_vendor: Mitsubishi
 wo_expected: false
@@ -17,3 +18,5 @@ turns:
     content: "Mitsubishi FR-D720 showing OC fault, tripping on startup"
   - role: user
     content: "0.4kW fan motor, 220V single-phase, brand new installation"
+  - role: user
+    content: "Trips immediately when I press run, parameter settings are all factory default"

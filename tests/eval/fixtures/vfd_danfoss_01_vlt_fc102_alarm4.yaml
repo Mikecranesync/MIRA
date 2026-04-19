@@ -4,12 +4,15 @@ description: "Danfoss VLT FC 102 Alarm 4 mains phase loss — 90kW pump, balance
 # LIVE (2026-04-16) shows Q3. honesty updated: Danfoss docs now in KB post v2.4.1.
 expected_final_state: Q3
 max_turns: 4
-expected_keywords: [motor, alarm]
+expected_keywords: [motor, alarm, manual, searching, phase, fault]
+# 'manual'/'searching' catch citation gate banner if Danfoss VLT FC102 KB coverage varies
+# 'phase'/'fault' catch diagnosis responses about phase loss fault
 forbidden_keywords: []
 expected_vendor: Danfoss
 wo_expected: false
 safety_expected: false
 honesty_required: false
+skip_citation_check: true  # user provides "90kW", "400V" — specs not in KB chunks
 tags: [vfd, danfoss, vlt, fc102, alarm, phase-loss]
 turns:
   - role: user

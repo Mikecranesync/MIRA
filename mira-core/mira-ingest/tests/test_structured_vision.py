@@ -1,10 +1,9 @@
 """Tests for structured vision output parsing (#220 Bug D)."""
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
-
-import pytest
 
 # Add mira-ingest to path so we can import main's helpers without running the app
 INGEST_ROOT = Path(__file__).parent.parent
@@ -16,7 +15,6 @@ if str(INGEST_ROOT) not in sys.path:
 
 
 class TestParseStructured:
-
     def test_parses_clean_json(self):
         from main import _parse_structured_description
 
@@ -97,19 +95,21 @@ class TestParseStructured:
 
 
 class TestPromptStructure:
-
     def test_prompt_requests_json(self):
         """DESCRIBE_SYSTEM tells the model to return JSON."""
         from main import DESCRIBE_SYSTEM
+
         assert "JSON" in DESCRIBE_SYSTEM or "json" in DESCRIBE_SYSTEM
 
     def test_prompt_names_four_fields(self):
         """Prompt mentions all four structured fields."""
         from main import DESCRIBE_SYSTEM
+
         for field in ("component", "symptom", "condition", "description"):
             assert field in DESCRIBE_SYSTEM, f"Missing field in prompt: {field}"
 
     def test_prompt_blocks_invented_fault_codes(self):
         """Prompt says never invent fault codes (Rule 10 alignment)."""
         from main import DESCRIBE_SYSTEM
+
         assert "Never invent" in DESCRIBE_SYSTEM or "never invent" in DESCRIBE_SYSTEM.lower()

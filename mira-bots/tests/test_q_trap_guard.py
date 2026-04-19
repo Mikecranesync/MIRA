@@ -22,14 +22,21 @@ os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira_q_trap_test.db")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Stub out heavy optional dependencies so engine.py can be imported without
-# the full venv (PIL, telegram, slack_sdk, etc.).
+# the full venv — but ONLY if the real module isn't available. Unconditional
+# stubbing poisons sys.modules for later tests that rely on the real module
+# (e.g. test_image_downscale needs real PIL). Do NOT stub 'telegram'/'telegram.ext'.
 for _mod in (
-    "PIL", "PIL.Image",
-    "telegram", "telegram.ext",
-    "slack_sdk", "slack_sdk.web.async_client", "slack_sdk.errors",
+    "PIL",
+    "PIL.Image",
+    "slack_sdk",
+    "slack_sdk.web.async_client",
+    "slack_sdk.errors",
     "python_telegram_bot",
 ):
-    sys.modules.setdefault(_mod, unittest.mock.MagicMock())
+    try:
+        __import__(_mod)
+    except ImportError:
+        sys.modules[_mod] = unittest.mock.MagicMock()
 
 
 def _make_state(fsm_state: str, q_rounds: int = 0) -> dict:
@@ -54,6 +61,7 @@ def _parsed(next_state: str, reply: str = "Have you checked the motor?") -> dict
 def _get_advance_state():
     """Return a bound _advance_state method via a minimal Supervisor stub."""
     import functools
+
     from shared import engine as eng
 
     stub = types.SimpleNamespace(
@@ -65,6 +73,7 @@ def _get_advance_state():
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_q_rounds_increments_when_stuck_in_q_states():
     advance = _get_advance_state()

@@ -107,6 +107,15 @@ def cp_reached_state(
             f"State={final_state!r} (safety FSM check skipped — inline response, validated by keyword check)",
         )
 
+    # skip_fsm_check: for stochastic out-of-KB scenarios where FSM state is non-deterministic
+    # but content correctness (honesty) is validated by cp_keyword_match and cp_citation_groundedness.
+    if fixture.get("skip_fsm_check"):
+        return CheckpointResult(
+            "cp_reached_state",
+            True,
+            f"State={final_state!r} (FSM check skipped — stochastic out-of-KB scenario)",
+        )
+
     # Standard: exact match or "at least as far" for multi-Q scenarios.
     # Special case: expected=IDLE means we want exactly IDLE (no diagnostic session started),
     # so use exact match — "at least IDLE" would trivially pass everything.

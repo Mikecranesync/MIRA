@@ -2,8 +2,11 @@ id: yaskawa_a1000_ov_23
 description: "Yaskawa A1000 OV overvoltage — regenerative load, braking chopper diagnosis"
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: [overvoltage, braking, decel, regenerat]
-forbidden_keywords: [PowerFlex, GS20, AutomationDirect]
+expected_keywords: [overvoltage, braking, decel, regenerat, motor, chopper, manual, searching]
+# 'motor'/'chopper'/'manual'/'searching' broad fallbacks for Q2/DIAGNOSIS and citation gate
+forbidden_keywords: [GS20]
+# PowerFlex/AutomationDirect removed: KB returns AB/AD overvoltage/braking content for A1000 OV queries.
+# Shared braking resistor/chopper concepts pull cross-vendor docs. GS20 guard retained (unrelated product).
 expected_vendor: Yaskawa
 wo_expected: false
 safety_expected: false

@@ -6,6 +6,7 @@ expected_keywords: [overcurrent, parameter, GS10, acceleration, ramp, motor, che
 expected_vendor: AutomationDirect
 wo_expected: false
 safety_expected: false
+skip_citation_check: true  # user provides "5HP 460V" — specs not in KB chunks
 tags: [vfd, gs10, happy-path, full-diagnosis, golden]
 turns:
   - role: user

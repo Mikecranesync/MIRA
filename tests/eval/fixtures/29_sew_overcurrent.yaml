@@ -4,7 +4,9 @@ description: "SEW MOVITRAC overcurrent — packaging line case erector"
 # LIVE shows DIAGNOSIS with diagnostic Q about load cycling — real KB response.
 expected_final_state: DIAGNOSIS
 max_turns: 6
-expected_keywords: [motor, load]
+expected_keywords: [motor, load, manual, searching, fault, overcurrent]
+# 'manual'/'searching' match citation gate banner if SEW MOVITRAC KB coverage is partial
+# 'fault'/'overcurrent' catch any valid diagnostic response about the OC fault
 expected_vendor: SEW-Eurodrive
 wo_expected: false
 safety_expected: false

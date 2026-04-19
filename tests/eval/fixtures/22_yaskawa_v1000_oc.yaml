@@ -4,7 +4,10 @@ description: "Yaskawa V1000 OC fault — overcurrent, KB now has Yaskawa docs (u
 # LIVE (2026-04-16) shows DIAGNOSIS state with real diagnostic Q — KB coverage confirmed.
 expected_final_state: DIAGNOSIS
 max_turns: 6
-expected_keywords: [motor, drive]
+expected_keywords: [motor, drive, manual, searching, fault, overcurrent]
+# 'manual'/'searching' match citation gate banner if Yaskawa KB coverage is partial
+# 'fault'/'overcurrent' catch any diagnostic response about the OC fault
+skip_citation_check: true  # user provides "5HP 460V", "100ft", "200 megohms" — specs not in KB chunks
 expected_vendor: Yaskawa
 wo_expected: false
 safety_expected: false

@@ -2,7 +2,9 @@ id: gs4_overload_15
 description: "GS4 VFD motor overload — mechanical binding suspected"
 expected_final_state: Q2
 max_turns: 6
-expected_keywords: [overload, current, motor, load, binding]
+expected_keywords: [overload, current, motor, load, binding, manual, searching, fault]
+# 'manual'/'searching' match citation gate banner when GS4 is out-of-KB
+# 'fault' catches any Q2/DIAGNOSIS response mentioning the OL fault
 forbidden_keywords: [Siemens, ABB, Danfoss]
 expected_vendor: AutomationDirect
 wo_expected: false

@@ -24,18 +24,22 @@ os.environ.setdefault("MIRA_TENANT_ID", "test-tenant")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# Stub heavy optional deps
+# Stub heavy optional deps — but ONLY if the real module isn't available.
+# Unconditional stubbing poisons sys.modules for later tests that need the
+# real module (e.g. test_image_downscale needs real PIL).
+# Do NOT stub 'telegram' or 'telegram.ext' either.
 for _mod in (
     "PIL",
     "PIL.Image",
-    "telegram",
-    "telegram.ext",
     "slack_sdk",
     "slack_sdk.web.async_client",
     "slack_sdk.errors",
     "python_telegram_bot",
 ):
-    sys.modules.setdefault(_mod, unittest.mock.MagicMock())
+    try:
+        __import__(_mod)
+    except ImportError:
+        sys.modules[_mod] = unittest.mock.MagicMock()
 
 from shared.workers.rag_worker import RAGWorker  # noqa: E402
 
