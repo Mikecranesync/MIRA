@@ -52,11 +52,13 @@ def test_every_target_has_required_fields():
 
 
 def test_crawler_type_is_valid():
-    """crawler_type is either 'cheerio' or 'playwright'."""
+    """crawler_type is 'cheerio' or 'playwright[:<browser>]' (e.g. 'playwright:chrome')."""
     from discover_manuals import CRAWL_TARGETS
     valid = {"cheerio", "playwright"}
     for target in CRAWL_TARGETS:
-        assert target["crawler_type"] in valid, (
+        # Allow "playwright:<browser>" variants per Apify crawler_type convention
+        base_type = target["crawler_type"].split(":", 1)[0]
+        assert base_type in valid, (
             f"{target['manufacturer']} has invalid crawler_type: "
             f"{target['crawler_type']}"
         )
