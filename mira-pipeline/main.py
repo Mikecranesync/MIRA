@@ -434,10 +434,50 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         or "openwebui_anonymous"
     )
 
+    # Handle reset command — reset wins over any pending QR scan (Option B, #409).
+    # If a tech explicitly resets they want a clean slate; the 5-min scan cookie
+    # can be re-triggered by re-scanning the QR code.
+    reset_phrases = (
+        "/reset",
+        "reset",
+        "start over",
+        "new session",
+        "never mind",
+        "nevermind",
+        "wrong chat",
+        "ignore that",
+        "that wasn't for you",
+        "that wasnt for you",
+        "scratch that",
+    )
+    if last_user_msg.strip().lower() in reset_phrases or any(
+        last_user_msg.strip().lower().startswith(p) for p in ("never mind", "nevermind", "wrong ")
+    ):
+        engine.reset(chat_id)
+        logger.info("FSM_RESET chat_id=%s", chat_id)
+        reset_body = {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "mira-diagnostic",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Conversation reset. What equipment needs help?",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+        return JSONResponse(content=reset_body, headers={"Set-Cookie": build_clear_cookie_header()})
+
     # QR Bridge — if the request carries a mira_pending_scan cookie (set by the
     # scan redirect route in mira-web), look up the scan in NeonDB and seed
     # session_memory so the engine's IDLE-state load_session() hook picks up
-    # the asset context on this turn.
+    # the asset context on this turn. Runs AFTER reset check (reset wins, #409).
     cookie_header = request.headers.get("cookie")
     seeded = process_pending_scan(cookie_header, chat_id)
     if seeded:
@@ -461,43 +501,6 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
                 _ingest_pdf_background(fid, fname or "document.pdf", TENANT_ID or chat_id)
             )
             logger.info("P0-3 PDF queued for ingest: file_id=%s name=%s", fid, fname)
-
-    # Handle reset command — clear FSM state before processing
-    reset_phrases = (
-        "/reset",
-        "reset",
-        "start over",
-        "new session",
-        "never mind",
-        "nevermind",
-        "wrong chat",
-        "ignore that",
-        "that wasn't for you",
-        "that wasnt for you",
-        "scratch that",
-    )
-    if last_user_msg.strip().lower() in reset_phrases or any(
-        last_user_msg.strip().lower().startswith(p) for p in ("never mind", "nevermind", "wrong ")
-    ):
-        engine.reset(chat_id)
-        logger.info("FSM_RESET chat_id=%s", chat_id)
-        return {
-            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": "mira-diagnostic",
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": "Conversation reset. What equipment needs help?",
-                    },
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        }
 
     # P0-2: Detect regenerate — if OW is replaying the same user message for
     # this chat session, roll the FSM back to its pre-turn state before calling
