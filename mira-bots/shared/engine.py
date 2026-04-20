@@ -110,6 +110,26 @@ STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
 _CRITIQUE_DISABLED = os.getenv("MIRA_DISABLE_SELF_CRITIQUE", "0") == "1"
 _CRITIQUE_THRESHOLD = int(os.getenv("MIRA_CRITIQUE_THRESHOLD", "3"))
 _CRITIQUE_MAX_ATTEMPTS = int(os.getenv("MIRA_CRITIQUE_MAX_ATTEMPTS", "2"))
+
+# Patterns that indicate the user has already supplied fault/alarm specifics.
+# Imported by tests/test_engine.py — restored after PR #422 inadvertently removed it
+# alongside the q-trap escape (see fix/q-trap-restore-from-422 PR).
+_FAULT_INFO_RE = re.compile(
+    r"""
+    (?:[A-Z]{1,3}-?\d{3,})              # F30001, AL-14, E001
+    | \b[A-Z]{2,3}\b(?=\s+fault)        # OC fault, OL fault (common VFD 2-letter codes)
+    | \b(?:fault\s+code|alarm\s+(?:code|number)|error\s+code|fault\s+number)\b
+    | \b(?:tripping\s+on|tripped\s+on|showing\s+(?:fault|error|alarm))\b
+    | \b(?:displays?|shows?|reading)\s+[A-Z0-9]{2,}  # "shows OC", "displays F7"
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Q-trap escape: hard ceiling on consecutive Q-state turns so techs aren't
+# interrogated forever. Restored from pre-#422 state. See #387 for off-by-one.
+_Q_STATES = frozenset({"Q1", "Q2", "Q3"})
+_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
+
 # Compact judge prompt — returns only the three actionable dims to keep token cost low.
 _CRITIQUE_PROMPT = """\
 Score this maintenance-AI response. Return ONLY valid JSON — no markdown, no prose.
@@ -1771,6 +1791,10 @@ class Supervisor:
             "queued_at": datetime.now(timezone.utc).isoformat(),
         }
         state["context"] = ctx
+        # KB miss → exit Q-state loop and return to IDLE so the technician can ask
+        # something else while the crawl runs. Without this, the FSM gets stuck in
+        # whatever Q-state triggered the lookup (pilz_11, dist_36 fixtures).
+        state["state"] = "IDLE"
         asyncio.create_task(self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id))
         logger.info(
             "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s",
@@ -2208,8 +2232,12 @@ class Supervisor:
         """
         raw_stripped = raw.strip()
 
+        # strict=False allows literal control chars (newlines, tabs) inside JSON string
+        # values. LLMs regularly emit envelopes with raw \n in the reply field; without
+        # this, json.loads rejects them per RFC 8259 and the envelope leaks to chat.
+        # Restored from the P0 #380 fix that was lost in a recent merge. See #387.
         try:
-            parsed = json.loads(raw_stripped)
+            parsed = json.loads(raw_stripped, strict=False)
             if isinstance(parsed, dict):
                 if "reply" in parsed:
                     return self._extract_parsed(parsed)
@@ -2226,7 +2254,7 @@ class Supervisor:
                 if block.startswith("json"):
                     block = block[4:].strip()
                 try:
-                    parsed = json.loads(block)
+                    parsed = json.loads(block, strict=False)
                     if isinstance(parsed, dict) and "reply" in parsed:
                         return self._extract_parsed(parsed)
                 except (json.JSONDecodeError, TypeError):
@@ -2237,7 +2265,7 @@ class Supervisor:
                 for j in range(len(raw_stripped), i, -1):
                     if raw_stripped[j - 1] == "}":
                         try:
-                            parsed = json.loads(raw_stripped[i:j])
+                            parsed = json.loads(raw_stripped[i:j], strict=False)
                             if isinstance(parsed, dict) and "reply" in parsed:
                                 return self._extract_parsed(parsed)
                         except (json.JSONDecodeError, TypeError):
@@ -2350,6 +2378,27 @@ class Supervisor:
 
         if state["state"] in ("RESOLVED", "SAFETY_ALERT"):
             state["final_state"] = state["state"]
+
+        # Q-trap escape (restored from pre-#422 state — see fix/q-trap-restore-from-422):
+        # if the FSM has been in Q-states for _MAX_Q_ROUNDS consecutive turns, force a
+        # commit to DIAGNOSIS so the technician gets an answer. Count every entry into
+        # a Q-state (including the first one from a non-Q current) so IDLE→Q1→Q2→Q3
+        # commits on round 3 rather than round 4.
+        ctx_q = state.get("context") or {}
+        if state["state"] in _Q_STATES:
+            ctx_q["q_rounds"] = ctx_q.get("q_rounds", 0) + 1
+            if ctx_q["q_rounds"] >= _MAX_Q_ROUNDS:
+                logger.info(
+                    "Q_TRAP_COMMIT chat_id=%s q_rounds=%d current=%s → DIAGNOSIS",
+                    state.get("chat_id", "?"),
+                    ctx_q["q_rounds"],
+                    state["state"],
+                )
+                state["state"] = "DIAGNOSIS"
+                ctx_q["q_rounds"] = 0
+        else:
+            ctx_q.pop("q_rounds", None)
+        state["context"] = ctx_q
 
         if not state.get("fault_category"):
             for cat in (
