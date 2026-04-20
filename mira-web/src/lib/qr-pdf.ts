@@ -1,17 +1,13 @@
 // mira-web/src/lib/qr-pdf.ts
 /**
- * Avery 5163 sticker sheet composer.
+ * Avery sticker sheet composer.
  *
- * Sheet: 8.5" × 11" letter portrait
- * Grid: 2 columns × 5 rows = 10 labels/page
- * Label: 2" × 4" (144 × 288 pts at 72 dpi)
+ * 5163 — 2" × 4" shipping labels, 2 cols × 5 rows = 10/page
+ * 5160 — 1" × 2.625" address labels, 3 cols × 10 rows = 30/page
  *
  * Layout per label (points, origin top-left of label):
- *   - QR: 1.6" × 1.6" block, left-aligned with 0.2" inset
- *   - Right panel (2.2" × 1.6"):
- *       * MIRA logo (placeholder text "MIRA") at top
- *       * asset_tag in 24pt bold (middle — human-readable backup)
- *       * factorylm.com in 8pt at bottom
+ *   - QR block, left-aligned with 0.1" inset
+ *   - Right panel: MIRA brand, asset_tag bold, "Scan to diagnose"
  */
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { generatePng } from "./qr-generate.js";
@@ -21,84 +17,123 @@ export interface StickerInput {
   scan_url: string;
 }
 
+export type LabelFormat = "5163" | "5160";
+
 // 72 dpi = 72 points per inch
 const DPI = 72;
 const IN = (inches: number): number => inches * DPI;
 
-// Avery 5163 specs — top/bottom margins 0.5", side margins 0.156", rows tight
-const MARGIN_TOP = IN(0.5);
-const MARGIN_SIDE = IN(0.156);
-const LABEL_W = IN(4);
-const LABEL_H = IN(2);
-const COLS = 2;
-const ROWS = 5;
-const PER_PAGE = COLS * ROWS;
+interface LayoutSpec {
+  cols: number;
+  rows: number;
+  labelW: number;
+  labelH: number;
+  marginTop: number;
+  marginSide: number;
+  colGap: number;
+}
 
-export async function buildStickerSheetPdf(rows: StickerInput[]): Promise<Uint8Array> {
+const LAYOUTS: Record<LabelFormat, LayoutSpec> = {
+  // Avery 5163 — 2" × 4" shipping labels, 2 cols × 5 rows
+  "5163": {
+    cols: 2, rows: 5,
+    labelW: IN(4), labelH: IN(2),
+    marginTop: IN(0.5), marginSide: IN(0.156), colGap: 0,
+  },
+  // Avery 5160 — 1" × 2.625" address labels, 3 cols × 10 rows
+  "5160": {
+    cols: 3, rows: 10,
+    labelW: IN(2.625), labelH: IN(1),
+    marginTop: IN(0.5), marginSide: IN(0.1875), colGap: IN(0.125),
+  },
+};
+
+export async function buildStickerSheetPdf(
+  rows: StickerInput[],
+  format: LabelFormat = "5163",
+): Promise<Uint8Array> {
   if (rows.length === 0) {
     throw new Error("buildStickerSheetPdf: rows must be non-empty");
   }
 
+  const layout = LAYOUTS[format];
+  const perPage = layout.cols * layout.rows;
+
   const pdf = await PDFDocument.create();
   const helv = await pdf.embedFont(StandardFonts.Helvetica);
   const helvBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const helvOblique = await pdf.embedFont(StandardFonts.HelveticaOblique);
 
-  for (let start = 0; start < rows.length; start += PER_PAGE) {
+  // 5160 labels are small — scale down QR and font sizes
+  const is5160 = format === "5160";
+  const qrFrac = is5160 ? 0.78 : 0.80;
+  const brandSize = is5160 ? 6 : 12;
+  const tagSize = is5160 ? 10 : 20;
+  const taglineSize = is5160 ? 5 : 7;
+  const urlSize = is5160 ? 4 : 7;
+
+  for (let start = 0; start < rows.length; start += perPage) {
     const page = pdf.addPage([IN(8.5), IN(11)]);
     const { height: pageH } = page.getSize();
 
-    const sheetRows = rows.slice(start, start + PER_PAGE);
+    const sheetRows = rows.slice(start, start + perPage);
     for (let i = 0; i < sheetRows.length; i++) {
-      const col = i % COLS;
-      const row = Math.floor(i / COLS);
+      const col = i % layout.cols;
+      const row = Math.floor(i / layout.cols);
 
-      // Top-left of this label on the sheet, measured in pdf-lib's
-      // bottom-origin coords
-      const labelX = MARGIN_SIDE + col * LABEL_W;
-      const labelY = pageH - MARGIN_TOP - (row + 1) * LABEL_H; // bottom-left of label
+      // pdf-lib uses bottom-left origin
+      const labelX = layout.marginSide + col * (layout.labelW + layout.colGap);
+      const labelY = pageH - layout.marginTop - (row + 1) * layout.labelH;
 
       const { asset_tag, scan_url } = sheetRows[i];
-      const qrPx = 160;
-      const qrPng = await generatePng(scan_url, qrPx);
+      const qrSize = layout.labelH * qrFrac;
+      const qrPng = await generatePng(scan_url, Math.round(qrSize * 4));
       const qrImg = await pdf.embedPng(qrPng);
 
-      // QR block: 1.6" × 1.6", inset 0.2" from left + top edges of label
       page.drawImage(qrImg, {
-        x: labelX + IN(0.2),
-        y: labelY + (LABEL_H - IN(1.6)) / 2,
-        width: IN(1.6),
-        height: IN(1.6),
+        x: labelX + IN(0.1),
+        y: labelY + (layout.labelH - qrSize) / 2,
+        width: qrSize,
+        height: qrSize,
       });
 
-      // Right panel text
-      const rightX = labelX + IN(1.9);
-      const rightCenter = labelY + LABEL_H / 2;
+      const rightX = labelX + qrSize + IN(0.15);
+      const rightH = layout.labelH;
 
-      // "MIRA" brand line top
+      // Brand name
       page.drawText("MIRA", {
         x: rightX,
-        y: labelY + LABEL_H - IN(0.35),
-        size: 12,
+        y: labelY + rightH - IN(is5160 ? 0.2 : 0.35),
+        size: brandSize,
         font: helvBold,
         color: rgb(0.96, 0.65, 0.14),
       });
 
-      // Asset tag — 24pt bold, centered vertically
+      // Asset tag
       page.drawText(asset_tag, {
         x: rightX,
-        y: rightCenter - 8,
-        size: 24,
+        y: labelY + rightH / 2 - tagSize / 4,
+        size: tagSize,
         font: helvBold,
         color: rgb(0, 0, 0),
       });
 
-      // URL at bottom (small)
+      // "Scan to diagnose — Powered by MIRA"
+      page.drawText("Scan to diagnose", {
+        x: rightX,
+        y: labelY + IN(is5160 ? 0.18 : 0.28),
+        size: taglineSize,
+        font: helvOblique,
+        color: rgb(0.35, 0.35, 0.35),
+      });
+
+      // URL
       page.drawText("factorylm.com/m/" + asset_tag, {
         x: rightX,
-        y: labelY + IN(0.15),
-        size: 7,
+        y: labelY + IN(is5160 ? 0.08 : 0.15),
+        size: urlSize,
         font: helv,
-        color: rgb(0.35, 0.35, 0.35),
+        color: rgb(0.5, 0.5, 0.5),
       });
     }
   }
