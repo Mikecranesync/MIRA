@@ -43,7 +43,6 @@ engine = Supervisor(
     collection_id=KNOWLEDGE_COLLECTION_ID,
     vision_model=os.environ.get("VISION_MODEL", "qwen2.5vl:7b"),
     tenant_id=os.environ.get("MIRA_TENANT_ID", ""),
-
     mcp_base_url=MCP_BASE_URL,
 )
 

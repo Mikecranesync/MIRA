@@ -34,6 +34,7 @@ import threading
 
 from feedback_sync import run_loop as feedback_sync_loop
 from memory import ConversationMemory
+from qr_bridge import build_clear_cookie_header, process_pending_scan
 from shared.engine import Supervisor
 
 # Explicit handler setup: logging.basicConfig() is a no-op once uvicorn has
@@ -261,7 +262,7 @@ async def lifespan(app: FastAPI):
     # Start feedback sync background thread (polls Open WebUI DB for new ratings)
     sync_thread = threading.Thread(target=feedback_sync_loop, daemon=True)
     sync_thread.start()
-    logger.info("MIRA Pipeline started — GSDEngine initialized (db=%s)", DB_PATH)
+    logger.info("MIRA Pipeline started — Supervisor initialized (db=%s)", DB_PATH)
     yield
     engine = None
     memory = None
@@ -342,7 +343,7 @@ class ChatCompletionRequest(BaseModel):
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request, req: ChatCompletionRequest):
     if engine is None:
-        raise HTTPException(503, "GSDEngine not initialized")
+        raise HTTPException(503, "Supervisor not initialized")
 
     # Extract last user message (text content)
     last_user_msg = ""
@@ -432,6 +433,15 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         or (req.metadata.get("chat_id") if req.metadata else None)
         or "openwebui_anonymous"
     )
+
+    # QR Bridge — if the request carries a mira_pending_scan cookie (set by the
+    # scan redirect route in mira-web), look up the scan in NeonDB and seed
+    # session_memory so the engine's IDLE-state load_session() hook picks up
+    # the asset context on this turn.
+    cookie_header = request.headers.get("cookie")
+    seeded = process_pending_scan(cookie_header, chat_id)
+    if seeded:
+        logger.info("QR_BRIDGE chat_id=%s seeded from pending-scan cookie", chat_id)
 
     # P0-3: Route PDF attachments to mira-ingest before touching the GSD engine.
     # OW passes uploaded files in the request body under a "files" key that is
@@ -549,7 +559,7 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if req.stream:
         return _stream_response(reply, completion_id, created)
 
-    return {
+    response_dict = {
         "id": completion_id,
         "object": "chat.completion",
         "created": created,
@@ -563,6 +573,14 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         ],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }
+
+    # If a QR scan was seeded this turn, clear the one-shot cookie.
+    if seeded:
+        return JSONResponse(
+            content=response_dict,
+            headers={"Set-Cookie": build_clear_cookie_header()},
+        )
+    return response_dict
 
 
 # ── Debug: Session Photo — GET /v1/debug/photo/{chat_id} ────────────────────
@@ -703,7 +721,7 @@ class FeedbackRequest(BaseModel):
 async def submit_feedback(req: FeedbackRequest):
     """Capture thumbs-up/down rating and write to mira.db feedback_log."""
     if engine is None:
-        raise HTTPException(503, "GSDEngine not initialized")
+        raise HTTPException(503, "Supervisor not initialized")
 
     feedback = "positive" if req.rating in ("up", "1", "positive") else "negative"
     engine.log_feedback(req.chat_id, feedback, req.reason)

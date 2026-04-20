@@ -447,7 +447,99 @@ class TestFormatReply:
 
     def test_short_options_filtered(self, supervisor):
         result = supervisor._format_reply({"reply": "Choose:", "options": ["A", "B"]})
-        assert "1." not in result  # too short (<= 2 chars)
+        assert "1." not in result  # too short (<= 1 chars)
+
+    def test_padding_option_i_am_not_sure_dropped(self, supervisor):
+        result = supervisor._format_reply(
+            {
+                "reply": "Are pins wired correctly?",
+                "options": [
+                    "Yes, connected correctly",
+                    "No, incorrect wiring",
+                    "I'm not sure",
+                    "Not visible",
+                ],
+            }
+        )
+        assert "I'm not sure" not in result
+        assert "Not visible" not in result
+        assert "Yes, connected correctly" in result or "Yes" in result
+
+    def test_padding_option_other_dropped(self, supervisor):
+        result = supervisor._format_reply(
+            {
+                "reply": "What to prioritize?",
+                "options": ["1. Model number", "2. Voltage ratings", "3. Other"],
+            }
+        )
+        assert "Other" not in result
+        assert "Model number" in result
+
+    def test_placeholder_options_dropped(self, supervisor):
+        # Seen in prod session e4ced7d8 — last_options stored as ["1","2"]
+        result = supervisor._format_reply(
+            {
+                "reply": "Is the LED on?",
+                "options": ["1", "2"],
+            }
+        )
+        assert result == "Is the LED on?"
+
+    def test_yesno_pair_renders_inline(self, supervisor):
+        result = supervisor._format_reply(
+            {
+                "reply": "Motor still wired to T1-T3?",
+                "options": ["Yes, motor connected", "No, disconnected"],
+            }
+        )
+        assert "1. Yes" not in result
+        assert "Reply:" in result
+        assert "Yes" in result and "No" in result
+
+    def test_yesno_pair_prose_short(self, supervisor):
+        result = supervisor._format_reply(
+            {
+                "reply": "Is that right?",
+                "options": ["Yes", "No"],
+            }
+        )
+        assert "1. Yes" not in result and "2. No" not in result
+        assert result.endswith("Reply: Yes or No.") or "Reply: Yes or No" in result
+
+    def test_three_options_still_numbered(self, supervisor):
+        # Three distinct branches — numbered block is correct shape
+        result = supervisor._format_reply(
+            {
+                "reply": "Which do you want to check?",
+                "options": ["Motor connection to VFD", "Nameplate vs VFD settings", "Load on motor"],
+            }
+        )
+        assert "1. Motor connection" in result
+        assert "2. Nameplate" in result
+        assert "3. Load on motor" in result
+
+    def test_vision_prose_stripped_from_reply(self, supervisor):
+        # "The image shows..." leak from vision worker must be scrubbed
+        result = supervisor._format_reply(
+            {
+                "reply": "The image shows a weathered metal plate with a label for a TECO 3-PHASE INDUCTION MOTOR. What is the model number?",
+                "options": [],
+            }
+        )
+        assert "The image shows" not in result
+        assert "What is the model number?" in result
+
+    def test_vision_prose_doubled_intro_stripped(self, supervisor):
+        # Real prod b500953b leak: "I can see this is The image shows..."
+        result = supervisor._format_reply(
+            {
+                "reply": "I can see this is The image shows a close-up of a cable management system. How can I help?",
+                "options": [],
+            }
+        )
+        assert "I can see this is" not in result
+        assert "The image shows" not in result
+        assert "How can I help?" in result
 
 
 # ---------------------------------------------------------------------------

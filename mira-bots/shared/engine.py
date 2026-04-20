@@ -52,6 +52,56 @@ _LOW_CONF_SIGNALS = re.compile(
 
 _JSON_RE = re.compile(r'\{[^{}]*"reply"[^{}]*\}', re.DOTALL)
 
+# 2026-04-19 audit — Rule 3 padding options that keep slipping past the LLM prompt.
+# Dropped engine-side before render. Pattern matches the option text AFTER any
+# leading "N." / "N)" prefix has been stripped.
+_PADDING_OPTION_RE = re.compile(
+    r"^(i'?m not sure|not sure|not applicable|n/?a|unknown|other|unsure"
+    r"|i don'?t know|don'?t know|not visible|can'?t tell|cannot tell"
+    r"|none of the above|maybe|possibly)\.?$",
+    re.IGNORECASE,
+)
+
+# Placeholder options like "1" / "2" / "1." — engine stored these when the LLM
+# returned options without text (seen in prod session e4ced7d8 2026-04-14).
+_PLACEHOLDER_OPTION_RE = re.compile(r"^[\"']?\d+[.):\-]?[\"']?$")
+
+# Short affirmative/negative option patterns that render naturally inline
+# ("Reply: Yes or No") instead of as a numbered block.
+_YES_OPTION_RE = re.compile(
+    r"^(yes|yeah|yep|y|correct|true|confirmed|connected|present|on|good|ok|okay"
+    r"|done|working|fine|all digits|all good)([,.]|\b).*$",
+    re.IGNORECASE,
+)
+_NO_OPTION_RE = re.compile(
+    r"^(no|nope|n|incorrect|false|wrong|disconnected|absent|off|bad|missing"
+    r"|broken|single digit|not working|failed)([,.]|\b).*$",
+    re.IGNORECASE,
+)
+
+# Vision-prose stems that leak from the vision worker into user-facing replies.
+# 2026-04-19 audit showed every photo session starting with "The image shows..."
+# or "I can see this is The image shows...". Two regexes:
+#
+#  _VISION_PROSE_HEAD_RE — for REPLIES: strip the entire "The image shows X."
+#  opening sentence (LLM can regenerate a better lead). Trailing period
+#  required; if the reply is only this sentence we leave the reply alone and
+#  let downstream handling surface it.
+#
+#  _VISION_PROSE_PREFIX_RE — for ASSET_IDENTIFIED: strip only the stem
+#  ("The image shows a ") and keep the equipment description ("TECO 3-PHASE
+#  INDUCTION MOTOR") so the stored asset remains useful.
+_VISION_PROSE_HEAD_RE = re.compile(
+    r"^\s*(?:i can see (?:this is\s+)?)?"
+    r"(?:the image shows[^.\n]*\.\s*)+",
+    re.IGNORECASE,
+)
+_VISION_PROSE_PREFIX_RE = re.compile(
+    r"^\s*(?:i can see (?:this is\s+)?)?"
+    r"(?:the image shows\s+(?:a |an |the )?)",
+    re.IGNORECASE,
+)
+
 STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
 # ---------------------------------------------------------------------------
 # Diagnosis self-critique quality gate
@@ -647,9 +697,31 @@ class Supervisor:
             state["context"] = ctx
             # Store a concise asset identifier, not the full vision description.
             # The LLM regurgitates the full text on every turn if we store the paragraph.
+            # 2026-04-19 audit — vision models prefix output with prose like
+            # "The image shows a weathered metal plate with a label for a TECO
+            # 3-PHASE INDUCTION MOTOR" which then becomes the asset identity on
+            # every subsequent turn. Scrub the prose head so the stored asset
+            # reads "a weathered metal plate with a label for a TECO…" → "a TECO
+            # 3-PHASE INDUCTION MOTOR" (or cleaner).
             full_vision = str(vision_data["vision_result"])
-            # Try to extract just the equipment name (first sentence or 80 chars)
-            first_sentence = full_vision.split(".")[0].strip()
+            # Strip "The image shows a " / "I can see this is " prefix only —
+            # keep the description of the equipment itself so asset_identified
+            # stays useful ("TECO 3-PHASE INDUCTION MOTOR", not empty).
+            scrubbed = _VISION_PROSE_PREFIX_RE.sub("", full_vision).lstrip()
+            # Also strip physical-object meta ("weathered metal plate with a
+            # label for a ...") so we land on the equipment itself.
+            scrubbed = re.sub(
+                r"^(weathered |corroded |rusty |close[- ]up (of |view of )?"
+                r"|photo of |picture of |view of )?"
+                r"(metal |aluminum |plastic )?"
+                r"(plate|label|nameplate|tag|sticker|sign)[^.]*?"
+                r"(?:with (?:a )?label (?:for|of) (?:a |an |the )?"
+                r"|for (?:a |an |the )|of (?:a |an |the )|showing (?:a |an |the ))",
+                "",
+                scrubbed,
+                flags=re.IGNORECASE,
+            ).lstrip()
+            first_sentence = scrubbed.split(".")[0].strip()
             state["asset_identified"] = (
                 first_sentence[:120] if first_sentence else full_vision[:120]
             )
@@ -970,9 +1042,7 @@ class Supervisor:
         if _wo_draft is not None:
             ctx["cmms_pending"] = True
             ctx["cmms_wo_draft"] = _wo_draft
-            logger.info(
-                "CMMS_WO_PENDING chat_id=%s title=%r", chat_id, _wo_draft.get("title")
-            )
+            logger.info("CMMS_WO_PENDING chat_id=%s title=%r", chat_id, _wo_draft.get("title"))
 
         state["context"] = ctx
 
@@ -996,8 +1066,21 @@ class Supervisor:
 
     _CMMS_YES = frozenset(
         {
-            "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "y",
-            "log", "create", "do it", "log it", "create it", "go ahead", "please",
+            "yes",
+            "yeah",
+            "yep",
+            "yup",
+            "sure",
+            "ok",
+            "okay",
+            "y",
+            "log",
+            "create",
+            "do it",
+            "log it",
+            "create it",
+            "go ahead",
+            "please",
             "1",
         }
     )
@@ -1064,15 +1147,16 @@ class Supervisor:
         state["context"] = ctx
 
         msg_lower = message.strip().lower()
-        is_yes = (
-            msg_lower in self._CMMS_YES
-            or any(w in msg_lower for w in self._CMMS_YES if len(w) > 3)
+        is_yes = msg_lower in self._CMMS_YES or any(
+            w in msg_lower for w in self._CMMS_YES if len(w) > 3
         )
 
         if is_yes and wo_draft:
             try:
                 reply = await self._post_cmms_work_order(wo_draft)
-                logger.info("CMMS_WO_CREATED chat_id=%s wo_draft_title=%r", chat_id, wo_draft.get("title"))
+                logger.info(
+                    "CMMS_WO_CREATED chat_id=%s wo_draft_title=%r", chat_id, wo_draft.get("title")
+                )
             except Exception as e:
                 logger.error("CMMS WO creation failed for %s: %s", chat_id, e)
                 reply = (
@@ -2294,11 +2378,48 @@ class Supervisor:
         return state
 
     def _format_reply(self, parsed: dict) -> str:
-        """Format parsed response for display."""
+        """Format parsed response for display.
+
+        Shape rules (2026-04-19 audit):
+        - Strip vision-prose leakage ("The image shows...") from reply head.
+        - Drop padding options banned by Rule 3 ("I'm not sure", "Other",
+          "Not visible", placeholder "1"/"2", etc.).
+        - When remaining options are a Yes/No pair, render inline prose
+          ("Reply: Yes or No.") instead of a numbered block — form-feel fix.
+        - Otherwise fall back to the numbered-list rendering.
+        """
         reply = parsed["reply"]
         options = parsed.get("options", [])
-        meaningful = [o for o in options if len(str(o).strip()) > 2]
-        if meaningful and len(meaningful) >= 2:
-            reply = deduplicate_options(reply, meaningful)
-            reply += "\n\n" + "\n".join(f"{i + 1}. {opt}" for i, opt in enumerate(meaningful))
+
+        reply = _VISION_PROSE_HEAD_RE.sub("", reply).lstrip()
+
+        cleaned: list[str] = []
+        for raw in options:
+            if raw is None:
+                continue
+            text = re.sub(r"^\s*\d+[.):\-]\s*", "", str(raw)).strip()
+            if len(text) <= 1:
+                continue
+            if _PLACEHOLDER_OPTION_RE.match(text):
+                continue
+            if _PADDING_OPTION_RE.match(text):
+                continue
+            cleaned.append(text)
+
+        if len(cleaned) < 2:
+            return reply
+
+        if (
+            len(cleaned) == 2
+            and _YES_OPTION_RE.match(cleaned[0])
+            and _NO_OPTION_RE.match(cleaned[1])
+        ):
+            reply = deduplicate_options(reply, cleaned)
+            suffix = f"Reply: {cleaned[0]} or {cleaned[1]}."
+            if not reply.rstrip().endswith((".", "?", "!")):
+                reply = reply.rstrip() + "."
+            return f"{reply} {suffix}"
+
+        reply = deduplicate_options(reply, cleaned)
+        reply += "\n\n" + "\n".join(f"{i + 1}. {opt}" for i, opt in enumerate(cleaned))
         return reply

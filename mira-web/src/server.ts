@@ -20,12 +20,15 @@
  *   GET  /demo/work-orders        → Static ticker data (no auth)
  *   POST /api/mira/chat           → SSE AI chat via mira-pipeline (active only)
  *   GET  /demo/tenant-work-orders → Real WOs for authenticated user (active only)
+ *   GET  /admin/qr-print          → Admin: list assets + select stickers (ADMIN only)
+ *   POST /api/admin/qr-print-batch → Admin: UPSERT tags + generate Avery 5163 PDF (ADMIN only)
  */
 
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { signToken, requireAuth, requireActive, type MiraTokenPayload } from "./lib/auth.js";
+import { buildSessionCookie } from "./lib/cookie-session.js";
 import {
   createWorkOrder,
   listWorkOrders,
@@ -85,6 +88,9 @@ import {
   getLiveBlogPosts,
   invalidateCache,
 } from "./lib/blog-db.js";
+import { m } from "./routes/m.js";
+import { adminPages, adminApi } from "./routes/admin/qr-print.js";
+import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -121,10 +127,18 @@ setInterval(() => {
   refreshBlogContent();
 }, 5 * 60 * 1000);
 
-const app = new Hono();
+export const app = new Hono();
 
 // Middleware
 app.use("*", cors());
+
+// QR scan route — /m/:asset_tag
+app.route("/m", m);
+
+// Admin routes — QR print page + batch PDF endpoint
+app.route("/admin", adminPages); // handles GET /admin/qr-print
+app.route("/", adminApi);        // handles POST /api/admin/qr-print-batch
+app.route("/admin", qrAnalytics); // handles GET /admin/qr-analytics
 
 // ---------------------------------------------------------------------------
 // Static files
@@ -392,7 +406,9 @@ app.post("/api/register", async (c) => {
           tier: existing.tier,
           atlasCompanyId: 0,
           atlasUserId: 0,
+          atlasRole: "USER",
         });
+        c.header("Set-Cookie", buildSessionCookie(token));
         return c.json({ success: true, token, tenantId: existing.id });
       }
       // Pending/churned — still in nurture or needs to resubscribe

@@ -8,6 +8,7 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import type { Context, Next } from "hono";
 import { findTenantById } from "./quota.js";
+import { parseCookies } from "./cookie-session.js";
 
 export interface MiraTokenPayload extends JWTPayload {
   sub: string; // tenant_id (UUID)
@@ -15,6 +16,7 @@ export interface MiraTokenPayload extends JWTPayload {
   tier: string; // "pending" | "active" | "churned"
   atlasCompanyId: number;
   atlasUserId: number;
+  atlasRole: "ADMIN" | "USER"; // NEW
 }
 
 const JWT_EXPIRY = "30d";
@@ -31,12 +33,14 @@ export async function signToken(payload: {
   tier: string;
   atlasCompanyId: number;
   atlasUserId: number;
+  atlasRole: "ADMIN" | "USER";
 }): Promise<string> {
   return new SignJWT({
     email: payload.email,
     tier: payload.tier,
     atlasCompanyId: payload.atlasCompanyId,
     atlasUserId: payload.atlasUserId,
+    atlasRole: payload.atlasRole,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.tenantId)
@@ -57,13 +61,16 @@ export async function verifyToken(
 }
 
 /**
- * Hono middleware — reads JWT from Authorization header or ?token= query param.
+ * Hono middleware — reads JWT from Authorization header, ?token= query param,
+ * or `mira_session` cookie (lowest precedence so programmatic integrations
+ * aren't affected).
  * Sets c.set("user", payload) on success, returns 401 on failure.
  */
 export async function requireAuth(c: Context, next: Next) {
   const header = c.req.header("Authorization");
   const query = c.req.query("token");
-  const raw = header ? header.replace("Bearer ", "") : query;
+  const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
+  const raw = header ? header.replace("Bearer ", "") : query ?? cookie;
 
   if (!raw) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -83,11 +90,15 @@ export async function requireAuth(c: Context, next: Next) {
  * Returns 403 if tier is not active. Use for product routes (chat, CMMS).
  * Use requireAuth (not requireActive) for routes any authenticated user needs
  * (e.g., billing portal).
+ *
+ * Reads JWT from Authorization header, ?token= query, or `mira_session`
+ * cookie (lowest precedence).
  */
 export async function requireActive(c: Context, next: Next) {
   const header = c.req.header("Authorization");
   const query = c.req.query("token");
-  const raw = header ? header.replace("Bearer ", "") : query;
+  const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
+  const raw = header ? header.replace("Bearer ", "") : query ?? cookie;
 
   if (!raw) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -104,6 +115,29 @@ export async function requireActive(c: Context, next: Next) {
       { error: "Subscription required", tier: tenant?.tier || "unknown" },
       403
     );
+  }
+
+  c.set("user", payload);
+  await next();
+}
+
+/**
+ * Hono middleware — requireActive + check atlasRole === "ADMIN".
+ * Returns 403 if the user is authed but not an admin.
+ */
+export async function requireAdmin(c: Context, next: Next) {
+  const header = c.req.header("Authorization");
+  const query = c.req.query("token");
+  const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
+  const raw = header ? header.replace("Bearer ", "") : query ?? cookie;
+
+  if (!raw) return c.json({ error: "Unauthorized" }, 401);
+
+  const payload = await verifyToken(raw);
+  if (!payload) return c.json({ error: "Invalid or expired token" }, 401);
+
+  if (payload.atlasRole !== "ADMIN") {
+    return c.json({ error: "Admin role required" }, 403);
   }
 
   c.set("user", payload);

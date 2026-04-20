@@ -111,6 +111,14 @@ class TestClassifyIntent:
     def test_documentation_request(self):
         assert classify_intent("do you have the manual for PowerFlex 525") == "documentation"
 
+    def test_is_there_a_manual_phrasing(self):
+        # 2026-04-19 audit — e4ced7d8 user phrasing that was missed in prod
+        assert classify_intent("is there a manual that would show me the pin out") == "documentation"
+        assert classify_intent("is there a datasheet for this") == "documentation"
+        assert classify_intent("got a manual for the Pilz module") == "documentation"
+        assert classify_intent("any documentation on this thing") == "documentation"
+        assert classify_intent("show me the pinout for this sensor") == "documentation"
+
     def test_fault_code_pattern(self):
         assert classify_intent("What does F-201 mean") == "industrial"
 
