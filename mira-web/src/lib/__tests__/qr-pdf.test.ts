@@ -48,4 +48,15 @@ describe("buildStickerSheetPdf", () => {
     const pdf = await buildStickerSheetPdf(rows, "5160");
     expect(pdf.length).toBeGreaterThan(2000);
   });
+
+  test("tenant name included produces valid PDF (#437)", async () => {
+    const pdf = await buildStickerSheetPdf(
+      [{ asset_tag: "VFD-07", scan_url: "https://app.factorylm.com/m/VFD-07" }],
+      "5163",
+      "Acme Manufacturing",
+    );
+    expect(pdf).toBeInstanceOf(Uint8Array);
+    expect(pdf[0]).toBe(0x25); // %PDF-
+    expect(pdf.length).toBeGreaterThan(500);
+  });
 });

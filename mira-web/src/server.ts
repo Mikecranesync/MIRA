@@ -20,6 +20,7 @@
  *   GET  /demo/work-orders        → Static ticker data (no auth)
  *   POST /api/mira/chat           → SSE AI chat via mira-pipeline (active only)
  *   GET  /demo/tenant-work-orders → Real WOs for authenticated user (active only)
+ *   GET  /qr-test                  → Branded QR display page (no auth; ?tenant_id &tenant_name)
  *   GET  /admin/qr-print          → Admin: list assets + select stickers (ADMIN only)
  *   POST /api/admin/qr-print-batch → Admin: UPSERT tags + generate Avery 5163 PDF (ADMIN only)
  */
@@ -94,6 +95,7 @@ import { mReport, mReportApi } from "./routes/m-report.js";
 import { adminPages, adminApi } from "./routes/admin/qr-print.js";
 import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
+import { qrTest } from "./routes/qr-test.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -140,6 +142,9 @@ app.route("/m", mChooser);   // GET /m/:asset_tag/choose[?set_pref=...]
 app.route("/m", mReport);    // GET /m/:asset_tag/report
 app.route("/m", m);          // GET /m/:asset_tag (main entry — must register last so subroutes match first)
 app.route("/", mReportApi);  // POST /api/m/report
+
+// QR test page — branded asset sheet, no auth required (sales/demo tool)
+app.route("/", qrTest);                 // handles GET /qr-test[?tenant_id=&tenant_name=]
 
 // Admin routes — QR print page + batch PDF endpoint + channel config
 app.route("/admin", adminPages);        // handles GET /admin/qr-print
