@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import { requireAdmin } from "../../lib/auth.js";
 import { listAssets } from "../../lib/atlas.js";
-import { buildStickerSheetPdf } from "../../lib/qr-pdf.js";
+import { buildStickerSheetPdf, type LabelFormat } from "../../lib/qr-pdf.js";
 import { scanUrlFor } from "../../lib/qr-generate.js";
 import { ASSET_TAG_RE } from "../../lib/qr-tracker.js";
 import { Client } from "@neondatabase/serverless";
@@ -60,7 +60,13 @@ adminPages.get("/qr-print", requireAdmin, async (c) => {
       <tr><th></th><th>Asset</th><th>Tag</th><th>Status</th></tr>
       ${rows}
     </table>
-    <p><button type="submit">Generate sticker sheet (PDF)</button></p>
+    <p>
+    Format:
+    <label><input type="radio" name="fmt" value="5163" checked> Avery 5163 (2"×4", 10/sheet — recommended)</label>
+    &nbsp;
+    <label><input type="radio" name="fmt" value="5160"> Avery 5160 (1"×2.625", 30/sheet)</label>
+  </p>
+  <p><button type="submit">Generate sticker sheet (PDF)</button></p>
   </form>
   <script>
     document.getElementById('printform').addEventListener('submit', async (e) => {
@@ -72,10 +78,11 @@ adminPages.get("/qr-print", requireAdmin, async (c) => {
         asset_tag: form.querySelector('input[name="tag_' + p.value + '"]').value.trim()
       }));
       if (!tags.length) { alert('Select at least one asset'); return; }
+      const fmt = form.querySelector('input[name="fmt"]:checked').value;
       const res = await fetch('/api/admin/qr-print-batch', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tags })
+        body: JSON.stringify({ tags, format: fmt })
       });
       if (!res.ok) { alert('Error: ' + res.status); return; }
       const blob = await res.blob();
@@ -91,8 +98,9 @@ adminPages.get("/qr-print", requireAdmin, async (c) => {
 
 adminApi.post("/api/admin/qr-print-batch", requireAdmin, async (c) => {
   const user = c.get("user") as import("../../lib/auth.js").MiraTokenPayload;
-  const body = (await c.req.json()) as { tags?: Array<{ asset_tag: string; atlas_asset_id: number }> };
+  const body = (await c.req.json()) as { tags?: Array<{ asset_tag: string; atlas_asset_id: number }>; format?: string };
   const tags = body.tags ?? [];
+  const format: LabelFormat = body.format === "5160" ? "5160" : "5163";
 
   if (!tags.length) return c.json({ error: "tags must be non-empty" }, 400);
   for (const t of tags) {
@@ -132,7 +140,7 @@ adminApi.post("/api/admin/qr-print-batch", requireAdmin, async (c) => {
     asset_tag: t.asset_tag,
     scan_url: scanUrlFor(t.asset_tag),
   }));
-  const pdfBytes = await buildStickerSheetPdf(pdfInput);
+  const pdfBytes = await buildStickerSheetPdf(pdfInput, format);
 
   return new Response(pdfBytes, {
     status: 200,

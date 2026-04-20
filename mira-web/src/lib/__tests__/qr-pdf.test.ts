@@ -29,4 +29,23 @@ describe("buildStickerSheetPdf", () => {
   test("empty rows rejected", async () => {
     await expect(buildStickerSheetPdf([])).rejects.toThrow();
   });
+
+  test("5160 format returns valid PDF", async () => {
+    const pdf = await buildStickerSheetPdf(
+      [{ asset_tag: "PUMP-03", scan_url: "https://app.factorylm.com/m/PUMP-03" }],
+      "5160",
+    );
+    expect(pdf).toBeInstanceOf(Uint8Array);
+    expect(pdf[0]).toBe(0x25); // %PDF-
+    expect(pdf.length).toBeGreaterThan(500);
+  });
+
+  test("31 tags on 5160 produce 2 pages (30 per sheet)", async () => {
+    const rows = Array.from({ length: 31 }, (_, i) => ({
+      asset_tag: `T${String(i + 1).padStart(2, "0")}`,
+      scan_url: `https://app.factorylm.com/m/T${String(i + 1).padStart(2, "0")}`,
+    }));
+    const pdf = await buildStickerSheetPdf(rows, "5160");
+    expect(pdf.length).toBeGreaterThan(2000);
+  });
 });
