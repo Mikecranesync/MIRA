@@ -569,6 +569,141 @@ def scrape_site(url: str, client: httpx.Client) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Enrichment — Google search contact probe (Serper)
+# ---------------------------------------------------------------------------
+
+_TITLE_SNIPPET_RE = re.compile(
+    r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*[,\-|\u2013\u2014]\s*("
+    + "|".join(re.escape(t) for t in MAINT_TITLES)
+    + r")",
+    re.IGNORECASE,
+)
+
+
+def search_contacts_via_serper(
+    company_name: str,
+    domain: str,
+    client: httpx.Client,
+    serper_key: str,
+) -> list[dict]:
+    """Probe Google snippets for Name/Title at a facility.
+
+    Returns list of {name, title, source, confidence='search-snippet'}.
+    Reads Serper's organic snippets only — never fetches LinkedIn pages directly.
+    """
+    if not serper_key or not company_name:
+        return []
+
+    queries = [f'"maintenance manager" OR "plant manager" "{company_name}"']
+    if domain:
+        queries.append(f'"maintenance manager" OR "facilities manager" site:{domain}')
+    queries.append(f'"{company_name}" "linkedin.com/in"')
+
+    contacts: list[dict] = []
+    seen: set[str] = set()
+
+    for q in queries:
+        try:
+            results = search_serper(q, serper_key, client)
+        except Exception as e:
+            log.debug("Contact probe failed for %r: %s", q, e)
+            continue
+
+        for r in results:
+            text = f"{r.get('title', '')} {r.get('snippet', '')}"
+            for m in _TITLE_SNIPPET_RE.finditer(text):
+                name = m.group(1).strip()
+                title = m.group(2).strip().title()
+                key = name.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                contacts.append({
+                    "name": name,
+                    "title": title,
+                    "source": r.get("link") or q,
+                    "confidence": "search-snippet",
+                })
+        time.sleep(1.0)
+
+    return contacts
+
+
+# ---------------------------------------------------------------------------
+# Enrichment orchestrator — website scrape + Serper contact probe
+# ---------------------------------------------------------------------------
+
+def enrich_facilities(
+    fac_list: list["Facility"],
+    serper_key: str,
+    budget: int = 500,
+) -> None:
+    """Enrich facilities in place: scrape website, optionally probe Serper for contacts.
+
+    Each contact appended gets a `confidence` field:
+      - "website-direct": scraped from the facility's own site
+      - "search-snippet": parsed from Google snippets via Serper
+    Aborts Serper probing when `budget` queries have been used.
+    """
+    to_enrich = [f for f in fac_list if f.website and f.icp_score >= 4]
+    log.info("=== ENRICHMENT PHASE ===")
+    log.info("Enriching %d high-score sites (serper=%s, budget=%d queries)",
+             len(to_enrich), "on" if serper_key else "off", budget)
+
+    queries_used = 0
+    with httpx.Client(timeout=15) as client:
+        for f in to_enrich:
+            log.info("  Enriching: %s (%s)", f.name[:50], f.website[:40])
+            try:
+                enrichment = scrape_site(f.website, client)
+                if enrichment.get("emails"):
+                    for em in enrichment["emails"][:3]:
+                        f.contacts.append({
+                            "email": em,
+                            "source": f.website,
+                            "confidence": "website-direct",
+                        })
+                if enrichment.get("phones") and not f.phone:
+                    f.phone = enrichment["phones"][0]
+                for c in enrichment.get("contacts", []):
+                    c.setdefault("confidence", "website-direct")
+                    f.contacts.append(c)
+                if enrichment.get("vfd_hit"):
+                    f.notes = (f.notes + " vfd_keywords_found").strip()
+            except Exception as e:
+                log.debug("Website scrape failed %s: %s", f.name, e)
+
+            if serper_key and queries_used < budget:
+                try:
+                    domain = ""
+                    if f.website:
+                        try:
+                            domain = urlparse(f.website).netloc.replace("www.", "")
+                        except Exception:
+                            domain = ""
+                    probe_results = search_contacts_via_serper(
+                        f.name, domain, client, serper_key,
+                    )
+                    queries_used += 3 if domain else 2
+                    if probe_results:
+                        existing = {c.get("name", "").lower()
+                                    for c in f.contacts if c.get("name")}
+                        for c in probe_results:
+                            if c["name"].lower() not in existing:
+                                f.contacts.append(c)
+                                existing.add(c["name"].lower())
+                        log.info("    + %d contact(s) from Serper probe", len(probe_results))
+                except Exception as e:
+                    log.debug("Serper probe failed %s: %s", f.name, e)
+
+            f.icp_score = score_facility(f)
+
+    if serper_key:
+        log.info("Enrichment complete — %d Serper queries used (budget %d)",
+                 queries_used, budget)
+
+
+# ---------------------------------------------------------------------------
 # NeonDB persistence
 # ---------------------------------------------------------------------------
 
@@ -630,10 +765,11 @@ def upsert_facilities(facilities: list[Facility], db_url: str) -> int:
             cur.execute(
                 """
                 INSERT INTO prospect_contacts (facility_id, name, title, email, phone, source, confidence)
-                VALUES (%s,%s,%s,%s,%s,%s,'medium')
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT DO NOTHING
                 """,
-                (fid, c.get("name"), c.get("title"), c.get("email"), c.get("phone"), c.get("source")),
+                (fid, c.get("name"), c.get("title"), c.get("email"), c.get("phone"),
+                 c.get("source"), c.get("confidence", "medium")),
             )
     conn.commit()
     conn.close()
@@ -957,11 +1093,15 @@ def write_report(facilities: list[Facility], path: Path, hs_stats: Optional[dict
 def main() -> None:
     parser = argparse.ArgumentParser(description="MIRA Lead Hunter")
     parser.add_argument("--discover-only", action="store_true")
+    parser.add_argument("--enrich-only", action="store_true",
+                        help="Skip discovery; enrich facilities already in NeonDB that have no contacts")
     parser.add_argument("--report-only", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--limit", type=int, default=0, help="Cap city count (0=all)")
     parser.add_argument("--no-enrich", action="store_true", help="Skip website scraping")
     parser.add_argument("--push-hubspot", action="store_true", help="Push qualified leads to HubSpot")
+    parser.add_argument("--enrich-budget", type=int, default=500,
+                        help="Max Serper queries to spend on contact probing (default 500)")
     args = parser.parse_args()
 
     serper_key = os.environ.get("SERPER_API_KEY", "")
@@ -990,6 +1130,59 @@ def main() -> None:
             facilities_list.append(f)
         conn.close()
         write_report(facilities_list, report_path)
+        return
+
+    if args.enrich_only:
+        log.info("--enrich-only: loading facilities from DB for contact probing")
+        if not db_url:
+            log.error("NEON_DATABASE_URL required for --enrich-only")
+            sys.exit(1)
+        import psycopg2
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT name, city, phone, website, category, distance_miles, icp_score, notes
+            FROM prospect_facilities
+            WHERE website IS NOT NULL AND website <> ''
+              AND id NOT IN (
+                  SELECT DISTINCT facility_id FROM prospect_contacts
+                  WHERE facility_id IS NOT NULL
+              )
+            ORDER BY icp_score DESC
+            """
+        )
+        fac_list = []
+        for row in cur.fetchall():
+            f = Facility(name=row[0], city=row[1], phone=row[2] or "", website=row[3] or "",
+                         category=row[4] or "", distance_miles=row[5] or 0, icp_score=row[6] or 0,
+                         notes=row[7] or "")
+            fac_list.append(f)
+        conn.close()
+        log.info("Loaded %d facilities needing contact enrichment", len(fac_list))
+
+        if not fac_list:
+            log.info("Nothing to enrich — all facilities already have contacts.")
+            return
+
+        enrich_facilities(fac_list, serper_key, budget=args.enrich_budget)
+
+        inserted = upsert_facilities(fac_list, db_url)
+        log.info("DB: %d new, %d updated", inserted, len(fac_list) - inserted)
+
+        hs_stats: Optional[dict] = None
+        if args.push_hubspot and hs_token:
+            log.info("=== HUBSPOT PUSH ===")
+            hs_stats = push_to_hubspot(fac_list, hs_token)
+            if hs_stats is None or hs_stats.get("errors", 0) == hs_stats.get("_total_attempted", 1):
+                log.info("HubSpot auth failed — writing CSV fallback")
+                write_hubspot_csv(fac_list, hs_csv_path)
+        elif args.push_hubspot:
+            log.info("No HUBSPOT_API_KEY — writing CSV fallback")
+            write_hubspot_csv(fac_list, hs_csv_path)
+
+        write_report(fac_list, report_path, hs_stats)
+        log.info("Enrichment run complete — report at %s", report_path)
         return
 
     if db_url and not args.dry_run:
@@ -1059,26 +1252,7 @@ def main() -> None:
     log.info("Discovery complete: %d facilities total", len(fac_list))
 
     if not args.discover_only and not args.no_enrich and not args.dry_run:
-        log.info("=== ENRICHMENT PHASE ===")
-        to_enrich = [f for f in fac_list if f.website and f.icp_score >= 4]
-        log.info("Enriching %d high-score sites", len(to_enrich))
-        with httpx.Client(timeout=15) as client:
-            for f in to_enrich:
-                log.info("  Enriching: %s (%s)", f.name[:50], f.website[:40])
-                try:
-                    enrichment = scrape_site(f.website, client)
-                    if enrichment.get("emails"):
-                        for em in enrichment["emails"][:3]:
-                            f.contacts.append({"email": em, "source": f.website})
-                    if enrichment.get("phones") and not f.phone:
-                        f.phone = enrichment["phones"][0]
-                    for c in enrichment.get("contacts", []):
-                        f.contacts.append(c)
-                    if enrichment.get("vfd_hit"):
-                        f.notes = (f.notes + " vfd_keywords_found").strip()
-                    f.icp_score = score_facility(f)
-                except Exception as e:
-                    log.debug("Enrichment failed %s: %s", f.name, e)
+        enrich_facilities(fac_list, serper_key, budget=500)
 
     hs_stats: Optional[dict] = None
     if not args.dry_run:
