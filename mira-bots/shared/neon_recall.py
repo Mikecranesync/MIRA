@@ -192,6 +192,9 @@ def _like_search(conn, text_fn, tenant_id: str, codes: list[str], limit: int) ->
             model_number,
             equipment_type,
             source_type,
+            source_url,
+            source_page,
+            metadata,
             0.5 AS similarity
         FROM knowledge_entries
         WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
@@ -237,7 +240,7 @@ def _product_search(
                 text_fn(
                     "WITH product_chunks AS ("
                     "  SELECT content, manufacturer, model_number, equipment_type, "
-                    "  source_type, embedding "
+                    "  source_type, source_url, source_page, metadata, embedding "
                     "  FROM knowledge_entries "
                     "  WHERE (tenant_id = :tid OR tenant_id = :shared_tid) "
                     "  AND model_number ILIKE :pat "
@@ -245,7 +248,7 @@ def _product_search(
                     "  AND embedding IS NOT NULL"
                     ") "
                     "SELECT content, manufacturer, model_number, equipment_type, "
-                    "source_type, "
+                    "source_type, source_url, source_page, metadata, "
                     "1 - (embedding <=> cast(:emb AS vector)) AS similarity "
                     "FROM product_chunks "
                     "ORDER BY embedding <=> cast(:emb AS vector) "
@@ -376,6 +379,9 @@ def recall_knowledge(
                         model_number,
                         equipment_type,
                         source_type,
+                        source_url,
+                        source_page,
+                        metadata,
                         1 - (embedding <=> cast(:emb AS vector)) AS similarity
                     FROM knowledge_entries
                     WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
@@ -419,6 +425,9 @@ def recall_knowledge(
                                 "model_number": row.get("equipment_model", ""),
                                 "equipment_type": "",
                                 "source_type": "fault_code_table",
+                                "source_url": None,
+                                "source_page": None,
+                                "metadata": {"section": "Fault Code Table"},
                                 "similarity": 0.95,  # high confidence — deterministic match
                             }
                         )
