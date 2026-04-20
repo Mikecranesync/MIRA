@@ -9,6 +9,7 @@
 
 ## Coding Principles → `wiki/references/coding-principles.md`
 ## KANBAN Board → `wiki/references/kanban.md`
+## Reporting Standards (Claude Code) → `wiki/references/reporting-standards.md` — no emojis, ≤100 words, no "shipped" until merged+gated
 
 ---
 
