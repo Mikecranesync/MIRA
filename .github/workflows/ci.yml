@@ -152,7 +152,7 @@ jobs:
 
       - name: Run bot tests with coverage
         run: |
-          pytest mira-bots/tests/ -v -n auto \
+          pytest mira-bots/tests/ -v \
             --ignore=mira-bots/tests/test_slack_relay.py \
             --cov=mira-bots/shared --cov-report=term-missing \
             --cov-fail-under=30
