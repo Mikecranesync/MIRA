@@ -26,6 +26,13 @@ from .guardrails import (
 )
 from .inference.router import InferenceRouter
 from .integrations.atlas_cmms import AtlasCMMSClient
+from .models.work_order import (
+    UNSWorkOrder,
+    apply_wo_edit,
+    build_uns_wo_from_state,
+    format_wo_preview,
+    log_uns_event,
+)
 from .nemotron import NemotronClient
 from .neon_recall import kb_has_coverage
 from .telemetry import flush as tl_flush
@@ -1035,14 +1042,14 @@ class Supervisor:
                     ctx_sc.pop("revision_critique", None)
                     state["context"] = ctx_sc
 
-        # RESOLVED hook: append work-order prompt so next turn is intercepted.
+        # RESOLVED hook: build UNS-structured WO draft and show preview.
         # Amend parsed["reply"] now so both history and formatted output include it.
         _wo_draft = None
         if state["state"] == "RESOLVED":
-            _wo_draft = self._build_wo_draft(state)
-            parsed["reply"] = parsed.get("reply", "").rstrip() + (
-                "\n\nShould I log a work order in the CMMS?"
-            )
+            _wo = build_uns_wo_from_state(state)
+            _wo_draft = _wo.to_dict()
+            _preview = format_wo_preview(_wo)
+            parsed["reply"] = parsed.get("reply", "").rstrip() + "\n\n" + _preview
 
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
@@ -1106,53 +1113,22 @@ class Supervisor:
         }
     )
 
-    def _build_wo_draft(self, state: dict) -> dict:
-        """Construct work-order title/description from resolved diagnostic state."""
-        asset = (state.get("asset_identified") or "Unknown equipment")[:120]
-        fault = state.get("fault_category") or "corrective"
-        title = f"[MIRA] {asset[:60]} — {fault} action"
-
-        ctx = state.get("context") or {}
-        history = ctx.get("history", [])
-        lines = []
-        for turn in history[-6:]:
-            role = (turn.get("role") or "").upper()
-            content = (turn.get("content") or "")[:400]
-            lines.append(f"{role}: {content}")
-        summary = "\n".join(lines)
-
-        description = (
-            f"MIRA Diagnostic Session\n"
-            f"Equipment: {asset}\n"
-            f"Fault category: {fault}\n\n"
-            f"Conversation summary:\n{summary}"
-        )
-
-        _HIGH_PRIORITY_FAULTS = {"power", "thermal", "hydraulic"}
-        priority = "HIGH" if fault in _HIGH_PRIORITY_FAULTS else "MEDIUM"
-
-        return {
-            "title": title[:100],
-            "description": description[:2000],
-            "priority": priority,
-            "asset_label": asset,
-        }
-
-    async def _post_cmms_work_order(self, wo_draft: dict) -> str:
+    async def _post_cmms_work_order(self, wo: UNSWorkOrder) -> str:
         """Call AtlasCMMSClient to create a work order. Returns confirmation string."""
         client = AtlasCMMSClient(base_url=self.mcp_base_url, api_key=self.mcp_api_key)
         result = await client.create_work_order(
-            title=wo_draft["title"],
-            description=wo_draft["description"],
-            priority=wo_draft["priority"],
+            title=wo.title,
+            description=wo.to_atlas_description(),
+            priority=wo.priority,
             asset_id=0,
-            category="CORRECTIVE",
+            category=wo.wo_type,
         )
         if "error" in result:
             raise RuntimeError(result["error"])
         wo_id = result.get("id", "unknown")
-        asset = wo_draft.get("asset_label", "equipment")
-        return f"Work order #{wo_id} created. Asset: {asset}."
+        return f"Work order #{wo_id} created for {wo.asset or 'equipment'} — UNS: {wo.uns_topic}"
+
+    _CMMS_NO = frozenset({"no", "nope", "n", "skip", "cancel", "abort", "never mind", "nevermind"})
 
     async def _handle_cmms_pending(
         self,
@@ -1161,23 +1137,71 @@ class Supervisor:
         state: dict,
         trace_id: str,
     ) -> dict:
-        """Handle the yes/no response to the work-order creation prompt."""
+        """Handle tech response to WO preview: yes/no, edit instructions, or missing-field supply."""
         ctx = state.get("context") or {}
-        wo_draft = ctx.pop("cmms_wo_draft", {})
-        ctx.pop("cmms_pending", None)
-        state["context"] = ctx
+        wo_draft = ctx.get("cmms_wo_draft", {})
 
         msg_lower = message.strip().lower()
         is_yes = msg_lower in self._CMMS_YES or any(
             w in msg_lower for w in self._CMMS_YES if len(w) > 3
         )
+        is_no = msg_lower in self._CMMS_NO or any(
+            w in msg_lower for w in self._CMMS_NO if len(w) > 3
+        )
+
+        # Check for edit instructions before yes/no — edits keep cmms_pending alive.
+        if not is_yes and not is_no:
+            edited = apply_wo_edit(wo_draft, message)
+            if edited is not None:
+                ctx["cmms_wo_draft"] = edited
+                state["context"] = ctx
+                self._save_state(chat_id, state)
+                wo = UNSWorkOrder(**edited)
+                reply = "Updated.\n\n" + format_wo_preview(wo)
+                self._record_exchange(chat_id, state, message, reply)
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "RESOLVED")
+
+            # No yes/no and no recognised edit — treat as asset supply if asset is missing.
+            if not wo_draft.get("asset") and message.strip():
+                ctx["cmms_wo_draft"] = {**wo_draft, "asset": message.strip()[:80]}
+                state["context"] = ctx
+                self._save_state(chat_id, state)
+                wo = UNSWorkOrder(**ctx["cmms_wo_draft"])
+                reply = "Got it — asset set.\n\n" + format_wo_preview(wo)
+                self._record_exchange(chat_id, state, message, reply)
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "RESOLVED")
+
+        # Consume the pending state now that we have a definitive yes/no.
+        ctx.pop("cmms_wo_draft", None)
+        ctx.pop("cmms_pending", None)
+        state["context"] = ctx
 
         if is_yes and wo_draft:
+            wo = UNSWorkOrder(**wo_draft)
+
+            # Validation gate — must have asset, title, fault_description.
+            if not wo.is_valid:
+                missing = wo.missing_fields
+                ctx["cmms_pending"] = True
+                ctx["cmms_wo_draft"] = wo_draft
+                state["context"] = ctx
+                self._save_state(chat_id, state)
+                lines = ["I need a few more details before I can log this:"]
+                lines += [f"• {f.replace('_', ' ').title()}" for f in missing]
+                if "asset" in missing:
+                    lines.append("\nWhat asset is this for? (e.g. *GS10 VFD on Line 1* or *Pump A3*)")
+                lines.append("\nProvide the missing info or say *skip* to cancel.")
+                reply = "\n".join(lines)
+                self._record_exchange(chat_id, state, message, reply)
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "RESOLVED")
+
             try:
-                reply = await self._post_cmms_work_order(wo_draft)
-                logger.info(
-                    "CMMS_WO_CREATED chat_id=%s wo_draft_title=%r", chat_id, wo_draft.get("title")
-                )
+                reply = await self._post_cmms_work_order(wo)
+                log_uns_event(wo)
+                logger.info("CMMS_WO_CREATED chat_id=%s title=%r uns=%s", chat_id, wo.title, wo.uns_topic)
             except Exception as e:
                 logger.error("CMMS WO creation failed for %s: %s", chat_id, e)
                 reply = (
