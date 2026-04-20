@@ -20,6 +20,9 @@
  * The NOT_FOUND_HTML constant is kept byte-identical across all paths so
  * cross-tenant and nonexistent tags are indistinguishable to an attacker.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { Hono } from "hono";
 import { verifyToken } from "../lib/auth.js";
 import {
@@ -34,22 +37,11 @@ import {
   readChannelPref,
 } from "../lib/cookie-session.js";
 
-const NOT_FOUND_HTML = `<!doctype html>
-<html lang="en"><head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Asset not found in your plant</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 480px; margin: 3rem auto; padding: 1rem; color: #111; }
-    h1 { font-size: 1.25rem; font-weight: 600; }
-    p { color: #444; line-height: 1.5; }
-    a { color: #f5a623; }
-  </style>
-</head><body>
-  <h1>Asset not found in your plant</h1>
-  <p>This asset tag is not associated with your plant. If you believe this is an error, contact your admin.</p>
-  <p><a href="https://app.factorylm.com">Open MIRA</a></p>
-</body></html>`;
+const _dir = dirname(fileURLToPath(import.meta.url));
+const NOT_FOUND_HTML = readFileSync(
+  join(_dir, "../views/scan-not-found.html"),
+  "utf-8",
+);
 
 function buildChannelUrl(
   channel: string,
