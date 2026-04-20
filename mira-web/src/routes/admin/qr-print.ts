@@ -140,7 +140,8 @@ adminApi.post("/api/admin/qr-print-batch", requireAdmin, async (c) => {
     asset_tag: t.asset_tag,
     scan_url: scanUrlFor(t.asset_tag),
   }));
-  const pdfBytes = await buildStickerSheetPdf(pdfInput, format);
+  const tenantName = process.env.MIRA_TENANT_NAME ?? process.env.PLG_ATLAS_ADMIN_USER ?? "FactoryLM";
+  const pdfBytes = await buildStickerSheetPdf(pdfInput, format, tenantName);
 
   return new Response(pdfBytes, {
     status: 200,
