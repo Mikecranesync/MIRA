@@ -1,8 +1,13 @@
--- mira-core/mira-ingest/db/migrations/004_knowledge_tsvector.sql
+-- mira-core/mira-ingest/db/migrations/006_knowledge_tsvector.sql
 --
 -- Unit 6 (90-day MVP): hybrid BM25 + pgvector retrieval.
 -- Adds a STORED tsvector column on knowledge_entries.content and a GIN
 -- index so neon_recall._recall_bm25() can rank by ts_rank_cd().
+--
+-- Numbered 006 (not 004) because QR Phase 1 (PR #421) took 004
+-- (tenant_channel_config) and 005 (guest_reports) overnight while this
+-- branch was in flight. This migration is purely additive against
+-- knowledge_entries — no ordering dependency on 004 / 005.
 --
 -- IMPORTANT: run Block 1 and Block 2 as SEPARATE psql statements.
 -- CREATE INDEX CONCURRENTLY cannot run inside a BEGIN/COMMIT transaction.
