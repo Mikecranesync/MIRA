@@ -153,6 +153,7 @@ services:
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
     networks:
       - mira-net
+      - cmms-ext
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3000/api/health"]
@@ -249,6 +250,9 @@ services:
 networks:
   mira-net:
     driver: bridge
+  cmms-ext:
+    external: true
+    name: factorylm-cmms_default
 
 volumes:
   mira-webui-data:
