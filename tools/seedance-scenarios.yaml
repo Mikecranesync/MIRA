@@ -53,6 +53,64 @@ scenarios:
     style: cinematic
     negative_prompt: "cartoon, anime, toy, miniature"
 
+# ---------------------------------------------------------------------------
+# "The 2AM Call" — 6-clip narrative sequence
+# ---------------------------------------------------------------------------
+
+  2am-factory-floor:
+    prompt: "Dark industrial factory floor at 2AM. Emergency warning lights cast red and amber strobes across idle machinery. A lone maintenance technician in a hard hat and safety vest enters frame, phone flashlight cutting through the gloom. Cinematic, tense, high-contrast lighting. No dialogue. Documentary realism."
+    duration: 10
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+    negative_prompt: "bright, cheerful, cartoon, anime, daylight, office, clean room"
+
+  2am-frustrated-tech:
+    prompt: "Close-up of a tired maintenance technician's face illuminated by smartphone glow at night. He is staring at a blinking fault code on a VFD panel display. Sweat on brow, jaw clenched. He reaches for his phone. Handheld camera feel, shallow depth of field, authentic industrial fatigue."
+    duration: 8
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+    negative_prompt: "happy, smiling, office, daylight, cartoon"
+
+  2am-qr-scan:
+    prompt: "Extreme close-up of a technician's hands holding a smartphone scanning a QR code sticker on a VFD panel in near-darkness. Phone camera flash illuminates the nameplate. Screen immediately shows a MIRA AI chat interface — diagnostic conversation begins with equipment fault details appearing. Phone glow is the only light source. Cinematic macro lens, authentic tension."
+    duration: 8
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+    references:
+      - path: marketing/references/mira-chat-screenshot.png
+        role: subject
+    negative_prompt: "blurry, cartoon, daylight, office"
+
+  2am-safety-stop:
+    prompt: "Dramatic shot of a smartphone screen displaying a bold red WARNING message from an AI safety system. The text reads: DO NOT PROCEED — Arc Flash Hazard — Call qualified electrician. The technician's hand freezes mid-reach toward the panel. Red emergency lighting, high contrast, stark silence implied. Close-up, cinematic."
+    duration: 5
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+    references:
+      - path: marketing/references/mira-safety-alert.png
+        role: subject
+    negative_prompt: "cheerful, casual, daylight, cartoon, office"
+
+  2am-fix-motor:
+    prompt: "A maintenance technician adjusts parameters on a VFD drive keypad, following step-by-step instructions visible on his phone propped against the panel. The fault LED stops blinking and turns green. Technician exhales with relief. Warm practical lighting from work lamp, industrial authenticity, documentary style."
+    duration: 8
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+    negative_prompt: "cartoon, anime, bright office, daylight"
+
+  2am-logo-reveal:
+    prompt: "Clean, minimal logo reveal on a dark charcoal background. The word MIRA fades in with a soft industrial amber glow — like a warning light powering on. Tagline appears below: Your AI maintenance tech. On call 24/7. Subtle machinery texture in background. Professional, confident, brand-final."
+    duration: 5
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+    negative_prompt: "cartoon, anime, colorful, busy, cluttered"
+
 # Cost reference (BytePlus Seedance 2.0, approximate as of 2026-04):
 # 720p  × 5s  ≈ $0.05
 # 1080p × 10s ≈ $0.18
