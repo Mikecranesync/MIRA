@@ -1,4 +1,16 @@
-# Hot Cache — 2026-04-20 — BRAVO
+# Hot Cache — 2026-04-20 — CHARLIE
+
+## Session — 2026-04-20 (CHARLIE, QR pipeline ship)
+
+- **v3.6.0 tagged + pushed** — QR asset-tagging pipeline complete: scan → pipeline → asset-aware chat + channel chooser + guest reports.
+- **PR #412 merged** (`feat/qr-asset-tagging`): QR MVP — 66 tests, migrations 003 applied to NeonDB prod. Conflicts resolved: `Supervisor` rename + format fix.
+- **PR #423 merged** (closes #408): `lookup_scan_context` with LEFT JOIN — saves ~200-300ms per scan-to-chat turn.
+- **PR #424 merged** (closes #409): Reset wins over pending scan (Option B). `Set-Cookie: mira_pending_scan=; Max-Age=0` on `/reset`.
+- **PR #421 merged** (`feat/qr-channel-chooser`): channel chooser + guest form + admin channel config. Migrations 004+005 applied to NeonDB prod.
+- **PR #425 merged** (closes #407): `NOT_FOUND_HTML` extracted to `src/views/scan-not-found.html`.
+- **PR #426 merged** (closes #408-guardrails): `"was live"` + `"while live"` added to `SAFETY_KEYWORDS`.
+- **Issue #410 done**: `PLG_JWT_SECRET` synced to Doppler `factorylm/dev` config.
+- **NeonDB migrations applied**: 003 (asset_qr_tags + qr_scan_events), 004 (tenant_channel_config), 005 (guest_reports).
 
 ## Session — 2026-04-20 (BRAVO)
 
