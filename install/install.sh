@@ -69,6 +69,10 @@ echo "Creating Docker networks..."
 docker network create core-net 2>/dev/null && echo "  core-net created" || echo "  core-net already exists"
 docker network create bot-net 2>/dev/null && echo "  bot-net created" || echo "  bot-net already exists"
 
+# --- Pre-touch SQLite files (prevents Docker creating them as directories on fresh clone) ---
+touch "$INSTALL_DIR/mira-core/mira.db"
+mkdir -p "$INSTALL_DIR/mira-bridge/data" && touch "$INSTALL_DIR/mira-bridge/data/mira.db"
+
 # --- Start services ---
 echo ""
 echo "Starting MIRA services via Doppler..."

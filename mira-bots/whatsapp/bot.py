@@ -20,7 +20,7 @@ from PIL import Image
 from twilio.request_validator import RequestValidator
 
 from shared.adapters.base import MIRAAdapter
-from shared.gsd_engine import GSDEngine
+from shared.engine import Supervisor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,7 +38,7 @@ KNOWLEDGE_COLLECTION_ID = os.environ.get("KNOWLEDGE_COLLECTION_ID", "")
 MAX_VISION_PX = int(os.environ.get("MAX_VISION_PX", "512"))
 VALIDATE_TWILIO = os.environ.get("TWILIO_VALIDATE_SIGNATURE", "true").lower() == "true"
 
-engine = GSDEngine(
+engine = Supervisor(
     db_path=os.environ.get("MIRA_DB_PATH", "/data/mira.db"),
     openwebui_url=OPENWEBUI_BASE_URL,
     api_key=OPENWEBUI_API_KEY,

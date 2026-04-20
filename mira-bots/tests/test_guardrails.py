@@ -167,6 +167,7 @@ class TestClassifyIntent:
         assert scrub_fabricated_reflection("", "hello") == ""
         assert scrub_fabricated_reflection("Hello", "") == "Hello"
 
+
     def test_fault_code_pattern(self):
         assert classify_intent("What does F-201 mean") == "industrial"
 

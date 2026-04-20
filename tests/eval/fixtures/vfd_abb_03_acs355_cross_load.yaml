@@ -1,8 +1,9 @@
 id: vfd_abb_03_acs355_cross_load
 description: "ABB ACS355 motor overload — out-of-KB, no cross-vendor content from AB or AutomationDirect"
-expected_final_state: Q2
+# expected_final_state: Q2/Q3 depending on model availability; citation gate may fire if out-of-KB
 # FSM may reach DIAGNOSIS; citation gate fires (ACS355 out-of-KB) → banner becomes last response.
 # 'manual'/'searching' catch banner; 'motor'/'thermal' catch real diagnostic responses.
+expected_final_state: Q2
 max_turns: 5
 expected_keywords: [thermal, motor, parameters, nameplate, overload, spec, temperature, compressor, manual, searching]
 skip_citation_check: true  # user provides "7.5kW", "460V", "40°C" — specs not in KB chunks

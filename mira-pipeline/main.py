@@ -35,7 +35,7 @@ import threading
 from feedback_sync import run_loop as feedback_sync_loop
 from memory import ConversationMemory
 from qr_bridge import build_clear_cookie_header, process_pending_scan
-from shared.gsd_engine import GSDEngine
+from shared.engine import Supervisor
 
 # Explicit handler setup: logging.basicConfig() is a no-op once uvicorn has
 # already installed its own handlers on the root logger, so we configure our
@@ -238,14 +238,14 @@ def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: st
 
 # ── App ──────────────────────────────────────────────────────────────────────
 
-engine: GSDEngine | None = None
+engine: Supervisor | None = None
 memory: ConversationMemory | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global engine, memory
-    engine = GSDEngine(
+    engine = Supervisor(
         db_path=DB_PATH,
         openwebui_url=OPENWEBUI_URL,
         api_key=OPENWEBUI_API_KEY,
@@ -262,7 +262,7 @@ async def lifespan(app: FastAPI):
     # Start feedback sync background thread (polls Open WebUI DB for new ratings)
     sync_thread = threading.Thread(target=feedback_sync_loop, daemon=True)
     sync_thread.start()
-    logger.info("MIRA Pipeline started — GSDEngine initialized (db=%s)", DB_PATH)
+    logger.info("MIRA Pipeline started — Supervisor initialized (db=%s)", DB_PATH)
     yield
     engine = None
     memory = None
@@ -343,7 +343,7 @@ class ChatCompletionRequest(BaseModel):
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request, req: ChatCompletionRequest):
     if engine is None:
-        raise HTTPException(503, "GSDEngine not initialized")
+        raise HTTPException(503, "Supervisor not initialized")
 
     # Extract last user message (text content)
     last_user_msg = ""
@@ -434,10 +434,50 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         or "openwebui_anonymous"
     )
 
+    # Handle reset command — reset wins over any pending QR scan (Option B, #409).
+    # If a tech explicitly resets they want a clean slate; the 5-min scan cookie
+    # can be re-triggered by re-scanning the QR code.
+    reset_phrases = (
+        "/reset",
+        "reset",
+        "start over",
+        "new session",
+        "never mind",
+        "nevermind",
+        "wrong chat",
+        "ignore that",
+        "that wasn't for you",
+        "that wasnt for you",
+        "scratch that",
+    )
+    if last_user_msg.strip().lower() in reset_phrases or any(
+        last_user_msg.strip().lower().startswith(p) for p in ("never mind", "nevermind", "wrong ")
+    ):
+        engine.reset(chat_id)
+        logger.info("FSM_RESET chat_id=%s", chat_id)
+        reset_body = {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "mira-diagnostic",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Conversation reset. What equipment needs help?",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+        return JSONResponse(content=reset_body, headers={"Set-Cookie": build_clear_cookie_header()})
+
     # QR Bridge — if the request carries a mira_pending_scan cookie (set by the
     # scan redirect route in mira-web), look up the scan in NeonDB and seed
     # session_memory so the engine's IDLE-state load_session() hook picks up
-    # the asset context on this turn.
+    # the asset context on this turn. Runs AFTER reset check (reset wins, #409).
     cookie_header = request.headers.get("cookie")
     seeded = process_pending_scan(cookie_header, chat_id)
     if seeded:
@@ -461,43 +501,6 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
                 _ingest_pdf_background(fid, fname or "document.pdf", TENANT_ID or chat_id)
             )
             logger.info("P0-3 PDF queued for ingest: file_id=%s name=%s", fid, fname)
-
-    # Handle reset command — clear FSM state before processing
-    reset_phrases = (
-        "/reset",
-        "reset",
-        "start over",
-        "new session",
-        "never mind",
-        "nevermind",
-        "wrong chat",
-        "ignore that",
-        "that wasn't for you",
-        "that wasnt for you",
-        "scratch that",
-    )
-    if last_user_msg.strip().lower() in reset_phrases or any(
-        last_user_msg.strip().lower().startswith(p) for p in ("never mind", "nevermind", "wrong ")
-    ):
-        engine.reset(chat_id)
-        logger.info("FSM_RESET chat_id=%s", chat_id)
-        return {
-            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": "mira-diagnostic",
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": "Conversation reset. What equipment needs help?",
-                    },
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        }
 
     # P0-2: Detect regenerate — if OW is replaying the same user message for
     # this chat session, roll the FSM back to its pre-turn state before calling
@@ -721,7 +724,7 @@ class FeedbackRequest(BaseModel):
 async def submit_feedback(req: FeedbackRequest):
     """Capture thumbs-up/down rating and write to mira.db feedback_log."""
     if engine is None:
-        raise HTTPException(503, "GSDEngine not initialized")
+        raise HTTPException(503, "Supervisor not initialized")
 
     feedback = "positive" if req.rating in ("up", "1", "positive") else "negative"
     engine.log_feedback(req.chat_id, feedback, req.reason)

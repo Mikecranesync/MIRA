@@ -32,7 +32,7 @@ import time
 
 from post_filter import should_respond
 from reddit_client import RedditClient
-from shared.gsd_engine import GSDEngine
+from shared.engine import Supervisor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -192,7 +192,7 @@ def _format_reply(engine_reply: str) -> str:
 
 async def _process_new_posts(
     client: RedditClient,
-    engine: GSDEngine,
+    engine: Supervisor,
     seen_posts: set[str],
 ) -> None:
     """Scan subreddits for new maintenance questions and reply."""
@@ -262,7 +262,7 @@ async def _process_new_posts(
 
 async def _process_followups(
     client: RedditClient,
-    engine: GSDEngine,
+    engine: Supervisor,
 ) -> None:
     """Check inbox for replies to the bot's comments and continue sessions."""
     try:
@@ -389,7 +389,7 @@ async def run() -> None:
     )
 
     # Initialize GSD engine
-    engine = GSDEngine(
+    engine = Supervisor(
         db_path=DB_PATH,
         openwebui_url=os.environ.get("OPENWEBUI_BASE_URL", "http://mira-core:8080"),
         api_key=os.environ.get("OPENWEBUI_API_KEY", ""),

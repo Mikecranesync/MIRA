@@ -1,5 +1,0 @@
-# ML model weights — too large for git
-*.pt
-*.onnx
-*.engine
-*.trt

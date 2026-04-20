@@ -1,0 +1,246 @@
+{
+  "custom": {},
+  "params": {},
+  "props": {
+    "defaultSize": {
+      "height": 720,
+      "width": 1100
+    }
+  },
+  "root": {
+    "children": [
+      {
+        "children": [
+          {
+            "meta": { "name": "Title" },
+            "position": { "basis": "auto", "grow": 1 },
+            "props": {
+              "style": {
+                "color": "#FFFFFF",
+                "fontSize": "22px",
+                "fontWeight": "bold",
+                "letterSpacing": "3px"
+              },
+              "text": "MIRA — STEP 1  I/O CHECK"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "HeartbeatDot" },
+            "position": { "basis": "24px", "shrink": 0 },
+            "propConfig": {
+              "props.style.backgroundColor": {
+                "binding": {
+                  "config": {
+                    "expression": "if({[default]MIRA_IOCheck/Diagnostics/heartbeat}, '#28A745', '#1f4d27')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "backgroundColor": "#1f4d27",
+                "borderRadius": "50%",
+                "height": "16px",
+                "width": "16px",
+                "margin": "8px 4px"
+              },
+              "text": ""
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "HeartbeatLabel" },
+            "position": { "basis": "auto", "shrink": 0 },
+            "props": {
+              "style": {
+                "color": "#888888",
+                "fontSize": "11px",
+                "padding": "8px 16px 8px 4px"
+              },
+              "text": "HEARTBEAT"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "HeaderRow" },
+        "position": { "basis": "48px", "shrink": 0 },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {
+            "backgroundColor": "#222",
+            "padding": "4px 16px"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+
+      {
+        "meta": { "name": "InputsSectionLabel" },
+        "position": { "basis": "28px", "shrink": 0 },
+        "props": {
+          "style": {
+            "color": "#AAAAAA",
+            "fontSize": "12px",
+            "fontWeight": "bold",
+            "letterSpacing": "2px",
+            "padding": "8px 16px 0"
+          },
+          "text": "INPUTS  (press a physical button — the light should turn red)"
+        },
+        "type": "ia.display.label"
+      },
+      {
+        "meta": { "name": "InputsGrid" },
+        "position": { "basis": "140px", "shrink": 0 },
+        "props": {
+          "direction": "row",
+          "justify": "flex-start",
+          "style": { "padding": "8px 16px" },
+          "wrap": "wrap"
+        },
+        "children": [
+          { "type": "ia.container.flex", "meta": { "name": "DI_00" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_00}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-00 FwdSel" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DI_01" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_01}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-01 RevSel" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DI_02" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_02}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-02 EStopNC" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DI_03" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_03}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-03 EStopNO" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DI_04" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_04}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-04 RunBtn" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DI_05" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_05}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-05" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DI_06" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_06}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-06" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DI_07" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_07}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-07" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DI_08" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_08}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-08" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DI_09" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_09}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-09" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DI_10" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_10}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-10" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DI_11" }, "position": { "basis": "160px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.display.label", "meta": { "name": "dot" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "style": { "backgroundColor": "#444", "borderRadius": "50%", "height": "14px", "width": "14px", "margin": "4px 8px" }, "text": "" }, "propConfig": { "props.style.backgroundColor": { "binding": { "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_11}, '#FF4444', '#444')" }, "type": "expr" } } } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px" }, "text": "DI-11" } }
+          ] }
+        ],
+        "type": "ia.container.flex"
+      },
+
+      {
+        "meta": { "name": "OutputsSectionLabel" },
+        "position": { "basis": "28px", "shrink": 0 },
+        "props": {
+          "style": {
+            "color": "#AAAAAA",
+            "fontSize": "12px",
+            "fontWeight": "bold",
+            "letterSpacing": "2px",
+            "padding": "8px 16px 0"
+          },
+          "text": "OUTPUTS  (flip a switch — the physical lamp should respond.  Only works if Step 1 PLC program is flashed.)"
+        },
+        "type": "ia.display.label"
+      },
+      {
+        "meta": { "name": "OutputsGrid" },
+        "position": { "basis": "120px", "shrink": 0 },
+        "props": {
+          "direction": "row",
+          "justify": "flex-start",
+          "style": { "padding": "8px 16px" },
+          "wrap": "wrap"
+        },
+        "children": [
+          { "type": "ia.container.flex", "meta": { "name": "DO_00" }, "position": { "basis": "240px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.input.toggle-switch", "meta": { "name": "toggle" }, "position": { "basis": "auto", "shrink": 0 }, "propConfig": { "props.selected": { "binding": { "config": { "tagPath": "[default]MIRA_IOCheck/Outputs/DO_00" }, "type": "tag", "mode": "indirect" } } }, "props": { "selected": false } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px", "margin": "0 8px" }, "text": "DO-00 Green" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DO_01" }, "position": { "basis": "240px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.input.toggle-switch", "meta": { "name": "toggle" }, "position": { "basis": "auto", "shrink": 0 }, "propConfig": { "props.selected": { "binding": { "config": { "tagPath": "[default]MIRA_IOCheck/Outputs/DO_01" }, "type": "tag", "mode": "indirect" } } }, "props": { "selected": false } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px", "margin": "0 8px" }, "text": "DO-01 Red" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DO_02" }, "position": { "basis": "240px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.input.toggle-switch", "meta": { "name": "toggle" }, "position": { "basis": "auto", "shrink": 0 }, "propConfig": { "props.selected": { "binding": { "config": { "tagPath": "[default]MIRA_IOCheck/Outputs/DO_02" }, "type": "tag", "mode": "indirect" } } }, "props": { "selected": false } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#F66", "fontSize": "13px", "margin": "0 8px" }, "text": "DO-02 Contactor Q1 (caution)" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DO_03" }, "position": { "basis": "240px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.input.toggle-switch", "meta": { "name": "toggle" }, "position": { "basis": "auto", "shrink": 0 }, "propConfig": { "props.selected": { "binding": { "config": { "tagPath": "[default]MIRA_IOCheck/Outputs/DO_03" }, "type": "tag", "mode": "indirect" } } }, "props": { "selected": false } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px", "margin": "0 8px" }, "text": "DO-03 PB LED" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DO_04" }, "position": { "basis": "240px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.input.toggle-switch", "meta": { "name": "toggle" }, "position": { "basis": "auto", "shrink": 0 }, "propConfig": { "props.selected": { "binding": { "config": { "tagPath": "[default]MIRA_IOCheck/Outputs/DO_04" }, "type": "tag", "mode": "indirect" } } }, "props": { "selected": false } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px", "margin": "0 8px" }, "text": "DO-04" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DO_05" }, "position": { "basis": "240px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.input.toggle-switch", "meta": { "name": "toggle" }, "position": { "basis": "auto", "shrink": 0 }, "propConfig": { "props.selected": { "binding": { "config": { "tagPath": "[default]MIRA_IOCheck/Outputs/DO_05" }, "type": "tag", "mode": "indirect" } } }, "props": { "selected": false } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px", "margin": "0 8px" }, "text": "DO-05" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DO_06" }, "position": { "basis": "240px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.input.toggle-switch", "meta": { "name": "toggle" }, "position": { "basis": "auto", "shrink": 0 }, "propConfig": { "props.selected": { "binding": { "config": { "tagPath": "[default]MIRA_IOCheck/Outputs/DO_06" }, "type": "tag", "mode": "indirect" } } }, "props": { "selected": false } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px", "margin": "0 8px" }, "text": "DO-06" } }
+          ] },
+          { "type": "ia.container.flex", "meta": { "name": "DO_07" }, "position": { "basis": "240px", "shrink": 0 }, "props": { "direction": "row", "align": "center", "style": { "margin": "4px" } }, "children": [
+            { "type": "ia.input.toggle-switch", "meta": { "name": "toggle" }, "position": { "basis": "auto", "shrink": 0 }, "propConfig": { "props.selected": { "binding": { "config": { "tagPath": "[default]MIRA_IOCheck/Outputs/DO_07" }, "type": "tag", "mode": "indirect" } } }, "props": { "selected": false } },
+            { "type": "ia.display.label", "meta": { "name": "lbl" }, "position": { "basis": "auto" }, "props": { "style": { "color": "#DDD", "fontSize": "13px", "margin": "0 8px" }, "text": "DO-07" } }
+          ] }
+        ],
+        "type": "ia.container.flex"
+      },
+
+      {
+        "meta": { "name": "Footer" },
+        "position": { "basis": "40px", "shrink": 0 },
+        "props": {
+          "style": {
+            "backgroundColor": "#111",
+            "borderTop": "1px solid #333",
+            "color": "#666",
+            "fontSize": "11px",
+            "letterSpacing": "2px",
+            "padding": "10px 16px"
+          },
+          "text": "MIRA  ·  Micro 820 2080-LC20-20QBB @ 192.168.1.100  ·  Step 1 I/O check view"
+        },
+        "type": "ia.display.label"
+      }
+    ],
+    "meta": { "name": "root" },
+    "position": { "basis": "auto" },
+    "props": {
+      "direction": "column",
+      "style": {
+        "backgroundColor": "#1a1a1a",
+        "height": "100%"
+      }
+    },
+    "type": "ia.container.flex"
+  }
+}
