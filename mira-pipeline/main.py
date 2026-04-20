@@ -34,7 +34,7 @@ import threading
 
 from feedback_sync import run_loop as feedback_sync_loop
 from memory import ConversationMemory
-from shared.gsd_engine import GSDEngine
+from shared.engine import Supervisor
 
 # Explicit handler setup: logging.basicConfig() is a no-op once uvicorn has
 # already installed its own handlers on the root logger, so we configure our
@@ -237,14 +237,14 @@ def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: st
 
 # ── App ──────────────────────────────────────────────────────────────────────
 
-engine: GSDEngine | None = None
+engine: Supervisor | None = None
 memory: ConversationMemory | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global engine, memory
-    engine = GSDEngine(
+    engine = Supervisor(
         db_path=DB_PATH,
         openwebui_url=OPENWEBUI_URL,
         api_key=OPENWEBUI_API_KEY,

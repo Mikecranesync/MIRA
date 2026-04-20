@@ -9,7 +9,7 @@ import os
 import httpx
 from PIL import Image
 from shared import tts
-from shared.gsd_engine import GSDEngine
+from shared.engine import Supervisor
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import (
@@ -36,15 +36,15 @@ KNOWLEDGE_COLLECTION_ID = os.environ.get(
 )
 INGEST_SERVICE_URL = os.environ.get("INGEST_SERVICE_URL", "")
 
-engine = GSDEngine(
+engine = Supervisor(
     db_path=os.environ.get("MIRA_DB_PATH", "/data/mira.db"),
     openwebui_url=OPENWEBUI_BASE_URL,
     api_key=OPENWEBUI_API_KEY,
     collection_id=KNOWLEDGE_COLLECTION_ID,
     vision_model=os.environ.get("VISION_MODEL", "qwen2.5vl:7b"),
     tenant_id=os.environ.get("MIRA_TENANT_ID", ""),
-    ingest_url=INGEST_SERVICE_URL,
-    mcp_url=MCP_BASE_URL,
+
+    mcp_base_url=MCP_BASE_URL,
 )
 
 FAULT_KEYWORDS = {
