@@ -26,6 +26,7 @@ from .guardrails import (
 )
 from .inference.router import InferenceRouter
 from .integrations.atlas_cmms import AtlasCMMSClient
+from .notifications.push import push_safety_alert, push_wo_created
 from .models.work_order import (
     UNSWorkOrder,
     apply_wo_edit,
@@ -656,6 +657,8 @@ class Supervisor:
                 )
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
+                asset = state.get("asset_identified") or "Unknown equipment"
+                asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
         if not photo_b64 and state["state"] == "IDLE" and state["exchange_count"] == 0:
@@ -1202,6 +1205,8 @@ class Supervisor:
                 reply = await self._post_cmms_work_order(wo)
                 log_uns_event(wo)
                 logger.info("CMMS_WO_CREATED chat_id=%s title=%r uns=%s", chat_id, wo.title, wo.uns_topic)
+                wo_id = reply.split("#")[1].split()[0] if "#" in reply else "?"
+                asyncio.ensure_future(push_wo_created(wo_id=wo_id, asset=wo.asset, tech_name=wo.technician_id or chat_id))
             except Exception as e:
                 logger.error("CMMS WO creation failed for %s: %s", chat_id, e)
                 reply = (
