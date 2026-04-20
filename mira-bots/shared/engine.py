@@ -2439,6 +2439,8 @@ class Supervisor:
         - When remaining options are a Yes/No pair, render inline prose
           ("Reply: Yes or No.") instead of a numbered block — form-feel fix.
         - Otherwise fall back to the numbered-list rendering.
+        - MVP Unit 2 (2026-04-20): if KB chunks were used and reply lacks
+          a [Source: ...] block, append a citation footer from kb_status.
         """
         reply = parsed["reply"]
         options = parsed.get("options", [])
@@ -2461,9 +2463,8 @@ class Supervisor:
             cleaned.append(text)
 
         if len(cleaned) < 2:
-            return reply
-
-        if (
+            pass  # no options block — reply alone
+        elif (
             len(cleaned) == 2
             and _YES_OPTION_RE.match(cleaned[0])
             and _NO_OPTION_RE.match(cleaned[1])
@@ -2472,8 +2473,43 @@ class Supervisor:
             suffix = f"Reply: {cleaned[0]} or {cleaned[1]}."
             if not reply.rstrip().endswith((".", "?", "!")):
                 reply = reply.rstrip() + "."
-            return f"{reply} {suffix}"
+            reply = f"{reply} {suffix}"
+        else:
+            reply = deduplicate_options(reply, cleaned)
+            reply += "\n\n" + "\n".join(f"{i + 1}. {opt}" for i, opt in enumerate(cleaned))
 
-        reply = deduplicate_options(reply, cleaned)
-        reply += "\n\n" + "\n".join(f"{i + 1}. {opt}" for i, opt in enumerate(cleaned))
-        return reply
+        return self._maybe_append_citation_footer(reply)
+
+    def _maybe_append_citation_footer(self, reply: str) -> str:
+        """Append a Sources footer if KB chunks were used but the reply doesn't cite them.
+
+        MVP Unit 2 — LLM compliance enforcement for Rule 16 in active.yaml. The
+        system prompt instructs the model to emit `[Source: ...]` blocks when
+        retrieval informed the answer; this is a safety net for when it doesn't.
+
+        Rules:
+        - Only fires when self.rag.kb_status has citations (i.e., chunks were used)
+        - Only fires when reply doesn't already contain a `[Source:` substring
+        - Append-only — never modifies the LLM body
+        - Idempotent — running this on already-cited reply is a no-op
+        """
+        try:
+            kb_status = getattr(self.rag, "kb_status", None) or {}
+        except AttributeError:
+            return reply
+        citations = kb_status.get("citations") or []
+        if not citations:
+            return reply
+        if "[Source:" in reply or "--- Sources ---" in reply:
+            return reply
+        lines = ["", "", "--- Sources ---"]
+        for i, c in enumerate(citations, 1):
+            mfr = c.get("manufacturer", "") or ""
+            mdl = c.get("model_number", "") or ""
+            section = c.get("section", "") or ""
+            label_parts = [p for p in [mfr, mdl] if p]
+            label = " ".join(label_parts) if label_parts else "knowledge base"
+            if section:
+                label += f" — {section}"
+            lines.append(f"[{i}] {label}")
+        return reply + "\n".join(lines)
