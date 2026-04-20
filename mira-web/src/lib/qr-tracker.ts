@@ -44,6 +44,57 @@ export async function resolveAssetForScan(
   return { found: true, atlas_asset_id: rows[0].atlas_asset_id as number };
 }
 
+export interface ChannelConfig {
+  tenantId: string;
+  atlasAssetId: number;
+  enabledChannels: string[];
+  telegramBotUsername: string | null;
+  openwebuiUrl: string;
+  allowGuestReports: boolean;
+}
+
+export type ResolveWithChannelResult =
+  | { found: false }
+  | ({ found: true } & ChannelConfig);
+
+/**
+ * Global (cross-tenant) lookup for unauthed QR scans.
+ * Returns the first tenant that owns this asset_tag + their channel config.
+ * Used when no mira_session cookie is present — caller must preserve
+ * byte-identical not-found HTML for cross-tenant privacy (spec §12.6).
+ */
+export async function resolveAssetWithChannelConfig(
+  assetTag: string,
+): Promise<ResolveWithChannelResult> {
+  if (!ASSET_TAG_RE.test(assetTag)) return { found: false };
+
+  const db = sql();
+  const rows = await db`
+    SELECT
+      a.tenant_id,
+      a.atlas_asset_id,
+      COALESCE(c.enabled_channels, ARRAY['openwebui', 'guest']) AS enabled_channels,
+      c.telegram_bot_username,
+      COALESCE(c.openwebui_url, 'https://app.factorylm.com')   AS openwebui_url,
+      COALESCE(c.allow_guest_reports, true)                     AS allow_guest_reports
+    FROM asset_qr_tags a
+    LEFT JOIN tenant_channel_config c ON c.tenant_id = a.tenant_id
+    WHERE lower(a.asset_tag) = lower(${assetTag})
+    LIMIT 1`;
+
+  if (rows.length === 0) return { found: false };
+  const r = rows[0];
+  return {
+    found: true,
+    tenantId: r.tenant_id as string,
+    atlasAssetId: r.atlas_asset_id as number,
+    enabledChannels: r.enabled_channels as string[],
+    telegramBotUsername: r.telegram_bot_username as string | null,
+    openwebuiUrl: r.openwebui_url as string,
+    allowGuestReports: r.allow_guest_reports as boolean,
+  };
+}
+
 export interface RecordScanInput {
   tenant_id: string;
   asset_tag: string;

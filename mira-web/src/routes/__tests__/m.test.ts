@@ -35,9 +35,10 @@ async function jwt(): Promise<string> {
 }
 
 describe("GET /m/:asset_tag", () => {
-  test("401 without auth", async () => {
-    const res = await app.request("/m/VFD-07");
-    expect(res.status).toBe(401);
+  test("redirects unauthed scan to chooser or report (not 401)", async () => {
+    const res = await app.request("/m/VFD-07", { redirect: "manual" });
+    // Unauthed scans route to chooser/report based on channel config
+    expect(res.status).toBe(302);
   });
 
   test("302 with pending-scan cookie on valid scan", async () => {

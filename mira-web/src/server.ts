@@ -89,8 +89,11 @@ import {
   invalidateCache,
 } from "./lib/blog-db.js";
 import { m } from "./routes/m.js";
+import { mChooser } from "./routes/m-chooser.js";
+import { mReport, mReportApi } from "./routes/m-report.js";
 import { adminPages, adminApi } from "./routes/admin/qr-print.js";
 import { qrAnalytics } from "./routes/admin/qr-analytics.js";
+import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -132,13 +135,18 @@ export const app = new Hono();
 // Middleware
 app.use("*", cors());
 
-// QR scan route — /m/:asset_tag
-app.route("/m", m);
+// QR scan routes — /m/:asset_tag (auth optional), /m/:asset_tag/choose, /m/:asset_tag/report
+app.route("/m", mChooser);   // GET /m/:asset_tag/choose[?set_pref=...]
+app.route("/m", mReport);    // GET /m/:asset_tag/report
+app.route("/m", m);          // GET /m/:asset_tag (main entry — must register last so subroutes match first)
+app.route("/", mReportApi);  // POST /api/m/report
 
-// Admin routes — QR print page + batch PDF endpoint
-app.route("/admin", adminPages); // handles GET /admin/qr-print
-app.route("/", adminApi);        // handles POST /api/admin/qr-print-batch
-app.route("/admin", qrAnalytics); // handles GET /admin/qr-analytics
+// Admin routes — QR print page + batch PDF endpoint + channel config
+app.route("/admin", adminPages);        // handles GET /admin/qr-print
+app.route("/", adminApi);               // handles POST /api/admin/qr-print-batch
+app.route("/admin", qrAnalytics);       // handles GET /admin/qr-analytics
+app.route("/admin", adminChannelPages); // handles GET /admin/channels
+app.route("/", adminChannelApi);        // handles POST /api/admin/channels
 
 // ---------------------------------------------------------------------------
 // Static files
