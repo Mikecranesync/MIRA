@@ -70,11 +70,12 @@ def read_pending_scan_id(cookie_header: str | None) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def lookup_scan(scan_id: str) -> dict[str, Any] | None:
-    """Fetch (tenant_id, asset_tag, atlas_user_id) from qr_scan_events.
+def lookup_scan_context(scan_id: str) -> dict[str, Any] | None:
+    """Fetch scan context in one query via LEFT JOIN to asset_qr_tags.
 
     Returns None on any error or if the scan_id is not found.
-    Uses sqlalchemy + NullPool matching the session_memory pattern.
+    LEFT JOIN because qr_scan_events correctly logs not-found scans that
+    have no matching asset_qr_tags row (spec §12.6).
     """
     url = os.environ.get("NEON_DATABASE_URL")
     if not url:
@@ -96,8 +97,13 @@ def lookup_scan(scan_id: str) -> dict[str, Any] | None:
             row = (
                 conn.execute(
                     text(
-                        "SELECT tenant_id::text, asset_tag, atlas_user_id "
-                        "FROM qr_scan_events WHERE scan_id = :sid LIMIT 1"
+                        "SELECT e.tenant_id::text, e.asset_tag, e.atlas_user_id,"
+                        "       t.atlas_asset_id "
+                        "FROM qr_scan_events e "
+                        "LEFT JOIN asset_qr_tags t "
+                        "  ON t.tenant_id = e.tenant_id "
+                        " AND lower(t.asset_tag) = lower(e.asset_tag) "
+                        "WHERE e.scan_id = :sid LIMIT 1"
                     ),
                     {"sid": scan_id},
                 )
@@ -106,7 +112,7 @@ def lookup_scan(scan_id: str) -> dict[str, Any] | None:
             )
             return dict(row) if row else None
     except Exception as exc:
-        logger.warning("qr_bridge: lookup_scan failed: %s", exc)
+        logger.warning("qr_bridge: lookup_scan_context failed: %s", exc)
         return None
 
 
@@ -120,7 +126,7 @@ def process_pending_scan(cookie_header: str | None, chat_id: str) -> bool:
     if not scan_id:
         return False
 
-    row = lookup_scan(scan_id)
+    row = lookup_scan_context(scan_id)
     if not row:
         logger.debug("qr_bridge: scan_id=%s not found in qr_scan_events", scan_id)
         return False
