@@ -50,6 +50,9 @@ SAFETY_KEYWORDS = [
     "live panel",
     "working live",
     "working on live",
+    # Temporal live-work phrases — Karpathy loop finding 2026-04-19
+    "was live",
+    "while live",
 ]
 
 INTENT_KEYWORDS = {
