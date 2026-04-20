@@ -19,6 +19,7 @@ from .guardrails import (
     classify_intent,
     detect_session_followup,
     resolve_option_selection,
+    scrub_fabricated_reflection,
     strip_mentions,
     vendor_name_from_text,
     vendor_support_url,
@@ -816,7 +817,7 @@ class Supervisor:
             ctx["history"] = history
             state["context"] = ctx
             self._save_state(chat_id, state)
-            formatted = self._format_reply(parsed)
+            formatted = self._format_reply(parsed, user_message=message)
             tl_flush()
             return self._make_result(
                 formatted,
@@ -1048,7 +1049,7 @@ class Supervisor:
 
         self._save_state(chat_id, state)
 
-        formatted = self._format_reply(parsed)
+        formatted = self._format_reply(parsed, user_message=message)
         # Phase 3 — prepend honest crawl-failure message if a prior doc-crawl exhausted.
         if _honest_prefix:
             formatted = _honest_prefix + formatted
@@ -1464,7 +1465,7 @@ class Supervisor:
 
         state["context"] = ctx
         self._save_state(chat_id, state)
-        formatted = self._format_reply(parsed)
+        formatted = self._format_reply(parsed, user_message=message)
         if honest_prefix:
             formatted = honest_prefix + formatted
         return self._make_result(
@@ -2377,11 +2378,13 @@ class Supervisor:
         state["exchange_count"] += 1
         return state
 
-    def _format_reply(self, parsed: dict) -> str:
+    def _format_reply(self, parsed: dict, user_message: str = "") -> str:
         """Format parsed response for display.
 
         Shape rules (2026-04-19 audit):
         - Strip vision-prose leakage ("The image shows...") from reply head.
+        - Strip fabricated reflections ("You've checked X" when user didn't
+          say X) — Rule 21 enforcement.
         - Drop padding options banned by Rule 3 ("I'm not sure", "Other",
           "Not visible", placeholder "1"/"2", etc.).
         - When remaining options are a Yes/No pair, render inline prose
@@ -2392,6 +2395,8 @@ class Supervisor:
         options = parsed.get("options", [])
 
         reply = _VISION_PROSE_HEAD_RE.sub("", reply).lstrip()
+        if user_message:
+            reply = scrub_fabricated_reflection(reply, user_message)
 
         cleaned: list[str] = []
         for raw in options:
