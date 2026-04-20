@@ -119,7 +119,7 @@ bash install/smoke_test.sh
 - **Wiki schema:** `wiki/SCHEMA.md`
 - **Skills:** `.claude/skills/`
 - **Sprint state:** `.planning/STATE.md`
-- **Active 90-day MVP plan:** `~/.claude/plans/yes-giggly-floyd.md` — locked 2026-04-19 → 2026-07-19; do not propose work outside the 10 units
+- **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
 
 ---
