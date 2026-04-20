@@ -3,6 +3,7 @@ description: "User asks about nonexistent VLT FC 360 (real model is FC 350) — 
 # expected_final_state: Q2 (3-turn fixture, can't advance past Q2)
 # honesty_required disabled (2026-04-18): 🟡 partial coverage from VLT FC 302/350 gives real Q2 response,
 # not the 🔴 uncovered banner — no honesty signals generated. KB effectively matches via related model.
+# Honesty signals from "based on general knowledge" preserved; fixture validates behavior either way.
 expected_final_state: Q2
 max_turns: 3
 expected_keywords: [alarm, Danfoss, VLT, documentation, model, fault, manual, searching]

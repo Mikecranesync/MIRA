@@ -19,7 +19,7 @@ from botbuilder.core import BotFrameworkAdapter, BotFrameworkAdapterSettings, Tu
 from botbuilder.schema import Activity, ActivityTypes
 from PIL import Image
 from shared.adapters.base import MIRAAdapter
-from shared.gsd_engine import GSDEngine
+from shared.engine import Supervisor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,7 +38,7 @@ MAX_VISION_PX = int(os.environ.get("MAX_VISION_PX", "512"))
 settings = BotFrameworkAdapterSettings(TEAMS_APP_ID, TEAMS_APP_PASSWORD)
 adapter = BotFrameworkAdapter(settings)
 
-engine = GSDEngine(
+engine = Supervisor(
     db_path=os.environ.get("MIRA_DB_PATH", "/data/mira.db"),
     openwebui_url=OPENWEBUI_BASE_URL,
     api_key=OPENWEBUI_API_KEY,

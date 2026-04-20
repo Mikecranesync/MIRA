@@ -95,6 +95,7 @@ services:
       retries: 3
 
   teams-bot:
+    profiles: ["dormant"]
     build:
       context: .
       dockerfile: teams/Dockerfile
@@ -142,6 +143,7 @@ services:
       retries: 3
 
   whatsapp-bot:
+    profiles: ["dormant"]
     build:
       context: .
       dockerfile: whatsapp/Dockerfile
@@ -189,6 +191,7 @@ services:
       retries: 3
 
   reddit-bot:
+    profiles: ["dormant"]
     build:
       context: .
       dockerfile: reddit/Dockerfile

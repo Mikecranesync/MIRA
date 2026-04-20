@@ -35,7 +35,7 @@ import threading
 from feedback_sync import run_loop as feedback_sync_loop
 from memory import ConversationMemory
 from qr_bridge import build_clear_cookie_header, process_pending_scan
-from shared.gsd_engine import GSDEngine
+from shared.engine import Supervisor
 
 # Explicit handler setup: logging.basicConfig() is a no-op once uvicorn has
 # already installed its own handlers on the root logger, so we configure our
@@ -238,14 +238,14 @@ def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: st
 
 # ── App ──────────────────────────────────────────────────────────────────────
 
-engine: GSDEngine | None = None
+engine: Supervisor | None = None
 memory: ConversationMemory | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global engine, memory
-    engine = GSDEngine(
+    engine = Supervisor(
         db_path=DB_PATH,
         openwebui_url=OPENWEBUI_URL,
         api_key=OPENWEBUI_API_KEY,
@@ -262,7 +262,7 @@ async def lifespan(app: FastAPI):
     # Start feedback sync background thread (polls Open WebUI DB for new ratings)
     sync_thread = threading.Thread(target=feedback_sync_loop, daemon=True)
     sync_thread.start()
-    logger.info("MIRA Pipeline started — GSDEngine initialized (db=%s)", DB_PATH)
+    logger.info("MIRA Pipeline started — Supervisor initialized (db=%s)", DB_PATH)
     yield
     engine = None
     memory = None
@@ -343,7 +343,7 @@ class ChatCompletionRequest(BaseModel):
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request, req: ChatCompletionRequest):
     if engine is None:
-        raise HTTPException(503, "GSDEngine not initialized")
+        raise HTTPException(503, "Supervisor not initialized")
 
     # Extract last user message (text content)
     last_user_msg = ""
@@ -721,7 +721,7 @@ class FeedbackRequest(BaseModel):
 async def submit_feedback(req: FeedbackRequest):
     """Capture thumbs-up/down rating and write to mira.db feedback_log."""
     if engine is None:
-        raise HTTPException(503, "GSDEngine not initialized")
+        raise HTTPException(503, "Supervisor not initialized")
 
     feedback = "positive" if req.rating in ("up", "1", "positive") else "negative"
     engine.log_feedback(req.chat_id, feedback, req.reason)

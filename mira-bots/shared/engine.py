@@ -27,7 +27,6 @@ from .inference.router import InferenceRouter
 from .integrations.atlas_cmms import AtlasCMMSClient
 from .nemotron import NemotronClient
 from .neon_recall import kb_has_coverage
-from .session_memory import load_session, save_session
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
@@ -110,19 +109,6 @@ STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
 _CRITIQUE_DISABLED = os.getenv("MIRA_DISABLE_SELF_CRITIQUE", "0") == "1"
 _CRITIQUE_THRESHOLD = int(os.getenv("MIRA_CRITIQUE_THRESHOLD", "3"))
 _CRITIQUE_MAX_ATTEMPTS = int(os.getenv("MIRA_CRITIQUE_MAX_ATTEMPTS", "2"))
-# Patterns that indicate the user has already supplied fault/alarm specifics.
-# If any match in the conversation history + current message, skip the
-# groundedness clarifying question — the critique is scoring on incomplete context.
-_FAULT_INFO_RE = re.compile(
-    r"""
-    (?:[A-Z]{1,3}-?\d{3,})              # F30001, AL-14, E001
-    | \b[A-Z]{2,3}\b(?=\s+fault)        # OC fault, OL fault (common VFD 2-letter codes)
-    | \b(?:fault\s+code|alarm\s+(?:code|number)|error\s+code|fault\s+number)\b
-    | \b(?:tripping\s+on|tripped\s+on|showing\s+(?:fault|error|alarm))\b
-    | \b(?:displays?|shows?|reading)\s+[A-Z0-9]{2,}  # "shows OC", "displays F7"
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
 # Compact judge prompt — returns only the three actionable dims to keep token cost low.
 _CRITIQUE_PROMPT = """\
 Score this maintenance-AI response. Return ONLY valid JSON — no markdown, no prose.
@@ -137,73 +123,6 @@ Rate each on 1-5 (5=excellent, 3=acceptable, <3=needs revision):
 "helpfulness":{{"score":<1-5>,"note":"<12 words max: technician can act on this?>"}},\
 "instruction_following":{{"score":<1-5>,"note":"<12 words max: honored the user's actual ask?>"}}}}"""
 ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"})
-_Q_STATES = frozenset({"Q1", "Q2", "Q3"})
-
-# Diagnostic-instruction phrases that can legitimately precede a safety keyword
-# without implying an active hazard. "Check for melted insulation" is an
-# instruction to the tech, not a report that insulation is currently melted.
-_SAFETY_INSTRUCTION_PREFIXES: tuple[str, ...] = (
-    "check for ",
-    "check for any ",
-    "check for signs of ",
-    "check for evidence of ",
-    "look for ",
-    "look for any ",
-    "look for signs of ",
-    "look for evidence of ",
-    "inspect for ",
-    "inspect for any ",
-    "inspect for signs of ",
-    "test for ",
-    "test for any ",
-    "measure for ",
-    "verify no ",
-    "verify there is no ",
-    "verify there are no ",
-    "if you see ",
-    "if you observe ",
-    "if there is ",
-    "if there are ",
-    "if any ",
-    "any sign of ",
-    "signs of ",
-    "evidence of ",
-    "indication of ",
-    "before opening ",
-    "before touching ",
-    "before working ",
-)
-
-
-def _safety_is_observational(reply_lower: str) -> bool:
-    """Return True if any SAFETY_KEYWORDS occurrence in ``reply_lower`` is in
-    an observational (hazard-visible-now) context — i.e. NOT immediately
-    preceded by a diagnostic-instruction phrase like "check for" or "if you see".
-
-    Used by ``_advance_state`` to trigger SAFETY_ALERT on real hazard reports
-    while preserving valid diagnostic steps that incidentally name a safety
-    term (issue #386 regression fix).
-    """
-    for kw in SAFETY_KEYWORDS:
-        idx = 0
-        while True:
-            pos = reply_lower.find(kw, idx)
-            if pos == -1:
-                break
-            preceding = reply_lower[max(0, pos - 40) : pos].rstrip()
-            is_instruction = any(
-                preceding.endswith(pfx.rstrip()) for pfx in _SAFETY_INSTRUCTION_PREFIXES
-            )
-            if not is_instruction:
-                return True
-            idx = pos + len(kw)
-    return False
-
-
-# After this many entries into a Q-state the FSM forces a commit to DIAGNOSIS.
-# Counting includes the first non-Q→Q transition, so IDLE→Q1→Q2→Q3 reaches
-# q_rounds=3 at Q3 and triggers. See #387 for the off-by-one fix.
-_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 # How many turns the session photo stays available for follow-up questions
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
@@ -216,12 +135,9 @@ _STATE_ALIASES: dict[str, str] = {
     "DIAGNOSTIC": "DIAGNOSIS",
     "DIAGNOSIS_SUMMARY": "DIAGNOSIS",
     "FAULT_ANALYSIS": "DIAGNOSIS",
-    "FAULT_IDENTIFIED": "DIAGNOSIS",  # fault identified → ready for diagnosis
     "ANALYZING": "DIAGNOSIS",
     "ANALYSIS": "DIAGNOSIS",
     "ROOT_CAUSE": "DIAGNOSIS",
-    "FAULT_INVESTIGATION": "Q2",  # mid-investigation → Q2 (still gathering)
-    "INVESTIGATING": "Q2",
     # Question variants
     "TROUBLESHOOT": "Q1",
     "TROUBLESHOOTING": "Q1",
@@ -229,10 +145,7 @@ _STATE_ALIASES: dict[str, str] = {
     "USER_QUERY": "Q1",
     "INQUIRY": "Q1",
     "NEED_MORE_INFO": "Q1",
-    "NEEDS_MORE_INFO": "Q1",  # LLM variant with trailing S
     "NEED_INFO": "Q1",
-    "NEED_MODEL_NUMBER": "Q1",  # request for model clarification
-    "PARAMETER_INQUIRY": "IDLE",  # pure parameter lookup — no diagnostic session
     "PARAMETER_IDENTIFIED": "Q1",
     "READING_IDENTIFIED": "Q1",
     "INSTALLATION_GUIDANCE": "FIX_STEP",
@@ -287,13 +200,6 @@ _MANUAL_ESCAPE_PHRASES = frozenset(
 )
 
 # Signals that the user is resuming a diagnostic conversation.
-# Detects honesty prefix the model should emit for out-of-KB vendors.
-# Used by the programmatic honesty-prefix injection in process_full().
-_HONESTY_PREFIX_RE = re.compile(
-    r"I don'?t have\b.{0,60}(?:documentation|records|knowledge base)",
-    re.IGNORECASE,
-)
-
 _DIAGNOSIS_SIGNAL_RE = re.compile(
     r"\b(?:fault|error|code|alarm|trips?|overload|won'?t start|not working|"
     r"shuts? off|shutting|blink(?:ing)?|flash(?:ing)?|hz|rpm|amps?|volts?|"
@@ -649,45 +555,6 @@ class Supervisor:
 
         state = self._load_state(chat_id)
 
-        # Citation gate — PROCEED override: tech explicitly accepts LLM best-guess mode.
-        # Must run before all other checks so the tech can unlock a blocked session.
-        if message.strip().upper() in ("PROCEED", "OVERRIDE", "BEST GUESS", "CONTINUE ANYWAY"):
-            ctx = state.get("context") or {}
-            ctx["override_mode"] = True
-            state["context"] = ctx
-            self._save_state(chat_id, state)
-            tl_flush()
-            return self._make_result(
-                "⚠️ **BEST-GUESS MODE** — No manual on file. Proceeding with LLM training "
-                "knowledge only. Results are not verified against documentation. "
-                "Re-ask your question.",
-                "none",
-                trace_id,
-                state["state"],
-            )
-
-        # Cross-session equipment memory: if this is a fresh session (IDLE,
-        # no asset), check NeonDB for a prior asset context from a previous
-        # chat session so the tech doesn't have to re-identify the equipment.
-        if state["state"] == "IDLE" and not state.get("asset_identified"):
-            prior = load_session(chat_id)
-            if prior:
-                state["asset_identified"] = prior["asset_id"]
-                ctx = state.get("context") or {}
-                sc = ctx.setdefault("session_context", {})
-                sc["equipment_type"] = prior["asset_id"]
-                sc["restored_from_memory"] = True
-                if prior.get("open_wo_id"):
-                    sc["open_wo_id"] = prior["open_wo_id"]
-                if prior.get("last_seen_fault"):
-                    sc["last_seen_fault"] = prior["last_seen_fault"]
-                state["context"] = ctx
-                logger.info(
-                    "session_memory: restored asset=%s for chat_id=%s",
-                    prior["asset_id"],
-                    chat_id,
-                )
-
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
         if (state.get("context") or {}).get("cmms_pending") and not photo_b64:
@@ -785,48 +652,17 @@ class Supervisor:
 
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
         if not photo_b64 and intent == "documentation":
-            asset = state.get("asset_identified") or ""
-            combined = f"{message} {asset}".strip()
+            combined = f"{message} {state.get('asset_identified', '')}".strip()
             mfr = vendor_name_from_text(combined) or ""
-
-            # If no vendor found yet and no asset_identified, scan recent history.
-            # Covers "Can you find a manual for this?" mid-session where user
-            # named the equipment 2-3 turns ago but asset_identified was never set.
-            if not mfr and not asset:
-                ctx_h = state.get("context") or {}
-                history = ctx_h.get("history", [])
-                # Last 4 messages (2 exchanges) — enough to catch recent vendor mentions
-                history_tail = " ".join(t.get("content", "") for t in history[-4:])
-                mfr = vendor_name_from_text(history_tail) or ""
-                if mfr:
-                    combined = f"{message} {history_tail}".strip()
-
-            # Fast-path: if KB has no coverage for this vendor, gathering a model
-            # number won't help — skip straight to the honest "no docs" response.
-            if mfr:
-                kb_covered, _ = kb_has_coverage(mfr, combined, resolved_tenant or "")
-                if not kb_covered:
-                    return await self._do_documentation_lookup(
-                        chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
-                    )
 
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
-            # Exception: if we're in an active session AND vendor is known from context
-            # (history extraction above), proceed to doc lookup — the crawl is useful
-            # and we don't need to ask the tech for vendor they already told us.
-            in_active_session = state["state"] not in ("IDLE",)
-            vendor_from_context = mfr and not vendor_name_from_text(
-                f"{message} {asset}".strip()
-            )  # True when mfr came from history (not current message or asset_identified)
-            if not self._is_doc_specific(mfr, combined) and not (
-                in_active_session and vendor_from_context
-            ):
+            if not self._is_doc_specific(mfr, combined):
                 return await self._enter_manual_lookup_gathering(
                     chat_id, message, state, trace_id, mfr
                 )
 
-            # Specific enough (or vendor known from session context) — Phase 2 KB pre-check + crawl
+            # Specific enough — Phase 2 KB pre-check + crawl
             return await self._do_documentation_lookup(
                 chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
             )
@@ -888,13 +724,6 @@ class Supervisor:
             first_sentence = scrubbed.split(".")[0].strip()
             state["asset_identified"] = (
                 first_sentence[:120] if first_sentence else full_vision[:120]
-            )
-
-            # Persist asset context to NeonDB for cross-session recall
-            save_session(
-                chat_id,
-                state["asset_identified"],
-                last_seen_fault=state.get("fault_category"),
             )
 
             # Save photo to disk for follow-up turns
@@ -1086,11 +915,6 @@ class Supervisor:
             tl_flush()
             return self._make_result(parsed["reply"], "none", trace_id)
 
-        # Read KB coverage status from RAG worker (set during process() call above)
-        _kb_cover = self.rag.kb_status
-        _kb_gate_status = _kb_cover.get("status", "unknown")
-        _kb_gate_citations = _kb_cover.get("citations", [])
-
         # Output guardrails
         intent = classify_intent(message)
         parsed["reply"] = check_output(parsed["reply"], intent, has_photo=bool(photo_b64))
@@ -1113,100 +937,6 @@ class Supervisor:
                     parsed["reply"] = f"{asset_key} — {parsed['reply']}"
 
         state = self._advance_state(state, parsed)
-
-        # ---------------------------------------------------------------------------
-        # Citation gate — enforce KB coverage for technical advice states.
-        # UNCOVERED + no override → block with 🔴, fire scrape trigger, return early.
-        # PARTIAL → inject 🟡 banner + background scrape.
-        # COVERED → inject 🟢 banner + citation footer.
-        # Override mode (PROCEED already handled above) shows ⚠️ banner.
-        # ---------------------------------------------------------------------------
-        _override_mode = (state.get("context") or {}).get("override_mode", False)
-        _technical_state = state["state"] in ("DIAGNOSIS", "FIX_STEP")
-
-        if _technical_state and not photo_b64:
-            asset = state.get("asset_identified", "")
-            vendor = vendor_name_from_text(asset) if asset else None
-            vendor_label = vendor or "this equipment"
-
-            if _kb_gate_status == "uncovered" and not _override_mode:
-                # Hard gate — block response, fire scrape, prompt PROCEED
-                asyncio.create_task(
-                    self._fire_scrape_trigger(message, vendor_label, resolved_tenant or "", chat_id)
-                )
-                logger.info(
-                    "CITATION_GATE_BLOCKED chat_id=%s vendor=%r state=%s",
-                    chat_id,
-                    vendor_label,
-                    state["state"],
-                )
-                self._save_state(chat_id, state)
-                tl_flush()
-                return self._make_result(
-                    f"🔴 **No manual found for {vendor_label}.**\n"
-                    f"Searching for documentation now (check back in ~2 hours).\n\n"
-                    f"To continue with LLM best-guess (not manual-verified), type **PROCEED**.",
-                    "none",
-                    trace_id,
-                    state["state"],
-                )
-
-            elif _kb_gate_status == "partial" and not _override_mode:
-                mfr_label = (
-                    _kb_gate_citations[0]["manufacturer"] if _kb_gate_citations else vendor_label
-                )
-                asyncio.create_task(
-                    self._fire_scrape_trigger(message, vendor_label, resolved_tenant or "", chat_id)
-                )
-                parsed["reply"] = (
-                    f"🟡 **KB: Partial coverage** — {mfr_label} (searching for more)\n\n"
-                    + parsed.get("reply", "")
-                )
-                logger.info(
-                    "CITATION_GATE_PARTIAL chat_id=%s vendor=%r",
-                    chat_id,
-                    vendor_label,
-                )
-
-            elif _kb_gate_status == "covered" and not _override_mode:
-                mfr = _kb_gate_citations[0]["manufacturer"] if _kb_gate_citations else ""
-                mdl = _kb_gate_citations[0]["model_number"] if _kb_gate_citations else ""
-                cov_label = f"{mfr} {mdl}".strip() or vendor_label
-                parsed["reply"] = f"🟢 **KB: {cov_label}**\n\n" + parsed.get("reply", "")
-                logger.info(
-                    "CITATION_GATE_COVERED chat_id=%s vendor=%r",
-                    chat_id,
-                    cov_label,
-                )
-
-            elif _override_mode:
-                parsed["reply"] = (
-                    "⚠️ **BEST-GUESS MODE** — No manual. LLM estimate only, "
-                    "not verified against documentation.\n\n" + parsed.get("reply", "")
-                )
-
-            # Append citations footer for covered/partial
-            if (
-                _kb_gate_status in ("covered", "partial")
-                and _kb_gate_citations
-                and not _override_mode
-            ):
-                footer_parts = []
-                for c in _kb_gate_citations[:2]:
-                    c_label = f"{c['manufacturer']} {c['model_number']}".strip()
-                    c_section = c.get("section", "")
-                    if c_section:
-                        c_label += f", {c_section}"
-                    url = c.get("source_url", "")
-                    if url:
-                        footer_parts.append(f"[{c_label}]({url})")
-                    elif c_label:
-                        footer_parts.append(c_label)
-                if footer_parts:
-                    parsed["reply"] = (
-                        parsed.get("reply", "")
-                        + f"\n\n---\n📚 *Source: {' · '.join(footer_parts)}*"
-                    )
 
         # ---------------------------------------------------------------------------
         # Diagnosis self-critique quality gate (AutoGen-style nudge loop)
@@ -1238,46 +968,20 @@ class Supervisor:
                     )
 
                     if "groundedness" in low_dims:
-                        # Before asking for more info, check whether the user
-                        # already supplied fault/alarm specifics in this session.
-                        # The critique only sees the current message, so it can
-                        # score groundedness low even when a fault code appeared
-                        # in an earlier turn (e.g. "showing F30001" in turn 1).
-                        ctx_hist = state.get("context") or {}
-                        history_turns = ctx_hist.get("history", [])
-                        combined_history = (
-                            " ".join(t.get("content", "") for t in history_turns[-8:])
-                            + " "
-                            + message
+                        # Need more info from the user → ask a targeted clarifying
+                        # question and park in DIAGNOSIS_REVISION.
+                        note = scores.get("groundedness_note", "")
+                        clarifying_q = (
+                            "Before I can give you a confident diagnosis, could you "
+                            "share one more detail — what exact fault code, alarm "
+                            "number, or behaviour is the equipment showing right now? "
+                            "(e.g. fault light colour, code displayed, or what it does "
+                            "when the fault occurs)"
                         )
-                        fault_info_present = bool(_FAULT_INFO_RE.search(combined_history))
-
-                        if fault_info_present:
-                            # Critique was wrong — user already gave us enough.
-                            # Treat as acceptable; clear revision counter.
-                            ctx_sc.pop("revision_attempts", None)
-                            ctx_sc.pop("revision_critique", None)
-                            state["context"] = ctx_sc
-                            logger.info(
-                                "SELF_CRITIQUE_GROUNDEDNESS_SUPPRESSED chat_id=%s"
-                                " (fault info found in history)",
-                                chat_id,
-                            )
-                        else:
-                            # Need more info from the user → ask a targeted
-                            # clarifying question and park in DIAGNOSIS_REVISION.
-                            note = scores.get("groundedness_note", "")
-                            clarifying_q = (
-                                "Before I can give you a confident diagnosis, could you "
-                                "share one more detail — what exact fault code, alarm "
-                                "number, or behaviour is the equipment showing right now? "
-                                "(e.g. fault light colour, code displayed, or what it does "
-                                "when the fault occurs)"
-                            )
-                            if note:
-                                clarifying_q += f"\n\n*(My confidence was limited because: {note})*"
-                            state["state"] = "DIAGNOSIS_REVISION"
-                            parsed["reply"] = clarifying_q
+                        if note:
+                            clarifying_q += f"\n\n*(My confidence was limited because: {note})*"
+                        state["state"] = "DIAGNOSIS_REVISION"
+                        parsed["reply"] = clarifying_q
                     else:
                         # Helpfulness / instruction gap — regenerate inline without
                         # asking the user for anything.
@@ -1601,56 +1305,13 @@ class Supervisor:
         state["asset_identified"] = f"{manufacturer}, {model}"
         state["context"] = ctx
 
-        # Persist asset context to NeonDB for cross-session recall
-        save_session(chat_id, state["asset_identified"])
-
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
-
-        # 5. Vision → RAG loop: immediately surface KB content after nameplate extraction.
-        # Fire an auto-query so the user gets a useful answer without a follow-up message.
-        # Only runs when the KB has linked chunks for this equipment.
-        rag_reply = ""
-        if linked_chunks > 0:
-            # If the user captioned the photo with a real question, use it.
-            # Otherwise fire a default fault/troubleshooting query.
-            _cap = message.strip()
-            _is_question = "?" in _cap or bool(
-                re.match(
-                    r"^(what|why|how|when|where|which|is |are |can |does |do )\b",
-                    _cap,
-                    re.IGNORECASE,
-                )
-            )
-            rag_query = (
-                _cap
-                if (_cap and _is_question)
-                else (f"{manufacturer} {model} common faults troubleshooting")
-            )
-            try:
-                raw = await self.rag.process(
-                    rag_query,
-                    state,
-                    tenant_id=resolved_tenant,
-                )
-                parsed = self._parse_response(raw)
-                rag_reply = parsed.get("reply", "")
-            except Exception as e:
-                logger.warning("nameplate auto-RAG failed: %s", e)
-
-        if rag_reply:
-            reply = (
-                f"**{manufacturer} {model}** — asset registered, "
-                f"{linked_chunks} manual chunks linked.\n\n"
-                f"{rag_reply}"
-            )
-        else:
-            reply = (
-                f"Asset registered: {manufacturer} {model} — "
-                f"linked to {linked_chunks} OEM manual chunks. "
-                f"Ask me anything about this equipment."
-            )
-
+        reply = (
+            f"Asset registered: {manufacturer} {model} — "
+            f"linked to {linked_chunks} OEM manual chunks. "
+            f"Ask me anything about this equipment."
+        )
         history.append({"role": "assistant", "content": reply})
         if len(history) > HISTORY_LIMIT:
             history = history[-HISTORY_LIMIT:]
@@ -1658,12 +1319,11 @@ class Supervisor:
         state["context"] = ctx
 
         logger.info(
-            "NAMEPLATE_FLOW tenant=%s manufacturer=%s model=%s linked_chunks=%d auto_rag=%s",
+            "NAMEPLATE_FLOW tenant=%s manufacturer=%s model=%s linked_chunks=%d",
             resolved_tenant,
             manufacturer,
             model,
             linked_chunks,
-            bool(rag_reply),
         )
         return reply
 
@@ -2109,25 +1769,17 @@ class Supervisor:
             "query": combined[:120],
             "queued_at": datetime.now(timezone.utc).isoformat(),
         }
-        # Doc request handled — return to IDLE so the session doesn't stay
-        # stuck in a mid-diagnostic state after the "no docs" response.
-        state["state"] = "IDLE"
         state["context"] = ctx
-        # Reset session to IDLE — KB miss means no diagnosis can proceed.
-        # Allows tech to start fresh after being redirected to manufacturer docs.
-        prior_state = state["state"]
-        state["state"] = "IDLE"
         asyncio.create_task(self._fire_scrape_trigger(message, mfr, resolved_tenant or "", chat_id))
         logger.info(
-            "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s prior_state=%s → IDLE",
+            "DOC_INTENT_ROUTING chat_id=%s manufacturer=%r support_url=%s",
             chat_id,
             mfr,
             url,
-            prior_state,
         )
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
-        return self._make_result(reply, "low", trace_id, "IDLE")
+        return self._make_result(reply, "low", trace_id, state["state"])
 
     async def _check_pending_doc_job(self, chat_id: str, state: dict) -> str:
         """Check if a previous doc-crawl job for this chat finished with exhausted fallback.
@@ -2552,15 +2204,11 @@ class Supervisor:
         ``follow_ups``, ``tags``, ``title``, ``queries`` instead of the
         expected ``reply`` key. We attempt to salvage these into a valid
         response so the FSM doesn't stall.
-
-        ``strict=False`` on every ``json.loads`` tolerates unescaped control
-        characters (literal newlines, tabs) inside string values — LLMs emit
-        prose paragraph breaks this way constantly (P0 #380).
         """
         raw_stripped = raw.strip()
 
         try:
-            parsed = json.loads(raw_stripped, strict=False)
+            parsed = json.loads(raw_stripped)
             if isinstance(parsed, dict):
                 if "reply" in parsed:
                     return self._extract_parsed(parsed)
@@ -2577,7 +2225,7 @@ class Supervisor:
                 if block.startswith("json"):
                     block = block[4:].strip()
                 try:
-                    parsed = json.loads(block, strict=False)
+                    parsed = json.loads(block)
                     if isinstance(parsed, dict) and "reply" in parsed:
                         return self._extract_parsed(parsed)
                 except (json.JSONDecodeError, TypeError):
@@ -2588,7 +2236,7 @@ class Supervisor:
                 for j in range(len(raw_stripped), i, -1):
                     if raw_stripped[j - 1] == "}":
                         try:
-                            parsed = json.loads(raw_stripped[i:j], strict=False)
+                            parsed = json.loads(raw_stripped[i:j])
                             if isinstance(parsed, dict) and "reply" in parsed:
                                 return self._extract_parsed(parsed)
                         except (json.JSONDecodeError, TypeError):
@@ -2601,19 +2249,8 @@ class Supervisor:
             close_idx = clean.rfind("}")
             if close_idx > brace_idx:
                 clean = (clean[:brace_idx] + clean[close_idx + 1 :]).strip()
-        # Safety: never leak a raw JSON envelope to chat output. If the
-        # stripped prose is empty and the original looks envelope-shaped,
-        # last-ditch regex-pluck the reply value; otherwise substitute a
-        # generic formatting-error message (P0 #380). Empty input stays empty.
-        if not clean and raw_stripped:
-            reply_match = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)"', raw_stripped, re.DOTALL)
-            if reply_match:
-                try:
-                    clean = json.loads(f'"{reply_match.group(1)}"', strict=False)
-                except (json.JSONDecodeError, TypeError):
-                    clean = reply_match.group(1).replace("\\n", "\n").replace('\\"', '"')
-            else:
-                clean = "MIRA had trouble formatting that response. Please ask again."
+        if not clean:
+            clean = raw_stripped
         logger.warning("_parse_response fallback; raw=%r", raw_stripped[:200])
         return {"next_state": None, "reply": clean, "options": [], "confidence": "LOW"}
 
@@ -2673,12 +2310,10 @@ class Supervisor:
         current = state["state"]
         reply_lower = parsed.get("reply", "").lower()
 
-        # Safety override: fire when LLM explicitly sets next_state OR when a
-        # safety keyword appears in the reply in an *observational* context
-        # (hazard visible now). Conditional/instructional mentions like
-        # "check for melted insulation" or "inspect for burn marks" are
-        # legitimate diagnostic steps and must NOT escalate — see #498b43f.
-        if parsed.get("next_state") == "SAFETY_ALERT" or _safety_is_observational(reply_lower):
+        if (
+            any(kw in reply_lower for kw in SAFETY_KEYWORDS)
+            or parsed.get("next_state") == "SAFETY_ALERT"
+        ):
             state["state"] = "SAFETY_ALERT"
             state["final_state"] = "SAFETY_ALERT"
             state["exchange_count"] += 1
@@ -2715,26 +2350,6 @@ class Supervisor:
         if state["state"] in ("RESOLVED", "SAFETY_ALERT"):
             state["final_state"] = state["state"]
 
-        # Q-trap guard: if the FSM has been in Q-states for _MAX_Q_ROUNDS consecutive
-        # turns, force a commit to DIAGNOSIS so the technician gets an answer.
-        # Count every entry into a Q-state (including the first one from a non-Q
-        # current) so IDLE→Q1→Q2→Q3 commits on round 3 rather than round 4.
-        ctx_q = state.get("context") or {}
-        if state["state"] in _Q_STATES:
-            ctx_q["q_rounds"] = ctx_q.get("q_rounds", 0) + 1
-            if ctx_q["q_rounds"] >= _MAX_Q_ROUNDS:
-                logger.info(
-                    "Q_TRAP_COMMIT chat_id=%s q_rounds=%d current=%s → DIAGNOSIS",
-                    state.get("chat_id", "?"),
-                    ctx_q["q_rounds"],
-                    state["state"],
-                )
-                state["state"] = "DIAGNOSIS"
-                ctx_q["q_rounds"] = 0
-        else:
-            ctx_q.pop("q_rounds", None)
-        state["context"] = ctx_q
-
         if not state.get("fault_category"):
             for cat in (
                 "comms",
@@ -2757,13 +2372,6 @@ class Supervisor:
                         "pressure": "hydraulic",
                     }
                     state["fault_category"] = normalized.get(cat, cat)
-                    # Update cross-session memory with the latest fault category
-                    if state.get("asset_identified"):
-                        save_session(
-                            state["chat_id"],
-                            state["asset_identified"],
-                            last_seen_fault=state["fault_category"],
-                        )
                     break
 
         state["exchange_count"] += 1
@@ -2801,7 +2409,11 @@ class Supervisor:
         if len(cleaned) < 2:
             return reply
 
-        if len(cleaned) == 2 and _YES_OPTION_RE.match(cleaned[0]) and _NO_OPTION_RE.match(cleaned[1]):
+        if (
+            len(cleaned) == 2
+            and _YES_OPTION_RE.match(cleaned[0])
+            and _NO_OPTION_RE.match(cleaned[1])
+        ):
             reply = deduplicate_options(reply, cleaned)
             suffix = f"Reply: {cleaned[0]} or {cleaned[1]}."
             if not reply.rstrip().endswith((".", "?", "!")):

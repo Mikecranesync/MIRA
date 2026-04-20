@@ -1,0 +1,13 @@
+PROGRAM PROG_IO
+(* Step 1 I/O Check -- Micro820 2080-LC20-20QBB                       *)
+(* Minimum viable program. Does nothing but toggle a heartbeat so we  *)
+(* can confirm the PLC is scanning. All physical I/O is exposed via   *)
+(* the Modbus TCP server (see modbus_coils.md).                        *)
+(*                                                                    *)
+(* When a remote Modbus master writes to coil addresses 13..20        *)
+(* (mapped to _IO_EM_DO_00.._IO_EM_DO_07) the PLC drives the          *)
+(* physical output. We do not overwrite those DOs here.               *)
+
+  heartbeat := NOT heartbeat;
+
+END_PROGRAM

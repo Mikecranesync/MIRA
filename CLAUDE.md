@@ -34,8 +34,9 @@ MIRA/
 ├── mira-pipeline/   # OpenAI-compat API wrapping GSDEngine — active VPS chat path
 ├── mira-web/        # PLG funnel — Hono/Bun, Stripe, /cmms landing + Mira AI chat
 ├── mira-cmms/       # Atlas CMMS — work orders, PM scheduling, asset registry
-├── mira-hud/        # AR HUD desktop app (Express + Socket.IO)
-├── mira-sidecar/    # ⚠️ LEGACY — ChromaDB RAG, superseded by mira-pipeline (ADR-0008)
+├── mira-relay/      # Cloud relay endpoint for Ignition factory→cloud tag streaming (SaaS-only, in saas.yml)
+├── mira-sidecar/    # ⚠️ LEGACY — ChromaDB RAG, superseded by mira-pipeline (ADR-0008); sunset pending OEM migration
+├── mira-connect/    # ⚠️ DEFERRED — Modbus/PLC drivers (post-MVP, "Config 4")
 ├── wiki/            # LLM-maintained ops wiki (Karpathy pattern) — Obsidian vault
 ├── tests/           # 5-regime testing framework (76 offline tests, 39 golden cases)
 ├── docs/            # PRD, ADRs, C4 diagrams, runbooks, CHANGELOG, env-vars, known-issues
@@ -118,6 +119,22 @@ bash install/smoke_test.sh
 - **Wiki schema:** `wiki/SCHEMA.md`
 - **Skills:** `.claude/skills/`
 - **Sprint state:** `.planning/STATE.md`
+- **Active 90-day MVP plan:** `~/.claude/plans/yes-giggly-floyd.md` — locked 2026-04-19 → 2026-07-19; do not propose work outside the 10 units
+- **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
+
+---
+
+## Deferred / Archived Modules
+
+| Module | Status | Why | Where to find it |
+|---|---|---|---|
+| `mira-hud` | **Archived 2026-04-19** | AR HMI demo, hardware-gated (Ignition + MCI badge reader), not in any compose, not customer-shippable in MVP window | branch `archive/mira-hud-2026-04` |
+| `mira-prototype` | **Archived 2026-04-19** | Pre-VIM Flask MJPEG prototype, replaced by mira-pipeline + qwen2.5vl | branch `archive/mira-prototype-2026-04` |
+| `mira-sidecar` | **Sunset pending** | ChromaDB RAG; awaiting OEM migration to Open WebUI KB before stop. Tracked in `docs/known-issues.md`. | still in repo |
+| `mira-connect` | **Deferred to "Config 4"** (post-MVP) | Modbus TCP / PLC drivers; not in MVP critical path | still in repo, dormant |
+| `mira-relay` | **Active SaaS infrastructure** (NOT deferred) | Cloud endpoint for Ignition factory→cloud tag streaming; powers MIRA Connect activation flow on `factorylm.com`. Lives in `docker-compose.saas.yml` only. | still in repo + saas.yml |
+
+To restore an archived module: `git checkout archive/<branch> -- <module-dir>` then commit on a new branch.
 
 ---
 
