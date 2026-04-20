@@ -5,6 +5,16 @@ mira_copy/outputs/*
 # Session ephemera — PR/issue drafts, one-off probe scripts, worktree parent
 .tmp_*
 .claude/worktrees/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.pr-body-*.md
+.smoke-*.ts
+.smoke-*.sh
+qr-TEST-*.png
+
+# Archived modules — local debris left after hud/prototype archiving (history on archive/*)
+mira-hud/
+mira-prototype/
 
 # Secrets — NEVER commit these
 .env
