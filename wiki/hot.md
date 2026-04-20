@@ -1,5 +1,15 @@
 # Hot Cache — 2026-04-20 — CHARLIE
 
+## Session — 2026-04-20 (TRAVEL LAPTOP, lead-gen + marketing package)
+
+- **Overnight audit:** one CRM commit landed — `d4c556a` at 06:17 EDT, "MIRA Lead Hunter v1 — 330 facilities, 85 qualified leads" (`tools/lead-hunter/hunt.py`, CharlieNode). The 5 hourly commits on 2026-04-20 between 01:02 and 06:13 EDT are **eval diagnostic runs** (`.github/workflows/ci-evals.yml`), not CRM.
+- **NeonDB state:** 380 `prospect_facilities`, 7 `prospect_contacts`, **162 need contact enrichment** (have website, no probed contacts).
+- **HubSpot token rotated:** user created HubSpot Private App with 5 CRM scopes, overwrote `HUBSPOT_API_KEY` in Doppler `factorylm/prd`. Verified 2026-04-20: `GET /crm/v3/objects/companies?limit=1` → 200 OK. CSV `marketing/prospects/hubspot-import-2026-04-20.csv` (86 rows) is staged but not yet pushed.
+- **`tools/lead-hunter/hunt.py` extended on branch `feat/lead-hunter-enrich-contacts`:** added `--enrich-only` mode, `search_contacts_via_serper()`, `enrich_facilities()` orchestrator, `confidence` column carry-through (website-direct vs search-snippet). See commit message for details. **Not yet merged.**
+- **Apollo free-plan blocker:** `APOLLO_IO_API_KEY` exists, `/auth/health` 200 — but `/mixed_people/search` returns 403 "not accessible on free plan." Upgrade = $49/mo Starter (120 email credits).
+- **Doppler inventory captured:** Firecrawl, Apify, SendGrid, HubSpot (rotated), Apollo (free-tier blocked), Anthropic, NeonDB. **NO Serper, Exa, Hunter, Clearbit, Lusha.** Full list: `reference_doppler_api_keys.md` in memory.
+- **Brainstorming session active (paused):** user invoked `superpowers:brainstorming` to roll lead-hunter + enrichment + mira-copy + HubSpot + SendGrid into a cohesive "marketing package." Paused at first clarifying question — what's the end-state deliverable (manual list / one-click drafts / auto-send). No implementation until design approved. Spec will land at `docs/superpowers/specs/2026-04-20-marketing-package-design.md`.
+
 ## Session — 2026-04-20 (CHARLIE, QR pipeline ship)
 
 - **v3.6.0 tagged + pushed** — QR asset-tagging pipeline complete: scan → pipeline → asset-aware chat + channel chooser + guest reports.
