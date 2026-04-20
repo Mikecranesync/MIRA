@@ -888,6 +888,7 @@ def expand_abbreviations(message: str) -> str:
 
 def rewrite_question(message: str, asset_identified: str = None) -> str:
     """Reformulate vague questions into precise technical queries."""
+    original = message
     message = expand_abbreviations(message)
     rewrites = {
         "acting weird": "intermittent fault behavior",
@@ -902,6 +903,9 @@ def rewrite_question(message: str, asset_identified: str = None) -> str:
     for vague, precise in rewrites.items():
         if vague in msg_lower:
             result = msg_lower.replace(vague, precise)
+
+    if not result or not result.strip():
+        result = original
 
     if asset_identified:
         result = f"{asset_identified} \u2014 {result}"
