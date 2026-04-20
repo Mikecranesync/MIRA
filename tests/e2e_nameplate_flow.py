@@ -144,13 +144,13 @@ async def step_gsd_engine(photo_path: Path) -> dict:
         sys.path.insert(0, bots_path)
 
     try:
-        from shared.gsd_engine import GSDEngine
+        from shared.engine import Supervisor
     except ImportError as e:
-        logger.error("  %s  Cannot import GSDEngine: %s", FAIL, e)
+        logger.error("  %s  Cannot import Supervisor: %s", FAIL, e)
         return {}
 
     db_path = "/tmp/e2e_test_mira.db"
-    engine = GSDEngine(
+    engine = Supervisor(
         db_path=db_path,
         openwebui_url=OPENWEBUI_URL,
         api_key=OPENWEBUI_KEY,
@@ -270,13 +270,13 @@ async def step_followup_chat(photo_path: Path, asset_identified: str) -> dict:
         sys.path.insert(0, bots_path)
 
     try:
-        from shared.gsd_engine import GSDEngine
+        from shared.engine import Supervisor
     except ImportError as e:
-        logger.error("  %s  Cannot import GSDEngine: %s", FAIL, e)
+        logger.error("  %s  Cannot import Supervisor: %s", FAIL, e)
         return {}
 
     db_path = "/tmp/e2e_test_mira.db"  # same session DB as step 2
-    engine = GSDEngine(
+    engine = Supervisor(
         db_path=db_path,
         openwebui_url=OPENWEBUI_URL,
         api_key=OPENWEBUI_KEY,

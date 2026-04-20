@@ -128,9 +128,9 @@ class LocalPipeline:
                 )
 
         # Import after path setup so mira-bots/ is on sys.path
-        from shared.gsd_engine import GSDEngine  # noqa: PLC0415
+        from shared.engine import Supervisor  # noqa: PLC0415
 
-        self._engine = GSDEngine(
+        self._engine = Supervisor(
             db_path=self.db_path,
             openwebui_url=_openwebui_url,
             api_key=_api_key,

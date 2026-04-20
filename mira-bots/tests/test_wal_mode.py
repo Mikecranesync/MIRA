@@ -1,4 +1,4 @@
-"""Test that SQLite WAL mode is enabled by GSDEngine."""
+"""Test that SQLite WAL mode is enabled by Supervisor."""
 
 import os
 import sys

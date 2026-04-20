@@ -10,7 +10,7 @@ import os
 import httpx
 from pdf_handler import ingest_pdf
 from PIL import Image
-from shared.gsd_engine import GSDEngine
+from shared.engine import Supervisor
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
 
@@ -33,7 +33,7 @@ ALLOWED_CHANNELS = [
     c.strip() for c in os.environ.get("SLACK_ALLOWED_CHANNELS", "").split(",") if c.strip()
 ]
 
-engine = GSDEngine(
+engine = Supervisor(
     db_path=os.environ.get("MIRA_DB_PATH", "/data/mira.db"),
     openwebui_url=OPENWEBUI_BASE_URL,
     api_key=OPENWEBUI_API_KEY,

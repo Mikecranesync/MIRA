@@ -949,7 +949,7 @@ class Supervisor:
             _wo_draft = self._build_wo_draft(state)
             parsed["reply"] = parsed.get("reply", "").rstrip() + (
                 "\n\nShould I log a work order in the CMMS?"
-            ) 75d3d4e (feat(integration): Atlas CMMS work-order creation — UC-5 ship-blocker)
+            )
 
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
