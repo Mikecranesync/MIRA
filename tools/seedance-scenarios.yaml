@@ -1,0 +1,59 @@
+scenarios:
+  qr-scan-demo:
+    prompt: "Close-up of an industrial maintenance technician in safety vest scanning a QR code sticker on a large VFD panel with their smartphone. The phone screen lights up showing an AI chat interface with diagnostic text. Industrial facility background with machinery, professional cinematic lighting, shallow depth of field on the phone screen."
+    duration: 10
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+    references:
+      - path: marketing/references/mira-chat-screenshot.png
+        role: subject
+    negative_prompt: "blurry, cartoon, anime, low quality, watermark"
+
+  vfd-fault-diagnosis:
+    prompt: "Split-screen view: left side shows a VFD drive panel with a red fault indicator LED blinking, right side shows a smartphone displaying step-by-step diagnostic instructions from an AI assistant. The text on the phone is clear and readable. Industrial maintenance setting, fluorescent overhead lighting."
+    duration: 10
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+    references:
+      - path: marketing/references/mira-diagnosis-screenshot.png
+        role: subject
+
+  safety-escalation:
+    prompt: "A maintenance technician approaches an electrical panel. Their phone buzzes with a bright red warning message from an AI safety system reading STOP. The technician pauses and steps back. Dramatic lighting, serious tone, industrial safety theme."
+    duration: 8
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+    references:
+      - path: marketing/references/mira-safety-alert.png
+        role: subject
+    negative_prompt: "happy, cheerful, casual"
+
+  nameplate-photo:
+    prompt: "Close-up of a technician's hands holding a smartphone, taking a photo of a motor nameplate. The phone camera viewfinder shows the nameplate clearly. Then the screen transitions to show AI-extracted specifications: manufacturer, model, voltage, HP. Clean UI overlay on the phone screen."
+    duration: 12
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+
+  manual-lookup:
+    prompt: "A technician types a message on their phone asking for an equipment manual. The AI interface responds instantly with a link and begins searching. A loading indicator shows documentation being found. Then technical diagrams and wiring information appear in the chat. Professional, helpful, efficient."
+    duration: 10
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+
+  hero-30sec:
+    prompt: "Cinematic montage of industrial maintenance: a technician walks through a factory floor, scans a QR code on equipment, their phone shows an AI diagnostic conversation, they follow the step-by-step instructions, fix the machine, and a work order is automatically logged. Professional, inspiring, future-of-maintenance feel. Warm industrial lighting transitioning to clean digital interface shots."
+    duration: 15
+    resolution: 1080p
+    aspect_ratio: "16:9"
+    style: cinematic
+    negative_prompt: "cartoon, anime, toy, miniature"
+
+# Cost reference (BytePlus Seedance 2.0, approximate as of 2026-04):
+# 720p  × 5s  ≈ $0.05
+# 1080p × 10s ≈ $0.18
+# 1080p × 15s ≈ $0.27
