@@ -793,7 +793,13 @@ def enrich_facilities(
       - "firecrawl-team-page": LLM-extracted from the facility's team page
       - "website-direct":      scraped from the facility's own site (regex)
       - "search-snippet":      parsed from Google snippets via Serper
-    Dedupes across all three sources by normalized name.
+    Dedupes across all three sources by normalized name. Unnamed contacts
+    (bare email addresses, orphan phones) intentionally bypass dedup so
+    multiple info@ records from different sources all survive.
+
+    Firecrawl budget is tracked via a mutable dict (`fc_budget`) passed
+    into `enrich_via_firecrawl`, which decrements `remaining` per call.
+    Serper budget is tracked locally as an int counter.
     """
     to_enrich = [f for f in fac_list if f.website and f.icp_score >= 4]
     log.info("=== ENRICHMENT PHASE ===")
@@ -834,6 +840,8 @@ def enrich_facilities(
                 enrichment = scrape_site(f.website, client)
                 if enrichment.get("emails"):
                     for em in enrichment["emails"][:3]:
+                        # unnamed contacts bypass dedup intentionally — each bare
+                        # email represents a distinct inbox worth keeping
                         f.contacts.append({
                             "name": "", "email": em, "source": f.website,
                             "confidence": "website-direct",
