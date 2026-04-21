@@ -115,3 +115,48 @@ class TestEnrichViaFirecrawl:
         assert results == []
         mock_post.assert_not_called()
         assert budget["remaining"] == 10
+
+
+class TestEnrichFacilitiesOrchestrator:
+    """enrich_facilities calls Firecrawl first, then regex, then dedupes."""
+
+    def test_dedupe_across_sources(self):
+        """Same person found by Firecrawl AND regex appears once in contacts."""
+        fac = hunt.Facility(
+            name="Acme Widgets",
+            city="Lake Wales",
+            website="https://acme.com",
+            icp_score=12,
+        )
+        firecrawl_contacts = [
+            {"name": "Bob Smith", "title": "Maintenance Manager",
+             "email": "bob@acme.com", "linkedin_url": "",
+             "source": "https://acme.com", "confidence": "firecrawl-team-page"},
+        ]
+        regex_contacts_from_site = {
+            "emails": ["info@acme.com"],
+            "phones": ["555-0100"],
+            "contacts": [
+                {"name": "Bob Smith", "title": "Maintenance Manager",
+                 "source": "https://acme.com/about"},
+            ],
+            "vfd_hit": False,
+            "text": "",
+        }
+
+        with patch("hunt.enrich_via_firecrawl",
+                   return_value=firecrawl_contacts), \
+             patch("hunt.scrape_site",
+                   return_value=regex_contacts_from_site):
+            hunt.enrich_facilities(
+                [fac], serper_key="", fc_key="fake-fc-key",
+                budget=500, firecrawl_budget=50,
+            )
+
+        names = [c["name"] for c in fac.contacts]
+        assert names.count("Bob Smith") == 1, (
+            f"Bob Smith deduped incorrectly: {names}"
+        )
+        # info@ email should still be appended as a separate no-name contact
+        emails = [c.get("email") for c in fac.contacts if c.get("email")]
+        assert "info@acme.com" in emails

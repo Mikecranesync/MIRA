@@ -783,71 +783,112 @@ def search_contacts_via_serper(
 def enrich_facilities(
     fac_list: list["Facility"],
     serper_key: str,
+    fc_key: str = "",
     budget: int = 500,
+    firecrawl_budget: int = 300,
 ) -> None:
-    """Enrich facilities in place: scrape website, optionally probe Serper for contacts.
+    """Enrich facilities in place: Firecrawl → website scrape → Serper.
 
     Each contact appended gets a `confidence` field:
-      - "website-direct": scraped from the facility's own site
-      - "search-snippet": parsed from Google snippets via Serper
-    Aborts Serper probing when `budget` queries have been used.
+      - "firecrawl-team-page": LLM-extracted from the facility's team page
+      - "website-direct":      scraped from the facility's own site (regex)
+      - "search-snippet":      parsed from Google snippets via Serper
+    Dedupes across all three sources by normalized name.
     """
     to_enrich = [f for f in fac_list if f.website and f.icp_score >= 4]
     log.info("=== ENRICHMENT PHASE ===")
-    log.info("Enriching %d high-score sites (serper=%s, budget=%d queries)",
-             len(to_enrich), "on" if serper_key else "off", budget)
+    log.info(
+        "Enriching %d high-score sites (firecrawl=%s budget=%d | "
+        "serper=%s budget=%d)",
+        len(to_enrich),
+        "on" if fc_key else "off", firecrawl_budget,
+        "on" if serper_key else "off", budget,
+    )
 
-    queries_used = 0
-    with httpx.Client(timeout=15) as client:
+    fc_budget = {"remaining": firecrawl_budget}
+    serper_queries_used = 0
+
+    with httpx.Client(timeout=60) as client:
         for f in to_enrich:
             log.info("  Enriching: %s (%s)", f.name[:50], f.website[:40])
+            seen: set[str] = set()
+
+            # Step 1 — Firecrawl LLM extraction
+            if fc_key:
+                try:
+                    fc_contacts = enrich_via_firecrawl(
+                        f.website, client, fc_key, fc_budget,
+                    )
+                    for c in fc_contacts:
+                        key = c["name"].lower()
+                        if key not in seen:
+                            f.contacts.append(c)
+                            seen.add(key)
+                    if fc_contacts:
+                        log.info("    + %d from Firecrawl", len(fc_contacts))
+                except Exception as e:
+                    log.debug("Firecrawl failed %s: %s", f.name, e)
+
+            # Step 2 — existing website regex scrape (safety net)
             try:
                 enrichment = scrape_site(f.website, client)
                 if enrichment.get("emails"):
                     for em in enrichment["emails"][:3]:
                         f.contacts.append({
-                            "email": em,
-                            "source": f.website,
+                            "name": "", "email": em, "source": f.website,
                             "confidence": "website-direct",
                         })
                 if enrichment.get("phones") and not f.phone:
                     f.phone = enrichment["phones"][0]
-                for c in enrichment.get("contacts", []):
+                for c in enrichment.get("contacts", []) or []:
+                    name = (c.get("name") or "").strip()
+                    if name and name.lower() in seen:
+                        continue
                     c.setdefault("confidence", "website-direct")
                     f.contacts.append(c)
+                    if name:
+                        seen.add(name.lower())
                 if enrichment.get("vfd_hit"):
                     f.notes = (f.notes + " vfd_keywords_found").strip()
             except Exception as e:
                 log.debug("Website scrape failed %s: %s", f.name, e)
 
-            if serper_key and queries_used < budget:
+            # Step 3 — Serper snippet probe (optional)
+            if serper_key and serper_queries_used < budget:
                 try:
                     domain = ""
                     if f.website:
                         try:
-                            domain = urlparse(f.website).netloc.replace("www.", "")
+                            domain = urlparse(f.website).netloc.replace(
+                                "www.", "")
                         except Exception:
                             domain = ""
-                    probe_results = search_contacts_via_serper(
+                    probe = search_contacts_via_serper(
                         f.name, domain, client, serper_key,
                     )
-                    queries_used += 3 if domain else 2
-                    if probe_results:
-                        existing = {c.get("name", "").lower()
-                                    for c in f.contacts if c.get("name")}
-                        for c in probe_results:
-                            if c["name"].lower() not in existing:
-                                f.contacts.append(c)
-                                existing.add(c["name"].lower())
-                        log.info("    + %d contact(s) from Serper probe", len(probe_results))
+                    serper_queries_used += 3 if domain else 2
+                    for c in probe:
+                        key = c["name"].lower()
+                        if key not in seen:
+                            f.contacts.append(c)
+                            seen.add(key)
+                    if probe:
+                        log.info("    + %d from Serper", len(probe))
                 except Exception as e:
                     log.debug("Serper probe failed %s: %s", f.name, e)
 
             f.icp_score = score_facility(f)
 
+    if fc_key:
+        log.info(
+            "Enrichment complete — Firecrawl budget %d/%d used",
+            firecrawl_budget - fc_budget["remaining"], firecrawl_budget,
+        )
     if serper_key:
-        log.info("Enrichment complete — %d Serper queries used (budget %d)",
-                 queries_used, budget)
+        log.info(
+            "Serper queries used: %d (budget %d)",
+            serper_queries_used, budget,
+        )
 
 
 # ---------------------------------------------------------------------------
