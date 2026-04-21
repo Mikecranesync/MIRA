@@ -1337,11 +1337,16 @@ def main() -> None:
     parser.add_argument("--push-hubspot", action="store_true", help="Push qualified leads to HubSpot")
     parser.add_argument("--enrich-budget", type=int, default=500,
                         help="Max Serper queries to spend on contact probing (default 500)")
+    parser.add_argument("--firecrawl-budget", type=int, default=300,
+                        help="Max Firecrawl /scrape calls per run (default 300)")
+    parser.add_argument("--limit-facilities", type=int, default=0,
+                        help="Cap facilities to enrich in one run (0=all)")
     args = parser.parse_args()
 
     serper_key = os.environ.get("SERPER_API_KEY", "")
     db_url = os.environ.get("NEON_DATABASE_URL", "")
     hs_token = os.environ.get("HUBSPOT_ACCESS_TOKEN") or os.environ.get("HUBSPOT_API_KEY", "")
+    fc_key = os.environ.get("FIRECRAWL_API_KEY", "")
     today = date.today().isoformat()
     report_path = PROSPECTS_DIR / f"central-florida-{today}.md"
     hs_csv_path = PROSPECTS_DIR / f"hubspot-import-{today}.csv"
@@ -1396,14 +1401,28 @@ def main() -> None:
         conn.close()
         log.info("Loaded %d facilities needing contact enrichment", len(fac_list))
 
+        if args.limit_facilities > 0:
+            fac_list = fac_list[:args.limit_facilities]
+            log.info("Capped to %d facilities (via --limit-facilities)",
+                     len(fac_list))
+
         if not fac_list:
             log.info("Nothing to enrich — all facilities already have contacts.")
             return
 
-        enrich_facilities(fac_list, serper_key, budget=args.enrich_budget)
+        enrich_facilities(
+            fac_list,
+            serper_key=serper_key,
+            fc_key=fc_key,
+            budget=args.enrich_budget,
+            firecrawl_budget=args.firecrawl_budget,
+        )
 
         inserted = upsert_facilities(fac_list, db_url)
         log.info("DB: %d new, %d updated", inserted, len(fac_list) - inserted)
+
+        unverified_path = PROSPECTS_DIR / f"unverified-{today}.csv"
+        write_unverified_csv(fac_list, unverified_path)
 
         hs_stats: Optional[dict] = None
         if args.push_hubspot and hs_token:
@@ -1487,7 +1506,13 @@ def main() -> None:
     log.info("Discovery complete: %d facilities total", len(fac_list))
 
     if not args.discover_only and not args.no_enrich and not args.dry_run:
-        enrich_facilities(fac_list, serper_key, budget=500)
+        enrich_facilities(
+            fac_list,
+            serper_key=serper_key,
+            fc_key=fc_key,
+            budget=args.enrich_budget,
+            firecrawl_budget=args.firecrawl_budget,
+        )
 
     hs_stats: Optional[dict] = None
     if not args.dry_run:
