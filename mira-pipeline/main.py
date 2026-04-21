@@ -597,6 +597,105 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     return response_dict
 
 
+# ── Admin: Briefing Profiles ─────────────────────────────────────────────────
+
+
+class BriefingProfileCreate(BaseModel):
+    user_id: str
+    tenant_id: str = "default"
+    role: str = "technician"
+    assigned_assets: list[str] = []
+    shift: str = "day"
+    preferred_channel: str = "push"
+    preferred_time: str = "06:00"
+    email: str = ""
+    language: str = "en"
+    include_kpis: bool = False
+    include_open_wos: bool = True
+    include_team_activity: bool = False
+    digest_length: str = "short"
+
+
+@app.post("/api/briefing/profiles", status_code=201)
+async def create_briefing_profile(profile: BriefingProfileCreate):
+    """Create or upsert a briefing profile in NeonDB."""
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        raise HTTPException(503, "NEON_DATABASE_URL not configured")
+    try:
+        from sqlalchemy import NullPool, create_engine, text
+
+        engine_db = create_engine(
+            neon_url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        with engine_db.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO briefing_profiles
+                        (user_id, tenant_id, role, assigned_assets, shift,
+                         preferred_channel, preferred_time, email, language,
+                         include_kpis, include_open_wos, include_team_activity, digest_length)
+                    VALUES
+                        (:user_id, :tenant_id, :role, :assigned_assets, :shift,
+                         :preferred_channel, :preferred_time, :email, :language,
+                         :include_kpis, :include_open_wos, :include_team_activity, :digest_length)
+                    ON CONFLICT (user_id, tenant_id) DO UPDATE SET
+                        role = EXCLUDED.role,
+                        assigned_assets = EXCLUDED.assigned_assets,
+                        shift = EXCLUDED.shift,
+                        preferred_channel = EXCLUDED.preferred_channel,
+                        preferred_time = EXCLUDED.preferred_time,
+                        email = EXCLUDED.email,
+                        language = EXCLUDED.language,
+                        include_kpis = EXCLUDED.include_kpis,
+                        include_open_wos = EXCLUDED.include_open_wos,
+                        include_team_activity = EXCLUDED.include_team_activity,
+                        digest_length = EXCLUDED.digest_length,
+                        updated_at = NOW()
+                    """
+                ),
+                {**profile.model_dump(), "assigned_assets": profile.assigned_assets},
+            )
+        return {"status": "ok", "user_id": profile.user_id, "tenant_id": profile.tenant_id}
+    except Exception as exc:
+        logger.error("create_briefing_profile failed: %s", exc)
+        raise HTTPException(500, f"DB error: {exc}") from exc
+
+
+@app.get("/api/briefing/profiles/{tenant_id}")
+async def list_briefing_profiles(tenant_id: str):
+    """List all briefing profiles for a tenant."""
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        raise HTTPException(503, "NEON_DATABASE_URL not configured")
+    try:
+        from sqlalchemy import NullPool, create_engine, text
+
+        engine_db = create_engine(
+            neon_url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        with engine_db.connect() as conn:
+            rows = (
+                conn.execute(
+                    text("SELECT * FROM briefing_profiles WHERE tenant_id = :tid ORDER BY user_id"),
+                    {"tid": tenant_id},
+                )
+                .mappings()
+                .all()
+            )
+        return {"tenant_id": tenant_id, "profiles": [dict(r) for r in rows]}
+    except Exception as exc:
+        logger.error("list_briefing_profiles failed: %s", exc)
+        raise HTTPException(500, f"DB error: {exc}") from exc
+
+
 # ── Debug: Session Photo — GET /v1/debug/photo/{chat_id} ────────────────────
 
 
