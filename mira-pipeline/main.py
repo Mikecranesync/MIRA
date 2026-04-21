@@ -994,3 +994,99 @@ async def webhook_signup(request: Request):
     except Exception as e:
         logger.error("Failed to send signup notification: %s", e)
         return {"status": "error", "reason": str(e)}
+
+
+# ── Identity Admin API ────────────────────────────────────────────────────────
+
+def _get_identity_service():
+    """Return IdentityService or raise 503."""
+    import sys as _sys
+
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "mira-bots"))
+    try:
+        from shared.identity.service import get_identity_service
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail=f"identity module unavailable: {exc}") from exc
+
+    svc = get_identity_service()
+    if svc is None:
+        raise HTTPException(status_code=503, detail="NEON_DATABASE_URL not set")
+    return svc
+
+
+@app.get("/api/identity/users/{tenant_id}")
+async def identity_list_users(tenant_id: str, request: Request):
+    """List all canonical MIRA users for a tenant."""
+    _require_pipeline_key(request)
+    svc = _get_identity_service()
+    try:
+        users = await asyncio.to_thread(svc.list_users, tenant_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {
+        "tenant_id": tenant_id,
+        "users": [
+            {"id": u.id, "display_name": u.display_name, "email": u.email}
+            for u in users
+        ],
+    }
+
+
+@app.get("/api/identity/user/{mira_user_id}")
+async def identity_get_user(mira_user_id: str, request: Request):
+    """Fetch a canonical user and all linked platform identities."""
+    _require_pipeline_key(request)
+    svc = _get_identity_service()
+    try:
+        user = await asyncio.to_thread(svc.get_user, mira_user_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    try:
+        links = await asyncio.to_thread(svc.get_linked_platforms, mira_user_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {
+        "id": user.id,
+        "tenant_id": user.tenant_id,
+        "display_name": user.display_name,
+        "email": user.email,
+        "platforms": [
+            {"platform": lk.platform, "external_user_id": lk.external_user_id}
+            for lk in links
+        ],
+    }
+
+
+class IdentityLinkRequest(BaseModel):
+    mira_user_id: str
+    platform: str
+    external_user_id: str
+    tenant_id: str
+
+
+@app.post("/api/identity/link")
+async def identity_link(body: IdentityLinkRequest, request: Request):
+    """Manually link a platform identity to an existing MIRA user."""
+    _require_pipeline_key(request)
+    svc = _get_identity_service()
+    try:
+        link = await asyncio.to_thread(
+            svc.link_identity,
+            body.mira_user_id,
+            body.platform,
+            body.external_user_id,
+            body.tenant_id,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"id": link.id, "mira_user_id": link.mira_user_id, "platform": link.platform}
+
+
+def _require_pipeline_key(request: Request) -> None:
+    if not PIPELINE_API_KEY:
+        return
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or auth[7:] != PIPELINE_API_KEY:
+        raise HTTPException(status_code=401, detail="unauthorized")

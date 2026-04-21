@@ -17,6 +17,7 @@ os.environ.setdefault("MAX_VISION_PX", "512")  # test was written against 512 de
 
 # Allow importing from telegram/ directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
+sys.modules.pop("chat_adapter", None)  # isolate from other bot adapters
 
 from bot import _resize_for_vision
 from PIL import Image

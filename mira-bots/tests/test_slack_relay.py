@@ -89,6 +89,7 @@ os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira-test.db")
 os.environ.setdefault("SLACK_ALLOWED_CHANNELS", "")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "slack"))
+sys.modules.pop("chat_adapter", None)  # isolate from other bot adapters
 bot = importlib.import_module("bot")
 
 from bot import _channel_allowed, _relay, _strip_mention  # noqa: E402

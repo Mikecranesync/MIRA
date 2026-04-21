@@ -6,6 +6,7 @@ import sys
 
 sys.path.insert(0, "mira-bots")
 sys.path.insert(0, "mira-bots/slack")
+sys.modules.pop("chat_adapter", None)  # isolate from other bot adapters
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
