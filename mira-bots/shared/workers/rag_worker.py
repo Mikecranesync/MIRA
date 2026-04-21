@@ -242,26 +242,44 @@ class RAGWorker:
                 logger.info("RAG_QUALITY_GATE top_score=%.3f — chunks suppressed", top_score)
                 chunk_texts = []
 
-            # Vendor-relevance check: if the query names a specific vendor/brand but ALL
-            # returned chunks have a different manufacturer, they are cross-vendor
-            # contamination from the shared OEM pool.  Suppress them so the honesty
-            # directive fires rather than the LLM hallucinating with wrong-equipment docs.
+            # Cross-vendor filter: drop chunks whose manufacturer doesn't match the
+            # identified vendor.  Chunks with no manufacturer tag are kept (they may be
+            # generic content like fault code tables or application notes).
+            # Falls back to the old all-or-nothing suppress if no per-chunk filtering
+            # yields results.
             if chunk_texts and not photo_b64:
                 query_combined = f"{message} {state.get('asset_identified', '')}".strip()
                 query_vendor = vendor_name_from_text(query_combined)
                 if query_vendor:
                     qv_lower = query_vendor.lower()
-                    vendor_matched = any(
-                        qv_lower in (c.get("manufacturer") or "").lower() for c in neon_chunks
-                    )
-                    if not vendor_matched:
+                    filtered_chunks = [
+                        c
+                        for c in neon_chunks
+                        if not c.get("manufacturer")
+                        or qv_lower in (c.get("manufacturer") or "").lower()
+                    ]
+                    if filtered_chunks:
+                        dropped = len(neon_chunks) - len(filtered_chunks)
+                        if dropped:
+                            logger.info(
+                                "CROSS_VENDOR_FILTER vendor=%r — dropped %d mismatched "
+                                "chunk(s), kept %d",
+                                query_vendor,
+                                dropped,
+                                len(filtered_chunks),
+                            )
+                        neon_chunks = filtered_chunks
+                        chunk_texts = [c["content"] for c in neon_chunks]
+                    else:
+                        # No chunks survived filtering — full suppress so honesty fires
                         logger.info(
-                            "CROSS_VENDOR_CONTAMINATION vendor=%r — %d chunk(s) from "
-                            "other equipment suppressed, honesty directive will fire",
+                            "CROSS_VENDOR_CONTAMINATION vendor=%r — %d chunk(s) fully "
+                            "suppressed (no match), honesty directive will fire",
                             query_vendor,
                             len(chunk_texts),
                         )
                         chunk_texts = []
+                        neon_chunks = []
 
             self._last_sources = chunk_texts
             self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
