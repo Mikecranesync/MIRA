@@ -79,3 +79,39 @@ class TestEnrichViaFirecrawl:
         assert names == {"Bob Smith", "Carl Ortiz"}
         assert all(c["confidence"] == "firecrawl-team-page" for c in results)
         assert all(c["source"].startswith("https://acme.com") for c in results)
+
+    def test_auth_failure_returns_empty(self):
+        """Firecrawl 401 returns []; does not raise."""
+        mock_response = httpx.Response(
+            status_code=401,
+            json={"error": "Unauthorized"},
+        )
+        budget = {"remaining": 5}
+        with patch("hunt.httpx.Client.post", return_value=mock_response):
+            client = httpx.Client()
+            results = hunt.enrich_via_firecrawl(
+                "https://acme.com", client, "bad-key", budget,
+            )
+        assert results == []
+        assert budget["remaining"] == 4  # still counted (HTTP call was made)
+
+    def test_zero_budget_skips_http(self):
+        """budget.remaining == 0 → no HTTP call, returns [] immediately."""
+        budget = {"remaining": 0}
+        with patch("hunt.httpx.Client.post") as mock_post:
+            client = httpx.Client()
+            results = hunt.enrich_via_firecrawl(
+                "https://acme.com", client, "fake-key", budget,
+            )
+        assert results == []
+        mock_post.assert_not_called()
+
+    def test_empty_url_returns_empty(self):
+        """Empty URL returns [] without calling Firecrawl."""
+        budget = {"remaining": 10}
+        with patch("hunt.httpx.Client.post") as mock_post:
+            client = httpx.Client()
+            results = hunt.enrich_via_firecrawl("", client, "fake-key", budget)
+        assert results == []
+        mock_post.assert_not_called()
+        assert budget["remaining"] == 10
