@@ -575,7 +575,6 @@ def scrape_site(url: str, client: httpx.Client) -> dict:
 _GENERIC_NAME_TOKENS = frozenset({
     "info", "contact", "contact us", "team", "our team",
     "staff", "support", "sales", "admin", "webmaster",
-    "hello", "office", "reception", "customer service",
 })
 
 
