@@ -13,6 +13,7 @@ import httpx
 
 from .chat_tenant import resolve as resolve_tenant
 from .conversation_router import route_intent
+from .detection.recurring_fault import check_recurring_and_annotate
 from .guardrails import (
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
@@ -27,6 +28,11 @@ from .guardrails import (
 )
 from .inference.router import InferenceRouter
 from .integrations.atlas_cmms import AtlasCMMSClient
+from .integrations.pm_suggestions import (
+    PMSuggestion,
+    is_pm_acceptance,
+    suggest_followup_pm,
+)
 from .models.work_order import (
     UNSWorkOrder,
     apply_wo_edit,
@@ -590,6 +596,10 @@ class Supervisor:
         if (state.get("context") or {}).get("cmms_pending") and not photo_b64:
             return await self._handle_cmms_pending(chat_id, message, state, trace_id)
 
+        # PM suggestion pending: user is answering a follow-up PM proposal.
+        if (state.get("context") or {}).get("pm_suggestion_pending") and not photo_b64:
+            return await self._handle_pm_suggestion_pending(chat_id, message, state, trace_id)
+
         # Photo persistence: load stored session photo for text follow-ups
         _session_photo = None
         if not photo_b64:
@@ -698,6 +708,11 @@ class Supervisor:
 
             if _router_intent == "switch_asset":
                 return await self._handle_asset_switch(chat_id, message, state, trace_id)
+
+            if _router_intent == "check_equipment_history":
+                return await self._handle_check_equipment_history(
+                    chat_id, message, state, trace_id
+                )
 
             if _router_intent == "general_question" and _keyword_intent not in (
                 "safety",
@@ -1106,6 +1121,15 @@ class Supervisor:
             _preview = format_wo_preview(_wo)
             parsed["reply"] = parsed.get("reply", "").rstrip() + "\n\n" + _preview
 
+            # Recurring fault detection — annotate reply if same fault recurred
+            try:
+                _annotated, _pushed = await check_recurring_and_annotate(
+                    self.db_path, state, parsed["reply"]
+                )
+                parsed["reply"] = _annotated
+            except Exception as _rfe:
+                logger.warning("RECURRING_FAULT check failed: %s", _rfe)
+
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
@@ -1267,6 +1291,18 @@ class Supervisor:
                         wo_id=wo_id, asset=wo.asset, tech_name=wo.technician_id or chat_id
                     )
                 )
+                # PM suggestion — append to reply and arm pending state
+                pm = suggest_followup_pm(state.get("fault_category", ""), wo.asset or "")
+                if pm:
+                    reply = reply.rstrip() + "\n\n" + pm.prompt_text()
+                    ctx["pm_suggestion_pending"] = {
+                        "action": pm.action,
+                        "days": pm.days,
+                        "asset": pm.asset,
+                        "fault_category": pm.fault_category,
+                    }
+                    state["context"] = ctx
+                    self._save_state(chat_id, state)
             except Exception as e:
                 logger.error("CMMS WO creation failed for %s: %s", chat_id, e)
                 reply = (
@@ -1276,6 +1312,48 @@ class Supervisor:
         else:
             reply = "Understood — no work order logged. Let me know if you need anything else."
 
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(reply, "none", trace_id, "RESOLVED")
+
+    async def _handle_pm_suggestion_pending(
+        self, chat_id: str, message: str, state: dict, trace_id: str
+    ) -> dict:
+        """Handle user response to a PM follow-up suggestion."""
+        ctx = state.get("context") or {}
+        pm_data = ctx.pop("pm_suggestion_pending", {})
+        state["context"] = ctx
+
+        if is_pm_acceptance(message):
+            pm = PMSuggestion(
+                fault_category=pm_data.get("fault_category", ""),
+                action=pm_data.get("action", "Follow-up inspection"),
+                days=pm_data.get("days", 30),
+                asset=pm_data.get("asset", ""),
+            )
+            try:
+                result = await self.cmms_client.create_work_order(
+                    title=pm.wo_title(),
+                    description=pm.wo_description(),
+                    priority="LOW",
+                    category="PREVENTIVE",
+                )
+                wo_id = result.get("id", "?")
+                reply = (
+                    f"Done — PM work order #{wo_id} scheduled: "
+                    f"*{pm.action}* within {pm.days} days."
+                )
+                logger.info("PM_WO created wo_id=%s asset=%r", wo_id, pm.asset)
+            except Exception as exc:
+                logger.error("PM_WO creation failed: %s", exc)
+                reply = (
+                    f"I couldn't create the PM automatically — please add "
+                    f"*{pm.action}* (due in {pm.days} days) to your CMMS manually."
+                )
+        else:
+            reply = "No problem — skipping the PM for now. Let me know if you need anything else."
+
+        self._save_state(chat_id, state)
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
         return self._make_result(reply, "none", trace_id, "RESOLVED")
@@ -1811,11 +1889,20 @@ class Supervisor:
         return text + chip_text
 
     def _greeting_response(self, state: dict, chat_id: str, trace_id: str) -> dict:
-        """Handle greetings — acknowledge and offer help."""
+        """Handle greetings without disrupting an active session."""
+        fsm = state.get("state", "IDLE")
         asset = state.get("asset_identified", "")
-        if asset:
+
+        if fsm not in ("IDLE", "ASSET_IDENTIFIED") and asset:
+            # Mid-diagnostic — don't reset, just acknowledge
             reply = self._format_simple_response(
-                f"Hey! I'm still tracking {asset}. What can I help with?",
+                f"Hey! Still here — we were in the middle of diagnosing {asset}. "
+                "Ready to keep going, or do you need something else?",
+                suggestions=["Continue diagnosis", "Log a work order", "Switch equipment"],
+            )
+        elif asset:
+            reply = self._format_simple_response(
+                f"Hey! I\u2019m still tracking {asset}. What can I help with?",
                 suggestions=[
                     "Continue diagnosis",
                     "Find manual for this equipment",
@@ -1829,28 +1916,50 @@ class Supervisor:
             )
         self._record_exchange(chat_id, state, "", reply)
         tl_flush()
-        return self._make_result(reply, "none", trace_id, state.get("state", "IDLE"))
+        return self._make_result(reply, "none", trace_id, fsm)
+
+    # Keywords that suggest the question needs equipment-specific RAG lookup
+    _SPEC_KEYWORDS = frozenset(
+        "torque spec parameter setting resistance voltage current ampere rpm frequency "
+        "hz setpoint acceleration deceleration boost carrier fault code alarm reset".split()
+    )
 
     async def _handle_general_question(
         self, chat_id: str, message: str, state: dict, trace_id: str
     ) -> dict:
-        """Answer a general industrial knowledge question directly — no FSM, no RAG."""
-        system = (
-            "You are MIRA, an industrial maintenance assistant. "
-            "Answer this general question concisely and accurately. "
-            "If it's about specific equipment, suggest the user provide the asset info "
-            "for a more targeted answer. Keep the reply under 120 words."
-        )
-        try:
-            raw = await self._call_llm_direct(message, system=system)
-        except Exception as exc:
-            logger.warning("GENERAL_QUESTION_LLM_FAILURE error=%s", exc)
-            raw = "I can help with that — could you give me a bit more context about what you're working on?"
+        """Answer a general industrial question — uses RAG for equipment-specific specs."""
+        asset = state.get("asset_identified", "")
+        msg_lower = message.lower()
+        needs_rag = asset and any(kw in msg_lower for kw in self._SPEC_KEYWORDS)
+
+        raw = ""
+        if needs_rag:
+            try:
+                raw_resp = await self.rag.process(message, state, photo_b64=None, tenant_id=None)
+                parsed = self._parse_response(raw_resp)
+                raw = parsed.get("reply", "") if parsed else ""
+            except Exception as exc:
+                logger.warning("GENERAL_QUESTION_RAG_FAILURE error=%s — falling back to LLM", exc)
+
+        if not raw:
+            asset_ctx = f" The current equipment is: {asset}." if asset else ""
+            system = (
+                "You are MIRA, an industrial maintenance assistant."
+                f"{asset_ctx} "
+                "Answer this question concisely and accurately using your training knowledge. "
+                "Keep the reply under 120 words."
+            )
+            try:
+                raw = await self._call_llm_direct(message, system=system)
+            except Exception as exc:
+                logger.warning("GENERAL_QUESTION_LLM_FAILURE error=%s", exc)
+                raw = "I can help with that — could you give me a bit more context?"
+
         reply = self._format_simple_response(
             raw,
             suggestions=[
-                "Diagnose a specific machine?",
-                "Find documentation for equipment",
+                "Diagnose a specific machine",
+                "Find documentation",
                 "Log a work order",
             ],
         )
@@ -1863,17 +1972,44 @@ class Supervisor:
     async def _handle_asset_switch(
         self, chat_id: str, message: str, state: dict, trace_id: str
     ) -> dict:
-        """User wants to talk about a different asset — clear FSM, keep session."""
+        """User wants to talk about a different asset — clear FSM, preserve session memory."""
+        old_asset = state.get("asset_identified", "") or "unknown"
+
+        # Try to identify the new asset from the switch message itself
+        new_asset = vendor_name_from_text(message) or ""
+
+        logger.info(
+            "ASSET_SWITCH chat_id=%s from=%r to=%r",
+            chat_id,
+            old_asset,
+            new_asset or "unidentified",
+        )
+
         state["state"] = "IDLE"
-        state["asset_identified"] = ""
+        state["asset_identified"] = new_asset
         ctx = state.get("context") or {}
+        # Clear active diagnostic context but keep session_memory for cross-session recall
         ctx.pop("session_context", None)
+        ctx.pop("cmms_pending", None)
+        ctx.pop("cmms_wo_draft", None)
+        ctx.pop("pending_doc_job", None)
         state["context"] = ctx
         self._save_state(chat_id, state)
-        reply = self._format_simple_response(
-            "Got it \u2014 switching to a new asset. What equipment do you need help with?",
-            suggestions=["Describe the machine", "Scan the QR code", "Upload a nameplate photo"],
-        )
+
+        if new_asset:
+            reply = self._format_simple_response(
+                f"Switching to {new_asset} — what's going on with it?",
+                suggestions=["Describe the fault", "Upload a nameplate photo", "Find the manual"],
+            )
+        else:
+            reply = self._format_simple_response(
+                "Got it \u2014 switching to a new asset. What equipment do you need help with?",
+                suggestions=[
+                    "Describe the machine",
+                    "Scan the QR code",
+                    "Upload a nameplate photo",
+                ],
+            )
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
         return self._make_result(reply, "none", trace_id, "IDLE")
@@ -1895,6 +2031,75 @@ class Supervisor:
         self._record_exchange(chat_id, state, message, preview)
         tl_flush()
         return self._make_result(preview, "none", trace_id, state.get("state", "IDLE"))
+
+    async def _handle_check_equipment_history(
+        self, chat_id: str, message: str, state: dict, trace_id: str
+    ) -> dict:
+        """Return recent interaction history for the current asset (Short #9)."""
+        asset = state.get("asset_identified", "")
+        rows: list[dict] = []
+        try:
+            db = sqlite3.connect(self.db_path)
+            cur = db.cursor()
+            if asset:
+                cur.execute(
+                    """
+                    SELECT created_at, fsm_state, intent, user_message, bot_response
+                    FROM interactions
+                    WHERE chat_id = ?
+                      AND (user_message LIKE ? OR bot_response LIKE ?)
+                    ORDER BY created_at DESC
+                    LIMIT 5
+                    """,
+                    (chat_id, f"%{asset[:30]}%", f"%{asset[:30]}%"),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT created_at, fsm_state, intent, user_message, bot_response
+                    FROM interactions
+                    WHERE chat_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT 5
+                    """,
+                    (chat_id,),
+                )
+            rows = [
+                {
+                    "created_at": r[0],
+                    "fsm_state": r[1],
+                    "intent": r[2],
+                    "user_message": r[3],
+                    "bot_response": r[4],
+                }
+                for r in cur.fetchall()
+            ]
+            db.close()
+        except Exception as exc:
+            logger.warning("HISTORY_QUERY_FAILURE error=%s", exc)
+
+        if not rows:
+            subject = f"this {asset}" if asset else "this equipment"
+            reply_text = (
+                f"No previous interactions found for {subject} in this session. "
+                "This might be the first time it's been diagnosed here."
+            )
+        else:
+            subject = asset or "this equipment"
+            lines = [f"Last {len(rows)} interactions for {subject}:\n"]
+            for r in rows:
+                ts = str(r["created_at"])[:16]
+                snippet = str(r["user_message"])[:80].replace("\n", " ")
+                lines.append(f"• {ts} — {r['fsm_state'] or '?'} — \"{snippet}\"")
+            reply_text = "\n".join(lines)
+
+        reply = self._format_simple_response(
+            reply_text,
+            suggestions=["Continue diagnosis", "Log a work order", "Find documentation"],
+        )
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(reply, "none", trace_id, state.get("state", "IDLE"))
 
     async def _handle_documentation_intent(
         self,
