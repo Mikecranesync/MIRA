@@ -19,6 +19,7 @@ Register beat (add to mira-crawler/celeryconfig.py beat_schedule):
 Standalone run (no Celery):
     python3 tools/lead-hunter/run_hourly.py
 """
+
 from __future__ import annotations
 
 import json
@@ -71,15 +72,15 @@ def _check_daily_budget(state: dict) -> bool:
 # Core hourly task
 # ---------------------------------------------------------------------------
 
+
 def run_discover_and_enrich() -> dict:
     """Execute one hourly discovery + enrichment cycle. Returns run stats."""
     import httpx
 
     # Import here to allow running without Celery
     sys.path.insert(0, str(Path(__file__).parent))
-    import hunt
     import discover
-    import enrich
+    import hunt
 
     state = _load_state()
     if not _check_daily_budget(state):
@@ -122,7 +123,10 @@ def run_discover_and_enrich() -> dict:
     ddg_fails = [0]
     with httpx.Client(timeout=20) as client:
         facs, _ = discover.search_ddg_medium(
-            city_name, city_lat, city_lon, client,
+            city_name,
+            city_lat,
+            city_lon,
+            client,
             ddg_fails=ddg_fails,
         )
         requests_used += len(discover.MEDIUM_BIZ_QUERIES)
@@ -133,11 +137,9 @@ def run_discover_and_enrich() -> dict:
     # Phase 1c: Standard queries for this city (reuse existing search logic)
     if requests_used < DISCOVERY_RATE["max_requests_per_run"] and ddg_fails[0] < 5:
         log.info("Standard DDG queries for %s...", city_name)
-        ddg_dead = False
         with httpx.Client(timeout=20) as client:
             for qt in hunt.QUERY_TEMPLATES:
                 if ddg_fails[0] >= 5:
-                    ddg_dead = True
                     break
                 if requests_used >= DISCOVERY_RATE["max_requests_per_run"]:
                     break
@@ -149,19 +151,23 @@ def run_discover_and_enrich() -> dict:
                     time.sleep(hunt.RATE_LIMIT_SECS)
                     continue
                 ddg_fails[0] = 0
-                new_facs = hunt.extract_facilities_from_results(results, city_name, city_lat, city_lon, query)
+                new_facs = hunt.extract_facilities_from_results(
+                    results, city_name, city_lat, city_lon, query
+                )
                 for f in new_facs:
                     if f.key not in new_facilities:
                         new_facilities[f.key] = f
                 time.sleep(hunt.RATE_LIMIT_SECS)
 
     # Cap to max_facilities_per_run
-    fac_list = list(new_facilities.values())[:DISCOVERY_RATE["max_facilities_per_run"]]
+    fac_list = list(new_facilities.values())[: DISCOVERY_RATE["max_facilities_per_run"]]
     log.info("Discovered %d new facilities", len(fac_list))
 
     # Phase 2: Enrich top un-enriched facilities
     if db_url:
-        enriched_count = _enrich_unenriched(db_url, hunter_key, DISCOVERY_RATE["max_enrichments_per_run"])
+        enriched_count = _enrich_unenriched(
+            db_url, hunter_key, DISCOVERY_RATE["max_enrichments_per_run"]
+        )
     else:
         enriched_count = 0
 
@@ -209,10 +215,10 @@ def run_discover_and_enrich() -> dict:
 
 def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> int:
     """Enrich facilities that have a website but no contacts yet."""
-    import psycopg2
+    import enrich
     import httpx
     import hunt
-    import enrich
+    import psycopg2
 
     conn = psycopg2.connect(db_url)
     cur = conn.cursor()
@@ -240,8 +246,12 @@ def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> int:
         for row in rows:
             fid, name, city, website, phone, icp_score, notes = row
             f = hunt.Facility(
-                name=name, city=city, website=website or "",
-                phone=phone or "", icp_score=icp_score or 0, notes=notes or "",
+                name=name,
+                city=city,
+                website=website or "",
+                phone=phone or "",
+                icp_score=icp_score or 0,
+                notes=notes or "",
             )
             try:
                 log.info("Enriching: %s (%s)", name[:50], (website or "")[:40])
@@ -270,8 +280,15 @@ def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> int:
                             VALUES (%s, %s, %s, %s, %s, %s, %s)
                             ON CONFLICT DO NOTHING
                             """,
-                            (fid, c.get("name"), c.get("title"), c.get("email"),
-                             c.get("phone"), c.get("source", "website"), c.get("confidence", "low")),
+                            (
+                                fid,
+                                c.get("name"),
+                                c.get("title"),
+                                c.get("email"),
+                                c.get("phone"),
+                                c.get("source", "website"),
+                                c.get("confidence", "low"),
+                            ),
                         )
                 conn2.commit()
                 conn2.close()

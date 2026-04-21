@@ -8,10 +8,10 @@ Sources (in order of quality):
 
 All functions are self-contained and safe to call independently.
 """
+
 from __future__ import annotations
 
 import logging
-import os
 import re
 import socket
 import subprocess
@@ -20,8 +20,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
-
-from hunt import Facility, USER_AGENTS, EMAIL_RE, PHONE_RE, MAINT_TITLES, VFD_KWS
+from hunt import EMAIL_RE, MAINT_TITLES, PHONE_RE, USER_AGENTS, VFD_KWS, Facility
 
 log = logging.getLogger("lead-hunter.enrich")
 
@@ -49,6 +48,7 @@ CONFIDENCE_LEVELS = {
 # Hunter.io
 # ---------------------------------------------------------------------------
 
+
 def find_contacts_hunter(domain: str, api_key: str, client: httpx.Client) -> list[dict]:
     """Query Hunter.io domain search. Returns list of contact dicts."""
     if not domain or not api_key:
@@ -74,13 +74,17 @@ def find_contacts_hunter(domain: str, api_key: str, client: httpx.Client) -> lis
             email = email_data.get("value", "")
             position = email_data.get("position", "")
             if email and _is_maintenance_role(position):
-                contacts.append({
-                    "name": f"{first} {last}".strip(),
-                    "title": position,
-                    "email": email,
-                    "source": "hunter.io",
-                    "confidence": "high" if email_data.get("verification", {}).get("status") == "valid" else "medium",
-                })
+                contacts.append(
+                    {
+                        "name": f"{first} {last}".strip(),
+                        "title": position,
+                        "email": email,
+                        "source": "hunter.io",
+                        "confidence": "high"
+                        if email_data.get("verification", {}).get("status") == "valid"
+                        else "medium",
+                    }
+                )
         return contacts
     except Exception as e:
         log.debug("Hunter.io error for %s: %s", domain, e)
@@ -89,16 +93,27 @@ def find_contacts_hunter(domain: str, api_key: str, client: httpx.Client) -> lis
 
 def _is_maintenance_role(title: str) -> bool:
     title_l = title.lower()
-    return any(t in title_l for t in [
-        "maintenance", "facilities", "plant manager", "plant engineer",
-        "reliability", "operations manager", "chief engineer", "facility",
-        "mechanical", "electrical engineer",
-    ])
+    return any(
+        t in title_l
+        for t in [
+            "maintenance",
+            "facilities",
+            "plant manager",
+            "plant engineer",
+            "reliability",
+            "operations manager",
+            "chief engineer",
+            "facility",
+            "mechanical",
+            "electrical engineer",
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
 # Email pattern generation
 # ---------------------------------------------------------------------------
+
 
 def generate_email_patterns(first: str, last: str, domain: str) -> list[dict]:
     """Generate candidate email addresses for a person at a domain."""
@@ -111,18 +126,18 @@ def generate_email_patterns(first: str, last: str, domain: str) -> list[dict]:
         return []
 
     f = first.lower()
-    l = last.lower()
+    last_lower = last.lower()
     fi = f[0]
 
     patterns = []
     templates = [
-        (f"{f}.{l}@{domain}", "first.last"),
-        (f"{f}{l}@{domain}", "firstlast"),
+        (f"{f}.{last_lower}@{domain}", "first.last"),
+        (f"{f}{last_lower}@{domain}", "firstlast"),
         (f"{f}@{domain}", "first"),
-        (f"{fi}{l}@{domain}", "flast"),
-        (f"{l}@{domain}", "last"),
-        (f"{f}.{l[0]}@{domain}", "first.li"),
-        (f"{fi}.{l}@{domain}", "f.last"),
+        (f"{fi}{last_lower}@{domain}", "flast"),
+        (f"{last_lower}@{domain}", "last"),
+        (f"{f}.{last_lower[0]}@{domain}", "first.li"),
+        (f"{fi}.{last_lower}@{domain}", "f.last"),
     ]
     for email, pattern_name in templates:
         patterns.append({"email": email, "pattern": pattern_name, "source": "pattern"})
@@ -137,12 +152,15 @@ def _clean_name(s: str) -> str:
 # DNS verification
 # ---------------------------------------------------------------------------
 
+
 def domain_has_mx(domain: str) -> bool:
     """Check if domain has MX records (domain accepts email)."""
     try:
         result = subprocess.run(
             ["dig", "+short", "MX", domain],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return bool(result.stdout.strip())
     except Exception:
@@ -169,9 +187,16 @@ def verify_patterns_dns(patterns: list[dict], domain: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 CONTACT_PATHS = [
-    "/contact", "/contact-us", "/about", "/about-us",
-    "/team", "/staff", "/leadership", "/management",
-    "/careers", "/jobs",
+    "/contact",
+    "/contact-us",
+    "/about",
+    "/about-us",
+    "/team",
+    "/staff",
+    "/leadership",
+    "/management",
+    "/careers",
+    "/jobs",
 ]
 
 
@@ -213,16 +238,19 @@ def scrape_facility_deep(f: Facility, client: httpx.Client) -> dict:
                 continue
 
             from bs4 import BeautifulSoup
+
             soup = BeautifulSoup(resp.text, "html.parser")
             text = soup.get_text(separator=" ", strip=True)
             all_text.append(text)
 
             # Emails
             for email in EMAIL_RE.findall(text):
-                if (email not in result["emails"]
-                        and "example" not in email
-                        and not email.endswith(".png")
-                        and not email.endswith(".jpg")):
+                if (
+                    email not in result["emails"]
+                    and "example" not in email
+                    and not email.endswith(".png")
+                    and not email.endswith(".jpg")
+                ):
                     result["emails"].append(email)
 
             # Phones
@@ -235,7 +263,8 @@ def scrape_facility_deep(f: Facility, client: httpx.Client) -> dict:
                 r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*[,\-–|]\s*("
                 + "|".join(re.escape(t) for t in MAINT_TITLES)
                 + r")",
-                text, re.IGNORECASE,
+                text,
+                re.IGNORECASE,
             ):
                 contact = {
                     "name": m.group(1).strip(),
@@ -249,7 +278,8 @@ def scrape_facility_deep(f: Facility, client: httpx.Client) -> dict:
             # Employee count hints
             emp_match = re.search(
                 r"(\d{1,4})\+?\s+(?:employees|associates|team members|staff|people)",
-                text, re.IGNORECASE,
+                text,
+                re.IGNORECASE,
             )
             if emp_match:
                 result["employee_count_hint"] = int(emp_match.group(1))
@@ -263,7 +293,9 @@ def scrape_facility_deep(f: Facility, client: httpx.Client) -> dict:
     return result
 
 
-def apply_enrichment(f: Facility, enrichment: dict, hunter_key: str = "", client: Optional[httpx.Client] = None) -> None:
+def apply_enrichment(
+    f: Facility, enrichment: dict, hunter_key: str = "", client: Optional[httpx.Client] = None
+) -> None:
     """Apply enrichment results to facility in-place. Optionally run Hunter.io."""
     if enrichment.get("emails"):
         for em in enrichment["emails"][:3]:
