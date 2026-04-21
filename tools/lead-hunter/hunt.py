@@ -569,6 +569,40 @@ def scrape_site(url: str, client: httpx.Client) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Name quality gate
+# ---------------------------------------------------------------------------
+
+_GENERIC_NAME_TOKENS = frozenset({
+    "info", "contact", "contact us", "team", "our team",
+    "staff", "support", "sales", "admin", "webmaster",
+    "hello", "office", "reception", "customer service",
+})
+
+
+def _is_real_name(value: str | None) -> bool:
+    """Return True iff value looks like a real person's name.
+
+    Rejects empties, generic tokens like "Info"/"Team", single-word strings,
+    and all-caps strings (likely page headings, not names).
+    """
+    if not value:
+        return False
+    stripped = value.strip()
+    if not stripped:
+        return False
+    lower = stripped.lower()
+    if lower in _GENERIC_NAME_TOKENS:
+        return False
+    # all-caps headings like "JOHN SMITH" or "CONTACT US" are not names
+    if stripped == stripped.upper() and any(c.isalpha() for c in stripped):
+        return False
+    # require at least two whitespace-separated tokens (first + last)
+    if len(stripped.split()) < 2:
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Enrichment — Google search contact probe (Serper)
 # ---------------------------------------------------------------------------
 
