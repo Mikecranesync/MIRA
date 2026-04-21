@@ -1,0 +1,9 @@
+id: missing-error-handling-socket
+language: Python
+severity: error
+message: "socket.connect() called without try/except — network failures will crash the caller"
+rule:
+  pattern: $SOCK.connect($ADDR)
+  not:
+    inside:
+      kind: try_statement
