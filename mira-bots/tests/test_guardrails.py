@@ -21,7 +21,6 @@ from shared.guardrails import (
     vendor_support_url,
 )
 
-
 # ---------------------------------------------------------------------------
 # expand_abbreviations
 # ---------------------------------------------------------------------------
@@ -113,7 +112,9 @@ class TestClassifyIntent:
 
     def test_is_there_a_manual_phrasing(self):
         # 2026-04-19 audit — e4ced7d8 user phrasing that was missed in prod
-        assert classify_intent("is there a manual that would show me the pin out") == "documentation"
+        assert (
+            classify_intent("is there a manual that would show me the pin out") == "documentation"
+        )
         assert classify_intent("is there a datasheet for this") == "documentation"
         assert classify_intent("got a manual for the Pilz module") == "documentation"
         assert classify_intent("any documentation on this thing") == "documentation"
@@ -121,6 +122,7 @@ class TestClassifyIntent:
 
     def test_depth_request_detector(self):
         from shared.guardrails import detect_depth_request
+
         assert detect_depth_request("why?")
         assert detect_depth_request("explain why that matters")
         assert detect_depth_request("tell me more about overcurrent")
@@ -135,6 +137,7 @@ class TestClassifyIntent:
 
     def test_scrub_fabricated_reflection(self):
         from shared.guardrails import scrub_fabricated_reflection
+
         # Fabricated — user never said they checked labels
         r = scrub_fabricated_reflection(
             "You've checked cable labels. What do they show?",
@@ -166,7 +169,6 @@ class TestClassifyIntent:
         # Empty inputs
         assert scrub_fabricated_reflection("", "hello") == ""
         assert scrub_fabricated_reflection("Hello", "") == "Hello"
-
 
     def test_fault_code_pattern(self):
         assert classify_intent("What does F-201 mean") == "industrial"
@@ -299,7 +301,9 @@ class TestResolveOptionSelection:
 
     def test_elaboration_appended(self):
         options = ["Check wiring", "Replace fuse"]
-        result = resolve_option_selection("1 - yes and also check the ground connections please", options)
+        result = resolve_option_selection(
+            "1 - yes and also check the ground connections please", options
+        )
         assert result.startswith("Check wiring")
         assert "ground connections" in result
 
@@ -311,7 +315,9 @@ class TestResolveOptionSelection:
 
 class TestVendorHelpers:
     def test_vendor_support_url_found(self):
-        assert vendor_support_url("PowerFlex 525 by Allen-Bradley") == "rockwellautomation.com/support"
+        assert (
+            vendor_support_url("PowerFlex 525 by Allen-Bradley") == "rockwellautomation.com/support"
+        )
 
     def test_vendor_support_url_none(self):
         assert vendor_support_url("some unknown brand") is None

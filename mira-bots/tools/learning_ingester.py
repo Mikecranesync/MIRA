@@ -21,6 +21,7 @@ Environment:
     LEARNING_MAX_PER_RUN      Max entries per run (default: 50)
     LEARNING_INGEST_DISABLED  Set to "1" to disable
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,7 +30,6 @@ import json
 import logging
 import os
 import sqlite3
-import sys
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -170,27 +170,32 @@ class LearningIngester:
 
         try:
             engine = create_engine(
-                self.cfg.neon_url, poolclass=NullPool,
-                connect_args={"sslmode": "require"}, pool_pre_ping=True,
+                self.cfg.neon_url,
+                poolclass=NullPool,
+                connect_args={"sslmode": "require"},
+                pool_pre_ping=True,
             )
             chat_hash = hashlib.sha256(chat_id.encode()).hexdigest()[:12]
             with engine.connect() as conn:
-                conn.execute(text(
-                    "INSERT INTO knowledge_entries "
-                    "(id, tenant_id, source_type, manufacturer, model_number, "
-                    " equipment_type, content, embedding, source_url, source_page, "
-                    " metadata, is_private, verified, chunk_type, created_at) "
-                    "VALUES (:id, :tid, 'approved_faq', '', '', '', :content, "
-                    "        cast(:emb AS vector), :url, 0, cast(:meta AS jsonb), "
-                    "        false, true, 'faq', now())"
-                ), {
-                    "id": str(uuid.uuid4()),
-                    "tid": self.cfg.tenant_id,
-                    "content": content,
-                    "emb": str(embedding),
-                    "url": f"feedback://approved/{chat_hash}",
-                    "meta": json.dumps({"source_chat_hash": chat_hash}),
-                })
+                conn.execute(
+                    text(
+                        "INSERT INTO knowledge_entries "
+                        "(id, tenant_id, source_type, manufacturer, model_number, "
+                        " equipment_type, content, embedding, source_url, source_page, "
+                        " metadata, is_private, verified, chunk_type, created_at) "
+                        "VALUES (:id, :tid, 'approved_faq', '', '', '', :content, "
+                        "        cast(:emb AS vector), :url, 0, cast(:meta AS jsonb), "
+                        "        false, true, 'faq', now())"
+                    ),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "tid": self.cfg.tenant_id,
+                        "content": content,
+                        "emb": str(embedding),
+                        "url": f"feedback://approved/{chat_hash}",
+                        "meta": json.dumps({"source_chat_hash": chat_hash}),
+                    },
+                )
                 conn.commit()
             return True
         except Exception as e:
@@ -244,10 +249,12 @@ class LearningIngester:
             else:
                 skipped += 1
 
-        self._save_state({
-            "last_run_ts": run_ts,
-            "ingested_total": state.get("ingested_total", 0) + ingested,
-        })
+        self._save_state(
+            {
+                "last_run_ts": run_ts,
+                "ingested_total": state.get("ingested_total", 0) + ingested,
+            }
+        )
 
         result = {
             "status": "ok",
@@ -263,28 +270,28 @@ class LearningIngester:
 
 
 def _build_ingester() -> LearningIngester:
-    return LearningIngester(LearningIngesterConfig(
-        db_path=Path(os.getenv("MIRA_DB_PATH", "/opt/mira/data/mira.db")),
-        neon_url=os.getenv("NEON_DATABASE_URL", ""),
-        tenant_id=os.getenv("MIRA_TENANT_ID", ""),
-        ollama_url=os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434"),
-        embed_model=os.getenv("EMBED_TEXT_MODEL", "nomic-embed-text:latest"),
-        state_path=Path(os.getenv(
-            "LEARNING_STATE_PATH", "/opt/mira/data/learning_state.json"
-        )),
-        max_per_run=int(os.getenv("LEARNING_MAX_PER_RUN", "50")),
-    ))
+    return LearningIngester(
+        LearningIngesterConfig(
+            db_path=Path(os.getenv("MIRA_DB_PATH", "/opt/mira/data/mira.db")),
+            neon_url=os.getenv("NEON_DATABASE_URL", ""),
+            tenant_id=os.getenv("MIRA_TENANT_ID", ""),
+            ollama_url=os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434"),
+            embed_model=os.getenv("EMBED_TEXT_MODEL", "nomic-embed-text:latest"),
+            state_path=Path(os.getenv("LEARNING_STATE_PATH", "/opt/mira/data/learning_state.json")),
+            max_per_run=int(os.getenv("LEARNING_MAX_PER_RUN", "50")),
+        )
+    )
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="MIRA learning ingester")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Write FAQs to disk, skip NeonDB insert")
-    parser.add_argument("--output", type=Path,
-                        default=Path("/tmp/learning_dryrun"),
-                        help="Dry-run output dir")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Write FAQs to disk, skip NeonDB insert"
+    )
+    parser.add_argument(
+        "--output", type=Path, default=Path("/tmp/learning_dryrun"), help="Dry-run output dir"
+    )
     args = parser.parse_args()
 
     ingester = _build_ingester()

@@ -86,13 +86,15 @@ def generate_report(run_id: int, db_path: str | None = None) -> dict:
             bar = "#" * int(pct / 2)
             lines.append(f"  {level:8s} {count:3d} ({pct:5.1f}%) {bar}")
 
-    lines.extend([
-        "",
-        f"Avg latency:  {avg_latency:,} ms",
-        f"P95 latency:  {p95_latency:,} ms",
-        "",
-        "--- Top 5 Results ---",
-    ])
+    lines.extend(
+        [
+            "",
+            f"Avg latency:  {avg_latency:,} ms",
+            f"P95 latency:  {p95_latency:,} ms",
+            "",
+            "--- Top 5 Results ---",
+        ]
+    )
 
     for r in results[:5]:
         title = (r.get("question_title") or "?")[:60]
@@ -113,8 +115,14 @@ def to_csv(results: list[dict]) -> str:
         return ""
     buf = io.StringIO()
     fields = [
-        "question_id", "question_title", "subreddit", "confidence",
-        "latency_ms", "next_state", "error", "reply",
+        "question_id",
+        "question_title",
+        "subreddit",
+        "confidence",
+        "latency_ms",
+        "next_state",
+        "error",
+        "reply",
     ]
     writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
     writer.writeheader()

@@ -37,9 +37,7 @@ def get_collection_id() -> str:
     for col in resp.json():
         if col.get("name") == COLLECTION_NAME:
             return col["id"]
-    raise RuntimeError(
-        f"Collection '{COLLECTION_NAME}' not found. Run seed_kb.py first."
-    )
+    raise RuntimeError(f"Collection '{COLLECTION_NAME}' not found. Run seed_kb.py first.")
 
 
 def upload_text_to_collection(collection_id: str, filename: str, content: str):
@@ -70,15 +68,21 @@ def group_into_qa_pairs(messages: list[dict]) -> list[dict]:
     i = 0
     while i < len(messages):
         msg = messages[i]
-        if msg["role"] == "user" and i + 1 < len(messages) and messages[i + 1]["role"] == "assistant":
+        if (
+            msg["role"] == "user"
+            and i + 1 < len(messages)
+            and messages[i + 1]["role"] == "assistant"
+        ):
             question = msg["content"].strip()
             answer = messages[i + 1]["content"].strip()
             if len(question) >= MIN_CONTENT_LENGTH and len(answer) >= MIN_CONTENT_LENGTH:
-                pairs.append({
-                    "question": question,
-                    "answer": answer,
-                    "timestamp": msg.get("timestamp", ""),
-                })
+                pairs.append(
+                    {
+                        "question": question,
+                        "answer": answer,
+                        "timestamp": msg.get("timestamp", ""),
+                    }
+                )
             i += 2
         else:
             i += 1
@@ -127,7 +131,7 @@ def main():
     # Upload in batches of 50 pairs per document
     batch_size = 50
     for batch_num, start in enumerate(range(0, len(pairs), batch_size), 1):
-        batch = pairs[start:start + batch_size]
+        batch = pairs[start : start + batch_size]
         doc = format_qa_document(batch, batch_num)
         filename = f"mira_interactions_batch_{batch_num:03d}.txt"
         upload_text_to_collection(collection_id, filename, doc)

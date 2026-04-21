@@ -47,50 +47,51 @@ ALL_STATES = ["Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "SAFETY_ALERT"]
 # Domain-specific vocab injected into prompts to ground generation
 _DOMAIN_CONTEXT = {
     "vfd": "Variable frequency drive (VFD/inverter). Brands: AutomationDirect GS10/GS20, "
-           "Yaskawa V1000, Siemens G120, ABB ACS880. Common faults: OC (overcurrent), "
-           "OV (overvoltage), UV (undervoltage), E7 (CPU), F004.",
+    "Yaskawa V1000, Siemens G120, ABB ACS880. Common faults: OC (overcurrent), "
+    "OV (overvoltage), UV (undervoltage), E7 (CPU), F004.",
     "motor": "AC induction motor. Parameters: HP, voltage, FLA, insulation class. "
-             "Tests: megger (insulation resistance), winding resistance, amp draw. "
-             "Common faults: winding failure, bearing seizure, thermal overload.",
+    "Tests: megger (insulation resistance), winding resistance, amp draw. "
+    "Common faults: winding failure, bearing seizure, thermal overload.",
     "pump": "Centrifugal or positive-displacement pump. Components: impeller, mechanical seal, "
-            "bearing, coupling. Common faults: cavitation, seal leak, no prime, bearing failure.",
+    "bearing, coupling. Common faults: cavitation, seal leak, no prime, bearing failure.",
     "plc": "Programmable logic controller. Brands: Allen-Bradley MicroLogix/CompactLogix, "
-           "Siemens S7-300/1200, AutomationDirect Do-more. Common issues: I/O module fault, "
-           "communication error, program fault, power supply failure.",
+    "Siemens S7-300/1200, AutomationDirect Do-more. Common issues: I/O module fault, "
+    "communication error, program fault, power supply failure.",
     "sensor": "Industrial sensor. Types: proximity (inductive/capacitive), photoelectric, "
-              "pressure transducer, thermocouple, encoder. Common faults: wiring open, "
-              "voltage mismatch, incorrect setpoint, debris on face.",
+    "pressure transducer, thermocouple, encoder. Common faults: wiring open, "
+    "voltage mismatch, incorrect setpoint, debris on face.",
     "safety": "Industrial safety scenario involving electrical hazards. LOTO (Lockout/Tagout), "
-              "arc flash, energized conductors, MCC work. MIRA must issue STOP immediately.",
+    "arc flash, energized conductors, MCC work. MIRA must issue STOP immediately.",
 }
 
 # State-specific behavior summary for the generator
 _STATE_BEHAVIOR = {
     "Q1": "First diagnostic question after equipment is identified. Ask exactly ONE question with "
-          "2-4 numbered options. Target: narrow from zero info to one diagnostic branch. "
-          "confidence=LOW (no code/cause confirmed yet).",
+    "2-4 numbered options. Target: narrow from zero info to one diagnostic branch. "
+    "confidence=LOW (no code/cause confirmed yet).",
     "Q2": "Second question — asset known, narrowing cause. Reflect their Q1 answer in one clause, "
-          "then ONE next question. confidence=MEDIUM.",
+    "then ONE next question. confidence=MEDIUM.",
     "Q3": "Third question — cause narrowed, confirming specific component or parameter. "
-          "confidence=MEDIUM.",
+    "confidence=MEDIUM.",
     "DIAGNOSIS": "Cause identified. Lead with the fault meaning (Rule 1). Cite source if "
-                 "documentation matches. Give ONE action step starting with a verb. "
-                 "confidence=HIGH. options=[].",
+    "documentation matches. Give ONE action step starting with a verb. "
+    "confidence=HIGH. options=[].",
     "FIX_STEP": "Repair in progress. Give exactly ONE concrete action step. Confirm when done "
-                "before giving the next. confidence=HIGH. options=[].",
+    "before giving the next. confidence=HIGH. options=[].",
     "SAFETY_ALERT": "Live hazard detected. FIRST WORD must be STOP. Name the hazard. "
-                    "Give de-energize action. NO diagnostic questions. next_state=SAFETY_ALERT.",
+    "Give de-energize action. NO diagnostic questions. next_state=SAFETY_ALERT.",
 }
 
 
 # ── Data structures ───────────────────────────────────────────────────────────
 
+
 @dataclass
 class ScenarioPair:
     domain: str
     fsm_state: str
-    scenario_text: str        # The tech's message(s) that lead to this state
-    good_response: str        # Ideal MIRA JSON response (str — the raw JSON)
+    scenario_text: str  # The tech's message(s) that lead to this state
+    good_response: str  # Ideal MIRA JSON response (str — the raw JSON)
     bad_responses: list[str]  # 3 bad variant strings
 
 
@@ -147,6 +148,7 @@ full sentences for junior techs. At least one scenario per 6 should involve a ju
 
 # ── Core generator ────────────────────────────────────────────────────────────
 
+
 class SyntheticPairGen:
     def __init__(self, api_key: str, model: str = _DEFAULT_MODEL) -> None:
         self.api_key = api_key
@@ -167,8 +169,11 @@ class SyntheticPairGen:
                         "model": self.model,
                         "max_tokens": 2048,
                         "system": [
-                            {"type": "text", "text": _GEN_SYSTEM,
-                             "cache_control": {"type": "ephemeral"}},
+                            {
+                                "type": "text",
+                                "text": _GEN_SYSTEM,
+                                "cache_control": {"type": "ephemeral"},
+                            },
                         ],
                         "messages": [{"role": "user", "content": user}],
                     },
@@ -226,7 +231,9 @@ class SyntheticPairGen:
             async with sem:
                 pair = await self.generate_scenario(domain, state)
                 if pair:
-                    logger.info("Generated %s×%s (%d bad variants)", domain, state, len(pair.bad_responses))
+                    logger.info(
+                        "Generated %s×%s (%d bad variants)", domain, state, len(pair.bad_responses)
+                    )
                 else:
                     logger.warning("Failed to generate %s×%s", domain, state)
                     result.errors += 1
@@ -238,6 +245,7 @@ class SyntheticPairGen:
 
 
 # ── Output writers ────────────────────────────────────────────────────────────
+
 
 def write_eval_fixtures(pairs: list[ScenarioPair], fixture_dir: str | Path) -> int:
     """Write one YAML fixture per (domain, state) pair. Returns count written."""
@@ -316,28 +324,37 @@ def write_dpo_jsonl(pairs: list[ScenarioPair], output_path: str | Path) -> int:
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 async def _main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="MIRA synthetic preference pair generator")
     parser.add_argument(
-        "--domains", nargs="+", default=ALL_DOMAINS,
+        "--domains",
+        nargs="+",
+        default=ALL_DOMAINS,
         help=f"Domains to generate (default: {' '.join(ALL_DOMAINS)})",
     )
     parser.add_argument(
-        "--states", nargs="+", default=ALL_STATES,
+        "--states",
+        nargs="+",
+        default=ALL_STATES,
         help=f"FSM states to generate (default: {' '.join(ALL_STATES)})",
     )
     parser.add_argument(
-        "--fixture-dir", default="tests/eval/fixtures/synthetic",
+        "--fixture-dir",
+        default="tests/eval/fixtures/synthetic",
         help="Output directory for eval fixture YAMLs",
     )
     parser.add_argument(
-        "--dpo-dir", default="data/dpo_pairs",
+        "--dpo-dir",
+        default="data/dpo_pairs",
         help="Output directory for DPO JSONL files",
     )
     parser.add_argument(
-        "--concurrency", type=int, default=5,
+        "--concurrency",
+        type=int,
+        default=5,
         help="Max concurrent Claude calls (default: 5)",
     )
     args = parser.parse_args()
@@ -352,7 +369,8 @@ async def _main() -> None:
 
     logger.info(
         "Generating %d×%d=%d scenarios (concurrency=%d)",
-        len(args.domains), len(args.states),
+        len(args.domains),
+        len(args.states),
         len(args.domains) * len(args.states),
         args.concurrency,
     )
@@ -367,14 +385,19 @@ async def _main() -> None:
     dpo_count = write_dpo_jsonl(result.pairs, dpo_path)
     logger.info("Wrote %d DPO pairs → %s", dpo_count, dpo_path)
 
-    print(json.dumps({
-        "pairs_generated": len(result.pairs),
-        "errors": result.errors,
-        "fixture_count": fixture_count,
-        "dpo_count": dpo_count,
-        "fixture_dir": args.fixture_dir,
-        "dpo_path": str(dpo_path),
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "pairs_generated": len(result.pairs),
+                "errors": result.errors,
+                "fixture_count": fixture_count,
+                "dpo_count": dpo_count,
+                "fixture_dir": args.fixture_dir,
+                "dpo_path": str(dpo_path),
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

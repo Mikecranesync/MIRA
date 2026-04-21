@@ -34,11 +34,11 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 sys.path.insert(0, os.path.join(REPO_ROOT, "mira-bots"))
 
 from shared.benchmark_db import (  # noqa: E402
+    count_prejudged_cases,
+    count_questions,
     ensure_tables,
     insert_prejudged_case,
-    count_prejudged_cases,
     list_questions,
-    count_questions,
 )
 
 SEED_CASES_PATH = os.path.join(REPO_ROOT, "mira-core", "data", "seed_cases.json")
@@ -175,6 +175,7 @@ def load_reddit_solved(db_path: str | None = None, limit: int = 50) -> int:
     """
     try:
         import anthropic
+
         client = anthropic.Anthropic()
     except Exception as exc:
         logger.error("Cannot import/init anthropic SDK: %s", exc)
@@ -214,7 +215,10 @@ def load_reddit_solved(db_path: str | None = None, limit: int = 50) -> int:
             logger.info("  Found solved thread: %s", q["title"][:60])
 
             ground_truth = _structure_solution(
-                q["title"], q.get("body", ""), solved_comment, client,
+                q["title"],
+                q.get("body", ""),
+                solved_comment,
+                client,
             )
             if not ground_truth:
                 continue
@@ -246,7 +250,9 @@ def load_reddit_solved(db_path: str | None = None, limit: int = 50) -> int:
 
 def main():
     parser = argparse.ArgumentParser(description="Build Prejudged Case Corpus")
-    parser.add_argument("--seed-only", action="store_true", help="Load seed cases only (no network)")
+    parser.add_argument(
+        "--seed-only", action="store_true", help="Load seed cases only (no network)"
+    )
     parser.add_argument("--reddit-limit", type=int, default=50, help="Max Reddit posts to scan")
     parser.add_argument("--db", default="", help="SQLite DB path override")
     args = parser.parse_args()
@@ -261,7 +267,9 @@ def main():
         reddit_count = load_reddit_solved(db_path, limit=args.reddit_limit)
 
     total = count_prejudged_cases(db_path=db_path)
-    print(f"\nCorpus built: {seed_count} seed + {reddit_count} reddit = {seed_count + reddit_count} new")
+    print(
+        f"\nCorpus built: {seed_count} seed + {reddit_count} reddit = {seed_count + reddit_count} new"
+    )
     print(f"Total prejudged cases in DB: {total}")
 
 

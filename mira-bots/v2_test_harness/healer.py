@@ -1,17 +1,39 @@
 """
 healer.py — Per-case inline self-healing. Max 3 attempts. Only fires on FAIL.
 """
+
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Awaitable
+from typing import Callable
 
 _STOPWORDS = {
-    "about", "above", "after", "again", "against", "before", "being",
-    "between", "during", "further", "having", "other", "should", "their",
-    "there", "these", "those", "through", "under", "until", "where",
-    "which", "while", "within", "would",
+    "about",
+    "above",
+    "after",
+    "again",
+    "against",
+    "before",
+    "being",
+    "between",
+    "during",
+    "further",
+    "having",
+    "other",
+    "should",
+    "their",
+    "there",
+    "these",
+    "those",
+    "through",
+    "under",
+    "until",
+    "where",
+    "which",
+    "while",
+    "within",
+    "would",
 }
 
 # Buckets that NEVER trigger Step 2 (prompt rebuild)
@@ -103,9 +125,7 @@ class Healer:
         return self._judge.score(case, reply)
 
     async def _step2_prompt(self, case: dict, re_run_fn: Callable) -> dict | None:
-        backup = self._patch_describe_system(
-            "Always label your response with (1), (2), (3)."
-        )
+        backup = self._patch_describe_system("Always label your response with (1), (2), (3).")
         self._backup_describe_system_text = backup
         ok = self._rebuild_ingest()
         if not ok:
@@ -133,9 +153,7 @@ class Healer:
     def _extract_nouns(self, reply: str) -> list[str]:
         words = reply.split()
         return [
-            w.lower()
-            for w in words
-            if len(w) > 5 and w.isalpha() and w.lower() not in _STOPWORDS
+            w.lower() for w in words if len(w) > 5 and w.isalpha() and w.lower() not in _STOPWORDS
         ]
 
     def _patch_describe_system(self, extra_instruction: str) -> str:
@@ -145,6 +163,7 @@ class Healer:
         text = main_py.read_text()
         # Find DESCRIBE_SYSTEM closing quote and append before it
         import re
+
         match = re.search(r'(DESCRIBE_SYSTEM\s*=\s*""")(.*?)(""")', text, re.DOTALL)
         if not match:
             # try single-quoted or single-line
@@ -152,7 +171,14 @@ class Healer:
         if not match:
             return ""
         backup_text = text
-        new_content = match.group(1) + match.group(2).rstrip() + "\n" + extra_instruction + "\n" + match.group(3)
+        new_content = (
+            match.group(1)
+            + match.group(2).rstrip()
+            + "\n"
+            + extra_instruction
+            + "\n"
+            + match.group(3)
+        )
         new_text = text[: match.start()] + new_content + text[match.end() :]
         main_py.write_text(new_text)
         return backup_text
@@ -187,12 +213,14 @@ class Healer:
 
     def _has_numbered_markers(self, reply: str) -> bool:
         import re
+
         return bool(re.search(r"\(1\)|\(2\)|\(3\)", reply))
 
 
 async def _maybe_await(val):
     """Await a value if it is a coroutine, otherwise return it."""
     import asyncio
+
     if asyncio.iscoroutine(val):
         return await val
     return val

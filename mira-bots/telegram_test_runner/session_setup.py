@@ -2,6 +2,7 @@
 One-time interactive Telethon session setup.
 Run with: docker compose run -it --entrypoint python telegram-test-runner session_setup.py
 """
+
 import asyncio
 import os
 

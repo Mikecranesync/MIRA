@@ -8,12 +8,10 @@ import sys
 
 sys.path.insert(0, "mira-bots")
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from shared.engine import STATE_ORDER, Supervisor, _STATE_ALIASES, _FAULT_INFO_RE
-
+from shared.engine import _FAULT_INFO_RE, _STATE_ALIASES, Supervisor
 
 # ---------------------------------------------------------------------------
 # Fixture: minimal Supervisor with mocked workers
@@ -511,7 +509,11 @@ class TestFormatReply:
         result = supervisor._format_reply(
             {
                 "reply": "Which do you want to check?",
-                "options": ["Motor connection to VFD", "Nameplate vs VFD settings", "Load on motor"],
+                "options": [
+                    "Motor connection to VFD",
+                    "Nameplate vs VFD settings",
+                    "Load on motor",
+                ],
             }
         )
         assert "1. Motor connection" in result

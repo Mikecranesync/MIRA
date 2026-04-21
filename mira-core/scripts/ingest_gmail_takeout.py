@@ -8,19 +8,18 @@ ingest_gdrive_docs.py.
 Usage:
     doppler run --project factorylm --config prd -- \
       python mira-core/scripts/ingest_gmail_takeout.py \
-        --mbox-path C:/takeout_staging/extracted/Takeout/Mail/All\ mail.mbox \
+        --mbox-path C:/takeout_staging/extracted/Takeout/Mail/All\\ mail.mbox \
         --dry-run
 
     doppler run --project factorylm --config prd -- \
       python mira-core/scripts/ingest_gmail_takeout.py \
-        --mbox-path C:/takeout_staging/extracted/Takeout/Mail/All\ mail.mbox \
+        --mbox-path C:/takeout_staging/extracted/Takeout/Mail/All\\ mail.mbox \
         --tenant-id 78917b56-f85f-43bb-9a08-1bb98a6cd6c3
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import mailbox
 import os
@@ -64,15 +63,15 @@ if _INGEST_DIR not in sys.path:
     sys.path.insert(0, _INGEST_DIR)
 
 from db.neon import (  # noqa: E402
+    health_check,
     insert_knowledge_entry,
     knowledge_entry_exists,
-    health_check,
 )
-
 
 # ---------------------------------------------------------------------------
 # Email parsing helpers
 # ---------------------------------------------------------------------------
+
 
 def _decode_mime_header(raw: str | None) -> str:
     """Decode a MIME-encoded email header to plain text."""
@@ -153,6 +152,7 @@ def _should_process(labels: set[str]) -> bool:
 # Chunking (reused from ingest_gdrive_docs.py)
 # ---------------------------------------------------------------------------
 
+
 def _chunk_text(text: str) -> Generator[str, None, None]:
     """Yield chunks of text with overlap."""
     start = 0
@@ -167,6 +167,7 @@ def _chunk_text(text: str) -> Generator[str, None, None]:
 # ---------------------------------------------------------------------------
 # Embedding (reused from ingest_gdrive_docs.py)
 # ---------------------------------------------------------------------------
+
 
 def _embed(text: str) -> list[float] | None:
     """Embed text via Ollama."""
@@ -186,6 +187,7 @@ def _embed(text: str) -> list[float] | None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -245,7 +247,10 @@ def main() -> None:
         if total_emails % 100 == 0:
             log.info(
                 "Progress: %d emails scanned, %d processed, %d chunks, %d inserted",
-                total_emails, processed_emails, total_chunks, total_inserted,
+                total_emails,
+                processed_emails,
+                total_chunks,
+                total_inserted,
             )
 
         # Label filtering
@@ -288,7 +293,7 @@ def main() -> None:
             continue
 
         # Build metadata for JSONB column
-        metadata = {
+        metadata = {  # noqa: F841
             "subject": subject[:200],
             "from": sender[:200],
             "date": date,

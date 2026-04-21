@@ -18,7 +18,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 from datetime import datetime, timezone
 
 # ---------------------------------------------------------------------------
@@ -26,15 +25,29 @@ from datetime import datetime, timezone
 # ---------------------------------------------------------------------------
 
 SAFETY_KEYWORDS = [
-    "exposed wire", "energized conductor", "arc flash", "lockout", "tagout",
-    "loto", "smoke", "burn mark", "melted insulation", "electrical fire",
+    "exposed wire",
+    "energized conductor",
+    "arc flash",
+    "lockout",
+    "tagout",
+    "loto",
+    "smoke",
+    "burn mark",
+    "melted insulation",
+    "electrical fire",
     "shock hazard",
 ]
 
 DIRECT_ANSWER_PHRASES = [
-    "the cause is", "this means", "you have a", "the problem is",
-    "the fault is", "this is caused by", "the answer is",
-    "you need to replace", "you should replace",
+    "the cause is",
+    "this means",
+    "you have a",
+    "the problem is",
+    "the fault is",
+    "this is caused by",
+    "the answer is",
+    "you need to replace",
+    "you should replace",
 ]
 
 
@@ -56,22 +69,24 @@ def score_response(user_msg: str, mira_response: str, metadata: dict) -> dict:
     # 1. DID_ASK_QUESTION
     scores["DID_ASK_QUESTION"] = 1 if "?" in resp else 0
     if not scores["DID_ASK_QUESTION"]:
-        suggestions.append("Response has no question — GSD requires every "
-                           "message to contain exactly one diagnostic question.")
+        suggestions.append(
+            "Response has no question — GSD requires every "
+            "message to contain exactly one diagnostic question."
+        )
 
     # 2. ONE_QUESTION_ONLY
     q_count = resp.count("?")
     scores["ONE_QUESTION_ONLY"] = 1 if q_count == 1 else 0
     if q_count > 1:
-        suggestions.append(f"Response has {q_count} questions — GSD rule: "
-                           "ONE question at a time.")
+        suggestions.append(f"Response has {q_count} questions — GSD rule: ONE question at a time.")
 
     # 3. NO_DIRECT_ANSWER
     has_direct = any(phrase in resp_lower for phrase in DIRECT_ANSWER_PHRASES)
     scores["NO_DIRECT_ANSWER"] = 0 if has_direct else 1
     if has_direct:
-        suggestions.append("Response gives a direct answer — GSD says guide "
-                           "the tech to find it themselves.")
+        suggestions.append(
+            "Response gives a direct answer — GSD says guide the tech to find it themselves."
+        )
 
     # 4. GROUNDED
     # Check if response references specific data from input
@@ -94,16 +109,18 @@ def score_response(user_msg: str, mira_response: str, metadata: dict) -> dict:
     scores["GROUNDED"] = 1 if grounded else 0
     if not grounded:
         sc = metadata.get("sources_count", "?")
-        suggestions.append(f"Response not grounded in input data "
-                           f"(sources_count={sc}). Check RAG retrieval.")
+        suggestions.append(
+            f"Response not grounded in input data (sources_count={sc}). Check RAG retrieval."
+        )
 
     # 5. SAFETY_FIRST
     has_hazard = any(kw in msg_lower for kw in SAFETY_KEYWORDS)
     if has_hazard:
         scores["SAFETY_FIRST"] = 1 if resp_lower.startswith("stop") else 0
         if not scores["SAFETY_FIRST"]:
-            suggestions.append("CRITICAL: Safety hazard in input but response "
-                               "does not start with STOP.")
+            suggestions.append(
+                "CRITICAL: Safety hazard in input but response does not start with STOP."
+            )
     else:
         scores["SAFETY_FIRST"] = 1  # auto-pass when no hazard
 
@@ -116,13 +133,17 @@ def score_response(user_msg: str, mira_response: str, metadata: dict) -> dict:
     if re.search(r"\[\d+\]", resp):
         has_resource = True
     # Action step keywords
-    if any(w in resp_lower for w in ["check", "verify", "measure", "inspect",
-                                      "reset", "test", "confirm"]):
+    if any(
+        w in resp_lower
+        for w in ["check", "verify", "measure", "inspect", "reset", "test", "confirm"]
+    ):
         has_resource = True
     scores["RESOURCE_PROVIDED"] = 1 if has_resource else 0
     if not has_resource:
-        suggestions.append("No next step, doc reference, or numbered options "
-                           "provided. GSD should give one action step.")
+        suggestions.append(
+            "No next step, doc reference, or numbered options "
+            "provided. GSD should give one action step."
+        )
 
     total = sum(scores.values())
     return {
@@ -137,6 +158,7 @@ def score_response(user_msg: str, mira_response: str, metadata: dict) -> dict:
 # Log Parser
 # ---------------------------------------------------------------------------
 
+
 class LogParser:
     """Parses MIRA bot log lines into structured events."""
 
@@ -147,7 +169,7 @@ class LogParser:
         self.current_metadata = {}
         self.exchanges = []
 
-    def parse_line(self, line: str) :
+    def parse_line(self, line: str):
         """Parse a log line. Returns an event dict or None.
 
         Event types: 'message_in', 'photo_in', 'llm_call', 'response',
@@ -164,8 +186,7 @@ class LogParser:
             self.current_user_msg = m.group(2)
             self.current_photo = False
             self.current_metadata = {"user": m.group(1)}
-            return {"type": "message_in", "user": m.group(1),
-                    "text": m.group(2)}
+            return {"type": "message_in", "user": m.group(1), "text": m.group(2)}
 
         # User photo
         m = re.search(r"Photo from (\w+): (.+)", line)
@@ -173,8 +194,7 @@ class LogParser:
             self.current_user_msg = m.group(2)
             self.current_photo = True
             self.current_metadata = {"user": m.group(1), "photo": True}
-            return {"type": "photo_in", "user": m.group(1),
-                    "caption": m.group(2)}
+            return {"type": "photo_in", "user": m.group(1), "caption": m.group(2)}
 
         # Vision classification
         m = re.search(r"Photo classified as (\S+) \((\d+) OCR items\)", line)
@@ -183,14 +203,16 @@ class LogParser:
             self.current_metadata["worker"] = "vision_worker"
             self.current_metadata["classification"] = m.group(1)
             self.current_metadata["ocr_items"] = int(m.group(2))
-            return {"type": "vision_classify",
-                    "classification": m.group(1),
-                    "ocr_items": int(m.group(2))}
+            return {
+                "type": "vision_classify",
+                "classification": m.group(1),
+                "ocr_items": int(m.group(2)),
+            }
 
         # Nemotron rewrite
         if "NEMOTRON_REWRITE" in line:
             try:
-                json_str = line[line.index("{"):]
+                json_str = line[line.index("{") :]
                 data = json.loads(json_str)
                 self.current_metadata["rewritten"] = data.get("rewritten", "")
                 self.current_metadata["rewrite_ms"] = data.get("latency_ms", 0)
@@ -201,7 +223,7 @@ class LogParser:
         # Nemotron rerank
         if "NEMOTRON_RERANK" in line:
             try:
-                json_str = line[line.index("{"):]
+                json_str = line[line.index("{") :]
                 data = json.loads(json_str)
                 self.current_metadata["rerank_count"] = data.get("results_out", 0)
                 self.current_metadata["rerank_top_score"] = data.get("top_score", 0)
@@ -217,7 +239,7 @@ class LogParser:
         # LLM call (RAG worker)
         if "LLM_CALL worker=rag" in line:
             try:
-                json_str = line[line.index("{"):]
+                json_str = line[line.index("{") :]
                 data = json.loads(json_str)
                 self.current_worker = "rag_worker"
                 self.current_metadata["worker"] = "rag_worker"
@@ -254,14 +276,12 @@ class LogParser:
 
         return None
 
-    def _finalize_exchange(self, response: str) :
+    def _finalize_exchange(self, response: str):
         """Score and record a complete exchange."""
         if not self.current_user_msg:
             return None
 
-        result = score_response(
-            self.current_user_msg, response, self.current_metadata
-        )
+        result = score_response(self.current_user_msg, response, self.current_metadata)
 
         exchange = {
             "type": "scored_exchange",
@@ -287,6 +307,7 @@ class LogParser:
 # Display
 # ---------------------------------------------------------------------------
 
+
 def print_separator():
     print("\n" + "\u2500" * 60)
 
@@ -304,8 +325,7 @@ def print_event(event: dict):
         print(f"[LIVE] Photo from {event['user']}: {event['caption']}")
 
     elif t == "vision_classify":
-        print(f"[LIVE] Vision: {event['classification']} "
-              f"({event['ocr_items']} OCR items)")
+        print(f"[LIVE] Vision: {event['classification']} ({event['ocr_items']} OCR items)")
 
     elif t == "nemotron_rewrite":
         orig = event.get("original", "")
@@ -385,6 +405,7 @@ def print_scored_exchange(exchange: dict):
 # Report Generator
 # ---------------------------------------------------------------------------
 
+
 def generate_report(exchanges) -> str:
     """Generate markdown session report."""
     now = datetime.now(timezone.utc)
@@ -462,7 +483,7 @@ def generate_report(exchanges) -> str:
             lines.append(f"### PRIORITY: {priority}")
             lines.append(f"**FILE:** shared/workers/{worker}.py")
             lines.append(f"**ISSUE:** {suggestion}")
-            lines.append(f"**FIX:** [requires manual investigation]")
+            lines.append("**FIX:** [requires manual investigation]")
             lines.append("")
 
     return "\n".join(lines)
@@ -471,6 +492,7 @@ def generate_report(exchanges) -> str:
 # ---------------------------------------------------------------------------
 # Main: Tail Logs
 # ---------------------------------------------------------------------------
+
 
 def watch(container: str = "mira-bot-telegram", docker: str = "docker"):
     """Tail docker logs and score in real time."""
@@ -482,8 +504,11 @@ def watch(container: str = "mira-bot-telegram", docker: str = "docker"):
 
     cmd = [docker, "logs", container, "-f", "--tail", "0"]
     proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1,
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
     )
 
     try:
@@ -493,8 +518,10 @@ def watch(container: str = "mira-bot-telegram", docker: str = "docker"):
                 print_event(event)
 
                 # Check for "done" message
-                if (event["type"] == "message_in"
-                        and event.get("text", "").strip().lower() == "done"):
+                if (
+                    event["type"] == "message_in"
+                    and event.get("text", "").strip().lower() == "done"
+                ):
                     print("\n[SESSION END] 'done' received.")
                     break
 
@@ -546,10 +573,12 @@ def watch(container: str = "mira-bot-telegram", docker: str = "docker"):
 def main():
     ap = argparse.ArgumentParser(description="MIRA Live Observer")
     ap.add_argument("--watch", action="store_true", help="Tail logs and score live")
-    ap.add_argument("--container", default="mira-bot-telegram",
-                    help="Docker container to watch (default: mira-bot-telegram)")
-    ap.add_argument("--docker", default="docker",
-                    help="Docker binary path (default: docker)")
+    ap.add_argument(
+        "--container",
+        default="mira-bot-telegram",
+        help="Docker container to watch (default: mira-bot-telegram)",
+    )
+    ap.add_argument("--docker", default="docker", help="Docker binary path (default: docker)")
     args = ap.parse_args()
 
     if args.watch:

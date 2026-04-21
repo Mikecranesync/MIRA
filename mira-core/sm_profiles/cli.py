@@ -4,6 +4,7 @@ Usage:
     python mira-core/sm_profiles/cli.py list
     python mira-core/sm_profiles/cli.py show <name>
 """
+
 from __future__ import annotations
 
 import sys

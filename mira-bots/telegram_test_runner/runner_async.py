@@ -4,6 +4,7 @@ MIRA Async Telegram Test Runner
 - Sends results summary to operator's Telegram after every run
 - Exposes results at http://localhost:8021/results
 """
+
 import argparse
 import asyncio
 import json
@@ -29,6 +30,7 @@ log = logging.getLogger(__name__)
 # Manifest
 # ---------------------------------------------------------------------------
 
+
 def load_manifest(path: Path | None = None) -> list[dict]:
     target = path if path is not None else MANIFEST_PATH
     with open(target) as f:
@@ -39,6 +41,7 @@ def load_manifest(path: Path | None = None) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Prompt metadata
 # ---------------------------------------------------------------------------
+
 
 def load_prompt_meta() -> dict:
     prompt_path = HERE.parent / "prompts" / "diagnose" / "active.yaml"
@@ -54,7 +57,10 @@ def load_prompt_meta() -> dict:
 # Reply collection
 # ---------------------------------------------------------------------------
 
-async def collect_reply(client, bot_entity, image_path: str | None, caption: str, timeout: int) -> str | None:
+
+async def collect_reply(
+    client, bot_entity, image_path: str | None, caption: str, timeout: int
+) -> str | None:
     """Send message (with optional image) and poll for bot reply using silence-detection."""
     if image_path:
         sent = await client.send_file(bot_entity, image_path, caption=caption)
@@ -93,6 +99,7 @@ async def collect_reply(client, bot_entity, image_path: str | None, caption: str
 # Results persistence
 # ---------------------------------------------------------------------------
 
+
 def save_results(results: list[dict], run_id: str) -> None:
     LATEST_RUN_DIR.mkdir(parents=True, exist_ok=True)
     payload = {"run_id": run_id, "cases": results}
@@ -104,7 +111,10 @@ def save_results(results: list[dict], run_id: str) -> None:
 # Telegram summary notification
 # ---------------------------------------------------------------------------
 
-async def send_summary(client, results: list[dict], prompt_meta: dict, elapsed: float, run_id: str) -> None:
+
+async def send_summary(
+    client, results: list[dict], prompt_meta: dict, elapsed: float, run_id: str
+) -> None:
     chat_id_raw = os.environ.get("TELEGRAM_TEST_RESULTS_CHAT_ID", "")
     if not chat_id_raw:
         log.warning("TELEGRAM_TEST_RESULTS_CHAT_ID not set — skipping results notification")
@@ -145,6 +155,7 @@ async def send_summary(client, results: list[dict], prompt_meta: dict, elapsed: 
 # Summary table (console)
 # ---------------------------------------------------------------------------
 
+
 def print_summary_table(results: list[dict]) -> None:
     header = f"{'Case':<30} {'Result':<10} {'Score':<10} {'Confidence':<12} {'Bucket'}"
     print("\n" + header)
@@ -153,15 +164,14 @@ def print_summary_table(results: list[dict]) -> None:
         result_str = "PASS ✅" if r["passed"] else "FAIL ❌"
         bucket = r.get("failure_bucket") or ""
         score_str = f"{r['score']}/{r['max_score']}"
-        print(
-            f"{r['case']:<30} {result_str:<10} {score_str:<10} {r['confidence']:<12.2f} {bucket}"
-        )
+        print(f"{r['case']:<30} {result_str:<10} {score_str:<10} {r['confidence']:<12.2f} {bucket}")
     print()
 
 
 # ---------------------------------------------------------------------------
 # Core runner
 # ---------------------------------------------------------------------------
+
 
 async def run_cases(cases: list[dict], dry_run: bool, timeout: int) -> list[dict]:
     from judge import score as judge_score
@@ -176,7 +186,11 @@ async def run_cases(cases: list[dict], dry_run: bool, timeout: int) -> list[dict
     if dry_run:
         log.info("[DRY RUN] Skipping Telethon — scoring all cases as TRANSPORT_FAILURE")
         for case in cases:
-            log.info("  [DRY RUN] Would send: %s caption='%s'", case.get("image", ""), case.get("caption", ""))
+            log.info(
+                "  [DRY RUN] Would send: %s caption='%s'",
+                case.get("image", ""),
+                case.get("caption", ""),
+            )
             result = judge_score(case, None)
             result["reply_text"] = ""
             results.append(result)
@@ -224,6 +238,7 @@ async def run_cases(cases: list[dict], dry_run: bool, timeout: int) -> list[dict
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     from results_server import start as start_results_server
 
@@ -235,10 +250,12 @@ def main() -> None:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--case", metavar="CASE_NAME", help="Run one named case")
     group.add_argument("--all", action="store_true", help="Run all cases")
-    group.add_argument("--cases", nargs="+", metavar="CASE_NAME",
-                       help="Run specific named cases (space-separated)")
-    parser.add_argument("--manifest", default=None,
-                        help="Path to manifest YAML (default: test_manifest.yaml)")
+    group.add_argument(
+        "--cases", nargs="+", metavar="CASE_NAME", help="Run specific named cases (space-separated)"
+    )
+    parser.add_argument(
+        "--manifest", default=None, help="Path to manifest YAML (default: test_manifest.yaml)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Skip Telethon, test scoring only")
     parser.add_argument("--timeout", type=int, default=60, help="Seconds to wait for reply")
     args = parser.parse_args()

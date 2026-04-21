@@ -4,6 +4,7 @@
 Usage:
     doppler run --project factorylm --config prd -- python3 mira-core/scripts/backup_knowledge_base.py
 """
+
 from __future__ import annotations
 
 import gzip
@@ -44,7 +45,7 @@ def main():
     backup_dir = Path("backups") / timestamp
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest_lines = [f"MIRA NeonDB Backup", f"Timestamp: {timestamp}", "---"]
+    manifest_lines = ["MIRA NeonDB Backup", f"Timestamp: {timestamp}", "---"]
 
     for table in TABLES:
         print(f"Backing up {table}...")
@@ -77,16 +78,18 @@ def main():
         size_kb = outpath.stat().st_size / 1024
         print(f"  → {count} rows, {size_kb:.1f} KB compressed")
 
-    manifest_lines.extend([
-        "---",
-        f"Restore: gunzip + load JSON lines back via insert script",
-    ])
+    manifest_lines.extend(
+        [
+            "---",
+            "Restore: gunzip + load JSON lines back via insert script",
+        ]
+    )
 
     manifest_path = backup_dir / "MANIFEST.txt"
     manifest_path.write_text("\n".join(manifest_lines) + "\n")
 
     print(f"\nBackup complete: {backup_dir}/")
-    print(f"Manifest:")
+    print("Manifest:")
     for line in manifest_lines:
         print(f"  {line}")
 

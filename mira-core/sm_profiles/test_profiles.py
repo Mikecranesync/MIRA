@@ -1,4 +1,5 @@
 """Tests for SM Profile schema, loader, and CLI."""
+
 from __future__ import annotations
 
 import sys
@@ -13,7 +14,6 @@ from pydantic import ValidationError  # noqa: E402
 from sm_profiles import cli as profiles_cli  # noqa: E402
 from sm_profiles.profile_loader import list_profiles, load_profile  # noqa: E402
 from sm_profiles.schema import SmProfile, SmProperty, SmRelationship  # noqa: E402
-
 
 SEED_NAMES = ("conveyor_drive_v1", "zone_heater_v1", "centrifugal_pump_v1")
 
@@ -40,27 +40,36 @@ def test_load_missing_profile_raises_file_not_found():
 def test_property_rejects_inverted_normal_range():
     with pytest.raises(ValidationError):
         SmProperty(
-            name="x", engineeringUnit="u",
-            normalRangeMin=10.0, normalRangeMax=5.0,
-            alarmHigh=20.0, alarmLow=1.0,
+            name="x",
+            engineeringUnit="u",
+            normalRangeMin=10.0,
+            normalRangeMax=5.0,
+            alarmHigh=20.0,
+            alarmLow=1.0,
         )
 
 
 def test_property_rejects_alarm_low_above_normal_min():
     with pytest.raises(ValidationError):
         SmProperty(
-            name="x", engineeringUnit="u",
-            normalRangeMin=10.0, normalRangeMax=20.0,
-            alarmHigh=30.0, alarmLow=12.0,
+            name="x",
+            engineeringUnit="u",
+            normalRangeMin=10.0,
+            normalRangeMax=20.0,
+            alarmHigh=30.0,
+            alarmLow=12.0,
         )
 
 
 def test_property_rejects_alarm_high_below_normal_max():
     with pytest.raises(ValidationError):
         SmProperty(
-            name="x", engineeringUnit="u",
-            normalRangeMin=10.0, normalRangeMax=20.0,
-            alarmHigh=15.0, alarmLow=5.0,
+            name="x",
+            engineeringUnit="u",
+            normalRangeMin=10.0,
+            normalRangeMax=20.0,
+            alarmHigh=15.0,
+            alarmLow=5.0,
         )
 
 
@@ -76,9 +85,12 @@ def test_profile_rejects_empty_properties_list():
 
 def test_profile_rejects_invalid_version():
     prop = dict(
-        name="x", engineeringUnit="u",
-        normalRangeMin=0.0, normalRangeMax=1.0,
-        alarmHigh=1.0, alarmLow=0.0,
+        name="x",
+        engineeringUnit="u",
+        normalRangeMin=0.0,
+        normalRangeMax=1.0,
+        alarmHigh=1.0,
+        alarmLow=0.0,
     )
     with pytest.raises(ValidationError):
         SmProfile(type="T", version="1.0", properties=[prop])  # missing patch

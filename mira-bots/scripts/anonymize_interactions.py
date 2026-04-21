@@ -9,9 +9,9 @@ Run with:
 """
 
 import hashlib
+import json
 import os
 import re
-import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,11 +36,16 @@ PII_PATTERNS = [
 
 # Simple name word-list (extend as needed)
 KNOWN_NAMES = [
-    "Mike", "Michael", "John", "Jane", "Bob", "Alice", "Dave", "Sarah",
+    "Mike",
+    "Michael",
+    "John",
+    "Jane",
+    "Bob",
+    "Alice",
+    "Dave",
+    "Sarah",
 ]
-NAME_PATTERN = re.compile(
-    r"\b(" + "|".join(re.escape(n) for n in KNOWN_NAMES) + r")\b"
-)
+NAME_PATTERN = re.compile(r"\b(" + "|".join(re.escape(n) for n in KNOWN_NAMES) + r")\b")
 
 
 def strip_pii(text: str) -> str:
@@ -110,13 +115,17 @@ def extract_messages(db_path: str) -> list[dict]:
             if isinstance(content, list):
                 # Multi-part content — extract text parts only
                 content = " ".join(
-                    part.get("text", "") for part in content if isinstance(part, dict) and part.get("type") == "text"
+                    part.get("text", "")
+                    for part in content
+                    if isinstance(part, dict) and part.get("type") == "text"
                 )
-            messages.append({
-                "role": role,
-                "content": strip_pii(str(content)),
-                "timestamp": row["updated_at"],
-            })
+            messages.append(
+                {
+                    "role": role,
+                    "content": strip_pii(str(content)),
+                    "timestamp": row["updated_at"],
+                }
+            )
 
     return messages
 

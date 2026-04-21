@@ -11,7 +11,6 @@ from __future__ import annotations
 import importlib
 
 import pytest
-
 from shared import neon_recall
 
 
@@ -88,9 +87,7 @@ class TestRRFMerge:
         bm25 = [_row("v4")]  # boosts v4 via cross-stream agreement
         merged, _ = neon_recall._merge_results(vec, [], [], bm25_results=bm25, limit=3)
         assert len(merged) == 3
-        assert merged[0]["content"] == "v4", (
-            "cross-stream agreement should survive truncation"
-        )
+        assert merged[0]["content"] == "v4", "cross-stream agreement should survive truncation"
 
     def test_rrf_handles_missing_bm25(self):
         """bm25_results=None should behave as pre-Unit-6 merge (no crash)."""

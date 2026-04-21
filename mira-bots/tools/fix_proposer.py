@@ -24,6 +24,7 @@ Environment:
     FIX_PROPOSER_MIN_CLUSTER      Min failures per cluster to propose a fix (default: 3)
     FIX_PROPOSER_MAX_CLUSTERS     Max clusters per run (default: 3)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,7 +34,6 @@ import logging
 import os
 import re
 import subprocess
-import sys
 import tempfile
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -99,11 +99,13 @@ def parse_scorecard(md_path: Path) -> list[FailureRecord]:
 
         fail = _FAILURE_LINE_RE.match(raw_line)
         if fail and current_scenario:
-            failures.append(FailureRecord(
-                scenario_id=current_scenario,
-                checkpoint=fail.group("checkpoint"),
-                reason=fail.group("reason"),
-            ))
+            failures.append(
+                FailureRecord(
+                    scenario_id=current_scenario,
+                    checkpoint=fail.group("checkpoint"),
+                    reason=fail.group("reason"),
+                )
+            )
 
     return failures
 
@@ -158,9 +160,7 @@ class FailureCluster:
         return f"{self.checkpoint}-{slug}"
 
 
-def cluster_failures(
-    failures: list[FailureRecord], min_size: int = 3
-) -> list[FailureCluster]:
+def cluster_failures(failures: list[FailureRecord], min_size: int = 3) -> list[FailureCluster]:
     """Group failures by (checkpoint, reason-signature). Return clusters ≥ min_size."""
     groups: dict[tuple[str, str], list[FailureRecord]] = defaultdict(list)
     for f in failures:
@@ -240,7 +240,7 @@ def _build_repo_context(cluster: FailureCluster, repo_root: Path) -> str:
             text = eng.read_text()
             idx = text.find("STATE_ORDER")
             if idx >= 0:
-                parts.append(f"--- engine.py:STATE_ORDER ---\n{text[idx:idx+500]}")
+                parts.append(f"--- engine.py:STATE_ORDER ---\n{text[idx : idx + 500]}")
 
     # Always include active prompt rules
     prompt = repo_root / "mira-bots" / "prompts" / "diagnose" / "active.yaml"
@@ -304,8 +304,11 @@ class FixProposer:
                         "model": self.cfg.claude_model,
                         "max_tokens": 2048,
                         "system": [
-                            {"type": "text", "text": system,
-                             "cache_control": {"type": "ephemeral"}},
+                            {
+                                "type": "text",
+                                "text": system,
+                                "cache_control": {"type": "ephemeral"},
+                            },
                         ],
                         "messages": [{"role": "user", "content": user}],
                     },
@@ -324,12 +327,8 @@ class FixProposer:
 
     async def propose_fix(self, cluster: FailureCluster) -> dict | None:
         """Ask Claude to propose a patch for a failure cluster."""
-        scenario_list = "\n".join(
-            f"    - {f.scenario_id}" for f in cluster.failures[:10]
-        )
-        sample_reasons = "\n".join(
-            f"    - {f.reason}" for f in cluster.failures[:5]
-        )
+        scenario_list = "\n".join(f"    - {f.scenario_id}" for f in cluster.failures[:10])
+        sample_reasons = "\n".join(f"    - {f.reason}" for f in cluster.failures[:5])
         repo_context = _build_repo_context(cluster, self.cfg.repo_root)
 
         user_msg = _PATCH_USER.format(
@@ -345,9 +344,7 @@ class FixProposer:
 
     # ── PR creation ─────────────────────────────────────────────────────────
 
-    def open_draft_pr(
-        self, cluster: FailureCluster, patch: dict
-    ) -> str | None:
+    def open_draft_pr(self, cluster: FailureCluster, patch: dict) -> str | None:
         """Open a draft PR with the proposed patch. Returns PR URL or None."""
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         branch = f"auto/fix-proposal-{date_str}-{cluster.cluster_id}"[:80]
@@ -357,15 +354,14 @@ class FixProposer:
         )
 
         scenarios_table = "\n".join(
-            f"| `{f.scenario_id}` | `{f.checkpoint}` | {f.reason[:80]} |"
-            for f in cluster.failures
+            f"| `{f.scenario_id}` | `{f.checkpoint}` | {f.reason[:80]} |" for f in cluster.failures
         )
         pr_body = f"""\
 ## Auto-generated fix proposal
 
-**Hypothesis:** {patch.get('hypothesis', '(none)')}
+**Hypothesis:** {patch.get("hypothesis", "(none)")}
 
-**Confidence:** {patch.get('confidence', 0.0):.2f}
+**Confidence:** {patch.get("confidence", 0.0):.2f}
 
 ### Failure cluster ({cluster.size} scenarios)
 
@@ -375,17 +371,17 @@ class FixProposer:
 
 ### Proposed change
 
-**File:** `{patch.get('file_path', '(none)')}`
-**Type:** `{patch.get('change_type', 'edit')}`
+**File:** `{patch.get("file_path", "(none)")}`
+**Type:** `{patch.get("change_type", "edit")}`
 
-**Rationale:** {patch.get('rationale', '(none)')}
+**Rationale:** {patch.get("rationale", "(none)")}
 
-**Projected impact:** {patch.get('projected_impact', '(none)')}
+**Projected impact:** {patch.get("projected_impact", "(none)")}
 
 ### Patch
 
 ```
-{patch.get('proposed_patch', '(no patch)')}
+{patch.get("proposed_patch", "(no patch)")}
 ```
 
 ### Review checklist
@@ -400,11 +396,14 @@ class FixProposer:
 
         worktree_dir = tempfile.mkdtemp(prefix="mira-fix-proposer-")
         try:
+
             def _run(cmd: list[str], cwd: str, check: bool = True) -> subprocess.CompletedProcess:
                 return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=check)
 
-            _run(["git", "worktree", "add", "-b", branch, worktree_dir, "HEAD"],
-                 str(self.cfg.repo_root))
+            _run(
+                ["git", "worktree", "add", "-b", branch, worktree_dir, "HEAD"],
+                str(self.cfg.repo_root),
+            )
 
             # Write a small marker file so the branch has a commit even if
             # the LLM-proposed patch can't be applied programmatically.
@@ -415,26 +414,47 @@ class FixProposer:
             proposal_file.write_text(pr_body)
 
             _run(["git", "add", str(proposal_file.relative_to(worktree_dir))], worktree_dir)
-            _run(["git", "commit", "-m",
-                  f"auto: fix proposal for {cluster.checkpoint} cluster "
-                  f"({cluster.size} scenarios)\n\n"
-                  f"Signed-off-by: mira-fix-proposer <eval@mira.local>"],
-                 worktree_dir)
+            _run(
+                [
+                    "git",
+                    "commit",
+                    "-m",
+                    f"auto: fix proposal for {cluster.checkpoint} cluster "
+                    f"({cluster.size} scenarios)\n\n"
+                    f"Signed-off-by: mira-fix-proposer <eval@mira.local>",
+                ],
+                worktree_dir,
+            )
 
             env = {**os.environ, "GH_TOKEN": self.cfg.gh_token}
             push_r = subprocess.run(
                 ["git", "push", "-u", "origin", branch],
-                cwd=worktree_dir, capture_output=True, text=True, env=env,
+                cwd=worktree_dir,
+                capture_output=True,
+                text=True,
+                env=env,
             )
             if push_r.returncode != 0:
                 logger.error("git push failed: %s", push_r.stderr[:300])
                 return None
 
             pr_r = subprocess.run(
-                ["gh", "pr", "create", "--draft",
-                 "--title", pr_title, "--body", pr_body,
-                 "--repo", self.cfg.repo],
-                cwd=worktree_dir, capture_output=True, text=True, env=env,
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--draft",
+                    "--title",
+                    pr_title,
+                    "--body",
+                    pr_body,
+                    "--repo",
+                    self.cfg.repo,
+                ],
+                cwd=worktree_dir,
+                capture_output=True,
+                text=True,
+                env=env,
             )
             if pr_r.returncode != 0:
                 logger.error("gh pr create failed: %s", pr_r.stderr[:300])
@@ -447,7 +467,8 @@ class FixProposer:
         finally:
             subprocess.run(
                 ["git", "worktree", "remove", "--force", worktree_dir],
-                cwd=str(self.cfg.repo_root), capture_output=True,
+                cwd=str(self.cfg.repo_root),
+                capture_output=True,
             )
 
     # ── Orchestrator ────────────────────────────────────────────────────────
@@ -464,24 +485,35 @@ class FixProposer:
         failures = parse_scorecard(scorecard)
         if not failures:
             logger.info("No failures in %s — nothing to propose", scorecard)
-            return {"status": "ok", "reason": "no_failures",
-                    "scorecard": str(scorecard), "ts": run_ts}
+            return {
+                "status": "ok",
+                "reason": "no_failures",
+                "scorecard": str(scorecard),
+                "ts": run_ts,
+            }
 
         clusters = cluster_failures(failures, self.cfg.min_cluster_size)
         if not clusters:
-            logger.info("No clusters ≥%d failures — nothing to propose",
-                        self.cfg.min_cluster_size)
-            return {"status": "ok", "reason": "no_clusters",
-                    "failures_total": len(failures), "ts": run_ts}
+            logger.info("No clusters ≥%d failures — nothing to propose", self.cfg.min_cluster_size)
+            return {
+                "status": "ok",
+                "reason": "no_clusters",
+                "failures_total": len(failures),
+                "ts": run_ts,
+            }
 
-        logger.info("Found %d failure clusters (processing top %d)",
-                    len(clusters), self.cfg.max_clusters_per_run)
+        logger.info(
+            "Found %d failure clusters (processing top %d)",
+            len(clusters),
+            self.cfg.max_clusters_per_run,
+        )
 
         pr_urls: list[str] = []
         proposals: list[dict] = []
         for cluster in clusters[: self.cfg.max_clusters_per_run]:
-            logger.info("Proposing fix for cluster %s (%d scenarios)",
-                        cluster.cluster_id, cluster.size)
+            logger.info(
+                "Proposing fix for cluster %s (%d scenarios)", cluster.cluster_id, cluster.size
+            )
             patch = await self.propose_fix(cluster)
             if not patch:
                 logger.warning("No patch generated for %s", cluster.cluster_id)
@@ -522,28 +554,29 @@ class FixProposer:
 
 
 def _build_proposer() -> FixProposer:
-    return FixProposer(FixProposerConfig(
-        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-        gh_token=os.getenv("FIX_PROPOSER_GH_TOKEN", ""),
-        repo_root=Path(os.getenv("MIRA_DIR", "/opt/mira")),
-        state_path=Path(os.getenv("FIX_PROPOSER_STATE_PATH",
-                                   "/opt/mira/data/fix_proposer_state.json")),
-        runs_dir=Path(os.getenv("FIX_PROPOSER_RUNS_DIR",
-                                 "/opt/mira/tests/eval/runs")),
-        claude_model=os.getenv("CLAUDE_MODEL", _DEFAULT_MODEL),
-        min_cluster_size=int(os.getenv("FIX_PROPOSER_MIN_CLUSTER", "3")),
-        max_clusters_per_run=int(os.getenv("FIX_PROPOSER_MAX_CLUSTERS", "3")),
-    ))
+    return FixProposer(
+        FixProposerConfig(
+            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+            gh_token=os.getenv("FIX_PROPOSER_GH_TOKEN", ""),
+            repo_root=Path(os.getenv("MIRA_DIR", "/opt/mira")),
+            state_path=Path(
+                os.getenv("FIX_PROPOSER_STATE_PATH", "/opt/mira/data/fix_proposer_state.json")
+            ),
+            runs_dir=Path(os.getenv("FIX_PROPOSER_RUNS_DIR", "/opt/mira/tests/eval/runs")),
+            claude_model=os.getenv("CLAUDE_MODEL", _DEFAULT_MODEL),
+            min_cluster_size=int(os.getenv("FIX_PROPOSER_MIN_CLUSTER", "3")),
+            max_clusters_per_run=int(os.getenv("FIX_PROPOSER_MAX_CLUSTERS", "3")),
+        )
+    )
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="MIRA eval fix-proposal automation")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Print proposals without opening PRs")
-    parser.add_argument("--runs-dir", type=Path,
-                        help="Override runs directory")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print proposals without opening PRs"
+    )
+    parser.add_argument("--runs-dir", type=Path, help="Override runs directory")
     args = parser.parse_args()
 
     proposer = _build_proposer()

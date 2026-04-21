@@ -25,7 +25,6 @@ import time
 from datetime import datetime, timezone
 
 import anthropic
-import httpx
 
 # ---------------------------------------------------------------------------
 # Config
@@ -83,6 +82,7 @@ Respond in this exact JSON format:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def log(msg: str):
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"[{ts}] {msg}", flush=True)
@@ -92,8 +92,13 @@ def run_local(cmd: str, timeout: int = 120) -> tuple[int, str]:
     """Run a local command, return (exit_code, output)."""
     try:
         result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True,
-            timeout=timeout, encoding="utf-8", errors="replace",
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
         )
         return result.returncode, result.stdout + result.stderr
     except subprocess.TimeoutExpired:
@@ -106,8 +111,11 @@ def run_bravo(cmd: str, timeout: int = 300) -> tuple[int, str]:
     try:
         result = subprocess.run(
             ["ssh", "bravo", cmd],
-            capture_output=True, text=True,
-            timeout=timeout, encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
         )
         return result.returncode, result.stdout + result.stderr
     except subprocess.TimeoutExpired:
@@ -124,7 +132,9 @@ def run_container(python_cmd: str, timeout: int = 600) -> tuple[int, str]:
     return run_bravo(cmd, timeout=timeout)
 
 
-def run_container_script(script_path: str, env_extras: str = "", timeout: int = 600) -> tuple[int, str]:
+def run_container_script(
+    script_path: str, env_extras: str = "", timeout: int = 600
+) -> tuple[int, str]:
     """Run a Python script inside mira-bot-telegram on BRAVO."""
     cmd = (
         f"export PATH={DOCKER_PATH}:$PATH && "
@@ -137,6 +147,7 @@ def run_container_script(script_path: str, env_extras: str = "", timeout: int = 
 # Step 1: Harvest
 # ---------------------------------------------------------------------------
 
+
 def harvest() -> dict:
     """Run reddit_harvest.py locally. Returns harvest result dict."""
     log("HARVEST: Running reddit_harvest.py ...")
@@ -146,8 +157,12 @@ def harvest() -> dict:
     try:
         result = subprocess.run(
             [sys.executable, os.path.join(REPO_ROOT, "mira-core", "scripts", "reddit_harvest.py")],
-            capture_output=True, text=True, timeout=180,
-            env=env, encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            timeout=180,
+            env=env,
+            encoding="utf-8",
+            errors="replace",
         )
         output = result.stdout + result.stderr
         log(f"HARVEST: exit={result.returncode}")
@@ -175,6 +190,7 @@ def harvest() -> dict:
 # ---------------------------------------------------------------------------
 # Step 2: Sync new questions to BRAVO
 # ---------------------------------------------------------------------------
+
 
 def sync_to_bravo() -> int:
     """Export all local questions as INSERT OR IGNORE, run on BRAVO. Returns count."""
@@ -233,12 +249,15 @@ def sync_to_bravo() -> int:
 # Step 3: Run benchmark on BRAVO
 # ---------------------------------------------------------------------------
 
+
 def run_benchmark(limit: int = 20) -> dict:
     """Run benchmark inside mira-bot-telegram container. Returns result dict."""
     log(f"BENCHMARK: Running {limit} questions on BRAVO ...")
 
     # First, make sure the latest runner script is on BRAVO
-    runner_local = os.path.join(REPO_ROOT, "mira-bots", "scripts", "reddit_benchmark_run.py").replace("\\", "/")
+    runner_local = os.path.join(
+        REPO_ROOT, "mira-bots", "scripts", "reddit_benchmark_run.py"
+    ).replace("\\", "/")
     run_local(f"scp {runner_local} bravo:/tmp/reddit_benchmark_run.py", timeout=15)
     run_bravo(
         f"export PATH={DOCKER_PATH}:$PATH && "
@@ -281,12 +300,15 @@ def run_benchmark(limit: int = 20) -> dict:
 # Step 4: Capture report
 # ---------------------------------------------------------------------------
 
+
 def capture_report(run_id: int = 0) -> str:
     """Run report generator on BRAVO and capture output."""
     log(f"REPORT: Generating report (run_id={run_id}) ...")
 
     # Sync report script
-    report_local = os.path.join(REPO_ROOT, "mira-bots", "scripts", "reddit_benchmark_report.py").replace("\\", "/")
+    report_local = os.path.join(
+        REPO_ROOT, "mira-bots", "scripts", "reddit_benchmark_report.py"
+    ).replace("\\", "/")
     run_local(f"scp {report_local} bravo:/tmp/reddit_benchmark_report.py", timeout=15)
     run_bravo(
         f"export PATH={DOCKER_PATH}:$PATH && "
@@ -311,6 +333,7 @@ def capture_report(run_id: int = 0) -> str:
 # ---------------------------------------------------------------------------
 # Step 5: LLM Judge
 # ---------------------------------------------------------------------------
+
 
 def judge_report(report_text: str, iteration: int) -> dict:
     """Call Claude as judge. Returns parsed JSON."""
@@ -347,6 +370,7 @@ def judge_report(report_text: str, iteration: int) -> dict:
 # Step 6: Adaptive fixes
 # ---------------------------------------------------------------------------
 
+
 def attempt_adaptive_fix(judge_result: dict, iteration: int):
     """Attempt automatic fixes based on judge feedback."""
     issues = judge_result.get("blocking_issues", [])
@@ -363,37 +387,61 @@ def attempt_adaptive_fix(judge_result: dict, iteration: int):
         sync_to_bravo()
 
     if "single subreddit" in issues_str or "diversity" in fix_lower:
-        log("ADAPTIVE: Subreddit diversity issue — harvest targets all 5, Reddit rate limits are the bottleneck")
+        log(
+            "ADAPTIVE: Subreddit diversity issue — harvest targets all 5, Reddit rate limits are the bottleneck"
+        )
 
     if "canned response" in issues_str or "intent guard" in issues_str:
-        log("ADAPTIVE: Intent guard issue — questions may not match industrial keywords. Harvest filter should handle this.")
+        log(
+            "ADAPTIVE: Intent guard issue — questions may not match industrial keywords. Harvest filter should handle this."
+        )
 
     if "latency" in issues_str:
         log("ADAPTIVE: High latency flagged — logging for manual review (Nemotron pipeline)")
 
     if "low high-confidence" in issues_str or "confidence" in fix_lower:
-        log("ADAPTIVE: Low confidence — would need knowledge ingestion for specific equipment types (manual step)")
+        log(
+            "ADAPTIVE: Low confidence — would need knowledge ingestion for specific equipment types (manual step)"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Step 7: Logging
 # ---------------------------------------------------------------------------
 
+
 def init_log():
     """Create CSV log with headers."""
     with open(LOG_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "iteration", "timestamp", "corpus_size", "new_harvested",
-            "benchmark_processed", "benchmark_errors",
-            "high_pct", "med_pct", "low_pct", "none_pct",
-            "mean_latency_ms", "error_rate", "judge_score",
-            "blocking_issues", "what_to_fix_next",
-        ])
+        writer.writerow(
+            [
+                "iteration",
+                "timestamp",
+                "corpus_size",
+                "new_harvested",
+                "benchmark_processed",
+                "benchmark_errors",
+                "high_pct",
+                "med_pct",
+                "low_pct",
+                "none_pct",
+                "mean_latency_ms",
+                "error_rate",
+                "judge_score",
+                "blocking_issues",
+                "what_to_fix_next",
+            ]
+        )
 
 
-def append_log(iteration: int, harvest_result: dict, benchmark_result: dict,
-               judge_result: dict, corpus_size: int):
+def append_log(
+    iteration: int,
+    harvest_result: dict,
+    benchmark_result: dict,
+    judge_result: dict,
+    corpus_size: int,
+):
     """Append one row to the CSV log."""
     # Parse confidence from judge result
     high_pct = judge_result.get("high_confidence_pct", 0)
@@ -401,23 +449,25 @@ def append_log(iteration: int, harvest_result: dict, benchmark_result: dict,
 
     with open(LOG_CSV, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            iteration,
-            datetime.now(timezone.utc).isoformat(),
-            corpus_size,
-            harvest_result.get("harvested", 0),
-            benchmark_result.get("processed", 0),
-            benchmark_result.get("errors", 0),
-            high_pct,
-            judge_result.get("med_pct", 0),
-            judge_result.get("low_pct", 0),
-            judge_result.get("none_pct", 0),
-            judge_result.get("mean_latency_ms", 0),
-            error_rate,
-            judge_result.get("score", 0),
-            " | ".join(judge_result.get("blocking_issues", [])),
-            judge_result.get("what_to_fix_next", ""),
-        ])
+        writer.writerow(
+            [
+                iteration,
+                datetime.now(timezone.utc).isoformat(),
+                corpus_size,
+                harvest_result.get("harvested", 0),
+                benchmark_result.get("processed", 0),
+                benchmark_result.get("errors", 0),
+                high_pct,
+                judge_result.get("med_pct", 0),
+                judge_result.get("low_pct", 0),
+                judge_result.get("none_pct", 0),
+                judge_result.get("mean_latency_ms", 0),
+                error_rate,
+                judge_result.get("score", 0),
+                " | ".join(judge_result.get("blocking_issues", [])),
+                judge_result.get("what_to_fix_next", ""),
+            ]
+        )
 
     # Append judge JSON
     with open(JUDGE_JSONL, "a", encoding="utf-8") as f:
@@ -428,6 +478,7 @@ def append_log(iteration: int, harvest_result: dict, benchmark_result: dict,
 # ---------------------------------------------------------------------------
 # Final output
 # ---------------------------------------------------------------------------
+
 
 def write_final_output(iterations: list[dict], final_judge: dict):
     """Write final report and optional arXiv paragraph."""
@@ -440,7 +491,9 @@ def write_final_output(iterations: list[dict], final_judge: dict):
 
         # Summary table
         f.write("Iteration Log:\n")
-        f.write(f"{'#':>3} {'Corpus':>6} {'New':>4} {'Proc':>4} {'Err':>3} {'Score':>5} {'Issues'}\n")
+        f.write(
+            f"{'#':>3} {'Corpus':>6} {'New':>4} {'Proc':>4} {'Err':>3} {'Score':>5} {'Issues'}\n"
+        )
         f.write("-" * 70 + "\n")
         for it in iterations:
             f.write(
@@ -461,19 +514,23 @@ def write_final_output(iterations: list[dict], final_judge: dict):
             first = iterations[0]
             last = iterations[-1]
             f.write("\n\nSummary:\n")
-            f.write(f"  - Starting state: {first['corpus_size']} questions, score {first['score']}/10\n")
+            f.write(
+                f"  - Starting state: {first['corpus_size']} questions, score {first['score']}/10\n"
+            )
             f.write(f"  - Final state: {last['corpus_size']} questions, score {last['score']}/10\n")
 
             # Find biggest score jump
             best_jump = 0
             best_jump_iter = 0
             for i in range(1, len(iterations)):
-                jump = iterations[i]["score"] - iterations[i-1]["score"]
+                jump = iterations[i]["score"] - iterations[i - 1]["score"]
                 if jump > best_jump:
                     best_jump = jump
                     best_jump_iter = i
             if best_jump > 0:
-                f.write(f"  - Biggest improvement: +{best_jump} points at iteration {best_jump_iter + 1}\n")
+                f.write(
+                    f"  - Biggest improvement: +{best_jump} points at iteration {best_jump_iter + 1}\n"
+                )
             else:
                 f.write("  - Score remained stable across iterations\n")
 
@@ -499,8 +556,11 @@ def write_final_output(iterations: list[dict], final_judge: dict):
 # Main loop
 # ---------------------------------------------------------------------------
 
+
 def main():
-    log(f"Starting autonomous benchmark loop (max {MAX_ITERATIONS} iterations, target score {TARGET_SCORE})")
+    log(
+        f"Starting autonomous benchmark loop (max {MAX_ITERATIONS} iterations, target score {TARGET_SCORE})"
+    )
     log(f"Results directory: {RESULTS_DIR}")
 
     # Ensure local data dir exists
@@ -508,6 +568,7 @@ def main():
 
     # Ensure benchmark tables exist locally
     from shared.benchmark_db import ensure_tables
+
     ensure_tables(LOCAL_DB)
 
     init_log()
@@ -515,9 +576,9 @@ def main():
     final_judge = {}
 
     for i in range(1, MAX_ITERATIONS + 1):
-        log(f"\n{'='*60}")
+        log(f"\n{'=' * 60}")
         log(f"ITERATION {i}/{MAX_ITERATIONS}")
-        log(f"{'='*60}")
+        log(f"{'=' * 60}")
 
         # 1. Harvest
         harvest_result = harvest()
@@ -599,20 +660,20 @@ def main():
             f"{it['score']:>5}"
         )
 
-    print(f"\nFinal Judge Evaluation:")
+    print("\nFinal Judge Evaluation:")
     print(json.dumps(final_judge, indent=2))
 
     if iterations:
         first = iterations[0]
         last = iterations[-1]
-        print(f"\nSummary:")
+        print("\nSummary:")
         print(f"  - Starting: {first['corpus_size']} questions, score {first['score']}/10")
         print(f"  - Final: {last['corpus_size']} questions, score {last['score']}/10")
 
     if final_judge.get("score", 0) >= TARGET_SCORE:
         arxiv_path = os.path.join(RESULTS_DIR, "arxiv_results_paragraph.md")
         if os.path.exists(arxiv_path):
-            print(f"\narXiv Results Paragraph:")
+            print("\narXiv Results Paragraph:")
             with open(arxiv_path, "r") as f:
                 print(f.read())
 

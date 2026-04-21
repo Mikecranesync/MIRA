@@ -2,6 +2,7 @@
 generator.py — Codebase-aware 20-case generator.
 Parses live gsd_engine.py to find coverage gaps, outputs YAML cases.
 """
+
 import ast
 import time
 from pathlib import Path
@@ -20,11 +21,19 @@ def parse_gsd_engine_keywords(gsd_engine_path: str) -> dict:
                 if isinstance(target, ast.Name):
                     name = target.id
                     if name == "PRINT_KEYWORDS" and isinstance(node.value, (ast.Set, ast.Dict)):
-                        elts = node.value.keys if isinstance(node.value, ast.Dict) else node.value.elts
-                        result["print_kws"] = {ast.literal_eval(e) for e in elts if isinstance(e, ast.Constant)}
+                        elts = (
+                            node.value.keys if isinstance(node.value, ast.Dict) else node.value.elts
+                        )
+                        result["print_kws"] = {
+                            ast.literal_eval(e) for e in elts if isinstance(e, ast.Constant)
+                        }
                     elif name == "INTENT_KEYWORDS" and isinstance(node.value, (ast.Set, ast.Dict)):
-                        elts = node.value.keys if isinstance(node.value, ast.Dict) else node.value.elts
-                        result["intent_kws"] = {ast.literal_eval(e) for e in elts if isinstance(e, ast.Constant)}
+                        elts = (
+                            node.value.keys if isinstance(node.value, ast.Dict) else node.value.elts
+                        )
+                        result["intent_kws"] = {
+                            ast.literal_eval(e) for e in elts if isinstance(e, ast.Constant)
+                        }
     # Fault categories: scan _infer_fault_category strings
     for node in ast.walk(tree):
         if isinstance(node, ast.Return) and isinstance(node.value, ast.Constant):
@@ -579,7 +588,9 @@ def write_manifest_v2(
     existing = data_100.get("cases", [])
     combined = {"cases": existing + new_cases}
     Path(output_path).write_text(yaml.dump(combined, default_flow_style=False, allow_unicode=True))
-    print(f"manifest_v2.yaml written: {len(existing)} existing + {len(new_cases)} generated = {len(combined['cases'])} total")
+    print(
+        f"manifest_v2.yaml written: {len(existing)} existing + {len(new_cases)} generated = {len(combined['cases'])} total"
+    )
 
 
 def is_stale(path: str, max_age_hours: float = 24.0) -> bool:

@@ -44,7 +44,9 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 OUTPUT_DIR = SCRIPT_DIR / "output"
-DB_PATH = os.getenv("MIRA_DB_PATH", str(SCRIPT_DIR.parent.parent / "mira-bridge" / "data" / "mira.db"))
+DB_PATH = os.getenv(
+    "MIRA_DB_PATH", str(SCRIPT_DIR.parent.parent / "mira-bridge" / "data" / "mira.db")
+)
 
 RESET_PHRASES = [
     "i help maintenance technicians",
@@ -63,8 +65,12 @@ def parse_since(since_str: str) -> datetime | None:
         print(f"Invalid --since format: {since_str} (use 24h, 7d, 4w, all)")
         sys.exit(1)
     val, unit = int(match.group(1)), match.group(2)
-    deltas = {"h": timedelta(hours=val), "d": timedelta(days=val),
-              "w": timedelta(weeks=val), "m": timedelta(days=val * 30)}
+    deltas = {
+        "h": timedelta(hours=val),
+        "d": timedelta(days=val),
+        "w": timedelta(weeks=val),
+        "m": timedelta(days=val * 30),
+    }
     return datetime.now() - deltas[unit]
 
 
@@ -126,76 +132,94 @@ def flag_session(session: list[dict]) -> list[dict]:
 
         # Session reset
         if any(phrase in resp for phrase in RESET_PHRASES):
-            flags.append({
-                "type": "session_reset",
-                "severity": "high",
-                "interaction_id": ix["id"],
-                "detail": f"Bot reset: \"{ix['bot_response'][:80]}...\"",
-                "user_message": ix["user_message"],
-                "timestamp": ix["created_at"],
-            })
+            flags.append(
+                {
+                    "type": "session_reset",
+                    "severity": "high",
+                    "interaction_id": ix["id"],
+                    "detail": f'Bot reset: "{ix["bot_response"][:80]}..."',
+                    "user_message": ix["user_message"],
+                    "timestamp": ix["created_at"],
+                }
+            )
 
         # Number reply reset
         if ix["user_message"].strip() in ("1", "2", "3", "4") and any(
             phrase in resp for phrase in RESET_PHRASES
         ):
-            flags.append({
-                "type": "number_reply_reset",
-                "severity": "high",
-                "interaction_id": ix["id"],
-                "detail": f"User chose option '{ix['user_message']}' but bot reset",
-                "user_message": ix["user_message"],
-                "timestamp": ix["created_at"],
-            })
+            flags.append(
+                {
+                    "type": "number_reply_reset",
+                    "severity": "high",
+                    "interaction_id": ix["id"],
+                    "detail": f"User chose option '{ix['user_message']}' but bot reset",
+                    "user_message": ix["user_message"],
+                    "timestamp": ix["created_at"],
+                }
+            )
 
         # Slow response
         if ix.get("response_time_ms") and ix["response_time_ms"] > 10000:
-            flags.append({
-                "type": "slow_response",
-                "severity": "medium",
-                "interaction_id": ix["id"],
-                "detail": f"Response took {ix['response_time_ms']}ms (>{10000}ms threshold)",
-                "user_message": ix["user_message"],
-                "timestamp": ix["created_at"],
-            })
+            flags.append(
+                {
+                    "type": "slow_response",
+                    "severity": "medium",
+                    "interaction_id": ix["id"],
+                    "detail": f"Response took {ix['response_time_ms']}ms (>{10000}ms threshold)",
+                    "user_message": ix["user_message"],
+                    "timestamp": ix["created_at"],
+                }
+            )
 
         # Confusion signal
         if len(ix["user_message"].strip()) < 5 and ix["user_message"].strip() not in (
-            "1", "2", "3", "4", "yes", "no", "ok",
+            "1",
+            "2",
+            "3",
+            "4",
+            "yes",
+            "no",
+            "ok",
         ):
-            flags.append({
-                "type": "confusion_signal",
-                "severity": "low",
-                "interaction_id": ix["id"],
-                "detail": f"Very short reply: \"{ix['user_message']}\"",
-                "user_message": ix["user_message"],
-                "timestamp": ix["created_at"],
-            })
+            flags.append(
+                {
+                    "type": "confusion_signal",
+                    "severity": "low",
+                    "interaction_id": ix["id"],
+                    "detail": f'Very short reply: "{ix["user_message"]}"',
+                    "user_message": ix["user_message"],
+                    "timestamp": ix["created_at"],
+                }
+            )
 
     # Premature ending
     if len(session) < 3:
-        flags.append({
-            "type": "premature_ending",
-            "severity": "medium",
-            "interaction_id": session[-1]["id"],
-            "detail": f"Session ended after {len(session)} turn(s)",
-            "user_message": session[-1]["user_message"],
-            "timestamp": session[-1]["created_at"],
-        })
+        flags.append(
+            {
+                "type": "premature_ending",
+                "severity": "medium",
+                "interaction_id": session[-1]["id"],
+                "detail": f"Session ended after {len(session)} turn(s)",
+                "user_message": session[-1]["user_message"],
+                "timestamp": session[-1]["created_at"],
+            }
+        )
 
     # Repeated question
     user_msgs = [ix["user_message"].strip().lower() for ix in session]
     seen = set()
     for msg in user_msgs:
         if msg in seen and len(msg) > 5:
-            flags.append({
-                "type": "repeated_question",
-                "severity": "medium",
-                "interaction_id": session[-1]["id"],
-                "detail": f"User repeated: \"{msg}\"",
-                "user_message": msg,
-                "timestamp": session[-1]["created_at"],
-            })
+            flags.append(
+                {
+                    "type": "repeated_question",
+                    "severity": "medium",
+                    "interaction_id": session[-1]["id"],
+                    "detail": f'User repeated: "{msg}"',
+                    "user_message": msg,
+                    "timestamp": session[-1]["created_at"],
+                }
+            )
             break
         seen.add(msg)
 
@@ -214,13 +238,13 @@ def write_quality_flags(sessions: list[list[dict]], all_flags: list[dict], outpu
     """Write human-readable quality flags report."""
     path = output_dir / "quality-flags.md"
     lines = [
-        f"# MIRA Interaction Quality Flags",
-        f"",
+        "# MIRA Interaction Quality Flags",
+        "",
         f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"**Sessions analyzed:** {len(sessions)}",
         f"**Total interactions:** {sum(len(s) for s in sessions)}",
         f"**Flags raised:** {len(all_flags)}",
-        f"",
+        "",
     ]
 
     if not all_flags:
@@ -240,14 +264,12 @@ def write_quality_flags(sessions: list[list[dict]], all_flags: list[dict], outpu
         lines.append("## Flagged Interactions")
         lines.append("")
         for flag in sorted(all_flags, key=lambda f: f.get("timestamp", "")):
-            severity_icon = {"high": "!!!", "medium": "!!", "low": "!"}.get(
-                flag["severity"], "?"
-            )
+            severity_icon = {"high": "!!!", "medium": "!!", "low": "!"}.get(flag["severity"], "?")
             lines.append(f"### [{severity_icon}] {flag['type']} — {flag['timestamp']}")
-            lines.append(f"")
+            lines.append("")
             lines.append(f"**User said:** {flag['user_message']}")
             lines.append(f"**Issue:** {flag['detail']}")
-            lines.append(f"")
+            lines.append("")
 
     with open(path, "w") as f:
         f.write("\n".join(lines))
@@ -261,20 +283,20 @@ def build_github_comment(sessions, all_flags, interactions) -> str:
 
     lines = [
         f"## Interaction Harvest — {datetime.now().strftime('%Y-%m-%d')}",
-        f"",
-        f"| Metric | Value |",
-        f"|--------|-------|",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
         f"| Conversations | {len(sessions)} |",
         f"| Total interactions | {len(interactions)} |",
         f"| Flagged | {len(all_flags)} |",
         f"| Most common failure | {most_common[0]} ({most_common[1]}x) |",
-        f"",
+        "",
     ]
 
     # 3 worst examples (high severity first)
-    worst = sorted(all_flags, key=lambda f: {"high": 0, "medium": 1, "low": 2}.get(
-        f["severity"], 3
-    ))[:3]
+    worst = sorted(
+        all_flags, key=lambda f: {"high": 0, "medium": 1, "low": 2}.get(f["severity"], 3)
+    )[:3]
     if worst:
         lines.append("### Worst Examples")
         lines.append("")
@@ -292,7 +314,9 @@ def post_to_github(comment: str):
     try:
         subprocess.run(
             ["gh", "issue", "comment", str(GITHUB_ISSUE), "--body", comment],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         )
         print(f"Posted summary to GitHub issue #{GITHUB_ISSUE}")
     except subprocess.CalledProcessError as e:
@@ -302,10 +326,16 @@ def post_to_github(comment: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Harvest MIRA interactions and flag quality issues")
-    parser.add_argument("--since", default="24h", help="Time window: 24h, 7d, 4w, all (default: 24h)")
+    parser = argparse.ArgumentParser(
+        description="Harvest MIRA interactions and flag quality issues"
+    )
+    parser.add_argument(
+        "--since", default="24h", help="Time window: 24h, 7d, 4w, all (default: 24h)"
+    )
     parser.add_argument("--db", default=DB_PATH, help=f"SQLite DB path (default: {DB_PATH})")
-    parser.add_argument("--post-github", action="store_true", help="Post summary to GitHub issue #18")
+    parser.add_argument(
+        "--post-github", action="store_true", help="Post summary to GitHub issue #18"
+    )
     parser.add_argument("--output-dir", default=str(OUTPUT_DIR), help="Output directory")
     args = parser.parse_args()
 

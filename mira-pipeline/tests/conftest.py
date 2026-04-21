@@ -1,4 +1,5 @@
 """Put mira-pipeline/ on sys.path so tests can `from qr_bridge import ...`"""
+
 import sys
 from pathlib import Path
 

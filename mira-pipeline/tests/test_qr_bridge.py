@@ -1,4 +1,5 @@
 """Unit tests for the QR->pipeline cookie bridge."""
+
 from __future__ import annotations
 
 from qr_bridge import parse_cookie_header, read_pending_scan_id
