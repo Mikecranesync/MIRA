@@ -18,14 +18,13 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import logging
 import math
 import os
+import random
 import re
 import sys
 import time
-import random
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -1081,8 +1080,11 @@ def push_to_hubspot(facilities: list[Facility], token: str, min_score: int = 10)
                 stats["errors"] += 1
                 continue
 
-            # Contacts
+            # Contacts — only push rows with a real person's name
             for c in f.contacts:
+                if not _is_real_name(c.get("name")):
+                    stats["skipped"] = stats.get("skipped", 0) + 1
+                    continue
                 email = c.get("email", "")
                 contact_id = _hs_search_contact(email, token, client)
                 name_parts = (c.get("name") or "").split(" ", 1)

@@ -160,3 +160,40 @@ class TestEnrichFacilitiesOrchestrator:
         # info@ email should still be appended as a separate no-name contact
         emails = [c.get("email") for c in fac.contacts if c.get("email")]
         assert "info@acme.com" in emails
+
+
+class TestHubSpotQualityGate:
+    """push_to_hubspot skips contacts with generic / missing names."""
+
+    def test_skips_generic_names(self, monkeypatch):
+        """Contact with name='info' is skipped but company + deal still push."""
+        fac = hunt.Facility(
+            name="Widget Co", city="Lake Wales", website="https://widget.co",
+            icp_score=12,
+        )
+        fac.contacts = [
+            {"name": "Info", "email": "info@widget.co",
+             "source": "", "confidence": "website-direct"},
+            {"name": "Bob Smith", "title": "Maintenance Manager",
+             "email": "bob@widget.co", "source": "",
+             "confidence": "firecrawl-team-page"},
+        ]
+
+        calls: list[str] = []
+
+        def fake_post(self, url, **_kw):
+            calls.append(url)
+            return httpx.Response(200, json={"id": "fake-id"})
+
+        def fake_get(self, url, **_kw):
+            return httpx.Response(404, json={})
+
+        monkeypatch.setattr("hunt.httpx.Client.post", fake_post)
+        monkeypatch.setattr("hunt.httpx.Client.get", fake_get)
+
+        stats = hunt.push_to_hubspot([fac], "fake-token")
+
+        # Exactly one contact should have been created (Bob Smith)
+        assert stats["contacts_created"] == 1, stats
+        # Still creates the company (generic email doesn't block that)
+        assert stats["companies_created"] >= 1
