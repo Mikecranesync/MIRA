@@ -41,7 +41,9 @@ logger = logging.getLogger("mira-trainer")
 
 QUALITY_THRESHOLD = 0.80
 MAX_CYCLES = 200
-PIPELINE_URL = os.getenv("PIPELINE_URL", "http://localhost:9099/v1/chat/completions")
+# VPS pipeline — can override via PIPELINE_URL env var
+PIPELINE_URL = os.getenv("PIPELINE_URL", "http://factorylm-prod:9099/v1/chat/completions")
+PIPELINE_API_KEY = os.getenv("PIPELINE_API_KEY", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 NTFY_TOPIC = os.getenv("NTFY_TOPIC", "mira-factorylm-alerts")
 REPO_ROOT = Path(__file__).parent.parent.parent
@@ -191,11 +193,16 @@ async def run_synthetic_conversation(scenario: dict) -> dict:
     chat_id = f"trainer_{scenario['id']}_{int(time.time())}"
     exchanges = []
 
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if PIPELINE_API_KEY:
+        headers["Authorization"] = f"Bearer {PIPELINE_API_KEY}"
+
     async with httpx.AsyncClient(timeout=30) as client:
         for user_msg in scenario["messages"]:
             try:
                 resp = await client.post(
                     PIPELINE_URL,
+                    headers=headers,
                     json={
                         "model": "mira-gsd",
                         "messages": [{"role": "user", "content": user_msg}],
@@ -256,7 +263,12 @@ Evaluate this conversation."""
             )
             resp.raise_for_status()
             raw = resp.json()["choices"][0]["message"]["content"]
-            verdict = json.loads(raw)
+            # Strip markdown fences if Groq wraps output in ```json ... ```
+            import re as _re
+            _m = _re.search(r"```(?:json)?\s*(.*?)```", raw, _re.DOTALL)
+            if _m:
+                raw = _m.group(1)
+            verdict = json.loads(raw.strip())
             score = float(verdict.get("overall", 0.5))
             conv["verdict"] = verdict
             logger.info(
