@@ -105,9 +105,9 @@ async def create_pm_wo(
     try:
         from datetime import datetime, timedelta, timezone
 
-        due_str = (
-            datetime.now(timezone.utc) + timedelta(days=suggestion.days)
-        ).strftime("%Y-%m-%d")
+        due_str = (datetime.now(timezone.utc) + timedelta(days=suggestion.days)).strftime(
+            "%Y-%m-%d"
+        )
 
         result = await cmms_client.create_work_order(
             title=suggestion.wo_title(),

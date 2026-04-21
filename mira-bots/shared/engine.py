@@ -710,9 +710,7 @@ class Supervisor:
                 return await self._handle_asset_switch(chat_id, message, state, trace_id)
 
             if _router_intent == "check_equipment_history":
-                return await self._handle_check_equipment_history(
-                    chat_id, message, state, trace_id
-                )
+                return await self._handle_check_equipment_history(chat_id, message, state, trace_id)
 
             if _router_intent == "general_question" and _keyword_intent not in (
                 "safety",
@@ -1340,8 +1338,7 @@ class Supervisor:
                 )
                 wo_id = result.get("id", "?")
                 reply = (
-                    f"Done — PM work order #{wo_id} scheduled: "
-                    f"*{pm.action}* within {pm.days} days."
+                    f"Done — PM work order #{wo_id} scheduled: *{pm.action}* within {pm.days} days."
                 )
                 logger.info("PM_WO created wo_id=%s asset=%r", wo_id, pm.asset)
             except Exception as exc:
@@ -2090,7 +2087,7 @@ class Supervisor:
             for r in rows:
                 ts = str(r["created_at"])[:16]
                 snippet = str(r["user_message"])[:80].replace("\n", " ")
-                lines.append(f"• {ts} — {r['fsm_state'] or '?'} — \"{snippet}\"")
+                lines.append(f'• {ts} — {r["fsm_state"] or "?"} — "{snippet}"')
             reply_text = "\n".join(lines)
 
         reply = self._format_simple_response(

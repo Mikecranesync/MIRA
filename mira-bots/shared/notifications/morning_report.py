@@ -88,10 +88,7 @@ def _build_html(groups: dict[str, list[dict]], date_str: str) -> str:
             ts = str(ev.get("created_at", ""))[:16]
             state = ev.get("fsm_state") or "?"
             snippet = str(ev.get("user_message", ""))[:80].replace("\n", " ")
-            rows_html += (
-                f"<tr><td>{ts}</td><td>{state}</td>"
-                f"<td>{snippet}</td></tr>"
-            )
+            rows_html += f"<tr><td>{ts}</td><td>{state}</td><td>{snippet}</td></tr>"
     return f"""<!DOCTYPE html>
 <html>
 <head><style>
