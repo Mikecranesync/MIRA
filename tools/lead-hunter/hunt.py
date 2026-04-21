@@ -815,10 +815,10 @@ _SEEDS: list[dict] = [
 
 def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 3958.8
-    φ1, φ2 = math.radians(lat1), math.radians(lat2)
-    dφ = math.radians(lat2 - lat1)
-    dλ = math.radians(lon2 - lon1)
-    a = math.sin(dφ / 2) ** 2 + math.cos(φ1) * math.cos(φ2) * math.sin(dλ / 2) ** 2
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
@@ -1395,30 +1395,37 @@ def enrich_facilities(
             except Exception as e:
                 log.debug("Website scrape failed %s: %s", f.name, e)
 
-            if serper_key and queries_used < budget:
-                try:
-                    domain = ""
-                    if f.website:
-                        try:
-                            domain = urlparse(f.website).netloc.replace("www.", "")
-                        except Exception:
-                            domain = ""
-                    probe_results = search_contacts_via_serper(
-                        f.name,
-                        domain,
-                        client,
-                        serper_key,
+            if serper_key:
+                domain = ""
+                if f.website:
+                    try:
+                        domain = urlparse(f.website).netloc.replace("www.", "")
+                    except Exception:
+                        domain = ""
+                q_cost = 3 if domain else 2
+                if queries_used + q_cost > budget:
+                    log.debug(
+                        "Serper budget would be exceeded (%d + %d > %d) — skipping %s",
+                        queries_used, q_cost, budget, f.name,
                     )
-                    queries_used += 3 if domain else 2
-                    if probe_results:
-                        existing = {c.get("name", "").lower() for c in f.contacts if c.get("name")}
-                        for c in probe_results:
-                            if c["name"].lower() not in existing:
-                                f.contacts.append(c)
-                                existing.add(c["name"].lower())
-                        log.info("    + %d contact(s) from Serper probe", len(probe_results))
-                except Exception as e:
-                    log.debug("Serper probe failed %s: %s", f.name, e)
+                else:
+                    try:
+                        probe_results = search_contacts_via_serper(
+                            f.name,
+                            domain,
+                            client,
+                            serper_key,
+                        )
+                        queries_used += q_cost
+                        if probe_results:
+                            existing = {c.get("name", "").lower() for c in f.contacts if c.get("name")}
+                            for c in probe_results:
+                                if c["name"].lower() not in existing:
+                                    f.contacts.append(c)
+                                    existing.add(c["name"].lower())
+                            log.info("    + %d contact(s) from Serper probe", len(probe_results))
+                    except Exception as e:
+                        log.debug("Serper probe failed %s: %s", f.name, e)
 
             f.icp_score = score_facility(f)
 
@@ -1972,6 +1979,19 @@ def main() -> None:
 
         if not fac_list:
             log.info("Nothing to enrich — all facilities already have contacts.")
+            return
+
+        if args.dry_run:
+            log.info(
+                "--dry-run: would enrich %d facilities (Serper budget %d, est ~%d queries)",
+                len(fac_list),
+                args.enrich_budget,
+                min(len(fac_list) * 3, args.enrich_budget),
+            )
+            log.info("--dry-run: would upsert %d rows to NeonDB", len(fac_list))
+            if args.push_hubspot:
+                log.info("--dry-run: would push enriched contacts to HubSpot")
+            log.info("--dry-run: would write report to %s", report_path)
             return
 
         enrich_facilities(fac_list, serper_key, budget=args.enrich_budget)
