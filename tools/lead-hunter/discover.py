@@ -7,21 +7,30 @@ Sources:
 
 All functions return list[Facility] and are safe to call from any context.
 """
+
 from __future__ import annotations
 
 import logging
 import random
 import re
 import time
-from urllib.parse import quote_plus, unquote, urlparse
+from urllib.parse import quote_plus, unquote
 
 import httpx
 from bs4 import BeautifulSoup
 
 # Import shared types — hunt.py must be on sys.path
 from hunt import (
-    ANCHOR_LAT, ANCHOR_LON, CITIES, DDG_TIMEOUT_SECS, RATE_LIMIT_SECS,
-    USER_AGENTS, Facility, extract_facilities_from_results, haversine, looks_like_mfg, score_facility,
+    ANCHOR_LAT,
+    ANCHOR_LON,
+    CITIES,
+    DDG_TIMEOUT_SECS,
+    RATE_LIMIT_SECS,
+    USER_AGENTS,
+    Facility,
+    extract_facilities_from_results,
+    haversine,
+    score_facility,
 )
 
 log = logging.getLogger("lead-hunter.discover")
@@ -54,16 +63,49 @@ MEDIUM_BIZ_QUERIES = [
 MSCA_URL = "https://mscafl.com/msca-member-directory/"
 
 MSCA_MFG_KEYWORDS = [
-    "manufactur", "fabricat", "machining", "cnc", "machine shop", "weld",
-    "pump", "processing", "packaging", "plastic", "fiberglass", "steel",
-    "metal", "industrial", "assembly", "production", "plant", "bottling",
-    "distribution", "infusion", "equipment", "tool", "mold",
+    "manufactur",
+    "fabricat",
+    "machining",
+    "cnc",
+    "machine shop",
+    "weld",
+    "pump",
+    "processing",
+    "packaging",
+    "plastic",
+    "fiberglass",
+    "steel",
+    "metal",
+    "industrial",
+    "assembly",
+    "production",
+    "plant",
+    "bottling",
+    "distribution",
+    "infusion",
+    "equipment",
+    "tool",
+    "mold",
 ]
 
 MSCA_SKIP_NAMES = {
-    "staffing", "consulting", "insurance", "airport", "electric", "college",
-    "vision", "payroll", "accounting", "transportation", "staffing", "development",
-    "council", "commerce", "workforce", "recruiting", "forged paths",
+    "staffing",
+    "consulting",
+    "insurance",
+    "airport",
+    "electric",
+    "college",
+    "vision",
+    "payroll",
+    "accounting",
+    "transportation",
+    "staffing",
+    "development",
+    "council",
+    "commerce",
+    "workforce",
+    "recruiting",
+    "forged paths",
 }
 
 
@@ -92,7 +134,7 @@ def scrape_msca(client: httpx.Client) -> list[Facility]:
     facilities = []
 
     for block in blocks:
-        lines = [l.strip() for l in block.get_text(separator="\n").split("\n") if l.strip()]
+        lines = [ln.strip() for ln in block.get_text(separator="\n").split("\n") if ln.strip()]
         if len(lines) < 2:
             continue
 
@@ -178,6 +220,7 @@ def _infer_category(text: str) -> str:
 # DuckDuckGo — medium-business targeted queries
 # ---------------------------------------------------------------------------
 
+
 def search_ddg_medium(
     city: str,
     city_lat: float,
@@ -244,11 +287,13 @@ def _ddg_search(query: str, client: httpx.Client) -> list[dict] | None:
                     link = unquote(href.split("uddg=")[1].split("&")[0])
                 elif href.startswith("http"):
                     link = href
-            results.append({
-                "title": title_el.get_text(strip=True),
-                "snippet": snippet_el.get_text(strip=True) if snippet_el else "",
-                "link": link,
-            })
+            results.append(
+                {
+                    "title": title_el.get_text(strip=True),
+                    "snippet": snippet_el.get_text(strip=True) if snippet_el else "",
+                    "link": link,
+                }
+            )
         return results[:10]
     except Exception as e:
         log.warning("DDG error for %r: %s", query, e)

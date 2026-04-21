@@ -4,8 +4,8 @@
 Called by: com.mira.lead-hunter.plist (launchd)
 Doppler injects secrets automatically via the plist EnvironmentVariables.
 """
+
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -24,7 +24,7 @@ logging.basicConfig(
     ],
 )
 
-from celery_tasks import run_discover_and_enrich
+from celery_tasks import run_discover_and_enrich  # noqa: E402
 
 if __name__ == "__main__":
     result = run_discover_and_enrich()
