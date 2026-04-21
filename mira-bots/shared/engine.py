@@ -34,6 +34,7 @@ from .models.work_order import (
     format_wo_preview,
     log_uns_event,
 )
+from .conversation_router import route_intent
 from .nemotron import NemotronClient
 from .neon_recall import kb_has_coverage
 from .telemetry import flush as tl_flush
@@ -649,8 +650,38 @@ class Supervisor:
                     honest_prefix=_honest_prefix,
                 )
 
-            intent = classify_intent(message)
-            if intent == "safety":
+            # LLM conversation router — determines what the user wants THIS turn.
+            # Runs in parallel with the synchronous keyword classifier as a fast fallback.
+            _keyword_intent = classify_intent(message)
+            try:
+                _routing = await route_intent(
+                    user_message=message,
+                    conversation_history=(state.get("context") or {}).get("history", []),
+                    current_fsm_state=state.get("state", "IDLE"),
+                    asset_identified=state.get("asset_identified", ""),
+                )
+                _router_intent = _routing["intent"]
+                logger.info(
+                    "ROUTER intent=%s confidence=%.2f reason=%r chat_id=%s",
+                    _router_intent,
+                    _routing.get("confidence", 0),
+                    _routing.get("reasoning", ""),
+                    chat_id,
+                )
+            except Exception as _re:
+                logger.warning("ROUTER_FAILURE error=%s — using keyword classifier", _re)
+                _router_intent = {
+                    "safety": "safety_concern",
+                    "documentation": "find_documentation",
+                    "greeting": "greeting_or_chitchat",
+                    "help": "greeting_or_chitchat",
+                    "industrial": "continue_current",
+                    "off_topic": "general_question",
+                }.get(_keyword_intent, "continue_current")
+
+            # Safety ALWAYS wins — router or keyword classifier, either triggers it.
+            intent = _keyword_intent  # keep for downstream legacy gates
+            if _router_intent == "safety_concern" or _keyword_intent == "safety":
                 reply = (
                     "STOP \u2014 describe the hazard. De-energize the equipment first. "
                     "Do not proceed until the area is safe."
@@ -660,6 +691,26 @@ class Supervisor:
                 asset = state.get("asset_identified") or "Unknown equipment"
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
+
+            # Router-exclusive dispatches — intents the keyword classifier doesn't handle
+            if _router_intent == "log_work_order":
+                return await self._handle_wo_request(chat_id, message, state, trace_id)
+
+            if _router_intent == "switch_asset":
+                return await self._handle_asset_switch(chat_id, message, state, trace_id)
+
+            if _router_intent == "general_question" and _keyword_intent not in (
+                "safety", "documentation"
+            ):
+                return await self._handle_general_question(chat_id, message, state, trace_id)
+
+            if _router_intent == "greeting_or_chitchat" and state["state"] == "IDLE":
+                return self._greeting_response(state, chat_id, trace_id)
+
+            # find_documentation: let the existing specificity-gate block handle it below
+            if _router_intent == "find_documentation":
+                intent = "documentation"
+
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
         if not photo_b64 and state["state"] == "IDLE" and state["exchange_count"] == 0:
             if intent == "help":
@@ -1738,6 +1789,125 @@ class Supervisor:
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
         return self._make_result(reply, "none", trace_id, "MANUAL_LOOKUP_GATHERING")
+
+    # ------------------------------------------------------------------
+    # Conversation Router handler stubs
+    # ------------------------------------------------------------------
+
+    def _format_simple_response(self, text: str, suggestions: list[str] | None = None) -> str:
+        """Format a response with contextual suggestion chips."""
+        if not suggestions:
+            suggestions = ["Diagnose equipment", "Find documentation", "Log work order"]
+        chip_text = "\n\n---\n" + " | ".join(f"*{s}*" for s in suggestions)
+        return text + chip_text
+
+    def _greeting_response(self, state: dict, chat_id: str, trace_id: str) -> dict:
+        """Handle greetings — acknowledge and offer help."""
+        asset = state.get("asset_identified", "")
+        if asset:
+            reply = self._format_simple_response(
+                f"Hey! I'm still tracking {asset}. What can I help with?",
+                suggestions=["Continue diagnosis", "Find manual for this equipment", "Log a work order"],
+            )
+        else:
+            reply = self._format_simple_response(
+                "Hey! I\u2019m MIRA \u2014 your maintenance copilot. What are you working on?",
+                suggestions=["Troubleshoot equipment", "Find a manual", "Log a work order"],
+            )
+        self._record_exchange(chat_id, state, "", reply)
+        tl_flush()
+        return self._make_result(reply, "none", trace_id, state.get("state", "IDLE"))
+
+    async def _handle_general_question(
+        self, chat_id: str, message: str, state: dict, trace_id: str
+    ) -> dict:
+        """Answer a general industrial knowledge question directly — no FSM, no RAG."""
+        system = (
+            "You are MIRA, an industrial maintenance assistant. "
+            "Answer this general question concisely and accurately. "
+            "If it's about specific equipment, suggest the user provide the asset info "
+            "for a more targeted answer. Keep the reply under 120 words."
+        )
+        try:
+            raw = await self._call_llm_direct(message, system=system)
+        except Exception as exc:
+            logger.warning("GENERAL_QUESTION_LLM_FAILURE error=%s", exc)
+            raw = "I can help with that — could you give me a bit more context about what you're working on?"
+        reply = self._format_simple_response(
+            raw,
+            suggestions=[
+                "Diagnose a specific machine?",
+                "Find documentation for equipment",
+                "Log a work order",
+            ],
+        )
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(reply, self._infer_confidence(raw), trace_id, state.get("state", "IDLE"))
+
+    async def _handle_asset_switch(
+        self, chat_id: str, message: str, state: dict, trace_id: str
+    ) -> dict:
+        """User wants to talk about a different asset — clear FSM, keep session."""
+        state["state"] = "IDLE"
+        state["asset_identified"] = ""
+        ctx = state.get("context") or {}
+        ctx.pop("session_context", None)
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+        reply = self._format_simple_response(
+            "Got it \u2014 switching to a new asset. What equipment do you need help with?",
+            suggestions=["Describe the machine", "Scan the QR code", "Upload a nameplate photo"],
+        )
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(reply, "none", trace_id, "IDLE")
+
+    async def _handle_wo_request(
+        self, chat_id: str, message: str, state: dict, trace_id: str
+    ) -> dict:
+        """Router detected 'log_work_order' intent — build WO draft from current context."""
+        wo = build_uns_wo_from_state(state)
+        wo.chat_id = chat_id
+        wo.fsm_state_at_creation = state.get("state", "IDLE")
+        wo_dict = wo.to_dict()
+        ctx = state.get("context") or {}
+        ctx["cmms_pending"] = True
+        ctx["cmms_wo_draft"] = wo_dict
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+        preview = format_wo_preview(wo)
+        self._record_exchange(chat_id, state, message, preview)
+        tl_flush()
+        return self._make_result(preview, "none", trace_id, state.get("state", "IDLE"))
+
+    async def _handle_documentation_intent(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        resolved_tenant: str,
+    ) -> dict:
+        """Router-dispatched doc intent — delegates to the existing specificity-gate path."""
+        combined = f"{message} {state.get('asset_identified', '')}".strip()
+        mfr = vendor_name_from_text(combined) or ""
+        if not self._is_doc_specific(mfr, combined):
+            return await self._enter_manual_lookup_gathering(
+                chat_id, message, state, trace_id, mfr
+            )
+        return await self._do_documentation_lookup(
+            chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
+        )
+
+    async def _call_llm_direct(self, message: str, system: str = "") -> str:
+        """One-shot LLM call via the existing inference router. Returns plain text."""
+        messages: list[dict] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": message})
+        raw, _usage = await self.router.complete(messages, max_tokens=300)
+        return raw.strip() if raw else "I'm not sure — can you give me more context?"
 
     async def _do_documentation_lookup(
         self,
