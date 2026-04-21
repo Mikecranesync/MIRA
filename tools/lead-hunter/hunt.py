@@ -658,17 +658,19 @@ def enrich_via_firecrawl(
 
     payload = {
         "url": url,
-        "formats": ["json"],
-        "jsonOptions": {
-            "schema": _FIRECRAWL_SCHEMA,
-            "prompt": (
-                "Extract any named contacts from this page, especially "
-                "maintenance managers, plant managers, facilities managers, "
-                "operations managers, or other industrial/maintenance roles. "
-                "Include name, title, email if visible, and LinkedIn URL if "
-                "visible."
-            ),
-        },
+        "formats": [
+            {
+                "type": "json",
+                "schema": _FIRECRAWL_SCHEMA,
+                "prompt": (
+                    "Extract any named contacts from this page, especially "
+                    "maintenance managers, plant managers, facilities managers, "
+                    "operations managers, or other industrial/maintenance roles. "
+                    "Include name, title, email if visible, and LinkedIn URL if "
+                    "visible."
+                ),
+            }
+        ],
     }
     try:
         resp = client.post(
@@ -686,15 +688,21 @@ def enrich_via_firecrawl(
                         resp.status_code, url, resp.text[:120])
             return []
         data = resp.json().get("data", {}).get("json", {}) or {}
+    except httpx.TimeoutException:
+        log.warning("Firecrawl timeout on %s after 60s", url)
+        return []
+    except httpx.RequestError as e:
+        log.warning("Firecrawl network error on %s: %s", url, e)
+        return []
     except Exception as e:
-        log.debug("Firecrawl error on %s: %s", url, e)
+        log.debug("Firecrawl parse/other error on %s: %s", url, e)
         return []
 
     out: list[dict] = []
     for c in data.get("contacts", []) or []:
         name = (c.get("name") or "").strip()
         title = (c.get("title") or "").strip()
-        if not name or not _matches_maintenance_title(title):
+        if not _is_real_name(name) or not _matches_maintenance_title(title):
             continue
         out.append({
             "name": name,
