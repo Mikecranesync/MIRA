@@ -2,14 +2,15 @@
 """MIRA Slack Bot — GSD engine + direct data commands via Socket Mode."""
 
 import asyncio
-import base64
 import io as _io
 import logging
 import os
 
 import httpx
+from chat_adapter import SlackChatAdapter
 from pdf_handler import ingest_pdf
 from PIL import Image
+from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
@@ -41,6 +42,13 @@ engine = Supervisor(
     vision_model=os.environ.get("VISION_MODEL", "qwen2.5vl:7b"),
     tenant_id=os.environ.get("MIRA_TENANT_ID", ""),
 )
+
+# Chat Abstraction Layer — wraps engine in platform-agnostic protocol
+adapter = SlackChatAdapter(
+    bot_token=SLACK_BOT_TOKEN,
+    signing_secret=os.environ.get("SLACK_SIGNING_SECRET", ""),
+)
+dispatcher = ChatDispatcher(engine)
 
 app = AsyncApp(token=SLACK_BOT_TOKEN)
 
@@ -113,31 +121,12 @@ async def handle_message(event, say, client):
     if ALLOWED_CHANNELS and event.get("channel") not in ALLOWED_CHANNELS:
         return  # silently ignore messages outside allowed channels
 
-    session = _session_key(event)
     thread = _thread_ts(event)
-    text = event.get("text", "")
-    # Mention stripping now handled by engine (guardrails.strip_mentions)
     files = event.get("files", [])
-
-    image_files = [f for f in files if f.get("mimetype", "") in IMAGE_MIMES]
     pdf_files = [f for f in files if f.get("mimetype", "") == "application/pdf"]
 
-    if image_files:
-        await say(text="Analyzing equipment...", thread_ts=thread)
-        try:
-            file_info = image_files[0]
-            url = file_info.get("url_private_download") or file_info.get("url_private")
-            raw_bytes = await _download_slack_file(url)
-            vision_bytes = _resize_for_vision(raw_bytes)
-            photo_b64 = base64.b64encode(vision_bytes).decode("utf-8")
-            caption = text or "Analyze this equipment photo"
-            reply = await engine.process(session, caption, photo_b64=photo_b64, platform="slack")
-        except Exception as e:
-            logger.error("Photo handler error: %s", e)
-            reply = f"MIRA error: {e}"
-        await say(text=reply, thread_ts=thread)
-
-    elif pdf_files:
+    # PDF path — KB ingestion, not a diagnostic session; bypass the dispatcher
+    if pdf_files:
         await say(text="Processing PDF...", thread_ts=thread)
         try:
             file_info = pdf_files[0]
@@ -149,14 +138,36 @@ async def handle_message(event, say, client):
             logger.error("PDF handler error: %s", e)
             reply = f"MIRA error processing PDF: {e}"
         await say(text=reply, thread_ts=thread)
+        return
 
-    elif text:
-        try:
-            reply = await engine.process(session, text, platform="slack")
-        except Exception as e:
-            logger.error("GSD error: %s", e)
-            reply = f"MIRA error: {e}"
-        await say(text=reply, thread_ts=thread)
+    # Normalize via ChatAdapter
+    normalized = await adapter.normalize_incoming(event)
+
+    # Pre-download image attachment and resize before dispatch so the
+    # dispatcher can pass photo_b64 straight to the engine.
+    if normalized.attachments:
+        img_att = next((a for a in normalized.attachments if a.kind == "image"), None)
+        if img_att:
+            await say(text="Analyzing equipment...", thread_ts=thread)
+            try:
+                raw_bytes = await adapter.download_attachment(img_att)
+                img_att.data = _resize_for_vision(raw_bytes)
+                if not normalized.text:
+                    normalized.text = "Analyze this equipment photo"
+            except Exception as e:
+                logger.error("Photo download error: %s", e)
+                await say(text=f"MIRA error downloading photo: {e}", thread_ts=thread)
+                return
+
+    if not normalized.text and not any(a.kind == "image" for a in normalized.attachments):
+        return  # nothing to process
+
+    try:
+        response = await dispatcher.dispatch(normalized)
+        await adapter.render_outgoing(response, normalized)
+    except Exception as e:
+        logger.error("Dispatch error: %s", e)
+        await say(text=f"MIRA error: {e}", thread_ts=thread)
 
 
 @app.command("/mira-equipment")
@@ -270,6 +281,84 @@ async def reset_command(ack, command, say):
     await say(text="Conversation reset. Start fresh anytime.")
 
 
+@app.command("/mira")
+async def mira_command(ack, command, say):
+    """Ask MIRA a maintenance question directly via slash command."""
+    await ack()
+    question = command.get("text", "").strip()
+    if not question:
+        await say(text="Usage: `/mira [question]` — e.g. `/mira VFD tripped OC1 fault`")
+        return
+    channel_id = command["channel_id"]
+    normalized = await adapter.normalize_incoming(
+        {
+            "ts": command.get("trigger_id", ""),
+            "user": command.get("user_id", ""),
+            "channel": channel_id,
+            "channel_type": "slash",
+            "text": question,
+        }
+    )
+    try:
+        response = await dispatcher.dispatch(normalized)
+        await adapter.render_outgoing(response, normalized)
+    except Exception as e:
+        logger.error("/mira command error: %s", e)
+        await say(text=f"MIRA error: {e}")
+
+
+@app.command("/work-order")
+async def work_order_command(ack, command, say):
+    """Shortcut to open a corrective work order via MIRA."""
+    await ack()
+    description = command.get("text", "").strip()
+    if not description:
+        await say(text="Usage: `/work-order [description]` — e.g. `/work-order Conveyor belt slipping on Line 1`")
+        return
+    channel_id = command["channel_id"]
+    normalized = await adapter.normalize_incoming(
+        {
+            "ts": command.get("trigger_id", ""),
+            "user": command.get("user_id", ""),
+            "channel": channel_id,
+            "channel_type": "slash",
+            "text": f"create work order: {description}",
+        }
+    )
+    try:
+        response = await dispatcher.dispatch(normalized)
+        await adapter.render_outgoing(response, normalized)
+    except Exception as e:
+        logger.error("/work-order command error: %s", e)
+        await say(text=f"MIRA error: {e}")
+
+
+@app.command("/asset")
+async def asset_command(ack, command, say):
+    """Look up an asset by QR tag or name."""
+    await ack()
+    tag = command.get("text", "").strip()
+    if not tag:
+        await say(text="Usage: `/asset [tag]` — e.g. `/asset PUMP-A3` or `/asset Line 2 conveyor`")
+        return
+    channel_id = command["channel_id"]
+    normalized = await adapter.normalize_incoming(
+        {
+            "ts": command.get("trigger_id", ""),
+            "user": command.get("user_id", ""),
+            "channel": channel_id,
+            "channel_type": "slash",
+            "text": f"check equipment history for {tag}",
+        }
+    )
+    try:
+        response = await dispatcher.dispatch(normalized)
+        await adapter.render_outgoing(response, normalized)
+    except Exception as e:
+        logger.error("/asset command error: %s", e)
+        await say(text=f"MIRA error: {e}")
+
+
 @app.command("/mira-help")
 async def help_command(ack, command, say):
     """Show available commands."""
@@ -277,11 +366,13 @@ async def help_command(ack, command, say):
     await say(
         text=(
             "*MIRA Commands:*\n"
+            "`/mira [question]` \u2014 Ask MIRA anything about your equipment\n"
+            "`/work-order [description]` \u2014 Open a corrective work order\n"
+            "`/asset [tag]` \u2014 Look up asset history by QR tag\n"
             "`/mira-equipment [id]` \u2014 Live equipment status (instant)\n"
             "`/mira-faults` \u2014 Active fault list (instant)\n"
             "`/mira-status` \u2014 AI equipment summary\n"
-            "`/mira-reset` \u2014 Reset conversation state\n"
-            "`/mira-help` \u2014 Show this help\n\n"
+            "`/mira-reset` \u2014 Reset conversation state\n\n"
             "Or just type any maintenance question in a thread.\n"
             "Upload a photo to identify equipment and diagnose faults."
         )

@@ -21,6 +21,7 @@ class NormalizedAttachment:
     url: str  # platform-specific download URL
     auth_header: str = ""  # some platforms need bearer token to download
     size_bytes: int = 0
+    data: bytes = field(default_factory=bytes)  # pre-downloaded content (set by adapter before dispatch)
 
 
 @dataclass
