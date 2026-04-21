@@ -452,6 +452,29 @@ _DOCUMENTATION_PHRASES = (
     "manual for this",  # fallback broad-match; safe post-v2.4.1 since it requires "for this"
     "datasheet for this",
     "documentation for this",
+    # Installation / setup / commissioning (MicroLogix forensic 2026-04-21)
+    "how to install",
+    "installation steps",
+    "install this",
+    "installing this",
+    "getting ready to install",
+    "first steps to install",
+    "how do i wire",
+    "wiring steps",
+    "wiring guide",
+    "how to wire",
+    "setup guide",
+    "set up this",
+    "setting up this",
+    "how to set up",
+    "commissioning steps",
+    "commissioning guide",
+    "how to commission",
+    "startup procedure",
+    "startup steps",
+    "first time setup",
+    "initial setup",
+    "getting started with",
 )
 
 # Signals that the technician is under time or job pressure.

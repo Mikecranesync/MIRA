@@ -2294,7 +2294,7 @@ class Supervisor:
                 for j in range(len(raw_stripped), i, -1):
                     if raw_stripped[j - 1] == "}":
                         try:
-                            parsed = json.loads(raw_stripped[i:j], strict=False)
+                            parsed = json.loads(raw_stripped[i:j].rstrip(), strict=False)
                             if isinstance(parsed, dict) and "reply" in parsed:
                                 return self._extract_parsed(parsed)
                         except (json.JSONDecodeError, TypeError):
