@@ -1,24 +1,21 @@
 """MIRA Teams Bot — Microsoft Bot Framework (botbuilder-integration-aiohttp, MIT).
 
-Prerequisites (manual — see docs/SETUP_TEAMS.md):
+Prerequisites (manual — see docs/ops/teams-install-runbook.md):
   1. Azure Bot resource created (Free F0 tier)
   2. TEAMS_APP_ID + TEAMS_APP_PASSWORD in Doppler factorylm/prd
   3. Messaging endpoint set to https://<domain>/api/messages
-
-Session ID format: {MIRA_TENANT_ID}_teams_{user_id}
 """
 
-import base64
 import io as _io
 import logging
 import os
 
-import httpx
 from aiohttp import web
 from botbuilder.core import BotFrameworkAdapter, BotFrameworkAdapterSettings, TurnContext
 from botbuilder.schema import Activity, ActivityTypes
+from chat_adapter import TeamsChatAdapter
 from PIL import Image
-from shared.adapters.base import MIRAAdapter
+from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
 
 logging.basicConfig(
@@ -36,7 +33,7 @@ KNOWLEDGE_COLLECTION_ID = os.environ.get("KNOWLEDGE_COLLECTION_ID", "")
 MAX_VISION_PX = int(os.environ.get("MAX_VISION_PX", "512"))
 
 settings = BotFrameworkAdapterSettings(TEAMS_APP_ID, TEAMS_APP_PASSWORD)
-adapter = BotFrameworkAdapter(settings)
+bf_adapter = BotFrameworkAdapter(settings)
 
 engine = Supervisor(
     db_path=os.environ.get("MIRA_DB_PATH", "/data/mira.db"),
@@ -47,25 +44,13 @@ engine = Supervisor(
     tenant_id=os.environ.get("MIRA_TENANT_ID", ""),
 )
 
-
-class TeamsAdapter(MIRAAdapter):
-    platform = "teams"
-
-    async def send_photo(self, image_bytes: bytes, session_id: str, caption: str = "") -> str:
-        resized = _resize_for_vision(image_bytes)
-        photo_b64 = base64.b64encode(resized).decode("utf-8")
-        return await engine.process(
-            session_id, caption or "Analyze this equipment", photo_b64=photo_b64, platform="teams"
-        )
-
-    async def send_text(self, text: str, session_id: str) -> str:
-        return await engine.process(session_id, text, platform="teams")
-
-    async def format_response(self, raw_response: str) -> str:
-        return raw_response  # Teams renders markdown natively
-
-
-teams_adapter = TeamsAdapter()
+# Chat Abstraction Layer — wraps engine in platform-agnostic protocol
+chat_adapter = TeamsChatAdapter(
+    app_id=TEAMS_APP_ID,
+    app_password=TEAMS_APP_PASSWORD,
+    tenant_id=MIRA_TENANT_ID,
+)
+dispatcher = ChatDispatcher(engine)
 
 
 def _resize_for_vision(image_bytes: bytes) -> bytes:
@@ -78,31 +63,6 @@ def _resize_for_vision(image_bytes: bytes) -> bytes:
     buf = _io.BytesIO()
     img.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
-
-
-async def _download_attachment(url: str, turn_context: TurnContext) -> bytes:
-    """Download a Teams attachment using the Bot Framework connector token.
-
-    Teams attachments are hosted on Azure and require the bot's OAuth token.
-    The adapter stores credentials that can acquire a token for the service URL.
-    """
-    try:
-        connector = await turn_context.adapter.create_connector_client(
-            turn_context.activity.service_url
-        )
-        token = connector.config.credentials.get_token()
-    except Exception:
-        # Fallback: some attachment URLs (inline data) don't need auth
-        token = ""
-
-    headers = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(url, headers=headers)
-        resp.raise_for_status()
-        return resp.content
 
 
 async def messages_handler(req: web.Request) -> web.Response:
@@ -118,33 +78,46 @@ async def messages_handler(req: web.Request) -> web.Response:
         if turn_context.activity.type != ActivityTypes.message:
             return
 
-        user_id = (
-            turn_context.activity.from_property.id
-            if turn_context.activity.from_property
-            else "unknown"
-        )
-        session_id = teams_adapter.build_session_id(MIRA_TENANT_ID, user_id)
-        text = (turn_context.activity.text or "").strip()
-        attachments = turn_context.activity.attachments or []
+        normalized = await chat_adapter.normalize_incoming(body)
 
-        image_attachments = [
-            a for a in attachments if a.content_type and a.content_type.startswith("image/")
-        ]
+        # Pre-download image attachment and resize before dispatch
+        if normalized.attachments:
+            img_att = next((a for a in normalized.attachments if a.kind == "image"), None)
+            if img_att:
+                await turn_context.send_activity(
+                    Activity(type=ActivityTypes.message, text="Analyzing equipment...")
+                )
+                try:
+                    chat_adapter._turn_context = turn_context
+                    raw_bytes = await chat_adapter.download_attachment(img_att)
+                    img_att.data = _resize_for_vision(raw_bytes)
+                    if not normalized.text:
+                        normalized.text = "Analyze this equipment photo"
+                except Exception as e:
+                    logger.error("Photo download error: %s", e)
+                    await turn_context.send_activity(
+                        Activity(
+                            type=ActivityTypes.message,
+                            text=f"MIRA error downloading photo: {e}",
+                        )
+                    )
+                    return
 
+        if not normalized.text and not any(a.kind == "image" for a in normalized.attachments):
+            return
+
+        chat_adapter._turn_context = turn_context
         try:
-            if image_attachments:
-                att = image_attachments[0]
-                image_bytes = await _download_attachment(att.content_url, turn_context)
-                reply = await teams_adapter.send_photo(image_bytes, session_id, caption=text)
-            else:
-                reply = await teams_adapter.send_text(text or "Hello", session_id)
+            response = await dispatcher.dispatch(normalized)
+            await chat_adapter.render_outgoing(response, normalized)
         except Exception as e:
-            reply = await teams_adapter.handle_error(e)
-
-        await turn_context.send_activity(Activity(type=ActivityTypes.message, text=reply))
+            logger.error("Dispatch error: %s", e)
+            await turn_context.send_activity(
+                Activity(type=ActivityTypes.message, text=f"MIRA error: {e}")
+            )
 
     try:
-        await adapter.process_activity(activity, auth_header, turn_handler)
+        await bf_adapter.process_activity(activity, auth_header, turn_handler)
     except Exception as e:
         logger.error("Activity processing error: %s", e)
         return web.Response(status=500)

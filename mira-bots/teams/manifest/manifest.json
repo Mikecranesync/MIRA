@@ -1,0 +1,63 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "{{TEAMS_APP_ID}}",
+  "packageName": "com.factorylm.mira",
+  "name": {
+    "short": "MIRA",
+    "full": "MIRA Maintenance Copilot"
+  },
+  "description": {
+    "short": "AI-powered industrial maintenance diagnostic assistant",
+    "full": "MIRA diagnoses equipment faults, retrieves OEM documentation, creates work orders, and monitors equipment status. Send a photo of a fault display or describe the problem in plain language."
+  },
+  "developer": {
+    "name": "FactoryLM",
+    "websiteUrl": "https://factorylm.com",
+    "privacyUrl": "https://factorylm.com/privacy",
+    "termsOfUseUrl": "https://factorylm.com/terms"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#1B6EC2",
+  "bots": [
+    {
+      "botId": "{{TEAMS_APP_ID}}",
+      "scopes": ["personal", "team", "groupChat"],
+      "supportsFiles": true,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": ["personal", "team", "groupChat"],
+          "commands": [
+            {
+              "title": "diagnose",
+              "description": "Start guided equipment fault diagnosis"
+            },
+            {
+              "title": "manual",
+              "description": "Find equipment manual or spec sheet"
+            },
+            {
+              "title": "workorder",
+              "description": "Create a corrective maintenance work order"
+            },
+            {
+              "title": "asset",
+              "description": "Look up asset history by tag or name"
+            },
+            {
+              "title": "reset",
+              "description": "Reset conversation state"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": ["app.factorylm.com"]
+}
