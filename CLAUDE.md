@@ -138,6 +138,25 @@ To restore an archived module: `git checkout archive/<branch> -- <module-dir>` t
 
 ---
 
+## Automated Code Review Pipeline
+
+Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
+
+| Component | File | What it does |
+|-----------|------|-------------|
+| GitHub Action | `.github/workflows/code-review.yml` | shellcheck → ast-grep (IPs/secrets) → Claude Sonnet review → PR comment |
+| ast-grep rules | `.ast-grep-rules/` | Hardcoded IPs, secrets, missing socket error handling, raw FastAPI body |
+| ast-grep config | `sgconfig.yml` | Rule discovery (replaces diffray — diffray v0.5.4 requires OpenAI) |
+| Self-fix script | `scripts/pr_self_fix.sh` | Reads 🔴 IMPORTANT review comments, asks Claude for patches, applies + pushes (up to 3 loops) |
+| Pre-commit hook | `.githooks/pre-commit` | shellcheck + rg credential scan + debug artifact scan on staged files |
+
+**To trigger manually:** `gh workflow run code-review.yml`
+**To run self-fix:** `bash scripts/pr_self_fix.sh <PR_NUMBER>`
+**Hook active:** `git config core.hooksPath .githooks` (already set in this repo)
+**Tools required locally:** `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`
+
+---
+
 ## CLAUDE.md Maintenance
 
 This file targets **~120 lines** (map, not encyclopedia). Agent compliance drops past ~150.

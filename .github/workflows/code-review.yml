@@ -1,0 +1,242 @@
+name: Automated Code Review
+
+on:
+  pull_request:
+    branches: [main, develop, dev]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install tools
+        run: |
+          # shellcheck
+          sudo apt-get install -y shellcheck
+          # ripgrep
+          curl -LO https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb
+          sudo dpkg -i ripgrep_14.1.1-1_amd64.deb
+          # ast-grep
+          npm install -g @ast-grep/cli
+
+      - name: shellcheck — staged .sh files
+        id: shellcheck
+        run: |
+          SHELL_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.sh' | head -50)
+          if [ -z "$SHELL_FILES" ]; then
+            echo "No .sh files changed."
+            echo "result=none" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          FAIL=0
+          OUTPUT=""
+          for f in $SHELL_FILES; do
+            if [ -f "$f" ]; then
+              RESULT=$(shellcheck -f gcc "$f" 2>&1 || true)
+              if [ -n "$RESULT" ]; then
+                OUTPUT="$OUTPUT\n### \`$f\`\n\`\`\`\n$RESULT\n\`\`\`"
+                FAIL=1
+              fi
+            fi
+          done
+          if [ $FAIL -eq 1 ]; then
+            echo "result=fail" >> $GITHUB_OUTPUT
+            printf '%s' "$OUTPUT" > /tmp/shellcheck-output.txt
+          else
+            echo "result=pass" >> $GITHUB_OUTPUT
+          fi
+
+      - name: ast-grep — hardcoded IPs and secrets
+        id: ast_grep
+        run: |
+          CHANGED_PY=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.py' | head -50)
+          if [ -z "$CHANGED_PY" ]; then
+            echo "No .py files changed."
+            echo "result=none" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          OUTPUT=""
+          FAIL=0
+          for f in $CHANGED_PY; do
+            if [ -f "$f" ]; then
+              # Hardcoded non-localhost IPs
+              MATCHES=$(rg --no-heading --line-number \
+                '\b(?!127\.0\.0\.1|0\.0\.0\.0|localhost)(?:\d{1,3}\.){3}\d{1,3}\b' \
+                "$f" 2>/dev/null || true)
+              if [ -n "$MATCHES" ]; then
+                OUTPUT="$OUTPUT\n⚠️ **Hardcoded IP** in \`$f\`:\n\`\`\`\n$MATCHES\n\`\`\`"
+                FAIL=1
+              fi
+              # Hardcoded secrets pattern
+              SECRET_MATCHES=$(rg --no-heading --line-number \
+                '(?i)(password|secret|api_key|token|auth)\s*=\s*["\x27][^"\x27]{8,}["\x27]' \
+                "$f" 2>/dev/null | grep -v 'os\.getenv\|getenv\|environ\|placeholder\|example\|test' || true)
+              if [ -n "$SECRET_MATCHES" ]; then
+                OUTPUT="$OUTPUT\n🔴 **Possible hardcoded secret** in \`$f\`:\n\`\`\`\n$SECRET_MATCHES\n\`\`\`"
+                FAIL=1
+              fi
+            fi
+          done
+          if [ $FAIL -eq 1 ]; then
+            echo "result=fail" >> $GITHUB_OUTPUT
+            printf '%s' "$OUTPUT" >> /tmp/shellcheck-output.txt
+          else
+            echo "result=pass" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Collect static analysis summary
+        id: static_summary
+        run: |
+          if [ -f /tmp/shellcheck-output.txt ]; then
+            echo "has_findings=true" >> $GITHUB_OUTPUT
+            {
+              echo 'summary<<EOF'
+              cat /tmp/shellcheck-output.txt
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
+          else
+            echo "has_findings=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post static analysis findings
+        if: steps.static_summary.outputs.has_findings == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = `## 🔍 Static Analysis Findings\n\n${{ steps.static_summary.outputs.summary }}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: summary,
+            });
+
+  claude-review:
+    name: Claude AI Code Review
+    runs-on: ubuntu-latest
+    needs: static-analysis
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install anthropic SDK
+        run: pip install anthropic httpx
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
+          # Truncate to 8000 lines to stay within context limits
+          head -8000 /tmp/pr.diff > /tmp/pr_truncated.diff
+          LINES=$(wc -l < /tmp/pr.diff)
+          echo "diff_lines=$LINES" >> $GITHUB_OUTPUT
+          echo "Diff: $LINES lines"
+
+      - name: Claude AI review
+        id: claude_review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DIFF_LINES: ${{ steps.diff.outputs.diff_lines }}
+        run: |
+          python3 - << 'PYEOF'
+          import anthropic
+          import os
+          import sys
+
+          api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+          if not api_key:
+              print("ANTHROPIC_API_KEY not set — skipping Claude review")
+              with open("/tmp/claude-review.md", "w") as f:
+                  f.write("⚠️ Claude review skipped — ANTHROPIC_API_KEY not configured in repo secrets.")
+              sys.exit(0)
+
+          with open("/tmp/pr_truncated.diff") as f:
+              diff = f.read()
+
+          pr_title = os.environ.get("PR_TITLE", "")
+          diff_lines = os.environ.get("DIFF_LINES", "?")
+
+          client = anthropic.Anthropic(api_key=api_key)
+
+          prompt = f"""You are reviewing a pull request for the MIRA project — an AI-powered industrial maintenance diagnostic platform.
+
+          PR Title: {pr_title}
+          Diff size: {diff_lines} lines
+
+          Review this diff for:
+          1. 🔴 IMPORTANT: Security vulnerabilities (hardcoded secrets, SQL injection, path traversal, command injection)
+          2. 🔴 IMPORTANT: Missing error handling on network/IO operations that will crash in production
+          3. 🟡 WARNING: Logic bugs or incorrect assumptions
+          4. 🟡 WARNING: Missing input validation at API boundaries
+          5. 🔵 SUGGESTION: Code quality improvements, naming, maintainability
+          6. ✅ GOOD: Noteworthy good practices found
+
+          Format your review as GitHub Markdown with clear sections.
+          Use 🔴 IMPORTANT for must-fix issues, 🟡 WARNING for should-fix, 🔵 SUGGESTION for optional.
+          Be specific: cite file + line number when possible.
+          Keep total response under 2000 words.
+
+          Diff:
+          ```diff
+          {diff[:12000]}
+          ```"""
+
+          message = client.messages.create(
+              model="claude-sonnet-4-6",
+              max_tokens=2048,
+              messages=[{"role": "user", "content": prompt}],
+          )
+
+          review_text = message.content[0].text
+          with open("/tmp/claude-review.md", "w") as f:
+              f.write(review_text)
+
+          print("Claude review complete.")
+          print(f"Input tokens: {message.usage.input_tokens}")
+          print(f"Output tokens: {message.usage.output_tokens}")
+          PYEOF
+
+      - name: Post Claude review as PR comment
+        uses: actions/github-script@v7
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          script: |
+            const fs = require('fs');
+            let review = '';
+            try {
+              review = fs.readFileSync('/tmp/claude-review.md', 'utf8');
+            } catch (e) {
+              review = '⚠️ Claude review file not found.';
+            }
+
+            const body = `## 🤖 Claude AI Code Review
+
+            ${review}
+
+            ---
+            *Reviewed by Claude Sonnet 4.6 via [MIRA automated code review pipeline](../.github/workflows/code-review.yml)*
+            *To trigger self-fix: run \`bash scripts/pr_self_fix.sh ${{ github.event.pull_request.number }}\`*`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body,
+            });
