@@ -1,9 +1,8 @@
 """Unit tests for Firecrawl contact enrichment in hunt.py."""
 from __future__ import annotations
 
-import pytest
-
 import hunt
+import pytest
 
 
 class TestIsRealName:
