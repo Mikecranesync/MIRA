@@ -2710,7 +2710,7 @@ class Supervisor:
         except AttributeError:
             return reply
         citations = kb_status.get("citations") or []
-        if not citations:
+        if not isinstance(citations, list) or not citations:
             return reply
         if "[Source:" in reply or "--- Sources ---" in reply:
             return reply
