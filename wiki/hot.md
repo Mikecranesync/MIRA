@@ -95,3 +95,8 @@ Mitsubishi Electric: 16 chunks (NULL model)
 | VPS live (2026-04-19) | 53/57 (93%) | last confirmed on feat/training-loop-v1 |
 | **Target** | **40/57 (70%)** | ✅ CLEARED |
 | Next automated run | TBD | first real Celery run in 36h — pending |
+
+## eval-fixer run — 2026-04-21
+- Scorecard: 0/57 passing (0%) — scorecard `tests/eval/runs/2026-04-20T1011.md`
+- Action: issue-filed (#474)
+- All 57 fixtures returned empty responses (longest: 0 chars). `patchable_failures: 0`, `file_clusters: {}`. Pipeline outage / inference-backend issue during the LIVE eval run — not a guardrails/engine logic bug. Human needs to check Doppler secrets + inference cascade before re-running.
