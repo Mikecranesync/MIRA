@@ -591,6 +591,36 @@ class Supervisor:
 
         state = self._load_state(chat_id)
 
+        # BUG-001: Reset command handler — must run before CMMS/PM checks so a stale
+        # session can always be cleared. Matches slash commands and natural language.
+        _RESET_COMMANDS = {"/new", "/reset", "/start", "new", "reset", "start over",
+                           "new session", "new chat", "start fresh", "clear session"}
+        if message.strip().lower() in _RESET_COMMANDS:
+            self.reset(chat_id)
+            reply = (
+                "Session cleared. What are you working on? Send me a photo, a fault "
+                "code, or describe the issue and I'll help you diagnose it."
+            )
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, "IDLE")
+
+        # BUG-004: Auto-reset sessions idle >24h before processing a new message.
+        # A technician returning the next day to a stale Q-state context gets a clean slate.
+        if state.get("updated_at") and state.get("state", "IDLE") not in ("IDLE", "RESOLVED"):
+            import datetime as _dt
+            try:
+                _updated = _dt.datetime.fromisoformat(state["updated_at"])
+                _idle_hours = (_dt.datetime.utcnow() - _updated).total_seconds() / 3600
+                if _idle_hours > 24:
+                    logger.info(
+                        "STALE_SESSION_RESET chat_id=%s idle_hours=%.1f prior_state=%s",
+                        chat_id, _idle_hours, state["state"],
+                    )
+                    self.reset(chat_id)
+                    state = self._load_state(chat_id)
+            except (ValueError, TypeError):
+                pass  # Unparseable timestamp — leave state as-is
+
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
         if (state.get("context") or {}).get("cmms_pending") and not photo_b64:
@@ -862,7 +892,7 @@ class Supervisor:
 
                 reply = self._build_print_reply(vision_data)
                 history = ctx.get("history", [])
-                history.append({"role": "user", "content": message})
+                history.append({"role": "user", "content": self._strip_memory_block(message)})
                 history.append({"role": "assistant", "content": reply})
                 ctx["history"] = history
                 state["context"] = ctx
@@ -922,7 +952,7 @@ class Supervisor:
             state["exchange_count"] += 1
             ctx = state.get("context") or {}
             history = ctx.get("history", [])
-            history.append({"role": "user", "content": message})
+            history.append({"role": "user", "content": self._strip_memory_block(message)})
             history.append({"role": "assistant", "content": parsed["reply"]})
             if len(history) > HISTORY_LIMIT:
                 history = history[-HISTORY_LIMIT:]
@@ -1001,7 +1031,7 @@ class Supervisor:
                 asset = state.get("asset_identified", "this equipment")
                 reply = f"I can see this is {asset}. How can I help you with it?"
                 history = ctx.get("history", [])
-                history.append({"role": "user", "content": message})
+                history.append({"role": "user", "content": self._strip_memory_block(message)})
                 history.append({"role": "assistant", "content": reply})
                 ctx["history"] = history
                 sc = ctx.get("session_context", {})
@@ -1147,7 +1177,7 @@ class Supervisor:
 
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
-        history.append({"role": "user", "content": message})
+        history.append({"role": "user", "content": self._strip_memory_block(message)})
         history.append({"role": "assistant", "content": parsed["reply"]})
         if len(history) > HISTORY_LIMIT:
             history = history[-HISTORY_LIMIT:]
@@ -1509,7 +1539,7 @@ class Supervisor:
         state["context"] = ctx
 
         history = ctx.get("history", [])
-        history.append({"role": "user", "content": message})
+        history.append({"role": "user", "content": self._strip_memory_block(message)})
         reply = (
             f"Asset registered: {manufacturer} {model} — "
             f"linked to {linked_chunks} OEM manual chunks. "
@@ -1653,7 +1683,7 @@ class Supervisor:
 
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
-        history.append({"role": "user", "content": message})
+        history.append({"role": "user", "content": self._strip_memory_block(message)})
         history.append({"role": "assistant", "content": parsed["reply"]})
         if len(history) > HISTORY_LIMIT:
             history = history[-HISTORY_LIMIT:]
@@ -2601,11 +2631,22 @@ class Supervisor:
         db.commit()
         db.close()
 
+    @staticmethod
+    def _strip_memory_block(message: str) -> str:
+        """Remove injected [MIRA MEMORY...END MEMORY] prefix before storing to history."""
+        import re as _re
+        return _re.sub(
+            r"^\[MIRA MEMORY[^\]]*\].*?\[END MEMORY\]\s*\n*",
+            "",
+            message,
+            flags=_re.DOTALL,
+        ).lstrip()
+
     def _record_exchange(self, chat_id: str, state: dict, message: str, reply: str):
         """Save a user/assistant exchange to conversation history and persist."""
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
-        history.append({"role": "user", "content": message})
+        history.append({"role": "user", "content": self._strip_memory_block(message)})
         history.append({"role": "assistant", "content": reply})
         ctx["history"] = history
         state["context"] = ctx
