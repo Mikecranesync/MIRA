@@ -1,4 +1,0 @@
-# file: /Users/charlienode/MIRA/.claude/worktrees/youthful-leakey-872437/mira-bots/shared/models/__init__.py
-# hypothesis_version: 6.141.1
-
-['UNSWorkOrder', 'apply_wo_edit', 'format_wo_preview', 'log_uns_event']
