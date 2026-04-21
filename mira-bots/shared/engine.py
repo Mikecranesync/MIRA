@@ -663,31 +663,48 @@ class Supervisor:
             # LLM conversation router — determines what the user wants THIS turn.
             # Runs in parallel with the synchronous keyword classifier as a fast fallback.
             _keyword_intent = classify_intent(message)
-            try:
-                _routing = await route_intent(
-                    user_message=message,
-                    conversation_history=(state.get("context") or {}).get("history", []),
-                    current_fsm_state=state.get("state", "IDLE"),
-                    asset_identified=state.get("asset_identified", ""),
-                )
-                _router_intent = _routing["intent"]
+
+            # Fast-path: skip the LLM router for active sessions with short or option
+            # messages — these are almost always continue_current (answers to Q1/Q2/Q3
+            # or option selections). Saves ~200-400ms per turn for the majority of
+            # mid-session exchanges. Safety still enforced via _keyword_intent above.
+            _fsm_state = state.get("state", "IDLE")
+            _active_session = _fsm_state not in ("IDLE", "RESOLVED", "")
+            _is_option_digit = bool(re.fullmatch(r"\d", message.strip()))
+            _use_fast_path = _active_session and (len(message.strip()) < 50 or _is_option_digit)
+
+            if _use_fast_path:
+                _router_intent = "continue_current"
                 logger.info(
-                    "ROUTER intent=%s confidence=%.2f reason=%r chat_id=%s",
-                    _router_intent,
-                    _routing.get("confidence", 0),
-                    _routing.get("reasoning", ""),
-                    chat_id,
+                    "ROUTER_FAST_PATH chat_id=%s state=%s msg_len=%d",
+                    chat_id, _fsm_state, len(message.strip()),
                 )
-            except Exception as _re:
-                logger.warning("ROUTER_FAILURE error=%s — using keyword classifier", _re)
-                _router_intent = {
-                    "safety": "safety_concern",
-                    "documentation": "find_documentation",
-                    "greeting": "greeting_or_chitchat",
-                    "help": "greeting_or_chitchat",
-                    "industrial": "continue_current",
-                    "off_topic": "general_question",
-                }.get(_keyword_intent, "continue_current")
+            else:
+                try:
+                    _routing = await route_intent(
+                        user_message=message,
+                        conversation_history=(state.get("context") or {}).get("history", []),
+                        current_fsm_state=_fsm_state,
+                        asset_identified=state.get("asset_identified", ""),
+                    )
+                    _router_intent = _routing["intent"]
+                    logger.info(
+                        "ROUTER intent=%s confidence=%.2f reason=%r chat_id=%s",
+                        _router_intent,
+                        _routing.get("confidence", 0),
+                        _routing.get("reasoning", ""),
+                        chat_id,
+                    )
+                except Exception as _re:
+                    logger.warning("ROUTER_FAILURE error=%s — using keyword classifier", _re)
+                    _router_intent = {
+                        "safety": "safety_concern",
+                        "documentation": "find_documentation",
+                        "greeting": "greeting_or_chitchat",
+                        "help": "greeting_or_chitchat",
+                        "industrial": "continue_current",
+                        "off_topic": "general_question",
+                    }.get(_keyword_intent, "continue_current")
 
             # Safety ALWAYS wins — router or keyword classifier, either triggers it.
             intent = _keyword_intent  # keep for downstream legacy gates
