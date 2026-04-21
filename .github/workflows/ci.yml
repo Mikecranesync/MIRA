@@ -1,10 +1,35 @@
 name: CI
 
+# paths-ignore: docs-only changes skip the whole workflow.
+# The list below covers prose (markdown, wiki), the .claude config tree, and
+# image-only changes. Any PR or push that also touches code outside these
+# paths runs the full pipeline normally. Main pushes are always post-merge
+# (code flows through PRs), so a docs-only main push has no code to test —
+# the safety-net intent is preserved: any code-touching main push triggers
+# the full pipeline regardless of path filter.
 on:
   push:
     branches: [main, dev]
+    paths-ignore:
+      - 'docs/**'
+      - 'wiki/**'
+      - '**/*.md'
+      - '.claude/**'
+      - '**/*.webp'
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.gif'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'wiki/**'
+      - '**/*.md'
+      - '.claude/**'
+      - '**/*.webp'
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.gif'
 
 jobs:
   lint-and-type-check:
@@ -55,8 +80,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
-  sast-scan:
-    name: Security Scan (SAST)
+  sast-semgrep:
+    name: Security Scan (Semgrep)
     runs-on: ubuntu-latest
     needs: lint-and-type-check
     steps:
@@ -82,6 +107,17 @@ jobs:
         with:
           sarif_file: semgrep.sarif
 
+  sast-bandit:
+    name: Security Scan (Bandit)
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Install bandit
         run: pip install "bandit[toml]==1.8.*"
 
@@ -106,11 +142,11 @@ jobs:
         run: |
           pip install -r mira-core/mira-ingest/requirements.txt
           pip install -r mira-bots/telegram/requirements.txt
-          pip install pytest pytest-asyncio pytest-cov
+          pip install pytest pytest-asyncio pytest-cov pytest-xdist
 
       - name: Run ingest tests with coverage
         run: |
-          pytest mira-core/mira-ingest/tests/ -v \
+          pytest mira-core/mira-ingest/tests/ -v -n auto \
             --cov=mira-core/mira-ingest --cov-report=term-missing \
             --cov-fail-under=20
 
@@ -177,7 +213,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pytest pytest-asyncio pyyaml hypothesis
+          pip install pytest pytest-asyncio pytest-xdist pyyaml hypothesis
           pip install -r mira-core/mira-ingest/requirements.txt
           pip install -r mira-bots/telegram/requirements.txt
           pip install chromadb
@@ -188,8 +224,11 @@ jobs:
         #   (move to a dedicated integration job when sidecar stack is containerized in CI)
         # test_symlink_outside_base_returns_403 — latent path-traversal bug surfaced by
         #   this PR finally running the offline suite; tracked for dedicated fix
+        # -n auto (pytest-xdist) parallelises across runner CPUs; if any regime proves
+        # order-dependent, narrow that regime to `-n 0` with a one-line comment citing
+        # the shared-state bug.
         run: |
-          pytest tests/ -v -m "not network and not slow" \
+          pytest tests/ -v -n auto -m "not network and not slow" \
             --ignore=tests/regime5_nemotron/ \
             --ignore=tests/regime6_sidecar/ \
             --ignore=tests/test_mira_pipeline.py \
@@ -218,6 +257,8 @@ jobs:
         run: |
           docker buildx build \
             -f mira-core/mira-ingest/Dockerfile mira-core/mira-ingest/ \
+            --cache-from type=gha,scope=mira-ingest \
+            --cache-to type=gha,mode=max,scope=mira-ingest \
             -t mira-ingest:scan --load
 
       - name: Scan mira-ingest
@@ -227,6 +268,8 @@ jobs:
         run: |
           docker buildx build \
             -f mira-bots/telegram/Dockerfile mira-bots/ \
+            --cache-from type=gha,scope=mira-telegram \
+            --cache-to type=gha,mode=max,scope=mira-telegram \
             -t mira-telegram:scan --load
 
       - name: Scan mira-bot-telegram
@@ -236,6 +279,8 @@ jobs:
         run: |
           docker buildx build \
             -f mira-bots/slack/Dockerfile mira-bots/ \
+            --cache-from type=gha,scope=mira-slack \
+            --cache-to type=gha,mode=max,scope=mira-slack \
             -t mira-slack:scan --load
 
       - name: Scan mira-bot-slack
@@ -245,6 +290,8 @@ jobs:
         run: |
           docker buildx build \
             -f mira-mcp/Dockerfile mira-mcp/ \
+            --cache-from type=gha,scope=mira-mcp \
+            --cache-to type=gha,mode=max,scope=mira-mcp \
             -t mira-mcp:scan --load
 
       - name: Scan mira-mcp

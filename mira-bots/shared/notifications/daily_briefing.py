@@ -187,9 +187,9 @@ async def summarize_briefing(context: str, profile: dict) -> str:
         # Fallback: plain text summary without LLM
         lines = context.split("\n")
         activity_lines = [
-            l
-            for l in lines
-            if l.strip() and not l.startswith("Role:") and not l.startswith("Digest:")
+            ln
+            for ln in lines
+            if ln.strip() and not ln.startswith("Role:") and not ln.startswith("Digest:")
         ]
         return "MIRA Daily Briefing\n\n" + "\n".join(activity_lines[:8])
 
