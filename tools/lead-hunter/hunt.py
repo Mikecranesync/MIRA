@@ -1201,6 +1201,43 @@ def write_hubspot_csv(facilities: list[Facility], path: Path, min_score: int = 1
     log.info("HubSpot CSV → %s (%d rows)", path, len(rows))
 
 
+def write_unverified_csv(facilities: list[Facility], path: Path) -> int:
+    """Write no-name / generic contacts to a reference CSV.
+
+    These are the contacts we found on facility sites that don't meet
+    the HubSpot real-name quality gate — generic inboxes like
+    info@company.com, orphan phone numbers, and any contact missing a
+    real person's name.
+
+    Returns number of rows written.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = 0
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow([
+            "Company", "Website", "City", "ICP Score",
+            "Email", "Phone", "Source URL", "Confidence",
+        ])
+        for f in facilities:
+            for c in f.contacts:
+                if _is_real_name(c.get("name")):
+                    continue
+                email = (c.get("email") or "").strip()
+                phone = (c.get("phone") or "").strip()
+                if not email and not phone:
+                    continue
+                writer.writerow([
+                    f.name, f.website, f.city, f.icp_score,
+                    email, phone,
+                    c.get("source", ""),
+                    c.get("confidence", ""),
+                ])
+                rows += 1
+    log.info("Unverified CSV: %d rows → %s", rows, path)
+    return rows
+
+
 # ---------------------------------------------------------------------------
 # Report generation
 # ---------------------------------------------------------------------------

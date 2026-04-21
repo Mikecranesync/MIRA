@@ -197,3 +197,34 @@ class TestHubSpotQualityGate:
         assert stats["contacts_created"] == 1, stats
         # Still creates the company (generic email doesn't block that)
         assert stats["companies_created"] >= 1
+
+
+class TestUnverifiedCsv:
+    """write_unverified_csv writes only no-name contacts, without name column."""
+
+    def test_writes_only_unverified_rows(self, tmp_path):
+        fac = hunt.Facility(
+            name="Acme", city="Lake Wales", website="https://acme.com",
+            icp_score=12,
+        )
+        fac.contacts = [
+            {"name": "Bob Smith", "email": "bob@acme.com",
+             "source": "", "confidence": "firecrawl-team-page"},
+            {"name": "", "email": "info@acme.com",
+             "source": "https://acme.com", "confidence": "website-direct"},
+            {"name": "Info", "email": "",
+             "source": "", "confidence": "website-direct"},
+        ]
+        out = tmp_path / "unverified.csv"
+        count = hunt.write_unverified_csv([fac], out)
+        # Only row 2 (no-name with email) should be written.
+        # Row 1 is skipped (Bob Smith is real name → passed real-name gate).
+        # Row 3 is skipped (no email AND no phone → no contact details).
+        assert count == 1
+        content = out.read_text(encoding="utf-8")
+        assert "Bob Smith" not in content  # real-name contacts excluded
+        assert "info@acme.com" in content
+        # Header should not contain a first/last name column
+        header = content.splitlines()[0]
+        assert "First Name" not in header
+        assert "Last Name" not in header
