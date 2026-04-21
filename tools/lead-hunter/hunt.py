@@ -602,6 +602,112 @@ def _is_real_name(value: str | None) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Enrichment — Firecrawl LLM schema extraction
+# ---------------------------------------------------------------------------
+
+FIRECRAWL_URL = "https://api.firecrawl.dev/v1/scrape"
+FIRECRAWL_CANDIDATE_PATHS = ["", "/team", "/about", "/about-us",
+                             "/leadership", "/management", "/staff"]
+
+_FIRECRAWL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "contacts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "title": {"type": "string"},
+                    "email": {"type": "string"},
+                    "linkedin_url": {"type": "string"},
+                },
+            },
+        },
+        "emails": {"type": "array", "items": {"type": "string"}},
+        "phones": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
+
+def _matches_maintenance_title(title: str) -> bool:
+    if not title:
+        return False
+    tlow = title.lower()
+    return any(t.lower() in tlow for t in MAINT_TITLES)
+
+
+def enrich_via_firecrawl(
+    url: str,
+    client: httpx.Client,
+    fc_key: str,
+    budget: dict,
+) -> list[dict]:
+    """Probe a facility's team page via Firecrawl LLM extraction.
+
+    Returns list of {name, title, email, linkedin_url, source, confidence}.
+    Filters contacts to maintenance/plant/facilities titles.
+
+    `budget` is a mutable dict with key 'remaining' (int). Decremented per
+    Firecrawl call. When remaining <= 0, returns [] without making the call.
+    """
+    if not fc_key or not url:
+        return []
+    if budget.get("remaining", 0) <= 0:
+        return []
+
+    payload = {
+        "url": url,
+        "formats": ["json"],
+        "jsonOptions": {
+            "schema": _FIRECRAWL_SCHEMA,
+            "prompt": (
+                "Extract any named contacts from this page, especially "
+                "maintenance managers, plant managers, facilities managers, "
+                "operations managers, or other industrial/maintenance roles. "
+                "Include name, title, email if visible, and LinkedIn URL if "
+                "visible."
+            ),
+        },
+    }
+    try:
+        resp = client.post(
+            FIRECRAWL_URL,
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {fc_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=60,
+        )
+        budget["remaining"] = budget.get("remaining", 0) - 1
+        if resp.status_code != 200:
+            log.warning("Firecrawl %d on %s: %s",
+                        resp.status_code, url, resp.text[:120])
+            return []
+        data = resp.json().get("data", {}).get("json", {}) or {}
+    except Exception as e:
+        log.debug("Firecrawl error on %s: %s", url, e)
+        return []
+
+    out: list[dict] = []
+    for c in data.get("contacts", []) or []:
+        name = (c.get("name") or "").strip()
+        title = (c.get("title") or "").strip()
+        if not name or not _matches_maintenance_title(title):
+            continue
+        out.append({
+            "name": name,
+            "title": title,
+            "email": (c.get("email") or "").strip(),
+            "linkedin_url": (c.get("linkedin_url") or "").strip(),
+            "source": url,
+            "confidence": "firecrawl-team-page",
+        })
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Enrichment — Google search contact probe (Serper)
 # ---------------------------------------------------------------------------
 
