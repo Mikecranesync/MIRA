@@ -51,12 +51,12 @@ engine = Supervisor(
 class TeamsAdapter(MIRAAdapter):
     platform = "teams"
 
-    async def send_photo(
-        self, image_bytes: bytes, session_id: str, caption: str = ""
-    ) -> str:
+    async def send_photo(self, image_bytes: bytes, session_id: str, caption: str = "") -> str:
         resized = _resize_for_vision(image_bytes)
         photo_b64 = base64.b64encode(resized).decode("utf-8")
-        return await engine.process(session_id, caption or "Analyze this equipment", photo_b64=photo_b64, platform="teams")
+        return await engine.process(
+            session_id, caption or "Analyze this equipment", photo_b64=photo_b64, platform="teams"
+        )
 
     async def send_text(self, text: str, session_id: str) -> str:
         return await engine.process(session_id, text, platform="teams")
@@ -118,14 +118,17 @@ async def messages_handler(req: web.Request) -> web.Response:
         if turn_context.activity.type != ActivityTypes.message:
             return
 
-        user_id = turn_context.activity.from_property.id if turn_context.activity.from_property else "unknown"
+        user_id = (
+            turn_context.activity.from_property.id
+            if turn_context.activity.from_property
+            else "unknown"
+        )
         session_id = teams_adapter.build_session_id(MIRA_TENANT_ID, user_id)
         text = (turn_context.activity.text or "").strip()
         attachments = turn_context.activity.attachments or []
 
         image_attachments = [
-            a for a in attachments
-            if a.content_type and a.content_type.startswith("image/")
+            a for a in attachments if a.content_type and a.content_type.startswith("image/")
         ]
 
         try:

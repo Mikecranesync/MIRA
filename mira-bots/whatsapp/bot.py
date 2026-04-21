@@ -15,12 +15,11 @@ import os
 
 import httpx
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import PlainTextResponse
 from PIL import Image
-from twilio.request_validator import RequestValidator
-
 from shared.adapters.base import MIRAAdapter
 from shared.engine import Supervisor
+from twilio.request_validator import RequestValidator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,12 +52,15 @@ validator = RequestValidator(TWILIO_AUTH_TOKEN) if TWILIO_AUTH_TOKEN else None
 class WhatsAppAdapter(MIRAAdapter):
     platform = "whatsapp"
 
-    async def send_photo(
-        self, image_bytes: bytes, session_id: str, caption: str = ""
-    ) -> str:
+    async def send_photo(self, image_bytes: bytes, session_id: str, caption: str = "") -> str:
         resized = _resize_for_vision(image_bytes)
         photo_b64 = base64.b64encode(resized).decode("utf-8")
-        return await engine.process(session_id, caption or "Analyze this equipment", photo_b64=photo_b64, platform="whatsapp")
+        return await engine.process(
+            session_id,
+            caption or "Analyze this equipment",
+            photo_b64=photo_b64,
+            platform="whatsapp",
+        )
 
     async def send_text(self, text: str, session_id: str) -> str:
         return await engine.process(session_id, text, platform="whatsapp")

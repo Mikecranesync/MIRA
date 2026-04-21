@@ -9,9 +9,7 @@ sys.path.insert(0, "mira-bots")
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from shared.inference.router import InferenceRouter, _is_gibberish
-
 
 # ---------------------------------------------------------------------------
 # sanitize_context (static method, no mocking needed)
@@ -58,9 +56,7 @@ class TestSanitizeContext:
         assert result[0]["content"] == 42
 
     def test_multiple_pii_types(self):
-        messages = [
-            {"role": "user", "content": "IP 10.0.0.1 MAC AA:BB:CC:DD:EE:FF SN XYZ-12345"}
-        ]
+        messages = [{"role": "user", "content": "IP 10.0.0.1 MAC AA:BB:CC:DD:EE:FF SN XYZ-12345"}]
         result = InferenceRouter.sanitize_context(messages)
         content = result[0]["content"]
         assert "[IP]" in content
@@ -100,10 +96,13 @@ class TestRouterComplete:
     @pytest.fixture
     def router_with_providers(self):
         """Router with mocked providers for cascade testing."""
-        with patch.dict("os.environ", {
-            "INFERENCE_BACKEND": "cloud",
-            "ANTHROPIC_API_KEY": "sk-ant-test",
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "INFERENCE_BACKEND": "cloud",
+                "ANTHROPIC_API_KEY": "sk-ant-test",
+            },
+        ):
             with patch("shared.inference.router._build_providers") as mock_build:
                 mock_provider = MagicMock()
                 mock_provider.name = "claude"

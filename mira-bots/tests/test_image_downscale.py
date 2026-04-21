@@ -1,13 +1,14 @@
 """Tests for _resize_for_vision image downscaling."""
 
 import io
-import sys
 import os
+import sys
 
 # Set dummy env vars for bot.py import
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "dummy-token-for-testing")
-os.environ.setdefault("OPENWEBUI_BASE_URL",
-    os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":8080")
+os.environ.setdefault(
+    "OPENWEBUI_BASE_URL", os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":8080"
+)
 os.environ.setdefault("OPENWEBUI_API_KEY", "")
 os.environ.setdefault("KNOWLEDGE_COLLECTION_ID", "dummy-collection")
 os.environ.setdefault("VISION_MODEL", "qwen2.5vl:7b")
@@ -17,8 +18,8 @@ os.environ.setdefault("MAX_VISION_PX", "512")  # test was written against 512 de
 # Allow importing from telegram/ directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
 
-from PIL import Image
 from bot import _resize_for_vision
+from PIL import Image
 
 
 def test_large_image_resized_to_512():
@@ -47,4 +48,4 @@ def test_output_is_valid_jpeg():
     buf = io.BytesIO()
     img.save(buf, "JPEG")
     result = _resize_for_vision(buf.getvalue())
-    assert result[:2] == b'\xff\xd8'  # JPEG magic bytes
+    assert result[:2] == b"\xff\xd8"  # JPEG magic bytes

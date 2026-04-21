@@ -24,6 +24,7 @@ Environment:
     DRIFT_OUTPUT_DIR          Where to write weekly JSON (default: tests/eval/drift)
     DRIFT_FIXTURES_DIR        Eval fixtures dir (default: tests/eval/fixtures)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -86,9 +87,7 @@ def centroid(vectors: list[list[float]]) -> list[float]:
 # ── Data collection ────────────────────────────────────────────────────────
 
 
-def sample_production_queries(
-    db_path: Path, sample_size: int, lookback_days: int
-) -> list[str]:
+def sample_production_queries(db_path: Path, sample_size: int, lookback_days: int) -> list[str]:
     """Return up to sample_size recent user_message strings from interactions."""
     if not db_path.exists():
         logger.warning("DB not found: %s", db_path)
@@ -123,9 +122,7 @@ def load_fixture_inputs(fixtures_dir: Path) -> list[tuple[str, str]]:
             turns = data.get("turns", [])
             if turns:
                 # Use first user turn — represents how a technician opens the chat
-                first = next(
-                    (t for t in turns if t.get("role") == "user"), None
-                )
+                first = next((t for t in turns if t.get("role") == "user"), None)
                 if first and first.get("content"):
                     results.append((data.get("id", f.stem), first["content"]))
         except Exception as e:
@@ -136,9 +133,7 @@ def load_fixture_inputs(fixtures_dir: Path) -> list[tuple[str, str]]:
 # ── Embedding via Ollama ───────────────────────────────────────────────────
 
 
-async def embed_text(
-    text: str, ollama_url: str, embed_model: str
-) -> list[float] | None:
+async def embed_text(text: str, ollama_url: str, embed_model: str) -> list[float] | None:
     """Embed text via Ollama nomic-embed-text. Returns None on failure."""
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -230,7 +225,9 @@ def compute_drift(
 
     if not prod_embeddings:
         return DriftReport(
-            drift_score=0.0, threshold=threshold, drift_flagged=False,
+            drift_score=0.0,
+            threshold=threshold,
+            drift_flagged=False,
             prod_sample_size=0,
             fixture_count=len(fixture_embeddings),
             timestamp=ts,
@@ -238,7 +235,9 @@ def compute_drift(
         )
     if not fixture_embeddings:
         return DriftReport(
-            drift_score=0.0, threshold=threshold, drift_flagged=False,
+            drift_score=0.0,
+            threshold=threshold,
+            drift_flagged=False,
             prod_sample_size=len(prod_embeddings),
             fixture_count=0,
             timestamp=ts,
@@ -266,10 +265,7 @@ def compute_drift(
         drift_flagged=drift_score > threshold,
         prod_sample_size=len(prod_embeddings),
         fixture_count=len(fixture_embeddings),
-        top_unfamiliar=[
-            {"min_distance": round(d, 4), "query": t}
-            for d, t in unfamiliar[:top_n]
-        ],
+        top_unfamiliar=[{"min_distance": round(d, 4), "query": t} for d, t in unfamiliar[:top_n]],
         timestamp=ts,
     )
 
@@ -297,7 +293,8 @@ class DriftMonitor:
     async def run(self, dry_run: bool = False) -> DriftReport:
         logger.info(
             "Drift monitor starting (lookback=%d days, sample=%d)",
-            self.cfg.lookback_days, self.cfg.sample_size,
+            self.cfg.lookback_days,
+            self.cfg.sample_size,
         )
 
         prod_queries = sample_production_queries(
@@ -310,7 +307,9 @@ class DriftMonitor:
 
         if not prod_queries or not fixture_inputs:
             report = DriftReport(
-                drift_score=0.0, threshold=self.cfg.threshold, drift_flagged=False,
+                drift_score=0.0,
+                threshold=self.cfg.threshold,
+                drift_flagged=False,
                 prod_sample_size=len(prod_queries),
                 fixture_count=len(fixture_inputs),
                 timestamp=datetime.now(timezone.utc).isoformat(),
@@ -321,21 +320,16 @@ class DriftMonitor:
             return report
 
         # Embed
-        prod_embs = await embed_batch(
-            prod_queries, self.cfg.ollama_url, self.cfg.embed_model
-        )
+        prod_embs = await embed_batch(prod_queries, self.cfg.ollama_url, self.cfg.embed_model)
         fixture_texts = [t for _, t in fixture_inputs]
-        fixture_embs = await embed_batch(
-            fixture_texts, self.cfg.ollama_url, self.cfg.embed_model
-        )
+        fixture_embs = await embed_batch(fixture_texts, self.cfg.ollama_url, self.cfg.embed_model)
         logger.info(
             "Embedded %d prod + %d fixture queries",
-            len(prod_embs), len(fixture_embs),
+            len(prod_embs),
+            len(fixture_embs),
         )
 
-        report = compute_drift(
-            prod_embs, fixture_embs, self.cfg.threshold, self.cfg.top_n
-        )
+        report = compute_drift(prod_embs, fixture_embs, self.cfg.threshold, self.cfg.top_n)
 
         if not dry_run:
             self._write_report(report)
@@ -357,29 +351,27 @@ class DriftMonitor:
 
 
 def _build_monitor() -> DriftMonitor:
-    return DriftMonitor(DriftMonitorConfig(
-        db_path=Path(os.getenv("MIRA_DB_PATH", "/opt/mira/data/mira.db")),
-        ollama_url=os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434"),
-        embed_model=os.getenv("EMBED_TEXT_MODEL", "nomic-embed-text:latest"),
-        fixtures_dir=Path(os.getenv(
-            "DRIFT_FIXTURES_DIR", "/opt/mira/tests/eval/fixtures"
-        )),
-        output_dir=Path(os.getenv(
-            "DRIFT_OUTPUT_DIR", "/opt/mira/tests/eval/drift"
-        )),
-        threshold=float(os.getenv("DRIFT_THRESHOLD", _DEFAULT_THRESHOLD)),
-        sample_size=int(os.getenv("DRIFT_SAMPLE_SIZE", _DEFAULT_SAMPLE)),
-        top_n=int(os.getenv("DRIFT_TOP_N", _DEFAULT_TOP_N)),
-        lookback_days=int(os.getenv("DRIFT_LOOKBACK_DAYS", _DEFAULT_LOOKBACK_DAYS)),
-    ))
+    return DriftMonitor(
+        DriftMonitorConfig(
+            db_path=Path(os.getenv("MIRA_DB_PATH", "/opt/mira/data/mira.db")),
+            ollama_url=os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434"),
+            embed_model=os.getenv("EMBED_TEXT_MODEL", "nomic-embed-text:latest"),
+            fixtures_dir=Path(os.getenv("DRIFT_FIXTURES_DIR", "/opt/mira/tests/eval/fixtures")),
+            output_dir=Path(os.getenv("DRIFT_OUTPUT_DIR", "/opt/mira/tests/eval/drift")),
+            threshold=float(os.getenv("DRIFT_THRESHOLD", _DEFAULT_THRESHOLD)),
+            sample_size=int(os.getenv("DRIFT_SAMPLE_SIZE", _DEFAULT_SAMPLE)),
+            top_n=int(os.getenv("DRIFT_TOP_N", _DEFAULT_TOP_N)),
+            lookback_days=int(os.getenv("DRIFT_LOOKBACK_DAYS", _DEFAULT_LOOKBACK_DAYS)),
+        )
+    )
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="MIRA eval drift monitor")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Compute report but do not write JSON or post")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Compute report but do not write JSON or post"
+    )
     args = parser.parse_args()
 
     monitor = _build_monitor()

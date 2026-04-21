@@ -35,8 +35,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import httpx
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -48,6 +46,7 @@ sys.path.insert(0, str(REPO_ROOT / "mira-crawler"))
 from ingest.embedder import embed_image as _crawler_embed_image  # noqa: E402
 from ingest.embedder import embed_text as _crawler_embed_text  # noqa: E402
 from ingest.store import chunk_exists, store_chunks  # noqa: E402
+
 INCOMING = REPO_ROOT / "mira-core" / "data" / "equipment_photos" / "incoming"
 PROCESSED = REPO_ROOT / "mira-core" / "data" / "equipment_photos" / "processed"
 REGIME3_DIR = REPO_ROOT / "tests" / "regime3_nameplate"
@@ -57,9 +56,18 @@ LABELS_PATH = REGIME3_DIR / "golden_labels" / "v1" / "real_photos.json"
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic"}
 SCRAPE_TARGETS_CSV = REPO_ROOT / "mira-crawler" / "manual_scrape_targets.csv"
 SCRAPE_CSV_HEADER = [
-    "row_id", "manufacturer", "model_number", "equipment_type", "condition",
-    "has_nameplate", "priority", "search_query", "url_hint", "sources_yaml_key",
-    "status", "notes",
+    "row_id",
+    "manufacturer",
+    "model_number",
+    "equipment_type",
+    "condition",
+    "has_nameplate",
+    "priority",
+    "search_query",
+    "url_hint",
+    "sources_yaml_key",
+    "status",
+    "notes",
 ]
 
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
@@ -121,14 +129,18 @@ def _resize_for_claude(photo_path: Path) -> tuple[bytes, str]:
 
     try:
         from pillow_heif import register_heif_opener
+
         register_heif_opener()
     except ImportError:
         pass
 
     suffix = photo_path.suffix.lower()
     media_type_map = {
-        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-        ".png": "image/png", ".webp": "image/webp", ".heic": "image/jpeg",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".heic": "image/jpeg",
     }
 
     raw_bytes = photo_path.read_bytes()
@@ -137,6 +149,7 @@ def _resize_for_claude(photo_path: Path) -> tuple[bytes, str]:
         return raw_bytes, media_type_map.get(suffix, "image/jpeg")
 
     import io
+
     img = Image.open(photo_path).convert("RGB")
     max_dim = 1536
     w, h = img.size
@@ -153,25 +166,36 @@ def _resize_for_claude(photo_path: Path) -> tuple[bytes, str]:
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=quality)
 
-    logger.info("Resized %s: %dKB → %dKB (q=%d)",
-                photo_path.name, len(raw_bytes) // 1024, buf.tell() // 1024, quality)
+    logger.info(
+        "Resized %s: %dKB → %dKB (q=%d)",
+        photo_path.name,
+        len(raw_bytes) // 1024,
+        buf.tell() // 1024,
+        quality,
+    )
     return buf.getvalue(), "image/jpeg"
 
 
 # ── Claude Vision ────────────────────────────────────────────────────────────
+
 
 def _call_claude_vision(photo_b64: str, media_type: str, prompt: str, client) -> str:
     """Send image + prompt to Claude, return raw text response."""
     response = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1024,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": photo_b64}},
-                {"type": "text", "text": prompt},
-            ],
-        }],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": media_type, "data": photo_b64},
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ],
     )
     return response.content[0].text.strip()
 
@@ -190,7 +214,9 @@ def classify_photo(photo_path: Path, client) -> dict:
     try:
         result = json.loads(raw_text)
     except json.JSONDecodeError:
-        logger.warning("Failed to parse Claude response for %s: %s", photo_path.name, raw_text[:200])
+        logger.warning(
+            "Failed to parse Claude response for %s: %s", photo_path.name, raw_text[:200]
+        )
         return {"is_equipment": False, "parse_error": True}
 
     # Store the base64 for potential verification call
@@ -258,7 +284,13 @@ def _build_content_text(result: dict, survey: dict | None = None) -> str:
     # Nameplate — labeled units on one line
     np = result.get("nameplate_fields") or {}
     np_parts = []
-    for key, unit in (("voltage", "V"), ("amperage", "A"), ("rpm", "rpm"), ("hz", "Hz"), ("hp", "HP")):
+    for key, unit in (
+        ("voltage", "V"),
+        ("amperage", "A"),
+        ("rpm", "rpm"),
+        ("hz", "Hz"),
+        ("hp", "HP"),
+    ):
         val = np.get(key) or sv.get(key)
         if val:
             np_parts.append(f"{val}{unit}")
@@ -303,7 +335,9 @@ def _build_content_text(result: dict, survey: dict | None = None) -> str:
 
 
 def insert_to_neondb(
-    result: dict, photo_path: Path, tenant_id: str,
+    result: dict,
+    photo_path: Path,
+    tenant_id: str,
     embedding: list[float],
     source_prefix: str = "equipment_photo",
     image_embedding: list[float] | None = None,
@@ -364,6 +398,7 @@ MANUFACTURER_MANUAL_URLS: dict[str, str] = {
 def _slugify(text: str) -> str:
     """Simple slug: lowercase, keep alphanum and underscores, collapse spaces."""
     import re
+
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
@@ -417,7 +452,13 @@ def append_scrape_target(result: dict) -> None:
     if catalog and catalog != "null":
         note_parts.append(f"Cat: {catalog}")
     np = result.get("nameplate_fields") or {}
-    for field, unit in (("voltage", "V"), ("amperage", "A"), ("hp", "HP"), ("rpm", "rpm"), ("hz", "Hz")):
+    for field, unit in (
+        ("voltage", "V"),
+        ("amperage", "A"),
+        ("hp", "HP"),
+        ("rpm", "rpm"),
+        ("hz", "Hz"),
+    ):
         val = (np.get(field) or "").strip()
         if val and val != "null":
             note_parts.append(f"{val}{unit}")
@@ -443,27 +484,31 @@ def append_scrape_target(result: dict) -> None:
             writer = csv.DictWriter(f, fieldnames=SCRAPE_CSV_HEADER)
             if write_header:
                 writer.writeheader()
-            writer.writerow({
-                "row_id": row_id,
-                "manufacturer": make,
-                "model_number": model if model and model != "?" else "",
-                "equipment_type": eq_type,
-                "condition": condition,
-                "has_nameplate": str(has_np).lower(),
-                "priority": priority,
-                "search_query": search_query,
-                "url_hint": url_hint,
-                "sources_yaml_key": sources_yaml_key,
-                "status": "to_find",
-                "notes": notes,
-            })
+            writer.writerow(
+                {
+                    "row_id": row_id,
+                    "manufacturer": make,
+                    "model_number": model if model and model != "?" else "",
+                    "equipment_type": eq_type,
+                    "condition": condition,
+                    "has_nameplate": str(has_np).lower(),
+                    "priority": priority,
+                    "search_query": search_query,
+                    "url_hint": url_hint,
+                    "sources_yaml_key": sources_yaml_key,
+                    "status": "to_find",
+                    "notes": notes,
+                }
+            )
         logger.info("  SCRAPE TARGET: added %s to manual_scrape_targets.csv", row_id)
     except Exception as e:
         logger.warning("Failed to append scrape target %s: %s", row_id, e)
 
 
 def trigger_manual_discovery(
-    result: dict, tenant_id: str, dry_run: bool = False,
+    result: dict,
+    tenant_id: str,
+    dry_run: bool = False,
     discovered_models: set | None = None,
 ) -> bool:
     """If make+model identified, queue manual URL for ingest. Returns True if queued."""
@@ -500,13 +545,19 @@ def trigger_manual_discovery(
                 break
 
         # Queue for ingest
-        search_url = f"{base_url}/search?q={model}" if base_url else f"https://www.google.com/search?q={make}+{model}+user+manual+filetype:pdf"
+        search_url = (
+            f"{base_url}/search?q={model}"
+            if base_url
+            else f"https://www.google.com/search?q={make}+{model}+user+manual+filetype:pdf"
+        )
         queue_manual_url(search_url, make, model, tenant_id)
         logger.info("  MANUAL QUEUED: %s %s → %s", make, model, search_url)
         return True
 
     except ImportError:
-        logger.warning("manual_exists_for/queue_manual_url not available in neon.py — skipping manual discovery")
+        logger.warning(
+            "manual_exists_for/queue_manual_url not available in neon.py — skipping manual discovery"
+        )
         return False
     except Exception as e:
         logger.warning("Manual discovery failed for %s %s: %s", make, model, e)
@@ -515,6 +566,7 @@ def trigger_manual_discovery(
 
 # ── Regime 3 Golden Labels ───────────────────────────────────────────────────
 
+
 def _next_case_id(existing_cases: list[dict], equipment_type: str) -> str:
     prefix = f"gp_{equipment_type}_"
     existing_nums = []
@@ -522,7 +574,7 @@ def _next_case_id(existing_cases: list[dict], equipment_type: str) -> str:
         cid = c.get("id", "")
         if cid.startswith(prefix):
             try:
-                existing_nums.append(int(cid[len(prefix):]))
+                existing_nums.append(int(cid[len(prefix) :]))
             except ValueError:
                 pass
     next_num = max(existing_nums, default=0) + 1
@@ -540,8 +592,12 @@ def append_golden_label(result: dict, photo_path: Path) -> str | None:
         with open(LABELS_PATH) as f:
             data = json.load(f)
     else:
-        data = {"description": "Ground truth labels for real equipment photos",
-                "source": "mixed", "status": "ANNOTATED", "cases": []}
+        data = {
+            "description": "Ground truth labels for real equipment photos",
+            "source": "mixed",
+            "status": "ANNOTATED",
+            "cases": [],
+        }
 
     equipment_type = result.get("equipment_type", "other")
     case_id = _next_case_id(data["cases"], equipment_type)
@@ -600,6 +656,7 @@ def append_golden_label(result: dict, photo_path: Path) -> str | None:
 
 # ── Monitoring Dashboard ─────────────────────────────────────────────────────
 
+
 class IngestMonitor:
     """Tracks stats and prints dashboard during batch ingest."""
 
@@ -651,27 +708,34 @@ class IngestMonitor:
             self.manuals_queued += 1
 
     def print_dashboard(self, current: int, total: int):
-        processed = self.equipment_count + self.not_equipment_count + self.error_count
+        processed = self.equipment_count + self.not_equipment_count + self.error_count  # noqa: F841
         top_types = sorted(self.type_counts.items(), key=lambda x: -x[1])[:6]
         top_makes = sorted(self.make_counts.items(), key=lambda x: -x[1])[:5]
 
         types_str = " ".join(f"{t}={c}" for t, c in top_types)
         makes_str = " ".join(f"{m}={c}" for m, c in top_makes)
-        verify_str = (f"{self.verify_agree}/{self.verify_total} agree"
-                      if self.verify_total > 0 else "n/a")
+        verify_str = (
+            f"{self.verify_agree}/{self.verify_total} agree" if self.verify_total > 0 else "n/a"
+        )
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Ingest Monitor ({current}/{total})")
-        print(f"{'='*60}")
-        print(f"Equipment:     {self.equipment_count}  |  Not equipment: {self.not_equipment_count}  |  Errors: {self.error_count}")
+        print(f"{'=' * 60}")
+        print(
+            f"Equipment:     {self.equipment_count}  |  Not equipment: {self.not_equipment_count}  |  Errors: {self.error_count}"
+        )
         print(f"Types:         {types_str}")
         print(f"Manufacturers: {makes_str}")
-        print(f"Confidence:    high={self.confidence_counts['high']} med={self.confidence_counts['medium']} low={self.confidence_counts['low']}")
-        print(f"Has nameplate: {self.nameplate_count}/{self.equipment_count} ({self.nameplate_count/max(self.equipment_count,1)*100:.0f}%)")
+        print(
+            f"Confidence:    high={self.confidence_counts['high']} med={self.confidence_counts['medium']} low={self.confidence_counts['low']}"
+        )
+        print(
+            f"Has nameplate: {self.nameplate_count}/{self.equipment_count} ({self.nameplate_count / max(self.equipment_count, 1) * 100:.0f}%)"
+        )
         print(f"Spot-check:    {verify_str}")
         print(f"Manuals queued:{self.manuals_queued}")
         print(f"Est. cost:     ${self.est_cost:.2f}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
     @property
     def disagree_rate(self) -> float:
@@ -682,28 +746,47 @@ class IngestMonitor:
 
 # ── Main Pipeline ────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Ingest equipment photos into MIRA knowledge base",
     )
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Classify photos but don't write to NeonDB or move files")
-    parser.add_argument("--include-low", action="store_true",
-                        help="Also ingest low-confidence classifications")
-    parser.add_argument("--incoming-dir", type=str, default=str(INCOMING),
-                        help=f"Override incoming directory (default: {INCOMING})")
-    parser.add_argument("--source-prefix", type=str, default="equipment_photo",
-                        help="Source URL prefix (default: equipment_photo)")
-    parser.add_argument("--no-move", action="store_true",
-                        help="Don't move files to processed/")
-    parser.add_argument("--inspect", action="store_true",
-                        help="Enable spot-check verification (every 20th photo)")
-    parser.add_argument("--inspect-every", type=int, default=20,
-                        help="Verify every N-th photo (default: 20)")
-    parser.add_argument("--max-cost", type=float, default=0,
-                        help="Stop if estimated cost exceeds this (0=no limit)")
-    parser.add_argument("--checkpoint-dir", type=str, default="",
-                        help="Directory for checkpoint files (resume support)")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Classify photos but don't write to NeonDB or move files",
+    )
+    parser.add_argument(
+        "--include-low", action="store_true", help="Also ingest low-confidence classifications"
+    )
+    parser.add_argument(
+        "--incoming-dir",
+        type=str,
+        default=str(INCOMING),
+        help=f"Override incoming directory (default: {INCOMING})",
+    )
+    parser.add_argument(
+        "--source-prefix",
+        type=str,
+        default="equipment_photo",
+        help="Source URL prefix (default: equipment_photo)",
+    )
+    parser.add_argument("--no-move", action="store_true", help="Don't move files to processed/")
+    parser.add_argument(
+        "--inspect", action="store_true", help="Enable spot-check verification (every 20th photo)"
+    )
+    parser.add_argument(
+        "--inspect-every", type=int, default=20, help="Verify every N-th photo (default: 20)"
+    )
+    parser.add_argument(
+        "--max-cost", type=float, default=0, help="Stop if estimated cost exceeds this (0=no limit)"
+    )
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=str,
+        default="",
+        help="Directory for checkpoint files (resume support)",
+    )
     args = parser.parse_args()
 
     incoming = Path(args.incoming_dir)
@@ -712,8 +795,7 @@ def main():
         sys.exit(1)
 
     photos = sorted(
-        p for p in incoming.rglob("*")
-        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+        p for p in incoming.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
     )
 
     if not photos:
@@ -723,6 +805,7 @@ def main():
     logger.info("Found %d photos to process in %s", len(photos), incoming)
 
     import anthropic
+
     client = anthropic.Anthropic()
 
     tenant_id = os.environ.get("MIRA_TENANT_ID")
@@ -734,9 +817,13 @@ def main():
     _image_embed_available = False
     try:
         import httpx as _httpx
+
         r = _httpx.post(
             f"{OLLAMA_URL}/api/embed",
-            json={"model": os.getenv("EMBED_VISION_MODEL", "nomic-embed-vision:v1.5"), "input": "test"},
+            json={
+                "model": os.getenv("EMBED_VISION_MODEL", "nomic-embed-vision:v1.5"),
+                "input": "test",
+            },
             timeout=5,
         )
         _image_embed_available = r.status_code == 200
@@ -754,6 +841,7 @@ def main():
         try:
             sys.path.insert(0, str(REPO_ROOT / "mira-core" / "mira-ingest"))
             from db.neon import ensure_image_embedding_column
+
             ensure_image_embedding_column()
             logger.info("NeonDB image_embedding column verified.")
         except Exception as e:
@@ -767,7 +855,9 @@ def main():
         cp_dir.mkdir(parents=True, exist_ok=True)
         checkpoint_path = cp_dir / "ingest_checkpoint.txt"
         if checkpoint_path.exists():
-            already_done = {l.strip() for l in checkpoint_path.read_text().splitlines() if l.strip()}
+            already_done = {
+                ln.strip() for ln in checkpoint_path.read_text().splitlines() if ln.strip()
+            }
             photos = [p for p in photos if str(p) not in already_done]
             logger.info("Checkpoint: %d done, %d remaining", len(already_done), len(photos))
 
@@ -783,8 +873,11 @@ def main():
     for i, photo in enumerate(photos):
         # Cost guard
         if args.max_cost > 0 and monitor.est_cost >= args.max_cost:
-            logger.warning("COST GUARD: estimated cost $%.2f exceeds --max-cost $%.2f. Stopping.",
-                           monitor.est_cost, args.max_cost)
+            logger.warning(
+                "COST GUARD: estimated cost $%.2f exceeds --max-cost $%.2f. Stopping.",
+                monitor.est_cost,
+                args.max_cost,
+            )
             break
 
         logger.info("Classifying %d/%d: %s", i + 1, len(photos), photo.name)
@@ -824,8 +917,15 @@ def main():
         eq_type = result.get("equipment_type", "?")
         has_np = "NP" if result.get("has_nameplate") else ""
         condition = result.get("condition", "?")
-        logger.info("  CONFIRMED: %s %s (%s) [%s] %s cond=%s",
-                     make, model_num, eq_type, confidence, has_np, condition)
+        logger.info(
+            "  CONFIRMED: %s %s (%s) [%s] %s cond=%s",
+            make,
+            model_num,
+            eq_type,
+            confidence,
+            has_np,
+            condition,
+        )
 
         # Auto-populate scrape targets CSV
         append_scrape_target(result)
@@ -836,19 +936,28 @@ def main():
             logger.info("  SPOT-CHECK: verifying classification...")
             verified = verify_classification(result, client)
             logger.info("  VERDICT: %s", verified)
-            inspection_log.append({
-                "photo": photo.name, "classification": eq_type,
-                "make": make, "model": model_num, "verdict": verified,
-            })
+            inspection_log.append(
+                {
+                    "photo": photo.name,
+                    "classification": eq_type,
+                    "make": make,
+                    "model": model_num,
+                    "verdict": verified,
+                }
+            )
 
             if monitor.disagree_rate > 0.15 and monitor.verify_total >= 5:
-                logger.error("QUALITY ALERT: disagree rate %.0f%% exceeds 15%% threshold!",
-                             monitor.disagree_rate * 100)
+                logger.error(
+                    "QUALITY ALERT: disagree rate %.0f%% exceeds 15%% threshold!",
+                    monitor.disagree_rate * 100,
+                )
                 logger.error("Pausing ingest. Review inspection_log.csv before continuing.")
                 break
 
         # Manual discovery
-        manual_queued = trigger_manual_discovery(result, tenant_id or "", args.dry_run, discovered_models)
+        manual_queued = trigger_manual_discovery(
+            result, tenant_id or "", args.dry_run, discovered_models
+        )
 
         # Record stats (strip base64 before storing)
         result_clean = {k: v for k, v in result.items() if not k.startswith("_")}
@@ -869,10 +978,16 @@ def main():
                             ollama_url=OLLAMA_URL,
                         )
                         if image_embedding is None:
-                            logger.warning("Image embedding failed for %s — storing NULL", photo.name)
+                            logger.warning(
+                                "Image embedding failed for %s — storing NULL", photo.name
+                            )
                     monitor.embeddings_ok += 1
                     insert_to_neondb(
-                        result_clean, photo, tenant_id, embedding, args.source_prefix,
+                        result_clean,
+                        photo,
+                        tenant_id,
+                        embedding,
+                        args.source_prefix,
                         image_embedding=image_embedding,
                     )
             append_golden_label(result_clean, photo)
@@ -896,7 +1011,9 @@ def main():
     if inspection_log:
         log_path = Path(args.incoming_dir).parent / "inspection_log.csv"
         with open(log_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["photo", "classification", "make", "model", "verdict"])
+            writer = csv.DictWriter(
+                f, fieldnames=["photo", "classification", "make", "model", "verdict"]
+            )
             writer.writeheader()
             writer.writerows(inspection_log)
         logger.info("Inspection log: %s", log_path)
@@ -913,15 +1030,15 @@ def main():
     print(f"Equipment found:   {monitor.equipment_count:>6}")
     print(f"Not equipment:     {monitor.not_equipment_count:>6}")
     print(f"Errors:            {monitor.error_count:>6}")
-    print(f"Time:              {elapsed:.0f}s ({elapsed/max(len(photos),1):.1f}s/photo)")
+    print(f"Time:              {elapsed:.0f}s ({elapsed / max(len(photos), 1):.1f}s/photo)")
     print(f"Est. cost:         ${monitor.est_cost:.2f}")
 
     if confirmed:
-        print(f"\nEquipment types:")
+        print("\nEquipment types:")
         for t, c in sorted(monitor.type_counts.items(), key=lambda x: -x[1]):
             print(f"  {t}: {c}")
 
-        print(f"\nTop manufacturers:")
+        print("\nTop manufacturers:")
         for m, c in sorted(monitor.make_counts.items(), key=lambda x: -x[1])[:10]:
             print(f"  {m}: {c}")
 
@@ -929,8 +1046,10 @@ def main():
         print(f"Manuals queued:    {monitor.manuals_queued}")
 
     if monitor.verify_total > 0:
-        print(f"\nQuality check:     {monitor.verify_agree}/{monitor.verify_total} agree "
-              f"({monitor.verify_agree/monitor.verify_total*100:.0f}%)")
+        print(
+            f"\nQuality check:     {monitor.verify_agree}/{monitor.verify_total} agree "
+            f"({monitor.verify_agree / monitor.verify_total * 100:.0f}%)"
+        )
         if monitor.verify_disagree > 0:
             print(f"  Disagree:        {monitor.verify_disagree}")
 

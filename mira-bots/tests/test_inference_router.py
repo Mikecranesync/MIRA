@@ -9,7 +9,6 @@ Run:
 
 import asyncio
 import base64
-import os
 import pathlib
 import sys
 
@@ -20,7 +19,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 from shared.inference.router import InferenceRouter
 
-ASSETS = pathlib.Path(__file__).parent.parent / "telegram_test_runner" / "test-assets" / "sample_tags"
+ASSETS = (
+    pathlib.Path(__file__).parent.parent / "telegram_test_runner" / "test-assets" / "sample_tags"
+)
 
 # (filename, must_contain_any, must_not_contain)
 TEST_CASES = [
@@ -42,15 +43,42 @@ TEST_CASES = [
     (
         "bad_glare_tag.jpg",
         # Glare image — expect an honest response, not a hallucination
-        ["glare", "difficult", "unclear", "partially", "limited", "hard", "close", "closer",
-         "Allen", "Micro", "GS", "VFD", "panel", "cabinet", "enclosure"],
+        [
+            "glare",
+            "difficult",
+            "unclear",
+            "partially",
+            "limited",
+            "hard",
+            "close",
+            "closer",
+            "Allen",
+            "Micro",
+            "GS",
+            "VFD",
+            "panel",
+            "cabinet",
+            "enclosure",
+        ],
         [],
     ),
     (
         "cropped_tight_tag.jpg",
         # Tight crop — partial info is fine, but shouldn't be empty
-        ["Allen", "Micro", "GS", "VFD", "panel", "cabinet", "controller", "drive",
-         "closer", "partial", "limited", "unclear"],
+        [
+            "Allen",
+            "Micro",
+            "GS",
+            "VFD",
+            "panel",
+            "cabinet",
+            "controller",
+            "drive",
+            "closer",
+            "partial",
+            "limited",
+            "unclear",
+        ],
         [],
     ),
 ]
@@ -61,29 +89,31 @@ def _load_b64(path: pathlib.Path) -> str:
 
 
 def _build_messages(photo_b64: str) -> list[dict]:
-    return [{
-        "role": "user",
-        "content": [
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
-            },
-            {
-                "type": "text",
-                "text": (
-                    "What is in this image? If it is a piece of equipment, "
-                    "return: manufacturer, model, and one visible observation. "
-                    "If it is an electrical drawing, schematic, or diagram, "
-                    "say 'electrical drawing' and the type. "
-                    "If the image shows a computer monitor or laptop screen, "
-                    "analyze ONLY the technical content on screen. "
-                    "If text is small or partially visible, describe what you "
-                    "can read and note a closer shot may improve extraction. "
-                    "Keep it under 30 words. Do NOT invent any text."
-                ),
-            },
-        ],
-    }]
+    return [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
+                },
+                {
+                    "type": "text",
+                    "text": (
+                        "What is in this image? If it is a piece of equipment, "
+                        "return: manufacturer, model, and one visible observation. "
+                        "If it is an electrical drawing, schematic, or diagram, "
+                        "say 'electrical drawing' and the type. "
+                        "If the image shows a computer monitor or laptop screen, "
+                        "analyze ONLY the technical content on screen. "
+                        "If text is small or partially visible, describe what you "
+                        "can read and note a closer shot may improve extraction. "
+                        "Keep it under 30 words. Do NOT invent any text."
+                    ),
+                },
+            ],
+        }
+    ]
 
 
 @pytest.fixture(scope="module")
@@ -116,14 +146,12 @@ def test_vision_identification(router, filename, must_contain_any, must_not_cont
     if must_contain_any:
         matched = any(kw.lower() in content_lower for kw in must_contain_any)
         assert matched, (
-            f"[{filename}] Expected one of {must_contain_any!r} in response.\n"
-            f"  Got: {content!r}"
+            f"[{filename}] Expected one of {must_contain_any!r} in response.\n  Got: {content!r}"
         )
 
     for bad in must_not_contain:
         assert bad.lower() not in content_lower, (
-            f"[{filename}] Found forbidden word {bad!r} in response.\n"
-            f"  Got: {content!r}"
+            f"[{filename}] Found forbidden word {bad!r} in response.\n  Got: {content!r}"
         )
 
 

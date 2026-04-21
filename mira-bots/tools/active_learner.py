@@ -162,8 +162,11 @@ class ActiveLearner:
                         "model": self.claude_model,
                         "max_tokens": 2048,
                         "system": [
-                            {"type": "text", "text": system,
-                             "cache_control": {"type": "ephemeral"}},
+                            {
+                                "type": "text",
+                                "text": system,
+                                "cache_control": {"type": "ephemeral"},
+                            },
                         ],
                         "messages": [{"role": "user", "content": user}],
                     },
@@ -199,8 +202,7 @@ class ActiveLearner:
                 ).fetchall()
             else:
                 rows = db.execute(
-                    "SELECT * FROM feedback_log WHERE feedback = 'bad'"
-                    " ORDER BY created_at LIMIT ?",
+                    "SELECT * FROM feedback_log WHERE feedback = 'bad' ORDER BY created_at LIMIT ?",
                     (self.max_fixtures_per_run,),
                 ).fetchall()
             db.close()
@@ -285,7 +287,9 @@ class ActiveLearner:
 
         fixture: dict[str, Any] = {
             "id": f"auto_{chat_hash}",
-            "description": pass_criteria.get("description", "Auto-generated from production feedback"),
+            "description": pass_criteria.get(
+                "description", "Auto-generated from production feedback"
+            ),
             "auto_generated": True,
             "review_required": True,
             "generated_from_feedback_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -321,8 +325,11 @@ class ActiveLearner:
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         n = len(fixtures)
         try:
+
             def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
-                return subprocess.run(cmd, cwd=mira_dir, capture_output=True, text=True, check=check)
+                return subprocess.run(
+                    cmd, cwd=mira_dir, capture_output=True, text=True, check=check
+                )
 
             fixtures_dir = Path(mira_dir) / "tests" / "eval" / "fixtures"
             fixtures_dir.mkdir(parents=True, exist_ok=True)
@@ -332,14 +339,21 @@ class ActiveLearner:
 
             _run(["git", "add"] + [f"tests/eval/fixtures/{f}" for f, _ in fixtures])
             _run(
-                ["git", "commit", "-m",
-                 f"auto: land {n} high-confidence active-learning fixture(s) ({date_str})\n\n"
-                 f"Signed-off-by: mira-active-learner <eval@mira.local>"],
+                [
+                    "git",
+                    "commit",
+                    "-m",
+                    f"auto: land {n} high-confidence active-learning fixture(s) ({date_str})\n\n"
+                    f"Signed-off-by: mira-active-learner <eval@mira.local>",
+                ],
             )
             env = {**os.environ, "GH_TOKEN": self.gh_token}
             push_r = subprocess.run(
                 ["git", "push", "origin", "HEAD"],
-                cwd=mira_dir, capture_output=True, text=True, env=env,
+                cwd=mira_dir,
+                capture_output=True,
+                text=True,
+                env=env,
             )
             if push_r.returncode != 0:
                 logger.error("Direct push failed: %s", push_r.stderr[:300])
@@ -379,7 +393,7 @@ class ActiveLearner:
 ## Auto-generated eval fixtures from production feedback
 
 Source: {n} 👎 ratings between {start_ts} and {end_ts}
-Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
+Generated: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")} UTC
 
 ### Fixtures in this PR
 
@@ -398,6 +412,7 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
 """
         worktree_dir = tempfile.mkdtemp(prefix="mira-active-learning-")
         try:
+
             def _run(cmd: list[str], cwd: str, check: bool = True) -> subprocess.CompletedProcess:
                 return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=check)
 
@@ -414,9 +429,13 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
             # Commit
             _run(["git", "add", "tests/eval/fixtures/auto-generated/"], worktree_dir)
             _run(
-                ["git", "commit", "-m",
-                 f"auto: active-learning fixtures from {date_str} ({n} new)\n\n"
-                 f"Signed-off-by: mira-active-learner <eval@mira.local>"],
+                [
+                    "git",
+                    "commit",
+                    "-m",
+                    f"auto: active-learning fixtures from {date_str} ({n} new)\n\n"
+                    f"Signed-off-by: mira-active-learner <eval@mira.local>",
+                ],
                 worktree_dir,
             )
 
@@ -424,7 +443,10 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
             env = {**os.environ, "GH_TOKEN": self.gh_token}
             push_r = subprocess.run(
                 ["git", "push", "-u", "origin", branch],
-                cwd=worktree_dir, capture_output=True, text=True, env=env,
+                cwd=worktree_dir,
+                capture_output=True,
+                text=True,
+                env=env,
             )
             if push_r.returncode != 0:
                 logger.error("git push failed: %s", push_r.stderr[:300])
@@ -432,10 +454,22 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
 
             # Create draft PR
             pr_r = subprocess.run(
-                ["gh", "pr", "create", "--draft",
-                 "--title", pr_title, "--body", pr_body,
-                 "--repo", self.repo],
-                cwd=worktree_dir, capture_output=True, text=True, env=env,
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--draft",
+                    "--title",
+                    pr_title,
+                    "--body",
+                    pr_body,
+                    "--repo",
+                    self.repo,
+                ],
+                cwd=worktree_dir,
+                capture_output=True,
+                text=True,
+                env=env,
             )
             if pr_r.returncode != 0:
                 logger.error("gh pr create failed: %s", pr_r.stderr[:300])
@@ -449,7 +483,8 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
         finally:
             subprocess.run(
                 ["git", "worktree", "remove", "--force", worktree_dir],
-                cwd=mira_dir, capture_output=True,
+                cwd=mira_dir,
+                capture_output=True,
             )
 
     # ── Orchestrator ──────────────────────────────────────────────────────────
@@ -502,23 +537,28 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
                 continue
 
             inf_conf = float(criteria.get("confidence", 0.0))
-            fname, content = self.generate_fixture(anon, criteria, entry, inference_confidence=inf_conf)
+            fname, content = self.generate_fixture(
+                anon, criteria, entry, inference_confidence=inf_conf
+            )
             new_fixtures.append((fname, content, inf_conf))
             source_hashes.append(self._hash_chat_id(chat_id))
-            fixture_infos.append({
-                "reason": reason[:80],
-                "anon_notes": anon.get("anonymization_notes", "")[:60],
-                "tldr": criteria.get("tldr", "")[:60],
-                "confidence": inf_conf,
-            })
+            fixture_infos.append(
+                {
+                    "reason": reason[:80],
+                    "anon_notes": anon.get("anonymization_notes", "")[:60],
+                    "tldr": criteria.get("tldr", "")[:60],
+                    "confidence": inf_conf,
+                }
+            )
 
         logger.info(
             "Generated %d fixtures, skipped %d (confidence/data gaps)",
-            len(new_fixtures), skipped,
+            len(new_fixtures),
+            skipped,
         )
 
         # Unpack 3-tuples
-        fixture_pairs = [(f, c) for f, c, _ in new_fixtures]
+        fixture_pairs = [(f, c) for f, c, _ in new_fixtures]  # noqa: F841
 
         # Dry-run: write to output_dir and stop
         if dry_run:
@@ -551,12 +591,12 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
 
         pr_url = None
         if low_conf:
-            low_conf_infos = fixture_infos[len(high_conf):]
+            low_conf_infos = fixture_infos[len(high_conf) :]
             summary = {
                 "start_ts": checkpoint_ts or "all-time",
                 "end_ts": run_ts,
                 "fixture_infos": low_conf_infos,
-                "source_hashes": source_hashes[len(high_conf):],
+                "source_hashes": source_hashes[len(high_conf) :],
             }
             pr_url = await self.open_draft_pr(low_conf, summary, mira_dir)
 
@@ -573,6 +613,7 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
 
 
 # ── CLI entry point ───────────────────────────────────────────────────────────
+
 
 def _build_learner() -> ActiveLearner:
     return ActiveLearner(
@@ -592,13 +633,17 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="MIRA active learning loop")
     parser.add_argument("--dry-run", action="store_true", help="Write fixtures locally, no PR")
-    parser.add_argument("--output", default="/tmp/active_learning_dryrun", help="Dry-run output dir")
+    parser.add_argument(
+        "--output", default="/tmp/active_learning_dryrun", help="Dry-run output dir"
+    )
     parser.add_argument("--mira-dir", default="/opt/mira", help="Repo root on VPS")
     args = parser.parse_args()
 
-    result = asyncio.run(_build_learner().run(
-        dry_run=args.dry_run,
-        output_dir=args.output,
-        mira_dir=args.mira_dir,
-    ))
+    result = asyncio.run(
+        _build_learner().run(
+            dry_run=args.dry_run,
+            output_dir=args.output,
+            mira_dir=args.mira_dir,
+        )
+    )
     print(json.dumps(result, indent=2))

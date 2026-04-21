@@ -42,12 +42,25 @@ EST_COST_PER_IMAGE = 0.002  # conservative estimate (actual ~$0.0001 with detail
 MAX_IMAGE_BYTES = 3_700_000
 
 CSV_FIELDNAMES = [
-    "filename", "album", "file_size_kb",
-    "is_equipment", "photo_type", "equipment_type",
-    "make", "model", "has_fault_code", "fault_codes",
-    "condition", "severity", "confidence",
-    "mira_candidate", "reject_reason", "one_line_summary",
-    "parse_error", "raw_error", "processed_at",
+    "filename",
+    "album",
+    "file_size_kb",
+    "is_equipment",
+    "photo_type",
+    "equipment_type",
+    "make",
+    "model",
+    "has_fault_code",
+    "fault_codes",
+    "condition",
+    "severity",
+    "confidence",
+    "mira_candidate",
+    "reject_reason",
+    "one_line_summary",
+    "parse_error",
+    "raw_error",
+    "processed_at",
 ]
 
 SURVEY_PROMPT = """\
@@ -86,26 +99,35 @@ Return ONLY the JSON object."""
 
 # ── Image Encoding ────────────────────────────────────────────────────────────
 
+
 def _encode_image(photo_path: Path) -> tuple[str, str]:
     """Return (base64_str, media_type) for an image file, resizing if needed."""
     suffix = photo_path.suffix.lower()
     media_type_map = {
-        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-        ".png": "image/png", ".webp": "image/webp", ".heic": "image/jpeg",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".heic": "image/jpeg",
     }
 
     raw_bytes = photo_path.read_bytes()
 
     # Fast path: small non-HEIC file
     if len(raw_bytes) <= MAX_IMAGE_BYTES and suffix not in (".heic",):
-        return base64.standard_b64encode(raw_bytes).decode(), media_type_map.get(suffix, "image/jpeg")
+        return base64.standard_b64encode(raw_bytes).decode(), media_type_map.get(
+            suffix, "image/jpeg"
+        )
 
     # PIL resize path
     try:
         import io
+
         from PIL import Image
+
         try:
             from pillow_heif import register_heif_opener
+
             register_heif_opener()
         except ImportError:
             pass
@@ -125,16 +147,21 @@ def _encode_image(photo_path: Path) -> tuple[str, str]:
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=quality)
 
-        logger.debug("Resized %s: %dKB → %dKB", photo_path.name, len(raw_bytes) // 1024, buf.tell() // 1024)
+        logger.debug(
+            "Resized %s: %dKB → %dKB", photo_path.name, len(raw_bytes) // 1024, buf.tell() // 1024
+        )
         return base64.standard_b64encode(buf.getvalue()).decode(), "image/jpeg"
 
     except ImportError:
         # PIL not available — send raw bytes and hope for the best
         logger.debug("PIL not available, sending raw bytes for %s", photo_path.name)
-        return base64.standard_b64encode(raw_bytes).decode(), media_type_map.get(suffix, "image/jpeg")
+        return base64.standard_b64encode(raw_bytes).decode(), media_type_map.get(
+            suffix, "image/jpeg"
+        )
 
 
 # ── Anthropic Call ────────────────────────────────────────────────────────────
+
 
 def survey_photo(photo_path: Path, client: anthropic.Anthropic, model: str) -> dict:
     """Send photo to model for survey classification. Returns parsed result dict."""
@@ -143,20 +170,22 @@ def survey_photo(photo_path: Path, client: anthropic.Anthropic, model: str) -> d
     response = client.messages.create(
         model=model,
         max_tokens=512,
-        messages=[{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": media_type,
-                        "data": b64,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": b64,
+                        },
                     },
-                },
-                {"type": "text", "text": SURVEY_PROMPT},
-            ],
-        }],
+                    {"type": "text", "text": SURVEY_PROMPT},
+                ],
+            }
+        ],
     )
 
     raw_text = response.content[0].text.strip()
@@ -194,6 +223,7 @@ def survey_photo(photo_path: Path, client: anthropic.Anthropic, model: str) -> d
 
 # ── CSV Writer ────────────────────────────────────────────────────────────────
 
+
 def _write_row(writer: csv.DictWriter, f, photo_path: Path, result: dict) -> None:
     """Write one row to CSV and flush immediately."""
     fault_codes = result.get("fault_codes") or []
@@ -223,6 +253,7 @@ def _write_row(writer: csv.DictWriter, f, photo_path: Path, result: dict) -> Non
 
 
 # ── Summary Printing ──────────────────────────────────────────────────────────
+
 
 def _print_summary(
     all_rows: list[dict],
@@ -309,7 +340,9 @@ def _print_summary(
     if unique_codes:
         print(f"Unique fault codes seen:  {', '.join(unique_codes)}")
     if fault_by_make:
-        fault_str = ", ".join(f"{m}: {c}" for m, c in sorted(fault_by_make.items(), key=lambda x: -x[1])[:8])
+        fault_str = ", ".join(
+            f"{m}: {c}" for m, c in sorted(fault_by_make.items(), key=lambda x: -x[1])[:8]
+        )
         print(f"Fault photos by make:     {fault_str}")
 
     print("── CONDITION DISTRIBUTION ──")
@@ -333,14 +366,19 @@ def _print_summary(
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Blind photo survey — categorize without ingesting")
+    parser = argparse.ArgumentParser(
+        description="Blind photo survey — categorize without ingesting"
+    )
     parser.add_argument(
-        "--incoming-dir", type=str,
+        "--incoming-dir",
+        type=str,
         default=str(Path.home() / "takeout_staging" / "ollama_confirmed"),
     )
     parser.add_argument(
-        "--output-csv", type=str,
+        "--output-csv",
+        type=str,
         default=str(Path.home() / "takeout_staging" / "survey_results.csv"),
     )
     parser.add_argument("--max-cost", type=float, default=5.00)
@@ -364,8 +402,7 @@ def main() -> None:
 
     # Discovery walk
     photos = sorted(
-        p for p in incoming.rglob("*")
-        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+        p for p in incoming.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
     )
     total_found = len(photos)
     print(f"Found {total_found} photos in {incoming}")
@@ -411,7 +448,8 @@ def main() -> None:
             if args.max_cost > 0 and est_cost >= args.max_cost:
                 logger.warning(
                     "COST GUARD: $%.3f exceeds --max-cost $%.2f — stopping.",
-                    est_cost, args.max_cost,
+                    est_cost,
+                    args.max_cost,
                 )
                 break
 

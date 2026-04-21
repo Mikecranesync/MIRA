@@ -3,6 +3,7 @@ Conversation Router — replaces keyword-based intent classification with LLM-ba
 understanding. At each turn asks: "Given this history and message, what does the user want
 RIGHT NOW?" Returns one of the defined intents.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,17 +15,17 @@ import httpx
 logger = logging.getLogger("mira-gsd")
 
 INTENTS = [
-    "diagnose_equipment",       # User is describing a fault, asking for troubleshooting help
-    "find_documentation",       # User wants a manual, datasheet, wiring diagram, installation guide
-    "log_work_order",           # User wants to create/log a work order in the CMMS
+    "diagnose_equipment",  # User is describing a fault, asking for troubleshooting help
+    "find_documentation",  # User wants a manual, datasheet, wiring diagram, installation guide
+    "log_work_order",  # User wants to create/log a work order in the CMMS
     "check_equipment_history",  # User asking what happened with this asset before
-    "switch_asset",             # User wants to talk about a different machine
-    "general_question",         # General industrial knowledge question, not tied to a specific fault
-    "schedule_maintenance",     # User wants to schedule a PM or follow-up
-    "safety_concern",           # User mentions live work, energized, or dangerous situation
-    "continue_current",         # User is clearly continuing whatever flow is active
-    "clarify_intent",           # Ambiguous — ask the user what they need
-    "greeting_or_chitchat",     # "hey", "thanks", "how are you" — acknowledge and offer help
+    "switch_asset",  # User wants to talk about a different machine
+    "general_question",  # General industrial knowledge question, not tied to a specific fault
+    "schedule_maintenance",  # User wants to schedule a PM or follow-up
+    "safety_concern",  # User mentions live work, energized, or dangerous situation
+    "continue_current",  # User is clearly continuing whatever flow is active
+    "clarify_intent",  # Ambiguous — ask the user what they need
+    "greeting_or_chitchat",  # "hey", "thanks", "how are you" — acknowledge and offer help
 ]
 
 ROUTER_SYSTEM_PROMPT = """You are the MIRA conversation router. Your job is to classify the user's CURRENT intent from their latest message, given the conversation history.
@@ -116,11 +117,13 @@ async def _call_router_llm(messages: list[dict]) -> str:
     """Call Groq llama-3.1-8b-instant for routing — fast and cheap (~200ms)."""
     groq_key = os.getenv("GROQ_API_KEY", "")
     if not groq_key:
-        return json.dumps({
-            "intent": "continue_current",
-            "confidence": 0.5,
-            "reasoning": "No router LLM available — GROQ_API_KEY not set",
-        })
+        return json.dumps(
+            {
+                "intent": "continue_current",
+                "confidence": 0.5,
+                "reasoning": "No router LLM available — GROQ_API_KEY not set",
+            }
+        )
 
     try:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -138,8 +141,10 @@ async def _call_router_llm(messages: list[dict]) -> str:
             return resp.json()["choices"][0]["message"]["content"]
     except Exception as exc:
         logger.warning("ROUTER_LLM_FAILURE error=%s", str(exc)[:200])
-        return json.dumps({
-            "intent": "continue_current",
-            "confidence": 0.4,
-            "reasoning": f"Router LLM error — {str(exc)[:80]}",
-        })
+        return json.dumps(
+            {
+                "intent": "continue_current",
+                "confidence": 0.4,
+                "reasoning": f"Router LLM error — {str(exc)[:80]}",
+            }
+        )

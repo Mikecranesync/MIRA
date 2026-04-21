@@ -12,6 +12,7 @@ Logic:
 6. Write report to artifacts/latest_run/report_telegram_photo.md
 7. Print PASS/FAIL with full evidence
 """
+
 import json
 import os
 import sqlite3
@@ -24,7 +25,7 @@ import httpx
 
 _HERE = Path(__file__).parent
 _BOTS_ROOT = _HERE.parent
-_CORE_ROOT  = _BOTS_ROOT.parent / "mira-core"
+_CORE_ROOT = _BOTS_ROOT.parent / "mira-core"
 _ARTIFACTS_DIR = _BOTS_ROOT / "artifacts" / "latest_run"
 _SMOKE_RESULTS = _ARTIFACTS_DIR / "smoke_results.json"
 _DB_PATH = Path.home() / "Mira" / "mira-bridge" / "data" / "mira.db"
@@ -46,24 +47,70 @@ BOT_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # Scoring patterns
 _DEVICE_TERMS = [
-    "gs10", "micro820", "vfd", "drive", "plc", "inverter", "motor",
-    "variable frequency", "programmable logic", "controller",
+    "gs10",
+    "micro820",
+    "vfd",
+    "drive",
+    "plc",
+    "inverter",
+    "motor",
+    "variable frequency",
+    "programmable logic",
+    "controller",
 ]
 _FAULT_CAUSE_TERMS = [
-    "caused by", "due to", "likely", "indicates", "suggest",
-    "overloaded", "overheated", "overcurrent", "overload", "overheat",
-    "tripped", "failed", "worn", "shorted", "open circuit", "low voltage",
-    "high temp", "winding", "bearing", "insulation", "phase", "imbalance",
-    "probable", "voltage", "most likely",
+    "caused by",
+    "due to",
+    "likely",
+    "indicates",
+    "suggest",
+    "overloaded",
+    "overheated",
+    "overcurrent",
+    "overload",
+    "overheat",
+    "tripped",
+    "failed",
+    "worn",
+    "shorted",
+    "open circuit",
+    "low voltage",
+    "high temp",
+    "winding",
+    "bearing",
+    "insulation",
+    "phase",
+    "imbalance",
+    "probable",
+    "voltage",
+    "most likely",
 ]
 _ACTION_VERBS = [
-    "check", "inspect", "verify", "measure", "reset", "test", "replace",
-    "disconnect", "reconnect", "clean", "tighten", "remove", "install",
-    "confirm", "ensure", "read",
+    "check",
+    "inspect",
+    "verify",
+    "measure",
+    "reset",
+    "test",
+    "replace",
+    "disconnect",
+    "reconnect",
+    "clean",
+    "tighten",
+    "remove",
+    "install",
+    "confirm",
+    "ensure",
+    "read",
 ]
 _HALLUCINATION_TERMS = [
-    "siemens", "allen-bradley", "rockwell", "ab plc",
-    "mitsubishi melsec", "omron sysmac", "schneider modicon",
+    "siemens",
+    "allen-bradley",
+    "rockwell",
+    "ab plc",
+    "mitsubishi melsec",
+    "omron sysmac",
+    "schneider modicon",
 ]
 
 
@@ -72,42 +119,55 @@ def _score_photo_response(reply: str) -> dict:
     if not reply:
         return {
             "passed": False,
-            "conditions": {k: False for k in [
-                "IDENTIFICATION", "FAULT_CAUSE", "NEXT_STEP",
-                "READABILITY", "NO_HALLUCINATION", "ACTIONABILITY",
-            ]},
+            "conditions": {
+                k: False
+                for k in [
+                    "IDENTIFICATION",
+                    "FAULT_CAUSE",
+                    "NEXT_STEP",
+                    "READABILITY",
+                    "NO_HALLUCINATION",
+                    "ACTIONABILITY",
+                ]
+            },
             "word_count": 0,
-            "failed": ["IDENTIFICATION", "FAULT_CAUSE", "NEXT_STEP",
-                       "READABILITY", "NO_HALLUCINATION", "ACTIONABILITY"],
+            "failed": [
+                "IDENTIFICATION",
+                "FAULT_CAUSE",
+                "NEXT_STEP",
+                "READABILITY",
+                "NO_HALLUCINATION",
+                "ACTIONABILITY",
+            ],
         }
 
     r = reply.lower()
     word_count = len(reply.split())
 
-    identification   = any(t in r for t in _DEVICE_TERMS)
-    fault_cause      = any(t in r for t in _FAULT_CAUSE_TERMS)
-    next_step        = any(v in r for v in _ACTION_VERBS)
-    readability      = 20 <= word_count <= 150
+    identification = any(t in r for t in _DEVICE_TERMS)
+    fault_cause = any(t in r for t in _FAULT_CAUSE_TERMS)
+    next_step = any(v in r for v in _ACTION_VERBS)
+    readability = 20 <= word_count <= 150
     no_hallucination = not any(t in r for t in _HALLUCINATION_TERMS)
     # Actionability: at least one physically doable next step
-    actionability    = next_step
+    actionability = next_step
 
     conditions = {
-        "IDENTIFICATION":   identification,
-        "FAULT_CAUSE":      fault_cause,
-        "NEXT_STEP":        next_step,
-        "READABILITY":      readability,
+        "IDENTIFICATION": identification,
+        "FAULT_CAUSE": fault_cause,
+        "NEXT_STEP": next_step,
+        "READABILITY": readability,
         "NO_HALLUCINATION": no_hallucination,
-        "ACTIONABILITY":    actionability,
+        "ACTIONABILITY": actionability,
     }
     passed = all(conditions.values())
     failed = [k for k, v in conditions.items() if not v]
 
     return {
-        "passed":     passed,
+        "passed": passed,
         "conditions": conditions,
         "word_count": word_count,
-        "failed":     failed,
+        "failed": failed,
     }
 
 
@@ -155,7 +215,7 @@ def _get_bot_reply_from_db(chat_id: int) -> str | None:
         if not row:
             return None
 
-        state   = json.loads(row["state_json"])
+        state = json.loads(row["state_json"])
         history = state.get("history", [])
         for msg in reversed(history):
             if msg.get("role") == "assistant":
@@ -172,11 +232,13 @@ def _git_tag_and_push(repo_path: Path, tag: str) -> bool:
     try:
         subprocess.run(
             ["git", "-C", str(repo_path), "tag", tag],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
         subprocess.run(
             ["git", "-C", str(repo_path), "push", "origin", tag],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
         print(f"  Tagged + pushed: {tag} ({repo_path.name})")
         return True

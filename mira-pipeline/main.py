@@ -111,9 +111,7 @@ async def _ingest_photo_background(photo_b64: str, asset_tag: str) -> None:
 # ── PDF ingest helper (P0-3) ─────────────────────────────────────────────────
 
 
-async def _ingest_pdf_background(
-    file_id: str, filename: str, tenant_id: str
-) -> None:
+async def _ingest_pdf_background(file_id: str, filename: str, tenant_id: str) -> None:
     """Fetch a PDF from OW's file API and forward it to mira-ingest.
 
     Runs as a background task — never raises, never blocks the chat response.
@@ -227,7 +225,9 @@ def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: st
 
         logger.info(
             "P0-2 REGENERATE chat_id=%s rolled back to state=%s (was: %s)",
-            chat_id, prior_state, last["fsm_state"],
+            chat_id,
+            prior_state,
+            last["fsm_state"],
         )
         return True
 
@@ -271,6 +271,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="MIRA Pipeline", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 from eval_api import router as _eval_router  # noqa: E402
+
 app.include_router(_eval_router)
 
 
@@ -279,7 +280,13 @@ app.include_router(_eval_router)
 
 @app.middleware("http")
 async def _auth(request: Request, call_next):
-    if request.url.path in ("/health", "/v1/models", "/eval/latest", "/eval/list", "/webhook/signup"):
+    if request.url.path in (
+        "/health",
+        "/v1/models",
+        "/eval/latest",
+        "/eval/list",
+        "/webhook/signup",
+    ):
         return await call_next(request)
     if PIPELINE_API_KEY:
         auth = request.headers.get("Authorization", "")
@@ -385,13 +392,17 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
                 content = msg.content
                 if isinstance(content, list):
                     last_assistant = " ".join(
-                        p.get("text", "") for p in content
+                        p.get("text", "")
+                        for p in content
                         if isinstance(p, dict) and p.get("type") == "text"
                     ).strip()
                 else:
                     last_assistant = str(content)
                 break
-        logger.info("P0-1 CONTINUE intercepted — echoing last assistant turn (%d chars)", len(last_assistant))
+        logger.info(
+            "P0-1 CONTINUE intercepted — echoing last assistant turn (%d chars)",
+            len(last_assistant),
+        )
         return {
             "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
             "object": "chat.completion",
@@ -684,7 +695,13 @@ async def api_spend():
             else:
                 cost = 0.0
             results.append(
-                {"model": model, "calls": calls, "input": inp, "output": out, "cost": round(cost, 4)}
+                {
+                    "model": model,
+                    "calls": calls,
+                    "input": inp,
+                    "output": out,
+                    "cost": round(cost, 4),
+                }
             )
         return results
 
@@ -705,7 +722,11 @@ async def api_spend():
         "today": {"providers": today, "total_cost": _sum_cost(today)},
         "7_day": {"providers": week, "total_cost": _sum_cost(week)},
         "30_day": {"providers": month, "total_cost": _sum_cost(month)},
-        "all_time": {"calls": total_row[0], "input_tokens": total_row[1], "output_tokens": total_row[2]},
+        "all_time": {
+            "calls": total_row[0],
+            "input_tokens": total_row[1],
+            "output_tokens": total_row[2],
+        },
         "daily_cap": float(os.getenv("CLAUDE_DAILY_SPEND_CAP", "1.00")),
     }
 
@@ -837,6 +858,7 @@ async def webhook_signup(request: Request):
     user_data = body.get("user", "{}")
     if isinstance(user_data, str):
         import json as _json
+
         try:
             user_data = _json.loads(user_data)
         except Exception:

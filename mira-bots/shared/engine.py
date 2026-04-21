@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from .chat_tenant import resolve as resolve_tenant
+from .conversation_router import route_intent
 from .guardrails import (
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
@@ -26,7 +27,6 @@ from .guardrails import (
 )
 from .inference.router import InferenceRouter
 from .integrations.atlas_cmms import AtlasCMMSClient
-from .notifications.push import push_safety_alert, push_wo_created
 from .models.work_order import (
     UNSWorkOrder,
     apply_wo_edit,
@@ -34,9 +34,9 @@ from .models.work_order import (
     format_wo_preview,
     log_uns_event,
 )
-from .conversation_router import route_intent
 from .nemotron import NemotronClient
 from .neon_recall import kb_has_coverage
+from .notifications.push import push_safety_alert, push_wo_created
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
@@ -700,7 +700,8 @@ class Supervisor:
                 return await self._handle_asset_switch(chat_id, message, state, trace_id)
 
             if _router_intent == "general_question" and _keyword_intent not in (
-                "safety", "documentation"
+                "safety",
+                "documentation",
             ):
                 return await self._handle_general_question(chat_id, message, state, trace_id)
 
@@ -1245,7 +1246,9 @@ class Supervisor:
                 lines = ["I need a few more details before I can log this:"]
                 lines += [f"• {f.replace('_', ' ').title()}" for f in missing]
                 if "asset" in missing:
-                    lines.append("\nWhat asset is this for? (e.g. *GS10 VFD on Line 1* or *Pump A3*)")
+                    lines.append(
+                        "\nWhat asset is this for? (e.g. *GS10 VFD on Line 1* or *Pump A3*)"
+                    )
                 lines.append("\nProvide the missing info or say *skip* to cancel.")
                 reply = "\n".join(lines)
                 self._record_exchange(chat_id, state, message, reply)
@@ -1255,9 +1258,15 @@ class Supervisor:
             try:
                 reply = await self._post_cmms_work_order(wo)
                 log_uns_event(wo)
-                logger.info("CMMS_WO_CREATED chat_id=%s title=%r uns=%s", chat_id, wo.title, wo.uns_topic)
+                logger.info(
+                    "CMMS_WO_CREATED chat_id=%s title=%r uns=%s", chat_id, wo.title, wo.uns_topic
+                )
                 wo_id = reply.split("#")[1].split()[0] if "#" in reply else "?"
-                asyncio.ensure_future(push_wo_created(wo_id=wo_id, asset=wo.asset, tech_name=wo.technician_id or chat_id))
+                asyncio.ensure_future(
+                    push_wo_created(
+                        wo_id=wo_id, asset=wo.asset, tech_name=wo.technician_id or chat_id
+                    )
+                )
             except Exception as e:
                 logger.error("CMMS WO creation failed for %s: %s", chat_id, e)
                 reply = (
@@ -1807,7 +1816,11 @@ class Supervisor:
         if asset:
             reply = self._format_simple_response(
                 f"Hey! I'm still tracking {asset}. What can I help with?",
-                suggestions=["Continue diagnosis", "Find manual for this equipment", "Log a work order"],
+                suggestions=[
+                    "Continue diagnosis",
+                    "Find manual for this equipment",
+                    "Log a work order",
+                ],
             )
         else:
             reply = self._format_simple_response(
@@ -1843,7 +1856,9 @@ class Supervisor:
         )
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
-        return self._make_result(reply, self._infer_confidence(raw), trace_id, state.get("state", "IDLE"))
+        return self._make_result(
+            reply, self._infer_confidence(raw), trace_id, state.get("state", "IDLE")
+        )
 
     async def _handle_asset_switch(
         self, chat_id: str, message: str, state: dict, trace_id: str
@@ -1893,9 +1908,7 @@ class Supervisor:
         combined = f"{message} {state.get('asset_identified', '')}".strip()
         mfr = vendor_name_from_text(combined) or ""
         if not self._is_doc_specific(mfr, combined):
-            return await self._enter_manual_lookup_gathering(
-                chat_id, message, state, trace_id, mfr
-            )
+            return await self._enter_manual_lookup_gathering(chat_id, message, state, trace_id, mfr)
         return await self._do_documentation_lookup(
             chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
         )
@@ -2697,7 +2710,7 @@ class Supervisor:
         except AttributeError:
             return reply
         citations = kb_status.get("citations") or []
-        if not citations:
+        if not isinstance(citations, list) or not citations:
             return reply
         if "[Source:" in reply or "--- Sources ---" in reply:
             return reply

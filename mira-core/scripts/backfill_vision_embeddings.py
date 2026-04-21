@@ -68,38 +68,48 @@ def _upsert_embedding(
     image_vec: list[float] | None,
 ) -> bool:
     """Update existing knowledge_entries row or insert if missing. Returns True on success."""
-    from sqlalchemy import text as sa_text
-
     from db.neon import _engine
+    from sqlalchemy import text as sa_text
 
     img_val = str(image_vec) if image_vec else None
 
     try:
         with _engine().connect() as conn:
             # Check if row exists
-            count = conn.execute(sa_text(
-                "SELECT COUNT(*) FROM knowledge_entries "
-                "WHERE tenant_id = :tid AND source_url = :url AND source_page = 0"
-            ), {"tid": tenant_id, "url": source_url}).scalar() or 0
+            count = (
+                conn.execute(
+                    sa_text(
+                        "SELECT COUNT(*) FROM knowledge_entries "
+                        "WHERE tenant_id = :tid AND source_url = :url AND source_page = 0"
+                    ),
+                    {"tid": tenant_id, "url": source_url},
+                ).scalar()
+                or 0
+            )
 
             if count > 0:
-                conn.execute(sa_text("""
+                conn.execute(
+                    sa_text("""
                     UPDATE knowledge_entries
                     SET content = :content,
                         embedding = cast(:emb AS vector),
                         image_embedding = cast(:img AS vector)
                     WHERE tenant_id = :tid AND source_url = :url AND source_page = 0
-                """), {
-                    "content": content,
-                    "emb": str(text_vec),
-                    "img": img_val,
-                    "tid": tenant_id,
-                    "url": source_url,
-                })
+                """),
+                    {
+                        "content": content,
+                        "emb": str(text_vec),
+                        "img": img_val,
+                        "tid": tenant_id,
+                        "url": source_url,
+                    },
+                )
             else:
-                import uuid
                 import json
-                conn.execute(sa_text("""
+                import uuid
+
+                conn.execute(
+                    sa_text("""
                     INSERT INTO knowledge_entries
                         (id, tenant_id, source_type, content, embedding,
                          image_embedding, source_url, source_page, metadata,
@@ -108,15 +118,17 @@ def _upsert_embedding(
                         (:id, :tid, 'equipment_photo', :content, cast(:emb AS vector),
                          cast(:img AS vector), :url, 0, cast(:meta AS jsonb),
                          false, false, 'text')
-                """), {
-                    "id": str(uuid.uuid4()),
-                    "tid": tenant_id,
-                    "content": content,
-                    "emb": str(text_vec),
-                    "img": img_val,
-                    "url": source_url,
-                    "meta": json.dumps({"source": "backfill", "chunk_index": 0}),
-                })
+                """),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "tid": tenant_id,
+                        "content": content,
+                        "emb": str(text_vec),
+                        "img": img_val,
+                        "url": source_url,
+                        "meta": json.dumps({"source": "backfill", "chunk_index": 0}),
+                    },
+                )
             conn.commit()
         return True
     except Exception as e:
@@ -128,14 +140,20 @@ def main():
     parser = argparse.ArgumentParser(description="Backfill vision embeddings from survey CSV")
     parser.add_argument("--survey", required=True, help="Path to survey_results.csv")
     parser.add_argument("--photo-dir", default="", help="Directory containing source photos")
-    parser.add_argument("--source-prefix", default="equipment_photo",
-                        help="Source URL prefix (default: equipment_photo)")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Print what would be re-embedded without writing")
-    parser.add_argument("--max-cost", type=float, default=0,
-                        help="Stop if estimated cost exceeds this (0=no limit)")
-    parser.add_argument("--checkpoint-dir", default="",
-                        help="Directory for checkpoint files (resume support)")
+    parser.add_argument(
+        "--source-prefix",
+        default="equipment_photo",
+        help="Source URL prefix (default: equipment_photo)",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print what would be re-embedded without writing"
+    )
+    parser.add_argument(
+        "--max-cost", type=float, default=0, help="Stop if estimated cost exceeds this (0=no limit)"
+    )
+    parser.add_argument(
+        "--checkpoint-dir", default="", help="Directory for checkpoint files (resume support)"
+    )
     args = parser.parse_args()
 
     survey_path = Path(args.survey).expanduser()
@@ -162,7 +180,9 @@ def main():
         cp_dir.mkdir(parents=True, exist_ok=True)
         checkpoint_path = cp_dir / "backfill_checkpoint.txt"
         if checkpoint_path.exists():
-            already_done = {l.strip() for l in checkpoint_path.read_text().splitlines() if l.strip()}
+            already_done = {
+                ln.strip() for ln in checkpoint_path.read_text().splitlines() if ln.strip()
+            }
             candidates = [r for r in candidates if r.get("filename", "") not in already_done]
             logger.info("Checkpoint: %d done, %d remaining", len(already_done), len(candidates))
 
@@ -171,7 +191,9 @@ def main():
 
     for i, row in enumerate(candidates):
         if args.max_cost > 0 and est_cost >= args.max_cost:
-            logger.warning("COST GUARD: $%.2f ≥ --max-cost $%.2f. Stopping.", est_cost, args.max_cost)
+            logger.warning(
+                "COST GUARD: $%.2f ≥ --max-cost $%.2f. Stopping.", est_cost, args.max_cost
+            )
             break
 
         filename = row.get("filename") or row.get("photo_filename") or ""
@@ -207,7 +229,7 @@ def main():
         content = _build_content_text(result_dict, survey=survey_extra)
 
         if args.dry_run:
-            print(f"\n[{i+1}/{len(candidates)}] {filename}")
+            print(f"\n[{i + 1}/{len(candidates)}] {filename}")
             print(content[:300])
             skip += 1
             continue
@@ -245,15 +267,15 @@ def main():
         time.sleep(0.1)
 
     mode = " (DRY RUN)" if args.dry_run else ""
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print(f"Backfill Vision Embeddings{mode}")
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
     print(f"Candidates:  {len(candidates)}")
     print(f"Updated:     {ok}")
     print(f"Skipped:     {skip}")
     print(f"Failed:      {fail}")
     print(f"Est. cost:   ${est_cost:.2f}")
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
 
 
 if __name__ == "__main__":

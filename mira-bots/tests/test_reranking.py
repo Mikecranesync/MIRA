@@ -24,10 +24,12 @@ def _make_rag_worker(nemotron_enabled=True, router_enabled=False, tenant_id="tes
     """Create a RAGWorker with mocked dependencies."""
     nemotron = MagicMock()
     nemotron.enabled = nemotron_enabled
-    nemotron.rerank = AsyncMock(return_value=[
-        {"index": 0, "text": "PowerFlex 525 fault codes: F004 overcurrent", "score": 0.9},
-        {"index": 1, "text": "Motor starter troubleshooting guide", "score": 0.7},
-    ])
+    nemotron.rerank = AsyncMock(
+        return_value=[
+            {"index": 0, "text": "PowerFlex 525 fault codes: F004 overcurrent", "score": 0.9},
+            {"index": 1, "text": "Motor starter troubleshooting guide", "score": 0.7},
+        ]
+    )
 
     router = MagicMock()
     router.enabled = router_enabled
@@ -95,9 +97,7 @@ class TestBuildPromptWithChunks:
         state["context"]["ocr_text"] = "OC1 FAULT"
         chunks = ["Chunk 1"]
 
-        messages = worker._build_prompt_with_chunks(
-            state, "Help", chunks, photo_b64="AAAA"
-        )
+        messages = worker._build_prompt_with_chunks(state, "Help", chunks, photo_b64="AAAA")
 
         text_block = [b for b in messages[-1]["content"] if b["type"] == "text"][0]
         assert "OC1 FAULT" in text_block["text"]
@@ -129,8 +129,22 @@ class TestRerankingIntegration:
         worker._embed_ollama = AsyncMock(return_value=[0.1] * 768)
 
         mock_chunks = [
-            {"content": "chunk A", "similarity": 0.9, "manufacturer": "", "model_number": "", "equipment_type": "", "source_type": ""},
-            {"content": "chunk B", "similarity": 0.8, "manufacturer": "", "model_number": "", "equipment_type": "", "source_type": ""},
+            {
+                "content": "chunk A",
+                "similarity": 0.9,
+                "manufacturer": "",
+                "model_number": "",
+                "equipment_type": "",
+                "source_type": "",
+            },
+            {
+                "content": "chunk B",
+                "similarity": 0.8,
+                "manufacturer": "",
+                "model_number": "",
+                "equipment_type": "",
+                "source_type": "",
+            },
         ]
         with patch("shared.workers.rag_worker._neon_recall") as mock_neon:
             mock_neon.recall_knowledge.return_value = mock_chunks
@@ -148,8 +162,22 @@ class TestRerankingIntegration:
         worker._embed_ollama = AsyncMock(return_value=[0.1] * 768)
 
         mock_chunks = [
-            {"content": "chunk A", "similarity": 0.9, "manufacturer": "", "model_number": "", "equipment_type": "", "source_type": ""},
-            {"content": "chunk B", "similarity": 0.8, "manufacturer": "", "model_number": "", "equipment_type": "", "source_type": ""},
+            {
+                "content": "chunk A",
+                "similarity": 0.9,
+                "manufacturer": "",
+                "model_number": "",
+                "equipment_type": "",
+                "source_type": "",
+            },
+            {
+                "content": "chunk B",
+                "similarity": 0.8,
+                "manufacturer": "",
+                "model_number": "",
+                "equipment_type": "",
+                "source_type": "",
+            },
         ]
         state = _base_state(asset_identified="Allen-Bradley PowerFlex 525 VFD")
         with patch("shared.workers.rag_worker._neon_recall") as mock_neon:

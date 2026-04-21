@@ -3,6 +3,7 @@
 UNS topic schema: FactoryLM/{site}/{area}/{line}/{asset}/maintenance/work_orders/{wo_id}
 Ref: issue #327 — Unified Namespace MQTT topic design.
 """
+
 from __future__ import annotations
 
 import json
@@ -136,7 +137,9 @@ def format_wo_preview(wo: UNSWorkOrder) -> str:
     lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     lines.append("")
     lines.append("Log this work order to the CMMS? (yes/no)")
-    lines.append("To correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*")
+    lines.append(
+        "To correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*"
+    )
     return "\n".join(lines)
 
 
@@ -202,11 +205,7 @@ def build_uns_wo_from_state(state: dict) -> UNSWorkOrder:
     fault_desc = sc.get("symptom_summary", "")
     if not fault_desc:
         history = ctx.get("history", [])
-        user_turns = [
-            t.get("content", "")[:300]
-            for t in history[-8:]
-            if t.get("role") == "user"
-        ]
+        user_turns = [t.get("content", "")[:300] for t in history[-8:] if t.get("role") == "user"]
         fault_desc = " | ".join(filter(None, user_turns))[:500]
 
     # Resolution from session_context or last assistant turn

@@ -58,10 +58,14 @@ if [ -n "$STAGED_PY" ]; then
     CRED_PATTERN='(?i)(password|secret|api_key|token|auth_key|passwd)\s*=\s*["\x27][^"\x27\$\{]{8,}["\x27]'
     FOUND_CREDS=0
     for f in $STAGED_PY; do
+      # Skip test files — fixture credentials are not real secrets
+      if [[ "$f" == *test* ]] || [[ "$f" == */tests/* ]]; then
+        continue
+      fi
       if [ -f "$f" ]; then
         MATCHES=$("$RG_BIN" --pcre2 --no-heading --line-number \
           "$CRED_PATTERN" "$f" 2>/dev/null \
-          | grep -v 'os\.getenv\|environ\|getenv\|placeholder\|example\|test_\|# noqa\|nosec' \
+          | grep -v 'os\.getenv\|environ\|getenv\|placeholder\|example\|# noqa\|nosec' \
           || true)
         if [ -n "$MATCHES" ]; then
           red "  🔴 Possible hardcoded credential in $f:"

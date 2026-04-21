@@ -30,3 +30,5 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `ATLAS_DB_PASSWORD`  | atlas-db (PostgreSQL)                |
 | `ATLAS_JWT_SECRET`   | atlas-api (JWT signing)              |
 | `ATLAS_MINIO_PASSWORD`| atlas-minio (file storage)          |
+| `MIRA_RETRIEVAL_HYBRID_ENABLED` | mira-bots — Unit 6 hybrid BM25+pgvector kill switch. Default `true`. Set `false` to disable BM25 stream and fall back to pre-Unit-6 vector+ILIKE+product behavior (e.g. if recall regresses in prod or migration 004 hasn't been applied). |
+| `MIRA_RRF_K`         | mira-bots — Reciprocal Rank Fusion constant. Default `60` (Cormack et al. 2009). Raise to flatten rank influence, lower to sharpen it. Change only with an eval to back it. |

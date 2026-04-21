@@ -139,3 +139,4 @@ factorylm.properties
 
 # Observability data volumes (managed by Docker)
 observability/grafana/provisioning/dashboards/celery-tasks.json
+.hypothesis/

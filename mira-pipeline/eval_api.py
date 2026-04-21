@@ -85,12 +85,14 @@ def _parse_scorecard(content: str) -> dict:
     for row in re.finditer(r"\|\s*`([\w_]+)`\s*\|(.*?)\|", content):
         sid = row.group(1)
         cells = [c.strip() for c in row.group(2).split("|")]
-        result["scenarios"].append({
-            "id": sid,
-            "checkpoints": cells[:5] if len(cells) >= 5 else cells,
-            "score": cells[5] if len(cells) > 5 else None,
-            "fsm_state": cells[6] if len(cells) > 6 else None,
-        })
+        result["scenarios"].append(
+            {
+                "id": sid,
+                "checkpoints": cells[:5] if len(cells) >= 5 else cells,
+                "score": cells[5] if len(cells) > 5 else None,
+                "fsm_state": cells[6] if len(cells) > 6 else None,
+            }
+        )
 
     # Failures section
     for m in re.finditer(r"### ([\w_]+)\n(.*?)(?=###|\Z)", content, re.DOTALL):
@@ -98,16 +100,16 @@ def _parse_scorecard(content: str) -> dict:
         body = m.group(2).strip()
         cp_fails = re.findall(r"\*\*(cp_\w+)\*\* FAILED: (.+)", body)
         resp_m = re.search(r"Last response: `(.+?)\.\.\.", body)
-        result["failures"].append({
-            "id": sid,
-            "checkpoint_failures": [{"name": n, "reason": r} for n, r in cp_fails],
-            "last_response_preview": resp_m.group(1) if resp_m else None,
-        })
+        result["failures"].append(
+            {
+                "id": sid,
+                "checkpoint_failures": [{"name": n, "reason": r} for n, r in cp_fails],
+                "last_response_preview": resp_m.group(1) if resp_m else None,
+            }
+        )
 
     # Delta
-    reg_m = re.search(
-        r"\*\*Regressions.*?\*\*\n(.*?)(?=\*\*Recoveries|\Z)", content, re.DOTALL
-    )
+    reg_m = re.search(r"\*\*Regressions.*?\*\*\n(.*?)(?=\*\*Recoveries|\Z)", content, re.DOTALL)
     if reg_m:
         result["regressions"] = re.findall(r"- ([\w_]+)", reg_m.group(1))
 
@@ -135,10 +137,14 @@ def _markdown_to_html(content: str, title: str) -> str:
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
             is_header = not any(c in ("PASS", "FAIL") for c in cells)
             tag = "th" if is_header else "td"
-            row = "<tr>" + "".join(
-                f'<{tag}><span class="{c.lower() if c in ("PASS","FAIL") else ""}">{c}</span></{tag}>'
-                for c in cells
-            ) + "</tr>"
+            row = (
+                "<tr>"
+                + "".join(
+                    f'<{tag}><span class="{c.lower() if c in ("PASS", "FAIL") else ""}">{c}</span></{tag}>'
+                    for c in cells
+                )
+                + "</tr>"
+            )
             html_lines.append(row)
             continue
 
@@ -201,16 +207,19 @@ async def eval_latest(format: str = "json"):
 
     if format == "raw":
         from fastapi.responses import PlainTextResponse
+
         return PlainTextResponse(content=content, media_type="text/markdown")
 
     # JSON (default)
     parsed = _parse_scorecard(content)
-    return JSONResponse(content={
-        "scorecard_file": path.name,
-        **parsed,
-        "raw_url": f"/eval/latest?format=raw",
-        "html_url": f"/eval/latest?format=html",
-    })
+    return JSONResponse(
+        content={
+            "scorecard_file": path.name,
+            **parsed,
+            "raw_url": "/eval/latest?format=raw",
+            "html_url": "/eval/latest?format=html",
+        }
+    )
 
 
 @router.get("/eval/list", tags=["eval"])
@@ -219,7 +228,9 @@ async def eval_list():
     if not EVAL_RUNS_DIR.exists():
         return JSONResponse(content={"scorecards": [], "eval_runs_dir": str(EVAL_RUNS_DIR)})
     files = sorted(EVAL_RUNS_DIR.glob("*.md"), reverse=True)
-    return JSONResponse(content={
-        "count": len(files),
-        "scorecards": [f.name for f in files],
-    })
+    return JSONResponse(
+        content={
+            "count": len(files),
+            "scorecards": [f.name for f in files],
+        }
+    )

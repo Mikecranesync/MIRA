@@ -45,7 +45,10 @@ def get_or_create_collection() -> str:
     resp = httpx.post(
         f"{OPENWEBUI_BASE_URL}/api/v1/knowledge/create",
         headers={**HEADERS, "Content-Type": "application/json"},
-        json={"name": COLLECTION_NAME, "description": "Industrial maintenance reference — VFDs, motors, PLCs, conveyors"},
+        json={
+            "name": COLLECTION_NAME,
+            "description": "Industrial maintenance reference — VFDs, motors, PLCs, conveyors",
+        },
         timeout=15,
     )
     resp.raise_for_status()
@@ -87,7 +90,9 @@ def fetch_wikipedia(topic: str) -> str:
     slug = topic.replace(" ", "_")
     resp = httpx.get(
         f"https://en.wikipedia.org/api/rest_v1/page/summary/{slug}",
-        headers={"User-Agent": "MIRA-KB-Seeder/1.0 (factorylm industrial maintenance bot; contact@factorylm.com)"},
+        headers={
+            "User-Agent": "MIRA-KB-Seeder/1.0 (factorylm industrial maintenance bot; contact@factorylm.com)"
+        },
         timeout=15,
     )
     if resp.status_code != 200:

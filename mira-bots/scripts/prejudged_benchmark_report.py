@@ -27,8 +27,8 @@ sys.path.insert(0, os.path.join(REPO_ROOT, "mira-bots"))
 
 from shared.benchmark_db import (  # noqa: E402
     get_prejudged_run,
-    list_prejudged_runs,
     list_prejudged_conversations,
+    list_prejudged_runs,
 )
 
 
@@ -60,8 +60,13 @@ def generate_report(run_id: int, db_path: str | None = None) -> dict:
     max_score = max(scores) if scores else 0.0
 
     # Dimension averages
-    dims = ["evidence_utilization", "path_efficiency", "gsd_compliance",
-            "root_cause_alignment", "expert_comparison"]
+    dims = [
+        "evidence_utilization",
+        "path_efficiency",
+        "gsd_compliance",
+        "root_cause_alignment",
+        "expert_comparison",
+    ]
     dim_avgs = {}
     for d in dims:
         vals = [c[d] for c in convs if c.get(d) is not None]
@@ -171,11 +176,23 @@ def to_csv(conversations: list[dict]) -> str:
         return ""
     buf = io.StringIO()
     fields = [
-        "case_id", "case_title", "equipment_type", "difficulty",
-        "turn_count", "reached_diagnosis", "final_state",
-        "evidence_utilization", "path_efficiency", "gsd_compliance",
-        "root_cause_alignment", "expert_comparison", "composite_score",
-        "verdict", "total_latency_ms", "error", "judge_reasoning",
+        "case_id",
+        "case_title",
+        "equipment_type",
+        "difficulty",
+        "turn_count",
+        "reached_diagnosis",
+        "final_state",
+        "evidence_utilization",
+        "path_efficiency",
+        "gsd_compliance",
+        "root_cause_alignment",
+        "expert_comparison",
+        "composite_score",
+        "verdict",
+        "total_latency_ms",
+        "error",
+        "judge_reasoning",
     ]
     writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
     writer.writeheader()
@@ -188,7 +205,9 @@ def main():
     parser = argparse.ArgumentParser(description="Prejudged Benchmark Report")
     parser.add_argument("--run-id", type=int, default=0, help="Run ID (0 = latest)")
     parser.add_argument("--csv", dest="csv_path", default="", help="Write CSV to this path")
-    parser.add_argument("--json", dest="json_path", default="", help="Write JSON summary to this path")
+    parser.add_argument(
+        "--json", dest="json_path", default="", help="Write JSON summary to this path"
+    )
     parser.add_argument("--db", default="", help="SQLite DB path override")
     args = parser.parse_args()
 

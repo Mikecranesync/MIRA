@@ -1,12 +1,13 @@
 """
 Unit tests for judge.py — 13 tests, zero network, zero disk I/O.
 """
-import sys
+
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram_test_runner"))
 
-from judge import score, FIX_SUGGESTIONS  # noqa: E402
+from judge import FIX_SUGGESTIONS, score  # noqa: E402
 
 # --- Fixtures ---
 
@@ -140,9 +141,11 @@ def test_adversarial_pass_gets_informational_bucket():
 
 
 def test_word_count_exactly_150_passes():
-    reply = ("Allen-Bradley Micro820 PLC controller with catalog number. " +
-             "This device is likely to fail. " * 30 +
-             "Check I/O immediately.")
+    reply = (
+        "Allen-Bradley Micro820 PLC controller with catalog number. "
+        + "This device is likely to fail. " * 30
+        + "Check I/O immediately."
+    )
     word_count = len(reply.split())
     if word_count > 150:
         reply = " ".join(reply.split()[:150])
@@ -152,8 +155,10 @@ def test_word_count_exactly_150_passes():
 
 
 def test_word_count_151_fails():
-    reply = ("Allen-Bradley Micro820 PLC controller with catalog number. " +
-             "This device is likely to fail. " * 30)
+    reply = (
+        "Allen-Bradley Micro820 PLC controller with catalog number. "
+        + "This device is likely to fail. " * 30
+    )
     # Ensure > 150 words
     while len(reply.split()) <= 150:
         reply += "extra word "
@@ -164,9 +169,16 @@ def test_word_count_151_fails():
 
 def test_fix_suggestions_non_empty():
     buckets = [
-        "TRANSPORT_FAILURE", "IDENTIFICATION_ONLY", "NO_FAULT_CAUSE",
-        "NO_NEXT_STEP", "TOO_VERBOSE", "HALLUCINATION", "OCR_FAILURE",
-        "JARGON_FAILURE", "RESPONSE_TOO_GENERIC", "ADVERSARIAL_PARTIAL"
+        "TRANSPORT_FAILURE",
+        "IDENTIFICATION_ONLY",
+        "NO_FAULT_CAUSE",
+        "NO_NEXT_STEP",
+        "TOO_VERBOSE",
+        "HALLUCINATION",
+        "OCR_FAILURE",
+        "JARGON_FAILURE",
+        "RESPONSE_TOO_GENERIC",
+        "ADVERSARIAL_PARTIAL",
     ]
     for bucket in buckets:
         assert bucket in FIX_SUGGESTIONS
@@ -175,6 +187,8 @@ def test_fix_suggestions_non_empty():
 
 def test_fault_cause_from_manifest_keywords():
     # Manifest keywords should trigger fault_cause
-    reply_with_manifest_kw = "Allen-Bradley Micro820 PLC. The motor overload caused the fault. Check status."
+    reply_with_manifest_kw = (
+        "Allen-Bradley Micro820 PLC. The motor overload caused the fault. Check status."
+    )
     result = score(PLC_CASE, reply_with_manifest_kw)
     assert result["conditions"]["FAULT_CAUSE"] is True

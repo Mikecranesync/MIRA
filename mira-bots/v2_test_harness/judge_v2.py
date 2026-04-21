@@ -3,8 +3,9 @@ judge_v2.py — Wraps v1 judge.py with runtime pattern injection.
 Extends _FAULT_CAUSE_PATTERNS / _NEXT_STEP_PATTERNS in the live module,
 calls judge.score(), then restores originals in a finally block.
 """
-from pathlib import Path
+
 import sys
+from pathlib import Path
 
 _HERE = Path(__file__).parent
 _V1 = _HERE.parent / "telegram_test_runner"

@@ -4,7 +4,6 @@ These tests run offline — no Slack API, no Open WebUI, no real DB.
 All Slack SDK and GSD engine dependencies are stubbed before import.
 """
 
-import asyncio
 import importlib
 import os
 import sys
@@ -16,6 +15,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Stub slack_bolt (MIT) before the module is imported
 # ---------------------------------------------------------------------------
+
 
 def _stub(name: str) -> types.ModuleType:
     m = types.ModuleType(name)
@@ -34,6 +34,7 @@ class _FakeAsyncApp:
     def event(self, *args, **kwargs):
         def decorator(fn):
             return fn
+
         return decorator
 
 
@@ -81,15 +82,16 @@ _gsd.GSDEngine = _FakeGSDEngine
 
 os.environ["SLACK_BOT_TOKEN"] = "xoxb-placeholder"
 os.environ["SLACK_APP_TOKEN"] = "xapp-placeholder"
-os.environ.setdefault("OPENWEBUI_BASE_URL",
-    os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":8080")
+os.environ.setdefault(
+    "OPENWEBUI_BASE_URL", os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":8080"
+)
 os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira-test.db")
 os.environ.setdefault("SLACK_ALLOWED_CHANNELS", "")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "slack"))
 bot = importlib.import_module("bot")
 
-from bot import _channel_allowed, _strip_mention, _relay  # noqa: E402
+from bot import _channel_allowed, _relay, _strip_mention  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # _channel_allowed

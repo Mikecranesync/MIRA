@@ -2,6 +2,7 @@
 Generate synthetic industrial nameplate test fixtures.
 Run once to create test-assets/sample_tags/*.jpg
 """
+
 from pathlib import Path
 
 try:

@@ -24,6 +24,7 @@ Credential note: Doppler project factorylm/prd has TELEGRAM_TEST_API_ID directly
 (with underscore between TEST and API). No remapping needed. Bot username in Doppler
 is missing the _bot suffix — always pass TELEGRAM_BOT_USERNAME explicitly as shown.
 """
+
 import argparse
 import asyncio
 import os
@@ -36,7 +37,9 @@ ARTIFACTS_DIR = Path(__file__).parent.parent / "artifacts"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
-async def collect_reply(client, bot_entity, image_path: str, caption: str, timeout: int) -> str | None:
+async def collect_reply(
+    client, bot_entity, image_path: str, caption: str, timeout: int
+) -> str | None:
     """Send photo and poll for bot reply using silence-detection. Copied from run_test.py."""
     sent = await client.send_file(bot_entity, image_path, caption=caption)
     collected = []
@@ -85,7 +88,9 @@ async def run(photos_dir: Path, timeout: int) -> None:
         print("  docker compose run -it --entrypoint python telegram-test-runner session_setup.py")
         sys.exit(1)
 
-    session_path = session_env[: -len(".session")] if session_env.endswith(".session") else session_env
+    session_path = (
+        session_env[: -len(".session")] if session_env.endswith(".session") else session_env
+    )
 
     photos = sorted(p for p in photos_dir.iterdir() if p.suffix.lower() in IMAGE_EXTS)
     if not photos:

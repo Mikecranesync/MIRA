@@ -1,4 +1,5 @@
 """MIRA push notifications via ntfy.sh — zero cost, zero API key."""
+
 from __future__ import annotations
 
 import logging
