@@ -34,6 +34,8 @@ MIRA/
 ├── mira-pipeline/   # OpenAI-compat API wrapping GSDEngine — active VPS chat path
 ├── mira-web/        # PLG funnel — Hono/Bun, Stripe, /cmms landing + Mira AI chat
 ├── mira-cmms/       # Atlas CMMS — work orders, PM scheduling, asset registry
+├── mira-crawler/    # KB ingest + manual chunker (OEM discovery pipeline)
+├── mira-ops/        # Observability dashboards (Prometheus, Grafana, Flower)
 ├── mira-relay/      # Cloud relay endpoint for Ignition factory→cloud tag streaming (SaaS-only, in saas.yml)
 ├── mira-sidecar/    # ⚠️ LEGACY — ChromaDB RAG, superseded by mira-pipeline (ADR-0008); sunset pending OEM migration
 ├── mira-connect/    # ⚠️ DEFERRED — Modbus/PLC drivers (post-MVP, "Config 4")
