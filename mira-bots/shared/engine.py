@@ -1330,7 +1330,8 @@ class Supervisor:
                 asset=pm_data.get("asset", ""),
             )
             try:
-                result = await self.cmms_client.create_work_order(
+                _cmms = AtlasCMMSClient(base_url=self.mcp_base_url, api_key=self.mcp_api_key)
+                result = await _cmms.create_work_order(
                     title=pm.wo_title(),
                     description=pm.wo_description(),
                     priority="LOW",
