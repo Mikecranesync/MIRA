@@ -1,0 +1,31 @@
+{
+  "name": "MIRA Maintenance Copilot",
+  "description": "AI-powered industrial equipment diagnostic and maintenance assistant",
+  "avatarUrl": "https://app.factorylm.com/static/mira-avatar.png",
+  "interactiveTextButtonUrl": "https://app.factorylm.com/gchat/events",
+  "annotationsEnabled": true,
+  "userMentionEnabled": true,
+  "spaceTypes": ["DIRECT_MESSAGE", "ROOM"],
+  "slashCommands": [
+    {
+      "commandId": 1,
+      "name": "/mira",
+      "description": "Ask MIRA anything about your equipment"
+    },
+    {
+      "commandId": 2,
+      "name": "/workorder",
+      "description": "Create a corrective maintenance work order"
+    },
+    {
+      "commandId": 3,
+      "name": "/asset",
+      "description": "Look up an asset by QR tag or name"
+    },
+    {
+      "commandId": 4,
+      "name": "/reset",
+      "description": "Reset conversation state"
+    }
+  ]
+}
