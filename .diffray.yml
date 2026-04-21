@@ -1,0 +1,69 @@
+output: markdown
+
+rules:
+  - id: hardcoded-ip
+    description: Hardcoded IPv4 address (should be env var or config)
+    severity: warning
+    patterns:
+      - regex: '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'
+    exclude:
+      - "*.md"
+      - "docs/**"
+      - "tests/**"
+      - "*.lock"
+
+  - id: hardcoded-credentials
+    description: Hardcoded secrets, tokens, or API keys
+    severity: error
+    patterns:
+      - regex: '(password|secret|token|api_key|apikey)\s*=\s*["\x27][^"\x27]{8,}'
+    exclude:
+      - "*.md"
+      - "*.template"
+      - ".env.template"
+
+  - id: unvalidated-api-input
+    description: Missing input validation on API handler parameters
+    severity: warning
+    patterns:
+      - regex: 'request\.(json|form|args|data)\[.*\]'
+      - regex: 'body\s*=\s*await\s+request\.json\(\)'
+
+  - id: serial-socket-no-error-handling
+    description: Serial or socket connection without try/except
+    severity: error
+    patterns:
+      - regex: 'serial\.Serial\('
+      - regex: 'socket\.connect\('
+      - regex: 'ModbusTcpClient\('
+      - regex: 'AsyncModbusTcpClient\('
+
+  - id: missing-timeout
+    description: Network/serial call without timeout parameter
+    severity: warning
+    patterns:
+      - regex: 'requests\.(get|post|put|patch|delete)\([^)]*\)'
+      - regex: 'httpx\.(get|post|put|patch|delete)\([^)]*\)'
+    note: Prefer httpx.AsyncClient with explicit timeout= kwarg
+
+  - id: yaml-unsafe-load
+    description: yaml.load() without Loader is unsafe — use yaml.safe_load()
+    severity: error
+    patterns:
+      - regex: 'yaml\.load\([^,)]+\)'
+
+  - id: subprocess-shell-true
+    description: subprocess with shell=True enables shell injection
+    severity: error
+    patterns:
+      - regex: 'subprocess\.(run|call|Popen)\(.*shell=True'
+
+  - id: hardcoded-port
+    description: Hardcoded port number (should be env var)
+    severity: info
+    patterns:
+      - regex: 'port\s*=\s*\d{4,5}'
+      - regex: ':\d{4,5}["\x27\s]'
+    exclude:
+      - "*.md"
+      - "tests/**"

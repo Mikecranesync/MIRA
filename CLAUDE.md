@@ -124,6 +124,26 @@ bash install/smoke_test.sh
 
 ---
 
+## Automated Code Review Pipeline
+
+Every PR triggers a multi-layer review (`.github/workflows/code-review.yml`):
+
+1. **ShellCheck** — lints all `.sh` files for bash anti-patterns
+2. **AST-grep** — structural analysis: hardcoded IPs, ports, `yaml.load`, `shell=True`
+3. **Claude AI Review** — reads the diff, flags security/safety/quality issues, posts as PR comment
+
+**Pre-commit hook** (`.githooks/pre-commit`) — ShellCheck + credential/debug scan + `yaml.load` block before every commit.
+Enable with: `git config core.hooksPath .githooks`
+
+**Self-fix script** — reads 🔴 IMPORTANT flags from PR comments, feeds to Claude, auto-commits up to 3 iterations:
+```bash
+./scripts/pr_self_fix.sh [PR_NUMBER]
+```
+
+**diffray config** — `.diffray.yml` defines 8 security/safety rules (hardcoded IPs, missing error handling on serial/socket, unvalidated inputs, unsafe yaml, subprocess injection).
+
+---
+
 ## Deferred / Archived Modules
 
 | Module | Status | Why | Where to find it |

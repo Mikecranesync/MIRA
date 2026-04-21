@@ -1,0 +1,137 @@
+name: Automated Code Review
+
+on:
+  pull_request:
+    branches: [main, develop, dev]
+
+jobs:
+  structural-review:
+    name: Structural Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ast-grep
+        run: npm install -g @ast-grep/cli
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: ShellCheck all .sh files
+        run: |
+          find . -name "*.sh" -not -path "./.git/*" | while read -r f; do
+            echo "=== $f ==="
+            shellcheck "$f" || true
+          done
+
+      - name: AST-grep hardcoded IPs
+        run: |
+          ast-grep --pattern '$IP = "$_.$_.$_.$_"' --lang python . || true
+          ast-grep --pattern '"$_.$_.$_.$_"' --lang python . || true
+
+      - name: AST-grep hardcoded ports
+        run: |
+          ast-grep --pattern 'port=$$$' --lang python . || true
+
+      - name: AST-grep yaml.load (unsafe)
+        run: |
+          ast-grep --pattern 'yaml.load($$$)' --lang python . || true
+
+      - name: AST-grep subprocess shell=True
+        run: |
+          ast-grep --pattern 'subprocess.run($$$, shell=True)' --lang python . || true
+          ast-grep --pattern 'subprocess.Popen($$$, shell=True)' --lang python . || true
+
+  ai-review:
+    name: Claude AI Review
+    runs-on: ubuntu-latest
+    needs: structural-review
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        run: |
+          git diff origin/main...HEAD > /tmp/pr_diff.txt
+          echo "Diff size: $(wc -l < /tmp/pr_diff.txt) lines"
+
+      - name: Claude Code Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          pip install anthropic
+          python3 << 'REVIEW'
+          import anthropic, os, sys
+
+          diff_path = "/tmp/pr_diff.txt"
+          try:
+              diff = open(diff_path).read()
+          except FileNotFoundError:
+              print("No diff found")
+              sys.exit(0)
+
+          if not diff.strip():
+              review = "No changes detected in this PR."
+          elif len(diff) > 50000:
+              diff = diff[:50000] + "\n\n... (diff truncated at 50K chars)"
+
+          if diff.strip():
+              client = anthropic.Anthropic()
+              response = client.messages.create(
+                  model="claude-sonnet-4-5",
+                  max_tokens=4000,
+                  messages=[{
+                      "role": "user",
+                      "content": f"""Review this PR diff for MIRA — an industrial maintenance AI platform.
+
+          Focus areas:
+          1. 🔴 IMPORTANT: Security issues (hardcoded credentials, SQL injection, command injection, yaml.load)
+          2. 🔴 IMPORTANT: Safety-critical bugs (wrong maintenance advice, skipped LOTO checks, misrouted safety escalations, unhandled serial/Modbus errors)
+          3. 🟡 WARNING: Error handling gaps (unhandled exceptions in diagnostic flows, missing timeouts on network calls)
+          4. 🟡 WARNING: Hardcoded IPs, ports, or file paths that should be env vars
+          5. 🔵 INFO: Code quality, naming, potential performance issues
+
+          Format each finding as:
+          [SEVERITY] file:line — description
+
+          If the diff looks clean, say so clearly. Do not invent issues.
+
+          ```diff
+          {diff}
+          ```"""
+                  }]
+              )
+              review = response.content[0].text
+          else:
+              review = "No changes detected in this PR."
+
+          with open("/tmp/review_output.md", "w") as f:
+              f.write("## 🤖 Claude Code Review\n\n")
+              f.write(review)
+              f.write("\n\n---\n_Powered by [MIRA code review pipeline](../.github/workflows/code-review.yml)_\n")
+
+          print(review)
+          REVIEW
+
+      - name: Post review comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let review;
+            try {
+              review = fs.readFileSync('/tmp/review_output.md', 'utf8');
+            } catch (e) {
+              review = '## 🤖 Claude Code Review\n\nReview step did not produce output.';
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: review
+            });
