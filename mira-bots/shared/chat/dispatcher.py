@@ -68,7 +68,6 @@ class ChatDispatcher:
         result = await self.engine.process(
             chat_id=chat_id,
             message=event.text,
-            user_id=user_id,
             photo_b64=photo_b64,
         )
 
