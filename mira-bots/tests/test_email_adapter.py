@@ -6,7 +6,9 @@ All tests run offline. No SES, no S3, no SMTP.
 
 from __future__ import annotations
 
+import importlib.util
 import io
+import os
 import sys
 import zipfile
 from email import encoders
@@ -21,12 +23,14 @@ sys.path.insert(0, "mira-bots")
 sys.path.insert(0, "mira-bots/email")
 sys.modules.pop("chat_adapter", None)  # isolate from other bot adapters
 
-# Import email-specific modules at collection time so they bind to the email
-# versions before later test modules overwrite sys.modules["chat_adapter"] etc.
+# chat_adapter, file_processor, parser, thread_tracker are safe to import at
+# collection time — no other test caches these names before email is collected.
+# renderers is NOT safe: test_image_downscale/typing_indicator import
+# telegram/bot.py at collection time, which caches telegram's renderers first.
+# Use importlib below for render_email to bypass sys.modules entirely.
 from chat_adapter import EmailChatAdapter  # noqa: E402
 from file_processor import FileProcessor  # noqa: E402
 from parser import ParsedEmail  # noqa: E402
-from renderers import render_email  # noqa: E402
 from shared.chat.adapter import ChatAdapter  # noqa: E402
 from shared.chat.types import (  # noqa: E402
     NormalizedChatEvent,
@@ -34,6 +38,22 @@ from shared.chat.types import (  # noqa: E402
     ResponseBlock,
 )
 from thread_tracker import ThreadTracker  # noqa: E402
+
+_EMAIL_DIR = os.path.join(os.path.dirname(__file__), "..", "email")
+
+
+def _load_render_email():
+    """Load render_email from mira-bots/email/renderers.py via absolute path.
+
+    importlib bypasses sys.modules so the telegram renderers cache doesn't interfere.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "_email_renderers", os.path.join(_EMAIL_DIR, "renderers.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod.render_email
+
 
 # ---------------------------------------------------------------------------
 # MIME Parser
@@ -451,6 +471,7 @@ async def test_fp_heic_fallback_on_no_pillow(tmp_path):
 
 
 def test_renderer_plain_text_fallback():
+    render_email = _load_render_email()
     response = NormalizedChatResponse(text="Check the motor overload relay.")
     plain, html = render_email(response, subject="Re: VFD fault")
 
@@ -461,6 +482,7 @@ def test_renderer_plain_text_fallback():
 
 
 def test_renderer_blocks_key_value():
+    render_email = _load_render_email()
     response = NormalizedChatResponse(
         text="Diagnosis result",
         blocks=[
@@ -481,11 +503,13 @@ def test_renderer_blocks_key_value():
 
 
 def test_renderer_has_reply_cta():
+    render_email = _load_render_email()
     _, html = render_email(NormalizedChatResponse(text="Hello."))
     assert "Reply" in html or "reply" in html
 
 
 def test_renderer_escapes_html():
+    render_email = _load_render_email()
     response = NormalizedChatResponse(text='<script>alert("xss")</script>')
     _, html = render_email(response)
 
