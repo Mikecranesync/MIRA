@@ -64,11 +64,7 @@ class TelegramChatAdapter:
         if doc:
             mime = doc.get("mime_type", "application/octet-stream")
             kind = (
-                "image"
-                if mime in _IMAGE_MIMES
-                else "pdf"
-                if mime == "application/pdf"
-                else "other"
+                "image" if mime in _IMAGE_MIMES else "pdf" if mime == "application/pdf" else "other"
             )
             attachments.append(
                 NormalizedAttachment(

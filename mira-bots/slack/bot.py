@@ -313,7 +313,9 @@ async def work_order_command(ack, command, say):
     await ack()
     description = command.get("text", "").strip()
     if not description:
-        await say(text="Usage: `/work-order [description]` — e.g. `/work-order Conveyor belt slipping on Line 1`")
+        await say(
+            text="Usage: `/work-order [description]` — e.g. `/work-order Conveyor belt slipping on Line 1`"
+        )
         return
     channel_id = command["channel_id"]
     normalized = await adapter.normalize_incoming(
