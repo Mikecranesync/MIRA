@@ -235,11 +235,11 @@ class SessionAnalyzer:
             worst = min(grades, key=lambda k: grades.get(k, 0)) if grades else "unknown"
             platform = turns[0].get("platform", "?") if turns else "?"
             msg = (
-                f"Session scored {overall:.0%} — {worst} was {grades.get(worst, 0):.0%}\n"
+                f"Session scored {overall:.0%} - {worst} was {grades.get(worst, 0):.0%}\n"
                 f"Platform: {platform} | Turns: {len(turns)}\n"
                 f"Fixture: {fixture_path.name}"
             )
-            title = f"MIRA Quality Alert — {overall:.0%}"
+            title = f"MIRA Quality Alert - {overall:.0%}"
             priority = "default" if overall >= 0.60 else "high"
             tags = ["chart_with_downwards_trend"] if overall < 0.60 else ["bar_chart"]
             asyncio.run(send_push(message=msg, title=title, priority=priority, tags=tags))
