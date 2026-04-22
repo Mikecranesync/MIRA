@@ -20,9 +20,11 @@ import logging
 import sys
 from pathlib import Path
 
-# Repo root → mira-bots on sys.path so `shared.*` imports resolve
+# Append mira-bots so shared.* resolves without shadowing stdlib (mira-bots/email/ conflicts)
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO_ROOT / "mira-bots"))
+_mira_bots = str(_REPO_ROOT / "mira-bots")
+if _mira_bots not in sys.path:
+    sys.path.append(_mira_bots)
 
 logging.basicConfig(
     level=logging.INFO,

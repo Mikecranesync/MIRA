@@ -21,7 +21,9 @@ def _import_base():
     import sys
 
     # Ensure shared.agents.base resolves
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mira-bots"))
+    _p = str(Path(__file__).resolve().parent.parent / "mira-bots")
+    if _p not in sys.path:
+        sys.path.append(_p)
     import shared.agents.base as base_mod
 
     return base_mod
@@ -277,7 +279,9 @@ async def test_runner_respects_interval(tmplog):
     """AgentRunner.run_once() skips agents whose interval hasn't elapsed."""
     import sys
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mira-bots"))
+    _p = str(Path(__file__).resolve().parent.parent / "mira-bots")
+    if _p not in sys.path:
+        sys.path.append(_p)
     from shared.agents.runner import AgentRunner
 
     run_count = 0
@@ -310,7 +314,9 @@ async def test_runner_runs_agent_when_interval_elapsed(tmplog):
     """AgentRunner runs agent when last_run=0 (never run before)."""
     import sys
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mira-bots"))
+    _p = str(Path(__file__).resolve().parent.parent / "mira-bots")
+    if _p not in sys.path:
+        sys.path.append(_p)
     from shared.agents.runner import AgentRunner
 
     agent = _make_good_agent(tmplog)
