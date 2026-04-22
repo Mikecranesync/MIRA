@@ -90,10 +90,11 @@ class KBBuilderAgent(MIRAAgent):
                 resp = await client.post(
                     f"{INGEST_SERVICE_URL}/ingest/scrape-trigger",
                     json={
-                        "chat_id": job_id,
+                        "equipment_id": job_id,
                         "manufacturer": mfr,
-                        "model": "",
-                        "use_firecrawl": True,
+                        "model": "general",  # KB gap fill — no specific model
+                        "chat_id": job_id,
+                        "tenant_id": MIRA_TENANT_ID,
                     },
                 )
                 resp.raise_for_status()
