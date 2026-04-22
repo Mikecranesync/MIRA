@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, "mira-bots")
 sys.path.insert(0, "mira-bots/teams")
+sys.modules.pop("chat_adapter", None)  # isolate from slack/chat_adapter.py collision
 
 from unittest.mock import AsyncMock, MagicMock, patch
 

@@ -1,6 +1,7 @@
 """MIRA Telegram Bot — GSD engine + direct data commands."""
 
 import asyncio
+import base64
 import io as _io
 import logging
 import os
@@ -320,13 +321,20 @@ async def _process_photo_batch(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Process buffered (raw_bytes, vision_bytes) pairs via ChatDispatcher."""
+    """Process buffered (raw_bytes, vision_bytes) pairs.
+
+    Single photo: dispatches through ChatDispatcher (FSM-aware, unchanged path).
+    Multi-photo burst: sends acknowledgment immediately, runs each photo through
+    VisionWorker sequentially, then combines results into one intelligent reply.
+    """
     chat_id = str(update.effective_chat.id)
-    await update.message.reply_text("Analyzing equipment...")
-    replies = []
-    update_dict = update.to_dict()
-    async with typing_action(context, update.effective_chat.id):
-        for _raw_bytes, vision_bytes in batches:
+
+    if len(batches) == 1:
+        # Single-photo path — unchanged; goes through ChatDispatcher for FSM routing
+        await update.message.reply_text("Analyzing equipment...")
+        _raw_bytes, vision_bytes = batches[0]
+        update_dict = update.to_dict()
+        async with typing_action(context, update.effective_chat.id):
             try:
                 normalized = await adapter.normalize_incoming(update_dict)
                 normalized.text = caption
@@ -341,17 +349,28 @@ async def _process_photo_batch(
                         " for detailed images..."
                     )
                     response = await process_task
-                if response.text:
-                    replies.append(response.text)
+                final_reply = response.text or "MIRA error: no response from vision pipeline."
             except Exception as e:
-                logger.error("Photo batch processing error: %s", e)
-
-    if not replies:
-        final_reply = "MIRA error: no response from vision pipeline."
-    elif len(replies) == 1:
-        final_reply = replies[0]
+                logger.error("Photo processing error: %s", e)
+                final_reply = f"MIRA error: {e}"
     else:
-        final_reply = replies[0] + f"\n\n({len(replies)} photos analyzed)"
+        # Multi-photo burst — ack immediately, process sequentially, combine
+        n = len(batches)
+        await update.message.reply_text(
+            f"📸 Processing {n} photos — I'll have results for you shortly."
+        )
+        async with typing_action(context, update.effective_chat.id):
+            photos_b64 = [base64.b64encode(vision_bytes).decode() for _, vision_bytes in batches]
+            try:
+                final_reply = await engine.process_multi_photo(
+                    chat_id=chat_id,
+                    message=caption,
+                    photos_b64=photos_b64,
+                    platform="telegram",
+                )
+            except Exception as e:
+                logger.error("Multi-photo processing error: %s", e)
+                final_reply = f"MIRA error processing {n} photos: {e}"
 
     if INGEST_SERVICE_URL:
         asset_tag = caption.split()[0] if caption else "UNKNOWN"

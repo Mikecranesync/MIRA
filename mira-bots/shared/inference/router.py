@@ -36,6 +36,8 @@ import yaml
 logger = logging.getLogger("mira-gsd")
 
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
+_PROMPT_CACHE_TTL = float(os.getenv("MIRA_PROMPT_CACHE_TTL", "60"))
+_prompt_cache: tuple[str, float] | None = None  # (content, monotonic_time)
 
 # PII sanitization patterns
 _IPV4_RE = re.compile(
@@ -55,17 +57,26 @@ ANTHROPIC_VERSION = "2023-06-01"
 
 
 def get_system_prompt() -> str:
-    """Load system prompt from prompts/diagnose/active.yaml on each call."""
+    """Load system prompt from prompts/diagnose/active.yaml with a 60s TTL cache.
+
+    Zero-downtime rollout: MIRA_PROMPT_CACHE_TTL=0 forces reload every call.
+    """
+    global _prompt_cache
+    now = time.monotonic()
+    if _prompt_cache is not None and (now - _prompt_cache[1]) < _PROMPT_CACHE_TTL:
+        return _prompt_cache[0]
     try:
         with open(_PROMPT_PATH) as f:
             data = yaml.safe_load(f)
-        return data.get("system_prompt", "")
+        prompt = data.get("system_prompt", "")
     except FileNotFoundError:
         logger.warning("active.yaml not found at %s — using empty system prompt", _PROMPT_PATH)
-        return ""
+        prompt = ""
     except Exception as e:
         logger.error("Failed to load active.yaml: %s", e)
-        return ""
+        prompt = _prompt_cache[0] if _prompt_cache else ""
+    _prompt_cache = (prompt, now)
+    return prompt
 
 
 def _classify_http_error(status_code: int) -> str:
@@ -126,23 +137,13 @@ class _Provider:
 
 
 def _build_providers() -> list[_Provider]:
-    """Build the ordered provider list from environment variables."""
-    providers: list[_Provider] = []
+    """Build the ordered provider list from environment variables.
 
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
-    if gemini_key:
-        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        providers.append(
-            _Provider(
-                name="gemini",
-                api_url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                api_key=gemini_key,
-                model=gemini_model,
-                format="openai",
-                timeout=30.0,
-                vision_model=os.getenv("GEMINI_VISION_MODEL", gemini_model),
-            )
-        )
+    Cascade order: Groq → Cerebras → Gemini → Claude.
+    Groq leads because it's fastest and most reliable. Gemini moved to third
+    position after persistent 503s in prod (2026-04-21 latency audit).
+    """
+    providers: list[_Provider] = []
 
     groq_key = os.getenv("GROQ_API_KEY", "")
     if groq_key:
@@ -170,6 +171,21 @@ def _build_providers() -> list[_Provider]:
                 model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
                 format="openai",
                 timeout=30.0,
+            )
+        )
+
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    if gemini_key:
+        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        providers.append(
+            _Provider(
+                name="gemini",
+                api_url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                api_key=gemini_key,
+                model=gemini_model,
+                format="openai",
+                timeout=30.0,
+                vision_model=os.getenv("GEMINI_VISION_MODEL", gemini_model),
             )
         )
 
@@ -325,9 +341,9 @@ class InferenceRouter:
             "messages": messages,
             "temperature": 0.1,
         }
-        # Vision models don't reliably support JSON mode
-        if not has_image:
-            payload["response_format"] = {"type": "json_object"}
+        # Note: response_format=json_object omitted — Groq requires "json" in system prompt
+        # to use that mode, and Cerebras occasionally rejects it. The system prompt already
+        # instructs JSON output; _parse_response has 3 extraction strategies as fallback.
         headers = {
             "Authorization": f"Bearer {provider.api_key}",
             "Content-Type": "application/json",

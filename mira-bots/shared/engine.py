@@ -54,6 +54,17 @@ from .workers.vision_worker import VisionWorker
 
 logger = logging.getLogger("mira-gsd")
 
+# Version string — read once at import time, used by session recorder
+_MIRA_VERSION: str = "unknown"
+try:
+    _MIRA_VERSION = (
+        (__import__("pathlib").Path(__file__).parent.parent.parent / "VERSION")
+        .read_text(encoding="utf-8")
+        .strip()
+    )
+except Exception:
+    pass
+
 # Confidence-inference keyword sets
 _HIGH_CONF_SIGNALS = re.compile(
     r"(replace|fault code|check wiring|the .+ is .+(failed|tripped|open|shorted|overloaded)"
@@ -424,6 +435,9 @@ class Supervisor:
         self.print_ = PrintWorker(openwebui_url, api_key)
         self.plc = PLCWorker() if os.getenv("MIRA_PLC_ENABLED", "").lower() in ("1", "true", "yes") else None
 
+        # Per-chat_id recording buffer — thread-safe (each key is independent)
+        self._rec: dict[str, dict] = {}
+
         self._ensure_table()
 
     # ------------------------------------------------------------------
@@ -621,7 +635,155 @@ class Supervisor:
             response_time_ms=elapsed_ms,
             platform=platform,
         )
+        _rec_data = self._rec.pop(chat_id, {})
+        asyncio.ensure_future(
+            self._record_session_turn(
+                chat_id=chat_id,
+                user_message=message,
+                assistant_response=result["reply"],
+                fsm_state_before=_rec_data.get("fsm_state_before", ""),
+                fsm_state_after=result.get("next_state", ""),
+                router_intent=_rec_data.get("intent"),
+                rag_chunks_count=len(getattr(self.rag, "_last_sources", [])),
+                rag_top_score=max(getattr(self.rag, "_last_distances", [0.0]), default=0.0),
+                latency_ms=elapsed_ms,
+                had_photo=bool(photo_b64),
+                safety_triggered=result.get("next_state") == "SAFETY_ALERT",
+                platform=platform,
+            )
+        )
         return result["reply"]
+
+    async def process_multi_photo(
+        self,
+        chat_id: str,
+        message: str,
+        photos_b64: list[str],
+        *,
+        platform: str = "telegram",
+    ) -> str:
+        """Process a burst of photos and return one combined intelligent reply.
+
+        Each photo is run through VisionWorker sequentially to avoid rate limits,
+        then an LLM call combines the results into a single coherent response that
+        connects related photos (nameplate+damage, diagram+wiring, etc.).
+        """
+        t0 = time.monotonic()
+        analyses: list[dict] = []
+        for b64 in photos_b64:
+            try:
+                result = await self.vision.process(b64, message)
+                analyses.append(result)
+            except Exception as exc:
+                logger.warning("Vision worker failed for one photo in burst: %s", exc)
+                analyses.append(
+                    {
+                        "vision_result": "unclear",
+                        "classification": "EQUIPMENT_PHOTO",
+                        "ocr_items": [],
+                        "tesseract_text": "",
+                        "drawing_type": None,
+                    }
+                )
+
+        # Persist last photo so text-only follow-up turns have context
+        if photos_b64:
+            self._save_session_photo(chat_id, photos_b64[-1])
+
+        reply = await self._combine_photo_analyses(chat_id, message, analyses)
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        self._log_interaction(
+            chat_id,
+            message,
+            reply,
+            fsm_state="IDLE",
+            has_photo=True,
+            confidence="medium",
+            response_time_ms=elapsed_ms,
+            platform=platform,
+        )
+        asyncio.ensure_future(
+            self._record_session_turn(
+                chat_id=chat_id,
+                user_message=message,
+                assistant_response=reply,
+                fsm_state_before="IDLE",
+                fsm_state_after="IDLE",
+                router_intent="industrial",
+                latency_ms=elapsed_ms,
+                had_photo=True,
+                safety_triggered=False,
+                platform=platform,
+            )
+        )
+        return reply
+
+    async def _combine_photo_analyses(
+        self,
+        chat_id: str,
+        user_text: str,
+        analyses: list[dict],
+    ) -> str:
+        """LLM combines multiple photo analyses into one coherent reply.
+
+        Connects related photos (nameplate+damage, diagram+wiring) and asks
+        'which first?' when photos show unrelated assets.
+        """
+        n = len(analyses)
+        _LABELS = {
+            "NAMEPLATE": "Nameplate",
+            "ELECTRICAL_PRINT": "Wiring diagram",
+            "EQUIPMENT_PHOTO": "Equipment photo",
+        }
+        lines = []
+        for i, a in enumerate(analyses):
+            label = _LABELS.get(a.get("classification", ""), "Photo")
+            vision = str(a.get("vision_result", "")).strip()[:300]
+            ocr = a.get("ocr_items") or []
+            entry = f"Photo {i + 1} ({label}): {vision}"
+            if ocr:
+                entry += f" | Text extracted: {', '.join(str(x) for x in ocr[:5])}"
+            lines.append(entry)
+
+        photo_block = "\n".join(lines)
+        prompt = (
+            f"A maintenance technician sent {n} photos. Here is what each shows:\n\n"
+            f"{photo_block}\n\n"
+            f'Technician\'s message: "{user_text or "(no caption)"}"\n\n'
+            f"Respond with:\n"
+            f"📸 Processed {n} photos:\n\n"
+            f"[Numbered list — one line per photo showing what it is]\n\n"
+            f"[1-3 sentences connecting the photos if related: same asset, "
+            f"nameplate+damage, or diagram+wiring photo. If photos show unrelated "
+            f"assets, list each briefly and ask 'Which would you like to troubleshoot first?']\n\n"
+            f"Rules: be concise, industrial context, end with one specific helpful question."
+        )
+
+        try:
+            msgs = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are MIRA, an industrial maintenance AI assistant. "
+                        "You analyze equipment photos for factory maintenance technicians. "
+                        "Be concise, specific, and actionable."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ]
+            reply, _ = await self.router.complete(msgs, max_tokens=500, session_id=chat_id)
+            if reply:
+                return reply.strip()
+        except Exception as exc:
+            logger.warning("Multi-photo LLM combination failed: %s", exc)
+
+        # Fallback: plain numbered list without LLM synthesis
+        fallback = [f"📸 Processed {n} photos:\n"]
+        for i, a in enumerate(analyses):
+            label = _LABELS.get(a.get("classification", ""), "Photo")
+            vision = str(a.get("vision_result", "")).strip()[:100]
+            fallback.append(f"{i + 1}. {label}: {vision}")
+        return "\n".join(fallback)
 
     async def process_full(
         self,
@@ -645,6 +807,53 @@ class Supervisor:
         message = strip_mentions(message)
 
         state = self._load_state(chat_id)
+        self._rec[chat_id] = {
+            "fsm_state_before": state.get("state", "IDLE"),
+            "intent": None,
+        }
+
+        # BUG-001: Reset command handler — must run before CMMS/PM checks so a stale
+        # session can always be cleared. Matches slash commands and natural language.
+        _RESET_COMMANDS = {
+            "/new",
+            "/reset",
+            "/start",
+            "new",
+            "reset",
+            "start over",
+            "new session",
+            "new chat",
+            "start fresh",
+            "clear session",
+        }
+        if message.strip().lower() in _RESET_COMMANDS:
+            self.reset(chat_id)
+            reply = (
+                "Session cleared. What are you working on? Send me a photo, a fault "
+                "code, or describe the issue and I'll help you diagnose it."
+            )
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, "IDLE")
+
+        # BUG-004: Auto-reset sessions idle >24h before processing a new message.
+        # A technician returning the next day to a stale Q-state context gets a clean slate.
+        if state.get("updated_at") and state.get("state", "IDLE") not in ("IDLE", "RESOLVED"):
+            import datetime as _dt
+
+            try:
+                _updated = _dt.datetime.fromisoformat(state["updated_at"])
+                _idle_hours = (_dt.datetime.utcnow() - _updated).total_seconds() / 3600
+                if _idle_hours > 24:
+                    logger.info(
+                        "STALE_SESSION_RESET chat_id=%s idle_hours=%.1f prior_state=%s",
+                        chat_id,
+                        _idle_hours,
+                        state["state"],
+                    )
+                    self.reset(chat_id)
+                    state = self._load_state(chat_id)
+            except (ValueError, TypeError):
+                pass  # Unparseable timestamp — leave state as-is
 
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
@@ -745,31 +954,51 @@ class Supervisor:
             # LLM conversation router — determines what the user wants THIS turn.
             # Runs in parallel with the synchronous keyword classifier as a fast fallback.
             _keyword_intent = classify_intent(message)
-            try:
-                _routing = await route_intent(
-                    user_message=message,
-                    conversation_history=(state.get("context") or {}).get("history", []),
-                    current_fsm_state=state.get("state", "IDLE"),
-                    asset_identified=state.get("asset_identified", ""),
-                )
-                _router_intent = _routing["intent"]
+            self._rec.get(chat_id, {})["intent"] = _keyword_intent
+
+            # Fast-path: skip the LLM router for active sessions with short or option
+            # messages — these are almost always continue_current (answers to Q1/Q2/Q3
+            # or option selections). Saves ~200-400ms per turn for the majority of
+            # mid-session exchanges. Safety still enforced via _keyword_intent above.
+            _fsm_state = state.get("state", "IDLE")
+            _active_session = _fsm_state not in ("IDLE", "RESOLVED", "")
+            _is_option_digit = bool(re.fullmatch(r"\d", message.strip()))
+            _use_fast_path = _active_session and (len(message.strip()) < 50 or _is_option_digit)
+
+            if _use_fast_path:
+                _router_intent = "continue_current"
                 logger.info(
-                    "ROUTER intent=%s confidence=%.2f reason=%r chat_id=%s",
-                    _router_intent,
-                    _routing.get("confidence", 0),
-                    _routing.get("reasoning", ""),
+                    "ROUTER_FAST_PATH chat_id=%s state=%s msg_len=%d",
                     chat_id,
+                    _fsm_state,
+                    len(message.strip()),
                 )
-            except Exception as _re:
-                logger.warning("ROUTER_FAILURE error=%s — using keyword classifier", _re)
-                _router_intent = {
-                    "safety": "safety_concern",
-                    "documentation": "find_documentation",
-                    "greeting": "greeting_or_chitchat",
-                    "help": "greeting_or_chitchat",
-                    "industrial": "continue_current",
-                    "off_topic": "general_question",
-                }.get(_keyword_intent, "continue_current")
+            else:
+                try:
+                    _routing = await route_intent(
+                        user_message=message,
+                        conversation_history=(state.get("context") or {}).get("history", []),
+                        current_fsm_state=_fsm_state,
+                        asset_identified=state.get("asset_identified", ""),
+                    )
+                    _router_intent = _routing["intent"]
+                    logger.info(
+                        "ROUTER intent=%s confidence=%.2f reason=%r chat_id=%s",
+                        _router_intent,
+                        _routing.get("confidence", 0),
+                        _routing.get("reasoning", ""),
+                        chat_id,
+                    )
+                except Exception as _re:
+                    logger.warning("ROUTER_FAILURE error=%s — using keyword classifier", _re)
+                    _router_intent = {
+                        "safety": "safety_concern",
+                        "documentation": "find_documentation",
+                        "greeting": "greeting_or_chitchat",
+                        "help": "greeting_or_chitchat",
+                        "industrial": "continue_current",
+                        "off_topic": "general_question",
+                    }.get(_keyword_intent, "continue_current")
 
             # Safety ALWAYS wins — router or keyword classifier, either triggers it.
             intent = _keyword_intent  # keep for downstream legacy gates
@@ -907,7 +1136,7 @@ class Supervisor:
 
                 reply = self._build_print_reply(vision_data)
                 history = ctx.get("history", [])
-                history.append({"role": "user", "content": message})
+                history.append({"role": "user", "content": self._strip_memory_block(message)})
                 history.append({"role": "assistant", "content": reply})
                 ctx["history"] = history
                 state["context"] = ctx
@@ -967,7 +1196,7 @@ class Supervisor:
             state["exchange_count"] += 1
             ctx = state.get("context") or {}
             history = ctx.get("history", [])
-            history.append({"role": "user", "content": message})
+            history.append({"role": "user", "content": self._strip_memory_block(message)})
             history.append({"role": "assistant", "content": parsed["reply"]})
             if len(history) > HISTORY_LIMIT:
                 history = history[-HISTORY_LIMIT:]
@@ -1058,7 +1287,7 @@ class Supervisor:
                 asset = state.get("asset_identified", "this equipment")
                 reply = f"I can see this is {asset}. How can I help you with it?"
                 history = ctx.get("history", [])
-                history.append({"role": "user", "content": message})
+                history.append({"role": "user", "content": self._strip_memory_block(message)})
                 history.append({"role": "assistant", "content": reply})
                 ctx["history"] = history
                 sc = ctx.get("session_context", {})
@@ -1215,16 +1444,13 @@ class Supervisor:
 
         history = ctx.get("history", [])
         if _original_user_message is not None:
-            # Photo auto-diagnose: store the human's caption, then inject OCR context
-            # as a system entry so the LLM has the analysis without attributing it to
-            # the technician.
-            history.append({"role": "user", "content": _original_user_message})
+            history.append({"role": "user", "content": self._strip_memory_block(_original_user_message)})
             history.append({
                 "role": "system",
                 "content": f"[Photo analysis injected by MIRA: {message[:400]}]",
             })
         else:
-            history.append({"role": "user", "content": message})
+            history.append({"role": "user", "content": self._strip_memory_block(message)})
         history.append({"role": "assistant", "content": _history_reply})
         if len(history) > HISTORY_LIMIT:
             history = history[-HISTORY_LIMIT:]
@@ -1469,6 +1695,31 @@ class Supervisor:
         db.commit()
         db.close()
         logger.warning("FEEDBACK [%s] feedback=%s reason=%r", chat_id, feedback, reason)
+        # Mirror negative feedback to session recording so analyzer flags this session
+        if feedback in ("bad", "negative", "thumbs_down"):
+            try:
+                from .analysis.session_recorder import record_feedback
+
+                record_feedback(chat_id, "negative", reason)
+            except Exception:
+                pass
+
+    async def _record_session_turn(self, **kwargs) -> None:
+        """Fire-and-forget: append one turn to session recording. Never raises."""
+        try:
+            from datetime import datetime, timezone
+
+            from .analysis.session_recorder import record_turn
+
+            record_turn(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "version": _MIRA_VERSION,
+                    **kwargs,
+                }
+            )
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # State management
@@ -1581,7 +1832,7 @@ class Supervisor:
         state["context"] = ctx
 
         history = ctx.get("history", [])
-        history.append({"role": "user", "content": message})
+        history.append({"role": "user", "content": self._strip_memory_block(message)})
         reply = (
             f"Asset registered: {manufacturer} {model} — "
             f"linked to {linked_chunks} OEM manual chunks. "
@@ -1731,7 +1982,7 @@ class Supervisor:
         _history_reply = formatted.split("\n\n--- Sources ---")[0].rstrip()
 
         history = ctx.get("history", [])
-        history.append({"role": "user", "content": message})
+        history.append({"role": "user", "content": self._strip_memory_block(message)})
         history.append({"role": "assistant", "content": _history_reply})
         if len(history) > HISTORY_LIMIT:
             history = history[-HISTORY_LIMIT:]
@@ -2676,11 +2927,23 @@ class Supervisor:
         db.commit()
         db.close()
 
+    @staticmethod
+    def _strip_memory_block(message: str) -> str:
+        """Remove injected [MIRA MEMORY...END MEMORY] prefix before storing to history."""
+        import re as _re
+
+        return _re.sub(
+            r"^\[MIRA MEMORY[^\]]*\].*?\[END MEMORY\]\s*\n*",
+            "",
+            message,
+            flags=_re.DOTALL,
+        ).lstrip()
+
     def _record_exchange(self, chat_id: str, state: dict, message: str, reply: str):
         """Save a user/assistant exchange to conversation history and persist."""
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
-        history.append({"role": "user", "content": message})
+        history.append({"role": "user", "content": self._strip_memory_block(message)})
         history.append({"role": "assistant", "content": reply})
         ctx["history"] = history
         state["context"] = ctx

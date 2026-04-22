@@ -1,9 +1,11 @@
 """MIRA MCP Server — equipment diagnostics + CMMS integration."""
 
+import asyncio
 import os
 import sqlite3
 import sys
 
+import httpx as _httpx
 from cmms.atlas import AtlasCMMS
 from cmms.factory import create_cmms_adapter
 from fastmcp import FastMCP
@@ -15,6 +17,8 @@ DB_PATH = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
 MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
 RETRIEVAL_BACKEND = os.environ.get("RETRIEVAL_BACKEND", "openwebui")
 MIRA_TENANT_ID = os.environ.get("MIRA_TENANT_ID", "")
+PIPELINE_BASE_URL = os.environ.get("PIPELINE_BASE_URL", "http://mira-pipeline-saas:9099")
+PIPELINE_API_KEY = os.environ.get("PIPELINE_API_KEY", "")
 
 # Internal Atlas adapter — always-on for diagnostic case recording
 _atlas_internal: AtlasCMMS | None = None
@@ -438,8 +442,6 @@ EMBED_MODEL = os.environ.get("EMBED_MODEL", "nomic-embed-text:latest")
 
 async def _rest_embed(request):
     """POST /api/embed — embed text via Ollama. Returns 768-dim vector."""
-    import httpx as _httpx
-
     body = await request.json()
     text = body.get("text", "")
     if not text:
@@ -519,9 +521,96 @@ async def _rest_ingest_pdf(request):
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
-if __name__ == "__main__":
-    import asyncio
+# ── Agent Invocation Tools ────────────────────────────────────────────────────
 
+
+def _pipeline_headers() -> dict:
+    h = {"Content-Type": "application/json"}
+    if PIPELINE_API_KEY:
+        h["Authorization"] = f"Bearer {PIPELINE_API_KEY}"
+    return h
+
+
+@mcp.tool
+async def run_kb_builder() -> dict:
+    """Run the KB Builder agent to detect under-covered manufacturers and trigger documentation crawls.
+
+    Queries NeonDB for manufacturers with fewer than 5 KB chunks, then fires crawl jobs
+    for the top 3 gaps. Returns an AgentRunReport with detected/succeeded/failed counts.
+    Typical runtime: 1-5 seconds (crawls are async fire-and-forget).
+    """
+    try:
+        async with _httpx.AsyncClient(timeout=320) as client:
+            resp = await client.post(
+                f"{PIPELINE_BASE_URL}/api/agents/run/kb_builder",
+                headers=_pipeline_headers(),
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:
+        return {"error": str(exc), "agent": "kb_builder"}
+
+
+@mcp.tool
+async def run_prompt_optimizer() -> dict:
+    """Run the Prompt Optimizer agent to detect eval failure clusters and propose prompt improvements.
+
+    Reads the latest eval scorecard, finds checkpoints failing >=2 times, asks Groq to suggest
+    a fix, and writes a candidate.yaml. NEVER auto-promotes — always escalates for human review.
+    Returns an AgentRunReport. If no failures are found, returns detected=0 (nothing to do).
+    """
+    try:
+        async with _httpx.AsyncClient(timeout=320) as client:
+            resp = await client.post(
+                f"{PIPELINE_BASE_URL}/api/agents/run/prompt_optimizer",
+                headers=_pipeline_headers(),
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:
+        return {"error": str(exc), "agent": "prompt_optimizer"}
+
+
+@mcp.tool
+async def run_infra_guardian() -> dict:
+    """Run the Infrastructure Guardian agent to check VPS service health and auto-restart failures.
+
+    Hits health endpoints for mira-pipeline, mira-ingest, mira-core, and mira-mcp.
+    Restarts any unhealthy containers via docker compose and verifies recovery.
+    Returns an AgentRunReport. If all services are healthy, returns detected=0.
+    """
+    try:
+        async with _httpx.AsyncClient(timeout=320) as client:
+            resp = await client.post(
+                f"{PIPELINE_BASE_URL}/api/agents/run/infra_guardian",
+                headers=_pipeline_headers(),
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:
+        return {"error": str(exc), "agent": "infra_guardian"}
+
+
+@mcp.tool
+async def get_agent_status() -> dict:
+    """Get the current status and recent run history for all autonomous MIRA agents.
+
+    Returns a summary for kb_builder, prompt_optimizer, and infra_guardian including:
+    last run timestamp, duration, detected/succeeded/failed/escalated counts, total_runs,
+    and the last 10 run records for sparkline display.
+    """
+    try:
+        async with _httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"{PIPELINE_BASE_URL}/api/agents/public-status",
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+if __name__ == "__main__":
     import uvicorn
     from starlette.applications import Starlette
     from starlette.routing import Route

@@ -118,6 +118,8 @@ services:
       - FASTMCP_PORT=8000
       - MCP_REST_API_KEY=${MCP_REST_API_KEY}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
+      - PIPELINE_BASE_URL=http://mira-pipeline-saas:9099
+      - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
     volumes:
       - /opt/mira/data:/mira-db
     networks:
@@ -195,11 +197,17 @@ services:
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - INGEST_SERVICE_URL=http://mira-ingest-saas:8001
       - EVAL_RUNS_DIR=/eval-runs
+      - SESSION_RECORDING_PATH=/data/sessions
+      - AGENT_LOG_DIR=/mira-db/agent-runs
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
     volumes:
       - /opt/mira/data:/mira-db
       - /opt/mira/data/mem0:/data/mem0
       - mira-webui-data:/app/backend/data:ro
       - /opt/mira/tests/eval/runs:/eval-runs:ro
+      - /opt/mira/mira-bridge/data/sessions:/data/sessions
     networks:
       - mira-net
     restart: unless-stopped

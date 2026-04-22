@@ -114,6 +114,49 @@ DDG_FAIL_LIMIT = 5  # stop DDG after this many consecutive failures
 SERPER_URL = "https://google.serper.dev/search"
 HUBSPOT_BASE = "https://api.hubapi.com"
 
+# Directory-listing / aggregator hosts. A facility whose `website` resolves
+# to one of these is a listing-page artifact from discovery, not a real
+# manufacturer. Serper snippets for these pages never match the "Name,
+# Title" pattern, so probing them burns budget for zero yield. Observed in
+# the 2026-04-21 Central Florida run — see issue #497.
+DIRECTORY_LISTING_HOSTS: frozenset[str] = frozenset({
+    "chamberofcommerce.com",
+    "superpages.com",
+    "dexknows.com",
+    "angi.com",
+    "alignable.com",
+    "industrynet.com",
+    "yellowpages.com",
+    "yelp.com",
+    "dnb.com",
+    "zoominfo.com",
+    "cortera.com",
+    "machineshop.directory",
+    "findingmfg.com",
+    "manta.com",
+    "bizapedia.com",
+    "thomasnet.com",
+})
+
+
+def _is_directory_listing(website: str) -> bool:
+    """Return True when `website` resolves to a known aggregator/directory host.
+
+    Matches on suffix so subdomains (e.g. `foo.dexknows.com`) are caught.
+    Empty / malformed URLs return False — upstream code already filters those.
+    """
+    if not website:
+        return False
+    try:
+        host = urlparse(website).netloc.lower()
+        if host.startswith("www."):
+            host = host[4:]
+    except Exception:
+        return False
+    if not host:
+        return False
+    return any(host == h or host.endswith("." + h) for h in DIRECTORY_LISTING_HOSTS)
+
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
@@ -1362,7 +1405,16 @@ def enrich_facilities(
     Aborts Serper probing when `budget` queries have been used.
     """
     to_enrich = [f for f in fac_list if f.website and f.icp_score >= 4]
+    skipped_listings = [f for f in to_enrich if _is_directory_listing(f.website)]
+    to_enrich = [f for f in to_enrich if not _is_directory_listing(f.website)]
     log.info("=== ENRICHMENT PHASE ===")
+    if skipped_listings:
+        log.info(
+            "Skipped %d directory-listing rows (chamberofcommerce / superpages / dexknows / …)",
+            len(skipped_listings),
+        )
+        for f in skipped_listings[:5]:
+            log.info("  ↯ skip: %s (%s)", f.name[:60], f.website[:60])
     log.info(
         "Enriching %d high-score sites (serper=%s, budget=%d queries)",
         len(to_enrich),
@@ -1454,57 +1506,100 @@ def apply_schema(db_url: str) -> None:
 
 
 def upsert_facilities(facilities: list[Facility], db_url: str) -> int:
+    """Persist facilities to NeonDB.
+
+    `prospect_facilities` has TWO overlapping unique indexes — (name, address)
+    and (name, city) — and ON CONFLICT can only name one. So we use explicit
+    SELECT → UPDATE/INSERT instead: find the row by EITHER unique key, update
+    in place if found, else insert. The INSERT still has ON CONFLICT DO
+    NOTHING as a safety net against races. See issue #502.
+
+    Returns count of INSERTED (not updated) rows, matching the prior contract.
+    """
     import psycopg2
 
     conn = psycopg2.connect(db_url)
     cur = conn.cursor()
     inserted = 0
+    facility_ids: list[tuple["Facility", int | None]] = []
+
     for f in facilities:
         cur.execute(
             """
-            INSERT INTO prospect_facilities
-              (name, address, city, state, zip, phone, website, category,
-               rating, review_count, distance_miles, icp_score, notes)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (name, city) DO UPDATE SET
-              icp_score      = GREATEST(prospect_facilities.icp_score, EXCLUDED.icp_score),
-              phone          = COALESCE(NULLIF(EXCLUDED.phone,''), prospect_facilities.phone),
-              website        = COALESCE(NULLIF(EXCLUDED.website,''), prospect_facilities.website),
-              notes          = COALESCE(NULLIF(EXCLUDED.notes,''), prospect_facilities.notes),
-              updated_at     = NOW()
-            RETURNING (xmax = 0)
+            SELECT id FROM prospect_facilities
+            WHERE (name = %s AND COALESCE(address,'') = COALESCE(%s,''))
+               OR (name = %s AND city = %s)
+            LIMIT 1
             """,
-            (
-                f.name,
-                f.address,
-                f.city,
-                f.state,
-                f.zip_code,
-                f.phone,
-                f.website,
-                f.category,
-                f.rating,
-                f.review_count,
-                f.distance_miles,
-                f.icp_score,
-                f.notes,
-            ),
+            (f.name, f.address, f.name, f.city),
         )
-        row = cur.fetchone()
-        if row and row[0]:
-            inserted += 1
+        existing = cur.fetchone()
+        if existing:
+            fid = existing[0]
+            # Don't update identity fields (name, address, city). If the DB
+            # has multiple rows sharing a name (e.g. two "Peace River Citrus
+            # Products" rows at different addresses), updating one's city to
+            # match another would collide on idx_prospects_name_city or
+            # prospect_facilities_name_address_key. Identity stays whatever
+            # the existing row already had; we just merge the data fields.
+            cur.execute(
+                """
+                UPDATE prospect_facilities SET
+                    state          = COALESCE(NULLIF(%s,''), state),
+                    zip            = COALESCE(NULLIF(%s,''), zip),
+                    phone          = COALESCE(NULLIF(%s,''), phone),
+                    website        = COALESCE(NULLIF(%s,''), website),
+                    category       = COALESCE(NULLIF(%s,''), category),
+                    rating         = GREATEST(rating, %s),
+                    review_count   = GREATEST(review_count, %s),
+                    distance_miles = COALESCE(NULLIF(%s,0)::float, distance_miles),
+                    icp_score      = GREATEST(icp_score, %s),
+                    notes          = COALESCE(NULLIF(%s,''), notes),
+                    updated_at     = NOW()
+                WHERE id = %s
+                """,
+                (
+                    f.state, f.zip_code, f.phone, f.website,
+                    f.category, f.rating, f.review_count, f.distance_miles,
+                    f.icp_score, f.notes, fid,
+                ),
+            )
+            facility_ids.append((f, fid))
+        else:
+            cur.execute(
+                """
+                INSERT INTO prospect_facilities
+                  (name, address, city, state, zip, phone, website, category,
+                   rating, review_count, distance_miles, icp_score, notes)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+                """,
+                (
+                    f.name, f.address, f.city, f.state, f.zip_code, f.phone,
+                    f.website, f.category, f.rating, f.review_count,
+                    f.distance_miles, f.icp_score, f.notes,
+                ),
+            )
+            row = cur.fetchone()
+            if row:
+                inserted += 1
+                facility_ids.append((f, row[0]))
+            else:
+                # Race: another writer inserted between SELECT and INSERT. Re-find.
+                cur.execute(
+                    "SELECT id FROM prospect_facilities "
+                    "WHERE (name=%s AND COALESCE(address,'')=COALESCE(%s,'')) "
+                    "   OR (name=%s AND city=%s) LIMIT 1",
+                    (f.name, f.address, f.name, f.city),
+                )
+                r = cur.fetchone()
+                facility_ids.append((f, r[0] if r else None))
     conn.commit()
 
-    for f in facilities:
-        if not f.contacts:
+    for f, fid in facility_ids:
+        if not f.contacts or fid is None:
             continue
-        cur.execute(
-            "SELECT id FROM prospect_facilities WHERE name=%s AND city=%s", (f.name, f.city)
-        )
-        frow = cur.fetchone()
-        if not frow:
-            continue
-        fid = frow[0]
         for c in f.contacts:
             cur.execute(
                 """
@@ -1900,7 +1995,20 @@ def main() -> None:
         default=500,
         help="Max Serper queries to spend on contact probing (default 500)",
     )
+    parser.add_argument(
+        "--reprobe-generic",
+        action="store_true",
+        help=(
+            "Re-enrich facilities whose existing contacts lack a name "
+            "(generic emails only — info@, sales@). Mutually exclusive with "
+            "--enrich-only. Appends new named contacts; preserves existing."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.reprobe_generic and args.enrich_only:
+        log.error("--reprobe-generic and --enrich-only are mutually exclusive")
+        sys.exit(2)
 
     serper_key = os.environ.get("SERPER_API_KEY", "")
     db_url = os.environ.get("NEON_DATABASE_URL", "")
@@ -1977,6 +2085,15 @@ def main() -> None:
         conn.close()
         log.info("Loaded %d facilities needing contact enrichment", len(fac_list))
 
+        pre_filter = len(fac_list)
+        fac_list = [f for f in fac_list if not _is_directory_listing(f.website)]
+        if pre_filter != len(fac_list):
+            log.info(
+                "Filtered out %d directory-listing rows — %d real candidates remain",
+                pre_filter - len(fac_list),
+                len(fac_list),
+            )
+
         if not fac_list:
             log.info("Nothing to enrich — all facilities already have contacts.")
             return
@@ -2012,6 +2129,97 @@ def main() -> None:
 
         write_report(fac_list, report_path, hs_stats)
         log.info("Enrichment run complete — report at %s", report_path)
+        return
+
+    if args.reprobe_generic:
+        log.info(
+            "--reprobe-generic: loading facilities whose contacts lack a name"
+        )
+        if not db_url:
+            log.error("NEON_DATABASE_URL required for --reprobe-generic")
+            sys.exit(1)
+        import psycopg2
+
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT f.name, f.city, f.phone, f.website, f.category,
+                   f.distance_miles, f.icp_score, f.notes, f.address
+            FROM prospect_facilities f
+            WHERE f.website IS NOT NULL AND f.website <> ''
+              AND NOT EXISTS (
+                  SELECT 1 FROM prospect_contacts c
+                  WHERE c.facility_id = f.id
+                    AND c.name IS NOT NULL
+                    AND c.name <> ''
+              )
+            ORDER BY f.icp_score DESC
+            """
+        )
+        fac_list = []
+        for row in cur.fetchall():
+            f = Facility(
+                name=row[0],
+                city=row[1],
+                phone=row[2] or "",
+                website=row[3] or "",
+                category=row[4] or "",
+                distance_miles=row[5] or 0,
+                icp_score=row[6] or 0,
+                notes=row[7] or "",
+                address=row[8] or "",
+            )
+            fac_list.append(f)
+        conn.close()
+        log.info(
+            "Loaded %d facilities with no named contact (generic emails only)",
+            len(fac_list),
+        )
+
+        pre_filter = len(fac_list)
+        fac_list = [f for f in fac_list if not _is_directory_listing(f.website)]
+        if pre_filter != len(fac_list):
+            log.info(
+                "Filtered out %d directory-listing rows — %d real candidates remain",
+                pre_filter - len(fac_list),
+                len(fac_list),
+            )
+
+        if not fac_list:
+            log.info("Nothing to re-probe — every qualifying facility has a named contact.")
+            return
+
+        if args.dry_run:
+            log.info(
+                "--dry-run: would re-probe %d facilities (Serper budget %d, est ~%d queries)",
+                len(fac_list),
+                args.enrich_budget,
+                min(len(fac_list) * 3, args.enrich_budget),
+            )
+            log.info("--dry-run: would upsert %d rows to NeonDB", len(fac_list))
+            if args.push_hubspot:
+                log.info("--dry-run: would push enriched contacts to HubSpot")
+            return
+
+        enrich_facilities(fac_list, serper_key, budget=args.enrich_budget)
+
+        inserted = upsert_facilities(fac_list, db_url)
+        log.info("DB: %d new, %d updated", inserted, len(fac_list) - inserted)
+
+        hs_stats: Optional[dict] = None
+        if args.push_hubspot and hs_token:
+            log.info("=== HUBSPOT PUSH ===")
+            hs_stats = push_to_hubspot(fac_list, hs_token)
+            if hs_stats is None or hs_stats.get("errors", 0) == hs_stats.get("_total_attempted", 1):
+                log.info("HubSpot auth failed — writing CSV fallback")
+                write_hubspot_csv(fac_list, hs_csv_path)
+        elif args.push_hubspot:
+            log.info("No HUBSPOT_API_KEY — writing CSV fallback")
+            write_hubspot_csv(fac_list, hs_csv_path)
+
+        write_report(fac_list, report_path, hs_stats)
+        log.info("Re-probe run complete — report at %s", report_path)
         return
 
     if db_url and not args.dry_run:

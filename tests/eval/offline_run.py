@@ -84,6 +84,7 @@ logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(mes
 
 _FIXTURES_DIR = Path(__file__).parent / "fixtures"
 _PHOTOS_FIXTURES_DIR = _FIXTURES_DIR / "photos"
+_AUTO_FIXTURES_DIR = _FIXTURES_DIR / "auto"
 _RUNS_DIR = Path(__file__).parent / "runs"
 
 # ── Fixture loaders ───────────────────────────────────────────────────────────
@@ -121,6 +122,28 @@ def _load_photo_fixtures() -> list[dict]:
             continue
         fixture["_path"] = str(path)
         fixture["_is_photo"] = True
+        fixtures.append(fixture)
+    return fixtures
+
+
+def _load_auto_fixtures() -> list[dict]:
+    """Load auto-generated session fixtures from fixtures/auto/*.yaml.
+
+    These carry regression_guard=True and min_acceptable_score — failing the
+    standard grader checkpoints here means a regression in a real conversation.
+    """
+    if not _AUTO_FIXTURES_DIR.exists():
+        return []
+    fixtures = []
+    for path in sorted(_AUTO_FIXTURES_DIR.glob("*.yaml")):
+        if path.name.startswith("."):
+            continue
+        with open(path) as f:
+            fixture = yaml.safe_load(f)
+        if not isinstance(fixture, dict) or "id" not in fixture:
+            continue
+        fixture["_path"] = str(path)
+        fixture["_is_auto"] = True
         fixtures.append(fixture)
     return fixtures
 
@@ -563,9 +586,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--suite",
-        choices=["text", "photos", "full"],
+        choices=["text", "photos", "full", "auto"],
         default="text",
-        help="Fixture suite to run (default: text)",
+        help="Fixture suite to run (default: text). 'auto' runs session-recorder fixtures.",
     )
     p.add_argument(
         "--judge",
@@ -653,6 +676,11 @@ async def _async_main(args: argparse.Namespace) -> int:
         _print_info(f"Loaded {len(photo_fixtures)} photo fixtures")
         fixtures.extend(photo_fixtures)
 
+    if suite == "auto":
+        auto_fixtures = _load_auto_fixtures()
+        _print_info(f"Loaded {len(auto_fixtures)} auto (session-recorder) fixtures")
+        fixtures.extend(auto_fixtures)
+
     if not fixtures:
         _print_error("No fixtures found — check fixtures/ directory")
         return 1
@@ -680,6 +708,19 @@ async def _async_main(args: argparse.Namespace) -> int:
     _print_final_summary(grades, judge_results, total_seconds, scorecard_path)
 
     failures = sum(1 for g in grades if not g.passed)
+
+    # Regression guard: auto-fixtures with regression_guard=True must pass all checkpoints.
+    # A failure here means a real conversation regressed versus the version that created it.
+    if suite == "auto":
+        regression_failures = [
+            g for g in grades if not g.passed and getattr(g, "fixture", {}).get("regression_guard")
+        ]
+        if regression_failures:
+            _print_error(
+                f"REGRESSION DETECTED — {len(regression_failures)} auto-fixture(s) failed "
+                f"that previously passed. Review: {[g.scenario_id for g in regression_failures]}"
+            )
+
     return 1 if failures else 0
 
 

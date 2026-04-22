@@ -53,7 +53,45 @@ SAFETY_KEYWORDS = [
     # Temporal live-work phrases — Karpathy loop finding 2026-04-19
     "was live",
     "while live",
+    # Power isolation variants missed in forensic 2026-04-14 session (BUG-FORENSIC-003)
+    "isolate power",
+    "which cable to pull",
+    "which wire to pull",
+    "pull the cable",
+    "cut the power",
+    "cut power",
+    "disconnect power",
+    "disconnect the power",
 ]
+
+# Phrases that describe an *active*, observable hazard — never educational.
+# These bypass the educational-framing check that normally lets "how do I
+# perform LOTO" or "what is arc flash" route to RAG instead of SAFETY_ALERT.
+SAFETY_KEYWORDS_IMMEDIATE = frozenset(
+    [
+        # Physical observations (reporting, not asking)
+        "exposed wire",
+        "visible smoke",
+        "smoke from",
+        "burn mark",
+        "melted insulation",
+        "electrical fire",
+        "live wire",
+        "live circuit",
+        "live panel",
+        "was live",
+        "while live",
+        # Active isolation attempts — technician is about to act on live equipment
+        "which cable to pull",
+        "which wire to pull",
+        "pull the cable",
+        "cut the power",
+        "cut power",
+        "disconnect power",
+        "disconnect the power",
+        "isolate power",
+    ]
+)
 
 INTENT_KEYWORDS = {
     # Fault & alarm terms
@@ -687,10 +725,16 @@ def classify_intent(message: str) -> str:
     msg = strip_mentions(message).lower().strip()
     msg_expanded = expand_abbreviations(msg)
 
-    # Safety short-circuit: only fires for active hazard reports, not educational
-    # questions about safety concepts.  Educational framing ("what is arc flash",
-    # "how do I perform LOTO", "the restricted approach boundary is defined as")
-    # routes to industrial so RAG can provide real procedure information.
+    # Safety short-circuit: two tiers.
+    # Tier 1 — IMMEDIATE: physical hazard observations and active live-work actions.
+    # These always escalate regardless of educational framing — "which cable to pull"
+    # is never a conceptual question.
+    if any(kw in msg for kw in SAFETY_KEYWORDS_IMMEDIATE):
+        return "safety"
+
+    # Tier 2 — STANDARD: safety concepts where educational framing routes to RAG.
+    # "how do I perform LOTO" and "what is arc flash" go to industrial so RAG
+    # can provide real procedure information rather than a boilerplate STOP message.
     if any(kw in msg for kw in SAFETY_KEYWORDS):
         if not _EDUCATIONAL_QUESTION_RE.match(msg):
             return "safety"
