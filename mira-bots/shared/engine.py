@@ -117,6 +117,34 @@ _VISION_PROSE_PREFIX_RE = re.compile(
     r"(?:the image shows\s+(?:a |an |the )?)",
     re.IGNORECASE,
 )
+# Strips "physical-object bridge" phrases that vision models emit before the
+# actual equipment name, e.g. "table with specifications for an",
+# "nameplate showing a", "label for the", "chart of a".
+_VISION_PROSE_BRIDGE_RE = re.compile(
+    r"^(?:weathered\s+|corroded\s+|rusty\s+|close[- ]up\s+(?:of\s+|view\s+of\s+)?)?"
+    r"(?:metal\s+|aluminum\s+|plastic\s+)?"
+    r"(?:plate|label|nameplate|tag|sticker|sign|table|chart|sheet|display|page|image|photo)"
+    r"[^.]*?"
+    r"(?:with\s+(?:a\s+)?(?:specifications?|label|info(?:rmation)?|data)\s+(?:for|of)"
+    r"|specifications?\s+for"
+    r"|for|of|showing|displaying)"
+    r"\s+(?:a\s+|an\s+|the\s+)?",
+    re.IGNORECASE,
+)
+
+
+def _clean_asset_name(raw: str) -> str:
+    """Strip vision-model prose from an asset name string.
+
+    Applies the prefix regex, then the bridge regex, then returns the
+    first sentence of whatever remains.  Falls back to raw[:120] if
+    stripping leaves nothing.
+    """
+    text = _VISION_PROSE_PREFIX_RE.sub("", raw.strip()).lstrip()
+    text = _VISION_PROSE_BRIDGE_RE.sub("", text).lstrip()
+    first = text.split(".")[0].strip()
+    return (first or raw)[:120]
+
 
 STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
 # ---------------------------------------------------------------------------
@@ -809,27 +837,7 @@ class Supervisor:
             # reads "a weathered metal plate with a label for a TECO…" → "a TECO
             # 3-PHASE INDUCTION MOTOR" (or cleaner).
             full_vision = str(vision_data["vision_result"])
-            # Strip "The image shows a " / "I can see this is " prefix only —
-            # keep the description of the equipment itself so asset_identified
-            # stays useful ("TECO 3-PHASE INDUCTION MOTOR", not empty).
-            scrubbed = _VISION_PROSE_PREFIX_RE.sub("", full_vision).lstrip()
-            # Also strip physical-object meta ("weathered metal plate with a
-            # label for a ...") so we land on the equipment itself.
-            scrubbed = re.sub(
-                r"^(weathered |corroded |rusty |close[- ]up (of |view of )?"
-                r"|photo of |picture of |view of )?"
-                r"(metal |aluminum |plastic )?"
-                r"(plate|label|nameplate|tag|sticker|sign)[^.]*?"
-                r"(?:with (?:a )?label (?:for|of) (?:a |an |the )?"
-                r"|for (?:a |an |the )|of (?:a |an |the )|showing (?:a |an |the ))",
-                "",
-                scrubbed,
-                flags=re.IGNORECASE,
-            ).lstrip()
-            first_sentence = scrubbed.split(".")[0].strip()
-            state["asset_identified"] = (
-                first_sentence[:120] if first_sentence else full_vision[:120]
-            )
+            state["asset_identified"] = _clean_asset_name(full_vision)
 
             # Save photo to disk for follow-up turns
             self._save_session_photo(chat_id, photo_b64)
