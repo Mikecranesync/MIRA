@@ -1057,17 +1057,31 @@ class Supervisor:
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, "IDLE")
 
+        # Eagerly populate asset_identified from message text when starting fresh
+        # so later turns (including doc intents) can resolve vendor+model from state.
+        if not photo_b64 and not state.get("asset_identified") and state.get("state", "IDLE") == "IDLE":
+            _early_vendor = vendor_name_from_text(message)
+            _early_model = _looks_like_model_number(message)
+            if _early_vendor:
+                state["asset_identified"] = f"{_early_vendor}, {_early_model}" if _early_model else _early_vendor
+                self._save_state(chat_id, state)
+
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
         if not photo_b64 and intent == "documentation":
             combined = f"{message} {state.get('asset_identified', '')}".strip()
             mfr = vendor_name_from_text(combined) or ""
+            _doc_fsm = state.get("state", "IDLE")
+            _doc_in_active_session = _doc_fsm not in ("IDLE", "RESOLVED", "")
 
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
+            # Mid-session bypass: if vendor is already known from an active diagnostic
+            # session, skip gathering and attempt the lookup with what we have.
             if not self._is_doc_specific(mfr, combined):
-                return await self._enter_manual_lookup_gathering(
-                    chat_id, message, state, trace_id, mfr
-                )
+                if not (mfr and _doc_in_active_session):
+                    return await self._enter_manual_lookup_gathering(
+                        chat_id, message, state, trace_id, mfr
+                    )
 
             # Specific enough — Phase 2 KB pre-check + crawl
             return await self._do_documentation_lookup(
@@ -2490,6 +2504,12 @@ class Supervisor:
         combined = " ".join(filter(None, [vendor_override, model_override, message, asset])).strip()
         mfr = vendor_override or vendor_name_from_text(combined) or ""
         url = vendor_support_url(combined)
+
+        # Persist vendor+model into state so follow-up turns can resolve specificity.
+        if mfr and not state.get("asset_identified"):
+            model_tok = model_override or _looks_like_model_number(combined) or ""
+            state["asset_identified"] = f"{mfr}, {model_tok}" if model_tok else mfr
+            self._save_state(chat_id, state)
 
         # Phase 2 — KB pre-check: skip crawl when we already have coverage.
         kb_covered, kb_reason = kb_has_coverage(mfr, combined, resolved_tenant or "")
