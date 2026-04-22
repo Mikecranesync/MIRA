@@ -1955,7 +1955,20 @@ def main() -> None:
         default=500,
         help="Max Serper queries to spend on contact probing (default 500)",
     )
+    parser.add_argument(
+        "--reprobe-generic",
+        action="store_true",
+        help=(
+            "Re-enrich facilities whose existing contacts lack a name "
+            "(generic emails only — info@, sales@). Mutually exclusive with "
+            "--enrich-only. Appends new named contacts; preserves existing."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.reprobe_generic and args.enrich_only:
+        log.error("--reprobe-generic and --enrich-only are mutually exclusive")
+        sys.exit(2)
 
     serper_key = os.environ.get("SERPER_API_KEY", "")
     db_url = os.environ.get("NEON_DATABASE_URL", "")
@@ -2076,6 +2089,97 @@ def main() -> None:
 
         write_report(fac_list, report_path, hs_stats)
         log.info("Enrichment run complete — report at %s", report_path)
+        return
+
+    if args.reprobe_generic:
+        log.info(
+            "--reprobe-generic: loading facilities whose contacts lack a name"
+        )
+        if not db_url:
+            log.error("NEON_DATABASE_URL required for --reprobe-generic")
+            sys.exit(1)
+        import psycopg2
+
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT f.name, f.city, f.phone, f.website, f.category,
+                   f.distance_miles, f.icp_score, f.notes, f.address
+            FROM prospect_facilities f
+            WHERE f.website IS NOT NULL AND f.website <> ''
+              AND NOT EXISTS (
+                  SELECT 1 FROM prospect_contacts c
+                  WHERE c.facility_id = f.id
+                    AND c.name IS NOT NULL
+                    AND c.name <> ''
+              )
+            ORDER BY f.icp_score DESC
+            """
+        )
+        fac_list = []
+        for row in cur.fetchall():
+            f = Facility(
+                name=row[0],
+                city=row[1],
+                phone=row[2] or "",
+                website=row[3] or "",
+                category=row[4] or "",
+                distance_miles=row[5] or 0,
+                icp_score=row[6] or 0,
+                notes=row[7] or "",
+                address=row[8] or "",
+            )
+            fac_list.append(f)
+        conn.close()
+        log.info(
+            "Loaded %d facilities with no named contact (generic emails only)",
+            len(fac_list),
+        )
+
+        pre_filter = len(fac_list)
+        fac_list = [f for f in fac_list if not _is_directory_listing(f.website)]
+        if pre_filter != len(fac_list):
+            log.info(
+                "Filtered out %d directory-listing rows — %d real candidates remain",
+                pre_filter - len(fac_list),
+                len(fac_list),
+            )
+
+        if not fac_list:
+            log.info("Nothing to re-probe — every qualifying facility has a named contact.")
+            return
+
+        if args.dry_run:
+            log.info(
+                "--dry-run: would re-probe %d facilities (Serper budget %d, est ~%d queries)",
+                len(fac_list),
+                args.enrich_budget,
+                min(len(fac_list) * 3, args.enrich_budget),
+            )
+            log.info("--dry-run: would upsert %d rows to NeonDB", len(fac_list))
+            if args.push_hubspot:
+                log.info("--dry-run: would push enriched contacts to HubSpot")
+            return
+
+        enrich_facilities(fac_list, serper_key, budget=args.enrich_budget)
+
+        inserted = upsert_facilities(fac_list, db_url)
+        log.info("DB: %d new, %d updated", inserted, len(fac_list) - inserted)
+
+        hs_stats: Optional[dict] = None
+        if args.push_hubspot and hs_token:
+            log.info("=== HUBSPOT PUSH ===")
+            hs_stats = push_to_hubspot(fac_list, hs_token)
+            if hs_stats is None or hs_stats.get("errors", 0) == hs_stats.get("_total_attempted", 1):
+                log.info("HubSpot auth failed — writing CSV fallback")
+                write_hubspot_csv(fac_list, hs_csv_path)
+        elif args.push_hubspot:
+            log.info("No HUBSPOT_API_KEY — writing CSV fallback")
+            write_hubspot_csv(fac_list, hs_csv_path)
+
+        write_report(fac_list, report_path, hs_stats)
+        log.info("Re-probe run complete — report at %s", report_path)
         return
 
     if db_url and not args.dry_run:
