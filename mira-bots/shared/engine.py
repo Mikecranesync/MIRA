@@ -422,7 +422,7 @@ class Supervisor:
             tenant_id=tenant_id,
         )
         self.print_ = PrintWorker(openwebui_url, api_key)
-        self.plc = PLCWorker()
+        self.plc = PLCWorker() if os.getenv("MIRA_PLC_ENABLED", "").lower() in ("1", "true", "yes") else None
 
         self._ensure_table()
 
