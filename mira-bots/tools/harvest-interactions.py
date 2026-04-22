@@ -47,6 +47,10 @@ OUTPUT_DIR = SCRIPT_DIR / "output"
 DB_PATH = os.getenv(
     "MIRA_DB_PATH", str(SCRIPT_DIR.parent.parent / "mira-bridge" / "data" / "mira.db")
 )
+# Minimum turns in a session before it is included in quality analysis.
+# Default 1 so even single-turn sessions (e.g. first turn after container
+# restart) are scored. Raise via HARVEST_MIN_TURNS env var if needed.
+MIN_TURNS: int = int(os.getenv("HARVEST_MIN_TURNS", "1"))
 
 RESET_PHRASES = [
     "i help maintenance technicians",
@@ -358,7 +362,7 @@ def main():
         write_quality_flags([], [], output_dir)
         return
 
-    sessions = group_sessions(interactions)
+    sessions = [s for s in group_sessions(interactions) if len(s) >= MIN_TURNS]
     all_flags = []
     for session in sessions:
         all_flags.extend(flag_session(session))
