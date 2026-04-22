@@ -50,9 +50,7 @@ class PromptOptimizerAgent(MIRAAgent):
             logger.info("PROMPT_OPT skip: runs dir %s not found", RUNS_DIR)
             return []
 
-        scorecards = sorted(
-            RUNS_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True
-        )
+        scorecards = sorted(RUNS_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
         if not scorecards:
             logger.info("PROMPT_OPT skip: no scorecard .md files found")
             return []
@@ -89,9 +87,7 @@ class PromptOptimizerAgent(MIRAAgent):
                     )
                 )
 
-        logger.info(
-            "PROMPT_OPT scorecard=%s failure_clusters=%d", latest.name, len(issues)
-        )
+        logger.info("PROMPT_OPT scorecard=%s failure_clusters=%d", latest.name, len(issues))
         return issues
 
     async def act(self, issue: AgentIssue) -> AgentResult:

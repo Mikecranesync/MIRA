@@ -141,9 +141,7 @@ class MIRAAgent(ABC):
 
             for issue in issues:
                 try:
-                    result = await asyncio.wait_for(
-                        self.act(issue), timeout=self.timeout_seconds
-                    )
+                    result = await asyncio.wait_for(self.act(issue), timeout=self.timeout_seconds)
                     report.actions_taken += 1
 
                     verified = await asyncio.wait_for(self.verify(result), timeout=60)

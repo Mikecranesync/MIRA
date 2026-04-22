@@ -549,6 +549,7 @@ def insert_manual_cache_url(
 
 # ── Session analysis (written by tests/eval/analyze_sessions.py) ──────────────
 
+
 def ensure_session_analyses_table() -> None:
     """Additive migration: create session_analyses table for analyzer results."""
     statements = [
@@ -578,6 +579,7 @@ def ensure_session_analyses_table() -> None:
             conn.commit()
     except Exception as exc:
         import logging
+
         logging.getLogger("mira-ingest").warning(
             "session_analyses table migration failed (non-fatal): %s", exc
         )

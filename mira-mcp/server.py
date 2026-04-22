@@ -611,7 +611,6 @@ async def get_agent_status() -> dict:
 
 
 if __name__ == "__main__":
-
     import uvicorn
     from starlette.applications import Starlette
     from starlette.routing import Route
