@@ -201,12 +201,14 @@ def build_uns_wo_from_state(state: dict) -> UNSWorkOrder:
     asset_raw = (state.get("asset_identified") or "").strip()
     fault = (state.get("fault_category") or "corrective").strip()
 
-    # Build fault_description from session_context or history
+    # Build fault_description from session_context or the initial user report.
+    # Use only the FIRST user message (the original fault report) — not the full
+    # history, which would concatenate unrelated exchanges into the Fault field.
     fault_desc = sc.get("symptom_summary", "")
     if not fault_desc:
         history = ctx.get("history", [])
-        user_turns = [t.get("content", "")[:300] for t in history[-8:] if t.get("role") == "user"]
-        fault_desc = " | ".join(filter(None, user_turns))[:500]
+        first_user = next((t.get("content", "") for t in history if t.get("role") == "user"), "")
+        fault_desc = first_user[:500]
 
     # Resolution from session_context or last assistant turn
     resolution = sc.get("diagnosis_summary", "")
