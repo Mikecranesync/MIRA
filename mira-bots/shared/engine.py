@@ -722,6 +722,14 @@ class Supervisor:
                         expanded,
                     )
                     message = f"[User selected option {_sel_num}: {expanded}]"
+                    # Persist the selected alarm as the active investigation anchor.
+                    # This is injected into the system prompt on every subsequent call so
+                    # the LLM cannot drift back to other alarms listed in early history.
+                    _active = expanded.split(" — ")[0].strip()  # strip elaboration suffix
+                    sc["active_alarm"] = _active
+                    ctx = state.get("context") or {}
+                    ctx["session_context"] = {**ctx.get("session_context", {}), "active_alarm": _active}
+                    state["context"] = ctx
 
             # Session follow-up detection: now runs on the already-expanded message.
             if detect_session_followup(message, sc, state["state"]):
@@ -975,6 +983,13 @@ class Supervisor:
                 "ELECTRICAL_PRINT",
             )
 
+        # Preserve original user caption before any auto-diagnose synthetic injection.
+        # The synthetic message (injected below for photo fault detection) must go to
+        # the RAG worker for search, but history should store what the HUMAN actually
+        # sent — not the engine-generated brief the LLM would otherwise "remember" as
+        # the user's words.
+        _original_user_message: str | None = None
+
         # Photo with no specific intent → check for visible fault indicators first
         # (Skip for photo-as-answer: active session photos go straight to RAG)
         if (
@@ -1018,6 +1033,11 @@ class Supervisor:
                 fault_summary = (
                     ", ".join(fault_items[:5]) if fault_items else "fault indicator visible"
                 )
+                # Save the human's original caption BEFORE replacing message with the
+                # synthetic brief. history will store the caption; the RAG search uses
+                # the synthetic string. This prevents the LLM from reading the
+                # engine-generated analysis back as something the technician said.
+                _original_user_message = message or "[Photo]"
                 message = (
                     f"[Equipment photo: {asset}] "
                     f"Visible indicators: {fault_summary}. "
@@ -1183,9 +1203,29 @@ class Supervisor:
                 logger.warning("RECURRING_FAULT check failed: %s", _rfe)
 
         ctx = state.get("context") or {}
+
+        # Format reply BEFORE updating history so the LLM reads back what the user
+        # actually saw (numbered options appended) rather than the raw LLM output.
+        # Strip the Sources footer — citation noise degrades LLM context quality.
+        formatted = self._format_reply(parsed, user_message=message)
+        # Phase 3 — prepend honest crawl-failure message if a prior doc-crawl exhausted.
+        if _honest_prefix:
+            formatted = _honest_prefix + formatted
+        _history_reply = formatted.split("\n\n--- Sources ---")[0].rstrip()
+
         history = ctx.get("history", [])
-        history.append({"role": "user", "content": message})
-        history.append({"role": "assistant", "content": parsed["reply"]})
+        if _original_user_message is not None:
+            # Photo auto-diagnose: store the human's caption, then inject OCR context
+            # as a system entry so the LLM has the analysis without attributing it to
+            # the technician.
+            history.append({"role": "user", "content": _original_user_message})
+            history.append({
+                "role": "system",
+                "content": f"[Photo analysis injected by MIRA: {message[:400]}]",
+            })
+        else:
+            history.append({"role": "user", "content": message})
+        history.append({"role": "assistant", "content": _history_reply})
         if len(history) > HISTORY_LIMIT:
             history = history[-HISTORY_LIMIT:]
         ctx["history"] = history
@@ -1193,7 +1233,7 @@ class Supervisor:
         # Update session_context with latest question so off-topic replies can recap
         sc = ctx.get("session_context", {})
         if sc:
-            sc["last_question"] = parsed["reply"][:200]
+            sc["last_question"] = _history_reply[:200]
             sc["last_options"] = _clean_option_list(parsed.get("options", []))
             ctx["session_context"] = sc
 
@@ -1206,11 +1246,6 @@ class Supervisor:
         state["context"] = ctx
 
         self._save_state(chat_id, state)
-
-        formatted = self._format_reply(parsed, user_message=message)
-        # Phase 3 — prepend honest crawl-failure message if a prior doc-crawl exhausted.
-        if _honest_prefix:
-            formatted = _honest_prefix + formatted
         tl_flush()
         return self._make_result(
             formatted,
@@ -1689,24 +1724,27 @@ class Supervisor:
         state = self._advance_state(state, parsed)
 
         ctx = state.get("context") or {}
+
+        formatted = self._format_reply(parsed, user_message=message)
+        if honest_prefix:
+            formatted = honest_prefix + formatted
+        _history_reply = formatted.split("\n\n--- Sources ---")[0].rstrip()
+
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
-        history.append({"role": "assistant", "content": parsed["reply"]})
+        history.append({"role": "assistant", "content": _history_reply})
         if len(history) > HISTORY_LIMIT:
             history = history[-HISTORY_LIMIT:]
         ctx["history"] = history
 
         sc = ctx.get("session_context", {})
         if sc:
-            sc["last_question"] = parsed["reply"][:200]
+            sc["last_question"] = _history_reply[:200]
             sc["last_options"] = _clean_option_list(parsed.get("options", []))
             ctx["session_context"] = sc
 
         state["context"] = ctx
         self._save_state(chat_id, state)
-        formatted = self._format_reply(parsed, user_message=message)
-        if honest_prefix:
-            formatted = honest_prefix + formatted
         return self._make_result(
             formatted,
             self._infer_confidence(formatted),

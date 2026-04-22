@@ -377,6 +377,13 @@ class RAGWorker:
             system_content += f"Asset identified: {state['asset_identified']}\n"
         if state.get("fault_category"):
             system_content += f"Fault category: {state['fault_category']}\n"
+        _sc = state.get("context", {}).get("session_context", {})
+        if _sc.get("active_alarm"):
+            system_content += (
+                f"ACTIVE INVESTIGATION: {_sc['active_alarm']}\n"
+                "Focus EXCLUSIVELY on this alarm. Do NOT discuss other alarms unless "
+                "the technician explicitly switches topic.\n"
+            )
 
         # Inject reranked chunks as reference context with source headers
         system_content += "\n--- RETRIEVED REFERENCE DOCUMENTS ---\n"
@@ -461,6 +468,13 @@ class RAGWorker:
             system_content += f"Asset identified: {state['asset_identified']}\n"
         if state.get("fault_category"):
             system_content += f"Fault category: {state['fault_category']}\n"
+        _sc = state.get("context", {}).get("session_context", {})
+        if _sc.get("active_alarm"):
+            system_content += (
+                f"ACTIVE INVESTIGATION: {_sc['active_alarm']}\n"
+                "Focus EXCLUSIVELY on this alarm. Do NOT discuss other alarms unless "
+                "the technician explicitly switches topic.\n"
+            )
 
         # Honesty directive: retrieval ran but found nothing relevant
         if no_kb_coverage:
