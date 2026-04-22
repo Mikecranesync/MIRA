@@ -57,12 +57,8 @@
 ## Open Issues (active)
 
 - **#383** — V1000 chunks backfill — ingest running (2923 chunks being embedded)
-- **#338** — atlas-api not running on VPS — tenant activation fails
-- **#335** — RESEND_API_KEY not in Doppler — welcome emails silently skipped
-- **#403** — 6 missing Rockwell publications (documentation gap)
-- ~~**#399**~~ — CLOSED 2026-04-22 (47/57 baseline established)
-- ~~**#474**~~ — CLOSED 2026-04-22 (cascade fix + eval 47/57)
-- ~~**#392**~~ — CLOSED 2026-04-22 (CD pipeline live)
+- **#403** — 6 missing Rockwell publications (documentation gap, needs manual download)
+- ~~**#338, #335, #377, #378, #399, #474, #392**~~ — all confirmed CLOSED as of 2026-04-22
 
 ## Key NeonDB Facts
 ```
