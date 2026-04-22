@@ -19,7 +19,7 @@ from .base import AgentIssue, AgentResult, MIRAAgent
 logger = logging.getLogger("mira-agents")
 
 NEON_DATABASE_URL = os.getenv("NEON_DATABASE_URL", "")
-INGEST_SERVICE_URL = os.getenv("INGEST_SERVICE_URL", "http://mira-ingest:8001")
+INGEST_SERVICE_URL = os.getenv("INGEST_SERVICE_URL", "http://localhost:8002")
 MIRA_TENANT_ID = os.getenv("MIRA_TENANT_ID", "")
 MIN_CHUNKS = int(os.getenv("KB_MIN_CHUNKS_PER_MFR", "5"))
 

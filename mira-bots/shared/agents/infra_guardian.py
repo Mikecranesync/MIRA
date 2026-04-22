@@ -39,7 +39,7 @@ _SERVICES: list[dict] = [
     {
         "name": "mira-core",
         "container": "mira-core-saas",
-        "health_url": "http://localhost:8080/health",
+        "health_url": "http://localhost:3010/health",  # host port 3010 → container 8080
         "severity": "high",
     },
     {
