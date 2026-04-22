@@ -54,6 +54,15 @@ from .workers.vision_worker import VisionWorker
 
 logger = logging.getLogger("mira-gsd")
 
+# Version string — read once at import time, used by session recorder
+_MIRA_VERSION: str = "unknown"
+try:
+    _MIRA_VERSION = (
+        __import__("pathlib").Path(__file__).parent.parent.parent / "VERSION"
+    ).read_text(encoding="utf-8").strip()
+except Exception:
+    pass
+
 # Confidence-inference keyword sets
 _HIGH_CONF_SIGNALS = re.compile(
     r"(replace|fault code|check wiring|the .+ is .+(failed|tripped|open|shorted|overloaded)"
@@ -369,6 +378,9 @@ class Supervisor:
         self.print_ = PrintWorker(openwebui_url, api_key)
         self.plc = PLCWorker()
 
+        # Per-chat_id recording buffer — thread-safe (each key is independent)
+        self._rec: dict[str, dict] = {}
+
         self._ensure_table()
 
     # ------------------------------------------------------------------
@@ -566,6 +578,21 @@ class Supervisor:
             response_time_ms=elapsed_ms,
             platform=platform,
         )
+        _rec_data = self._rec.pop(chat_id, {})
+        asyncio.ensure_future(self._record_session_turn(
+            chat_id=chat_id,
+            user_message=message,
+            assistant_response=result["reply"],
+            fsm_state_before=_rec_data.get("fsm_state_before", ""),
+            fsm_state_after=result.get("next_state", ""),
+            router_intent=_rec_data.get("intent"),
+            rag_chunks_count=len(getattr(self.rag, "_last_sources", [])),
+            rag_top_score=max(getattr(self.rag, "_last_distances", [0.0]), default=0.0),
+            latency_ms=elapsed_ms,
+            had_photo=bool(photo_b64),
+            safety_triggered=result.get("next_state") == "SAFETY_ALERT",
+            platform=platform,
+        ))
         return result["reply"]
 
     async def process_full(
@@ -590,6 +617,10 @@ class Supervisor:
         message = strip_mentions(message)
 
         state = self._load_state(chat_id)
+        self._rec[chat_id] = {
+            "fsm_state_before": state.get("state", "IDLE"),
+            "intent": None,
+        }
 
         # BUG-001: Reset command handler — must run before CMMS/PM checks so a stale
         # session can always be cleared. Matches slash commands and natural language.
@@ -706,6 +737,7 @@ class Supervisor:
             # LLM conversation router — determines what the user wants THIS turn.
             # Runs in parallel with the synchronous keyword classifier as a fast fallback.
             _keyword_intent = classify_intent(message)
+            self._rec.get(chat_id, {})["intent"] = _keyword_intent
 
             # Fast-path: skip the LLM router for active sessions with short or option
             # messages — these are almost always continue_current (answers to Q1/Q2/Q3
@@ -1442,6 +1474,26 @@ class Supervisor:
         db.commit()
         db.close()
         logger.warning("FEEDBACK [%s] feedback=%s reason=%r", chat_id, feedback, reason)
+        # Mirror negative feedback to session recording so analyzer flags this session
+        if feedback in ("bad", "negative", "thumbs_down"):
+            try:
+                from .analysis.session_recorder import record_feedback
+                record_feedback(chat_id, "negative", reason)
+            except Exception:
+                pass
+
+    async def _record_session_turn(self, **kwargs) -> None:
+        """Fire-and-forget: append one turn to session recording. Never raises."""
+        try:
+            from datetime import datetime, timezone
+            from .analysis.session_recorder import record_turn
+            record_turn({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "version": _MIRA_VERSION,
+                **kwargs,
+            })
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # State management
