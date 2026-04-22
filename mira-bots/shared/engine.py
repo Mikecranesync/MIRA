@@ -82,6 +82,29 @@ _PADDING_OPTION_RE = re.compile(
 # returned options without text (seen in prod session e4ced7d8 2026-04-14).
 _PLACEHOLDER_OPTION_RE = re.compile(r"^[\"']?\d+[.):\-]?[\"']?$")
 
+
+def _clean_option_list(options: list) -> list:
+    """Strip leading numbers and drop padding/placeholder options.
+
+    Applies the same filter logic as _format_reply so that last_options stored
+    in session_context always matches the numbered list the user actually saw.
+    Mismatches between raw LLM options and the rendered list cause off-by-one
+    selection errors when the user types "2".
+    """
+    cleaned: list[str] = []
+    for raw in options:
+        if raw is None:
+            continue
+        text = re.sub(r"^\s*\d+[.):\-]\s*", "", str(raw)).strip()
+        if len(text) <= 1:
+            continue
+        if _PLACEHOLDER_OPTION_RE.match(text):
+            continue
+        if _PADDING_OPTION_RE.match(text):
+            continue
+        cleaned.append(text)
+    return cleaned
+
 # Short affirmative/negative option patterns that render naturally inline
 # ("Reply: Yes or No") instead of as a numbered block.
 _YES_OPTION_RE = re.compile(
@@ -687,8 +710,18 @@ class Supervisor:
             if last_options:
                 expanded = resolve_option_selection(message, last_options)
                 if expanded:
-                    logger.info("Selection resolved: '%s' → '%s'", message, expanded)
-                    message = expanded
+                    # Extract selection number to give the LLM unambiguous context.
+                    # "2" alone is too easy for the LLM to misread as referencing
+                    # a number embedded in an alarm name (e.g. "Pump 2 Not In Auto").
+                    _sel_m = re.match(r"^\s*(?:option\s+)?(\d+)", message, re.IGNORECASE)
+                    _sel_num = int(_sel_m.group(1)) if _sel_m else 1
+                    logger.info(
+                        "Selection resolved: '%s' → option %d: '%s'",
+                        message,
+                        _sel_num,
+                        expanded,
+                    )
+                    message = f"[User selected option {_sel_num}: {expanded}]"
 
             # Session follow-up detection: now runs on the already-expanded message.
             if detect_session_followup(message, sc, state["state"]):
@@ -1161,7 +1194,7 @@ class Supervisor:
         sc = ctx.get("session_context", {})
         if sc:
             sc["last_question"] = parsed["reply"][:200]
-            sc["last_options"] = parsed.get("options", [])
+            sc["last_options"] = _clean_option_list(parsed.get("options", []))
             ctx["session_context"] = sc
 
         # Persist work-order draft so _handle_cmms_pending can use it next turn.
@@ -1666,7 +1699,7 @@ class Supervisor:
         sc = ctx.get("session_context", {})
         if sc:
             sc["last_question"] = parsed["reply"][:200]
-            sc["last_options"] = parsed.get("options", [])
+            sc["last_options"] = _clean_option_list(parsed.get("options", []))
             ctx["session_context"] = sc
 
         state["context"] = ctx
