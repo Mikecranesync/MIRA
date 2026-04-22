@@ -196,6 +196,7 @@ services:
       - INGEST_SERVICE_URL=http://mira-ingest-saas:8001
       - EVAL_RUNS_DIR=/eval-runs
       - SESSION_RECORDING_PATH=/data/sessions
+      - AGENT_LOG_DIR=/mira-db/agent-runs
     volumes:
       - /opt/mira/data:/mira-db
       - /opt/mira/data/mem0:/data/mem0
