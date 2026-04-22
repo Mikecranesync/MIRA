@@ -1336,6 +1336,64 @@ _TITLE_SNIPPET_RE = re.compile(
 )
 
 
+# Name-quality gate. The TITLE_SNIPPET regex above matches any capitalized
+# token sequence followed by a title, which lets noise through:
+#   "Apply to Utility Manager"   → looks like name "Apply to Utility"
+#   "from the Facility Manager"  → looks like name "from the Facility"
+#   "Pressure Washing Program GM"→ looks like name "Pressure Washing Program"
+# These were all observed in the 2026-04-22 Central Florida re-probe run.
+# _is_real_name filters them out so only actual person-names survive to the
+# DB and the report.
+
+_GENERIC_NAME_TOKENS = frozenset({
+    "info", "contact", "contact us", "team", "our team",
+    "staff", "support", "sales", "admin", "webmaster",
+})
+
+_NAME_STOPWORDS = frozenset({
+    # Verbs / CTAs that appear in search snippets and job listings
+    "apply", "visit", "call", "click", "contact", "view", "learn", "hiring",
+    "see", "find", "post", "posted", "hire", "meet", "read", "get",
+    # Prepositions / articles common in misread snippet prose
+    "from", "the", "our", "us", "here", "all", "by", "to",
+    # Adverbs / fillers common in CTAs
+    "now", "today", "more", "about",
+    # Role nouns — indicate the token is part of a title, not a name
+    "maintenance", "facilities", "plant", "operations", "manager", "director",
+    "supervisor", "engineer", "technician", "specialist", "program",
+    # Job-site / search-result boilerplate
+    "jobs", "job", "openings", "opening", "career", "careers",
+    "indeed", "glassdoor", "linkedin", "monster", "ziprecruiter",
+    # Service-description noise observed in snippets
+    "pressure", "washing",
+})
+
+
+def _is_real_name(value: str | None) -> bool:
+    """Return True iff value looks like a real person's name.
+
+    Rejects empties, generic tokens like "Info"/"Team", single-word strings,
+    all-caps strings (likely page headings), and multi-word strings that
+    contain a stopword (e.g. "Apply to Utility Manager" is not a person).
+    """
+    if not value:
+        return False
+    stripped = value.strip()
+    if not stripped:
+        return False
+    lower = stripped.lower()
+    if lower in _GENERIC_NAME_TOKENS:
+        return False
+    if stripped == stripped.upper() and any(c.isalpha() for c in stripped):
+        return False
+    tokens = stripped.split()
+    if len(tokens) < 2:
+        return False
+    if any(t.lower() in _NAME_STOPWORDS for t in tokens):
+        return False
+    return True
+
+
 def search_contacts_via_serper(
     company_name: str,
     domain: str,
@@ -1370,6 +1428,8 @@ def search_contacts_via_serper(
             for m in _TITLE_SNIPPET_RE.finditer(text):
                 name = m.group(1).strip()
                 title = m.group(2).strip().title()
+                if not _is_real_name(name):
+                    continue
                 key = name.lower()
                 if key in seen:
                     continue
