@@ -36,7 +36,9 @@ class SessionAnalyzer:
     def __init__(self) -> None:
         import sys
 
-        sys.path.insert(0, str(_REPO_ROOT))
+        # Append (not insert at 0) — prevents mira-bots/email/ from shadowing stdlib email
+        if str(_REPO_ROOT) not in sys.path:
+            sys.path.append(str(_REPO_ROOT))
         from tests.eval.judge import Judge  # type: ignore[import]
 
         self._judge = Judge()
@@ -89,7 +91,8 @@ class SessionAnalyzer:
         try:
             import sys
 
-            sys.path.insert(0, str(_REPO_ROOT / "mira-bots"))
+            if str(_REPO_ROOT / "mira-bots") not in sys.path:
+                sys.path.append(str(_REPO_ROOT / "mira-bots"))
             from shared.guardrails import SAFETY_KEYWORDS
         except ImportError:
             return 1.0  # can't check — don't penalize
@@ -225,7 +228,8 @@ class SessionAnalyzer:
             import asyncio
             import sys
 
-            sys.path.insert(0, str(_REPO_ROOT / "mira-bots"))
+            if str(_REPO_ROOT / "mira-bots") not in sys.path:
+                sys.path.append(str(_REPO_ROOT / "mira-bots"))
             from shared.notifications.push import send_push
 
             worst = min(grades, key=grades.get) if grades else "unknown"
@@ -302,7 +306,8 @@ class SessionAnalyzer:
         try:
             import sys
 
-            sys.path.insert(0, str(_REPO_ROOT / "mira-core" / "mira-ingest"))
+            if str(_REPO_ROOT / "mira-core" / "mira-ingest") not in sys.path:
+                sys.path.append(str(_REPO_ROOT / "mira-core" / "mira-ingest"))
             from db.neon import write_session_analysis  # type: ignore[import]
 
             chat_hash = hashlib.sha256(chat_id.encode()).hexdigest()[:12]

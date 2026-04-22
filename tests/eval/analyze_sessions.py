@@ -27,7 +27,10 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
-sys.path.insert(0, str(_REPO_ROOT / "mira-bots"))
+# Append (not insert) so stdlib modules like `email` take precedence over
+# mira-bots/email/__init__.py, which shadows the stdlib when at sys.path[0].
+if str(_REPO_ROOT / "mira-bots") not in sys.path:
+    sys.path.append(str(_REPO_ROOT / "mira-bots"))
 
 logging.basicConfig(
     level=logging.INFO,
