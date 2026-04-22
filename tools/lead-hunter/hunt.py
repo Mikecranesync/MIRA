@@ -1536,11 +1536,15 @@ def upsert_facilities(facilities: list[Facility], db_url: str) -> int:
         existing = cur.fetchone()
         if existing:
             fid = existing[0]
+            # Don't update identity fields (name, address, city). If the DB
+            # has multiple rows sharing a name (e.g. two "Peace River Citrus
+            # Products" rows at different addresses), updating one's city to
+            # match another would collide on idx_prospects_name_city or
+            # prospect_facilities_name_address_key. Identity stays whatever
+            # the existing row already had; we just merge the data fields.
             cur.execute(
                 """
                 UPDATE prospect_facilities SET
-                    address        = COALESCE(NULLIF(%s,''), address),
-                    city           = COALESCE(NULLIF(%s,''), city),
                     state          = COALESCE(NULLIF(%s,''), state),
                     zip            = COALESCE(NULLIF(%s,''), zip),
                     phone          = COALESCE(NULLIF(%s,''), phone),
@@ -1555,7 +1559,7 @@ def upsert_facilities(facilities: list[Facility], db_url: str) -> int:
                 WHERE id = %s
                 """,
                 (
-                    f.address, f.city, f.state, f.zip_code, f.phone, f.website,
+                    f.state, f.zip_code, f.phone, f.website,
                     f.category, f.rating, f.review_count, f.distance_miles,
                     f.icp_score, f.notes, fid,
                 ),
