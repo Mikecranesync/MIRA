@@ -13,7 +13,9 @@ from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
 from telegram import Update
 from telegram.constants import ChatAction
+from telegram.error import Conflict
 from telegram.ext import (
+    Application,
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
@@ -547,8 +549,30 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def _startup(application: Application) -> None:
+    """Clear any competing webhook/poller and verify bot identity before polling."""
+    try:
+        await application.bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Webhook cleared (drop_pending_updates=True)")
+    except Exception as exc:
+        logger.warning("delete_webhook failed: %s", exc)
+
+    try:
+        me = await application.bot.get_me()
+        logger.info("Bot identity confirmed: @%s (id=%s)", me.username, me.id)
+    except Conflict as exc:
+        logger.error(
+            "409 Conflict on getMe — another process is already polling with this token. "
+            "To fix: SSH to every node and run: "
+            "pkill -f 'python bot.py' || docker stop mira-bot-telegram. "
+            "Then restart this container. Error: %s",
+            exc,
+        )
+        raise SystemExit(1) from exc
+
+
 def main():
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(_startup).build()
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))
     app.add_handler(CommandHandler("status", status_command))
@@ -559,8 +583,8 @@ def main():
     app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    logger.info("MIRA Telegram bot started (polling)")
-    app.run_polling()
+    logger.info("MIRA Telegram bot starting (polling)")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
