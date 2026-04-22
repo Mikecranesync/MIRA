@@ -593,8 +593,18 @@ class Supervisor:
 
         # BUG-001: Reset command handler — must run before CMMS/PM checks so a stale
         # session can always be cleared. Matches slash commands and natural language.
-        _RESET_COMMANDS = {"/new", "/reset", "/start", "new", "reset", "start over",
-                           "new session", "new chat", "start fresh", "clear session"}
+        _RESET_COMMANDS = {
+            "/new",
+            "/reset",
+            "/start",
+            "new",
+            "reset",
+            "start over",
+            "new session",
+            "new chat",
+            "start fresh",
+            "clear session",
+        }
         if message.strip().lower() in _RESET_COMMANDS:
             self.reset(chat_id)
             reply = (
@@ -608,13 +618,16 @@ class Supervisor:
         # A technician returning the next day to a stale Q-state context gets a clean slate.
         if state.get("updated_at") and state.get("state", "IDLE") not in ("IDLE", "RESOLVED"):
             import datetime as _dt
+
             try:
                 _updated = _dt.datetime.fromisoformat(state["updated_at"])
                 _idle_hours = (_dt.datetime.utcnow() - _updated).total_seconds() / 3600
                 if _idle_hours > 24:
                     logger.info(
                         "STALE_SESSION_RESET chat_id=%s idle_hours=%.1f prior_state=%s",
-                        chat_id, _idle_hours, state["state"],
+                        chat_id,
+                        _idle_hours,
+                        state["state"],
                     )
                     self.reset(chat_id)
                     state = self._load_state(chat_id)
@@ -707,7 +720,9 @@ class Supervisor:
                 _router_intent = "continue_current"
                 logger.info(
                     "ROUTER_FAST_PATH chat_id=%s state=%s msg_len=%d",
-                    chat_id, _fsm_state, len(message.strip()),
+                    chat_id,
+                    _fsm_state,
+                    len(message.strip()),
                 )
             else:
                 try:
@@ -2635,6 +2650,7 @@ class Supervisor:
     def _strip_memory_block(message: str) -> str:
         """Remove injected [MIRA MEMORY...END MEMORY] prefix before storing to history."""
         import re as _re
+
         return _re.sub(
             r"^\[MIRA MEMORY[^\]]*\].*?\[END MEMORY\]\s*\n*",
             "",

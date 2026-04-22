@@ -67,29 +67,31 @@ SAFETY_KEYWORDS = [
 # Phrases that describe an *active*, observable hazard — never educational.
 # These bypass the educational-framing check that normally lets "how do I
 # perform LOTO" or "what is arc flash" route to RAG instead of SAFETY_ALERT.
-SAFETY_KEYWORDS_IMMEDIATE = frozenset([
-    # Physical observations (reporting, not asking)
-    "exposed wire",
-    "visible smoke",
-    "smoke from",
-    "burn mark",
-    "melted insulation",
-    "electrical fire",
-    "live wire",
-    "live circuit",
-    "live panel",
-    "was live",
-    "while live",
-    # Active isolation attempts — technician is about to act on live equipment
-    "which cable to pull",
-    "which wire to pull",
-    "pull the cable",
-    "cut the power",
-    "cut power",
-    "disconnect power",
-    "disconnect the power",
-    "isolate power",
-])
+SAFETY_KEYWORDS_IMMEDIATE = frozenset(
+    [
+        # Physical observations (reporting, not asking)
+        "exposed wire",
+        "visible smoke",
+        "smoke from",
+        "burn mark",
+        "melted insulation",
+        "electrical fire",
+        "live wire",
+        "live circuit",
+        "live panel",
+        "was live",
+        "while live",
+        # Active isolation attempts — technician is about to act on live equipment
+        "which cable to pull",
+        "which wire to pull",
+        "pull the cable",
+        "cut the power",
+        "cut power",
+        "disconnect power",
+        "disconnect the power",
+        "isolate power",
+    ]
+)
 
 INTENT_KEYWORDS = {
     # Fault & alarm terms
