@@ -303,8 +303,12 @@ class InferenceRouter:
             except _ProviderSkip:
                 continue
 
-        if last_error:
-            logger.warning("All providers exhausted — last error: %s", last_error)
+        logger.warning(
+            "All providers exhausted — cascade returned empty (providers=%s, last_error=%s). "
+            "Check API keys in Doppler and INFERENCE_BACKEND env var.",
+            [p.name for p in self.providers],
+            last_error,
+        )
         return "", last_error
 
     async def _call_provider(

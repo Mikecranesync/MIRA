@@ -132,7 +132,22 @@ class TelegramChatAdapter:
                 )
                 data = resp.json()
                 if not data.get("ok"):
-                    logger.warning("Telegram sendMessage error: %s", data.get("description"))
+                    err_desc = data.get("description", "")
+                    logger.warning("Telegram sendMessage error: %s", err_desc)
+                    # MarkdownV2 parse failure → retry as plain text
+                    if "can't parse" in err_desc.lower() or "parse" in err_desc.lower():
+                        plain_payload = {**payload, "text": response.text}
+                        plain_payload.pop("parse_mode", None)
+                        resp2 = await client.post(
+                            f"{_TG_API}/bot{self.bot_token}/sendMessage",
+                            json=plain_payload,
+                        )
+                        data2 = resp2.json()
+                        if not data2.get("ok"):
+                            logger.error(
+                                "Telegram plain-text fallback also failed: %s",
+                                data2.get("description"),
+                            )
         except Exception as exc:
             logger.error("render_outgoing failed: %s", exc)
 

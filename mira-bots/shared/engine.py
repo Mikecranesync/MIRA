@@ -93,6 +93,29 @@ _PADDING_OPTION_RE = re.compile(
 # returned options without text (seen in prod session e4ced7d8 2026-04-14).
 _PLACEHOLDER_OPTION_RE = re.compile(r"^[\"']?\d+[.):\-]?[\"']?$")
 
+
+def _clean_option_list(options: list) -> list:
+    """Strip leading numbers and drop padding/placeholder options.
+
+    Applies the same filter logic as _format_reply so that last_options stored
+    in session_context always matches the numbered list the user actually saw.
+    Mismatches between raw LLM options and the rendered list cause off-by-one
+    selection errors when the user types "2".
+    """
+    cleaned: list[str] = []
+    for raw in options:
+        if raw is None:
+            continue
+        text = re.sub(r"^\s*\d+[.):\-]\s*", "", str(raw)).strip()
+        if len(text) <= 1:
+            continue
+        if _PLACEHOLDER_OPTION_RE.match(text):
+            continue
+        if _PADDING_OPTION_RE.match(text):
+            continue
+        cleaned.append(text)
+    return cleaned
+
 # Short affirmative/negative option patterns that render naturally inline
 # ("Reply: Yes or No") instead of as a numbered block.
 _YES_OPTION_RE = re.compile(
@@ -228,6 +251,7 @@ _STATE_ALIASES: dict[str, str] = {
     "WIRING_CHECK": "Q2",
     "CONFIGURATION": "Q2",
     "GATHERING_INFO": "Q2",
+    "INFORMATION_GATHERING": "Q2",
     "INSPECT": "Q2",
     "VERIFY": "Q2",
     "CHECK_OUTPUT_REACTOR": "Q2",
@@ -247,6 +271,9 @@ _STATE_ALIASES: dict[str, str] = {
     "CLOSED": "RESOLVED",
     # Internal self-critique state — LLMs should not propose this; if they do, map to DIAGNOSIS
     "DIAGNOSIS_REVISION": "DIAGNOSIS",
+    # Asset analysis variants — LLM invents these after ASSET_IDENTIFIED
+    "ASSET_ANALYZED": "DIAGNOSIS",
+    "ASSET_ANALYSIS": "DIAGNOSIS",
 }
 
 # ---------------------------------------------------------------------------
@@ -406,7 +433,7 @@ class Supervisor:
             tenant_id=tenant_id,
         )
         self.print_ = PrintWorker(openwebui_url, api_key)
-        self.plc = PLCWorker()
+        self.plc = PLCWorker() if os.getenv("MIRA_PLC_ENABLED", "").lower() in ("1", "true", "yes") else None
 
         # Per-chat_id recording buffer — thread-safe (each key is independent)
         self._rec: dict[str, dict] = {}
@@ -892,8 +919,26 @@ class Supervisor:
             if last_options:
                 expanded = resolve_option_selection(message, last_options)
                 if expanded:
-                    logger.info("Selection resolved: '%s' → '%s'", message, expanded)
-                    message = expanded
+                    # Extract selection number to give the LLM unambiguous context.
+                    # "2" alone is too easy for the LLM to misread as referencing
+                    # a number embedded in an alarm name (e.g. "Pump 2 Not In Auto").
+                    _sel_m = re.match(r"^\s*(?:option\s+)?(\d+)", message, re.IGNORECASE)
+                    _sel_num = int(_sel_m.group(1)) if _sel_m else 1
+                    logger.info(
+                        "Selection resolved: '%s' → option %d: '%s'",
+                        message,
+                        _sel_num,
+                        expanded,
+                    )
+                    message = f"[User selected option {_sel_num}: {expanded}]"
+                    # Persist the selected alarm as the active investigation anchor.
+                    # This is injected into the system prompt on every subsequent call so
+                    # the LLM cannot drift back to other alarms listed in early history.
+                    _active = expanded.split(" — ")[0].strip()  # strip elaboration suffix
+                    sc["active_alarm"] = _active
+                    ctx = state.get("context") or {}
+                    ctx["session_context"] = {**ctx.get("session_context", {}), "active_alarm": _active}
+                    state["context"] = ctx
 
             # Session follow-up detection: now runs on the already-expanded message.
             if detect_session_followup(message, sc, state["state"]):
@@ -1167,6 +1212,13 @@ class Supervisor:
                 "ELECTRICAL_PRINT",
             )
 
+        # Preserve original user caption before any auto-diagnose synthetic injection.
+        # The synthetic message (injected below for photo fault detection) must go to
+        # the RAG worker for search, but history should store what the HUMAN actually
+        # sent — not the engine-generated brief the LLM would otherwise "remember" as
+        # the user's words.
+        _original_user_message: str | None = None
+
         # Photo with no specific intent → check for visible fault indicators first
         # (Skip for photo-as-answer: active session photos go straight to RAG)
         if (
@@ -1210,6 +1262,11 @@ class Supervisor:
                 fault_summary = (
                     ", ".join(fault_items[:5]) if fault_items else "fault indicator visible"
                 )
+                # Save the human's original caption BEFORE replacing message with the
+                # synthetic brief. history will store the caption; the RAG search uses
+                # the synthetic string. This prevents the LLM from reading the
+                # engine-generated analysis back as something the technician said.
+                _original_user_message = message or "[Photo]"
                 message = (
                     f"[Equipment photo: {asset}] "
                     f"Visible indicators: {fault_summary}. "
@@ -1375,9 +1432,26 @@ class Supervisor:
                 logger.warning("RECURRING_FAULT check failed: %s", _rfe)
 
         ctx = state.get("context") or {}
+
+        # Format reply BEFORE updating history so the LLM reads back what the user
+        # actually saw (numbered options appended) rather than the raw LLM output.
+        # Strip the Sources footer — citation noise degrades LLM context quality.
+        formatted = self._format_reply(parsed, user_message=message)
+        # Phase 3 — prepend honest crawl-failure message if a prior doc-crawl exhausted.
+        if _honest_prefix:
+            formatted = _honest_prefix + formatted
+        _history_reply = formatted.split("\n\n--- Sources ---")[0].rstrip()
+
         history = ctx.get("history", [])
-        history.append({"role": "user", "content": self._strip_memory_block(message)})
-        history.append({"role": "assistant", "content": parsed["reply"]})
+        if _original_user_message is not None:
+            history.append({"role": "user", "content": self._strip_memory_block(_original_user_message)})
+            history.append({
+                "role": "system",
+                "content": f"[Photo analysis injected by MIRA: {message[:400]}]",
+            })
+        else:
+            history.append({"role": "user", "content": self._strip_memory_block(message)})
+        history.append({"role": "assistant", "content": _history_reply})
         if len(history) > HISTORY_LIMIT:
             history = history[-HISTORY_LIMIT:]
         ctx["history"] = history
@@ -1385,8 +1459,8 @@ class Supervisor:
         # Update session_context with latest question so off-topic replies can recap
         sc = ctx.get("session_context", {})
         if sc:
-            sc["last_question"] = parsed["reply"][:200]
-            sc["last_options"] = parsed.get("options", [])
+            sc["last_question"] = _history_reply[:200]
+            sc["last_options"] = _clean_option_list(parsed.get("options", []))
             ctx["session_context"] = sc
 
         # Persist work-order draft so _handle_cmms_pending can use it next turn.
@@ -1398,11 +1472,6 @@ class Supervisor:
         state["context"] = ctx
 
         self._save_state(chat_id, state)
-
-        formatted = self._format_reply(parsed, user_message=message)
-        # Phase 3 — prepend honest crawl-failure message if a prior doc-crawl exhausted.
-        if _honest_prefix:
-            formatted = _honest_prefix + formatted
         tl_flush()
         return self._make_result(
             formatted,
@@ -1906,24 +1975,27 @@ class Supervisor:
         state = self._advance_state(state, parsed)
 
         ctx = state.get("context") or {}
+
+        formatted = self._format_reply(parsed, user_message=message)
+        if honest_prefix:
+            formatted = honest_prefix + formatted
+        _history_reply = formatted.split("\n\n--- Sources ---")[0].rstrip()
+
         history = ctx.get("history", [])
         history.append({"role": "user", "content": self._strip_memory_block(message)})
-        history.append({"role": "assistant", "content": parsed["reply"]})
+        history.append({"role": "assistant", "content": _history_reply})
         if len(history) > HISTORY_LIMIT:
             history = history[-HISTORY_LIMIT:]
         ctx["history"] = history
 
         sc = ctx.get("session_context", {})
         if sc:
-            sc["last_question"] = parsed["reply"][:200]
-            sc["last_options"] = parsed.get("options", [])
+            sc["last_question"] = _history_reply[:200]
+            sc["last_options"] = _clean_option_list(parsed.get("options", []))
             ctx["session_context"] = sc
 
         state["context"] = ctx
         self._save_state(chat_id, state)
-        formatted = self._format_reply(parsed, user_message=message)
-        if honest_prefix:
-            formatted = honest_prefix + formatted
         return self._make_result(
             formatted,
             self._infer_confidence(formatted),

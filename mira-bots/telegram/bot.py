@@ -590,6 +590,21 @@ async def _startup(application: Application) -> None:
         raise SystemExit(1) from exc
 
 
+async def _conflict_error_handler(update: object, context) -> None:
+    """On 409 Conflict sleep 15s and let PTB retry — avoids crash-restart loop."""
+    import asyncio
+    from telegram.error import Conflict as TGConflict
+
+    if isinstance(context.error, TGConflict):
+        logger.warning(
+            "409 Conflict during polling — another session is active. "
+            "Sleeping 15s and retrying (do NOT call getUpdates externally while bot is running)."
+        )
+        await asyncio.sleep(15)
+        return  # let PTB retry getUpdates
+    raise context.error
+
+
 def main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(_startup).build()
     app.add_handler(CommandHandler("equipment", equipment_command))
@@ -602,6 +617,7 @@ def main():
     app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_error_handler(_conflict_error_handler)
     _ver_path = os.path.join(os.path.dirname(__file__), "VERSION")
     _ver = open(_ver_path).read().strip() if os.path.exists(_ver_path) else "unknown"
     logger.info("MIRA Telegram bot starting (polling) version=%s", _ver)
