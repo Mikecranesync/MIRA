@@ -308,7 +308,10 @@ class SessionAnalyzer:
 
             if str(_REPO_ROOT / "mira-core" / "mira-ingest") not in sys.path:
                 sys.path.append(str(_REPO_ROOT / "mira-core" / "mira-ingest"))
-            from db.neon import write_session_analysis  # type: ignore[import]
+            import importlib as _importlib
+
+            _neon = _importlib.import_module("db.neon")
+            write_session_analysis = _neon.write_session_analysis
 
             chat_hash = hashlib.sha256(chat_id.encode()).hexdigest()[:12]
             write_session_analysis(
