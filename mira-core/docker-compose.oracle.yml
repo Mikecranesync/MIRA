@@ -9,7 +9,7 @@ services:
       - "host.docker.internal:${BRAVO_HOST}"
 
   mira-mcpo:
-    image: mira-core-mira-mcpo:latest
+    image: mira-core-mira-mcpo:${MIRA_MCPO_VERSION:-3.4}
     build:
       context: .
       dockerfile: Dockerfile.mcpo
