@@ -352,9 +352,9 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if engine is None:
         raise HTTPException(503, "Supervisor not initialized")
 
-    # Extract last user message (text content)
+    # Extract last user message (text + all images for multi-photo burst support)
     last_user_msg = ""
-    photo_b64 = None
+    photos_b64: list[str] = []
     for msg in reversed(req.messages):
         if msg.role != "user":
             continue
@@ -367,9 +367,11 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
                         last_user_msg = part.get("text", "")
                     elif part.get("type") == "image_url":
                         url = part.get("image_url", {}).get("url", "")
-                        if url.startswith("data:"):
-                            photo_b64 = url.split(",", 1)[-1] if "," in url else None
+                        if url.startswith("data:") and "," in url:
+                            photos_b64.append(url.split(",", 1)[-1])
         break
+    # Single-photo backward-compat alias
+    photo_b64 = photos_b64[0] if photos_b64 else None
 
     if not last_user_msg and not photo_b64:
         raise HTTPException(400, "No user message found")
@@ -518,9 +520,10 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     # the engine so we don't advance the diagnostic state twice.
     _detect_and_rollback_regenerate(DB_PATH, chat_id, last_user_msg)
 
-    # Resize image for vision model (matches Telegram bot behavior)
-    if photo_b64:
-        photo_b64 = _resize_for_vision(photo_b64)
+    # Resize all images for vision model (matches Telegram bot behavior)
+    if photos_b64:
+        photos_b64 = [_resize_for_vision(b) for b in photos_b64]
+        photo_b64 = photos_b64[0]
 
     # Memory retrieval — inject past facts into the message context
     memory_block = ""
@@ -543,12 +546,21 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
 
     t0 = time.monotonic()
     try:
-        reply = await engine.process(
-            chat_id=chat_id,
-            message=effective_message,
-            photo_b64=photo_b64,
-            platform="openwebui",
-        )
+        if len(photos_b64) > 1:
+            logger.info("MULTI_PHOTO chat_id=%s count=%d", chat_id, len(photos_b64))
+            reply = await engine.process_multi_photo(
+                chat_id=chat_id,
+                message=effective_message,
+                photos_b64=photos_b64,
+                platform="openwebui",
+            )
+        else:
+            reply = await engine.process(
+                chat_id=chat_id,
+                message=effective_message,
+                photo_b64=photo_b64,
+                platform="openwebui",
+            )
     except Exception as e:
         logger.error("ENGINE_ERROR chat_id=%s: %s", chat_id, e)
         reply = "MIRA encountered an error processing your request. Please try again."
@@ -998,6 +1010,7 @@ async def webhook_signup(request: Request):
 
 # ── Identity Admin API ────────────────────────────────────────────────────────
 
+
 def _get_identity_service():
     """Return IdentityService or raise 503."""
     import sys as _sys
@@ -1025,10 +1038,7 @@ async def identity_list_users(tenant_id: str, request: Request):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {
         "tenant_id": tenant_id,
-        "users": [
-            {"id": u.id, "display_name": u.display_name, "email": u.email}
-            for u in users
-        ],
+        "users": [{"id": u.id, "display_name": u.display_name, "email": u.email} for u in users],
     }
 
 
@@ -1053,8 +1063,7 @@ async def identity_get_user(mira_user_id: str, request: Request):
         "display_name": user.display_name,
         "email": user.email,
         "platforms": [
-            {"platform": lk.platform, "external_user_id": lk.external_user_id}
-            for lk in links
+            {"platform": lk.platform, "external_user_id": lk.external_user_id} for lk in links
         ],
     }
 

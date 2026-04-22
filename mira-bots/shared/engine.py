@@ -58,8 +58,10 @@ logger = logging.getLogger("mira-gsd")
 _MIRA_VERSION: str = "unknown"
 try:
     _MIRA_VERSION = (
-        __import__("pathlib").Path(__file__).parent.parent.parent / "VERSION"
-    ).read_text(encoding="utf-8").strip()
+        (__import__("pathlib").Path(__file__).parent.parent.parent / "VERSION")
+        .read_text(encoding="utf-8")
+        .strip()
+    )
 except Exception:
     pass
 
@@ -579,21 +581,154 @@ class Supervisor:
             platform=platform,
         )
         _rec_data = self._rec.pop(chat_id, {})
-        asyncio.ensure_future(self._record_session_turn(
-            chat_id=chat_id,
-            user_message=message,
-            assistant_response=result["reply"],
-            fsm_state_before=_rec_data.get("fsm_state_before", ""),
-            fsm_state_after=result.get("next_state", ""),
-            router_intent=_rec_data.get("intent"),
-            rag_chunks_count=len(getattr(self.rag, "_last_sources", [])),
-            rag_top_score=max(getattr(self.rag, "_last_distances", [0.0]), default=0.0),
-            latency_ms=elapsed_ms,
-            had_photo=bool(photo_b64),
-            safety_triggered=result.get("next_state") == "SAFETY_ALERT",
-            platform=platform,
-        ))
+        asyncio.ensure_future(
+            self._record_session_turn(
+                chat_id=chat_id,
+                user_message=message,
+                assistant_response=result["reply"],
+                fsm_state_before=_rec_data.get("fsm_state_before", ""),
+                fsm_state_after=result.get("next_state", ""),
+                router_intent=_rec_data.get("intent"),
+                rag_chunks_count=len(getattr(self.rag, "_last_sources", [])),
+                rag_top_score=max(getattr(self.rag, "_last_distances", [0.0]), default=0.0),
+                latency_ms=elapsed_ms,
+                had_photo=bool(photo_b64),
+                safety_triggered=result.get("next_state") == "SAFETY_ALERT",
+                platform=platform,
+            )
+        )
         return result["reply"]
+
+    async def process_multi_photo(
+        self,
+        chat_id: str,
+        message: str,
+        photos_b64: list[str],
+        *,
+        platform: str = "telegram",
+    ) -> str:
+        """Process a burst of photos and return one combined intelligent reply.
+
+        Each photo is run through VisionWorker sequentially to avoid rate limits,
+        then an LLM call combines the results into a single coherent response that
+        connects related photos (nameplate+damage, diagram+wiring, etc.).
+        """
+        t0 = time.monotonic()
+        analyses: list[dict] = []
+        for b64 in photos_b64:
+            try:
+                result = await self.vision.process(b64, message)
+                analyses.append(result)
+            except Exception as exc:
+                logger.warning("Vision worker failed for one photo in burst: %s", exc)
+                analyses.append(
+                    {
+                        "vision_result": "unclear",
+                        "classification": "EQUIPMENT_PHOTO",
+                        "ocr_items": [],
+                        "tesseract_text": "",
+                        "drawing_type": None,
+                    }
+                )
+
+        # Persist last photo so text-only follow-up turns have context
+        if photos_b64:
+            self._save_session_photo(chat_id, photos_b64[-1])
+
+        reply = await self._combine_photo_analyses(chat_id, message, analyses)
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        self._log_interaction(
+            chat_id,
+            message,
+            reply,
+            fsm_state="IDLE",
+            has_photo=True,
+            confidence="medium",
+            response_time_ms=elapsed_ms,
+            platform=platform,
+        )
+        asyncio.ensure_future(
+            self._record_session_turn(
+                chat_id=chat_id,
+                user_message=message,
+                assistant_response=reply,
+                fsm_state_before="IDLE",
+                fsm_state_after="IDLE",
+                router_intent="industrial",
+                latency_ms=elapsed_ms,
+                had_photo=True,
+                safety_triggered=False,
+                platform=platform,
+            )
+        )
+        return reply
+
+    async def _combine_photo_analyses(
+        self,
+        chat_id: str,
+        user_text: str,
+        analyses: list[dict],
+    ) -> str:
+        """LLM combines multiple photo analyses into one coherent reply.
+
+        Connects related photos (nameplate+damage, diagram+wiring) and asks
+        'which first?' when photos show unrelated assets.
+        """
+        n = len(analyses)
+        _LABELS = {
+            "NAMEPLATE": "Nameplate",
+            "ELECTRICAL_PRINT": "Wiring diagram",
+            "EQUIPMENT_PHOTO": "Equipment photo",
+        }
+        lines = []
+        for i, a in enumerate(analyses):
+            label = _LABELS.get(a.get("classification", ""), "Photo")
+            vision = str(a.get("vision_result", "")).strip()[:300]
+            ocr = a.get("ocr_items") or []
+            entry = f"Photo {i + 1} ({label}): {vision}"
+            if ocr:
+                entry += f" | Text extracted: {', '.join(str(x) for x in ocr[:5])}"
+            lines.append(entry)
+
+        photo_block = "\n".join(lines)
+        prompt = (
+            f"A maintenance technician sent {n} photos. Here is what each shows:\n\n"
+            f"{photo_block}\n\n"
+            f'Technician\'s message: "{user_text or "(no caption)"}"\n\n'
+            f"Respond with:\n"
+            f"📸 Processed {n} photos:\n\n"
+            f"[Numbered list — one line per photo showing what it is]\n\n"
+            f"[1-3 sentences connecting the photos if related: same asset, "
+            f"nameplate+damage, or diagram+wiring photo. If photos show unrelated "
+            f"assets, list each briefly and ask 'Which would you like to troubleshoot first?']\n\n"
+            f"Rules: be concise, industrial context, end with one specific helpful question."
+        )
+
+        try:
+            msgs = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are MIRA, an industrial maintenance AI assistant. "
+                        "You analyze equipment photos for factory maintenance technicians. "
+                        "Be concise, specific, and actionable."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ]
+            reply, _ = await self.router.complete(msgs, max_tokens=500, session_id=chat_id)
+            if reply:
+                return reply.strip()
+        except Exception as exc:
+            logger.warning("Multi-photo LLM combination failed: %s", exc)
+
+        # Fallback: plain numbered list without LLM synthesis
+        fallback = [f"📸 Processed {n} photos:\n"]
+        for i, a in enumerate(analyses):
+            label = _LABELS.get(a.get("classification", ""), "Photo")
+            vision = str(a.get("vision_result", "")).strip()[:100]
+            fallback.append(f"{i + 1}. {label}: {vision}")
+        return "\n".join(fallback)
 
     async def process_full(
         self,
@@ -1478,6 +1613,7 @@ class Supervisor:
         if feedback in ("bad", "negative", "thumbs_down"):
             try:
                 from .analysis.session_recorder import record_feedback
+
                 record_feedback(chat_id, "negative", reason)
             except Exception:
                 pass
@@ -1486,12 +1622,16 @@ class Supervisor:
         """Fire-and-forget: append one turn to session recording. Never raises."""
         try:
             from datetime import datetime, timezone
+
             from .analysis.session_recorder import record_turn
-            record_turn({
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "version": _MIRA_VERSION,
-                **kwargs,
-            })
+
+            record_turn(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "version": _MIRA_VERSION,
+                    **kwargs,
+                }
+            )
         except Exception:
             pass
 
