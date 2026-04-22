@@ -572,17 +572,17 @@ async def _startup(application: Application) -> None:
 
 
 async def _conflict_error_handler(update: object, context) -> None:
-    """Exit cleanly on 409 Conflict so Docker restart policy gives Telegram time to expire."""
+    """On 409 Conflict sleep 15s and let PTB retry — avoids crash-restart loop."""
     import asyncio
     from telegram.error import Conflict as TGConflict
 
     if isinstance(context.error, TGConflict):
-        logger.error(
+        logger.warning(
             "409 Conflict during polling — another session is active. "
-            "Sleeping 30s before exit so Docker restart doesn't race."
+            "Sleeping 15s and retrying (do NOT call getUpdates externally while bot is running)."
         )
-        await asyncio.sleep(30)
-        raise SystemExit(1)
+        await asyncio.sleep(15)
+        return  # let PTB retry getUpdates
     raise context.error
 
 
