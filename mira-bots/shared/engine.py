@@ -217,6 +217,7 @@ _STATE_ALIASES: dict[str, str] = {
     "WIRING_CHECK": "Q2",
     "CONFIGURATION": "Q2",
     "GATHERING_INFO": "Q2",
+    "INFORMATION_GATHERING": "Q2",
     "INSPECT": "Q2",
     "VERIFY": "Q2",
     "CHECK_OUTPUT_REACTOR": "Q2",
@@ -236,6 +237,9 @@ _STATE_ALIASES: dict[str, str] = {
     "CLOSED": "RESOLVED",
     # Internal self-critique state — LLMs should not propose this; if they do, map to DIAGNOSIS
     "DIAGNOSIS_REVISION": "DIAGNOSIS",
+    # Asset analysis variants — LLM invents these after ASSET_IDENTIFIED
+    "ASSET_ANALYZED": "DIAGNOSIS",
+    "ASSET_ANALYSIS": "DIAGNOSIS",
 }
 
 # ---------------------------------------------------------------------------
