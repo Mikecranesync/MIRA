@@ -3,9 +3,23 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+# Bot adapters across telegram/slack/teams/email/gchat share these module names.
+# Without cleanup, a cached module from one adapter test bleeds into another.
+_ADAPTER_MODULES = ("chat_adapter", "renderers", "graph_client")
+
+
+@pytest.fixture(autouse=True)
+def _clean_bot_adapter_modules():
+    for name in _ADAPTER_MODULES:
+        sys.modules.pop(name, None)
+    yield
+    for name in _ADAPTER_MODULES:
+        sys.modules.pop(name, None)
 
 
 @pytest.fixture
