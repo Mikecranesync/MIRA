@@ -114,6 +114,49 @@ DDG_FAIL_LIMIT = 5  # stop DDG after this many consecutive failures
 SERPER_URL = "https://google.serper.dev/search"
 HUBSPOT_BASE = "https://api.hubapi.com"
 
+# Directory-listing / aggregator hosts. A facility whose `website` resolves
+# to one of these is a listing-page artifact from discovery, not a real
+# manufacturer. Serper snippets for these pages never match the "Name,
+# Title" pattern, so probing them burns budget for zero yield. Observed in
+# the 2026-04-21 Central Florida run — see issue #497.
+DIRECTORY_LISTING_HOSTS: frozenset[str] = frozenset({
+    "chamberofcommerce.com",
+    "superpages.com",
+    "dexknows.com",
+    "angi.com",
+    "alignable.com",
+    "industrynet.com",
+    "yellowpages.com",
+    "yelp.com",
+    "dnb.com",
+    "zoominfo.com",
+    "cortera.com",
+    "machineshop.directory",
+    "findingmfg.com",
+    "manta.com",
+    "bizapedia.com",
+    "thomasnet.com",
+})
+
+
+def _is_directory_listing(website: str) -> bool:
+    """Return True when `website` resolves to a known aggregator/directory host.
+
+    Matches on suffix so subdomains (e.g. `foo.dexknows.com`) are caught.
+    Empty / malformed URLs return False — upstream code already filters those.
+    """
+    if not website:
+        return False
+    try:
+        host = urlparse(website).netloc.lower()
+        if host.startswith("www."):
+            host = host[4:]
+    except Exception:
+        return False
+    if not host:
+        return False
+    return any(host == h or host.endswith("." + h) for h in DIRECTORY_LISTING_HOSTS)
+
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
@@ -1362,7 +1405,16 @@ def enrich_facilities(
     Aborts Serper probing when `budget` queries have been used.
     """
     to_enrich = [f for f in fac_list if f.website and f.icp_score >= 4]
+    skipped_listings = [f for f in to_enrich if _is_directory_listing(f.website)]
+    to_enrich = [f for f in to_enrich if not _is_directory_listing(f.website)]
     log.info("=== ENRICHMENT PHASE ===")
+    if skipped_listings:
+        log.info(
+            "Skipped %d directory-listing rows (chamberofcommerce / superpages / dexknows / …)",
+            len(skipped_listings),
+        )
+        for f in skipped_listings[:5]:
+            log.info("  ↯ skip: %s (%s)", f.name[:60], f.website[:60])
     log.info(
         "Enriching %d high-score sites (serper=%s, budget=%d queries)",
         len(to_enrich),
@@ -1979,6 +2031,15 @@ def main() -> None:
             fac_list.append(f)
         conn.close()
         log.info("Loaded %d facilities needing contact enrichment", len(fac_list))
+
+        pre_filter = len(fac_list)
+        fac_list = [f for f in fac_list if not _is_directory_listing(f.website)]
+        if pre_filter != len(fac_list):
+            log.info(
+                "Filtered out %d directory-listing rows — %d real candidates remain",
+                pre_filter - len(fac_list),
+                len(fac_list),
+            )
 
         if not fac_list:
             log.info("Nothing to enrich — all facilities already have contacts.")
