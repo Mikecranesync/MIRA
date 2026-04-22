@@ -9,6 +9,8 @@
 - **Eval baseline**: 47/57 passing (82.5%) — `tests/eval/runs/2026-04-22T0828-offline-text.md`. Closed #474, #399.
 - **V1000 ingest**: `pdf_stored=false` reset for id=266; pdfplumber extracted 2923 chunks; Ollama embedding in progress (background, pid 5740). Closes #383 once complete.
 - **VPS**: healthy post-deploy (PR #515 auto-triggered CD), all 8 containers up. Last deploy: `06e8e82`.
+- **MANUAL_LOOKUP_GATHERING fix** (PR #523 merged): 5 eval failures fixed — early vendor extraction at IDLE, mid-session specificity bypass, asset_identified persistence. Expected new eval baseline ~52/57.
+- **Session recording loop fixed** (PR #524 merged): `mira-bot-telegram` added to `docker-compose.saas.yml` with `SESSION_RECORDING_PATH=/data/sessions` + sessions volume — real Telegram conversations will now be recorded and analyzed. `NTFY_URL`/`NTFY_TOPIC` added to pipeline + bot containers. ASCII encoding bug fixed in `session_analyzer._alert()` (em dash → ASCII dash). CD auto-deploying.
 
 ## Session — 2026-04-20 (CHARLIE, QR pipeline ship)
 
