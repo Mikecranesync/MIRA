@@ -92,7 +92,9 @@ class IdentityService:
                     {"tenant_id": tenant_id, "email": email},
                 ).fetchone()
                 if row:
-                    user = MiraUser(id=str(row[0]), tenant_id=row[1], display_name=row[2], email=row[3])
+                    user = MiraUser(
+                        id=str(row[0]), tenant_id=row[1], display_name=row[2], email=row[3]
+                    )
                     self._create_link(conn, user.id, platform, external_user_id, tenant_id)
                     conn.commit()
                     return user

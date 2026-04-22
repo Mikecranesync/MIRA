@@ -33,11 +33,7 @@ class SlackChatAdapter:
         for f in event.get("files", []):
             mime = f.get("mimetype", "")
             kind = (
-                "image"
-                if mime in _IMAGE_MIMES
-                else "pdf"
-                if mime == "application/pdf"
-                else "other"
+                "image" if mime in _IMAGE_MIMES else "pdf" if mime == "application/pdf" else "other"
             )
             attachments.append(
                 NormalizedAttachment(
