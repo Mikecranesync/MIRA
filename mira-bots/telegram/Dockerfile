@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY mira-bots/shared/ ./shared/
 COPY mira-bots/prompts/ ./prompts/
 COPY mira-bots/telegram/bot.py ./
+COPY mira-bots/telegram/chat_adapter.py ./
 COPY VERSION .
 
 ENV PYTHONUNBUFFERED=1
