@@ -1,8 +1,8 @@
 services:
   telegram-bot:
     build:
-      context: .
-      dockerfile: telegram/Dockerfile
+      context: ..
+      dockerfile: mira-bots/telegram/Dockerfile
     container_name: mira-bot-telegram
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}

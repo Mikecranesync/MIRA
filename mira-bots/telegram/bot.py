@@ -583,7 +583,9 @@ def main():
     app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    logger.info("MIRA Telegram bot starting (polling)")
+    _ver_path = os.path.join(os.path.dirname(__file__), "VERSION")
+    _ver = open(_ver_path).read().strip() if os.path.exists(_ver_path) else "unknown"
+    logger.info("MIRA Telegram bot starting (polling) version=%s", _ver)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 

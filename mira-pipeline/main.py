@@ -262,7 +262,8 @@ async def lifespan(app: FastAPI):
     # Start feedback sync background thread (polls Open WebUI DB for new ratings)
     sync_thread = threading.Thread(target=feedback_sync_loop, daemon=True)
     sync_thread.start()
-    logger.info("MIRA Pipeline started — Supervisor initialized (db=%s)", DB_PATH)
+    _ver = Path("/app/VERSION").read_text().strip() if Path("/app/VERSION").exists() else "unknown"
+    logger.info("MIRA Pipeline started — version=%s db=%s", _ver, DB_PATH)
     yield
     engine = None
     memory = None
@@ -301,7 +302,8 @@ async def _auth(request: Request, call_next):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "engine": engine is not None}
+    _ver = Path("/app/VERSION").read_text().strip() if Path("/app/VERSION").exists() else "unknown"
+    return {"status": "ok", "engine": engine is not None, "version": _ver}
 
 
 # ── OpenAI-compatible: GET /v1/models ────────────────────────────────────────
