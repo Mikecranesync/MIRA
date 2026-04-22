@@ -1,9 +1,14 @@
-# Hot Cache — 2026-04-20 — CHARLIE
+# Hot Cache — 2026-04-22 — CHARLIE
 
-## eval-fixer run — 2026-04-22
-- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-20T1011.md` (unchanged from 2026-04-21)
-- Action: issue-commented — #474 re-flagged (dup #484 closed)
-- Same scorecard as yesterday; watchdog has not ingested a fresh eval in 2+ days. Escalation added to #474: check Alpha Celery beat + `mira_eval_tasks.py` logs — hourly eval may have stopped producing scorecards.
+## Session — 2026-04-22 (CHARLIE, tech debt sprint)
+
+- **Tech debt sprint complete** — 6 issues closed: #508 (shell injection), #509 (hardcoded IPs), #510 (:latest tags), #511 (PLCWorker dead code), #512 (dup env vars), #513 (zero unit tests)
+- **Conversation stability fixes shipped** (PR #514 merged): formatted reply stored in history, `active_alarm` anchor, photo role split (user caption vs system OCR), `_strip_memory_block` combined
+- **Cascade fix**: router.py now logs unconditionally when all providers fail (commit b463dbe) — fixes #474
+- **CD pipeline live** (#392 closed): `.github/workflows/deploy-vps.yml` auto-deploys on push to main; VPS SSH key in GitHub secrets
+- **Eval baseline**: 47/57 passing (82.5%) — `tests/eval/runs/2026-04-22T0828-offline-text.md`. Closed #474, #399.
+- **V1000 ingest**: `pdf_stored=false` reset for id=266; pdfplumber extracted 2923 chunks; Ollama embedding in progress (background, pid 5740). Closes #383 once complete.
+- **VPS**: healthy post-deploy (PR #515 auto-triggered CD), all 8 containers up. Last deploy: `06e8e82`.
 
 ## Session — 2026-04-20 (CHARLIE, QR pipeline ship)
 
@@ -51,14 +56,13 @@
 
 ## Open Issues (active)
 
-- **#378** — guardrails.rewrite_question can return empty string (P1) — branch: `fix/hypothesis-rewrite-question-input`
-- **#377** — test_crawler_type_is_valid fails — Siemens playwright:chrome mismatch (P1) — branch: `fix/crawler-type-playwright-prefix`
-- **#399** — stochastic floor: watchdog 54/57 vs baseline 43/57 same commit
-- **#392** — no CD pipeline (VPS deploy is manual)
-- **#383** — backfill ~499 missing V1000 chunks
+- **#383** — V1000 chunks backfill — ingest running (2923 chunks being embedded)
 - **#338** — atlas-api not running on VPS — tenant activation fails
 - **#335** — RESEND_API_KEY not in Doppler — welcome emails silently skipped
-- **PR #421** — QR chooser Phase 1 (draft, awaiting review)
+- **#403** — 6 missing Rockwell publications (documentation gap)
+- ~~**#399**~~ — CLOSED 2026-04-22 (47/57 baseline established)
+- ~~**#474**~~ — CLOSED 2026-04-22 (cascade fix + eval 47/57)
+- ~~**#392**~~ — CLOSED 2026-04-22 (CD pipeline live)
 
 ## Key NeonDB Facts
 ```
