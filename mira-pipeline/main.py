@@ -265,7 +265,8 @@ async def lifespan(app: FastAPI):
     # Start feedback sync background thread (polls Open WebUI DB for new ratings)
     sync_thread = threading.Thread(target=feedback_sync_loop, daemon=True)
     sync_thread.start()
-    logger.info("MIRA Pipeline started — Supervisor initialized (db=%s)", DB_PATH)
+    _ver = Path("/app/VERSION").read_text().strip() if Path("/app/VERSION").exists() else "unknown"
+    logger.info("MIRA Pipeline started — version=%s db=%s", _ver, DB_PATH)
     yield
     engine = None
     memory = None
@@ -305,7 +306,8 @@ async def _auth(request: Request, call_next):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "engine": engine is not None}
+    _ver = Path("/app/VERSION").read_text().strip() if Path("/app/VERSION").exists() else "unknown"
+    return {"status": "ok", "engine": engine is not None, "version": _ver}
 
 
 # ── OpenAI-compatible: GET /v1/models ────────────────────────────────────────
@@ -380,18 +382,35 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if not last_user_msg and not photo_b64:
         raise HTTPException(400, "No user message found")
 
-    # Open WebUI sends synthetic task messages that must NOT touch the GSD engine.
-    # There are two distinct subtypes with different correct responses:
+    # ── Open WebUI synthetic-task filter ────────────────────────────────────
+    # Open WebUI fires internal requests for: title generation, tag generation,
+    # follow-up suggestions, web-search query building, and the Continue button.
+    # These must NEVER reach the GSD engine (they would corrupt FSM state).
     #
-    # 1. "### Task: Continue generating …" — the Continue button.  OW expects the
-    #    response to be the continued text, not empty.  Return the last assistant
-    #    turn verbatim so the UI shows something and the FSM does not advance.
-    #
-    # 2. All other "### Task:" / "Suggest " variants — follow-up suggestions,
-    #    title generation, etc.  Return empty; OW discards these internally.
+    # Three detection layers:
+    #  A) "### Task: Continue …" — Continue button; echo last assistant turn.
+    #  B) Task directive anywhere in user message (OW appends after history too).
+    #  C) System-role message containing title/tag generation instructions.
+
+    def _owui_synthetic_reply(content: str = "") -> dict:
+        return {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "mira-diagnostic",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": content},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
+    # Layer A — Continue button
     stripped_msg = last_user_msg.lstrip()
     if stripped_msg.startswith("### Task: Continue"):
-        # P0-1 FIX: find the last assistant message in history and echo it back.
         last_assistant = ""
         for msg in reversed(req.messages):
             if msg.role == "assistant":
@@ -406,40 +425,50 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
                     last_assistant = str(content)
                 break
         logger.info(
-            "P0-1 CONTINUE intercepted — echoing last assistant turn (%d chars)",
+            "OWUI Continue intercepted — echoing last assistant turn (%d chars)",
             len(last_assistant),
         )
-        return {
-            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": "mira-diagnostic",
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": last_assistant},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        }
+        return _owui_synthetic_reply(last_assistant)
 
-    if stripped_msg.startswith("### Task:") or stripped_msg.startswith("Suggest "):
-        logger.info("SKIP synthetic follow-up request: %s", last_user_msg[:60])
-        return {
-            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": "mira-diagnostic",
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": ""},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        }
+    # Layer B — task directive anywhere in the user message (start OR appended)
+    _OWUI_TASK_PATTERNS = (
+        "### Task:",
+        "Suggest ",
+        "Generate a title",
+        "generate a title",
+        "Create a concise",
+        "create a concise",
+        "Generate 1-3 broad tags",
+        "generate 1-3 broad tags",
+        "Generate 3 questions",
+        "generate 3 questions",
+        "generate follow-up",
+        "Generate follow-up",
+        "Analyze the chat history to determine",
+        "analyze the chat history to determine",
+    )
+    if any(pat in last_user_msg for pat in _OWUI_TASK_PATTERNS):
+        logger.info("OWUI synthetic task filtered (user msg): %.60s", last_user_msg)
+        return _owui_synthetic_reply()
+
+    # Layer C — system message contains title/tag/search generation directives
+    _OWUI_SYSTEM_PATTERNS = (
+        "concise, 3-5 word title",
+        "Generate 1-3 broad tags",
+        "generate 1-3 broad tags",
+        "You are a title generator",
+        "you are a title generator",
+        "generate a search query",
+        "Generate a search query",
+    )
+    for msg in req.messages:
+        if msg.role != "system":
+            continue
+        sys_text = msg.content if isinstance(msg.content, str) else ""
+        if any(pat in sys_text for pat in _OWUI_SYSTEM_PATTERNS):
+            logger.info("OWUI synthetic task filtered (system msg): %.60s", sys_text)
+            return _owui_synthetic_reply()
+        break  # only inspect the first system message
 
     # Extract user identity from Open WebUI forwarded headers (per-conversation)
     chat_id = (

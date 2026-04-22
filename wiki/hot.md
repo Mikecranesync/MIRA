@@ -1,5 +1,10 @@
 # Hot Cache — 2026-04-20 — CHARLIE
 
+## eval-fixer run — 2026-04-22
+- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-20T1011.md` (unchanged from 2026-04-21)
+- Action: issue-commented — #474 re-flagged (dup #484 closed)
+- Same scorecard as yesterday; watchdog has not ingested a fresh eval in 2+ days. Escalation added to #474: check Alpha Celery beat + `mira_eval_tasks.py` logs — hourly eval may have stopped producing scorecards.
+
 ## Session — 2026-04-20 (CHARLIE, QR pipeline ship)
 
 - **v3.6.0 tagged + pushed** — QR asset-tagging pipeline complete: scan → pipeline → asset-aware chat + channel chooser + guest reports.
