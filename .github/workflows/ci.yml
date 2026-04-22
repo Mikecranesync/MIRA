@@ -84,6 +84,8 @@ jobs:
     name: Security Scan (Semgrep)
     runs-on: ubuntu-latest
     needs: lint-and-type-check
+    permissions:
+      security-events: write
     steps:
       - uses: actions/checkout@v6
 
@@ -142,6 +144,8 @@ jobs:
         run: |
           pip install -r mira-core/mira-ingest/requirements.txt
           pip install -r mira-bots/telegram/requirements.txt
+          pip install -r mira-bots/teams/requirements.txt
+          pip install PyJWT cryptography
           pip install pytest pytest-asyncio pytest-cov pytest-xdist
 
       - name: Run ingest tests with coverage
