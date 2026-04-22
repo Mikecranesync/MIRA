@@ -36,6 +36,9 @@ from feedback_sync import run_loop as feedback_sync_loop
 from memory import ConversationMemory
 from qr_bridge import build_clear_cookie_header, process_pending_scan
 from shared.engine import Supervisor
+from shared.telemetry import flush as _telemetry_flush
+from shared.telemetry import span as _telemetry_span
+from shared.telemetry import trace as _telemetry_trace
 
 # Explicit handler setup: logging.basicConfig() is a no-op once uvicorn has
 # already installed its own handlers on the root logger, so we configure our
@@ -286,6 +289,7 @@ async def _auth(request: Request, call_next):
         "/eval/latest",
         "/eval/list",
         "/webhook/signup",
+        "/api/agents/public-status",
     ):
         return await call_next(request)
     if PIPELINE_API_KEY:
@@ -545,26 +549,34 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         )
 
     t0 = time.monotonic()
+    _trace = _telemetry_trace(
+        "chat_completion",
+        user_id=chat_id,
+        metadata={"has_photo": bool(photo_b64), "photo_count": len(photos_b64)},
+    )
     try:
-        if len(photos_b64) > 1:
-            logger.info("MULTI_PHOTO chat_id=%s count=%d", chat_id, len(photos_b64))
-            reply = await engine.process_multi_photo(
-                chat_id=chat_id,
-                message=effective_message,
-                photos_b64=photos_b64,
-                platform="openwebui",
-            )
-        else:
-            reply = await engine.process(
-                chat_id=chat_id,
-                message=effective_message,
-                photo_b64=photo_b64,
-                platform="openwebui",
-            )
+        with _telemetry_span(_trace, "engine_process", input={"message": last_user_msg[:200]}):
+            if len(photos_b64) > 1:
+                logger.info("MULTI_PHOTO chat_id=%s count=%d", chat_id, len(photos_b64))
+                reply = await engine.process_multi_photo(
+                    chat_id=chat_id,
+                    message=effective_message,
+                    photos_b64=photos_b64,
+                    platform="openwebui",
+                )
+            else:
+                reply = await engine.process(
+                    chat_id=chat_id,
+                    message=effective_message,
+                    photo_b64=photo_b64,
+                    platform="openwebui",
+                )
     except Exception as e:
         logger.error("ENGINE_ERROR chat_id=%s: %s", chat_id, e)
         reply = "MIRA encountered an error processing your request. Please try again."
     latency_ms = int((time.monotonic() - t0) * 1000)
+    _trace.update(output={"reply_preview": reply[:200], "latency_ms": latency_ms})
+    _telemetry_flush()
     logger.info("PIPELINE_CALL chat_id=%s latency_ms=%d len=%d", chat_id, latency_ms, len(reply))
 
     # Memory extraction — store facts from this turn (non-blocking)
@@ -1161,3 +1173,82 @@ async def agent_runs(agent_name: str, request: Request, limit: int = 50):
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_name}")
     runs = _read_agent_ndjson(agent_name, limit=min(limit, 200))
     return {"agent": agent_name, "run_count": len(runs), "runs": runs}
+
+
+@app.get("/api/agents/public-status")
+async def agent_public_status():
+    """Public (no-auth) summary of agent status — used by the /agents dashboard."""
+    result = {}
+    for agent_name in _KNOWN_AGENTS:
+        runs = _read_agent_ndjson(agent_name, limit=10)
+        if runs:
+            latest = runs[0]
+            result[agent_name] = {
+                "last_run": latest.get("started"),
+                "last_duration_s": latest.get("duration_s"),
+                "last_detected": latest.get("detected", 0),
+                "last_succeeded": latest.get("succeeded", 0),
+                "last_failed": latest.get("failed", 0),
+                "last_escalated": latest.get("escalated", 0),
+                "total_runs": len(runs),
+                "runs": [
+                    {
+                        "started": r.get("started"),
+                        "succeeded": r.get("succeeded", 0),
+                        "failed": r.get("failed", 0),
+                        "detected": r.get("detected", 0),
+                        "duration_s": r.get("duration_s"),
+                    }
+                    for r in runs
+                ],
+            }
+        else:
+            result[agent_name] = {
+                "last_run": None,
+                "total_runs": 0,
+                "runs": [],
+            }
+    return result
+
+
+@app.post("/api/agents/run/{agent_name}")
+async def agent_run_now(agent_name: str, request: Request):
+    """Trigger an agent run immediately. Returns AgentRunReport as JSON. Auth required."""
+    _require_pipeline_key(request)
+    if agent_name not in _KNOWN_AGENTS:
+        raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_name}")
+    try:
+        if agent_name == "kb_builder":
+            from shared.agents.kb_builder import KBBuilderAgent
+
+            agent = KBBuilderAgent()
+        elif agent_name == "prompt_optimizer":
+            from shared.agents.prompt_optimizer import PromptOptimizerAgent
+
+            agent = PromptOptimizerAgent()
+        elif agent_name == "infra_guardian":
+            from shared.agents.infra_guardian import InfraGuardianAgent
+
+            agent = InfraGuardianAgent()
+        else:
+            raise HTTPException(status_code=400, detail="Unknown agent")
+        report = await asyncio.wait_for(agent.run(), timeout=300)
+        return {
+            "agent": report.agent_name,
+            "started_at": report.started_at,
+            "finished_at": report.finished_at,
+            "duration_seconds": report.duration_seconds,
+            "issues_detected": report.issues_detected,
+            "actions_taken": report.actions_taken,
+            "actions_succeeded": report.actions_succeeded,
+            "actions_failed": report.actions_failed,
+            "escalations": report.escalations,
+            "details": report.details,
+        }
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Agent run timed out (300s)")
+    except Exception as exc:
+        logger.error("AGENT_RUN_ERROR agent=%s error=%s", agent_name, exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
