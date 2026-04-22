@@ -391,6 +391,33 @@ async def startup():
     except Exception as e:
         logger.warning("Could not reach Ollama at %s to verify models: %s", OLLAMA_URL, e)
 
+    # Check that migration 006 (content_tsv tsvector column) has been applied.
+    # BM25 hybrid search silently falls back to vector-only when the column is missing.
+    if os.getenv("NEON_DATABASE_URL"):
+        try:
+            from db.neon import _engine as _neon_engine
+            from sqlalchemy import text as _text
+
+            with _neon_engine().connect() as _conn:
+                row = _conn.execute(
+                    _text(
+                        "SELECT 1 FROM information_schema.columns "
+                        "WHERE table_name='knowledge_entries' AND column_name='content_tsv' LIMIT 1"
+                    )
+                ).fetchone()
+            if row:
+                logger.info("BM25 ready — content_tsv column present on knowledge_entries.")
+            else:
+                logger.warning(
+                    "BM25 DISABLED — content_tsv column missing from knowledge_entries. "
+                    "Apply migration 006: "
+                    "mira-core/mira-ingest/db/migrations/006_knowledge_tsvector.sql "
+                    "(Block 1 in a transaction; Block 2 outside for CONCURRENTLY index). "
+                    "Hybrid search falls back to vector-only until migration is applied."
+                )
+        except Exception as _tsv_exc:
+            logger.warning("Could not check content_tsv column: %s", _tsv_exc)
+
 
 # ---------------------------------------------------------------------------
 # Endpoints
