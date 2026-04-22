@@ -149,7 +149,10 @@ def _mark_analyzed(ndjson_path: Path, session_turns: list[dict]) -> None:
 def _ensure_neon_table() -> None:
     """Create the session_analyses table if it doesn't exist."""
     try:
-        sys.path.insert(0, str(_REPO_ROOT / "mira-core" / "mira-ingest"))
+        # append, not insert — mira-ingest/tests/ shadows repo tests/ if at index 0
+        ingest_path = str(_REPO_ROOT / "mira-core" / "mira-ingest")
+        if ingest_path not in sys.path:
+            sys.path.append(ingest_path)
         from db.neon import ensure_session_analyses_table  # type: ignore[import]
 
         ensure_session_analyses_table()
