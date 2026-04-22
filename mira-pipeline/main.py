@@ -1099,3 +1099,65 @@ def _require_pipeline_key(request: Request) -> None:
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer ") or auth[7:] != PIPELINE_API_KEY:
         raise HTTPException(status_code=401, detail="unauthorized")
+
+
+# ── Autonomous Agents Dashboard ───────────────────────────────────────────────
+
+_AGENT_LOG_DIR = Path(os.getenv("AGENT_LOG_DIR", "/opt/mira/data/agent-runs"))
+_KNOWN_AGENTS = ["kb_builder", "prompt_optimizer", "infra_guardian"]
+
+
+def _read_agent_ndjson(agent_name: str, limit: int = 10) -> list[dict]:
+    """Read the last `limit` run records from an agent's NDJSON log."""
+    path = _AGENT_LOG_DIR / f"{agent_name}.ndjson"
+    if not path.exists():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        runs = []
+        for line in reversed(lines):
+            line = line.strip()
+            if line:
+                try:
+                    runs.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+            if len(runs) >= limit:
+                break
+        return runs
+    except Exception:
+        return []
+
+
+@app.get("/api/agents/status")
+async def agent_status(request: Request):
+    """Dashboard: last 10 runs per agent with success/fail/escalation counts."""
+    _require_pipeline_key(request)
+    result = {}
+    for agent_name in _KNOWN_AGENTS:
+        runs = _read_agent_ndjson(agent_name, limit=10)
+        if runs:
+            latest = runs[0]
+            result[agent_name] = {
+                "last_run": latest.get("started"),
+                "last_duration_s": latest.get("duration_s"),
+                "last_detected": latest.get("detected", 0),
+                "last_succeeded": latest.get("succeeded", 0),
+                "last_failed": latest.get("failed", 0),
+                "last_escalated": latest.get("escalated", 0),
+                "total_runs": len(runs),
+                "runs": runs,
+            }
+        else:
+            result[agent_name] = {"last_run": None, "total_runs": 0, "runs": []}
+    return result
+
+
+@app.get("/api/agents/runs/{agent_name}")
+async def agent_runs(agent_name: str, request: Request, limit: int = 50):
+    """Detailed run history for one agent (up to 50 entries)."""
+    _require_pipeline_key(request)
+    if agent_name not in _KNOWN_AGENTS:
+        raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_name}")
+    runs = _read_agent_ndjson(agent_name, limit=min(limit, 200))
+    return {"agent": agent_name, "run_count": len(runs), "runs": runs}
