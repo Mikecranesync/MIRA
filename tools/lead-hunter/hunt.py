@@ -1506,60 +1506,96 @@ def apply_schema(db_url: str) -> None:
 
 
 def upsert_facilities(facilities: list[Facility], db_url: str) -> int:
+    """Persist facilities to NeonDB.
+
+    `prospect_facilities` has TWO overlapping unique indexes — (name, address)
+    and (name, city) — and ON CONFLICT can only name one. So we use explicit
+    SELECT → UPDATE/INSERT instead: find the row by EITHER unique key, update
+    in place if found, else insert. The INSERT still has ON CONFLICT DO
+    NOTHING as a safety net against races. See issue #502.
+
+    Returns count of INSERTED (not updated) rows, matching the prior contract.
+    """
     import psycopg2
 
     conn = psycopg2.connect(db_url)
     cur = conn.cursor()
     inserted = 0
+    facility_ids: list[tuple["Facility", int | None]] = []
+
     for f in facilities:
         cur.execute(
             """
-            INSERT INTO prospect_facilities
-              (name, address, city, state, zip, phone, website, category,
-               rating, review_count, distance_miles, icp_score, notes)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (name, address) DO UPDATE SET
-              city           = COALESCE(NULLIF(EXCLUDED.city,''), prospect_facilities.city),
-              icp_score      = GREATEST(prospect_facilities.icp_score, EXCLUDED.icp_score),
-              phone          = COALESCE(NULLIF(EXCLUDED.phone,''), prospect_facilities.phone),
-              website        = COALESCE(NULLIF(EXCLUDED.website,''), prospect_facilities.website),
-              notes          = COALESCE(NULLIF(EXCLUDED.notes,''), prospect_facilities.notes),
-              updated_at     = NOW()
-            RETURNING (xmax = 0)
+            SELECT id FROM prospect_facilities
+            WHERE (name = %s AND COALESCE(address,'') = COALESCE(%s,''))
+               OR (name = %s AND city = %s)
+            LIMIT 1
             """,
-            (
-                f.name,
-                f.address,
-                f.city,
-                f.state,
-                f.zip_code,
-                f.phone,
-                f.website,
-                f.category,
-                f.rating,
-                f.review_count,
-                f.distance_miles,
-                f.icp_score,
-                f.notes,
-            ),
+            (f.name, f.address, f.name, f.city),
         )
-        row = cur.fetchone()
-        if row and row[0]:
-            inserted += 1
+        existing = cur.fetchone()
+        if existing:
+            fid = existing[0]
+            cur.execute(
+                """
+                UPDATE prospect_facilities SET
+                    address        = COALESCE(NULLIF(%s,''), address),
+                    city           = COALESCE(NULLIF(%s,''), city),
+                    state          = COALESCE(NULLIF(%s,''), state),
+                    zip            = COALESCE(NULLIF(%s,''), zip),
+                    phone          = COALESCE(NULLIF(%s,''), phone),
+                    website        = COALESCE(NULLIF(%s,''), website),
+                    category       = COALESCE(NULLIF(%s,''), category),
+                    rating         = GREATEST(rating, %s),
+                    review_count   = GREATEST(review_count, %s),
+                    distance_miles = COALESCE(NULLIF(%s,0)::float, distance_miles),
+                    icp_score      = GREATEST(icp_score, %s),
+                    notes          = COALESCE(NULLIF(%s,''), notes),
+                    updated_at     = NOW()
+                WHERE id = %s
+                """,
+                (
+                    f.address, f.city, f.state, f.zip_code, f.phone, f.website,
+                    f.category, f.rating, f.review_count, f.distance_miles,
+                    f.icp_score, f.notes, fid,
+                ),
+            )
+            facility_ids.append((f, fid))
+        else:
+            cur.execute(
+                """
+                INSERT INTO prospect_facilities
+                  (name, address, city, state, zip, phone, website, category,
+                   rating, review_count, distance_miles, icp_score, notes)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+                """,
+                (
+                    f.name, f.address, f.city, f.state, f.zip_code, f.phone,
+                    f.website, f.category, f.rating, f.review_count,
+                    f.distance_miles, f.icp_score, f.notes,
+                ),
+            )
+            row = cur.fetchone()
+            if row:
+                inserted += 1
+                facility_ids.append((f, row[0]))
+            else:
+                # Race: another writer inserted between SELECT and INSERT. Re-find.
+                cur.execute(
+                    "SELECT id FROM prospect_facilities "
+                    "WHERE (name=%s AND COALESCE(address,'')=COALESCE(%s,'')) "
+                    "   OR (name=%s AND city=%s) LIMIT 1",
+                    (f.name, f.address, f.name, f.city),
+                )
+                r = cur.fetchone()
+                facility_ids.append((f, r[0] if r else None))
     conn.commit()
 
-    for f in facilities:
-        if not f.contacts:
+    for f, fid in facility_ids:
+        if not f.contacts or fid is None:
             continue
-        cur.execute(
-            "SELECT id FROM prospect_facilities "
-            "WHERE name=%s AND COALESCE(address,'')=COALESCE(%s,'')",
-            (f.name, f.address),
-        )
-        frow = cur.fetchone()
-        if not frow:
-            continue
-        fid = frow[0]
         for c in f.contacts:
             cur.execute(
                 """
