@@ -1466,7 +1466,8 @@ def upsert_facilities(facilities: list[Facility], db_url: str) -> int:
               (name, address, city, state, zip, phone, website, category,
                rating, review_count, distance_miles, icp_score, notes)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (name, city) DO UPDATE SET
+            ON CONFLICT (name, address) DO UPDATE SET
+              city           = COALESCE(NULLIF(EXCLUDED.city,''), prospect_facilities.city),
               icp_score      = GREATEST(prospect_facilities.icp_score, EXCLUDED.icp_score),
               phone          = COALESCE(NULLIF(EXCLUDED.phone,''), prospect_facilities.phone),
               website        = COALESCE(NULLIF(EXCLUDED.website,''), prospect_facilities.website),
@@ -1499,7 +1500,9 @@ def upsert_facilities(facilities: list[Facility], db_url: str) -> int:
         if not f.contacts:
             continue
         cur.execute(
-            "SELECT id FROM prospect_facilities WHERE name=%s AND city=%s", (f.name, f.city)
+            "SELECT id FROM prospect_facilities "
+            "WHERE name=%s AND COALESCE(address,'')=COALESCE(%s,'')",
+            (f.name, f.address),
         )
         frow = cur.fetchone()
         if not frow:
