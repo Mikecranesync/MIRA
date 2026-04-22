@@ -25,10 +25,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(_REPO_ROOT))
-# Append (not insert) so stdlib modules like `email` take precedence over
-# mira-bots/email/__init__.py, which shadows the stdlib when at sys.path[0].
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# Insert repo root so `tests.eval.*` imports work regardless of cwd.
+# Must use .resolve() so we get an absolute path — when called as
+# `python3 tests/eval/analyze_sessions.py`, __file__ is relative.
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+# Append mira-bots AFTER repo root — stdlib email must take precedence over
+# mira-bots/email/__init__.py.
 if str(_REPO_ROOT / "mira-bots") not in sys.path:
     sys.path.append(str(_REPO_ROOT / "mira-bots"))
 

@@ -23,7 +23,7 @@ logger = logging.getLogger("mira-session-analyzer")
 SCORE_THRESHOLD = 0.80
 MIN_TURNS = 2
 
-_REPO_ROOT = Path(__file__).parent.parent.parent.parent
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _AUTO_FIXTURES_DIR = _REPO_ROOT / "tests" / "eval" / "fixtures" / "auto"
 _MIRA_VERSION = (
     (_REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
