@@ -232,7 +232,7 @@ class SessionAnalyzer:
                 sys.path.append(str(_REPO_ROOT / "mira-bots"))
             from shared.notifications.push import send_push
 
-            worst = min(grades, key=grades.get) if grades else "unknown"
+            worst = min(grades, key=lambda k: grades.get(k, 0)) if grades else "unknown"
             platform = turns[0].get("platform", "?") if turns else "?"
             msg = (
                 f"Session scored {overall:.0%} — {worst} was {grades.get(worst, 0):.0%}\n"
@@ -254,7 +254,7 @@ class SessionAnalyzer:
             return
         try:
             chat_hash = hashlib.sha256(chat_id.encode()).hexdigest()[:12]
-            worst = min(grades, key=grades.get) if grades else "unknown"
+            worst = min(grades, key=lambda k: grades.get(k, 0)) if grades else "unknown"
             body_lines = [
                 f"**Session:** `{chat_hash}` | **Score:** {overall:.0%} | **Turns:** {len(turns)}",
                 "",
