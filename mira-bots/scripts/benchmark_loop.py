@@ -18,6 +18,7 @@ import csv
 import json
 import os
 import re
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -88,12 +89,13 @@ def log(msg: str):
     print(f"[{ts}] {msg}", flush=True)
 
 
-def run_local(cmd: str, timeout: int = 120) -> tuple[int, str]:
+def run_local(cmd: str | list[str], timeout: int = 120) -> tuple[int, str]:
     """Run a local command, return (exit_code, output)."""
+    args = cmd if isinstance(cmd, list) else shlex.split(cmd)
     try:
         result = subprocess.run(
-            cmd,
-            shell=True,
+            args,
+            shell=False,
             capture_output=True,
             text=True,
             timeout=timeout,
