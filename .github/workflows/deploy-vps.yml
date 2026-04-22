@@ -53,9 +53,9 @@ jobs:
           else
             echo "Full rebuild (mira-pipeline-saas, mira-bots)"
             DOCKER_BUILDKIT=1 docker compose -f docker-compose.saas.yml build \
-              mira-pipeline-saas mira-ingest-saas mira-mcp-saas
+              mira-pipeline mira-ingest mira-mcp
             docker compose -f docker-compose.saas.yml up -d --no-deps \
-              mira-pipeline-saas mira-ingest-saas mira-mcp-saas
+              mira-pipeline mira-ingest mira-mcp
           fi
 
           echo "=== Health check ==="
