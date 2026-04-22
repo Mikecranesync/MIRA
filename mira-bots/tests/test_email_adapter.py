@@ -6,9 +6,7 @@ All tests run offline. No SES, no S3, no SMTP.
 
 from __future__ import annotations
 
-import importlib.util
 import io
-import os
 import sys
 import zipfile
 from email import encoders
@@ -22,38 +20,6 @@ import pytest
 sys.path.insert(0, "mira-bots")
 sys.path.insert(0, "mira-bots/email")
 sys.modules.pop("chat_adapter", None)  # isolate from other bot adapters
-
-# chat_adapter, file_processor, parser, thread_tracker are safe to import at
-# collection time — no other test caches these names before email is collected.
-# renderers is NOT safe: test_image_downscale/typing_indicator import
-# telegram/bot.py at collection time, which caches telegram's renderers first.
-# Use importlib below for render_email to bypass sys.modules entirely.
-from chat_adapter import EmailChatAdapter  # noqa: E402
-from file_processor import FileProcessor  # noqa: E402
-from parser import ParsedEmail  # noqa: E402
-from shared.chat.adapter import ChatAdapter  # noqa: E402
-from shared.chat.types import (  # noqa: E402
-    NormalizedChatEvent,
-    NormalizedChatResponse,
-    ResponseBlock,
-)
-from thread_tracker import ThreadTracker  # noqa: E402
-
-_EMAIL_DIR = os.path.join(os.path.dirname(__file__), "..", "email")
-
-
-def _load_render_email():
-    """Load render_email from mira-bots/email/renderers.py via absolute path.
-
-    importlib bypasses sys.modules so the telegram renderers cache doesn't interfere.
-    """
-    spec = importlib.util.spec_from_file_location(
-        "_email_renderers", os.path.join(_EMAIL_DIR, "renderers.py")
-    )
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
-    return mod.render_email
-
 
 # ---------------------------------------------------------------------------
 # MIME Parser
@@ -383,9 +349,7 @@ async def test_fp_cad_file_stored_with_message(tmp_path):
 
     assert result["status"] == "stored"
     assert ".dwg" in result["description"] or "dwg" in result["description"].lower()
-    assert (
-        "can't process" in result["description"].lower() or "store" in result["description"].lower()
-    )
+    assert "can't process" in result["description"].lower() or "store" in result["description"].lower()
 
 
 @pytest.mark.asyncio
@@ -471,7 +435,9 @@ async def test_fp_heic_fallback_on_no_pillow(tmp_path):
 
 
 def test_renderer_plain_text_fallback():
-    render_email = _load_render_email()
+    from renderers import render_email
+    from shared.chat.types import NormalizedChatResponse
+
     response = NormalizedChatResponse(text="Check the motor overload relay.")
     plain, html = render_email(response, subject="Re: VFD fault")
 
@@ -482,15 +448,14 @@ def test_renderer_plain_text_fallback():
 
 
 def test_renderer_blocks_key_value():
-    render_email = _load_render_email()
+    from renderers import render_email
+    from shared.chat.types import NormalizedChatResponse, ResponseBlock
+
     response = NormalizedChatResponse(
         text="Diagnosis result",
         blocks=[
             ResponseBlock(kind="header", data={"text": "VFD Fault OC1"}),
-            ResponseBlock(
-                kind="key_value",
-                data={"pairs": [["Fault Code", "OC1"], ["Action", "Check motor load"]]},
-            ),
+            ResponseBlock(kind="key_value", data={"pairs": [["Fault Code", "OC1"], ["Action", "Check motor load"]]}),
             ResponseBlock(kind="warning", data={"text": "Isolate power before inspecting"}),
         ],
     )
@@ -503,13 +468,17 @@ def test_renderer_blocks_key_value():
 
 
 def test_renderer_has_reply_cta():
-    render_email = _load_render_email()
+    from renderers import render_email
+    from shared.chat.types import NormalizedChatResponse
+
     _, html = render_email(NormalizedChatResponse(text="Hello."))
     assert "Reply" in html or "reply" in html
 
 
 def test_renderer_escapes_html():
-    render_email = _load_render_email()
+    from renderers import render_email
+    from shared.chat.types import NormalizedChatResponse
+
     response = NormalizedChatResponse(text='<script>alert("xss")</script>')
     _, html = render_email(response)
 
@@ -524,6 +493,11 @@ def test_renderer_escapes_html():
 
 @pytest.mark.asyncio
 async def test_adapter_normalize_text_only(tmp_path):
+    from chat_adapter import EmailChatAdapter
+    from file_processor import FileProcessor
+    from parser import ParsedEmail
+    from thread_tracker import ThreadTracker
+
     parsed = ParsedEmail(
         message_id="msg-001@acme.com",
         in_reply_to="",
@@ -554,6 +528,11 @@ async def test_adapter_normalize_text_only(tmp_path):
 
 @pytest.mark.asyncio
 async def test_adapter_normalize_with_attachment(tmp_path):
+    from chat_adapter import EmailChatAdapter
+    from file_processor import FileProcessor
+    from parser import ParsedEmail
+    from thread_tracker import ThreadTracker
+
     parsed = ParsedEmail(
         message_id="msg-attach@acme.com",
         in_reply_to="",
@@ -591,6 +570,10 @@ async def test_adapter_normalize_with_attachment(tmp_path):
 
 @pytest.mark.asyncio
 async def test_adapter_render_outgoing_dry_run(tmp_path):
+    from chat_adapter import EmailChatAdapter
+    from shared.chat.types import NormalizedChatEvent, NormalizedChatResponse
+    from thread_tracker import ThreadTracker
+
     adapter = EmailChatAdapter(
         ses_client=None,  # dry-run
         thread_tracker=ThreadTracker(db_path=str(tmp_path / "t.db")),
@@ -613,6 +596,10 @@ async def test_adapter_render_outgoing_dry_run(tmp_path):
 
 @pytest.mark.asyncio
 async def test_adapter_render_outgoing_calls_ses(tmp_path):
+    from chat_adapter import EmailChatAdapter
+    from shared.chat.types import NormalizedChatEvent, NormalizedChatResponse
+    from thread_tracker import ThreadTracker
+
     mock_ses = MagicMock()
     mock_ses.send_raw_email = MagicMock(return_value={"MessageId": "ses-001"})
 
@@ -645,5 +632,8 @@ async def test_adapter_render_outgoing_calls_ses(tmp_path):
 
 
 def test_email_adapter_satisfies_protocol(tmp_path):
+    from chat_adapter import EmailChatAdapter
+    from shared.chat.adapter import ChatAdapter
+
     adapter = EmailChatAdapter()
     assert isinstance(adapter, ChatAdapter)
