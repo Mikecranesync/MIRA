@@ -600,6 +600,15 @@ class Supervisor:
         if (state.get("context") or {}).get("pm_suggestion_pending") and not photo_b64:
             return await self._handle_pm_suggestion_pending(chat_id, message, state, trace_id)
 
+        # Auto-reset from RESOLVED on any new message (not pending CMMS/PM).
+        # Prevents stale diagnostic context bleeding into a different topic.
+        if state["state"] == "RESOLVED":
+            logger.info(
+                "AUTO_RESET chat_id=%s — new message in RESOLVED, resetting to IDLE", chat_id
+            )
+            self.reset(chat_id)
+            state = self._load_state(chat_id)
+
         # Photo persistence: load stored session photo for text follow-ups
         _session_photo = None
         if not photo_b64:
@@ -2608,6 +2617,9 @@ class Supervisor:
         platform: str = "telegram",
     ):
         """Append-only log of every user/bot exchange for quality analysis."""
+        # DIAGNOSIS_REVISION is an internal retry state; store as DIAGNOSIS externally
+        if fsm_state == "DIAGNOSIS_REVISION":
+            fsm_state = "DIAGNOSIS"
         try:
             db = sqlite3.connect(self.db_path)
             db.execute("PRAGMA journal_mode=WAL")
@@ -2687,16 +2699,10 @@ class Supervisor:
                             continue
                 break
 
-        clean = raw_stripped
-        brace_idx = clean.find("{")
-        if brace_idx >= 0:
-            close_idx = clean.rfind("}")
-            if close_idx > brace_idx:
-                clean = (clean[:brace_idx] + clean[close_idx + 1 :]).strip()
-        if not clean:
-            clean = raw_stripped
+        # All JSON extraction failed — treat as plain text. Use raw_stripped as-is;
+        # brace-stripping was mangling prose that contained {} (e.g. Groq plain-text replies).
         logger.warning("_parse_response fallback; raw=%r", raw_stripped[:200])
-        return {"next_state": None, "reply": clean, "options": [], "confidence": "LOW"}
+        return {"next_state": None, "reply": raw_stripped, "options": [], "confidence": "LOW"}
 
     @staticmethod
     def _salvage_groq_json(parsed: dict) -> dict | None:
