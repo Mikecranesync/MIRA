@@ -14,6 +14,14 @@ import httpx
 from .chat_tenant import resolve as resolve_tenant
 from .conversation_router import route_intent
 from .detection.recurring_fault import check_recurring_and_annotate
+from .fallback_responses import (
+    GENERIC_ENGINE_ERROR,
+    INFERENCE_EXHAUSTED,
+    PHOTO_FAILURE,
+    RAG_FAILURE,
+    TIMEOUT_WARNING,
+    work_order_failure,
+)
 from .guardrails import (
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
@@ -162,6 +170,8 @@ ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"}
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 # How many turns the session photo stays available for follow-up questions
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
+# Maximum seconds for a single process() call before returning TIMEOUT_WARNING
+_PROCESS_TIMEOUT = float(os.getenv("MIRA_PROCESS_TIMEOUT", "30"))
 
 # Fuzzy-match common LLM-invented state names to valid FSM states.
 # Groq llama-3.3-70b and llama-4-scout frequently produce these.
@@ -552,9 +562,35 @@ class Supervisor:
         *,
         platform: str = "telegram",
     ) -> str:
-        """Main entry point. Returns reply string (backward-compatible)."""
+        """Main entry point. Returns reply string (backward-compatible).
+
+        Wraps process_full() with a configurable timeout (MIRA_PROCESS_TIMEOUT,
+        default 30s) and a top-level exception guard so every call returns a
+        user-facing string — never raises to the adapter.
+        """
         t0 = time.monotonic()
-        result = await self.process_full(chat_id, message, photo_b64)
+        try:
+            result = await asyncio.wait_for(
+                self.process_full(chat_id, message, photo_b64),
+                timeout=_PROCESS_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                "PROCESS_TIMEOUT chat_id=%s message=%r timeout=%.0fs",
+                chat_id,
+                message[:80],
+                _PROCESS_TIMEOUT,
+            )
+            return TIMEOUT_WARNING
+        except Exception as exc:
+            logger.error(
+                "PROCESS_ERROR chat_id=%s message=%r error=%s",
+                chat_id,
+                message[:80],
+                exc,
+                exc_info=True,
+            )
+            return GENERIC_ENGINE_ERROR
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         self._log_interaction(
             chat_id,
@@ -766,8 +802,19 @@ class Supervisor:
         # Photo path: delegate to vision worker, then route
         _photo_continues_session = False
         if photo_b64:
-            with tl_span(t, "vision_worker"):
-                vision_data = await self.vision.process(photo_b64, message)
+            try:
+                with tl_span(t, "vision_worker"):
+                    vision_data = await self.vision.process(photo_b64, message)
+            except Exception as _ve:
+                logger.error(
+                    "VISION_WORKER_ERROR chat_id=%s fsm=%s error=%s",
+                    chat_id,
+                    state.get("state"),
+                    _ve,
+                    exc_info=True,
+                )
+                tl_flush()
+                return self._make_result(PHOTO_FAILURE, "none", trace_id, state.get("state"))
 
             # Confidence gate: low-quality photos get a re-send request, not a diagnosis
             # Safety override: if the vision model saw a hazard, bypass and let it fire below
@@ -894,10 +941,15 @@ class Supervisor:
                 with tl_span(t, "print_worker"):
                     raw = await self.print_.process(message, state)
             except Exception as e:
-                logger.error("LLM call failed (print worker): %s", e)
+                logger.error(
+                    "PRINT_WORKER_ERROR chat_id=%s error=%s",
+                    chat_id,
+                    e,
+                    exc_info=True,
+                )
                 self._save_state(chat_id, state)
                 tl_flush()
-                return self._make_result(f"MIRA error: {e}", "none", trace_id)
+                return self._make_result(GENERIC_ENGINE_ERROR, "none", trace_id)
             parsed = self._parse_response(raw)
             # Output guardrail for print worker
             print_intent = classify_intent(message)
@@ -999,17 +1051,47 @@ class Supervisor:
         # RAG worker with self-correction: text queries and photo+intent queries
         # Use session photo for follow-up text questions within PHOTO_MEMORY_TURNS
         effective_photo = photo_b64 or _session_photo
-        with tl_span(t, "rag_worker"):
-            raw, parsed = await self._call_with_correction(
-                message,
-                state,
-                effective_photo,
-                tenant_id=resolved_tenant,
+        try:
+            with tl_span(t, "rag_worker"):
+                raw, parsed = await self._call_with_correction(
+                    message,
+                    state,
+                    effective_photo,
+                    tenant_id=resolved_tenant,
+                )
+        except Exception as _re:
+            logger.error(
+                "RAG_WORKER_ERROR chat_id=%s fsm=%s error=%s",
+                chat_id,
+                state.get("state"),
+                _re,
+                exc_info=True,
             )
+            # Partial degradation: RAG failed but session is still alive
+            self._save_state(chat_id, state)
+            tl_flush()
+            # Try to surface a vendor support link if we know the equipment
+            asset = state.get("asset_identified") or ""
+            from .guardrails import vendor_support_url as _vsu
+
+            url = _vsu(asset)
+            fallback = RAG_FAILURE
+            if url:
+                fallback = (
+                    f"I'm having trouble accessing the knowledge base right now. "
+                    f"For {asset}, try the OEM portal directly: {url}. "
+                    f"Try again in a moment."
+                )
+            return self._make_result(fallback, "none", trace_id, state.get("state"))
         if raw is None:
             self._save_state(chat_id, state)
             tl_flush()
-            return self._make_result(parsed["reply"], "none", trace_id)
+            # raw=None means all providers failed — use INFERENCE_EXHAUSTED fallback
+            # unless parsed["reply"] already contains a meaningful message
+            fallback_reply = parsed.get("reply") or INFERENCE_EXHAUSTED
+            if not fallback_reply or fallback_reply.strip() == "":
+                fallback_reply = INFERENCE_EXHAUSTED
+            return self._make_result(fallback_reply, "none", trace_id)
 
         # Output guardrails
         intent = classify_intent(message)
@@ -1114,10 +1196,25 @@ class Supervisor:
         # Amend parsed["reply"] now so both history and formatted output include it.
         _wo_draft = None
         if state["state"] == "RESOLVED":
-            _wo = build_uns_wo_from_state(state)
-            _wo_draft = _wo.to_dict()
-            _preview = format_wo_preview(_wo)
-            parsed["reply"] = parsed.get("reply", "").rstrip() + "\n\n" + _preview
+            try:
+                _wo = build_uns_wo_from_state(state)
+                _wo_draft = _wo.to_dict()
+                _preview = format_wo_preview(_wo)
+                parsed["reply"] = parsed.get("reply", "").rstrip() + "\n\n" + _preview
+            except Exception as _woe:
+                logger.error(
+                    "WO_BUILD_ERROR chat_id=%s error=%s",
+                    chat_id,
+                    _woe,
+                    exc_info=True,
+                )
+                # Diagnosis text is already in parsed["reply"]; append manual WO note
+                diagnosis_summary = parsed.get("reply", "")[:300]
+                parsed["reply"] = (
+                    parsed.get("reply", "").rstrip()
+                    + "\n\n"
+                    + work_order_failure(diagnosis_summary)
+                )
 
             # Recurring fault detection — annotate reply if same fault recurred
             try:
