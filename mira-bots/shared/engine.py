@@ -22,6 +22,17 @@ from .fallback_responses import (
     TIMEOUT_WARNING,
     work_order_failure,
 )
+from .fsm import (
+    _FAULT_INFO_RE,  # noqa: F401 — re-exported for test_engine.py backward compat
+    _MAX_Q_ROUNDS,  # noqa: F401 — re-exported for test_engine.py backward compat
+    _STATE_ALIASES,  # noqa: F401 — re-exported for test_fsm_properties.py backward compat
+    ACTIVE_DIAGNOSTIC_STATES,
+    HISTORY_LIMIT,
+    PHOTO_MEMORY_TURNS,
+    STATE_ORDER,
+    VALID_STATES,
+    advance_state,
+)
 from .guardrails import (
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
@@ -29,7 +40,6 @@ from .guardrails import (
     classify_intent,
     detect_session_followup,
     resolve_option_selection,
-    scrub_fabricated_reflection,
     strip_mentions,
     vendor_name_from_text,
     vendor_support_url,
@@ -51,6 +61,26 @@ from .models.work_order import (
 from .nemotron import NemotronClient
 from .neon_recall import kb_has_coverage
 from .notifications.push import push_safety_alert, push_wo_created
+from .photo_handler import (
+    build_print_reply,
+    clear_session_photo,
+    load_session_photo,
+    save_session_photo,
+)
+from .response_formatter import (
+    _VISION_PROSE_PREFIX_RE,
+    _looks_like_model_number,
+    deduplicate_options,  # noqa: F401 — re-exported for test_conversation_continuity.py
+    format_reply,
+    parse_response,
+)
+from .session_manager import (
+    ensure_table,
+    load_state,
+    log_interaction,
+    record_exchange,
+    save_state,
+)
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
@@ -76,57 +106,7 @@ _LOW_CONF_SIGNALS = re.compile(
 
 _JSON_RE = re.compile(r'\{[^{}]*"reply"[^{}]*\}', re.DOTALL)
 
-# 2026-04-19 audit — Rule 3 padding options that keep slipping past the LLM prompt.
-# Dropped engine-side before render. Pattern matches the option text AFTER any
-# leading "N." / "N)" prefix has been stripped.
-_PADDING_OPTION_RE = re.compile(
-    r"^(i'?m not sure|not sure|not applicable|n/?a|unknown|other|unsure"
-    r"|i don'?t know|don'?t know|not visible|can'?t tell|cannot tell"
-    r"|none of the above|maybe|possibly)\.?$",
-    re.IGNORECASE,
-)
-
-# Placeholder options like "1" / "2" / "1." — engine stored these when the LLM
-# returned options without text (seen in prod session e4ced7d8 2026-04-14).
-_PLACEHOLDER_OPTION_RE = re.compile(r"^[\"']?\d+[.):\-]?[\"']?$")
-
-# Short affirmative/negative option patterns that render naturally inline
-# ("Reply: Yes or No") instead of as a numbered block.
-_YES_OPTION_RE = re.compile(
-    r"^(yes|yeah|yep|y|correct|true|confirmed|connected|present|on|good|ok|okay"
-    r"|done|working|fine|all digits|all good)([,.]|\b).*$",
-    re.IGNORECASE,
-)
-_NO_OPTION_RE = re.compile(
-    r"^(no|nope|n|incorrect|false|wrong|disconnected|absent|off|bad|missing"
-    r"|broken|single digit|not working|failed)([,.]|\b).*$",
-    re.IGNORECASE,
-)
-
-# Vision-prose stems that leak from the vision worker into user-facing replies.
-# 2026-04-19 audit showed every photo session starting with "The image shows..."
-# or "I can see this is The image shows...". Two regexes:
-#
-#  _VISION_PROSE_HEAD_RE — for REPLIES: strip the entire "The image shows X."
-#  opening sentence (LLM can regenerate a better lead). Trailing period
-#  required; if the reply is only this sentence we leave the reply alone and
-#  let downstream handling surface it.
-#
-#  _VISION_PROSE_PREFIX_RE — for ASSET_IDENTIFIED: strip only the stem
-#  ("The image shows a ") and keep the equipment description ("TECO 3-PHASE
-#  INDUCTION MOTOR") so the stored asset remains useful.
-_VISION_PROSE_HEAD_RE = re.compile(
-    r"^\s*(?:i can see (?:this is\s+)?)?"
-    r"(?:the image shows[^.\n]*\.\s*)+",
-    re.IGNORECASE,
-)
-_VISION_PROSE_PREFIX_RE = re.compile(
-    r"^\s*(?:i can see (?:this is\s+)?)?"
-    r"(?:the image shows\s+(?:a |an |the )?)",
-    re.IGNORECASE,
-)
-
-STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
+STATE_ORDER = STATE_ORDER  # re-exported from fsm for backward-compat imports
 # ---------------------------------------------------------------------------
 # Diagnosis self-critique quality gate
 # ---------------------------------------------------------------------------
@@ -134,24 +114,7 @@ _CRITIQUE_DISABLED = os.getenv("MIRA_DISABLE_SELF_CRITIQUE", "0") == "1"
 _CRITIQUE_THRESHOLD = int(os.getenv("MIRA_CRITIQUE_THRESHOLD", "3"))
 _CRITIQUE_MAX_ATTEMPTS = int(os.getenv("MIRA_CRITIQUE_MAX_ATTEMPTS", "2"))
 
-# Patterns that indicate the user has already supplied fault/alarm specifics.
-# Imported by tests/test_engine.py — restored after PR #422 inadvertently removed it
-# alongside the q-trap escape (see fix/q-trap-restore-from-422 PR).
-_FAULT_INFO_RE = re.compile(
-    r"""
-    (?:[A-Z]{1,3}-?\d{3,})              # F30001, AL-14, E001
-    | \b[A-Z]{2,3}\b(?=\s+fault)        # OC fault, OL fault (common VFD 2-letter codes)
-    | \b(?:fault\s+code|alarm\s+(?:code|number)|error\s+code|fault\s+number)\b
-    | \b(?:tripping\s+on|tripped\s+on|showing\s+(?:fault|error|alarm))\b
-    | \b(?:displays?|shows?|reading)\s+[A-Z0-9]{2,}  # "shows OC", "displays F7"
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-
-# Q-trap escape: hard ceiling on consecutive Q-state turns so techs aren't
-# interrogated forever. Restored from pre-#422 state. See #387 for off-by-one.
-_Q_STATES = frozenset({"Q1", "Q2", "Q3"})
-_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
+# _FAULT_INFO_RE, _Q_STATES, _MAX_Q_ROUNDS now live in fsm.py (imported above)
 
 # Compact judge prompt — returns only the three actionable dims to keep token cost low.
 _CRITIQUE_PROMPT = """\
@@ -166,59 +129,9 @@ Rate each on 1-5 (5=excellent, 3=acceptable, <3=needs revision):
 {{"groundedness":{{"score":<1-5>,"note":"<12 words max: reflects KB or admits gap?>"}},\
 "helpfulness":{{"score":<1-5>,"note":"<12 words max: technician can act on this?>"}},\
 "instruction_following":{{"score":<1-5>,"note":"<12 words max: honored the user's actual ask?>"}}}}"""
-ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"})
-HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
-# How many turns the session photo stays available for follow-up questions
-PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
-# Maximum seconds for a single process() call before returning TIMEOUT_WARNING
+# ACTIVE_DIAGNOSTIC_STATES, HISTORY_LIMIT, PHOTO_MEMORY_TURNS, _STATE_ALIASES
+# now live in fsm.py (imported above). _PROCESS_TIMEOUT defined below.
 _PROCESS_TIMEOUT = float(os.getenv("MIRA_PROCESS_TIMEOUT", "30"))
-
-# Fuzzy-match common LLM-invented state names to valid FSM states.
-# Groq llama-3.3-70b and llama-4-scout frequently produce these.
-_STATE_ALIASES: dict[str, str] = {
-    # Diagnosis variants
-    "DIAGNOSTICS": "DIAGNOSIS",
-    "DIAGNOSTIC": "DIAGNOSIS",
-    "DIAGNOSIS_SUMMARY": "DIAGNOSIS",
-    "FAULT_ANALYSIS": "DIAGNOSIS",
-    "ANALYZING": "DIAGNOSIS",
-    "ANALYSIS": "DIAGNOSIS",
-    "ROOT_CAUSE": "DIAGNOSIS",
-    # Question variants
-    "TROUBLESHOOT": "Q1",
-    "TROUBLESHOOTING": "Q1",
-    "QUESTION": "Q1",
-    "USER_QUERY": "Q1",
-    "INQUIRY": "Q1",
-    "NEED_MORE_INFO": "Q1",
-    "NEED_INFO": "Q1",
-    "PARAMETER_IDENTIFIED": "Q1",
-    "READING_IDENTIFIED": "Q1",
-    "INSTALLATION_GUIDANCE": "FIX_STEP",
-    "INSTALLATION": "FIX_STEP",
-    "WIRING_CHECK": "Q2",
-    "CONFIGURATION": "Q2",
-    "GATHERING_INFO": "Q2",
-    "INSPECT": "Q2",
-    "VERIFY": "Q2",
-    "CHECK_OUTPUT_REACTOR": "Q2",
-    "Q4": "Q3",  # no Q4 — clamp to Q3
-    "Q5": "Q3",
-    # Fix step variants
-    "FIX": "FIX_STEP",
-    "REPAIR": "FIX_STEP",
-    "ACTION": "FIX_STEP",
-    "CONFIG_STEP": "FIX_STEP",
-    "PARAMETER_SETTINGS": "FIX_STEP",
-    "IN_PROGRESS": "FIX_STEP",
-    # Resolved variants
-    "SUMMARY": "RESOLVED",
-    "COMPLETE": "RESOLVED",
-    "DONE": "RESOLVED",
-    "CLOSED": "RESOLVED",
-    # Internal self-critique state — LLMs should not propose this; if they do, map to DIAGNOSIS
-    "DIAGNOSIS_REVISION": "DIAGNOSIS",
-}
 
 # ---------------------------------------------------------------------------
 # Manual-lookup gathering subroutine constants
@@ -299,36 +212,9 @@ _KNOWN_VENDORS: frozenset[str] = frozenset(
 )
 
 
-def format_diagnostic_response(
-    equipment_id: str, key_observation: str, question: str, options: list
-) -> str:
-    """Format a structured diagnostic reply with equipment header and options."""
-    header = f"📷 {equipment_id} — {key_observation}"
-    opts = "\n".join(f"{i + 1}. {opt}" for i, opt in enumerate(options))
-    return f"{header}\n\n{question}\n{opts}"
-
-
-def deduplicate_options(reply_text: str, keyboard_options: list) -> str:
-    """Remove numbered option lines from reply_text that already appear in keyboard_options."""
-    if not keyboard_options:
-        return reply_text
-    for opt in keyboard_options:
-        reply_text = re.sub(rf"\n\d+\.\s+{re.escape(opt)}", "", reply_text)
-    return reply_text.strip()
-
-
-def _looks_like_model_number(text: str) -> str:
-    """Return the first model-number-like token from *text*, or ''.
-
-    A model number must contain both at least one letter and at least one
-    digit (e.g. "GS20", "X3", "FC-302", "VLT-FC302").  Pure-letter and
-    pure-digit tokens are excluded unless the caller handles them separately.
-    """
-    for raw in re.split(r"[\s,;]+", text):
-        tok = re.sub(r"[^\w-]", "", raw)
-        if len(tok) >= 2 and re.search(r"[A-Za-z]", tok) and re.search(r"\d", tok):
-            return tok
-    return ""
+# format_diagnostic_response, deduplicate_options, _looks_like_model_number
+# now live in response_formatter.py (imported above and re-exported here for
+# backward compatibility with any callers that import from engine directly).
 
 
 class Supervisor:
@@ -387,106 +273,18 @@ class Supervisor:
 
     def _save_session_photo(self, chat_id: str, photo_b64: str) -> str:
         """Save session photo to disk. Returns the file path."""
-        import base64
-
-        photos_dir = os.path.join(os.path.dirname(self.db_path), "session_photos")
-        os.makedirs(photos_dir, exist_ok=True)
-        path = os.path.join(photos_dir, f"{chat_id}.jpg")
-        with open(path, "wb") as f:
-            f.write(base64.b64decode(photo_b64))
-        logger.info("Session photo saved: %s", path)
-        return path
+        return save_session_photo(self.db_path, chat_id, photo_b64)
 
     def _load_session_photo(self, chat_id: str) -> str | None:
         """Load session photo as base64 if it exists and is within turn limit."""
-        import base64
-
-        path = os.path.join(os.path.dirname(self.db_path), "session_photos", f"{chat_id}.jpg")
-        if not os.path.exists(path):
-            return None
-        try:
-            with open(path, "rb") as f:
-                return base64.b64encode(f.read()).decode()
-        except Exception as e:
-            logger.warning("Failed to load session photo: %s", e)
-            return None
+        return load_session_photo(self.db_path, chat_id)
 
     def _clear_session_photo(self, chat_id: str) -> None:
         """Remove the session photo when it expires or session resets."""
-        path = os.path.join(os.path.dirname(self.db_path), "session_photos", f"{chat_id}.jpg")
-        if os.path.exists(path):
-            os.remove(path)
-            logger.info("Session photo cleared: %s", path)
+        clear_session_photo(self.db_path, chat_id)
 
     def _build_print_reply(self, vision_data: dict) -> str:
-        items_list = vision_data.get("ocr_items", [])
-        drawing_type = vision_data.get("drawing_type", "electrical drawing")
-        n = len(items_list)
-
-        if n == 0:
-            quality = "Couldn't extract text — try better lighting or a closer shot."
-        elif n <= 5:
-            quality = f"Weak read — only {n} labels. Closer shot recommended."
-        elif n <= 20:
-            quality = f"Partial read — {n} labels extracted."
-        else:
-            quality = f"Good read — {n} labels extracted."
-
-        chrome = [
-            "ask copilot",
-            "sharepoint",
-            "file c:/",
-            "c:\\",
-            ".exe",
-            ".dll",
-            "microsoft",
-            "adobe",
-        ]
-        artifact_note = (
-            " (some labels may be screen UI, not drawing content)"
-            if any(p in " ".join(items_list).lower() for p in chrome)
-            else ""
-        )
-
-        prompts = {
-            "ladder logic diagram": "Describe a fault symptom or ask what a specific rung does.",
-            "one-line diagram": "Ask me to trace power flow or identify a protection device.",
-            "P&ID": "Ask me to identify a tag number or trace a process line.",
-            "wiring diagram": "Ask me to trace a wire run or identify connection points.",
-            "panel schedule": "Ask me to look up a specific entry.",
-        }
-        next_step = prompts.get(drawing_type, "Ask me what you're trying to find.")
-        preview = ", ".join(items_list[:8]) if items_list else "(no text extracted)"
-
-        # Rule 14: proactively surface fault states visible in OCR — do not wait for the tech to ask
-        _FAULT_KEYWORDS = (
-            "stopped",
-            "fault",
-            "alarm",
-            "error",
-            "trip",
-            "warning",
-            "faulted",
-            "tripped",
-        )
-        fault_items = [
-            item for item in items_list if any(kw in item.lower() for kw in _FAULT_KEYWORDS)
-        ]
-        if fault_items:
-            # Use fault items as preview to save words
-            preview = ", ".join(fault_items[:4])
-            fault_summary = "; ".join(fault_items[:3])
-            next_step = (
-                f"Active fault states: {fault_summary}. "
-                f"Likely caused by a trip, interlock, or upstream fault. "
-                f"Describe what happened before this, or ask me to trace the fault path."
-            )
-
-        return (
-            f"{drawing_type.capitalize()} — {quality}{artifact_note}\n"
-            f"Labels I can see: {preview}\n"
-            f"{next_step}"
-        )
+        return build_print_reply(vision_data)
 
     # ------------------------------------------------------------------
     # Confidence inference
@@ -1286,6 +1084,38 @@ class Supervisor:
             "1",
         }
     )
+
+    def _build_wo_draft(self, state: dict) -> dict:
+        """Construct work-order title/description/priority from resolved diagnostic state."""
+        asset = (state.get("asset_identified") or "Unknown equipment")[:120]
+        fault = state.get("fault_category") or "corrective"
+        title = f"[MIRA] {asset[:60]} — {fault} action"
+
+        ctx = state.get("context") or {}
+        history = ctx.get("history", [])
+        lines = []
+        for turn in history[-6:]:
+            role = (turn.get("role") or "").upper()
+            content = (turn.get("content") or "")[:400]
+            lines.append(f"{role}: {content}")
+        summary = "\n".join(lines)
+
+        description = (
+            f"MIRA Diagnostic Session\n"
+            f"Equipment: {asset}\n"
+            f"Fault category: {fault}\n\n"
+            f"Conversation summary:\n{summary}"
+        )
+
+        _HIGH_PRIORITY_FAULTS = {"power", "thermal", "hydraulic"}
+        priority = "HIGH" if fault in _HIGH_PRIORITY_FAULTS else "MEDIUM"
+
+        return {
+            "title": title[:100],
+            "description": description[:2000],
+            "priority": priority,
+            "asset_label": asset,
+        }
 
     async def _post_cmms_work_order(self, wo: UNSWorkOrder) -> str:
         """Call AtlasCMMSClient to create a work order. Returns confirmation string."""
@@ -2572,124 +2402,19 @@ class Supervisor:
 
     def _ensure_table(self):
         """Create conversation_state table if it doesn't exist."""
-        db = sqlite3.connect(self.db_path)
-        db.execute("PRAGMA journal_mode=WAL")
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS conversation_state (
-                chat_id          TEXT PRIMARY KEY,
-                state            TEXT NOT NULL DEFAULT 'IDLE',
-                context          TEXT NOT NULL DEFAULT '{}',
-                asset_identified TEXT,
-                fault_category   TEXT,
-                exchange_count   INTEGER NOT NULL DEFAULT 0,
-                final_state      TEXT,
-                voice_enabled    INTEGER NOT NULL DEFAULT 0,
-                created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS feedback_log (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                chat_id         TEXT NOT NULL,
-                feedback        TEXT NOT NULL,
-                reason          TEXT,
-                last_reply      TEXT,
-                exchange_count  INTEGER,
-                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS interactions (
-                id               INTEGER PRIMARY KEY AUTOINCREMENT,
-                chat_id          TEXT NOT NULL,
-                platform         TEXT NOT NULL DEFAULT 'telegram',
-                user_message     TEXT NOT NULL,
-                bot_response     TEXT NOT NULL,
-                fsm_state        TEXT,
-                intent           TEXT,
-                has_photo        INTEGER DEFAULT 0,
-                confidence       TEXT,
-                response_time_ms INTEGER,
-                created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        try:
-            db.execute(
-                "ALTER TABLE conversation_state ADD COLUMN voice_enabled INTEGER NOT NULL DEFAULT 0"
-            )
-        except Exception as e:
-            logger.debug("voice_enabled column already exists: %s", e)
-        db.commit()
-        db.close()
+        ensure_table(self.db_path)
 
     def _load_state(self, chat_id: str) -> dict:
         """Load conversation state from SQLite."""
-        db = sqlite3.connect(self.db_path)
-        db.execute("PRAGMA journal_mode=WAL")
-        db.row_factory = sqlite3.Row
-        row = db.execute(
-            "SELECT * FROM conversation_state WHERE chat_id = ?", (chat_id,)
-        ).fetchone()
-        db.close()
-        if row:
-            state = dict(row)
-            try:
-                state["context"] = json.loads(state["context"])
-            except (json.JSONDecodeError, TypeError):
-                state["context"] = {}
-            state["context"].setdefault("session_context", {})
-            return state
-        return {
-            "chat_id": chat_id,
-            "state": "IDLE",
-            "context": {"session_context": {}},
-            "asset_identified": None,
-            "fault_category": None,
-            "exchange_count": 0,
-            "final_state": None,
-        }
+        return load_state(self.db_path, chat_id)
 
     def _save_state(self, chat_id: str, state: dict) -> None:
         """Persist conversation state to SQLite."""
-        context_json = json.dumps(state.get("context", {}))
-        db = sqlite3.connect(self.db_path)
-        db.execute("PRAGMA journal_mode=WAL")
-        db.execute(
-            """INSERT INTO conversation_state
-               (chat_id, state, context, asset_identified, fault_category,
-                exchange_count, final_state, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-               ON CONFLICT(chat_id) DO UPDATE SET
-                 state = excluded.state,
-                 context = excluded.context,
-                 asset_identified = excluded.asset_identified,
-                 fault_category = excluded.fault_category,
-                 exchange_count = excluded.exchange_count,
-                 final_state = excluded.final_state,
-                 updated_at = CURRENT_TIMESTAMP""",
-            (
-                chat_id,
-                state["state"],
-                context_json,
-                state.get("asset_identified"),
-                state.get("fault_category"),
-                state["exchange_count"],
-                state.get("final_state"),
-            ),
-        )
-        db.commit()
-        db.close()
+        save_state(self.db_path, chat_id, state)
 
-    def _record_exchange(self, chat_id: str, state: dict, message: str, reply: str):
+    def _record_exchange(self, chat_id: str, state: dict, message: str, reply: str) -> None:
         """Save a user/assistant exchange to conversation history and persist."""
-        ctx = state.get("context") or {}
-        history = ctx.get("history", [])
-        history.append({"role": "user", "content": message})
-        history.append({"role": "assistant", "content": reply})
-        ctx["history"] = history
-        state["context"] = ctx
-        self._save_state(chat_id, state)
+        record_exchange(self.db_path, chat_id, state, message, reply)
 
     def _log_interaction(
         self,
@@ -2703,325 +2428,40 @@ class Supervisor:
         confidence: str = "",
         response_time_ms: int = 0,
         platform: str = "telegram",
-    ):
+    ) -> None:
         """Append-only log of every user/bot exchange for quality analysis."""
-        try:
-            db = sqlite3.connect(self.db_path)
-            db.execute("PRAGMA journal_mode=WAL")
-            db.execute(
-                """INSERT INTO interactions
-                   (chat_id, platform, user_message, bot_response, fsm_state,
-                    intent, has_photo, confidence, response_time_ms)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    chat_id,
-                    platform,
-                    message,
-                    reply,
-                    fsm_state,
-                    intent,
-                    int(has_photo),
-                    confidence,
-                    response_time_ms,
-                ),
-            )
-            db.commit()
-            db.close()
-        except Exception as e:
-            logger.warning("Failed to log interaction: %s", e)
+        log_interaction(
+            self.db_path,
+            chat_id,
+            message,
+            reply,
+            fsm_state=fsm_state,
+            intent=intent,
+            has_photo=has_photo,
+            confidence=confidence,
+            response_time_ms=response_time_ms,
+            platform=platform,
+        )
 
     # ------------------------------------------------------------------
     # Response parsing
     # ------------------------------------------------------------------
 
     def _parse_response(self, raw: str) -> dict:
-        """Parse LLM response — try JSON envelope, fall back to plain text.
-
-        Groq models frequently return JSON with non-standard keys like
-        ``follow_ups``, ``tags``, ``title``, ``queries`` instead of the
-        expected ``reply`` key. We attempt to salvage these into a valid
-        response so the FSM doesn't stall.
-        """
-        raw_stripped = raw.strip()
-
-        # strict=False allows literal control chars (newlines, tabs) inside JSON string
-        # values. LLMs regularly emit envelopes with raw \n in the reply field; without
-        # this, json.loads rejects them per RFC 8259 and the envelope leaks to chat.
-        # Restored from the P0 #380 fix that was lost in a recent merge. See #387.
-        try:
-            parsed = json.loads(raw_stripped, strict=False)
-            if isinstance(parsed, dict):
-                if "reply" in parsed:
-                    return self._extract_parsed(parsed)
-                # Groq fallback: salvage non-standard JSON envelopes
-                parsed = self._salvage_groq_json(parsed)
-                if parsed:
-                    return parsed
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-        if "```" in raw_stripped:
-            for block in raw_stripped.split("```"):
-                block = block.strip()
-                if block.startswith("json"):
-                    block = block[4:].strip()
-                try:
-                    parsed = json.loads(block, strict=False)
-                    if isinstance(parsed, dict) and "reply" in parsed:
-                        return self._extract_parsed(parsed)
-                except (json.JSONDecodeError, TypeError):
-                    continue
-
-        for i in range(len(raw_stripped)):
-            if raw_stripped[i] == "{":
-                for j in range(len(raw_stripped), i, -1):
-                    if raw_stripped[j - 1] == "}":
-                        try:
-                            parsed = json.loads(raw_stripped[i:j].rstrip(), strict=False)
-                            if isinstance(parsed, dict) and "reply" in parsed:
-                                return self._extract_parsed(parsed)
-                        except (json.JSONDecodeError, TypeError):
-                            continue
-                break
-
-        clean = raw_stripped
-        brace_idx = clean.find("{")
-        if brace_idx >= 0:
-            close_idx = clean.rfind("}")
-            if close_idx > brace_idx:
-                clean = (clean[:brace_idx] + clean[close_idx + 1 :]).strip()
-        if not clean:
-            clean = raw_stripped
-        logger.warning("_parse_response fallback; raw=%r", raw_stripped[:200])
-        return {"next_state": None, "reply": clean, "options": [], "confidence": "LOW"}
-
-    @staticmethod
-    def _salvage_groq_json(parsed: dict) -> dict | None:
-        """Attempt to extract a usable reply from non-standard Groq JSON.
-
-        Groq's llama models often return ``{"follow_ups": [...]}`` or
-        ``{"title": "..."}`` instead of the expected ``{"reply": "..."}``.
-        """
-        # {"follow_ups": ["Q1", "Q2", "Q3"]} → format as numbered list
-        follow_ups = parsed.get("follow_ups") or parsed.get("suggestions")
-        if isinstance(follow_ups, list) and follow_ups:
-            text = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(follow_ups[:4]))
-            return {
-                "next_state": None,
-                "reply": text,
-                "options": follow_ups[:4],
-                "confidence": "LOW",
-            }
-
-        # {"title": "..."} → use as reply
-        title = parsed.get("title")
-        if isinstance(title, str) and title.strip():
-            return {"next_state": None, "reply": title.strip(), "options": [], "confidence": "LOW"}
-
-        # {"queries": ["...", "..."]} → search queries, use first as reply
-        queries = parsed.get("queries")
-        if isinstance(queries, list) and queries:
-            return {"next_state": None, "reply": queries[0], "options": [], "confidence": "LOW"}
-
-        # {"tags": ["...", "..."]} → not useful as a reply
-        return None
-
-    @staticmethod
-    def _extract_parsed(parsed: dict) -> dict:
-        """Normalize a parsed JSON envelope into standard form."""
-        raw_conf = parsed.get("confidence", "LOW")
-        confidence = raw_conf if raw_conf in ("HIGH", "MEDIUM", "LOW") else "LOW"
-        return {
-            "next_state": parsed.get("next_state"),
-            "reply": parsed["reply"],
-            "options": parsed.get("options", []),
-            "confidence": confidence,
-        }
+        """Parse LLM response. Delegates to response_formatter.parse_response."""
+        return parse_response(raw)
 
     # ------------------------------------------------------------------
     # FSM state machine
     # ------------------------------------------------------------------
 
-    _VALID_STATES = frozenset(
-        STATE_ORDER + ["ASSET_IDENTIFIED", "ELECTRICAL_PRINT", "SAFETY_ALERT", "DIAGNOSIS_REVISION"]
-    )
+    _VALID_STATES = VALID_STATES  # re-exported from fsm for class-level access
 
     def _advance_state(self, state: dict, parsed: dict) -> dict:
-        """Advance FSM state based on parsed LLM response."""
-        current = state["state"]
-        reply_lower = parsed.get("reply", "").lower()
-
-        if (
-            any(kw in reply_lower for kw in SAFETY_KEYWORDS)
-            or parsed.get("next_state") == "SAFETY_ALERT"
-        ):
-            state["state"] = "SAFETY_ALERT"
-            state["final_state"] = "SAFETY_ALERT"
-            state["exchange_count"] += 1
-            return state
-
-        if current == "ELECTRICAL_PRINT":
-            state["state"] = "ELECTRICAL_PRINT"
-            state["exchange_count"] += 1
-            return state
-
-        if parsed.get("next_state"):
-            proposed = _STATE_ALIASES.get(parsed["next_state"], parsed["next_state"])
-            if proposed in self._VALID_STATES:
-                state["state"] = proposed
-            else:
-                logger.warning(
-                    "Invalid FSM state '%s' from LLM (current: %s) — holding at %s",
-                    proposed,
-                    current,
-                    current,
-                )
-        else:
-            if current == "ASSET_IDENTIFIED":
-                state["state"] = "Q1"
-            elif current == "DIAGNOSIS_REVISION":
-                # No LLM-proposed state while in revision — treat as DIAGNOSIS so the
-                # self-critique gate can run again on the regenerated response.
-                state["state"] = "DIAGNOSIS"
-            elif current in STATE_ORDER:
-                idx = STATE_ORDER.index(current)
-                if idx + 1 < len(STATE_ORDER):
-                    state["state"] = STATE_ORDER[idx + 1]
-
-        if state["state"] in ("RESOLVED", "SAFETY_ALERT"):
-            state["final_state"] = state["state"]
-
-        # Q-trap escape (restored from pre-#422 state — see fix/q-trap-restore-from-422):
-        # if the FSM has been in Q-states for _MAX_Q_ROUNDS consecutive turns, force a
-        # commit to DIAGNOSIS so the technician gets an answer. Count every entry into
-        # a Q-state (including the first one from a non-Q current) so IDLE→Q1→Q2→Q3
-        # commits on round 3 rather than round 4.
-        ctx_q = state.get("context") or {}
-        if state["state"] in _Q_STATES:
-            ctx_q["q_rounds"] = ctx_q.get("q_rounds", 0) + 1
-            if ctx_q["q_rounds"] >= _MAX_Q_ROUNDS:
-                logger.info(
-                    "Q_TRAP_COMMIT chat_id=%s q_rounds=%d current=%s → DIAGNOSIS",
-                    state.get("chat_id", "?"),
-                    ctx_q["q_rounds"],
-                    state["state"],
-                )
-                state["state"] = "DIAGNOSIS"
-                ctx_q["q_rounds"] = 0
-        else:
-            ctx_q.pop("q_rounds", None)
-        state["context"] = ctx_q
-
-        if not state.get("fault_category"):
-            for cat in (
-                "comms",
-                "communication",
-                "power",
-                "electrical",
-                "mechanical",
-                "vibration",
-                "thermal",
-                "temperature",
-                "hydraulic",
-                "pressure",
-            ):
-                if cat in reply_lower:
-                    normalized = {
-                        "communication": "comms",
-                        "electrical": "power",
-                        "vibration": "mechanical",
-                        "temperature": "thermal",
-                        "pressure": "hydraulic",
-                    }
-                    state["fault_category"] = normalized.get(cat, cat)
-                    break
-
-        state["exchange_count"] += 1
-        return state
+        """Advance FSM state. Delegates to fsm.advance_state."""
+        return advance_state(state, parsed)
 
     def _format_reply(self, parsed: dict, user_message: str = "") -> str:
-        """Format parsed response for display.
-
-        Shape rules (2026-04-19 audit):
-        - Strip vision-prose leakage ("The image shows...") from reply head.
-        - Strip fabricated reflections ("You've checked X" when user didn't
-          say X) — Rule 21 enforcement.
-        - Drop padding options banned by Rule 3 ("I'm not sure", "Other",
-          "Not visible", placeholder "1"/"2", etc.).
-        - When remaining options are a Yes/No pair, render inline prose
-          ("Reply: Yes or No.") instead of a numbered block — form-feel fix.
-        - Otherwise fall back to the numbered-list rendering.
-        - MVP Unit 2 (2026-04-20): if KB chunks were used and reply lacks
-          a [Source: ...] block, append a citation footer from kb_status.
-        """
-        reply = parsed["reply"]
-        options = parsed.get("options", [])
-
-        reply = _VISION_PROSE_HEAD_RE.sub("", reply).lstrip()
-        if user_message:
-            reply = scrub_fabricated_reflection(reply, user_message)
-
-        cleaned: list[str] = []
-        for raw in options:
-            if raw is None:
-                continue
-            text = re.sub(r"^\s*\d+[.):\-]\s*", "", str(raw)).strip()
-            if len(text) <= 1:
-                continue
-            if _PLACEHOLDER_OPTION_RE.match(text):
-                continue
-            if _PADDING_OPTION_RE.match(text):
-                continue
-            cleaned.append(text)
-
-        if len(cleaned) < 2:
-            pass  # no options block — reply alone
-        elif (
-            len(cleaned) == 2
-            and _YES_OPTION_RE.match(cleaned[0])
-            and _NO_OPTION_RE.match(cleaned[1])
-        ):
-            reply = deduplicate_options(reply, cleaned)
-            suffix = f"Reply: {cleaned[0]} or {cleaned[1]}."
-            if not reply.rstrip().endswith((".", "?", "!")):
-                reply = reply.rstrip() + "."
-            reply = f"{reply} {suffix}"
-        else:
-            reply = deduplicate_options(reply, cleaned)
-            reply += "\n\n" + "\n".join(f"{i + 1}. {opt}" for i, opt in enumerate(cleaned))
-
-        return self._maybe_append_citation_footer(reply)
-
-    def _maybe_append_citation_footer(self, reply: str) -> str:
-        """Append a Sources footer if KB chunks were used but the reply doesn't cite them.
-
-        MVP Unit 2 — LLM compliance enforcement for Rule 16 in active.yaml. The
-        system prompt instructs the model to emit `[Source: ...]` blocks when
-        retrieval informed the answer; this is a safety net for when it doesn't.
-
-        Rules:
-        - Only fires when self.rag.kb_status has citations (i.e., chunks were used)
-        - Only fires when reply doesn't already contain a `[Source:` substring
-        - Append-only — never modifies the LLM body
-        - Idempotent — running this on already-cited reply is a no-op
-        """
-        try:
-            kb_status = getattr(self.rag, "kb_status", None) or {}
-        except AttributeError:
-            return reply
-        citations = kb_status.get("citations") or []
-        if not isinstance(citations, list) or not citations:
-            return reply
-        if "[Source:" in reply or "--- Sources ---" in reply:
-            return reply
-        lines = ["", "", "--- Sources ---"]
-        for i, c in enumerate(citations, 1):
-            mfr = c.get("manufacturer", "") or ""
-            mdl = c.get("model_number", "") or ""
-            section = c.get("section", "") or ""
-            label_parts = [p for p in [mfr, mdl] if p]
-            label = " ".join(label_parts) if label_parts else "knowledge base"
-            if section:
-                label += f" — {section}"
-            lines.append(f"[{i}] {label}")
-        return reply + "\n".join(lines)
+        """Format parsed response for display. Delegates to response_formatter.format_reply."""
+        kb_status = getattr(self.rag, "kb_status", None) or {}
+        return format_reply(parsed, user_message, kb_status)
