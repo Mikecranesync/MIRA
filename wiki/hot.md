@@ -1,5 +1,10 @@
 # Hot Cache — 2026-04-20 — CHARLIE
 
+## eval-fixer run — 2026-04-23
+- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-20T1011.md` (stale 3+ days)
+- Action: issue-filed — #525 (57 failures, 0 patchable; pipeline produced 0-char responses on every fixture)
+- Systemic pipeline failure, not single-file patchable. Still no fresh scorecard since 2026-04-20 — upstream eval job on Alpha still appears stuck (see #474).
+
 ## eval-fixer run — 2026-04-22
 - Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-20T1011.md` (unchanged from 2026-04-21)
 - Action: issue-commented — #474 re-flagged (dup #484 closed)
