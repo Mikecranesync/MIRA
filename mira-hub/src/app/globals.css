@@ -1,70 +1,187 @@
 @import "tailwindcss";
 
+/* ─── FactoryLM Design Tokens ──────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #0f172a;
-  --primary-foreground: #f8fafc;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #f1f5f9;
-  --accent-foreground: #0f172a;
-  --destructive: #ef4444;
-  --destructive-foreground: #f8fafc;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #0f172a;
-  --radius: 0.5rem;
-  --sidebar-background: #0f172a;
-  --sidebar-foreground: #f8fafc;
-  --sidebar-accent: #1e293b;
-  --sidebar-accent-foreground: #f8fafc;
-  --sidebar-border: #1e293b;
+  /* Brand */
+  --brand-blue: #2563EB;
+  --brand-cyan: #0891B2;
+  --brand-blue-hover: #1D4ED8;
+
+  /* Status */
+  --status-green: #16A34A;
+  --status-yellow: #EAB308;
+  --status-red: #DC2626;
+  --status-gray: #64748B;
+  --status-green-bg: #DCFCE7;
+  --status-yellow-bg: #FEF9C3;
+  --status-red-bg: #FEE2E2;
+  --status-gray-bg: #F1F5F9;
+
+  /* Light mode surfaces */
+  --background: #F8FAFC;
+  --surface-0: #FFFFFF;
+  --surface-1: #F1F5F9;
+  --surface-2: #E2E8F0;
+
+  /* Foregrounds */
+  --foreground: #0F172A;
+  --foreground-muted: #64748B;
+  --foreground-subtle: #94A3B8;
+
+  /* Sidebar */
+  --sidebar-bg: #0F172A;
+  --sidebar-fg: #F8FAFC;
+  --sidebar-hover: #1E293B;
+  --sidebar-active: #2563EB;
+  --sidebar-border: #1E293B;
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 64px;
+
+  /* Spacing */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+
+  /* Card */
+  --radius-card: 8px;
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --shadow-card-hover: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.06);
+  --shadow-fab: 0 4px 14px 0 rgb(37 99 235 / 0.35);
+
+  /* Typography */
+  --font-size-body: 14px;
+  --font-size-label: 12px;
+  --font-size-h1: 24px;
+  --font-size-h2: 20px;
+  --font-size-h3: 16px;
+
+  /* shadcn / Tailwind compat aliases */
+  --card: var(--surface-0);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface-0);
+  --popover-foreground: var(--foreground);
+  --primary: var(--brand-blue);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-1);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--surface-1);
+  --muted-foreground: var(--foreground-muted);
+  --accent: var(--surface-1);
+  --accent-foreground: var(--foreground);
+  --destructive: var(--status-red);
+  --destructive-foreground: #ffffff;
+  --border: var(--surface-2);
+  --input: var(--surface-2);
+  --ring: var(--brand-blue);
+  --radius: 8px;
+
+  /* Mobile */
+  --bottom-tab-height: 56px;
+  --min-touch: 48px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0f172a;
-    --foreground: #f8fafc;
-    --card: #1e293b;
-    --card-foreground: #f8fafc;
-    --popover: #1e293b;
-    --popover-foreground: #f8fafc;
-    --primary: #f8fafc;
-    --primary-foreground: #0f172a;
-    --secondary: #1e293b;
-    --secondary-foreground: #f8fafc;
-    --muted: #1e293b;
-    --muted-foreground: #94a3b8;
-    --accent: #1e293b;
-    --accent-foreground: #f8fafc;
-    --destructive: #ef4444;
-    --destructive-foreground: #f8fafc;
-    --border: #1e293b;
-    --input: #1e293b;
-    --ring: #94a3b8;
-  }
+/* ─── Dark Mode ─────────────────────────────────────────────────────── */
+.dark, [data-theme="dark"] {
+  --background: #0F1115;
+  --surface-0: #1A1D23;
+  --surface-1: #21252D;
+  --surface-2: #2A2F3A;
+
+  --foreground: #F1F5F9;
+  --foreground-muted: #94A3B8;
+  --foreground-subtle: #64748B;
+
+  --sidebar-bg: #0F1115;
+  --sidebar-hover: #1A1D23;
+  --sidebar-border: #21252D;
+
+  --card: var(--surface-0);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface-1);
+  --popover-foreground: var(--foreground);
+  --primary: var(--brand-blue);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-1);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--surface-1);
+  --muted-foreground: var(--foreground-muted);
+  --accent: var(--surface-2);
+  --accent-foreground: var(--foreground);
+  --border: var(--surface-2);
+  --input: var(--surface-2);
+  --ring: var(--brand-blue);
+
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.2);
 }
 
+/* ─── Tailwind v4 Theme Registration ───────────────────────────────── */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+
+  /* Status colors exposed as Tailwind utilities */
+  --color-status-green: var(--status-green);
+  --color-status-yellow: var(--status-yellow);
+  --color-status-red: var(--status-red);
+  --color-status-gray: var(--status-gray);
+  --color-brand: var(--brand-blue);
+  --color-brand-cyan: var(--brand-cyan);
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-fg-muted: var(--foreground-muted);
+  --color-fg-subtle: var(--foreground-subtle);
+  --color-sidebar: var(--sidebar-bg);
+  --color-sidebar-fg: var(--sidebar-fg);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-border: var(--sidebar-border);
 }
 
-* {
-  border-color: var(--border);
+/* ─── Base Reset ────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: var(--font-size-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-size: var(--font-size-body);
+  line-height: 1.5;
 }
+
+/* ─── Card Utility ──────────────────────────────────────────────────── */
+.card {
+  background: var(--surface-0);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.card-hover:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+  transition: all 0.15s ease;
+}
+
+/* ─── Status Badge Utilities ────────────────────────────────────────── */
+.status-green  { color: var(--status-green);  background: var(--status-green-bg); }
+.status-yellow { color: var(--status-yellow); background: var(--status-yellow-bg); }
+.status-red    { color: var(--status-red);    background: var(--status-red-bg); }
+.status-gray   { color: var(--status-gray);   background: var(--status-gray-bg); }
+
+/* ─── Scrollbars ────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--foreground-subtle); }

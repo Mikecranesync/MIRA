@@ -1,43 +1,113 @@
-import { Factory } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Factory, Loader2, Eye, EyeOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { authProvider } from "@/providers/auth-provider";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("mike@factorylm.com");
+  const [password, setPassword] = useState("admin123");
+  const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    const result = await authProvider.login({ email, password });
+    setLoading(false);
+    if (result.success) {
+      router.push("/feed");
+    } else {
+      setError(result.error?.message ?? "Invalid credentials");
+    }
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm">
-        <div className="flex justify-center mb-6">
-          <div className="flex items-center gap-3">
-            <Factory className="w-8 h-8 text-blue-600" />
-            <span className="text-2xl font-bold text-slate-900">FactoryLM</span>
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
+      style={{ background: "linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F172A 100%)" }}>
+
+      {/* Background grid pattern */}
+      <div className="absolute inset-0 opacity-5"
+        style={{ backgroundImage: "radial-gradient(circle at 1px 1px, #fff 1px, transparent 0)", backgroundSize: "32px 32px" }} />
+
+      <div className="relative w-full max-w-sm">
+        {/* Logo */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+            style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)", boxShadow: "0 0 32px rgba(37,99,235,0.4)" }}>
+            <Factory className="w-8 h-8 text-white" />
           </div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">FactoryLM</h1>
+          <p className="text-slate-400 text-sm mt-1">Industrial Maintenance Platform</p>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8">
-          <h1 className="text-lg font-semibold text-slate-900 mb-6 text-center">Sign in to your account</h1>
-          <div className="space-y-4">
+
+        {/* Card */}
+        <div className="rounded-2xl border border-slate-700/50 p-8"
+          style={{ background: "rgba(26,29,35,0.95)", backdropFilter: "blur(12px)", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
+
+          <h2 className="text-lg font-semibold text-white mb-6">Sign in to your account</h2>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-              <input
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Email address</label>
+              <Input
                 type="email"
-                defaultValue="mike@factorylm.com"
-                className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                autoComplete="email"
+                required
+                className="h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
               />
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-              <input
-                type="password"
-                defaultValue="admin123"
-                className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
+              <div className="relative">
+                <Input
+                  type={showPw ? "text" : "password"}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  required
+                  className="h-11 pr-10 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+
+            {error && (
+              <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
+                {error}
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              className="w-full h-11 text-base font-semibold mt-2"
+              disabled={loading}
+              style={{ background: loading ? undefined : "linear-gradient(135deg, #2563EB, #0891B2)" }}
             >
-              Sign In
-            </button>
-          </div>
-          <p className="text-xs text-slate-400 text-center mt-4">
-            Test: mike@factorylm.com / admin123
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing in…</> : "Sign In"}
+            </Button>
+          </form>
+
+          <p className="text-center text-xs text-slate-500 mt-6">
+            Demo: <span className="text-slate-400 font-mono">mike@factorylm.com</span> /{" "}
+            <span className="text-slate-400 font-mono">admin123</span>
           </p>
         </div>
       </div>
