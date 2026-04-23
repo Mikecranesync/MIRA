@@ -75,7 +75,13 @@
     "actions": "Acciones",
     "details": "Detalles",
     "asset": "Equipo",
-    "comingSoon": "Próximamente"
+    "comingSoon": "Próximamente",
+    "scanQr": "Escanear QR",
+    "viewWorkOrder": "Ver orden de trabajo",
+    "chatMira": "Chatear con MIRA",
+    "review": "Revisión",
+    "priority": "Prioridad",
+    "unassigned": "Sin asignar"
   },
   "status": {
     "open": "Abierto",
@@ -117,6 +123,7 @@
     "auditTrail": "Historial de auditoría",
     "acknowledge": "Confirmar",
     "addNote": "Agregar nota",
+    "scanQr": "Escanear código QR",
     "kpi": {
       "openWorkOrders": "Órdenes abiertas",
       "overduePMs": "MPs vencidos",
@@ -159,10 +166,28 @@
     "partAdded": "{name} agregado",
     "noWorkOrders": "Sin órdenes de trabajo",
     "createFirst": "Cree su primera orden de trabajo",
+    "woCreated": "Orden de trabajo creada",
+    "review": "Revisión",
+    "reviewSubmit": "Revisar y enviar",
+    "confirmDetails": "Confirme los detalles antes de crear la orden.",
+    "priority": "Prioridad",
+    "unassignedAuto": "Sin asignar (asignación automática después)",
+    "searchByNameTag": "Buscar por nombre o código, o escanear el QR del equipo.",
+    "descPlaceholder": "Describa lo que ve, escucha o mide. Incluya lecturas relevantes.",
+    "miraWillUse": "MIRA usará esto para sugerir pasos de diagnóstico.",
+    "tapPhotos": "Tocar para agregar fotos",
+    "photoFormats": "JPG, PNG hasta 20MB",
+    "priorityDescs": {
+      "low": "Planificado / sin urgencia",
+      "medium": "Requiere atención en una semana",
+      "high": "Impacto significativo, actuar en 48h",
+      "critical": "Producción detenida o riesgo de seguridad"
+    },
     "filters": {
       "all": "Todos",
       "open": "Abierto",
       "inProgress": "En progreso",
+      "inprogress": "En progreso",
       "scheduled": "Programado",
       "completed": "Completado",
       "overdue": "Vencido"
@@ -172,6 +197,7 @@
     "title": "Equipos",
     "searchPlaceholder": "Buscar equipos…",
     "noAssets": "Sin equipos encontrados",
+    "tryDifferent": "Intente una búsqueda o filtro diferente",
     "lastPM": "Último MP",
     "nextPM": "Próximo MP",
     "category": "Categoría",
@@ -179,6 +205,14 @@
     "model": "Modelo",
     "serialNumber": "Número de serie",
     "installDate": "Fecha de instalación",
+    "chatMira": "Consultar MIRA sobre este equipo",
+    "criticalityLabel": "Criticidad {level}",
+    "statusLabels": {
+      "operational": "Operacional",
+      "warning": "Requiere atención",
+      "critical": "Fuera de servicio",
+      "idle": "Inactivo"
+    },
     "tabs": {
       "details": "Detalles",
       "workOrders": "Órdenes",
@@ -208,6 +242,16 @@
     "orderHistory": "Historial de pedidos",
     "logUsage": "Registrar uso",
     "orderNow": "Ordenar",
+    "category": "Categoría",
+    "oem": "OEM / Fabricante",
+    "stockValue": "Valor de inventario",
+    "stockStatusLabel": "Estado del stock",
+    "askMira": "Consultar MIRA sobre esta refacción",
+    "noPhoto": "Sin foto disponible",
+    "usedIn": "Usado en",
+    "stockHistory": "Historial de stock",
+    "allOEMs": "Todos los OEM",
+    "allCategories": "Todas las categorías",
     "stockStatus": {
       "ok": "OK",
       "low": "Bajo",
@@ -226,8 +270,24 @@
     "calendar": "Calendario",
     "list": "Lista",
     "markComplete": "Marcar como completado",
+    "completedToast": "marcado como completado ✓",
     "pmCount": "{count} MP",
     "pmCountPlural": "{count} MPs",
+    "days": {
+      "sun": "Dom", "mon": "Lun", "tue": "Mar", "wed": "Mié",
+      "thu": "Jue", "fri": "Vie", "sat": "Sáb"
+    },
+    "months": {
+      "jan": "Enero", "feb": "Febrero", "mar": "Marzo", "apr": "Abril",
+      "may": "Mayo", "jun": "Junio", "jul": "Julio", "aug": "Agosto",
+      "sep": "Septiembre", "oct": "Octubre", "nov": "Noviembre", "dec": "Diciembre"
+    },
+    "statusLabels": {
+      "scheduled": "Programado",
+      "overdue": "Vencido",
+      "completed": "Completado",
+      "inprogress": "En progreso"
+    },
     "fields": {
       "asset": "Equipo",
       "status": "Estado",
@@ -255,6 +315,23 @@
     "submitted": "Solicitud enviada — equipo notificado",
     "approvedToast": "Solicitud aprobada ✓",
     "rejectedToast": "Solicitud rechazada",
+    "noDescription": "Sin descripción.",
+    "locationArea": "Ubicación / Área",
+    "selectArea": "Seleccionar área…",
+    "sentToTeam": "Su solicitud fue enviada al equipo de mantenimiento para revisión.",
+    "redirecting": "Redirigiendo a solicitudes…",
+    "priorityDescs": {
+      "low": "Planificado / sin urgencia",
+      "medium": "Requiere atención en una semana",
+      "high": "Impacto significativo — 48h",
+      "critical": "Producción detenida / riesgo de seguridad"
+    },
+    "statusLabels": {
+      "pending": "Pendiente",
+      "approved": "Aprobado",
+      "rejected": "Rechazado",
+      "converted": "Convertido a OT"
+    },
     "form": {
       "titleLabel": "Título",
       "titlePlaceholder": "Describa brevemente el problema…",
@@ -277,11 +354,32 @@
     "searchPlaceholder": "Buscar documentos…",
     "upload": "Subir",
     "noDocuments": "Sin documentos encontrados",
+    "tryDifferent": "Intente una búsqueda o categoría diferente",
     "askMira": "Consultar MIRA sobre este documento",
     "viewMira": "Ver conversación MIRA",
     "versionHistory": "Historial de versiones",
     "linkedAssets": "Equipos relacionados",
     "current": "Actual",
+    "categoriesHeading": "Categorías",
+    "aboutHeading": "Acerca de",
+    "metaCategory": "Categoría",
+    "metaAdded": "Agregado",
+    "metaPages": "Páginas",
+    "metaFileSize": "Tamaño",
+    "supersededTitle": "Documento reemplazado",
+    "supersededDefault": "Esta versión ha sido reemplazada. No usar para mantenimiento.",
+    "partialDefault": "Índice parcial — MIRA aún procesa algunas secciones.",
+    "filterLabels": {
+      "all": "Todos",
+      "manuals": "Manuales",
+      "schematics": "Esquemas",
+      "parts": "Listas de refacciones",
+      "safety": "Seguridad",
+      "inspection": "Inspección",
+      "vendor": "Proveedor",
+      "site": "Específico del sitio",
+      "mira": "Generado por MIRA"
+    },
     "categories": {
       "manual": "Manual",
       "schematic": "Esquema",
@@ -298,11 +396,35 @@
   "reports": {
     "title": "Reportes",
     "subtitle": "Análisis y KPIs",
-    "comingSoon": "Análisis completo próximamente."
+    "comingSoon": "Análisis completo próximamente.",
+    "overallCompliance": "Cumplimiento general",
+    "kpiLabels": {
+      "mttr": "MTTR",
+      "mtbf": "MTBF",
+      "openWOs": "OTs abiertas",
+      "pmCompliance": "Cumplimiento MP",
+      "downtimeHours": "Horas de paro"
+    },
+    "charts": {
+      "downtimeTrend": "Tendencia de paro (últimos 30 días)",
+      "downtimeSubtitle": "Horas por día",
+      "woCompletion": "Tasa de cierre de OTs",
+      "woSubtitle": "Creadas vs cerradas por semana",
+      "topAssets": "Top 5 equipos problemáticos",
+      "topAssetsSubtitle": "Órdenes de trabajo en últimos 30 días",
+      "pmCompliance": "Cumplimiento de MP",
+      "pmComplianceSubtitle": "Últimos 90 días",
+      "seriesDowntime": "Paro (horas)",
+      "seriesCreated": "Creadas",
+      "seriesCompleted": "Cerradas",
+      "seriesWorkOrders": "Órdenes de trabajo"
+    }
   },
   "team": {
     "title": "Equipo",
     "noMembers": "Sin miembros del equipo",
+    "todayActivity": "Actividad de hoy",
+    "noActivityToday": "Sin actividad registrada hoy.",
     "filters": {
       "all": "Todos los turnos",
       "day": "Diurno",
@@ -316,6 +438,45 @@
     "rolesTab": "Roles y permisos",
     "inviteUser": "Invitar usuario",
     "noUsers": "Sin usuarios encontrados",
+    "emailPlaceholder": "Correo electrónico",
+    "permissionCol": "Permiso",
+    "tableHeaders": {
+      "user": "Usuario",
+      "role": "Rol",
+      "department": "Departamento",
+      "lastActive": "Última actividad"
+    },
+    "groups": {
+      "general": "General",
+      "workOrders": "Órdenes de trabajo",
+      "requests": "Solicitudes",
+      "maintenance": "Mantenimiento",
+      "administration": "Administración"
+    },
+    "perms": {
+      "view_dashboard": "Ver panel",
+      "view_assets": "Ver equipos",
+      "view_workorders": "Ver órdenes de trabajo",
+      "view_documents": "Ver documentos",
+      "view_reports": "Ver reportes",
+      "create_workorders": "Crear órdenes de trabajo",
+      "edit_workorders": "Editar órdenes de trabajo",
+      "close_workorders": "Cerrar / Completar OTs",
+      "submit_requests": "Enviar solicitudes",
+      "approve_requests": "Aprobar / Rechazar solicitudes",
+      "manage_pm_schedule": "Gestionar programa de MP",
+      "manage_parts": "Gestionar refacciones e inventario",
+      "view_admin": "Acceder al panel de administración",
+      "manage_users": "Gestionar usuarios",
+      "manage_roles": "Gestionar roles"
+    },
+    "roleDescriptions": {
+      "admin": "Acceso completo a todas las funciones, configuraciones y gestión de usuarios.",
+      "manager": "Aprueba solicitudes, revisa reportes, asigna órdenes de trabajo.",
+      "scheduler": "Gestiona el programa de MP, asigna técnicos, controla refacciones.",
+      "technician": "Ejecuta órdenes de trabajo, registra refacciones, ve MPs asignados.",
+      "operator": "Envía solicitudes de mantenimiento, ve su actividad propia."
+    },
     "roles": {
       "admin": "Administrador",
       "manager": "Gerente",

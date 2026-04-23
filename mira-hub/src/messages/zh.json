@@ -75,7 +75,13 @@
     "actions": "操作",
     "details": "详情",
     "asset": "设备",
-    "comingSoon": "即将推出"
+    "comingSoon": "即将推出",
+    "scanQr": "扫描QR码",
+    "viewWorkOrder": "查看工单",
+    "chatMira": "与MIRA对话",
+    "review": "审核",
+    "priority": "优先级",
+    "unassigned": "未分配"
   },
   "status": {
     "open": "待处理",
@@ -117,6 +123,7 @@
     "auditTrail": "审计记录",
     "acknowledge": "确认",
     "addNote": "添加备注",
+    "scanQr": "扫描QR码",
     "kpi": {
       "openWorkOrders": "待处理工单",
       "overduePMs": "逾期预防维护",
@@ -159,10 +166,28 @@
     "partAdded": "已添加 {name}",
     "noWorkOrders": "暂无工单",
     "createFirst": "创建第一张工单",
+    "woCreated": "工单已创建",
+    "review": "审核",
+    "reviewSubmit": "审核并提交",
+    "confirmDetails": "创建工单前请确认以下信息。",
+    "priority": "优先级",
+    "unassignedAuto": "未分配（稍后自动分配）",
+    "searchByNameTag": "按名称或标签搜索，或扫描设备上的QR码。",
+    "descPlaceholder": "描述您看到、听到或测量到的情况，包括相关读数。",
+    "miraWillUse": "MIRA将据此为您提供故障排查建议。",
+    "tapPhotos": "点击添加照片",
+    "photoFormats": "JPG、PNG，最大20MB",
+    "priorityDescs": {
+      "low": "计划性 / 无紧迫性",
+      "medium": "需在一周内处理",
+      "high": "影响较大，48小时内处理",
+      "critical": "停产或安全风险"
+    },
     "filters": {
       "all": "全部",
       "open": "待处理",
       "inProgress": "进行中",
+      "inprogress": "进行中",
       "scheduled": "已计划",
       "completed": "已完成",
       "overdue": "逾期"
@@ -172,6 +197,7 @@
     "title": "设备",
     "searchPlaceholder": "搜索设备…",
     "noAssets": "暂无设备",
+    "tryDifferent": "尝试不同的搜索条件或筛选器",
     "lastPM": "上次保养",
     "nextPM": "下次保养",
     "category": "类别",
@@ -179,6 +205,14 @@
     "model": "型号",
     "serialNumber": "序列号",
     "installDate": "安装日期",
+    "chatMira": "向MIRA咨询此设备",
+    "criticalityLabel": "{level}重要性",
+    "statusLabels": {
+      "operational": "运行正常",
+      "warning": "需要关注",
+      "critical": "停机/故障",
+      "idle": "闲置"
+    },
     "tabs": {
       "details": "详情",
       "workOrders": "工单",
@@ -208,6 +242,16 @@
     "orderHistory": "采购记录",
     "logUsage": "领用记录",
     "orderNow": "立即采购",
+    "category": "类别",
+    "oem": "OEM / 厂商",
+    "stockValue": "库存价值",
+    "stockStatusLabel": "库存状态",
+    "askMira": "向MIRA咨询此备件",
+    "noPhoto": "暂无图片",
+    "usedIn": "应用设备",
+    "stockHistory": "库存记录",
+    "allOEMs": "所有厂商",
+    "allCategories": "所有类别",
     "stockStatus": {
       "ok": "正常",
       "low": "偏低",
@@ -226,8 +270,24 @@
     "calendar": "日历",
     "list": "列表",
     "markComplete": "标记完成",
+    "completedToast": "已标记完成 ✓",
     "pmCount": "{count} 项PM",
     "pmCountPlural": "{count} 项PM",
+    "days": {
+      "sun": "日", "mon": "一", "tue": "二", "wed": "三",
+      "thu": "四", "fri": "五", "sat": "六"
+    },
+    "months": {
+      "jan": "一月", "feb": "二月", "mar": "三月", "apr": "四月",
+      "may": "五月", "jun": "六月", "jul": "七月", "aug": "八月",
+      "sep": "九月", "oct": "十月", "nov": "十一月", "dec": "十二月"
+    },
+    "statusLabels": {
+      "scheduled": "已计划",
+      "overdue": "逾期",
+      "completed": "已完成",
+      "inprogress": "进行中"
+    },
     "fields": {
       "asset": "设备",
       "status": "状态",
@@ -255,6 +315,23 @@
     "submitted": "申请已提交 — 团队已收到通知",
     "approvedToast": "申请已批准 ✓",
     "rejectedToast": "申请已拒绝",
+    "noDescription": "无描述。",
+    "locationArea": "位置 / 区域",
+    "selectArea": "选择区域…",
+    "sentToTeam": "您的申请已发送至维护团队进行审核。",
+    "redirecting": "正在跳转至申请列表…",
+    "priorityDescs": {
+      "low": "计划性 / 无紧迫性",
+      "medium": "需在一周内处理",
+      "high": "影响较大 — 48小时",
+      "critical": "停产 / 安全风险"
+    },
+    "statusLabels": {
+      "pending": "待审核",
+      "approved": "已批准",
+      "rejected": "已拒绝",
+      "converted": "已转工单"
+    },
     "form": {
       "titleLabel": "标题",
       "titlePlaceholder": "简要描述问题…",
@@ -277,11 +354,32 @@
     "searchPlaceholder": "搜索文档…",
     "upload": "上传",
     "noDocuments": "暂无文档",
+    "tryDifferent": "尝试不同的搜索条件或类别",
     "askMira": "向MIRA咨询此文档",
     "viewMira": "查看MIRA对话",
     "versionHistory": "版本历史",
     "linkedAssets": "关联设备",
     "current": "当前版本",
+    "categoriesHeading": "文档类别",
+    "aboutHeading": "关于",
+    "metaCategory": "类别",
+    "metaAdded": "添加时间",
+    "metaPages": "页数",
+    "metaFileSize": "文件大小",
+    "supersededTitle": "已废止文档",
+    "supersededDefault": "此版本已废止，请勿用于维护工作。",
+    "partialDefault": "部分索引 — MIRA仍在处理部分内容。",
+    "filterLabels": {
+      "all": "全部",
+      "manuals": "操作手册",
+      "schematics": "电气图纸",
+      "parts": "备件清单",
+      "safety": "安全规程",
+      "inspection": "检验记录",
+      "vendor": "供应商文件",
+      "site": "现场专用",
+      "mira": "MIRA生成"
+    },
     "categories": {
       "manual": "操作手册",
       "schematic": "电气图纸",
@@ -298,11 +396,35 @@
   "reports": {
     "title": "报告",
     "subtitle": "数据分析与KPI",
-    "comingSoon": "完整数据分析即将推出。"
+    "comingSoon": "完整数据分析即将推出。",
+    "overallCompliance": "整体达标率",
+    "kpiLabels": {
+      "mttr": "平均修复时间",
+      "mtbf": "平均故障间隔",
+      "openWOs": "未完成工单",
+      "pmCompliance": "PM达标率",
+      "downtimeHours": "停机时长"
+    },
+    "charts": {
+      "downtimeTrend": "停机趋势（近30天）",
+      "downtimeSubtitle": "每日停机小时数",
+      "woCompletion": "工单完成率",
+      "woSubtitle": "按周统计创建与完成数量",
+      "topAssets": "故障频发设备TOP 5",
+      "topAssetsSubtitle": "近30天工单数量",
+      "pmCompliance": "预防维护达标率",
+      "pmComplianceSubtitle": "近90天",
+      "seriesDowntime": "停机时长（小时）",
+      "seriesCreated": "创建",
+      "seriesCompleted": "完成",
+      "seriesWorkOrders": "工单数量"
+    }
   },
   "team": {
     "title": "团队",
     "noMembers": "暂无团队成员",
+    "todayActivity": "今日动态",
+    "noActivityToday": "今日暂无记录。",
     "filters": {
       "all": "全部班次",
       "day": "白班",
@@ -316,6 +438,45 @@
     "rolesTab": "角色与权限",
     "inviteUser": "邀请用户",
     "noUsers": "暂无用户",
+    "emailPlaceholder": "邮箱地址",
+    "permissionCol": "权限",
+    "tableHeaders": {
+      "user": "用户",
+      "role": "角色",
+      "department": "部门",
+      "lastActive": "最近活跃"
+    },
+    "groups": {
+      "general": "通用",
+      "workOrders": "工单",
+      "requests": "报修",
+      "maintenance": "维护",
+      "administration": "管理"
+    },
+    "perms": {
+      "view_dashboard": "查看仪表板",
+      "view_assets": "查看设备",
+      "view_workorders": "查看工单",
+      "view_documents": "查看文档",
+      "view_reports": "查看报告",
+      "create_workorders": "创建工单",
+      "edit_workorders": "编辑工单",
+      "close_workorders": "关闭/完成工单",
+      "submit_requests": "提交报修申请",
+      "approve_requests": "批准/拒绝申请",
+      "manage_pm_schedule": "管理PM计划",
+      "manage_parts": "管理备件库存",
+      "view_admin": "访问管理面板",
+      "manage_users": "管理用户",
+      "manage_roles": "管理角色"
+    },
+    "roleDescriptions": {
+      "admin": "拥有所有功能、设置和用户管理的完整权限。",
+      "manager": "审批申请、查看报告、分配工单。",
+      "scheduler": "管理PM计划、分配技术员、跟踪备件。",
+      "technician": "执行工单、记录备件使用、查看分配的PM任务。",
+      "operator": "提交报修申请、查看自身动态。"
+    },
     "roles": {
       "admin": "管理员",
       "manager": "经理",

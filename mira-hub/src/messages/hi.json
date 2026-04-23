@@ -75,7 +75,13 @@
     "actions": "कार्रवाई",
     "details": "विवरण",
     "asset": "उपकरण",
-    "comingSoon": "जल्द आ रहा है"
+    "comingSoon": "जल्द आ रहा है",
+    "scanQr": "QR स्कैन करें",
+    "viewWorkOrder": "कार्य आदेश देखें",
+    "chatMira": "MIRA से चैट करें",
+    "review": "समीक्षा",
+    "priority": "प्राथमिकता",
+    "unassigned": "असाइन नहीं"
   },
   "status": {
     "open": "खुला",
@@ -117,6 +123,7 @@
     "auditTrail": "ऑडिट ट्रेल",
     "acknowledge": "स्वीकार करें",
     "addNote": "नोट जोड़ें",
+    "scanQr": "QR कोड स्कैन करें",
     "kpi": {
       "openWorkOrders": "खुले कार्य आदेश",
       "overduePMs": "विलंबित PM",
@@ -159,10 +166,28 @@
     "partAdded": "{name} जोड़ा गया",
     "noWorkOrders": "कोई कार्य आदेश नहीं",
     "createFirst": "अपना पहला कार्य आदेश बनाएं",
+    "woCreated": "कार्य आदेश बनाया गया",
+    "review": "समीक्षा",
+    "reviewSubmit": "समीक्षा करें और जमा करें",
+    "confirmDetails": "कार्य आदेश बनाने से पहले विवरण की पुष्टि करें।",
+    "priority": "प्राथमिकता",
+    "unassignedAuto": "असाइन नहीं (बाद में स्वतः असाइन)",
+    "searchByNameTag": "नाम या टैग से खोजें, या उपकरण पर QR स्कैन करें।",
+    "descPlaceholder": "जो देख रहे हैं, सुन रहे हैं या माप रहे हैं उसका विवरण दें।",
+    "miraWillUse": "MIRA इसका उपयोग समस्या निवारण के सुझाव देने के लिए करेगा।",
+    "tapPhotos": "फ़ोटो जोड़ने के लिए टैप करें",
+    "photoFormats": "JPG, PNG 20MB तक",
+    "priorityDescs": {
+      "low": "नियोजित / कोई तात्कालिकता नहीं",
+      "medium": "एक सप्ताह में ध्यान देना आवश्यक",
+      "high": "महत्वपूर्ण प्रभाव, 48 घंटे में कार्रवाई करें",
+      "critical": "उत्पादन बंद या सुरक्षा जोखिम"
+    },
     "filters": {
       "all": "सभी",
       "open": "खुला",
       "inProgress": "प्रगति में",
+      "inprogress": "प्रगति में",
       "scheduled": "निर्धारित",
       "completed": "पूर्ण",
       "overdue": "विलंबित"
@@ -172,6 +197,7 @@
     "title": "उपकरण",
     "searchPlaceholder": "उपकरण खोजें…",
     "noAssets": "कोई उपकरण नहीं मिला",
+    "tryDifferent": "कोई अलग खोज या फ़िल्टर आज़माएं",
     "lastPM": "पिछला PM",
     "nextPM": "अगला PM",
     "category": "श्रेणी",
@@ -179,6 +205,14 @@
     "model": "मॉडल",
     "serialNumber": "सीरियल नंबर",
     "installDate": "स्थापना तारीख",
+    "chatMira": "इस उपकरण के बारे में MIRA से चैट करें",
+    "criticalityLabel": "{level} महत्व",
+    "statusLabels": {
+      "operational": "चालू",
+      "warning": "ध्यान आवश्यक",
+      "critical": "बंद / गंभीर",
+      "idle": "निष्क्रिय"
+    },
     "tabs": {
       "details": "विवरण",
       "workOrders": "कार्य आदेश",
@@ -208,6 +242,16 @@
     "orderHistory": "ऑर्डर इतिहास",
     "logUsage": "उपयोग दर्ज करें",
     "orderNow": "ऑर्डर करें",
+    "category": "श्रेणी",
+    "oem": "OEM / निर्माता",
+    "stockValue": "स्टॉक मूल्य",
+    "stockStatusLabel": "स्टॉक स्थिति",
+    "askMira": "इस पुर्जे के बारे में MIRA से पूछें",
+    "noPhoto": "कोई फ़ोटो उपलब्ध नहीं",
+    "usedIn": "इसमें उपयोग",
+    "stockHistory": "स्टॉक इतिहास",
+    "allOEMs": "सभी OEM",
+    "allCategories": "सभी श्रेणियां",
     "stockStatus": {
       "ok": "ठीक",
       "low": "कम",
@@ -226,8 +270,24 @@
     "calendar": "कैलेंडर",
     "list": "सूची",
     "markComplete": "पूर्ण चिह्नित करें",
+    "completedToast": "पूर्ण चिह्नित ✓",
     "pmCount": "{count} PM",
     "pmCountPlural": "{count} PMs",
+    "days": {
+      "sun": "रवि", "mon": "सोम", "tue": "मंगल", "wed": "बुध",
+      "thu": "गुरु", "fri": "शुक्र", "sat": "शनि"
+    },
+    "months": {
+      "jan": "जनवरी", "feb": "फरवरी", "mar": "मार्च", "apr": "अप्रैल",
+      "may": "मई", "jun": "जून", "jul": "जुलाई", "aug": "अगस्त",
+      "sep": "सितंबर", "oct": "अक्टूबर", "nov": "नवंबर", "dec": "दिसंबर"
+    },
+    "statusLabels": {
+      "scheduled": "निर्धारित",
+      "overdue": "विलंबित",
+      "completed": "पूर्ण",
+      "inprogress": "प्रगति में"
+    },
     "fields": {
       "asset": "उपकरण",
       "status": "स्थिति",
@@ -255,6 +315,23 @@
     "submitted": "अनुरोध जमा — टीम को सूचित किया",
     "approvedToast": "अनुरोध स्वीकृत ✓",
     "rejectedToast": "अनुरोध अस्वीकृत",
+    "noDescription": "कोई विवरण नहीं।",
+    "locationArea": "स्थान / क्षेत्र",
+    "selectArea": "क्षेत्र चुनें…",
+    "sentToTeam": "आपका अनुरोध रखरखाव टीम को समीक्षा के लिए भेज दिया गया।",
+    "redirecting": "अनुरोधों पर वापस जा रहे हैं…",
+    "priorityDescs": {
+      "low": "नियोजित / कोई तात्कालिकता नहीं",
+      "medium": "एक सप्ताह में ध्यान आवश्यक",
+      "high": "महत्वपूर्ण प्रभाव — 48 घंटे",
+      "critical": "उत्पादन बंद / सुरक्षा जोखिम"
+    },
+    "statusLabels": {
+      "pending": "लंबित",
+      "approved": "स्वीकृत",
+      "rejected": "अस्वीकृत",
+      "converted": "WO में परिवर्तित"
+    },
     "form": {
       "titleLabel": "शीर्षक",
       "titlePlaceholder": "समस्या का संक्षिप्त विवरण…",
@@ -277,11 +354,32 @@
     "searchPlaceholder": "दस्तावेज़ खोजें…",
     "upload": "अपलोड",
     "noDocuments": "कोई दस्तावेज़ नहीं मिला",
+    "tryDifferent": "कोई अलग खोज या श्रेणी आज़माएं",
     "askMira": "इस दस्तावेज़ के बारे में MIRA से पूछें",
     "viewMira": "MIRA वार्तालाप देखें",
     "versionHistory": "संस्करण इतिहास",
     "linkedAssets": "संबंधित उपकरण",
     "current": "वर्तमान",
+    "categoriesHeading": "श्रेणियां",
+    "aboutHeading": "के बारे में",
+    "metaCategory": "श्रेणी",
+    "metaAdded": "जोड़ा गया",
+    "metaPages": "पृष्ठ",
+    "metaFileSize": "फ़ाइल आकार",
+    "supersededTitle": "प्रतिस्थापित दस्तावेज़",
+    "supersededDefault": "यह संस्करण प्रतिस्थापित हो चुका है। रखरखाव के लिए उपयोग न करें।",
+    "partialDefault": "आंशिक इंडेक्स — MIRA अभी कुछ अनुभागों को प्रोसेस कर रहा है।",
+    "filterLabels": {
+      "all": "सभी",
+      "manuals": "मैनुअल",
+      "schematics": "स्कीमैटिक",
+      "parts": "पुर्जों की सूची",
+      "safety": "सुरक्षा",
+      "inspection": "निरीक्षण",
+      "vendor": "विक्रेता",
+      "site": "साइट-विशिष्ट",
+      "mira": "MIRA-निर्मित"
+    },
     "categories": {
       "manual": "मैनुअल",
       "schematic": "स्कीमैटिक",
@@ -298,11 +396,35 @@
   "reports": {
     "title": "रिपोर्ट",
     "subtitle": "विश्लेषण और KPI",
-    "comingSoon": "पूर्ण विश्लेषण जल्द आ रहा है।"
+    "comingSoon": "पूर्ण विश्लेषण जल्द आ रहा है।",
+    "overallCompliance": "कुल अनुपालन",
+    "kpiLabels": {
+      "mttr": "MTTR",
+      "mtbf": "MTBF",
+      "openWOs": "खुले WO",
+      "pmCompliance": "PM अनुपालन",
+      "downtimeHours": "डाउनटाइम घंटे"
+    },
+    "charts": {
+      "downtimeTrend": "डाउनटाइम प्रवृत्ति (पिछले 30 दिन)",
+      "downtimeSubtitle": "प्रतिदिन घंटे",
+      "woCompletion": "WO समापन दर",
+      "woSubtitle": "सप्ताह अनुसार बनाए गए बनाम पूर्ण",
+      "topAssets": "शीर्ष 5 समस्याग्रस्त उपकरण",
+      "topAssetsSubtitle": "पिछले 30 दिनों में कार्य आदेश",
+      "pmCompliance": "PM अनुपालन",
+      "pmComplianceSubtitle": "पिछले 90 दिन",
+      "seriesDowntime": "डाउनटाइम (घंटे)",
+      "seriesCreated": "बनाए गए",
+      "seriesCompleted": "पूर्ण",
+      "seriesWorkOrders": "कार्य आदेश"
+    }
   },
   "team": {
     "title": "टीम",
     "noMembers": "कोई टीम सदस्य नहीं",
+    "todayActivity": "आज की गतिविधि",
+    "noActivityToday": "आज कोई गतिविधि दर्ज नहीं।",
     "filters": {
       "all": "सभी शिफ्ट",
       "day": "दिन",
@@ -316,6 +438,45 @@
     "rolesTab": "भूमिकाएं और अनुमतियां",
     "inviteUser": "उपयोगकर्ता आमंत्रित करें",
     "noUsers": "कोई उपयोगकर्ता नहीं मिला",
+    "emailPlaceholder": "ईमेल पता",
+    "permissionCol": "अनुमति",
+    "tableHeaders": {
+      "user": "उपयोगकर्ता",
+      "role": "भूमिका",
+      "department": "विभाग",
+      "lastActive": "अंतिम सक्रिय"
+    },
+    "groups": {
+      "general": "सामान्य",
+      "workOrders": "कार्य आदेश",
+      "requests": "अनुरोध",
+      "maintenance": "रखरखाव",
+      "administration": "प्रशासन"
+    },
+    "perms": {
+      "view_dashboard": "डैशबोर्ड देखें",
+      "view_assets": "उपकरण देखें",
+      "view_workorders": "कार्य आदेश देखें",
+      "view_documents": "दस्तावेज़ देखें",
+      "view_reports": "रिपोर्ट देखें",
+      "create_workorders": "कार्य आदेश बनाएं",
+      "edit_workorders": "कार्य आदेश संपादित करें",
+      "close_workorders": "WO बंद / पूर्ण करें",
+      "submit_requests": "अनुरोध जमा करें",
+      "approve_requests": "अनुरोध स्वीकृत / अस्वीकृत करें",
+      "manage_pm_schedule": "PM कार्यक्रम प्रबंधित करें",
+      "manage_parts": "पुर्जे और इन्वेंटरी प्रबंधित करें",
+      "view_admin": "प्रशासन पैनल एक्सेस करें",
+      "manage_users": "उपयोगकर्ता प्रबंधित करें",
+      "manage_roles": "भूमिकाएं प्रबंधित करें"
+    },
+    "roleDescriptions": {
+      "admin": "सभी सुविधाओं, सेटिंग्स और उपयोगकर्ता प्रबंधन तक पूर्ण पहुंच।",
+      "manager": "अनुरोध स्वीकृत करता है, रिपोर्ट समीक्षा करता है, WO असाइन करता है।",
+      "scheduler": "PM कार्यक्रम प्रबंधित करता है, तकनीशियन असाइन करता है।",
+      "technician": "WO निष्पादित करता है, पुर्जे दर्ज करता है, PM देखता है।",
+      "operator": "रखरखाव अनुरोध जमा करता है, अपनी गतिविधि देखता है।"
+    },
     "roles": {
       "admin": "प्रशासक",
       "manager": "प्रबंधक",

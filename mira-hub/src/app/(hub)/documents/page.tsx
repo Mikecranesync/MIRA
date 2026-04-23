@@ -10,15 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { DOCS, CAT_COLOR, CAT_BG } from "@/lib/documents-data";
 
 const CATEGORIES = [
-  { key: "all",        label: "All",            Icon: FileText,       color: "#2563EB" },
-  { key: "Manuals",    label: "Manuals",        Icon: BookOpen,       color: "#7C3AED" },
-  { key: "Schematics", label: "Schematics",     Icon: Zap,            color: "#0891B2" },
-  { key: "Parts",      label: "Parts Lists",    Icon: ClipboardCheck, color: "#EA580C" },
-  { key: "Safety",     label: "Safety",         Icon: ShieldCheck,    color: "#DC2626" },
-  { key: "Inspection", label: "Inspection",     Icon: ClipboardCheck, color: "#16A34A" },
-  { key: "Vendor",     label: "Vendor",         Icon: Truck,          color: "#64748B" },
-  { key: "Site",       label: "Site-Specific",  Icon: MapPin,         color: "#EAB308" },
-  { key: "MIRA",       label: "MIRA-Generated", Icon: Bot,            color: "#16A34A" },
+  { key: "all",        labelKey: "filterLabels.all",        Icon: FileText,       color: "#2563EB" },
+  { key: "Manuals",    labelKey: "filterLabels.manuals",    Icon: BookOpen,       color: "#7C3AED" },
+  { key: "Schematics", labelKey: "filterLabels.schematics", Icon: Zap,            color: "#0891B2" },
+  { key: "Parts",      labelKey: "filterLabels.parts",      Icon: ClipboardCheck, color: "#EA580C" },
+  { key: "Safety",     labelKey: "filterLabels.safety",     Icon: ShieldCheck,    color: "#DC2626" },
+  { key: "Inspection", labelKey: "filterLabels.inspection", Icon: ClipboardCheck, color: "#16A34A" },
+  { key: "Vendor",     labelKey: "filterLabels.vendor",     Icon: Truck,          color: "#64748B" },
+  { key: "Site",       labelKey: "filterLabels.site",       Icon: MapPin,         color: "#EAB308" },
+  { key: "MIRA",       labelKey: "filterLabels.mira",       Icon: Bot,            color: "#16A34A" },
 ];
 
 const DOC_STATE_VARIANT: Record<string, "indexed" | "partial" | "superseded"> = {
@@ -61,13 +61,13 @@ export default function DocumentsPage() {
               <button key={cat.key} onClick={() => setCategory(cat.key)}
                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all"
                 style={{ backgroundColor: category === cat.key ? cat.color : "var(--surface-1)", color: category === cat.key ? "white" : "var(--foreground-muted)" }}>
-                <cat.Icon className="w-3 h-3" />{cat.label}
+                <cat.Icon className="w-3 h-3" />{t(cat.labelKey)}
               </button>
             ))}
           </div>
 
           <div className="hidden md:flex flex-col gap-1">
-            <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 px-2" style={{ color: "var(--foreground-subtle)" }}>Categories</p>
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 px-2" style={{ color: "var(--foreground-subtle)" }}>{t("categoriesHeading")}</p>
             {CATEGORIES.map((cat) => {
               const count = cat.key === "all" ? DOCS.length : DOCS.filter(d => d.category === cat.key).length;
               return (
@@ -75,7 +75,7 @@ export default function DocumentsPage() {
                   className="flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all text-left"
                   style={{ backgroundColor: category === cat.key ? cat.color + "15" : "transparent", color: category === cat.key ? cat.color : "var(--foreground-muted)", fontWeight: category === cat.key ? 600 : 400 }}>
                   <span className="flex items-center gap-2">
-                    <cat.Icon className="w-3.5 h-3.5 flex-shrink-0" />{cat.label}
+                    <cat.Icon className="w-3.5 h-3.5 flex-shrink-0" />{t(cat.labelKey)}
                   </span>
                   <span className="text-xs opacity-60">{count}</span>
                 </button>
@@ -129,7 +129,7 @@ export default function DocumentsPage() {
             <div className="text-center py-16">
               <FileText className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
               <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>{t("noDocuments")}</p>
-              <p className="text-xs mt-1" style={{ color: "var(--foreground-subtle)" }}>Try a different search or category</p>
+              <p className="text-xs mt-1" style={{ color: "var(--foreground-subtle)" }}>{t("tryDifferent")}</p>
             </div>
           )}
         </div>

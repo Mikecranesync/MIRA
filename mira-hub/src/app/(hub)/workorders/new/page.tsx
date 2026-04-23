@@ -22,10 +22,10 @@ export default function NewWorkOrderPage() {
   const tPriority = useTranslations("priority");
 
   const PRIORITIES = [
-    { value: "Low",      label: tPriority("low"),      desc: "Planned / no urgency",               color: "#64748B", bg: "#F1F5F9" },
-    { value: "Medium",   label: tPriority("medium"),   desc: "Needs attention within a week",      color: "#EAB308", bg: "#FEF9C3" },
-    { value: "High",     label: tPriority("high"),     desc: "Significant impact, act within 48h", color: "#EA580C", bg: "#FFF7ED" },
-    { value: "Critical", label: tPriority("critical"), desc: "Production down or safety risk",      color: "#DC2626", bg: "#FEE2E2" },
+    { value: "Low",      label: tPriority("low"),      desc: t("priorityDescs.low"),      color: "#64748B", bg: "#F1F5F9" },
+    { value: "Medium",   label: tPriority("medium"),   desc: t("priorityDescs.medium"),   color: "#EAB308", bg: "#FEF9C3" },
+    { value: "High",     label: tPriority("high"),     desc: t("priorityDescs.high"),     color: "#EA580C", bg: "#FFF7ED" },
+    { value: "Critical", label: tPriority("critical"), desc: t("priorityDescs.critical"), color: "#DC2626", bg: "#FEE2E2" },
   ];
 
   const [step, setStep] = useState(1);
@@ -52,7 +52,7 @@ export default function NewWorkOrderPage() {
           <CheckCircle2 className="w-8 h-8" style={{ color: "#16A34A" }} />
         </div>
         <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--foreground)" }}>
-          Work Order Created
+          {t("woCreated")}
         </h2>
         <p className="text-sm mb-1" style={{ color: "var(--foreground-muted)" }}>
           WO-2026-{String(Math.floor(Math.random() * 900) + 100)}
@@ -102,7 +102,7 @@ export default function NewWorkOrderPage() {
                 </div>
                 <span className="text-xs font-medium hidden sm:block"
                   style={{ color: step === s ? "var(--foreground)" : "var(--foreground-subtle)" }}>
-                  {s === 1 ? tCommon("asset") : s === 2 ? tCommon("description") : "Review"}
+                  {s === 1 ? tCommon("asset") : s === 2 ? tCommon("description") : tCommon("review")}
                 </span>
               </div>
               {i < 2 && (
@@ -120,7 +120,7 @@ export default function NewWorkOrderPage() {
           <div className="space-y-4">
             <div>
               <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>{tCommon("asset")}</h2>
-              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>Search by name or tag, or scan the QR code on the equipment.</p>
+              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>{t("searchByNameTag")}</p>
             </div>
 
             <div className="flex gap-2">
@@ -188,7 +188,7 @@ export default function NewWorkOrderPage() {
                 rows={5}
                 value={description}
                 onChange={e => setDescription(e.target.value)}
-                placeholder="Describe what you're seeing, heard, or measured. Include any relevant readings."
+                placeholder={t("descPlaceholder")}
                 className="w-full rounded-lg border px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2"
                 style={{
                   borderColor: "var(--border)",
@@ -198,7 +198,7 @@ export default function NewWorkOrderPage() {
                 } as React.CSSProperties}
               />
               <p className="text-[11px] mt-1" style={{ color: "var(--foreground-subtle)" }}>
-                MIRA will use this to suggest troubleshooting steps.
+                {t("miraWillUse")}
               </p>
             </div>
 
@@ -210,14 +210,14 @@ export default function NewWorkOrderPage() {
                 style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)" }}
               >
                 <Camera className="w-8 h-8" style={{ color: "var(--foreground-subtle)" }} />
-                <span className="text-sm" style={{ color: "var(--foreground-muted)" }}>Tap to add photos</span>
-                <span className="text-xs" style={{ color: "var(--foreground-subtle)" }}>JPG, PNG up to 20MB</span>
+                <span className="text-sm" style={{ color: "var(--foreground-muted)" }}>{t("tapPhotos")}</span>
+                <span className="text-xs" style={{ color: "var(--foreground-subtle)" }}>{t("photoFormats")}</span>
               </button>
             </div>
 
             {/* Priority */}
             <div>
-              <label className="block text-xs font-medium mb-2" style={{ color: "var(--foreground-muted)" }}>Priority *</label>
+              <label className="block text-xs font-medium mb-2" style={{ color: "var(--foreground-muted)" }}>{tCommon("priority")} *</label>
               <div className="grid grid-cols-2 gap-2">
                 {PRIORITIES.map((p) => (
                   <button
@@ -241,7 +241,7 @@ export default function NewWorkOrderPage() {
                 <ArrowLeft className="w-4 h-4 mr-1" /> {tCommon("back")}
               </Button>
               <Button className="flex-1" disabled={!description.trim()} onClick={() => setStep(3)}>
-                Review <ArrowRight className="w-4 h-4 ml-1" />
+                {t("review")} <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
           </div>
@@ -251,16 +251,16 @@ export default function NewWorkOrderPage() {
         {step === 3 && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>Review & {tCommon("submit")}</h2>
-              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>Confirm the details before creating the work order.</p>
+              <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>{t("reviewSubmit")}</h2>
+              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>{t("confirmDetails")}</p>
             </div>
 
             <div className="card divide-y" style={{ borderColor: "var(--border)" }}>
               {[
-                { label: tCommon("asset"),    value: `${selectedAsset?.name} (${selectedAsset?.tag})` },
-                { label: tCommon("location"), value: selectedAsset?.location ?? "—" },
-                { label: "Priority",          value: priority },
-                { label: "Assigned To",       value: "Unassigned (auto-assign later)" },
+                { label: tCommon("asset"),       value: `${selectedAsset?.name} (${selectedAsset?.tag})` },
+                { label: tCommon("location"),    value: selectedAsset?.location ?? "—" },
+                { label: tCommon("priority"),    value: priority },
+                { label: t("assignedTo"),        value: t("unassignedAuto") },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-start justify-between px-4 py-3">
                   <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>{label}</span>

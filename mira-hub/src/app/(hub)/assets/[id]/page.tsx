@@ -26,10 +26,10 @@ const ASSETS: Record<string, {
 };
 
 const STATUS_CONFIG = {
-  operational: { label: "Operational",    badgeVariant: "green"  as const, Icon: CheckCircle2, color: "#16A34A" },
-  warning:     { label: "Needs Attention", badgeVariant: "yellow" as const, Icon: AlertTriangle, color: "#EAB308" },
-  critical:    { label: "Down",            badgeVariant: "red"    as const, Icon: AlertCircle,   color: "#DC2626" },
-  idle:        { label: "Idle",            badgeVariant: "gray"   as const, Icon: Clock,         color: "#64748B" },
+  operational: { labelKey: "statusLabels.operational", badgeVariant: "green"  as const, Icon: CheckCircle2, color: "#16A34A" },
+  warning:     { labelKey: "statusLabels.warning",     badgeVariant: "yellow" as const, Icon: AlertTriangle, color: "#EAB308" },
+  critical:    { labelKey: "statusLabels.critical",    badgeVariant: "red"    as const, Icon: AlertCircle,   color: "#DC2626" },
+  idle:        { labelKey: "statusLabels.idle",        badgeVariant: "gray"   as const, Icon: Clock,         color: "#64748B" },
 };
 
 const ACTIVITY_EVENTS = [
@@ -100,9 +100,9 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
                 <span className="text-xs font-mono" style={{ color: "var(--foreground-subtle)" }}>{asset.tag}</span>
                 <Badge variant={statusCfg.badgeVariant} className="text-[10px] px-2">
                   <statusCfg.Icon className="w-2.5 h-2.5 mr-0.5" />
-                  {statusCfg.label}
+                  {t(statusCfg.labelKey)}
                 </Badge>
-                <Badge variant="outline" className="text-[10px]">{asset.criticality} criticality</Badge>
+                <Badge variant="outline" className="text-[10px]">{t("criticalityLabel", { level: asset.criticality })}</Badge>
               </div>
             </div>
             <Button size="sm" variant="ghost">
@@ -155,7 +155,7 @@ function OverviewTab({ asset }: { asset: typeof ASSETS["1"] }) {
         <Button className="w-full h-12 text-sm font-semibold gap-2"
           style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
           <Bot className="w-5 h-5" />
-          Chat with MIRA about this asset
+          {t("chatMira")}
         </Button>
       </a>
 

@@ -7,13 +7,13 @@ import {
 import { TrendingDown, TrendingUp, Clock, Wrench, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-/* ─── Mock data ─────────────────────────────────────────────────────── */
-const KPI = [
-  { label: "MTTR",           value: "2.4h",  trend: -12, good: true,  Icon: Clock,         color: "#2563EB", bg: "#EFF6FF" },
-  { label: "MTBF",           value: "312h",  trend: +8,  good: true,  Icon: TrendingUp,    color: "#16A34A", bg: "#DCFCE7" },
-  { label: "Open WOs",       value: "12",    trend: +3,  good: false, Icon: Wrench,        color: "#EAB308", bg: "#FEF9C3" },
-  { label: "PM Compliance",  value: "87%",   trend: +3,  good: true,  Icon: CheckCircle2,  color: "#16A34A", bg: "#DCFCE7" },
-  { label: "Downtime Hours", value: "14.2h", trend: -5,  good: true,  Icon: AlertTriangle, color: "#DC2626", bg: "#FEF2F2" },
+/* ─── Static mock values (labels resolved inside component) ─────────── */
+const KPI_DATA = [
+  { labelKey: "kpiLabels.mttr",         value: "2.4h",  trend: -12, good: true,  Icon: Clock,         color: "#2563EB", bg: "#EFF6FF" },
+  { labelKey: "kpiLabels.mtbf",         value: "312h",  trend: +8,  good: true,  Icon: TrendingUp,    color: "#16A34A", bg: "#DCFCE7" },
+  { labelKey: "kpiLabels.openWOs",      value: "12",    trend: +3,  good: false, Icon: Wrench,        color: "#EAB308", bg: "#FEF9C3" },
+  { labelKey: "kpiLabels.pmCompliance", value: "87%",   trend: +3,  good: true,  Icon: CheckCircle2,  color: "#16A34A", bg: "#DCFCE7" },
+  { labelKey: "kpiLabels.downtimeHours",value: "14.2h", trend: -5,  good: true,  Icon: AlertTriangle, color: "#DC2626", bg: "#FEF2F2" },
 ];
 
 const DOWNTIME_DATA = [
@@ -68,8 +68,8 @@ export default function ReportsPage() {
       <div className="px-4 md:px-6 py-5 space-y-6 max-w-5xl">
         {/* KPI Row */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {KPI.map((kpi) => (
-            <div key={kpi.label} className="card p-4 flex flex-col gap-2">
+          {KPI_DATA.map((kpi) => (
+            <div key={kpi.labelKey} className="card p-4 flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                   style={{ backgroundColor: kpi.bg }}>
@@ -81,14 +81,14 @@ export default function ReportsPage() {
                 </div>
               </div>
               <div className="text-2xl font-bold leading-none" style={{ color: kpi.color }}>{kpi.value}</div>
-              <div className="text-[11px] leading-tight" style={{ color: "var(--foreground-muted)" }}>{kpi.label}</div>
+              <div className="text-[11px] leading-tight" style={{ color: "var(--foreground-muted)" }}>{t(kpi.labelKey)}</div>
             </div>
           ))}
         </div>
 
         {/* Charts row 1: Downtime + WO Completion */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ChartCard title="Downtime Trend (Last 30 Days)" subtitle="Hours per day">
+          <ChartCard title={t("charts.downtimeTrend")} subtitle={t("charts.downtimeSubtitle")}>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={DOWNTIME_DATA} barSize={8}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -98,12 +98,12 @@ export default function ReportsPage() {
                   contentStyle={{ background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
                   cursor={{ fill: "var(--surface-1)" }}
                 />
-                <Bar dataKey="hours" name="Downtime (hrs)" fill="#DC2626" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="hours" name={t("charts.seriesDowntime")} fill="#DC2626" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard title="WO Completion Rate" subtitle="Created vs Completed by week">
+          <ChartCard title={t("charts.woCompletion")} subtitle={t("charts.woSubtitle")}>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={WO_COMPLETION_DATA}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -113,8 +113,8 @@ export default function ReportsPage() {
                   contentStyle={{ background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
                 />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="created"   name="Created"   stroke="#2563EB" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="completed" name="Completed" stroke="#16A34A" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="created"   name={t("charts.seriesCreated")}   stroke="#2563EB" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="completed" name={t("charts.seriesCompleted")} stroke="#16A34A" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -122,7 +122,7 @@ export default function ReportsPage() {
 
         {/* Charts row 2: Top Problem Assets + PM Compliance */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ChartCard title="Top 5 Problem Assets" subtitle="Work orders in last 30 days">
+          <ChartCard title={t("charts.topAssets")} subtitle={t("charts.topAssetsSubtitle")}>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={TOP_PROBLEM_ASSETS} layout="vertical" barSize={10} margin={{ left: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
@@ -132,12 +132,12 @@ export default function ReportsPage() {
                   contentStyle={{ background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
                   cursor={{ fill: "var(--surface-1)" }}
                 />
-                <Bar dataKey="wos" name="Work Orders" fill="#2563EB" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="wos" name={t("charts.seriesWorkOrders")} fill="#2563EB" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard title="PM Compliance" subtitle="Last 90 days">
+          <ChartCard title={t("charts.pmCompliance")} subtitle={t("charts.pmComplianceSubtitle")}>
             <div className="flex items-center justify-center">
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
@@ -164,7 +164,7 @@ export default function ReportsPage() {
             </div>
             <div className="text-center -mt-4">
               <p className="text-3xl font-bold" style={{ color: "#16A34A" }}>87%</p>
-              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>Overall compliance</p>
+              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>{t("overallCompliance")}</p>
             </div>
           </ChartCard>
         </div>

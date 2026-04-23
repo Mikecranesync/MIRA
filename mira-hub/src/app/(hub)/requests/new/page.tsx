@@ -10,17 +10,19 @@ import { Input } from "@/components/ui/input";
 
 const ASSETS = ["Air Compressor #1", "Conveyor Belt #3", "CNC Mill #7", "Pump Station A", "HVAC Unit #2", "Generator #1", "Electrical — Bay 3", "Other / Unknown"];
 const AREAS = ["Building A", "Building B", "Shop Floor", "Roof", "Basement", "Electrical Room", "Tank Room", "Outdoor"];
-const PRIORITIES = [
-  { value: "low",      label: "Low",      desc: "Planned / no urgency",           color: "#64748B", bg: "#F1F5F9" },
-  { value: "medium",   label: "Medium",   desc: "Needs attention within a week",  color: "#EAB308", bg: "#FEF9C3" },
-  { value: "high",     label: "High",     desc: "Significant impact — 48h",       color: "#EA580C", bg: "#FFF7ED" },
-  { value: "critical", label: "Critical", desc: "Production down / safety risk",  color: "#DC2626", bg: "#FEE2E2" },
+const PRIORITY_COLORS = [
+  { value: "low",      color: "#64748B", bg: "#F1F5F9" },
+  { value: "medium",   color: "#EAB308", bg: "#FEF9C3" },
+  { value: "high",     color: "#EA580C", bg: "#FFF7ED" },
+  { value: "critical", color: "#DC2626", bg: "#FEE2E2" },
 ];
 
 export default function NewRequestPage() {
   const router = useRouter();
   const t = useTranslations("requests");
   const tc = useTranslations("common");
+  const tPriority = useTranslations("priority");
+  const PRIORITIES = PRIORITY_COLORS.map(p => ({ ...p, label: tPriority(p.value as "low" | "medium" | "high" | "critical"), desc: t(`priorityDescs.${p.value}`) }));
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [asset, setAsset] = useState("");
@@ -42,8 +44,8 @@ export default function NewRequestPage() {
             <CheckCircle2 className="w-8 h-8" style={{ color: "#16A34A" }} />
           </div>
           <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--foreground)" }}>{t("submitted")}</h2>
-          <p className="text-sm" style={{ color: "var(--foreground-muted)" }}>Your request has been sent to the maintenance team for review.</p>
-          <p className="text-xs mt-3" style={{ color: "var(--foreground-subtle)" }}>Redirecting to requests…</p>
+          <p className="text-sm" style={{ color: "var(--foreground-muted)" }}>{t("sentToTeam")}</p>
+          <p className="text-xs mt-3" style={{ color: "var(--foreground-subtle)" }}>{t("redirecting")}</p>
         </div>
       </div>
     );
@@ -54,7 +56,7 @@ export default function NewRequestPage() {
       <div className="sticky top-0 z-20 border-b" style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <div className="px-4 md:px-6 pt-3 pb-3">
           <Link href="/requests" className="inline-flex items-center gap-1 text-xs mb-2" style={{ color: "var(--brand-blue)" }}>
-            <ArrowLeft className="w-3.5 h-3.5" />Requests
+            <ArrowLeft className="w-3.5 h-3.5" />{t("title")}
           </Link>
           <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("newRequest")}</h1>
         </div>
@@ -77,11 +79,11 @@ export default function NewRequestPage() {
         </div>
 
         <div>
-          <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: "var(--foreground-subtle)" }}>Location / Area</label>
+          <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: "var(--foreground-subtle)" }}>{t("locationArea")}</label>
           <select value={area} onChange={e => setArea(e.target.value)}
             className="w-full text-sm px-3 py-2.5 rounded-lg border"
             style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)", color: "var(--foreground)" }}>
-            <option value="">Select area…</option>
+            <option value="">{t("selectArea")}</option>
             {AREAS.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>

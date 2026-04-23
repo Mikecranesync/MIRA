@@ -24,10 +24,10 @@ const ASSETS = [
 ];
 
 const STATUS_CONFIG = {
-  operational: { label: "Operational",    color: "#16A34A", bg: "#DCFCE7", Icon: CheckCircle2 },
-  warning:     { label: "Needs Attention", color: "#EAB308", bg: "#FEF9C3", Icon: AlertTriangle },
-  critical:    { label: "Down / Critical", color: "#DC2626", bg: "#FEE2E2", Icon: AlertCircle },
-  idle:        { label: "Idle",            color: "#64748B", bg: "#F1F5F9", Icon: Gauge },
+  operational: { labelKey: "statusLabels.operational", color: "#16A34A", bg: "#DCFCE7", Icon: CheckCircle2 },
+  warning:     { labelKey: "statusLabels.warning",     color: "#EAB308", bg: "#FEF9C3", Icon: AlertTriangle },
+  critical:    { labelKey: "statusLabels.critical",    color: "#DC2626", bg: "#FEE2E2", Icon: AlertCircle },
+  idle:        { labelKey: "statusLabels.idle",        color: "#64748B", bg: "#F1F5F9", Icon: Gauge },
 };
 
 const FILTER_CHIP_KEYS = [
@@ -46,6 +46,7 @@ const FILTER_CHIP_LABELS: Record<string, string> = {
 
 export default function AssetsPage() {
   const t = useTranslations("assets");
+  const tCommon = useTranslations("common");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
 
@@ -69,7 +70,7 @@ export default function AssetsPage() {
           <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
           <Button size="sm" className="gap-1.5">
             <QrCode className="w-3.5 h-3.5" />
-            Scan QR
+            {tCommon("scanQr")}
           </Button>
         </div>
 
@@ -118,7 +119,7 @@ export default function AssetsPage() {
           <div className="text-center py-16">
             <Search className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
             <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>{t("noAssets")}</p>
-            <p className="text-xs mt-1" style={{ color: "var(--foreground-subtle)" }}>Try a different search or filter</p>
+            <p className="text-xs mt-1" style={{ color: "var(--foreground-subtle)" }}>{t("tryDifferent")}</p>
           </div>
         )}
       </div>
@@ -128,7 +129,8 @@ export default function AssetsPage() {
 
 function AssetTile({ asset }: { asset: typeof ASSETS[number] }) {
   const t = useTranslations("assets");
-  const status = STATUS_CONFIG[asset.status as keyof typeof STATUS_CONFIG];
+  const statusCfg = STATUS_CONFIG[asset.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.idle;
+  const status = statusCfg;
   const Icon = asset.icon;
   const StatusIcon = status.Icon;
 
@@ -163,7 +165,7 @@ function AssetTile({ asset }: { asset: typeof ASSETS[number] }) {
             className="text-[10px] font-medium px-2 py-0.5 rounded-full"
             style={{ backgroundColor: status.bg, color: status.color }}
           >
-            {status.label.split(" ")[0]}
+            {t(status.labelKey).split(" ")[0]}
           </span>
         </div>
       </div>

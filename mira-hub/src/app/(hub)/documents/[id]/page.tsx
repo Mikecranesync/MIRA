@@ -27,7 +27,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
       <div className="sticky top-0 z-20 border-b" style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <div className="px-4 md:px-6 pt-3 pb-3">
           <Link href="/documents" className="inline-flex items-center gap-1 text-xs mb-2" style={{ color: "var(--brand-blue)" }}>
-            <ArrowLeft className="w-3.5 h-3.5" />Documents
+            <ArrowLeft className="w-3.5 h-3.5" />{t("title")}
           </Link>
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -54,8 +54,8 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
           <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: "#FEF9C3" }}>
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#EAB308" }} />
             <div>
-              <p className="text-xs font-semibold" style={{ color: "#92400E" }}>Superseded Document</p>
-              <p className="text-xs mt-0.5" style={{ color: "#92400E" }}>{doc.revisionNote ?? "This version has been superseded. Do not use for maintenance."}</p>
+              <p className="text-xs font-semibold" style={{ color: "#92400E" }}>{t("supersededTitle")}</p>
+              <p className="text-xs mt-0.5" style={{ color: "#92400E" }}>{doc.revisionNote ?? t("supersededDefault")}</p>
             </div>
           </div>
         )}
@@ -64,7 +64,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         {doc.state === "partial" && (
           <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: "#EFF6FF" }}>
             <BookOpen className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#2563EB" }} />
-            <p className="text-xs" style={{ color: "#1E40AF" }}>{doc.revisionNote ?? "Partial index — some sections are still being processed by MIRA."}</p>
+            <p className="text-xs" style={{ color: "#1E40AF" }}>{doc.revisionNote ?? t("partialDefault")}</p>
           </div>
         )}
 
@@ -94,10 +94,10 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         {/* Metadata grid */}
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "Category",  value: doc.category },
-            { label: "Added",     value: doc.date },
-            { label: "Pages",     value: String(doc.pages) },
-            { label: "File Size", value: doc.size },
+            { label: t("metaCategory"), value: doc.category },
+            { label: t("metaAdded"),    value: doc.date },
+            { label: t("metaPages"),    value: String(doc.pages) },
+            { label: t("metaFileSize"), value: doc.size },
           ].map(({ label, value }) => (
             <div key={label} className="card p-3">
               <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--foreground-subtle)" }}>{label}</p>
@@ -109,7 +109,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         {/* Description */}
         {doc.description && (
           <div className="card p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--foreground-subtle)" }}>About</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--foreground-subtle)" }}>{t("aboutHeading")}</h3>
             <p className="text-sm leading-relaxed" style={{ color: "var(--foreground-muted)" }}>{doc.description}</p>
           </div>
         )}

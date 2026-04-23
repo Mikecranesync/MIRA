@@ -61,18 +61,18 @@ const PRIORITY_CFG = {
 };
 
 const STATUS_CFG = {
-  pending:   { label: "Pending",        badgeVariant: "secondary"  as const, icon: Clock },
-  approved:  { label: "Approved",       badgeVariant: "green"      as const, icon: CheckCircle },
-  rejected:  { label: "Rejected",       badgeVariant: "red"        as const, icon: XCircle },
-  converted: { label: "Converted to WO",badgeVariant: "inprogress" as const, icon: ArrowRight },
+  pending:   { badgeVariant: "secondary"  as const, icon: Clock },
+  approved:  { badgeVariant: "green"      as const, icon: CheckCircle },
+  rejected:  { badgeVariant: "red"        as const, icon: XCircle },
+  converted: { badgeVariant: "inprogress" as const, icon: ArrowRight },
 };
 
 const STATUS_FILTERS = [
-  { key: "all",       label: "All" },
-  { key: "pending",   label: "Pending" },
-  { key: "approved",  label: "Approved" },
-  { key: "rejected",  label: "Rejected" },
-  { key: "converted", label: "Converted" },
+  { key: "all" },
+  { key: "pending" },
+  { key: "approved" },
+  { key: "rejected" },
+  { key: "converted" },
 ];
 
 const ASSETS = ["Air Compressor #1","Conveyor Belt #3","CNC Mill #7","Pump Station A","HVAC Unit #2","Generator #1","Electrical — Bay 3"];
@@ -80,6 +80,7 @@ const ASSETS = ["Air Compressor #1","Conveyor Belt #3","CNC Mill #7","Pump Stati
 export default function RequestsPage() {
   const tReq = useTranslations("requests");
   const tCommon = useTranslations("common");
+  const tPriority = useTranslations("priority");
   const [requests, setRequests] = useState<Request[]>(INITIAL_REQUESTS);
   const [statusFilter, setStatusFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
@@ -94,7 +95,7 @@ export default function RequestsPage() {
 
   function submitRequest() {
     if (!form.title || !form.asset) return;
-    toast("Request submitted — team notified");
+    toast(tReq("submitted"));
     const newReq: Request = {
       id: `REQ-${String(requests.length + 1).padStart(3, "0")}`,
       title: form.title,
@@ -112,11 +113,11 @@ export default function RequestsPage() {
 
   function approve(id: string) {
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status: "approved" } : r));
-    toast("Request approved ✓", "success");
+    toast(tReq("approvedToast"), "success");
   }
   function reject(id: string) {
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status: "rejected" } : r));
-    toast("Request rejected", "warning");
+    toast(tReq("rejectedToast"), "warning");
   }
 
   return (
@@ -225,8 +226,8 @@ export default function RequestsPage() {
                       <ChevronRight className="w-4 h-4 flex-shrink-0 transition-transform" style={{ color: "var(--foreground-subtle)", transform: isExpanded ? "rotate(90deg)" : "none" }} />
                     </div>
                     <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                      <Badge variant={pCfg.badgeVariant} className="text-[10px] capitalize">{req.priority}</Badge>
-                      <Badge variant={sCfg.badgeVariant} className="text-[10px]">{sCfg.label}</Badge>
+                      <Badge variant={pCfg.badgeVariant} className="text-[10px]">{tPriority(req.priority)}</Badge>
+                      <Badge variant={sCfg.badgeVariant} className="text-[10px]">{tReq(`statusLabels.${req.status}`)}</Badge>
                       {req.woId && <span className="text-[11px] font-mono" style={{ color: "var(--brand-blue)" }}>{req.woId}</span>}
                     </div>
                     <p className="text-[11px] mt-1" style={{ color: "var(--foreground-subtle)" }}>
@@ -238,7 +239,7 @@ export default function RequestsPage() {
 
               {isExpanded && (
                 <div className="px-4 pb-4 pt-0 border-t" style={{ borderColor: "var(--border)" }}>
-                  <p className="text-xs mt-3 mb-4" style={{ color: "var(--foreground-muted)" }}>{req.description || "No description provided."}</p>
+                  <p className="text-xs mt-3 mb-4" style={{ color: "var(--foreground-muted)" }}>{req.description || tReq("noDescription")}</p>
                   {req.status === "pending" && (
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" className="flex-1 h-8 text-xs gap-1.5"

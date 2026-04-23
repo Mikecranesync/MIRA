@@ -105,7 +105,7 @@ export default function AdminUsersPage() {
         {showInvite && (
           <div className="card p-4 space-y-3">
             <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{t("inviteUser")}</h3>
-            <Input placeholder="Email address" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
+            <Input placeholder={t("emailPlaceholder")} value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
             <div className="flex gap-2">
               <select value={inviteRole} onChange={e => setInviteRole(e.target.value as User["role"])}
                 className="flex-1 text-xs px-3 py-2 rounded-lg border"
@@ -131,7 +131,7 @@ export default function AdminUsersPage() {
           <table className="w-full text-sm">
             <thead style={{ backgroundColor: "var(--surface-1)", borderBottom: "1px solid var(--border)" }}>
               <tr>
-                {["User", "Role", "Department", "Last Active", "Status", ""].map(h => (
+                {[t("tableHeaders.user"), t("tableHeaders.role"), t("tableHeaders.department"), t("tableHeaders.lastActive"), tCommon("status"), ""].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "var(--foreground-muted)" }}>{h}</th>
                 ))}
               </tr>

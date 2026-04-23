@@ -30,7 +30,7 @@ export default function PartDetailPage({ params }: { params: Promise<{ id: strin
       <div className="sticky top-0 z-20 border-b px-4 md:px-6 py-3"
         style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <Link href="/parts" className="inline-flex items-center gap-1 text-xs mb-2" style={{ color: "var(--brand-blue)" }}>
-          <ArrowLeft className="w-3.5 h-3.5" /> Parts Inventory
+          <ArrowLeft className="w-3.5 h-3.5" /> {t("title")}
         </Link>
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -50,7 +50,7 @@ export default function PartDetailPage({ params }: { params: Promise<{ id: strin
           <Button className="w-full h-11 gap-2 font-semibold"
             style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
             <Bot className="w-4 h-4" />
-            Ask MIRA About This Part
+            {t("askMira")}
           </Button>
         </a>
 
@@ -58,21 +58,21 @@ export default function PartDetailPage({ params }: { params: Promise<{ id: strin
         <div className="card aspect-video flex flex-col items-center justify-center gap-2"
           style={{ backgroundColor: "var(--surface-1)" }}>
           <Package className="w-12 h-12" style={{ color: "var(--foreground-subtle)" }} />
-          <p className="text-sm" style={{ color: "var(--foreground-muted)" }}>No photo on file</p>
+          <p className="text-sm" style={{ color: "var(--foreground-muted)" }}>{t("noPhoto")}</p>
           <button className="text-xs font-medium" style={{ color: "var(--brand-blue)" }}>+ {tc("add")}</button>
         </div>
 
         {/* Info grid */}
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "OEM / Manufacturer",   value: part.oem,              Icon: Package },
-            { label: "Category",             value: part.category,         Icon: Package },
-            { label: t("location"),          value: part.location,         Icon: MapPin },
-            { label: t("unitCost"),          value: `$${part.unitCost.toFixed(2)}`, Icon: DollarSign },
-            { label: t("qtyOnHand"),         value: String(part.qtyOnHand), Icon: Package },
-            { label: t("reorderPoint"),      value: String(part.reorderPoint), Icon: RotateCcw },
-            { label: "Stock Value",          value: `$${totalValue}`,       Icon: DollarSign },
-            { label: "Stock Status",          value: t(cfg.labelKey),        Icon: Package },
+            { label: t("oem"),           value: part.oem,                        Icon: Package },
+            { label: t("category"),      value: part.category,                   Icon: Package },
+            { label: t("location"),      value: part.location,                   Icon: MapPin },
+            { label: t("unitCost"),      value: `$${part.unitCost.toFixed(2)}`,  Icon: DollarSign },
+            { label: t("qtyOnHand"),     value: String(part.qtyOnHand),          Icon: Package },
+            { label: t("reorderPoint"),  value: String(part.reorderPoint),       Icon: RotateCcw },
+            { label: t("stockValue"),    value: `$${totalValue}`,                Icon: DollarSign },
+            { label: t("stockStatusLabel"), value: t(cfg.labelKey),              Icon: Package },
           ].map(({ label, value, Icon }) => (
             <div key={label} className="card p-3">
               <div className="flex items-center gap-1.5 mb-1">
@@ -87,7 +87,7 @@ export default function PartDetailPage({ params }: { params: Promise<{ id: strin
         {/* Linked assets */}
         {part.linkedAssets.length > 0 && (
           <div className="card p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-muted)" }}>Used In</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-muted)" }}>{t("usedIn")}</h3>
             <div className="flex flex-wrap gap-2">
               {part.linkedAssets.map(asset => (
                 <Link key={asset} href="/assets"
@@ -102,7 +102,7 @@ export default function PartDetailPage({ params }: { params: Promise<{ id: strin
 
         {/* Stock history */}
         <div className="card p-4">
-          <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-muted)" }}>Stock History</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-muted)" }}>{t("stockHistory")}</h3>
           <div className="space-y-3">
             {part.stockHistory.map((evt, i) => (
               <div key={i} className="flex items-center justify-between">

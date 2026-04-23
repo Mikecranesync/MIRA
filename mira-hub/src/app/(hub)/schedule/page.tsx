@@ -32,14 +32,11 @@ const PMS: PM[] = [
 ];
 
 const STATUS_CFG = {
-  scheduled:  { label: "Scheduled",    badgeVariant: "secondary" as const, dot: "#3B82F6", bar: "#DBEAFE" },
-  overdue:    { label: "Overdue",      badgeVariant: "overdue"   as const, dot: "#DC2626", bar: "#FEE2E2" },
-  completed:  { label: "Completed",    badgeVariant: "completed" as const, dot: "#16A34A", bar: "#DCFCE7" },
-  inprogress: { label: "In Progress",  badgeVariant: "inprogress"as const, dot: "#EAB308", bar: "#FEF9C3" },
+  scheduled:  { labelKey: "statusLabels.scheduled",  badgeVariant: "secondary" as const, dot: "#3B82F6", bar: "#DBEAFE" },
+  overdue:    { labelKey: "statusLabels.overdue",    badgeVariant: "overdue"   as const, dot: "#DC2626", bar: "#FEE2E2" },
+  completed:  { labelKey: "statusLabels.completed",  badgeVariant: "completed" as const, dot: "#16A34A", bar: "#DCFCE7" },
+  inprogress: { labelKey: "statusLabels.inprogress", badgeVariant: "inprogress"as const, dot: "#EAB308", bar: "#FEF9C3" },
 };
-
-const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 function getCalendarDays(year: number, month: number) {
   const firstDay = new Date(year, month, 1).getDay();
@@ -52,6 +49,8 @@ function getCalendarDays(year: number, month: number) {
 
 export default function SchedulePage() {
   const t = useTranslations("schedule");
+  const DAYS = [t("days.sun"), t("days.mon"), t("days.tue"), t("days.wed"), t("days.thu"), t("days.fri"), t("days.sat")];
+  const MONTHS = [t("months.jan"), t("months.feb"), t("months.mar"), t("months.apr"), t("months.may"), t("months.jun"), t("months.jul"), t("months.aug"), t("months.sep"), t("months.oct"), t("months.nov"), t("months.dec")];
   const today = new Date();
   const [view, setView] = useState<"calendar" | "list">("calendar");
   const [year, setYear] = useState(today.getFullYear());
@@ -192,7 +191,7 @@ export default function SchedulePage() {
             {Object.entries(STATUS_CFG).map(([key, cfg]) => (
               <div key={key} className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: cfg.bar, border: `1.5px solid ${cfg.dot}` }} />
-                <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>{cfg.label}</span>
+                <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>{t(cfg.labelKey)}</span>
               </div>
             ))}
           </div>
@@ -201,6 +200,7 @@ export default function SchedulePage() {
           {selectedDay && <DayDetail
             selectedDay={selectedDay}
             pms={PMS.filter(p => p.date === selectedDay)}
+            months={MONTHS}
             onClose={() => setSelectedDay(null)}
             onSelectPM={setSelectedPM}
           />}
@@ -216,7 +216,7 @@ export default function SchedulePage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{pm.title}</p>
-                    <Badge variant={cfg.badgeVariant} className="text-[10px] flex-shrink-0">{cfg.label}</Badge>
+                    <Badge variant={cfg.badgeVariant} className="text-[10px] flex-shrink-0">{t(cfg.labelKey)}</Badge>
                   </div>
                   <p className="text-xs mb-2" style={{ color: "var(--foreground-muted)" }}>{pm.asset}</p>
                   <div className="flex flex-wrap gap-3">
@@ -246,15 +246,15 @@ export default function SchedulePage() {
         <PMSheet
           pm={selectedPM}
           onClose={() => setSelectedPM(null)}
-          onComplete={() => { toast(`${selectedPM.title} marked complete ✓`); setSelectedPM(null); }}
+          onComplete={() => { toast(`${selectedPM.title} ${t("completedToast")}`); setSelectedPM(null); }}
         />
       )}
     </div>
   );
 }
 
-function DayDetail({ selectedDay, pms, onClose, onSelectPM }: {
-  selectedDay: string; pms: PM[]; onClose: () => void; onSelectPM: (pm: PM) => void;
+function DayDetail({ selectedDay, pms, months, onClose, onSelectPM }: {
+  selectedDay: string; pms: PM[]; months: string[]; onClose: () => void; onSelectPM: (pm: PM) => void;
 }) {
   const t = useTranslations("schedule");
   const [, m, d] = selectedDay.split("-");
@@ -262,7 +262,7 @@ function DayDetail({ selectedDay, pms, onClose, onSelectPM }: {
     <div className="mt-4 card p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-          {MONTHS[parseInt(m) - 1]} {parseInt(d)} — {pms.length !== 1 ? t("pmCountPlural", { count: pms.length }) : t("pmCount", { count: pms.length })}
+          {months[parseInt(m) - 1]} {parseInt(d)} — {pms.length !== 1 ? t("pmCountPlural", { count: pms.length }) : t("pmCount", { count: pms.length })}
         </h3>
         <button onClick={onClose} style={{ color: "var(--foreground-subtle)" }}>
           <X className="w-4 h-4" />
@@ -281,7 +281,7 @@ function DayDetail({ selectedDay, pms, onClose, onSelectPM }: {
                     {pm.asset} · {pm.tech} · {pm.durationH}h · {pm.recur}
                   </p>
                 </div>
-                <Badge variant={cfg.badgeVariant} className="text-[10px] flex-shrink-0">{cfg.label}</Badge>
+                <Badge variant={cfg.badgeVariant} className="text-[10px] flex-shrink-0">{t(cfg.labelKey)}</Badge>
               </div>
             </button>
           );
@@ -310,7 +310,7 @@ function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onC
         <div className="grid grid-cols-2 gap-3">
           {[
             { label: t("fields.asset"),      value: pm.asset,                Icon: Calendar },
-            { label: t("fields.status"),     value: cfg.label,               Icon: Clock },
+            { label: t("fields.status"),     value: t(cfg.labelKey),         Icon: Clock },
             { label: t("fields.tech"),       value: pm.tech,                 Icon: User },
             { label: t("fields.duration"),   value: `${pm.durationH}h est.`, Icon: Clock },
             { label: t("fields.recurrence"), value: pm.recur,                Icon: RotateCcw },

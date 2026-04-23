@@ -223,7 +223,7 @@ export default function FeedPage() {
           <div className="flex flex-col items-end gap-2 mb-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
             {[
               { label: tWorkorders("new"), icon: ClipboardList,     href: "/workorders/new" },
-              { label: "Scan QR Code",    icon: QrCode,            href: "#" },
+              { label: tFeed("scanQr"),    icon: QrCode,            href: "#" },
               { label: tFeed("newRequest"), icon: MessageSquarePlus, href: "/requests/new" },
             ].map((action) => (
               <Link key={action.label} href={action.href}

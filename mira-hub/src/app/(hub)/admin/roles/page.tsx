@@ -23,81 +23,41 @@ type PermKey =
   | "manage_pm_schedule" | "manage_parts"
   | "manage_users" | "manage_roles" | "view_admin";
 
-const PERM_GROUPS: { label: string; perms: { key: PermKey; label: string }[] }[] = [
-  {
-    label: "General",
-    perms: [
-      { key: "view_dashboard",  label: "View Dashboard" },
-      { key: "view_assets",     label: "View Assets" },
-      { key: "view_workorders", label: "View Work Orders" },
-      { key: "view_documents",  label: "View Documents" },
-      { key: "view_reports",    label: "View Reports" },
-    ],
-  },
-  {
-    label: "Work Orders",
-    perms: [
-      { key: "create_workorders", label: "Create Work Orders" },
-      { key: "edit_workorders",   label: "Edit Work Orders" },
-      { key: "close_workorders",  label: "Close / Complete WOs" },
-    ],
-  },
-  {
-    label: "Requests",
-    perms: [
-      { key: "submit_requests",  label: "Submit Requests" },
-      { key: "approve_requests", label: "Approve / Reject Requests" },
-    ],
-  },
-  {
-    label: "Maintenance",
-    perms: [
-      { key: "manage_pm_schedule", label: "Manage PM Schedule" },
-      { key: "manage_parts",       label: "Manage Parts & Inventory" },
-    ],
-  },
-  {
-    label: "Administration",
-    perms: [
-      { key: "view_admin",    label: "Access Admin Panel" },
-      { key: "manage_users",  label: "Manage Users" },
-      { key: "manage_roles",  label: "Manage Roles" },
-    ],
-  },
+const PERM_GROUPS_KEYS: { groupKey: string; perms: PermKey[] }[] = [
+  { groupKey: "general",        perms: ["view_dashboard","view_assets","view_workorders","view_documents","view_reports"] },
+  { groupKey: "workOrders",     perms: ["create_workorders","edit_workorders","close_workorders"] },
+  { groupKey: "requests",       perms: ["submit_requests","approve_requests"] },
+  { groupKey: "maintenance",    perms: ["manage_pm_schedule","manage_parts"] },
+  { groupKey: "administration", perms: ["view_admin","manage_users","manage_roles"] },
 ];
 
-const ROLES: RoleDef[] = [
+const ROLES_DATA: { key: RoleKey; userCount: number; badgeVariant: RoleDef["badgeVariant"]; permissions: Partial<Record<PermKey, boolean>> }[] = [
   {
-    key: "admin", label: "Admin", description: "Full access to all features, settings, and user management.",
-    userCount: 1, badgeVariant: "red",
+    key: "admin", userCount: 1, badgeVariant: "red",
     permissions: { view_dashboard: true, view_assets: true, view_workorders: true, view_documents: true, view_reports: true,
       create_workorders: true, edit_workorders: true, close_workorders: true, submit_requests: true, approve_requests: true,
       manage_pm_schedule: true, manage_parts: true, view_admin: true, manage_users: true, manage_roles: true },
   },
   {
-    key: "manager", label: "Manager", description: "Approves requests, reviews reports, assigns work orders.",
-    userCount: 1, badgeVariant: "inprogress",
+    key: "manager", userCount: 1, badgeVariant: "inprogress",
     permissions: { view_dashboard: true, view_assets: true, view_workorders: true, view_documents: true, view_reports: true,
       create_workorders: true, edit_workorders: true, close_workorders: true, submit_requests: true, approve_requests: true,
       manage_pm_schedule: true, manage_parts: true, view_admin: true, manage_users: false, manage_roles: false },
   },
   {
-    key: "scheduler", label: "Scheduler", description: "Manages PM schedule, assigns techs, tracks parts.",
-    userCount: 1, badgeVariant: "yellow",
+    key: "scheduler", userCount: 1, badgeVariant: "yellow",
     permissions: { view_dashboard: true, view_assets: true, view_workorders: true, view_documents: true, view_reports: true,
       create_workorders: true, edit_workorders: true, close_workorders: false, submit_requests: true, approve_requests: false,
       manage_pm_schedule: true, manage_parts: true, view_admin: false, manage_users: false, manage_roles: false },
   },
   {
-    key: "technician", label: "Technician", description: "Executes work orders, logs parts usage, views assigned PMs.",
-    userCount: 3, badgeVariant: "green",
+    key: "technician", userCount: 3, badgeVariant: "green",
     permissions: { view_dashboard: true, view_assets: true, view_workorders: true, view_documents: true, view_reports: false,
       create_workorders: false, edit_workorders: true, close_workorders: true, submit_requests: true, approve_requests: false,
       manage_pm_schedule: false, manage_parts: false, view_admin: false, manage_users: false, manage_roles: false },
   },
   {
-    key: "operator", label: "Operator", description: "Submits maintenance requests, views own activity.",
-    userCount: 1, badgeVariant: "secondary",
+    key: "operator", userCount: 1, badgeVariant: "secondary",
     permissions: { view_dashboard: true, view_assets: true, view_workorders: false, view_documents: false, view_reports: false,
       create_workorders: false, edit_workorders: false, close_workorders: false, submit_requests: true, approve_requests: false,
       manage_pm_schedule: false, manage_parts: false, view_admin: false, manage_users: false, manage_roles: false },
@@ -107,13 +67,23 @@ const ROLES: RoleDef[] = [
 export default function AdminRolesPage() {
   const t = useTranslations("admin");
 
+  const ROLES = ROLES_DATA.map(r => ({
+    ...r,
+    label: t(`roles.${r.key}`),
+    description: t(`roleDescriptions.${r.key}`),
+  }));
+
+  const PERM_GROUPS = PERM_GROUPS_KEYS.map(g => ({
+    label: t(`groups.${g.groupKey}`),
+    perms: g.perms.map(key => ({ key, label: t(`perms.${key}`) })),
+  }));
+
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
       {/* Header */}
       <div className="sticky top-0 z-20 border-b" style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <div className="px-4 md:px-6 pt-3 pb-3">
           <h1 className="text-base font-semibold mb-2" style={{ color: "var(--foreground)" }}>{t("rolesTab")}</h1>
-          {/* Sub-nav */}
           <div className="flex gap-4 text-xs border-t pt-2" style={{ borderColor: "var(--border)" }}>
             <Link href="/admin/users" className="pb-1 border-b-2 border-transparent" style={{ color: "var(--foreground-muted)" }}>{t("usersTab")}</Link>
             <Link href="/admin/roles" className="font-semibold pb-1 border-b-2" style={{ color: "var(--brand-blue)", borderColor: "var(--brand-blue)" }}>{t("rolesTab")}</Link>
@@ -133,11 +103,11 @@ export default function AdminRolesPage() {
                     <Shield className="w-4 h-4" style={{ color: "var(--brand-blue)" }} />
                   </div>
                   <div>
-                    <Badge variant={role.badgeVariant} className="text-[10px]">{t(`roles.${role.key}`)}</Badge>
+                    <Badge variant={role.badgeVariant} className="text-[10px]">{role.label}</Badge>
                   </div>
                 </div>
                 <span className="text-[11px] font-medium" style={{ color: "var(--foreground-subtle)" }}>
-                  {role.userCount} user{role.userCount !== 1 ? "s" : ""}
+                  {role.userCount}
                 </span>
               </div>
               <p className="text-xs leading-relaxed" style={{ color: "var(--foreground-muted)" }}>{role.description}</p>
@@ -150,10 +120,10 @@ export default function AdminRolesPage() {
           <table className="w-full text-xs">
             <thead style={{ backgroundColor: "var(--surface-1)", borderBottom: "1px solid var(--border)" }}>
               <tr>
-                <th className="px-4 py-3 text-left font-semibold sticky left-0" style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)", minWidth: 200 }}>Permission</th>
+                <th className="px-4 py-3 text-left font-semibold sticky left-0" style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)", minWidth: 200 }}>{t("permissionCol")}</th>
                 {ROLES.map(r => (
                   <th key={r.key} className="px-3 py-3 text-center font-semibold" style={{ color: "var(--foreground-muted)", minWidth: 100 }}>
-                    <Badge variant={r.badgeVariant} className="text-[10px]">{t(`roles.${r.key}`)}</Badge>
+                    <Badge variant={r.badgeVariant} className="text-[10px]">{r.label}</Badge>
                   </th>
                 ))}
               </tr>
@@ -196,7 +166,7 @@ export default function AdminRolesPage() {
           {ROLES.map(role => (
             <div key={role.key} className="card p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Badge variant={role.badgeVariant} className="text-[10px]">{t(`roles.${role.key}`)}</Badge>
+                <Badge variant={role.badgeVariant} className="text-[10px]">{role.label}</Badge>
                 <span className="text-xs" style={{ color: "var(--foreground-subtle)" }}>{role.description}</span>
               </div>
               <div className="space-y-1.5">

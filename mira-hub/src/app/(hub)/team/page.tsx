@@ -193,7 +193,7 @@ export default function TeamPage() {
                     {member.todayActivity.length > 0 ? (
                       <div>
                         <p className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--foreground-subtle)" }}>
-                          Today&apos;s Activity
+                          {t("todayActivity")}
                         </p>
                         <div className="space-y-1.5">
                           {member.todayActivity.map((item, i) => (
@@ -205,7 +205,7 @@ export default function TeamPage() {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>No activity logged today.</p>
+                      <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>{t("noActivityToday")}</p>
                     )}
                   </div>
                 )}
