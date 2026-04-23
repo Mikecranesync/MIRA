@@ -14,7 +14,7 @@ export async function GET() {
         COUNT(DISTINCT telegram_username) as unique_techs,
         COUNT(DISTINCT source) as active_channels,
         COUNT(CASE WHEN safety_warnings != '{}' THEN 1 END) as safety_alerts,
-        COUNT(CASE WHEN status = 'resolved' OR status = 'completed' THEN 1 END) as resolved,
+        COUNT(CASE WHEN status = 'completed' OR status = 'cancelled' THEN 1 END) as resolved,
         SUM(CASE WHEN confidence_score IS NOT NULL THEN 1 ELSE 0 END) as diagnostics
       FROM work_orders
       WHERE created_at > date_trunc('month', NOW())
