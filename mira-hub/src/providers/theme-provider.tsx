@@ -12,10 +12,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
-    const stored = (typeof localStorage !== "undefined" && localStorage.getItem("hub_theme")) as Theme | null;
-    const initial = stored ?? "light";
+    const stored = localStorage.getItem("hub_theme") as Theme | null;
+    const initial: Theme = stored
+      ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     setTheme(initial);
-    if (initial === "dark") document.documentElement.classList.add("dark");
+    document.documentElement.classList.toggle("dark", initial === "dark");
   }, []);
 
   function toggleTheme() {
