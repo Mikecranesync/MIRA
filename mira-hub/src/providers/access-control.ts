@@ -62,6 +62,7 @@ export const NAV_ITEMS = [
   { key: "parts",          label: "Parts",          icon: "Package",         href: "/parts",         roles: ["technician", "manager", "scheduler", "admin", "operator"] },
   { key: "documents",      label: "Documents",      icon: "FileText",        href: "/documents",     roles: ["technician", "manager", "scheduler", "admin", "operator"] },
   { key: "reports",        label: "Reports",        icon: "BarChart2",       href: "/reports",       roles: ["manager", "scheduler", "admin"] },
+  { key: "cmms",           label: "CMMS",           icon: "Database",        href: "/cmms",          roles: ["manager", "scheduler", "admin"] },
   { key: "team",           label: "Team",           icon: "Users",           href: "/team",          roles: ["manager", "admin"] },
   { key: "admin/users",    label: "Admin",          icon: "Settings",        href: "/admin/users",   roles: ["admin"] },
 ] as const;

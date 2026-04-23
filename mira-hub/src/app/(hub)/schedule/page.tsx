@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle } from "lucide-react";
+import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X } from "lucide-react";
+import { useToast } from "@/providers/toast-provider";
 import { Badge } from "@/components/ui/badge";
 
 type PM = {
@@ -53,6 +54,9 @@ export default function SchedulePage() {
   const [view, setView] = useState<"calendar" | "list">("calendar");
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [selectedPM, setSelectedPM] = useState<PM | null>(null);
+  const { toast } = useToast();
 
   const cells = getCalendarDays(year, month);
   const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
@@ -143,13 +147,20 @@ export default function SchedulePage() {
             {cells.map((day, i) => {
               const dateStr = day ? `${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}` : "";
               const isToday = dateStr === todayStr;
+              const isSelected = dateStr === selectedDay;
               const dayPMs = day ? pmsByDay(day) : [];
               return (
-                <div key={i} className="min-h-[80px] md:min-h-[110px] p-1 md:p-2"
-                  style={{ backgroundColor: day ? "var(--surface-0)" : "var(--surface-1)" }}>
+                <div key={i}
+                  className={`min-h-[80px] md:min-h-[110px] p-1 md:p-2 ${day && dayPMs.length > 0 ? "cursor-pointer" : ""}`}
+                  style={{
+                    backgroundColor: isSelected ? "rgba(37,99,235,0.08)" : day ? "var(--surface-0)" : "var(--surface-1)",
+                    outline: isSelected ? "2px solid var(--brand-blue)" : "none",
+                    outlineOffset: "-2px",
+                  }}
+                  onClick={() => day && (dayPMs.length > 0 ? setSelectedDay(isSelected ? null : dateStr) : null)}>
                   {day && (
                     <>
-                      <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium mb-1 ${isToday ? "text-white" : ""}`}
+                      <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium mb-1`}
                         style={{ backgroundColor: isToday ? "var(--brand-blue)" : "transparent", color: isToday ? "white" : "var(--foreground-muted)" }}>
                         {day}
                       </span>
@@ -183,6 +194,14 @@ export default function SchedulePage() {
               </div>
             ))}
           </div>
+
+          {/* Day detail panel */}
+          {selectedDay && <DayDetail
+            selectedDay={selectedDay}
+            pms={PMS.filter(p => p.date === selectedDay)}
+            onClose={() => setSelectedDay(null)}
+            onSelectPM={setSelectedPM}
+          />}
         </div>
       ) : (
         <div className="px-4 md:px-6 py-4 space-y-3">
@@ -219,6 +238,99 @@ export default function SchedulePage() {
           })}
         </div>
       )}
+
+      {/* PM detail bottom sheet — outside ternary so it renders over both views */}
+      {selectedPM && (
+        <PMSheet
+          pm={selectedPM}
+          onClose={() => setSelectedPM(null)}
+          onComplete={() => { toast(`${selectedPM.title} marked complete ✓`); setSelectedPM(null); }}
+        />
+      )}
     </div>
+  );
+}
+
+function DayDetail({ selectedDay, pms, onClose, onSelectPM }: {
+  selectedDay: string; pms: PM[]; onClose: () => void; onSelectPM: (pm: PM) => void;
+}) {
+  const [, m, d] = selectedDay.split("-");
+  return (
+    <div className="mt-4 card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+          {MONTHS[parseInt(m) - 1]} {parseInt(d)} — {pms.length} PM{pms.length !== 1 ? "s" : ""}
+        </h3>
+        <button onClick={onClose} style={{ color: "var(--foreground-subtle)" }}>
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="space-y-2">
+        {pms.map(pm => {
+          const cfg = STATUS_CFG[pm.status];
+          return (
+            <button key={pm.id} onClick={() => onSelectPM(pm)} className="w-full text-left p-3 rounded-lg border transition-colors hover:bg-[var(--surface-1)]"
+              style={{ borderColor: "var(--border)" }}>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{pm.title}</p>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
+                    {pm.asset} · {pm.tech} · {pm.durationH}h · {pm.recur}
+                  </p>
+                </div>
+                <Badge variant={cfg.badgeVariant} className="text-[10px] flex-shrink-0">{cfg.label}</Badge>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onComplete: () => void }) {
+  const cfg = STATUS_CFG[pm.status];
+  return (
+    <>
+      <div className="fixed inset-0 z-40" style={{ backgroundColor: "rgba(0,0,0,0.4)" }} onClick={onClose} />
+      <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl p-5 space-y-4"
+        style={{ backgroundColor: "var(--surface-0)", maxHeight: "80vh", overflowY: "auto" }}>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-xs font-mono" style={{ color: "var(--foreground-subtle)" }}>{pm.id}</p>
+            <h3 className="text-base font-semibold mt-0.5" style={{ color: "var(--foreground)" }}>{pm.title}</h3>
+          </div>
+          <button onClick={onClose} style={{ color: "var(--foreground-subtle)" }}><X className="w-5 h-5" /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { label: "Asset",      value: pm.asset,                Icon: Calendar },
+            { label: "Status",     value: cfg.label,               Icon: Clock },
+            { label: "Tech",       value: pm.tech,                 Icon: User },
+            { label: "Duration",   value: `${pm.durationH}h est.`, Icon: Clock },
+            { label: "Recurrence", value: pm.recur,                Icon: RotateCcw },
+            { label: "Due Date",   value: pm.date,                 Icon: Calendar },
+          ].map(({ label, value, Icon }) => (
+            <div key={label} className="p-3 rounded-lg" style={{ backgroundColor: "var(--surface-1)" }}>
+              <div className="flex items-center gap-1 mb-1">
+                <Icon className="w-3 h-3" style={{ color: "var(--foreground-subtle)" }} />
+                <span className="text-[10px] uppercase tracking-wide" style={{ color: "var(--foreground-subtle)" }}>{label}</span>
+              </div>
+              <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{value}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onComplete} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"
+            style={{ backgroundColor: "#16A34A" }}>
+            Mark Complete
+          </button>
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border"
+            style={{ borderColor: "var(--border)", color: "var(--foreground-muted)", backgroundColor: "var(--surface-0)" }}>
+            Close
+          </button>
+        </div>
+      </div>
+    </>
   );
 }

@@ -5,12 +5,13 @@ import Link from "next/link";
 import {
   ArrowLeft, Play, Square, Bot, Package, MessageSquare,
   Clock, User, Calendar, Wrench, CheckCircle2, AlertCircle,
-  AlertTriangle, ChevronRight, Plus, Camera,
+  AlertTriangle, ChevronRight, Plus, Camera, ExternalLink,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WORK_ORDERS, STATUS_LABEL, PRIORITY_VARIANT, STATUS_VARIANT, type WOStatus } from "@/lib/workorders-data";
 import { PARTS } from "@/lib/parts-data";
+import { useToast } from "@/providers/toast-provider";
 
 const STATUS_ICON: Record<WOStatus, React.ElementType> = {
   open: Clock, inprogress: Wrench, scheduled: Calendar,
@@ -41,7 +42,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
   const [commentText, setCommentText] = useState("");
   const [showPartPicker, setShowPartPicker] = useState(false);
   const [partQuery, setPartQuery] = useState("");
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast } = useToast();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -53,31 +54,26 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [timerRunning]);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  }
-
   function startWork() {
     setStatus("inprogress");
     setTimerRunning(true);
-    showToast("Work started — timer running");
+    toast("Work started — timer running");
   }
   function stopTimer() {
     setTimerRunning(false);
-    showToast(`Timer paused — ${formatTimer(elapsed)} logged`);
+    toast(`Timer paused — ${formatTimer(elapsed)} logged`);
   }
   function completeWO() {
     setTimerRunning(false);
     setStatus("completed");
-    showToast("Work order marked complete");
+    toast("Work order marked complete ✓");
   }
 
   function addComment() {
     if (!commentText.trim()) return;
     setComments(prev => [...prev, { author: "Mike H.", ts: new Date().toISOString().slice(0, 16).replace("T", " "), text: commentText }]);
     setCommentText("");
-    showToast("Comment added");
+    toast("Comment added");
   }
 
   function addPart(part: typeof PARTS[number]) {
@@ -89,7 +85,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
     }
     setShowPartPicker(false);
     setPartQuery("");
-    showToast(`${part.description} added`);
+    toast(`${part.description} added`);
   }
 
   const StatusIcon = STATUS_ICON[status];
@@ -99,14 +95,6 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="min-h-full pb-24" style={{ backgroundColor: "var(--background)" }}>
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium text-white"
-          style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
-          {toast}
-        </div>
-      )}
-
       {/* Header */}
       <div className="sticky top-0 z-20 border-b" style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <div className="px-4 md:px-6 pt-3 pb-3">
@@ -133,12 +121,19 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
 
       <div className="px-4 md:px-6 py-5 max-w-2xl space-y-4">
         {/* Ask MIRA CTA */}
-        <a href="https://t.me/FactoryLMDiagnose_bot" target="_blank" rel="noopener noreferrer">
-          <Button className="w-full h-10 gap-2 text-sm font-semibold"
-            style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
-            <Bot className="w-4 h-4" />View MIRA Conversation
-          </Button>
-        </a>
+        <div className="flex gap-2">
+          <a href="https://t.me/FactoryLMDiagnose_bot" target="_blank" rel="noopener noreferrer" className="flex-1">
+            <Button className="w-full h-10 gap-2 text-sm font-semibold"
+              style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
+              <Bot className="w-4 h-4" />MIRA Conversation
+            </Button>
+          </a>
+          <a href={`https://app.factorylm.com/workorders/${wo.id}`} target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" className="h-10 gap-1.5 text-sm px-3">
+              <ExternalLink className="w-4 h-4" />CMMS
+            </Button>
+          </a>
+        </div>
 
         {/* Time Tracker */}
         <div className="card p-4">

@@ -10,7 +10,7 @@ const MOBILE_TABS = [
   { label: "Assets",  Icon: Wrench,          href: "/assets" },
   { label: "New WO",  Icon: Plus,            href: "/workorders/new", fab: true },
   { label: "Orders",  Icon: ClipboardList,   href: "/workorders" },
-  { label: "More",    Icon: MoreHorizontal,  href: "/documents" },
+  { label: "More",    Icon: MoreHorizontal,  href: "/more" },
 ];
 
 export function BottomTabs() {

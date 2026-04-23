@@ -5,6 +5,7 @@ import { MessageSquare, Plus, X, CheckCircle, XCircle, Clock, ChevronRight, Arro
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/providers/toast-provider";
 
 type Request = {
   id: string;
@@ -80,6 +81,7 @@ export default function RequestsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // Form state
   const [form, setForm] = useState({ title: "", description: "", asset: "", priority: "medium" as Request["priority"] });
@@ -89,6 +91,7 @@ export default function RequestsPage() {
 
   function submitRequest() {
     if (!form.title || !form.asset) return;
+    toast("Request submitted — team notified");
     const newReq: Request = {
       id: `REQ-${String(requests.length + 1).padStart(3, "0")}`,
       title: form.title,
@@ -106,9 +109,11 @@ export default function RequestsPage() {
 
   function approve(id: string) {
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status: "approved" } : r));
+    toast("Request approved ✓", "success");
   }
   function reject(id: string) {
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status: "rejected" } : r));
+    toast("Request rejected", "warning");
   }
 
   return (

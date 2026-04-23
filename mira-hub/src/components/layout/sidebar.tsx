@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, ClipboardList, Wrench, Calendar,
   MessageSquare, Package, FileText, BarChart2, Users, Settings,
-  Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon,
+  Database, Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/providers/access-control";
@@ -14,7 +14,7 @@ import { useTheme } from "@/providers/theme-provider";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, ClipboardList, Wrench, Calendar,
-  MessageSquare, Package, FileText, BarChart2, Users, Settings,
+  MessageSquare, Package, FileText, BarChart2, Users, Settings, Database,
 };
 
 export function Sidebar({ role = "admin" }: { role?: string }) {
