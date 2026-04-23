@@ -40,3 +40,25 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `MIRA_RRF_K`         | mira-bots — Reciprocal Rank Fusion constant. Default `60` (Cormack et al. 2009). Raise to flatten rank influence, lower to sharpen it. Change only with an eval to back it. |
 | `SESSION_RECORDING_PATH` | mira-pipeline — directory for per-chat NDJSON session files. Default `/data/sessions`. VPS host path: `/opt/mira/mira-bridge/data/sessions`. Read by `tests/eval/analyze_sessions.py` cron to auto-generate eval fixtures. |
 | `EVAL_DISABLE_JUDGE` | `tests/eval/analyze_sessions.py` — set `"1"` to skip LLM grading (deterministic grades only; saves Groq tokens). |
+
+## Hub Connector OAuth (mira-web — `factorylm/prd`)
+
+Already in Doppler:
+
+| Var | Used By | Notes |
+|-----|---------|-------|
+| `GOOGLE_CLIENT_ID` | mira-web `/api/oauth/google/*` | OAuth 2.0 client ID — **register redirect URIs** in Google Cloud Console: `https://app.factorylm.com/api/oauth/google/callback` and `http://localhost:3200/api/oauth/google/callback` |
+| `GOOGLE_CLIENT_SECRET` | mira-web `/api/oauth/google/*` | OAuth 2.0 client secret |
+
+Add before Playwright E2E run:
+
+| Var | Used By | Notes |
+|-----|---------|-------|
+| `PLAYWRIGHT_TEST_TENANT_TOKEN` | `mira-web/tests/hub.e2e.ts` | Active tenant JWT (from `/api/me` or activation email) |
+| `PLAYWRIGHT_GOOGLE_USER` | `mira-web/tests/hub.e2e.ts` | Google test account email |
+| `PLAYWRIGHT_GOOGLE_PASS` | `mira-web/tests/hub.e2e.ts` | Google test account password |
+
+Pre-upload these files to the test Google Drive account before running E2E:
+- `tests/fixtures/nameplate_gs10.jpg`
+- `tools/sample-labels.pdf`
+- `docs/proposals/MIRA-Projects-PRD-v1.docx`

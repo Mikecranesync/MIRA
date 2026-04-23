@@ -324,4 +324,24 @@ export async function ensureSchema(): Promise<void> {
   await db`
     CREATE INDEX IF NOT EXISTS idx_plg_query_log_tenant_date
     ON plg_query_log (tenant_id, created_at)`;
+
+  // Hub connector tokens — OAuth 2.0 access/refresh tokens per tenant+provider
+  await db`
+    CREATE TABLE IF NOT EXISTS connector_tokens (
+      id            SERIAL PRIMARY KEY,
+      tenant_id     TEXT NOT NULL REFERENCES plg_tenants(id) ON DELETE CASCADE,
+      provider      TEXT NOT NULL CHECK (provider IN ('google', 'microsoft', 'slack')),
+      access_token  TEXT NOT NULL,
+      refresh_token TEXT,
+      token_type    TEXT NOT NULL DEFAULT 'Bearer',
+      scope         TEXT,
+      expires_at    TIMESTAMPTZ,
+      metadata_json TEXT,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (tenant_id, provider)
+    )`;
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_connector_tokens_tenant
+    ON connector_tokens (tenant_id)`;
 }

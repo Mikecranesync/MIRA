@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MIRA Hub — Integrations</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem;
+      color: #111;
+      background: #f9f9f7;
+      line-height: 1.5;
+    }
+    /* Header */
+    .hub-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+      gap: 1rem;
+    }
+    .hub-header h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 0.25rem; }
+    .hub-header p { color: #666; margin: 0; font-size: 0.9rem; }
+    .hub-nav { font-size: 0.85rem; }
+    .hub-nav a { color: #f5a623; text-decoration: none; font-weight: 600; }
+    .hub-nav a:hover { text-decoration: underline; }
+
+    /* Alert banner */
+    .alert {
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      display: none;
+    }
+    .alert.show { display: flex; align-items: center; gap: 0.5rem; }
+    .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .alert-error   { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+    /* Grid */
+    .connectors-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+    }
+
+    /* Connector card */
+    .connector-card {
+      background: white;
+      border: 1px solid #e5e5e5;
+      border-radius: 12px;
+      padding: 1.5rem;
+      transition: box-shadow 0.15s;
+    }
+    .connector-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.07); }
+    .connector-card.coming-soon { opacity: 0.55; }
+
+    .card-header { display: flex; align-items: center; gap: 0.875rem; margin-bottom: 0.875rem; }
+    .card-logo {
+      width: 48px; height: 48px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; flex-shrink: 0;
+      background: #f3f4f6;
+    }
+    .card-logo img { width: 32px; height: 32px; object-fit: contain; }
+    .card-title { font-size: 1rem; font-weight: 700; margin: 0 0 0.1rem; }
+    .card-subtitle { font-size: 0.78rem; color: #888; margin: 0; }
+
+    .card-description { font-size: 0.875rem; color: #555; margin: 0 0 1rem; }
+
+    .card-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+
+    /* Status badge */
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      padding: 0.25rem 0.65rem; border-radius: 20px;
+      font-size: 0.78rem; font-weight: 600;
+    }
+    .status-badge::before { content: '●'; font-size: 0.55rem; }
+    .status-connected    { background: #dcfce7; color: #166534; }
+    .status-disconnected { background: #f3f4f6; color: #888; }
+    .status-soon         { background: #fef9c3; color: #854d0e; }
+
+    .connected-email { font-size: 0.78rem; color: #555; margin-top: 0.35rem; width: 100%; }
+
+    /* Buttons */
+    .btn {
+      padding: 0.5rem 1rem; border: 0; border-radius: 8px;
+      font-size: 0.825rem; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      text-decoration: none; transition: filter 0.1s;
+    }
+    .btn:hover { filter: brightness(0.93); }
+    .btn-primary   { background: #f5a623; color: #0a0a08; }
+    .btn-secondary { background: #f3f4f6; color: #111; }
+    .btn-danger    { background: #fee2e2; color: #991b1b; }
+    .btn-ghost     { background: transparent; color: #555; font-weight: 500; }
+    .btn[disabled] { opacity: 0.5; cursor: default; pointer-events: none; }
+
+    /* Drive panel */
+    .drive-panel {
+      background: white;
+      border: 1px solid #e5e5e5;
+      border-radius: 12px;
+      padding: 1.5rem;
+      display: none;
+    }
+    .drive-panel.visible { display: block; }
+
+    .drive-panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    .drive-panel-header h2 { font-size: 1rem; font-weight: 700; margin: 0; }
+
+    .drive-meta { font-size: 0.82rem; color: #777; margin-bottom: 1rem; }
+
+    /* File list */
+    .file-list { list-style: none; padding: 0; margin: 0; }
+    .file-item {
+      display: flex; align-items: center; gap: 0.875rem;
+      padding: 0.7rem 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .file-item:last-child { border-bottom: none; }
+
+    .file-icon { font-size: 1.25rem; width: 28px; text-align: center; flex-shrink: 0; }
+    .file-info { flex: 1; min-width: 0; }
+    .file-name {
+      font-size: 0.875rem; font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .file-meta { font-size: 0.75rem; color: #888; margin-top: 0.1rem; }
+
+    .import-status {
+      font-size: 0.775rem; font-weight: 600;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .import-idle      { color: transparent; }
+    .import-importing { color: #2563eb; }
+    .import-done      { color: #16a34a; }
+    .import-error     { color: #dc2626; }
+
+    .empty-state {
+      text-align: center; color: #aaa;
+      padding: 2.5rem 1rem; font-size: 0.875rem;
+    }
+
+    /* Loading spinner */
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid #ddd; border-top-color: #f5a623;
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 480px) {
+      .connectors-grid { grid-template-columns: 1fr; }
+      .hub-header { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="hub-header">
+  <div>
+    <h1>MIRA Integrations</h1>
+    <p>Connect your tools to sync maintenance manuals, equipment photos, and documents into your AI knowledge base.</p>
+  </div>
+  <nav class="hub-nav">
+    <a href="/cmms">← Dashboard</a>
+  </nav>
+</div>
+
+<div id="alertBanner" class="alert"></div>
+
+<div class="connectors-grid" id="connectorsGrid">
+  <!-- Cards injected by JS -->
+  <div class="empty-state"><span class="spinner"></span> Loading integrations…</div>
+</div>
+
+<div class="drive-panel" id="drivePanel">
+  <div class="drive-panel-header">
+    <h2>📂 Google Drive</h2>
+    <button class="btn btn-ghost" id="closeDriveBtn" onclick="closePanel()">✕ Close</button>
+  </div>
+  <p class="drive-meta">
+    Showing PDFs, images, and Word documents from your Drive.
+    Select a file to import it into your MIRA knowledge base.
+  </p>
+  <div id="driveFiles"><div class="empty-state"><span class="spinner"></span> Loading files…</div></div>
+</div>
+
+<script>
+  // ---------------------------------------------------------------------------
+  // Auth — reads token from ?token= or sessionStorage (same pattern as cmms.html)
+  // ---------------------------------------------------------------------------
+  const AUTH = { token: null };
+
+  (function initAuth() {
+    const params = new URLSearchParams(location.search);
+    const urlToken = params.get('token');
+    if (urlToken) {
+      AUTH.token = urlToken;
+      sessionStorage.setItem('flm_token', urlToken);
+    } else {
+      AUTH.token = sessionStorage.getItem('flm_token');
+    }
+    if (!AUTH.token) {
+      // No token — redirect to dashboard where they can log in
+      window.location.href = '/cmms';
+    }
+  })();
+
+  function authHeaders() {
+    return { 'Authorization': 'Bearer ' + AUTH.token, 'Content-Type': 'application/json' };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Alert
+  // ---------------------------------------------------------------------------
+  function showAlert(msg, type) {
+    const el = document.getElementById('alertBanner');
+    el.textContent = (type === 'success' ? '✓ ' : '⚠ ') + msg;
+    el.className = 'alert show ' + (type === 'success' ? 'alert-success' : 'alert-error');
+    setTimeout(() => { el.className = 'alert'; }, 5000);
+  }
+
+  // Check for ?connected= or ?error= query params from OAuth callback
+  (function checkOAuthResult() {
+    const params = new URLSearchParams(location.search);
+    const connected = params.get('connected');
+    const error = params.get('error');
+    if (connected === 'google') showAlert('Google Workspace connected successfully!', 'success');
+    if (error) {
+      const msgs = {
+        access_denied: 'Google sign-in was cancelled.',
+        invalid_state: 'OAuth session expired. Please try again.',
+        token_exchange: 'Failed to complete Google sign-in. Please try again.',
+        userinfo: 'Failed to retrieve Google account info.',
+        db: 'Error saving connection. Please try again.',
+        missing_params: 'Incomplete OAuth response from Google.',
+      };
+      showAlert(msgs[error] || 'Connection error: ' + error, 'error');
+    }
+    // Clean the query string without reloading
+    if (connected || error) {
+      const clean = location.pathname + (AUTH.token ? '?token=' + encodeURIComponent(AUTH.token) : '');
+      history.replaceState(null, '', clean);
+    }
+  })();
+
+  // ---------------------------------------------------------------------------
+  // Connector card definitions
+  // ---------------------------------------------------------------------------
+  const CONNECTOR_DEFS = [
+    {
+      id: 'google',
+      name: 'Google Workspace',
+      subtitle: 'Drive · Gmail · Calendar',
+      description: 'Import manuals and equipment photos from Google Drive, send maintenance alerts via Gmail.',
+      logo: '🔵',
+      available: true,
+    },
+    {
+      id: 'microsoft',
+      name: 'Microsoft 365',
+      subtitle: 'SharePoint · Teams · Outlook',
+      description: 'Sync documents from SharePoint/OneDrive, push incident alerts to Teams channels.',
+      logo: '🟦',
+      available: false,
+    },
+    {
+      id: 'slack',
+      name: 'Slack',
+      subtitle: 'Channels · Alerts',
+      description: 'Post maintenance alerts and fault escalations directly to your Slack workspace.',
+      logo: '🟪',
+      available: false,
+    },
+  ];
+
+  // ---------------------------------------------------------------------------
+  // Render grid
+  // ---------------------------------------------------------------------------
+  function fileTypeIcon(mimeType) {
+    if (!mimeType) return '📄';
+    if (mimeType === 'application/pdf') return '📕';
+    if (mimeType.startsWith('image/')) return '🖼';
+    if (mimeType.includes('wordprocessingml')) return '📝';
+    return '📄';
+  }
+
+  function formatBytes(bytes) {
+    if (!bytes) return '';
+    const n = Number(bytes);
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  function renderGrid(connectedMap) {
+    const grid = document.getElementById('connectorsGrid');
+    grid.innerHTML = '';
+
+    CONNECTOR_DEFS.forEach(def => {
+      const conn = connectedMap[def.id];
+      const isConnected = !!conn;
+
+      const card = document.createElement('div');
+      card.className = 'connector-card' + (def.available ? '' : ' coming-soon');
+      card.id = 'card-' + def.id;
+
+      let statusBadge, actions, emailLine = '';
+
+      if (!def.available) {
+        statusBadge = '<span class="status-badge status-soon">Coming soon</span>';
+        actions = '';
+      } else if (isConnected) {
+        statusBadge = '<span class="status-badge status-connected">Connected</span>';
+        if (conn.email) emailLine = `<div class="connected-email">Signed in as <strong>${escHtml(conn.email)}</strong></div>`;
+        actions = `
+          <button class="btn btn-secondary" onclick="openDrivePanel()">Browse Drive</button>
+          <button class="btn btn-danger" onclick="disconnect('${def.id}')">Disconnect</button>`;
+      } else {
+        statusBadge = '<span class="status-badge status-disconnected">Not connected</span>';
+        actions = `<button class="btn btn-primary" onclick="connectGoogle()">Connect ${escHtml(def.name)}</button>`;
+      }
+
+      card.innerHTML = `
+        <div class="card-header">
+          <div class="card-logo">${def.logo}</div>
+          <div>
+            <p class="card-title">${escHtml(def.name)}</p>
+            <p class="card-subtitle">${escHtml(def.subtitle)}</p>
+          </div>
+        </div>
+        <p class="card-description">${escHtml(def.description)}</p>
+        <div class="card-footer">
+          <div>
+            ${statusBadge}
+            ${emailLine}
+          </div>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">${actions}</div>
+        </div>`;
+
+      grid.appendChild(card);
+    });
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Load connector state
+  // ---------------------------------------------------------------------------
+  async function loadConnectors() {
+    try {
+      const res = await fetch('/api/connectors', { headers: authHeaders() });
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = '/cmms';
+        return;
+      }
+      const data = await res.json();
+      const map = {};
+      (data.connectors || []).forEach(c => { map[c.provider] = c; });
+      renderGrid(map);
+    } catch (e) {
+      document.getElementById('connectorsGrid').innerHTML =
+        '<div class="empty-state">⚠ Failed to load integrations. <a href="" onclick="location.reload()">Retry</a></div>';
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Connect / Disconnect
+  // ---------------------------------------------------------------------------
+  function connectGoogle() {
+    // The authorize endpoint reads auth from cookie / Authorization header.
+    // We append the token as a query param so requireActive can read it.
+    window.location.href = '/api/oauth/google/authorize?token=' + encodeURIComponent(AUTH.token);
+  }
+
+  async function disconnect(provider) {
+    if (!confirm('Disconnect ' + provider + '? You can reconnect at any time.')) return;
+    try {
+      const res = await fetch('/api/connectors/' + provider, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+      if (res.ok) {
+        closePanel();
+        showAlert(provider + ' disconnected.', 'success');
+        loadConnectors();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showAlert('Failed to disconnect: ' + (err.error || res.status), 'error');
+      }
+    } catch {
+      showAlert('Network error. Please try again.', 'error');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Drive file browser
+  // ---------------------------------------------------------------------------
+  async function openDrivePanel() {
+    const panel = document.getElementById('drivePanel');
+    panel.classList.add('visible');
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    document.getElementById('driveFiles').innerHTML =
+      '<div class="empty-state"><span class="spinner"></span> Loading Drive files…</div>';
+    loadDriveFiles();
+  }
+
+  function closePanel() {
+    document.getElementById('drivePanel').classList.remove('visible');
+  }
+
+  async function loadDriveFiles() {
+    try {
+      const res = await fetch('/api/google/drive/files', { headers: authHeaders() });
+      if (res.status === 401) {
+        document.getElementById('driveFiles').innerHTML =
+          '<div class="empty-state">Google token expired. Please <a href="#" onclick="connectGoogle()">reconnect</a>.</div>';
+        return;
+      }
+      const data = await res.json();
+      renderDriveFiles(data.files || []);
+    } catch (e) {
+      document.getElementById('driveFiles').innerHTML =
+        '<div class="empty-state">⚠ Failed to load Drive files.</div>';
+    }
+  }
+
+  function renderDriveFiles(files) {
+    const container = document.getElementById('driveFiles');
+    if (!files.length) {
+      container.innerHTML = '<div class="empty-state">No PDF, image, or Word files found in your Drive.</div>';
+      return;
+    }
+
+    const ul = document.createElement('ul');
+    ul.className = 'file-list';
+
+    files.forEach(f => {
+      const li = document.createElement('li');
+      li.className = 'file-item';
+      li.id = 'file-' + f.id;
+
+      const modDate = f.modifiedTime
+        ? new Date(f.modifiedTime).toLocaleDateString()
+        : '';
+      const sizeStr = formatBytes(f.size);
+
+      li.innerHTML = `
+        <span class="file-icon">${fileTypeIcon(f.mimeType)}</span>
+        <div class="file-info">
+          <div class="file-name" title="${escHtml(f.name)}">${escHtml(f.name)}</div>
+          <div class="file-meta">${[sizeStr, modDate].filter(Boolean).join(' · ')}</div>
+        </div>
+        <span class="import-status import-idle" id="status-${escHtml(f.id)}">Indexed ✓</span>
+        <button class="btn btn-secondary" id="btn-${escHtml(f.id)}"
+          onclick="importFile('${escHtml(f.id)}', '${escHtml(f.mimeType)}', '${escHtml(f.name)}')">
+          Import
+        </button>`;
+
+      ul.appendChild(li);
+    });
+
+    container.innerHTML = '';
+    container.appendChild(ul);
+  }
+
+  async function importFile(fileId, mimeType, fileName) {
+    const statusEl = document.getElementById('status-' + fileId);
+    const btnEl = document.getElementById('btn-' + fileId);
+
+    statusEl.className = 'import-status import-importing';
+    statusEl.textContent = 'Importing…';
+    btnEl.setAttribute('disabled', '');
+
+    try {
+      const res = await fetch('/api/google/drive/import', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ fileId, mimeType, fileName }),
+      });
+
+      if (res.ok) {
+        statusEl.className = 'import-status import-done';
+        statusEl.textContent = 'Indexed ✓';
+        btnEl.textContent = 'Re-import';
+        btnEl.removeAttribute('disabled');
+        showAlert('"' + fileName + '" imported successfully.', 'success');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        statusEl.className = 'import-status import-error';
+        statusEl.textContent = 'Failed';
+        btnEl.textContent = 'Retry';
+        btnEl.removeAttribute('disabled');
+        showAlert('Import failed: ' + (err.error || res.status), 'error');
+      }
+    } catch {
+      statusEl.className = 'import-status import-error';
+      statusEl.textContent = 'Error';
+      btnEl.textContent = 'Retry';
+      btnEl.removeAttribute('disabled');
+      showAlert('Network error during import.', 'error');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Boot
+  // ---------------------------------------------------------------------------
+  loadConnectors();
+</script>
+</body>
+</html>

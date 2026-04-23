@@ -96,6 +96,7 @@ import { adminPages, adminApi } from "./routes/admin/qr-print.js";
 import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
 import { qrTest } from "./routes/qr-test.js";
+import { hubPages, hubApi } from "./routes/hub.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -145,6 +146,10 @@ app.route("/", mReportApi);  // POST /api/m/report
 
 // QR test page — branded asset sheet, no auth required (sales/demo tool)
 app.route("/", qrTest);                 // handles GET /qr-test[?tenant_id=&tenant_name=]
+
+// Hub integration marketplace — /hub page + Google OAuth + Drive import + connectors API
+app.route("/", hubPages);   // handles GET /hub
+app.route("/", hubApi);     // handles /api/oauth/google/*, /api/connectors, /api/google/drive/*, /api/ingest/photo
 
 // Admin routes — QR print page + batch PDF endpoint + channel config
 app.route("/admin", adminPages);        // handles GET /admin/qr-print
