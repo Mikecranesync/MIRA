@@ -560,7 +560,10 @@
     "synced": "Synced",
     "pending": "Pending",
     "source": "Source",
-    "detail": "Detail"
+    "detail": "Detail",
+    "live": "Live",
+    "allChannels": "All channels",
+    "events": "events"
   },
   "conversations": {
     "title": "Conversations",
@@ -569,19 +572,23 @@
     "readOnly": "Read-only console view — reply via the channel",
     "threads": "threads",
     "today": "today",
-    "live": "Live"
+    "live": "Live",
+    "allChannels": "All channels"
   },
   "actions": {
     "title": "Actions",
     "noActions": "No actions found",
     "synced": "Synced",
-    "pending": "Pending"
+    "pending": "Pending",
+    "today": "today"
   },
   "alerts": {
     "title": "Alerts",
     "noAlerts": "No alerts found",
     "acknowledge": "Acknowledge",
-    "acknowledged": "Acknowledged"
+    "acknowledged": "Acknowledged",
+    "active": "active",
+    "detail": "Detail"
   },
   "knowledge": {
     "title": "Knowledge",

@@ -560,7 +560,10 @@
     "synced": "Sincronizado",
     "pending": "Pendiente",
     "source": "Fuente",
-    "detail": "Detalle"
+    "detail": "Detalle",
+    "live": "En vivo",
+    "allChannels": "Todos los canales",
+    "events": "eventos"
   },
   "conversations": {
     "title": "Conversaciones",
@@ -569,19 +572,23 @@
     "readOnly": "Vista de consola — responde por el canal",
     "threads": "hilos",
     "today": "hoy",
-    "live": "En vivo"
+    "live": "En vivo",
+    "allChannels": "Todos los canales"
   },
   "actions": {
     "title": "Acciones",
     "noActions": "Sin acciones",
     "synced": "Sincronizado",
-    "pending": "Pendiente"
+    "pending": "Pendiente",
+    "today": "hoy"
   },
   "alerts": {
     "title": "Alertas",
     "noAlerts": "Sin alertas",
     "acknowledge": "Confirmar",
-    "acknowledged": "Confirmado"
+    "acknowledged": "Confirmado",
+    "active": "activas",
+    "detail": "Detalle"
   },
   "knowledge": {
     "title": "Conocimiento",

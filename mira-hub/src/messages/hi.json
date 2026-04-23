@@ -560,7 +560,10 @@
     "synced": "सिंक्ड",
     "pending": "लंबित",
     "source": "स्रोत",
-    "detail": "विवरण"
+    "detail": "विवरण",
+    "live": "लाइव",
+    "allChannels": "सभी चैनल",
+    "events": "इवेंट"
   },
   "conversations": {
     "title": "बातचीत",
@@ -569,19 +572,23 @@
     "readOnly": "केवल पढ़ने योग्य — चैनल के माध्यम से उत्तर दें",
     "threads": "थ्रेड",
     "today": "आज",
-    "live": "लाइव"
+    "live": "लाइव",
+    "allChannels": "सभी चैनल"
   },
   "actions": {
     "title": "कार्रवाइयां",
     "noActions": "कोई कार्रवाई नहीं",
     "synced": "सिंक्ड",
-    "pending": "लंबित"
+    "pending": "लंबित",
+    "today": "आज"
   },
   "alerts": {
     "title": "अलर्ट",
     "noAlerts": "कोई अलर्ट नहीं",
     "acknowledge": "स्वीकार करें",
-    "acknowledged": "स्वीकृत"
+    "acknowledged": "स्वीकृत",
+    "active": "सक्रिय",
+    "detail": "विवरण"
   },
   "knowledge": {
     "title": "ज्ञानकोष",

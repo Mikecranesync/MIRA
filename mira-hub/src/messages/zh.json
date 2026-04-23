@@ -560,7 +560,10 @@
     "synced": "已同步",
     "pending": "待处理",
     "source": "来源",
-    "detail": "详情"
+    "detail": "详情",
+    "live": "实时",
+    "allChannels": "所有渠道",
+    "events": "事件"
   },
   "conversations": {
     "title": "对话",
@@ -569,19 +572,23 @@
     "readOnly": "只读控制台视图 — 请通过渠道回复",
     "threads": "条对话",
     "today": "今日",
-    "live": "实时"
+    "live": "实时",
+    "allChannels": "所有渠道"
   },
   "actions": {
     "title": "操作记录",
     "noActions": "暂无操作记录",
     "synced": "已同步",
-    "pending": "待处理"
+    "pending": "待处理",
+    "today": "今日"
   },
   "alerts": {
     "title": "警报",
     "noAlerts": "暂无警报",
     "acknowledge": "确认",
-    "acknowledged": "已确认"
+    "acknowledged": "已确认",
+    "active": "活跃",
+    "detail": "详情"
   },
   "knowledge": {
     "title": "知识库",
