@@ -1,8 +1,16 @@
 {
   "nav": {
     "feed": "गतिविधि फ़ीड",
+    "eventLog": "इवेंट लॉग",
+    "conversations": "बातचीत",
+    "actions": "कार्रवाइयां",
+    "alerts": "अलर्ट",
+    "knowledge": "ज्ञानकोष",
     "workOrders": "कार्य आदेश",
     "assets": "उपकरण",
+    "channels": "चैनल",
+    "integrations": "एकीकरण",
+    "usage": "उपयोग",
     "schedule": "कार्यक्रम",
     "requests": "अनुरोध",
     "parts": "पुर्जे",
@@ -425,6 +433,8 @@
     "noMembers": "कोई टीम सदस्य नहीं",
     "todayActivity": "आज की गतिविधि",
     "noActivityToday": "आज कोई गतिविधि दर्ज नहीं।",
+    "lastAssist": "अंतिम सहायता",
+    "actionsToday": "कार्रवाइयां आज",
     "filters": {
       "all": "सभी शिफ्ट",
       "day": "दिन",
@@ -519,6 +529,11 @@
   "more": {
     "title": "और",
     "items": {
+      "alerts": "सुरक्षा और उपकरण अलर्ट",
+      "knowledge": "उपकरण मैनुअल और इंडेक्स्ड दस्तावेज़",
+      "channels": "Telegram, WhatsApp, Voice, Email",
+      "integrations": "CMMS, webhooks और API सेटिंग",
+      "usage": "उपयोग की गई कार्रवाइयां और बिलिंग स्तर",
       "schedule": "PM कैलेंडर और आगामी कार्य",
       "requests": "कार्य अनुरोध जमा करें और समीक्षा करें",
       "documents": "मैनुअल, SOPs और प्रमाणपत्र",
@@ -526,6 +541,135 @@
       "reports": "रखरखाव विश्लेषण और KPI",
       "team": "तकनीशियन सूची और असाइनमेंट",
       "admin": "उपयोगकर्ता, भूमिकाएं और सेटिंग"
+    }
+  },
+  "eventLog": {
+    "title": "इवेंट लॉग",
+    "noEvents": "कोई इवेंट नहीं",
+    "colTime": "समय",
+    "colChannel": "चैनल",
+    "colEvent": "इवेंट",
+    "colAction": "कार्रवाई",
+    "colSync": "सिंक",
+    "colConf": "विश्वास",
+    "eventDetail": "इवेंट विवरण",
+    "techMessage": "तकनीशियन संदेश",
+    "miraReasoning": "MIRA तर्क",
+    "miraOutput": "MIRA आउटपुट",
+    "cmmsPayload": "CMMS पेलोड",
+    "synced": "सिंक्ड",
+    "pending": "लंबित",
+    "source": "स्रोत",
+    "detail": "विवरण"
+  },
+  "conversations": {
+    "title": "बातचीत",
+    "search": "बातचीत खोजें…",
+    "noConversations": "कोई बातचीत नहीं",
+    "readOnly": "केवल पढ़ने योग्य — चैनल के माध्यम से उत्तर दें",
+    "threads": "थ्रेड",
+    "today": "आज",
+    "live": "लाइव"
+  },
+  "actions": {
+    "title": "कार्रवाइयां",
+    "noActions": "कोई कार्रवाई नहीं",
+    "synced": "सिंक्ड",
+    "pending": "लंबित"
+  },
+  "alerts": {
+    "title": "अलर्ट",
+    "noAlerts": "कोई अलर्ट नहीं",
+    "acknowledge": "स्वीकार करें",
+    "acknowledged": "स्वीकृत"
+  },
+  "knowledge": {
+    "title": "ज्ञानकोष",
+    "noDocuments": "कोई दस्तावेज़ नहीं",
+    "upload": "अपलोड",
+    "indexed": "इंडेक्स्ड",
+    "pending": "लंबित",
+    "chunks": "खंड",
+    "inRAG": "RAG में",
+    "search": "ज्ञानकोष खोजें…"
+  },
+  "channels": {
+    "title": "चैनल",
+    "activeChannels": "सक्रिय चैनल",
+    "availableChannels": "उपलब्ध चैनल",
+    "configure": "कॉन्फ़िगर करें",
+    "connect": "कनेक्ट करें",
+    "connectChannel": "चैनल कनेक्ट करें",
+    "addChannel": "चैनल जोड़ें",
+    "allChannels": "सभी चैनल",
+    "active": "सक्रिय",
+    "events": "इवेंट",
+    "techs": "तकनीशियन",
+    "messagesToday": "संदेश आज",
+    "viewLogs": "लॉग देखें",
+    "kpi": {
+      "activeChannels": "सक्रिय चैनल",
+      "eventsToday": "आज के इवेंट",
+      "techsConnected": "जुड़े तकनीशियन",
+      "allChannels": "सभी चैनल",
+      "acrossAll": "सभी चैनलों में",
+      "of7": "7 में से उपलब्ध"
+    },
+    "stats": {
+      "today": "आज",
+      "week": "इस सप्ताह",
+      "lastEvent": "अंतिम इवेंट"
+    }
+  },
+  "integrations": {
+    "title": "एकीकरण",
+    "subtitle": "अपना CMMS, webhooks और बाहरी सिस्टम कनेक्ट करें",
+    "tabCmms": "CMMS",
+    "tabWebhooks": "Webhooks",
+    "tabApi": "API",
+    "connected": "कनेक्टेड",
+    "available": "उपलब्ध",
+    "viaMcp": "MCP के माध्यम से",
+    "connect": "कनेक्ट करें",
+    "configure": "कॉन्फ़िगर करें",
+    "openCmms": "CMMS खोलें",
+    "assets": "उपकरण",
+    "workOrders": "कार्य आदेश",
+    "lastSync": "अंतिम सिंक",
+    "webhooksDesc": "HTTP POST के माध्यम से MIRA इवेंट बाहरी सिस्टम को भेजें।",
+    "addWebhook": "Webhook जोड़ें",
+    "healthy": "स्वस्थ",
+    "unhealthy": "अस्वस्थ",
+    "apiKey": "API कुंजी",
+    "apiKeyDesc": "अपने सिस्टम से MIRA API कॉल करने के लिए इस कुंजी का उपयोग करें।",
+    "reveal": "दिखाएं",
+    "hide": "छिपाएं",
+    "actionsThisMonth": "इस माह की कार्रवाइयां",
+    "tier": "स्तर",
+    "rateLimitRpm": "दर सीमा (RPM)",
+    "apiDocs": "API दस्तावेज़ीकरण",
+    "apiDocsDesc": "OpenAPI spec, प्रमाणीकरण और उदाहरण।",
+    "openDocs": "दस्तावेज़ खोलें",
+    "recentEvents": "हाल के API इवेंट"
+  },
+  "usage": {
+    "title": "उपयोग",
+    "billingPeriod": "बिलिंग अवधि",
+    "meterTitle": "उपयोग की गई कार्रवाइयां",
+    "actions": "कार्रवाइयां",
+    "tier": "स्तर",
+    "remaining": "शेष",
+    "resetsIn": "रीसेट होगा",
+    "days": "दिनों में",
+    "dailyActions": "दैनिक कार्रवाइयां",
+    "byType": "प्रकार के अनुसार",
+    "byChannel": "चैनल के अनुसार",
+    "byTech": "तकनीशियन के अनुसार",
+    "kpi": {
+      "totalActions": "कुल कार्रवाइयां",
+      "conversations": "बातचीत",
+      "activeTechs": "सक्रिय तकनीशियन",
+      "avgPerDay": "औसत / दिन"
     }
   }
 }

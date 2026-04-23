@@ -1,8 +1,16 @@
 {
   "nav": {
     "feed": "Registro de actividad",
+    "eventLog": "Registro de eventos",
+    "conversations": "Conversaciones",
+    "actions": "Acciones",
+    "alerts": "Alertas",
+    "knowledge": "Conocimiento",
     "workOrders": "Órdenes de trabajo",
     "assets": "Equipos",
+    "channels": "Canales",
+    "integrations": "Integraciones",
+    "usage": "Uso",
     "schedule": "Programa",
     "requests": "Solicitudes",
     "parts": "Refacciones",
@@ -425,6 +433,8 @@
     "noMembers": "Sin miembros del equipo",
     "todayActivity": "Actividad de hoy",
     "noActivityToday": "Sin actividad registrada hoy.",
+    "lastAssist": "Última asistencia",
+    "actionsToday": "acciones hoy",
     "filters": {
       "all": "Todos los turnos",
       "day": "Diurno",
@@ -519,6 +529,11 @@
   "more": {
     "title": "Más",
     "items": {
+      "alerts": "Alertas activas de seguridad y equipos",
+      "knowledge": "Manuales y documentos indexados",
+      "channels": "Telegram, WhatsApp, Voz, Email",
+      "integrations": "CMMS, webhooks y configuración de API",
+      "usage": "Acciones usadas y nivel de facturación",
       "schedule": "Calendario de MP y tareas próximas",
       "requests": "Enviar y revisar solicitudes de trabajo",
       "documents": "Manuales, POSs y certificaciones",
@@ -526,6 +541,135 @@
       "reports": "Análisis y KPIs de mantenimiento",
       "team": "Lista de técnicos y asignaciones",
       "admin": "Usuarios, roles y configuración"
+    }
+  },
+  "eventLog": {
+    "title": "Registro de eventos",
+    "noEvents": "Sin eventos",
+    "colTime": "Hora",
+    "colChannel": "Canal",
+    "colEvent": "Evento",
+    "colAction": "Acción",
+    "colSync": "Sync",
+    "colConf": "Confianza",
+    "eventDetail": "Detalle del evento",
+    "techMessage": "Mensaje del técnico",
+    "miraReasoning": "Razonamiento MIRA",
+    "miraOutput": "Respuesta MIRA",
+    "cmmsPayload": "Payload CMMS",
+    "synced": "Sincronizado",
+    "pending": "Pendiente",
+    "source": "Fuente",
+    "detail": "Detalle"
+  },
+  "conversations": {
+    "title": "Conversaciones",
+    "search": "Buscar conversaciones…",
+    "noConversations": "Sin conversaciones",
+    "readOnly": "Vista de consola — responde por el canal",
+    "threads": "hilos",
+    "today": "hoy",
+    "live": "En vivo"
+  },
+  "actions": {
+    "title": "Acciones",
+    "noActions": "Sin acciones",
+    "synced": "Sincronizado",
+    "pending": "Pendiente"
+  },
+  "alerts": {
+    "title": "Alertas",
+    "noAlerts": "Sin alertas",
+    "acknowledge": "Confirmar",
+    "acknowledged": "Confirmado"
+  },
+  "knowledge": {
+    "title": "Conocimiento",
+    "noDocuments": "Sin documentos",
+    "upload": "Subir",
+    "indexed": "Indexado",
+    "pending": "Pendiente",
+    "chunks": "fragmentos",
+    "inRAG": "en RAG",
+    "search": "Buscar en la base de conocimiento…"
+  },
+  "channels": {
+    "title": "Canales",
+    "activeChannels": "Canales activos",
+    "availableChannels": "Canales disponibles",
+    "configure": "Configurar",
+    "connect": "Conectar",
+    "connectChannel": "Conectar canal",
+    "addChannel": "Agregar canal",
+    "allChannels": "Todos los canales",
+    "active": "Activo",
+    "events": "Eventos",
+    "techs": "Técnicos",
+    "messagesToday": "mensajes hoy",
+    "viewLogs": "Ver registros",
+    "kpi": {
+      "activeChannels": "Canales activos",
+      "eventsToday": "Eventos hoy",
+      "techsConnected": "Técnicos conectados",
+      "allChannels": "Todos los canales",
+      "acrossAll": "en todos los canales",
+      "of7": "de 7 disponibles"
+    },
+    "stats": {
+      "today": "hoy",
+      "week": "esta semana",
+      "lastEvent": "último evento"
+    }
+  },
+  "integrations": {
+    "title": "Integraciones",
+    "subtitle": "Conecta tu CMMS, webhooks y sistemas externos",
+    "tabCmms": "CMMS",
+    "tabWebhooks": "Webhooks",
+    "tabApi": "API",
+    "connected": "Conectado",
+    "available": "Disponible",
+    "viaMcp": "vía MCP",
+    "connect": "Conectar",
+    "configure": "Configurar",
+    "openCmms": "Abrir CMMS",
+    "assets": "Equipos",
+    "workOrders": "Órdenes de trabajo",
+    "lastSync": "Última sincronización",
+    "webhooksDesc": "Envía eventos MIRA a sistemas externos vía HTTP POST.",
+    "addWebhook": "Agregar webhook",
+    "healthy": "Saludable",
+    "unhealthy": "Con errores",
+    "apiKey": "Clave API",
+    "apiKeyDesc": "Usa esta clave para llamar a la API de MIRA.",
+    "reveal": "Mostrar",
+    "hide": "Ocultar",
+    "actionsThisMonth": "Acciones este mes",
+    "tier": "Nivel",
+    "rateLimitRpm": "Límite de velocidad (RPM)",
+    "apiDocs": "Documentación API",
+    "apiDocsDesc": "Especificación OpenAPI, autenticación y ejemplos.",
+    "openDocs": "Abrir docs",
+    "recentEvents": "Eventos API recientes"
+  },
+  "usage": {
+    "title": "Uso",
+    "billingPeriod": "Período de facturación",
+    "meterTitle": "Acciones utilizadas",
+    "actions": "acciones",
+    "tier": "nivel",
+    "remaining": "restantes",
+    "resetsIn": "se renueva en",
+    "days": "días",
+    "dailyActions": "Acciones diarias",
+    "byType": "Por tipo",
+    "byChannel": "Por canal",
+    "byTech": "Por técnico",
+    "kpi": {
+      "totalActions": "Total de acciones",
+      "conversations": "Conversaciones",
+      "activeTechs": "Técnicos activos",
+      "avgPerDay": "Promedio / día"
     }
   }
 }

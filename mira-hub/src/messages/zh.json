@@ -1,8 +1,16 @@
 {
   "nav": {
     "feed": "动态",
+    "eventLog": "事件日志",
+    "conversations": "对话",
+    "actions": "操作记录",
+    "alerts": "警报",
+    "knowledge": "知识库",
     "workOrders": "工单",
     "assets": "设备",
+    "channels": "渠道",
+    "integrations": "集成",
+    "usage": "用量",
     "schedule": "计划",
     "requests": "报修",
     "parts": "备件",
@@ -425,6 +433,8 @@
     "noMembers": "暂无团队成员",
     "todayActivity": "今日动态",
     "noActivityToday": "今日暂无记录。",
+    "lastAssist": "最近协助",
+    "actionsToday": "今日操作",
     "filters": {
       "all": "全部班次",
       "day": "白班",
@@ -519,6 +529,11 @@
   "more": {
     "title": "更多",
     "items": {
+      "alerts": "安全和设备警报",
+      "knowledge": "设备手册和已索引文档",
+      "channels": "Telegram、WhatsApp、语音、邮件",
+      "integrations": "CMMS、Webhooks和API设置",
+      "usage": "已用操作次数和账单等级",
       "schedule": "预防维护日历与计划任务",
       "requests": "提交和审核报修申请",
       "documents": "操作手册、SOP和合格证书",
@@ -526,6 +541,135 @@
       "reports": "维护数据分析与KPI",
       "team": "技术员名单与任务分配",
       "admin": "用户、角色和系统设置"
+    }
+  },
+  "eventLog": {
+    "title": "事件日志",
+    "noEvents": "暂无事件",
+    "colTime": "时间",
+    "colChannel": "渠道",
+    "colEvent": "事件",
+    "colAction": "操作",
+    "colSync": "同步",
+    "colConf": "置信度",
+    "eventDetail": "事件详情",
+    "techMessage": "技术员消息",
+    "miraReasoning": "MIRA推理",
+    "miraOutput": "MIRA输出",
+    "cmmsPayload": "CMMS数据",
+    "synced": "已同步",
+    "pending": "待处理",
+    "source": "来源",
+    "detail": "详情"
+  },
+  "conversations": {
+    "title": "对话",
+    "search": "搜索对话…",
+    "noConversations": "暂无对话",
+    "readOnly": "只读控制台视图 — 请通过渠道回复",
+    "threads": "条对话",
+    "today": "今日",
+    "live": "实时"
+  },
+  "actions": {
+    "title": "操作记录",
+    "noActions": "暂无操作记录",
+    "synced": "已同步",
+    "pending": "待处理"
+  },
+  "alerts": {
+    "title": "警报",
+    "noAlerts": "暂无警报",
+    "acknowledge": "确认",
+    "acknowledged": "已确认"
+  },
+  "knowledge": {
+    "title": "知识库",
+    "noDocuments": "暂无文档",
+    "upload": "上传",
+    "indexed": "已索引",
+    "pending": "待处理",
+    "chunks": "个片段",
+    "inRAG": "在RAG中",
+    "search": "搜索知识库…"
+  },
+  "channels": {
+    "title": "渠道",
+    "activeChannels": "活跃渠道",
+    "availableChannels": "可用渠道",
+    "configure": "配置",
+    "connect": "连接",
+    "connectChannel": "连接渠道",
+    "addChannel": "添加渠道",
+    "allChannels": "全部渠道",
+    "active": "活跃",
+    "events": "事件",
+    "techs": "技术员",
+    "messagesToday": "今日消息",
+    "viewLogs": "查看日志",
+    "kpi": {
+      "activeChannels": "活跃渠道",
+      "eventsToday": "今日事件",
+      "techsConnected": "已连接技术员",
+      "allChannels": "全部渠道",
+      "acrossAll": "跨所有渠道",
+      "of7": "共7个可用"
+    },
+    "stats": {
+      "today": "今日",
+      "week": "本周",
+      "lastEvent": "最近事件"
+    }
+  },
+  "integrations": {
+    "title": "集成",
+    "subtitle": "连接您的CMMS、Webhooks和外部系统",
+    "tabCmms": "CMMS",
+    "tabWebhooks": "Webhooks",
+    "tabApi": "API",
+    "connected": "已连接",
+    "available": "可用",
+    "viaMcp": "通过MCP",
+    "connect": "连接",
+    "configure": "配置",
+    "openCmms": "打开CMMS",
+    "assets": "设备",
+    "workOrders": "工单",
+    "lastSync": "最近同步",
+    "webhooksDesc": "通过HTTP POST将MIRA事件发送到外部系统。",
+    "addWebhook": "添加Webhook",
+    "healthy": "正常",
+    "unhealthy": "异常",
+    "apiKey": "API密钥",
+    "apiKeyDesc": "使用此密钥从您的系统调用MIRA API。",
+    "reveal": "显示",
+    "hide": "隐藏",
+    "actionsThisMonth": "本月操作次数",
+    "tier": "等级",
+    "rateLimitRpm": "速率限制（RPM）",
+    "apiDocs": "API文档",
+    "apiDocsDesc": "OpenAPI规范、认证和使用示例。",
+    "openDocs": "打开文档",
+    "recentEvents": "最近API事件"
+  },
+  "usage": {
+    "title": "用量",
+    "billingPeriod": "账单周期",
+    "meterTitle": "已用操作次数",
+    "actions": "次操作",
+    "tier": "等级",
+    "remaining": "剩余",
+    "resetsIn": "将在",
+    "days": "天后重置",
+    "dailyActions": "每日操作",
+    "byType": "按类型",
+    "byChannel": "按渠道",
+    "byTech": "按技术员",
+    "kpi": {
+      "totalActions": "总操作次数",
+      "conversations": "对话数",
+      "activeTechs": "活跃技术员",
+      "avgPerDay": "日均操作"
     }
   }
 }

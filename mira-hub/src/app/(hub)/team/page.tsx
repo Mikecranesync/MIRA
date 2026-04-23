@@ -19,6 +19,10 @@ type TeamMember = {
   currentAssignment: string | null;
   todayActivity: string[];
   avatarColor: string;
+  miraChannel: string;
+  miraChannelEmoji: string;
+  miraLastAssist: string;
+  miraActionsToday: number;
 };
 
 const TEAM: TeamMember[] = [
@@ -28,6 +32,7 @@ const TEAM: TeamMember[] = [
     currentAssignment: "WO-2026-009 — Air Compressor PM",
     todayActivity: ["Completed PM-008 (Oil Change)", "Reviewed 2 maintenance requests", "Ordered parts PO-2026-044"],
     avatarColor: "#2563EB",
+    miraChannel: "Open WebUI", miraChannelEmoji: "🖥️", miraLastAssist: "2:30 PM yest.", miraActionsToday: 47,
   },
   {
     id: "T-002", name: "John Smith", initials: "JS", role: "Mechanic II", dept: "Mechanical",
@@ -35,6 +40,7 @@ const TEAM: TeamMember[] = [
     currentAssignment: "WO-2026-002 — Conveyor Belt Tension Adj.",
     todayActivity: ["Lubricated Conveyor #3", "Inspection report filed", "Parts request submitted"],
     avatarColor: "#0891B2",
+    miraChannel: "Telegram", miraChannelEmoji: "✈️", miraLastAssist: "9:12 AM", miraActionsToday: 287,
   },
   {
     id: "T-003", name: "Sara Kim", initials: "SK", role: "Operator III", dept: "Production",
@@ -42,6 +48,7 @@ const TEAM: TeamMember[] = [
     currentAssignment: null,
     todayActivity: ["Started Pump Station A inspection", "Safety walk — Bay 2 & 3"],
     avatarColor: "#7C3AED",
+    miraChannel: "Telegram", miraChannelEmoji: "✈️", miraLastAssist: "8:47 AM", miraActionsToday: 214,
   },
   {
     id: "T-004", name: "Dave Torres", initials: "DT", role: "Scheduler", dept: "Maintenance",
@@ -49,6 +56,7 @@ const TEAM: TeamMember[] = [
     currentAssignment: "Updating PM calendar for May",
     todayActivity: ["Scheduled 3 PMs for next week", "Closed WO-2026-001", "Coordinated parts delivery"],
     avatarColor: "#059669",
+    miraChannel: "Email", miraChannelEmoji: "📧", miraLastAssist: "7:45 AM", miraActionsToday: 31,
   },
   {
     id: "T-005", name: "Lisa Wong", initials: "LW", role: "Maintenance Manager", dept: "Engineering",
@@ -56,6 +64,7 @@ const TEAM: TeamMember[] = [
     currentAssignment: null,
     todayActivity: ["Approved 1 request", "Weekly KPI review meeting", "Vendor call — Grainger"],
     avatarColor: "#DC2626",
+    miraChannel: "Email", miraChannelEmoji: "📧", miraLastAssist: "Yesterday", miraActionsToday: 8,
   },
   {
     id: "T-006", name: "Ray Patel", initials: "RP", role: "Electrician", dept: "Electrical",
@@ -63,6 +72,7 @@ const TEAM: TeamMember[] = [
     currentAssignment: null,
     todayActivity: [],
     avatarColor: "#D97706",
+    miraChannel: "Email", miraChannelEmoji: "📧", miraLastAssist: "6:58 AM", miraActionsToday: 178,
   },
   {
     id: "T-007", name: "Tom Nguyen", initials: "TN", role: "Mechanic I", dept: "Mechanical",
@@ -70,6 +80,7 @@ const TEAM: TeamMember[] = [
     currentAssignment: null,
     todayActivity: ["WO-2026-007 completed (PM)", "Conveyor cleaning"],
     avatarColor: "#64748B",
+    miraChannel: "WhatsApp", miraChannelEmoji: "💬", miraLastAssist: "Yesterday", miraActionsToday: 23,
   },
 ];
 
@@ -187,6 +198,21 @@ export default function TeamPage() {
                       <Phone className="w-3.5 h-3.5" style={{ color: "var(--foreground-subtle)" }} />
                       <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>{member.phone}</span>
                       <span className="text-[11px] ml-1" style={{ color: "var(--foreground-subtle)" }}>· {member.shift}</span>
+                    </div>
+
+                    {/* MIRA Activity */}
+                    <div className="flex items-center justify-between p-2.5 rounded-lg" style={{ backgroundColor: "var(--surface-1)" }}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">{member.miraChannelEmoji}</span>
+                        <div>
+                          <p className="text-[11px] font-semibold" style={{ color: "var(--foreground)" }}>{member.miraChannel}</p>
+                          <p className="text-[10px]" style={{ color: "var(--foreground-subtle)" }}>{t("lastAssist")}: {member.miraLastAssist}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold" style={{ color: "var(--brand-blue)" }}>{member.miraActionsToday}</p>
+                        <p className="text-[10px]" style={{ color: "var(--foreground-subtle)" }}>{t("actionsToday")}</p>
+                      </div>
                     </div>
 
                     {/* Today's activity */}

@@ -470,7 +470,7 @@ test.describe("9. Schedule", () => {
     const allBtns = await sharedPage.locator("button").all();
     const emptyTextBtns = [];
     for (const b of allBtns) {
-      const text = (await b.textContent()).trim();
+      const text = (await b.textContent() ?? "").trim();
       if (text === "") emptyTextBtns.push(b);
     }
     // There should be at least 2 icon-only buttons (prev + next month)

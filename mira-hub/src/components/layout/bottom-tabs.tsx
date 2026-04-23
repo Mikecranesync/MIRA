@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { LayoutDashboard, ClipboardList, Plus, Wrench, MoreHorizontal } from "lucide-react";
+import { Activity, Zap, Radio, Users, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function BottomTabs() {
@@ -11,11 +11,11 @@ export function BottomTabs() {
   const t = useTranslations("nav");
 
   const MOBILE_TABS = [
-    { label: t("feed"),       Icon: LayoutDashboard, href: "/feed",            fab: false },
-    { label: t("assets"),     Icon: Wrench,          href: "/assets",          fab: false },
-    { label: "",              Icon: Plus,            href: "/workorders/new",  fab: true  },
-    { label: t("workOrders"), Icon: ClipboardList,   href: "/workorders",      fab: false },
-    { label: t("more"),       Icon: MoreHorizontal,  href: "/more",            fab: false },
+    { label: t("eventLog"),      Icon: Activity,       href: "/event-log" },
+    { label: t("channels"),      Icon: Radio,          href: "/channels"  },
+    { label: t("actions"),       Icon: Zap,            href: "/actions"   },
+    { label: t("team"),          Icon: Users,          href: "/team"      },
+    { label: t("more"),          Icon: MoreHorizontal, href: "/more"      },
   ];
 
   return (
@@ -29,23 +29,6 @@ export function BottomTabs() {
       }}
     >
       {MOBILE_TABS.map((tab) => {
-        if (tab.fab) {
-          return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className="flex-1 flex justify-center items-center"
-            >
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center -mt-4 shadow-lg"
-                style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}
-              >
-                <tab.Icon className="w-5 h-5 text-white" />
-              </div>
-            </Link>
-          );
-        }
-
         const active = pathname === tab.href || (tab.href !== "/" && pathname.startsWith(tab.href));
         return (
           <Link

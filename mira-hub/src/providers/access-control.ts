@@ -54,15 +54,15 @@ export const accessControlProvider: AccessControlProvider = {
 };
 
 export const NAV_ITEMS = [
-  { key: "feed",           label: "Activity Feed",  icon: "LayoutDashboard", href: "/feed",          roles: ["technician", "manager", "scheduler", "admin", "operator"] },
-  { key: "workorders",     label: "Work Orders",    icon: "ClipboardList",   href: "/workorders",    roles: ["technician", "manager", "scheduler", "admin", "operator"] },
+  { key: "event-log",      label: "Event Log",      icon: "Activity",        href: "/event-log",     roles: ["technician", "manager", "scheduler", "admin", "operator"] },
+  { key: "conversations",  label: "Conversations",  icon: "MessageSquare",   href: "/conversations", roles: ["technician", "manager", "scheduler", "admin", "operator"] },
+  { key: "actions",        label: "Actions",        icon: "Zap",             href: "/actions",       roles: ["technician", "manager", "scheduler", "admin", "operator"] },
+  { key: "alerts",         label: "Alerts",         icon: "AlertTriangle",   href: "/alerts",        roles: ["technician", "manager", "scheduler", "admin", "operator"] },
+  { key: "knowledge",      label: "Knowledge",      icon: "BookOpen",        href: "/knowledge",     roles: ["technician", "manager", "scheduler", "admin", "operator"] },
   { key: "assets",         label: "Assets",         icon: "Wrench",          href: "/assets",        roles: ["technician", "manager", "scheduler", "admin", "operator"] },
-  { key: "schedule",       label: "Schedule",       icon: "Calendar",        href: "/schedule",      roles: ["manager", "scheduler", "admin"] },
-  { key: "requests",       label: "Requests",       icon: "MessageSquare",   href: "/requests",      roles: ["technician", "manager", "scheduler", "admin", "operator"] },
-  { key: "parts",          label: "Parts",          icon: "Package",         href: "/parts",         roles: ["technician", "manager", "scheduler", "admin", "operator"] },
-  { key: "documents",      label: "Documents",      icon: "FileText",        href: "/documents",     roles: ["technician", "manager", "scheduler", "admin", "operator"] },
-  { key: "reports",        label: "Reports",        icon: "BarChart2",       href: "/reports",       roles: ["manager", "scheduler", "admin"] },
-  { key: "cmms",           label: "CMMS",           icon: "Database",        href: "/cmms",          roles: ["manager", "scheduler", "admin"] },
+  { key: "channels",       label: "Channels",       icon: "Radio",           href: "/channels",      roles: ["manager", "scheduler", "admin"] },
+  { key: "integrations",   label: "Integrations",   icon: "Plug",            href: "/integrations",  roles: ["manager", "scheduler", "admin"] },
+  { key: "usage",          label: "Usage",          icon: "BarChart2",       href: "/usage",         roles: ["manager", "admin"] },
   { key: "team",           label: "Team",           icon: "Users",           href: "/team",          roles: ["manager", "admin"] },
   { key: "admin/users",    label: "Admin",          icon: "Settings",        href: "/admin/users",   roles: ["admin"] },
 ] as const;

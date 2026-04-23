@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import {
-  Calendar, MessageSquare, FileText, BarChart2,
-  Users, Settings, Database, ChevronRight,
+  AlertTriangle, BookOpen, Radio, Plug, BarChart2,
+  Users, Settings, ChevronRight,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -12,13 +12,13 @@ export default function MorePage() {
   const tNav = useTranslations("nav");
 
   const MORE_ITEMS = [
-    { label: tNav("schedule"),  desc: t("items.schedule"),  Icon: Calendar,      href: "/schedule" },
-    { label: tNav("requests"),  desc: t("items.requests"),  Icon: MessageSquare, href: "/requests" },
-    { label: tNav("documents"), desc: t("items.documents"), Icon: FileText,      href: "/documents" },
-    { label: tNav("cmms"),      desc: t("items.cmms"),      Icon: Database,      href: "/cmms" },
-    { label: tNav("reports"),   desc: t("items.reports"),   Icon: BarChart2,     href: "/reports" },
-    { label: tNav("team"),      desc: t("items.team"),      Icon: Users,         href: "/team" },
-    { label: tNav("admin"),     desc: t("items.admin"),     Icon: Settings,      href: "/admin/users" },
+    { label: tNav("alerts"),       desc: t("items.alerts"),       Icon: AlertTriangle, href: "/alerts" },
+    { label: tNav("knowledge"),    desc: t("items.knowledge"),    Icon: BookOpen,      href: "/knowledge" },
+    { label: tNav("channels"),     desc: t("items.channels"),     Icon: Radio,         href: "/channels" },
+    { label: tNav("integrations"), desc: t("items.integrations"), Icon: Plug,          href: "/integrations" },
+    { label: tNav("usage"),        desc: t("items.usage"),        Icon: BarChart2,     href: "/usage" },
+    { label: tNav("team"),         desc: t("items.team"),         Icon: Users,         href: "/team" },
+    { label: tNav("admin"),        desc: t("items.admin"),        Icon: Settings,      href: "/admin/users" },
   ];
 
   return (

@@ -1,8 +1,16 @@
 {
   "nav": {
     "feed": "Activity Feed",
+    "eventLog": "Event Log",
+    "conversations": "Conversations",
+    "actions": "Actions",
+    "alerts": "Alerts",
+    "knowledge": "Knowledge",
     "workOrders": "Work Orders",
     "assets": "Assets",
+    "channels": "Channels",
+    "integrations": "Integrations",
+    "usage": "Usage",
     "schedule": "Schedule",
     "requests": "Requests",
     "parts": "Parts",
@@ -425,6 +433,8 @@
     "noMembers": "No team members",
     "todayActivity": "Today's Activity",
     "noActivityToday": "No activity logged today.",
+    "lastAssist": "Last assist",
+    "actionsToday": "actions today",
     "filters": {
       "all": "All Shifts",
       "day": "Day",
@@ -519,6 +529,11 @@
   "more": {
     "title": "More",
     "items": {
+      "alerts": "Active safety and equipment alerts",
+      "knowledge": "Equipment manuals and indexed docs",
+      "channels": "Telegram, WhatsApp, Voice, Email",
+      "integrations": "CMMS, webhooks, and API settings",
+      "usage": "Actions used and billing tier",
       "schedule": "PM calendar and upcoming tasks",
       "requests": "Submit and review work requests",
       "documents": "Manuals, SOPs, and certifications",
@@ -526,6 +541,135 @@
       "reports": "Maintenance analytics and KPIs",
       "team": "Crew roster and assignments",
       "admin": "Users, roles, and settings"
+    }
+  },
+  "eventLog": {
+    "title": "Event Log",
+    "noEvents": "No events found",
+    "colTime": "Time",
+    "colChannel": "Channel",
+    "colEvent": "Event",
+    "colAction": "Action",
+    "colSync": "Sync",
+    "colConf": "Conf.",
+    "eventDetail": "Event Detail",
+    "techMessage": "Tech Message",
+    "miraReasoning": "MIRA Reasoning",
+    "miraOutput": "MIRA Output",
+    "cmmsPayload": "CMMS Payload",
+    "synced": "Synced",
+    "pending": "Pending",
+    "source": "Source",
+    "detail": "Detail"
+  },
+  "conversations": {
+    "title": "Conversations",
+    "search": "Search conversations…",
+    "noConversations": "No conversations found",
+    "readOnly": "Read-only console view — reply via the channel",
+    "threads": "threads",
+    "today": "today",
+    "live": "Live"
+  },
+  "actions": {
+    "title": "Actions",
+    "noActions": "No actions found",
+    "synced": "Synced",
+    "pending": "Pending"
+  },
+  "alerts": {
+    "title": "Alerts",
+    "noAlerts": "No alerts found",
+    "acknowledge": "Acknowledge",
+    "acknowledged": "Acknowledged"
+  },
+  "knowledge": {
+    "title": "Knowledge",
+    "noDocuments": "No documents found",
+    "upload": "Upload",
+    "indexed": "Indexed",
+    "pending": "Pending",
+    "chunks": "chunks",
+    "inRAG": "in RAG",
+    "search": "Search knowledge base…"
+  },
+  "channels": {
+    "title": "Channels",
+    "activeChannels": "Active Channels",
+    "availableChannels": "Available Channels",
+    "configure": "Configure",
+    "connect": "Connect",
+    "connectChannel": "Connect Channel",
+    "addChannel": "Add Channel",
+    "allChannels": "All Channels",
+    "active": "Active",
+    "events": "Events",
+    "techs": "Techs",
+    "messagesToday": "messages today",
+    "viewLogs": "View Logs",
+    "kpi": {
+      "activeChannels": "Active Channels",
+      "eventsToday": "Events Today",
+      "techsConnected": "Techs Connected",
+      "allChannels": "All Channels",
+      "acrossAll": "across all channels",
+      "of7": "of 7 available"
+    },
+    "stats": {
+      "today": "today",
+      "week": "this week",
+      "lastEvent": "last event"
+    }
+  },
+  "integrations": {
+    "title": "Integrations",
+    "subtitle": "Connect your CMMS, webhooks, and external systems",
+    "tabCmms": "CMMS",
+    "tabWebhooks": "Webhooks",
+    "tabApi": "API",
+    "connected": "Connected",
+    "available": "Available",
+    "viaMcp": "via MCP",
+    "connect": "Connect",
+    "configure": "Configure",
+    "openCmms": "Open CMMS",
+    "assets": "Assets",
+    "workOrders": "Work Orders",
+    "lastSync": "Last Sync",
+    "webhooksDesc": "Send MIRA events to external systems via HTTP POST.",
+    "addWebhook": "Add Webhook",
+    "healthy": "Healthy",
+    "unhealthy": "Unhealthy",
+    "apiKey": "API Key",
+    "apiKeyDesc": "Use this key to call the MIRA API from your own systems.",
+    "reveal": "Reveal",
+    "hide": "Hide",
+    "actionsThisMonth": "Actions this month",
+    "tier": "Tier",
+    "rateLimitRpm": "Rate limit (RPM)",
+    "apiDocs": "API Documentation",
+    "apiDocsDesc": "OpenAPI spec, authentication, and usage examples.",
+    "openDocs": "Open Docs",
+    "recentEvents": "Recent API Events"
+  },
+  "usage": {
+    "title": "Usage",
+    "billingPeriod": "Billing period",
+    "meterTitle": "Actions Used",
+    "actions": "actions",
+    "tier": "tier",
+    "remaining": "remaining",
+    "resetsIn": "resets in",
+    "days": "days",
+    "dailyActions": "Daily Actions",
+    "byType": "By Type",
+    "byChannel": "By Channel",
+    "byTech": "By Tech",
+    "kpi": {
+      "totalActions": "Total Actions",
+      "conversations": "Conversations",
+      "activeTechs": "Active Techs",
+      "avgPerDay": "Avg / Day"
     }
   }
 }

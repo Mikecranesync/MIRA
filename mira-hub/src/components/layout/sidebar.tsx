@@ -5,9 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
-  LayoutDashboard, ClipboardList, Wrench, Calendar,
-  MessageSquare, Package, FileText, BarChart2, Users, Settings,
-  Database, Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon,
+  Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
+  Wrench, Radio, Plug, BarChart2, Users, Settings,
+  Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/providers/access-control";
@@ -15,8 +15,8 @@ import { useTheme } from "@/providers/theme-provider";
 import { LanguageSelector } from "@/components/ui/language-selector";
 
 const ICON_MAP: Record<string, React.ElementType> = {
-  LayoutDashboard, ClipboardList, Wrench, Calendar,
-  MessageSquare, Package, FileText, BarChart2, Users, Settings, Database,
+  Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
+  Wrench, Radio, Plug, BarChart2, Users, Settings,
 };
 
 export function Sidebar({ role = "admin" }: { role?: string }) {
@@ -32,18 +32,18 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
 
   function navLabel(key: string): string {
     const map: Record<string, string> = {
-      "feed":         t("feed"),
-      "workorders":   t("workOrders"),
-      "assets":       t("assets"),
-      "schedule":     t("schedule"),
-      "requests":     t("requests"),
-      "parts":        t("parts"),
-      "documents":    t("documents"),
-      "reports":      t("reports"),
-      "cmms":         t("cmms"),
-      "team":         t("team"),
-      "admin/users":  t("admin"),
-      "admin/roles":  t("admin"),
+      "event-log":     t("eventLog"),
+      "conversations": t("conversations"),
+      "actions":       t("actions"),
+      "alerts":        t("alerts"),
+      "knowledge":     t("knowledge"),
+      "assets":        t("assets"),
+      "channels":      t("channels"),
+      "integrations":  t("integrations"),
+      "usage":         t("usage"),
+      "team":          t("team"),
+      "admin/users":   t("admin"),
+      "admin/roles":   t("admin"),
     };
     return map[key] ?? key;
   }
