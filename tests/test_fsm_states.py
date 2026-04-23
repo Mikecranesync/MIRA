@@ -69,8 +69,8 @@ def test_source_file_consistency():
     """Verify the alias dict in this test matches the source file."""
     import os
 
-    source = os.path.join(os.path.dirname(__file__), "..", "mira-bots", "shared", "engine.py")
+    source = os.path.join(os.path.dirname(__file__), "..", "mira-bots", "shared", "fsm.py")
     with open(source) as f:
         content = f.read()
     for alias in _STATE_ALIASES:
-        assert f'"{alias}"' in content, f"Alias {alias!r} not found in engine.py"
+        assert f'"{alias}"' in content, f"Alias {alias!r} not found in fsm.py"

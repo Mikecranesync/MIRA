@@ -214,10 +214,20 @@ class InferenceRouter:
     caller then falls through to Open WebUI.
     """
 
+    # Soft hourly call limits per provider — log warning at 80%
+    _PROVIDER_HOURLY_LIMITS: dict[str, int] = {
+        "groq": 1800,      # 30 RPM × 60 min
+        "cerebras": 1800,
+        "gemini": 900,     # 15 RPM × 60 min
+        "claude": 5000,    # generous; real limit depends on tier
+    }
+
     def __init__(self):
         self.backend = os.getenv("INFERENCE_BACKEND", "local")
         self.providers = _build_providers()
         self.enabled = self.backend in ("cloud", "claude") and len(self.providers) > 0
+        # {provider_name: [monotonic_timestamps_of_calls]}
+        self._provider_call_windows: dict[str, list[float]] = {}
 
         if self.enabled:
             names = [p.name for p in self.providers]
@@ -230,6 +240,23 @@ class InferenceRouter:
                 "InferenceRouter disabled — INFERENCE_BACKEND=%s, providers=%d",
                 self.backend,
                 len(self.providers),
+            )
+
+    def _track_provider_call(self, provider_name: str) -> None:
+        """Record a call to provider_name and warn when approaching hourly limit."""
+        now = time.monotonic()
+        window = [ts for ts in self._provider_call_windows.get(provider_name, []) if now - ts < 3600]
+        window.append(now)
+        self._provider_call_windows[provider_name] = window
+
+        hourly_limit = self._PROVIDER_HOURLY_LIMITS.get(provider_name, 0)
+        if hourly_limit and len(window) >= int(hourly_limit * 0.8):
+            logger.warning(
+                "PROVIDER_BUDGET_WARNING provider=%s calls_1h=%d limit=%d (%.0f%%)",
+                provider_name,
+                len(window),
+                hourly_limit,
+                100 * len(window) / hourly_limit,
             )
 
     @staticmethod
@@ -298,6 +325,7 @@ class InferenceRouter:
                         )
                         last_error = usage
                         continue
+                    self._track_provider_call(provider.name)
                     return content, usage
                 last_error = usage
             except _ProviderSkip:
