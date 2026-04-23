@@ -1,71 +1,68 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { Search, BookOpen, FileText, Upload, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, BookOpen, FileText, Upload, CheckCircle2, Clock } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-type IndexStatus = "indexed" | "indexing" | "failed" | "pending";
+type IndexStatus = "indexed";
 
 type KnowledgeDoc = {
   id: string;
-  title: string;
+  name: string;
   category: string;
-  categoryKey: string;
-  asset: string | null;
-  pages: number;
-  indexed: IndexStatus;
-  indexedChunks: number;
-  totalChunks: number;
-  lastUpdated: string;
-  size: string;
-  source: string;
+  subcategory: string | null;
+  manufacturer: string | null;
+  docType: string;
+  source: string | null;
+  chunkCount: number;
+  avgQuality: number | null;
+  lastIndexed: string;
+  sampleTitles: string[];
+  indexStatus: IndexStatus;
 };
 
-const DOCUMENTS: KnowledgeDoc[] = [
-  { id: "d01", title: "Air Compressor #1 OEM Manual",         category: "Equipment Manual",     categoryKey: "manual",     asset: "Air Compressor #1", pages: 124, indexed: "indexed",  indexedChunks: 487, totalChunks: 487, lastUpdated: "Mar 15", size: "8.2 MB",  source: "Manual upload" },
-  { id: "d02", title: "Conveyor Belt #3 Maintenance Manual",  category: "Equipment Manual",     categoryKey: "manual",     asset: "Conveyor Belt #3",  pages: 89,  indexed: "indexed",  indexedChunks: 312, totalChunks: 312, lastUpdated: "Feb 28", size: "5.4 MB",  source: "Manual upload" },
-  { id: "d03", title: "HVAC Unit #2 Installation Guide",      category: "Equipment Manual",     categoryKey: "manual",     asset: "HVAC Unit #2",      pages: 67,  indexed: "indexed",  indexedChunks: 218, totalChunks: 218, lastUpdated: "Jan 10", size: "3.1 MB",  source: "Manual upload" },
-  { id: "d04", title: "Arc Flash Safety Procedures",          category: "Safety",              categoryKey: "safety",     asset: null,                pages: 34,  indexed: "indexed",  indexedChunks: 128, totalChunks: 128, lastUpdated: "Apr 1",  size: "1.8 MB",  source: "Safety team" },
-  { id: "d05", title: "CNC Mill #7 Vibration Analysis Guide", category: "Equipment Manual",     categoryKey: "manual",     asset: "CNC Mill #7",       pages: 45,  indexed: "indexed",  indexedChunks: 167, totalChunks: 167, lastUpdated: "Mar 22", size: "2.9 MB",  source: "OEM download" },
-  { id: "d06", title: "LOTO Procedures — All Panels",         category: "Safety",              categoryKey: "safety",     asset: null,                pages: 28,  indexed: "indexed",  indexedChunks: 94,  totalChunks: 94,  lastUpdated: "Apr 1",  size: "1.2 MB",  source: "Safety team" },
-  { id: "d07", title: "Pump Station A Seal Replacement",      category: "Procedure",           categoryKey: "procedure",  asset: "Pump Station A",    pages: 12,  indexed: "indexed",  indexedChunks: 48,  totalChunks: 48,  lastUpdated: "Feb 14", size: "0.8 MB",  source: "Manual upload" },
-  { id: "d08", title: "Q1 Maintenance Report",                category: "Report",              categoryKey: "report",     asset: null,                pages: 22,  indexed: "indexed",  indexedChunks: 82,  totalChunks: 82,  lastUpdated: "Apr 5",  size: "1.5 MB",  source: "Auto-generated" },
-  { id: "d09", title: "Generator #1 Load Test Checklist",     category: "Procedure",           categoryKey: "procedure",  asset: "Generator #1",      pages: 8,   indexed: "indexed",  indexedChunks: 31,  totalChunks: 31,  lastUpdated: "Mar 1",  size: "0.5 MB",  source: "Manual upload" },
-  { id: "d10", title: "Press #2 OEM Manual",                  category: "Equipment Manual",     categoryKey: "manual",     asset: "Press #2",          pages: 156, indexed: "indexing", indexedChunks: 312, totalChunks: 590, lastUpdated: "Today",  size: "12.4 MB", source: "OEM download" },
-  { id: "d11", title: "NFPA 110 Generator Standards",         category: "Regulation",          categoryKey: "regulation", asset: null,                pages: 48,  indexed: "pending",  indexedChunks: 0,   totalChunks: 180, lastUpdated: "Today",  size: "3.2 MB",  source: "Import queue" },
-  { id: "d12", title: "Boiler Unit B Combustion Manual",      category: "Equipment Manual",     categoryKey: "manual",     asset: "Boiler Unit B",     pages: 203, indexed: "failed",   indexedChunks: 47,  totalChunks: 780, lastUpdated: "Today",  size: "18.7 MB", source: "Manual upload" },
-];
-
-const CATEGORIES = [
-  { label: "All",            key: "all" },
-  { label: "Equipment",      key: "manual" },
-  { label: "Safety",         key: "safety" },
-  { label: "Procedures",     key: "procedure" },
-  { label: "Reports",        key: "report" },
-  { label: "Regulations",    key: "regulation" },
-];
-
-const INDEX_CFG: Record<IndexStatus, { label: string; color: string; bg: string; Icon: React.ElementType }> = {
-  indexed:  { label: "Indexed",   color: "#16A34A", bg: "#DCFCE7", Icon: CheckCircle2 },
-  indexing: { label: "Indexing…", color: "#2563EB", bg: "#EFF6FF", Icon: Clock },
-  pending:  { label: "Pending",   color: "#EAB308", bg: "#FEF9C3", Icon: Clock },
-  failed:   { label: "Failed",    color: "#DC2626", bg: "#FEF2F2", Icon: AlertCircle },
+const CATEGORY_LABELS: Record<string, string> = {
+  all: "All",
+  electrical: "Electrical",
+  mechanical: "Mechanical",
+  pneumatic: "Pneumatic",
+  safety: "Safety",
+  general: "General",
+  plc: "PLC",
+  hvac: "HVAC",
 };
 
 export default function KnowledgePage() {
   const t = useTranslations("knowledge");
+  const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
+  const [stats, setStats] = useState({ totalChunks: 0, totalDocs: 0, categories: [] as string[] });
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
 
-  const filtered = DOCUMENTS.filter(d =>
-    (category === "all" || d.categoryKey === category) &&
-    (search === "" || d.title.toLowerCase().includes(search.toLowerCase()) ||
-      (d.asset?.toLowerCase().includes(search.toLowerCase()) ?? false))
-  );
+  useEffect(() => {
+    fetch("/api/knowledge")
+      .then(r => r.json())
+      .then(data => {
+        setDocs(data.docs ?? []);
+        setStats(data.stats ?? { totalChunks: 0, totalDocs: 0, categories: [] });
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
-  const indexedCount  = DOCUMENTS.filter(d => d.indexed === "indexed").length;
-  const totalChunks   = DOCUMENTS.filter(d => d.indexed === "indexed").reduce((s, d) => s + d.indexedChunks, 0);
+  const categories = [
+    { label: "All", key: "all" },
+    ...stats.categories.map(c => ({ label: CATEGORY_LABELS[c] ?? c, key: c })),
+  ];
+
+  const filtered = docs.filter(d =>
+    (category === "all" || d.category === category) &&
+    (search === "" ||
+      d.name.toLowerCase().includes(search.toLowerCase()) ||
+      (d.manufacturer?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+      d.sampleTitles.some(t => t.toLowerCase().includes(search.toLowerCase())))
+  );
 
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
@@ -75,7 +72,7 @@ export default function KnowledgePage() {
           <div>
             <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
             <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
-              {indexedCount} {t("indexed")} · {totalChunks.toLocaleString()} {t("chunks")} {t("inRAG")}
+              {loading ? "Loading…" : `${stats.totalDocs} ${t("indexed")} · ${stats.totalChunks.toLocaleString()} ${t("chunks")} ${t("inRAG")}`}
             </p>
           </div>
           <button className="flex items-center gap-1.5 text-xs font-medium h-8 px-3 rounded-lg"
@@ -94,7 +91,7 @@ export default function KnowledgePage() {
               style={{ backgroundColor: "var(--surface-1)", borderColor: "var(--border)", color: "var(--foreground)" }} />
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {CATEGORIES.map(cat => (
+            {categories.map(cat => (
               <button key={cat.key} onClick={() => setCategory(cat.key)}
                 className="flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all"
                 style={category === cat.key
@@ -108,58 +105,62 @@ export default function KnowledgePage() {
       </div>
 
       <div className="px-4 md:px-6 py-4 pb-24 max-w-3xl mx-auto space-y-2">
-        {filtered.map(doc => {
-          const idx = INDEX_CFG[doc.indexed];
-          const IdxIcon = idx.Icon;
-          const pct = doc.totalChunks > 0 ? Math.round((doc.indexedChunks / doc.totalChunks) * 100) : 0;
+        {filtered.map(doc => (
+          <div key={doc.id} className="card p-4 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+              style={{ backgroundColor: "var(--surface-1)" }}>
+              <FileText className="w-4 h-4" style={{ color: "var(--brand-blue)" }} />
+            </div>
 
-          return (
-            <Link key={doc.id} href={`/documents/${doc.id}`}
-              className="card p-4 flex items-start gap-3 hover:bg-[var(--surface-1)] transition-colors block">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-                style={{ backgroundColor: "var(--surface-1)" }}>
-                <FileText className="w-4 h-4" style={{ color: "var(--brand-blue)" }} />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold leading-snug" style={{ color: "var(--foreground)" }}>
-                  {doc.title}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold leading-snug" style={{ color: "var(--foreground)" }}>
+                {doc.name}
+              </p>
+              {doc.sampleTitles.length > 0 && (
+                <p className="text-xs mt-0.5 truncate" style={{ color: "var(--foreground-subtle)" }}>
+                  e.g. {doc.sampleTitles[0]}
                 </p>
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{doc.category}</span>
-                  {doc.asset && (
-                    <span className="text-[11px] font-medium" style={{ color: "var(--brand-blue)" }}>· {doc.asset}</span>
-                  )}
-                  <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>· {doc.pages}pp · {doc.size}</span>
-                </div>
-
-                {/* Index status bar */}
-                <div className="flex items-center gap-2 mt-2">
-                  <IdxIcon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: idx.color }} />
-                  <span className="text-[11px] font-medium" style={{ color: idx.color }}>{idx.label}</span>
-                  {doc.indexed !== "indexed" && doc.totalChunks > 0 && (
-                    <>
-                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--surface-2)" }}>
-                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: idx.color }} />
-                      </div>
-                      <span className="text-[10px]" style={{ color: "var(--foreground-subtle)" }}>{pct}%</span>
-                    </>
-                  )}
-                  {doc.indexed === "indexed" && (
-                    <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>
-                      {doc.indexedChunks.toLocaleString()} {t("chunks")} · {t("source")}: {doc.source}
-                    </span>
-                  )}
-                </div>
+              )}
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className="text-[11px] capitalize" style={{ color: "var(--foreground-subtle)" }}>{doc.category}</span>
+                {doc.manufacturer && (
+                  <span className="text-[11px] font-medium" style={{ color: "var(--brand-blue)" }}>· {doc.manufacturer}</span>
+                )}
+                {doc.docType && (
+                  <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>· {doc.docType}</span>
+                )}
               </div>
-            </Link>
-          );
-        })}
 
-        {filtered.length === 0 && (
+              <div className="flex items-center gap-2 mt-2">
+                <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#16A34A" }} />
+                <span className="text-[11px] font-medium" style={{ color: "#16A34A" }}>{t("indexed")}</span>
+                <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>
+                  {doc.chunkCount.toLocaleString()} {t("chunks")}
+                  {doc.avgQuality ? ` · Q${doc.avgQuality}` : ""}
+                </span>
+              </div>
+            </div>
+
+            <div className="text-right flex-shrink-0">
+              <span className="text-[10px]" style={{ color: "var(--foreground-subtle)" }}>
+                {doc.chunkCount}
+              </span>
+              <p className="text-[10px]" style={{ color: "var(--foreground-subtle)" }}>{t("chunks")}</p>
+            </div>
+          </div>
+        ))}
+
+        {!loading && filtered.length === 0 && (
           <div className="text-center py-16">
             <BookOpen className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
             <p style={{ color: "var(--foreground-muted)" }}>{t("noDocuments")}</p>
+          </div>
+        )}
+
+        {loading && (
+          <div className="text-center py-16">
+            <Clock className="w-8 h-8 mx-auto mb-3 animate-spin" style={{ color: "var(--foreground-subtle)" }} />
+            <p className="text-sm" style={{ color: "var(--foreground-muted)" }}>Loading knowledge base…</p>
           </div>
         )}
       </div>

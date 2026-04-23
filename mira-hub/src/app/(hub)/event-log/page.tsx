@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Activity, MessageSquare, Bot, ShieldAlert, Zap,
-  BookOpen, ClipboardList, CheckCircle2, AlertTriangle,
+  BookOpen, ClipboardList, CheckCircle2,
   ChevronRight, X, Clock, Filter, RefreshCw,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useTranslations } from "next-intl";
 
@@ -31,103 +30,90 @@ type EventRow = {
     miraReasoning: string;
     miraOutput: string;
     cmmsPayload?: string;
+    faultCodes?: string[];
+    symptoms?: string[];
+    safetyWarnings?: string[];
+    suggestedActions?: string[];
+    woNumber?: string;
+    priority?: string;
+    status?: string;
+    location?: string;
   };
 };
 
-const EVENTS: EventRow[] = [
-  {
-    id: "evt-001", ts: "09:05 AM", tech: "John Smith", techInitials: "JS",
-    action: "diagnostic", channel: "telegram", asset: "Air Compressor #1",
-    confidence: 84, syncStatus: "pending", syncTarget: "Atlas",
-    summary: "Bearing temp 82°C vs 65°C baseline — lubrication recommended",
+function channelKey(platform: string): Channel {
+  const p = (platform ?? "").toLowerCase();
+  if (p === "telegram") return "telegram";
+  if (p === "whatsapp") return "whatsapp";
+  if (p === "voice") return "voice";
+  if (p === "email") return "email";
+  if (p === "webui" || p === "open_webui") return "webui";
+  return "telegram";
+}
+
+function initials(name: string): string {
+  if (!name) return "??";
+  return name.split(/[\s@_]/).filter(Boolean).map(w => w[0]).join("").toUpperCase().slice(0, 2);
+}
+
+function formatTs(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const now = new Date();
+  const diffH = (now.getTime() - d.getTime()) / 3600000;
+  if (diffH < 24) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (diffH < 48) return `Yesterday ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function apiRowToEvent(r: any): EventRow {
+  const actionType = (r.actionType ?? "lookup") as ActionType;
+  const ch = channelKey(r.channel);
+  const hasSafety = r.safetyWarnings?.length > 0;
+  const cmmsPayload = r.woNumber ? JSON.stringify({
+    wo_number: r.woNumber,
+    asset: r.asset,
+    priority: r.priority,
+    status: r.status,
+  }) : undefined;
+
+  return {
+    id: r.id,
+    ts: formatTs(r.time),
+    tech: r.tech ?? "Unknown",
+    techInitials: initials(r.tech ?? ""),
+    action: actionType,
+    channel: ch,
+    asset: r.asset || null,
+    confidence: r.confidence ? Math.round(Number(r.confidence) * 100) : null,
+    syncStatus: hasSafety ? "synced" : (r.syncStatus as SyncStatus) ?? "none",
+    syncTarget: r.woNumber ? "Atlas" : null,
+    summary: r.title
+      ? r.title.length > 90 ? r.title.slice(0, 90) + "…" : r.title
+      : "Work order",
     detail: {
-      techMessage: "AC1 is running hot, making a grinding noise near the motor housing",
-      miraReasoning: "High bearing temp (82°C, +26% above baseline). Pattern matches lubrication failure or bearing wear. Cross-referenced with OEM manual MC-AC-001 page 47. FAG-6308-2RS in stock at A-2-3.",
-      miraOutput: "Elevated bearing temperature detected. Most likely cause: insufficient lubrication (confidence 84%). Recommend: 1) Lubricate drive-end bearing per OEM spec immediately. 2) Monitor temp for 2h. 3) If temp exceeds 90°C, shut down and replace FAG-6308-2RS.",
-      cmmsPayload: '{"type":"diagnostic","asset":"MC-AC-001","priority":"high","notes":"Bearing temp 82C. Lubrication required. Part FAG-6308-2RS on hand."}',
+      techMessage: r.description || r.title || "(no message recorded)",
+      miraReasoning: [
+        r.faultCodes?.length ? `Fault codes: ${r.faultCodes.join(", ")}` : "",
+        r.symptoms?.length ? `Symptoms: ${r.symptoms.join(", ")}` : "",
+        r.confidence ? `Confidence score: ${Math.round(Number(r.confidence) * 100)}%` : "",
+      ].filter(Boolean).join(" · ") || "Logged via MIRA",
+      miraOutput: r.suggestedActions?.length
+        ? r.suggestedActions.join("\n")
+        : (r.miraResponse || "(no MIRA response recorded)"),
+      cmmsPayload,
+      faultCodes: r.faultCodes,
+      symptoms: r.symptoms,
+      safetyWarnings: r.safetyWarnings,
+      suggestedActions: r.suggestedActions,
+      woNumber: r.woNumber,
+      priority: r.priority,
+      status: r.status,
+      location: r.location,
     },
-  },
-  {
-    id: "evt-002", ts: "08:47 AM", tech: "Maria Garcia", techInitials: "MG",
-    action: "manual_served", channel: "telegram", asset: "Conveyor Belt #3",
-    confidence: null, syncStatus: "none", syncTarget: null,
-    summary: 'Served OEM tensioning procedure — page 23 of CB-3 maintenance manual',
-    detail: {
-      techMessage: "What's the correct belt tension for CB3?",
-      miraReasoning: "Query matched document 'CB-3 Conveyor Maintenance Manual'. Retrieved tensioning spec from page 23.",
-      miraOutput: "CB-3 belt tension spec: 45-50 N/m at ambient temperature. Measure at center span with tension gauge. Adjust via take-up roller. Re-check after 4h of operation. Reference: CB-3 Manual p.23.",
-    },
-  },
-  {
-    id: "evt-003", ts: "08:32 AM", tech: "John Smith", techInitials: "JS",
-    action: "wo_created", channel: "telegram", asset: "Conveyor Belt #3",
-    confidence: null, syncStatus: "synced", syncTarget: "Atlas",
-    summary: "WO-2026-002 created — belt tension out of spec",
-    detail: {
-      techMessage: "CB3 belt is slipping — I need to log a work order",
-      miraReasoning: "Tech requested WO creation. Extracted: asset=Conveyor Belt #3, issue=belt slipping, priority=high based on production impact.",
-      miraOutput: "Work order WO-2026-002 created and synced to Atlas CMMS. Priority: High. Assigned to: John Smith. Asset: CB-003.",
-      cmmsPayload: '{"wo_number":"WO-2026-002","asset":"MC-CB-003","title":"Belt tension out of spec","priority":"high","assigned_to":"john.smith"}',
-    },
-  },
-  {
-    id: "evt-004", ts: "07:15 AM", tech: "MIRA System", techInitials: "AI",
-    action: "safety_alert", channel: "voice", asset: "Electrical Panel E-12",
-    confidence: 97, syncStatus: "synced", syncTarget: "Atlas",
-    summary: "Arc flash hazard — Category 2 PPE required, LOTO in effect",
-    detail: {
-      techMessage: "(Automated safety scan triggered by asset maintenance schedule)",
-      miraReasoning: "Pre-maintenance scan for Electrical Panel E-12. Found open arc flash assessment. NFPA 70E compliance check flagged LOTO procedure required.",
-      miraOutput: "SAFETY ALERT: Arc flash hazard at Panel E-12. Category 2 PPE required. LOTO document LOTO-E12-2026 in effect. No work may begin without safety officer authorization.",
-      cmmsPayload: '{"type":"safety_alert","asset":"Panel-E12","severity":"critical","loto":"LOTO-E12-2026"}',
-    },
-  },
-  {
-    id: "evt-005", ts: "06:58 AM", tech: "Ray Patel", techInitials: "RP",
-    action: "lookup", channel: "email", asset: "CNC Mill #7",
-    confidence: null, syncStatus: "none", syncTarget: null,
-    summary: 'Parts lookup — SKF 7020 spindle bearing availability',
-    detail: {
-      techMessage: "Do we have the SKF 7020 bearing in stock for the CNC mill?",
-      miraReasoning: "Parts inventory lookup. SKF 7020 → matched to P-012 in parts database. Stock: 2 units at location B-1-4.",
-      miraOutput: "SKF 7020 bearing: 2 units in stock at location B-1-4. Part number P-012. Last restocked March 12. Unit cost $187. Reserve via CMMS to avoid stock-out.",
-    },
-  },
-  {
-    id: "evt-006", ts: "06:02 AM", tech: "MIRA System", techInitials: "AI",
-    action: "pm_scheduled", channel: "voice", asset: null,
-    confidence: null, syncStatus: "synced", syncTarget: "Atlas",
-    summary: "Morning brief delivered — 3 priority items, 2 overdue PMs",
-    detail: {
-      techMessage: "(Scheduled 6:00 AM voice brief)",
-      miraReasoning: "Daily brief generation: pulled open WOs, overdue PMs, active alerts, wrench time metric.",
-      miraOutput: "Voice brief delivered at 06:02 AM. 3 high-priority items, 2 overdue PMs, CNC vibration alert at 78% confidence. Wrench time 67%.",
-    },
-  },
-  {
-    id: "evt-007", ts: "05:47 AM", tech: "MIRA System", techInitials: "AI",
-    action: "diagnostic", channel: "webui", asset: "CNC Mill #7",
-    confidence: 78, syncStatus: "pending", syncTarget: "Atlas",
-    summary: "Z-axis vibration 3.2× normal — spindle bearing wear (78% confidence)",
-    detail: {
-      techMessage: "(Anomaly detected via sensor stream)",
-      miraReasoning: "Z-axis vibration FFT analysis shows 3.2× deviation from baseline at 127 Hz. Frequency signature matches angular contact bearing wear pattern. Cross-referenced with OEM vibration specs.",
-      miraOutput: "Vibration anomaly detected on CNC Mill #7. Probable cause: angular contact bearing wear (SKF 7020, P-012). Confidence: 78%. Recommend inspection within 7 days. Part available in stock.",
-      cmmsPayload: '{"type":"predictive_alert","asset":"MC-CN-007","confidence":0.78,"recommended_part":"P-012"}',
-    },
-  },
-  {
-    id: "evt-008", ts: "Yesterday 4:12 PM", tech: "Sam Torres", techInitials: "ST",
-    action: "greeting", channel: "whatsapp", asset: null,
-    confidence: null, syncStatus: "none", syncTarget: null,
-    summary: "New tech onboarded via WhatsApp",
-    detail: {
-      techMessage: "Hey, this is Sam Torres, starting on the maintenance team today",
-      miraReasoning: "First-time user greeting. No asset context. Responded with onboarding info.",
-      miraOutput: "Welcome Sam! I'm MIRA, your maintenance AI. Send me photos of equipment problems, ask about procedures, or say 'help' to see what I can do.",
-    },
-  },
-];
+  };
+}
 
 const CHANNEL_ICONS: Record<Channel, string> = {
   telegram: "✈️", whatsapp: "💬", voice: "🎙️", email: "📧", webui: "🖥️",
@@ -159,6 +145,8 @@ const ALL_SYNCS: SyncStatus[] = ["synced", "pending", "failed", "none"];
 
 export default function EventLogPage() {
   const t = useTranslations("eventLog");
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<EventRow | null>(null);
   const [filterChannel, setFilterChannel] = useState<Channel | "all">("all");
   const [filterAction, setFilterAction] = useState<ActionType | "all">("all");
@@ -166,15 +154,32 @@ export default function EventLogPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const filtered = EVENTS.filter(e =>
+  const loadEvents = useCallback(async () => {
+    try {
+      const res = await fetch("/api/events");
+      if (res.ok) {
+        const data = await res.json();
+        setEvents(Array.isArray(data) ? data.map(apiRowToEvent) : []);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadEvents(); }, [loadEvents]);
+
+  const filtered = events.filter(e =>
     (filterChannel === "all" || e.channel === filterChannel) &&
     (filterAction === "all" || e.action === filterAction) &&
     (filterSync === "all" || e.syncStatus === filterSync)
   );
 
-  function handleRefresh() {
+  async function handleRefresh() {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 700);
+    await loadEvents();
+    setRefreshing(false);
   }
 
   return (
@@ -194,7 +199,7 @@ export default function EventLogPage() {
               </span>
             </div>
             <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
-              {filtered.length} {t("events")} · {t("allChannels")}
+              {loading ? "Loading…" : `${filtered.length} ${t("events")}`} · {t("allChannels")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -446,6 +451,29 @@ function EventDetailDrawer({ event, onClose }: { event: EventRow; onClose: () =>
               {event.detail.miraOutput}
             </p>
           </DrawerSection>
+
+          {/* Safety warnings */}
+          {event.detail.safetyWarnings && event.detail.safetyWarnings.length > 0 && (
+            <DrawerSection icon="⚠️" title="Safety Warnings" color="#DC2626">
+              <ul className="space-y-1">
+                {event.detail.safetyWarnings.map((w, i) => (
+                  <li key={i} className="text-xs leading-snug" style={{ color: "var(--foreground)" }}>• {w}</li>
+                ))}
+              </ul>
+            </DrawerSection>
+          )}
+
+          {/* Fault codes */}
+          {event.detail.faultCodes && event.detail.faultCodes.length > 0 && (
+            <DrawerSection icon="🔍" title="Fault Codes" color="#EAB308">
+              <div className="flex flex-wrap gap-1.5">
+                {event.detail.faultCodes.map((fc, i) => (
+                  <span key={i} className="text-[11px] font-mono px-2 py-0.5 rounded"
+                    style={{ backgroundColor: "#FEF9C3", color: "#92400E" }}>{fc}</span>
+                ))}
+              </div>
+            </DrawerSection>
+          )}
 
           {/* CMMS payload */}
           {event.detail.cmmsPayload && (

@@ -13,6 +13,7 @@ services:
       - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-http://mira-pipeline:9099}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3100}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/hub/api/health"]
       interval: 30s
