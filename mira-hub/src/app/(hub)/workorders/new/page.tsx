@@ -250,7 +250,7 @@ export default function NewWorkOrderPage() {
               <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>Confirm the details before creating the work order.</p>
             </div>
 
-            <div className="card divide-y" style={{ divideColor: "var(--border)" }}>
+            <div className="card divide-y" style={{ borderColor: "var(--border)" }}>
               {[
                 { label: "Asset",       value: `${selectedAsset?.name} (${selectedAsset?.tag})` },
                 { label: "Location",    value: selectedAsset?.location ?? "—" },
