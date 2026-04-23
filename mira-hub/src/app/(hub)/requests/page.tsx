@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/providers/toast-provider";
+import { useTranslations } from "next-intl";
 
 type Request = {
   id: string;
@@ -77,6 +78,8 @@ const STATUS_FILTERS = [
 const ASSETS = ["Air Compressor #1","Conveyor Belt #3","CNC Mill #7","Pump Station A","HVAC Unit #2","Generator #1","Electrical — Bay 3"];
 
 export default function RequestsPage() {
+  const tReq = useTranslations("requests");
+  const tCommon = useTranslations("common");
   const [requests, setRequests] = useState<Request[]>(INITIAL_REQUESTS);
   const [statusFilter, setStatusFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
@@ -123,13 +126,13 @@ export default function RequestsPage() {
         <div className="px-4 md:px-6 pt-3 pb-3">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>Maintenance Requests</h1>
+              <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{tReq("title")}</h1>
               {pendingCount > 0 && (
-                <span className="text-[11px] font-medium" style={{ color: "var(--status-yellow)" }}>{pendingCount} awaiting review</span>
+                <span className="text-[11px] font-medium" style={{ color: "var(--status-yellow)" }}>{tReq("awaitingReview", { count: pendingCount })}</span>
               )}
             </div>
             <Button size="sm" onClick={() => setShowForm(true)} className="h-8 gap-1.5 text-xs">
-              <Plus className="w-3.5 h-3.5" />New Request
+              <Plus className="w-3.5 h-3.5" />{tReq("newRequest")}
             </Button>
           </div>
 
@@ -139,7 +142,7 @@ export default function RequestsPage() {
               <button key={f.key} onClick={() => setStatusFilter(f.key)}
                 className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all"
                 style={{ backgroundColor: statusFilter === f.key ? "var(--brand-blue)" : "var(--surface-1)", color: statusFilter === f.key ? "white" : "var(--foreground-muted)" }}>
-                {f.label}
+                {tReq(`filters.${f.key}`)}
               </button>
             ))}
           </div>
@@ -151,26 +154,26 @@ export default function RequestsPage() {
         <div className="mx-4 md:mx-6 mt-4">
           <div className="card p-4 space-y-3">
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Submit a Request</h3>
+              <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{tReq("submitRequest")}</h3>
               <button onClick={() => setShowForm(false)} style={{ color: "var(--foreground-subtle)" }}>
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div>
-              <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>Title *</label>
-              <Input placeholder="Briefly describe the issue…" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+              <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>{tReq("form.titleLabel")}</label>
+              <Input placeholder={tReq("form.titlePlaceholder")} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
             </div>
             <div>
-              <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>Asset *</label>
+              <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>{tReq("form.assetLabel")}</label>
               <select value={form.asset} onChange={e => setForm(f => ({ ...f, asset: e.target.value }))}
                 className="w-full text-xs px-3 py-2 rounded-lg border"
                 style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)", color: "var(--foreground)" }}>
-                <option value="">Select asset…</option>
+                <option value="">{tReq("form.assetPlaceholder")}</option>
                 {ASSETS.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>Priority</label>
+              <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>{tReq("form.priorityLabel")}</label>
               <div className="flex gap-2">
                 {(["low","medium","high","critical"] as Request["priority"][]).map(p => (
                   <button key={p} onClick={() => setForm(f => ({ ...f, priority: p }))}
@@ -186,13 +189,13 @@ export default function RequestsPage() {
               </div>
             </div>
             <div>
-              <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>Description</label>
-              <textarea rows={3} placeholder="More details…" value={form.description}
+              <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>{tReq("form.descriptionLabel")}</label>
+              <textarea rows={3} placeholder={tReq("form.descriptionPlaceholder")} value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                 className="w-full text-xs px-3 py-2 rounded-lg border resize-none"
                 style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)", color: "var(--foreground)" }} />
             </div>
-            <Button onClick={submitRequest} className="w-full h-9 text-sm">Submit Request</Button>
+            <Button onClick={submitRequest} className="w-full h-9 text-sm">{tReq("submitButton")}</Button>
           </div>
         </div>
       )}
@@ -202,7 +205,7 @@ export default function RequestsPage() {
         {visible.length === 0 ? (
           <div className="text-center py-16">
             <MessageSquare className="w-12 h-12 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
-            <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>No requests in this category</p>
+            <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>{tReq("noRequests")}</p>
           </div>
         ) : visible.map(req => {
           const sCfg = STATUS_CFG[req.status];
@@ -240,17 +243,17 @@ export default function RequestsPage() {
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" className="flex-1 h-8 text-xs gap-1.5"
                         onClick={() => { reject(req.id); setExpanded(null); }}>
-                        <XCircle className="w-3.5 h-3.5" />Reject
+                        <XCircle className="w-3.5 h-3.5" />{tCommon("reject")}
                       </Button>
                       <Button size="sm" className="flex-1 h-8 text-xs gap-1.5"
                         onClick={() => { approve(req.id); setExpanded(null); }}>
-                        <CheckCircle className="w-3.5 h-3.5" />Approve
+                        <CheckCircle className="w-3.5 h-3.5" />{tCommon("approve")}
                       </Button>
                     </div>
                   )}
                   {req.status === "approved" && (
                     <div className="rounded-lg p-3 text-xs" style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }}>
-                      Approved — create a Work Order to assign and schedule this work.
+                      {tReq("approvedNote")}
                     </div>
                   )}
                 </div>

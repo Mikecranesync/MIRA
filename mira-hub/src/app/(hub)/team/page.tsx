@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Users, CheckCircle2, Clock, XCircle, Phone, Wrench, ClipboardList } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useTranslations } from "next-intl";
 
 type ShiftStatus = "on-shift" | "on-call" | "off-shift";
 
@@ -72,20 +73,29 @@ const TEAM: TeamMember[] = [
   },
 ];
 
-const SHIFT_CFG: Record<ShiftStatus, { label: string; badgeVariant: "green" | "yellow" | "secondary"; icon: React.ElementType; dot: string }> = {
-  "on-shift":  { label: "On Shift",  badgeVariant: "green",     icon: CheckCircle2, dot: "#16A34A" },
-  "on-call":   { label: "On Call",   badgeVariant: "yellow",    icon: Clock,        dot: "#EAB308" },
-  "off-shift": { label: "Off Shift", badgeVariant: "secondary", icon: XCircle,      dot: "#94A3B8" },
+const SHIFT_CFG_BASE: Record<ShiftStatus, { badgeVariant: "green" | "yellow" | "secondary"; icon: React.ElementType; dot: string }> = {
+  "on-shift":  { badgeVariant: "green",     icon: CheckCircle2, dot: "#16A34A" },
+  "on-call":   { badgeVariant: "yellow",    icon: Clock,        dot: "#EAB308" },
+  "off-shift": { badgeVariant: "secondary", icon: XCircle,      dot: "#94A3B8" },
 };
 
-const SHIFT_FILTERS = [
-  { key: "all",       label: "All" },
-  { key: "on-shift",  label: "On Shift" },
-  { key: "on-call",   label: "On Call" },
-  { key: "off-shift", label: "Off Shift" },
-];
-
 export default function TeamPage() {
+  const t = useTranslations("team");
+  const tStatus = useTranslations("status");
+
+  const SHIFT_CFG: Record<ShiftStatus, { label: string; badgeVariant: "green" | "yellow" | "secondary"; icon: React.ElementType; dot: string }> = {
+    "on-shift":  { ...SHIFT_CFG_BASE["on-shift"],  label: tStatus("available") },
+    "on-call":   { ...SHIFT_CFG_BASE["on-call"],   label: tStatus("onJob") },
+    "off-shift": { ...SHIFT_CFG_BASE["off-shift"], label: tStatus("offDuty") },
+  };
+
+  const SHIFT_FILTERS = [
+    { key: "all",       label: t("filters.all") },
+    { key: "on-shift",  label: tStatus("available") },
+    { key: "on-call",   label: tStatus("onJob") },
+    { key: "off-shift", label: tStatus("offDuty") },
+  ];
+
   const [shiftFilter, setShiftFilter] = useState("all");
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -99,16 +109,16 @@ export default function TeamPage() {
       <div className="sticky top-0 z-20 border-b" style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <div className="px-4 md:px-6 pt-3 pb-3">
           <div className="flex items-center justify-between mb-1">
-            <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>Team</h1>
+            <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
             <div className="flex gap-3">
               <span className="text-[11px] font-medium flex items-center gap-1" style={{ color: "var(--status-green)" }}>
                 <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: "#16A34A" }} />
-                {onShiftCount} on shift
+                {onShiftCount} {tStatus("available")}
               </span>
               {onCallCount > 0 && (
                 <span className="text-[11px] font-medium flex items-center gap-1" style={{ color: "var(--status-yellow)" }}>
                   <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: "#EAB308" }} />
-                  {onCallCount} on call
+                  {onCallCount} {tStatus("onJob")}
                 </span>
               )}
             </div>
@@ -164,7 +174,7 @@ export default function TeamPage() {
                         </p>
                       )}
                       {!member.currentAssignment && member.shiftStatus === "on-shift" && (
-                        <p className="text-[11px] mt-1" style={{ color: "var(--foreground-subtle)" }}>Available</p>
+                        <p className="text-[11px] mt-1" style={{ color: "var(--foreground-subtle)" }}>{tStatus("available")}</p>
                       )}
                     </div>
                   </div>

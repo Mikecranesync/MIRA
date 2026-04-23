@@ -1,6 +1,7 @@
 "use client";
 
 import { use } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { ArrowLeft, FileText, Bot, Download, ExternalLink, AlertTriangle, Clock, BookOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,8 @@ const STATE_VARIANT: Record<string, "indexed" | "partial" | "superseded"> = {
 
 export default function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const t = useTranslations("documents");
+  const tc = useTranslations("common");
   const doc = DOCS.find(d => d.id === id) ?? DOCS[0];
 
   const catColor = CAT_COLOR[doc.category] ?? "#64748B";
@@ -69,7 +72,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         <a href="https://t.me/FactoryLMDiagnose_bot" target="_blank" rel="noopener noreferrer">
           <Button className="w-full h-10 gap-2 text-sm font-semibold"
             style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
-            <Bot className="w-4 h-4" />Ask MIRA About This Document
+            <Bot className="w-4 h-4" />{t("askMira")}
           </Button>
         </a>
 
@@ -80,10 +83,10 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
           <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>{doc.pages} pages · {doc.size}</p>
           <div className="flex gap-2 mt-2">
             <Button variant="outline" size="sm" className="gap-1.5 text-xs">
-              <ExternalLink className="w-3.5 h-3.5" />Open
+              <ExternalLink className="w-3.5 h-3.5" />{tc("open")}
             </Button>
             <Button variant="outline" size="sm" className="gap-1.5 text-xs">
-              <Download className="w-3.5 h-3.5" />Download
+              <Download className="w-3.5 h-3.5" />{tc("download")}
             </Button>
           </div>
         </div>
@@ -114,7 +117,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         {/* Linked assets */}
         {doc.assets.length > 0 && (
           <div className="card p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>Linked Assets</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>{t("linkedAssets")}</h3>
             <div className="flex flex-wrap gap-2">
               {doc.assets.map((asset, i) => (
                 <Link key={asset} href={`/assets/${doc.assetIds[i] ?? "1"}`}
@@ -130,7 +133,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         {/* Version history */}
         {doc.versions && doc.versions.length > 0 && (
           <div className="card p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>Version History</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>{t("versionHistory")}</h3>
             <div className="space-y-2">
               {doc.versions.map((v, i) => (
                 <div key={v.rev} className="flex items-center justify-between">
@@ -141,7 +144,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs" style={{ color: "var(--foreground-subtle)" }}>{v.date}</span>
-                    {i === 0 && <Badge variant="green" className="text-[10px]">Current</Badge>}
+                    {i === 0 && <Badge variant="green" className="text-[10px]">{t("current")}</Badge>}
                   </div>
                 </div>
               ))}

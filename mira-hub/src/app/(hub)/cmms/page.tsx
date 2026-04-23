@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/providers/toast-provider";
+import { useTranslations } from "next-intl";
 
 const DEFAULT_CMMS_URL = "https://app.factorylm.com";
 
@@ -18,6 +19,8 @@ const CMMS_SUMMARY = {
 type Config = { url: string; apiKey: string };
 
 export default function CMMSPage() {
+  const t = useTranslations("cmms");
+  const tCommon = useTranslations("common");
   const { toast } = useToast();
   const [configured, setConfigured] = useState(true);
   const [config, setConfig] = useState<Config>({ url: DEFAULT_CMMS_URL, apiKey: "••••••••••••••••" });
@@ -46,15 +49,15 @@ export default function CMMSPage() {
         <div className="px-4 md:px-6 pt-3 pb-3">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>CMMS Integration</h1>
+              <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
               <p className="text-[11px] mt-0.5" style={{ color: "var(--foreground-subtle)" }}>
-                {configured ? "Connected to Atlas CMMS" : "Not configured"}
+                {configured ? t("connected") : t("notConfigured")}
               </p>
             </div>
             {configured && (
               <a href={config.url} target="_blank" rel="noopener noreferrer">
                 <Button size="sm" className="h-8 gap-1.5 text-xs">
-                  <ExternalLink className="w-3.5 h-3.5" />Open Atlas
+                  <ExternalLink className="w-3.5 h-3.5" />{t("openAtlas")}
                 </Button>
               </a>
             )}
@@ -75,7 +78,7 @@ export default function CMMSPage() {
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Atlas CMMS</p>
                   <Badge variant="green" className="text-[10px] gap-1">
-                    <CheckCircle2 className="w-2.5 h-2.5" />Connected
+                    <CheckCircle2 className="w-2.5 h-2.5" />{t("connected_badge")}
                   </Badge>
                 </div>
                 <p className="text-xs truncate mt-0.5" style={{ color: "var(--foreground-muted)" }}>{config.url}</p>
@@ -86,14 +89,14 @@ export default function CMMSPage() {
             <a href={config.url} target="_blank" rel="noopener noreferrer" className="block">
               <Button className="w-full h-11 gap-2 text-sm font-semibold"
                 style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
-                <ExternalLink className="w-4 h-4" />Open Atlas CMMS
+                <ExternalLink className="w-4 h-4" />{t("openAtlasFull")}
               </Button>
             </a>
 
             {/* Summary cards */}
             <div>
               <h2 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>
-                CMMS Summary
+                {t("summary")}
               </h2>
               <div className="grid grid-cols-2 gap-3">
                 <div className="card p-4">
@@ -103,10 +106,10 @@ export default function CMMSPage() {
                   </div>
                   <div className="space-y-1.5">
                     {[
-                      { label: "Open",        val: CMMS_SUMMARY.workOrders.open,        color: "#2563EB" },
-                      { label: "In Progress", val: CMMS_SUMMARY.workOrders.inprogress,  color: "#EAB308" },
-                      { label: "Overdue",     val: CMMS_SUMMARY.workOrders.overdue,     color: "#DC2626" },
-                      { label: "Completed",   val: CMMS_SUMMARY.workOrders.completed,   color: "#16A34A" },
+                      { label: t("open"),         val: CMMS_SUMMARY.workOrders.open,        color: "#2563EB" },
+                      { label: t("inProgress"),   val: CMMS_SUMMARY.workOrders.inprogress,  color: "#EAB308" },
+                      { label: t("overdue"),      val: CMMS_SUMMARY.workOrders.overdue,     color: "#DC2626" },
+                      { label: t("completedWOs"), val: CMMS_SUMMARY.workOrders.completed,   color: "#16A34A" },
                     ].map(({ label, val, color }) => (
                       <div key={label} className="flex items-center justify-between">
                         <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>{label}</span>
@@ -123,9 +126,9 @@ export default function CMMSPage() {
                   </div>
                   <div className="space-y-1.5">
                     {[
-                      { label: "Total",    val: CMMS_SUMMARY.assets.total,    color: "var(--foreground)" },
-                      { label: "Active",   val: CMMS_SUMMARY.assets.active,   color: "#16A34A" },
-                      { label: "Inactive", val: CMMS_SUMMARY.assets.inactive, color: "#94A3B8" },
+                      { label: t("totalAssets"),    val: CMMS_SUMMARY.assets.total,    color: "var(--foreground)" },
+                      { label: t("activeAssets"),   val: CMMS_SUMMARY.assets.active,   color: "#16A34A" },
+                      { label: t("inactiveAssets"), val: CMMS_SUMMARY.assets.inactive, color: "#94A3B8" },
                     ].map(({ label, val, color }) => (
                       <div key={label} className="flex items-center justify-between">
                         <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>{label}</span>
@@ -141,11 +144,11 @@ export default function CMMSPage() {
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>Scheduled</span>
+                        <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>{t("scheduledPMs")}</span>
                         <span className="text-sm font-bold" style={{ color: "#2563EB" }}>{CMMS_SUMMARY.pms.scheduled}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>Overdue</span>
+                        <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>{t("overduePMs")}</span>
                         <span className="text-sm font-bold" style={{ color: "#DC2626" }}>{CMMS_SUMMARY.pms.overdue}</span>
                       </div>
                     </div>
@@ -156,7 +159,7 @@ export default function CMMSPage() {
 
             {/* Quick links */}
             <div className="card p-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>Quick Links</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>{t("quickLinks")}</h3>
               <div className="space-y-2">
                 {[
                   { label: "Work Orders",  path: "/workorders" },
@@ -175,7 +178,7 @@ export default function CMMSPage() {
 
             {/* Settings */}
             <div className="card p-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>Connection Settings</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>{t("connectionSettings")}</h3>
               <div className="space-y-2 mb-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>URL</span>
@@ -189,12 +192,12 @@ export default function CMMSPage() {
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" className="flex-1 h-8 text-xs"
                   onClick={() => { setForm({ url: config.url, apiKey: "" }); setShowEdit(true); }}>
-                  Edit Settings
+                  {t("editSettings")}
                 </Button>
                 <Button variant="outline" size="sm" className="flex-1 h-8 text-xs"
                   style={{ color: "#DC2626", borderColor: "#DC2626" }}
                   onClick={disconnect}>
-                  Disconnect
+                  {t("disconnect")}
                 </Button>
               </div>
             </div>
@@ -207,36 +210,35 @@ export default function CMMSPage() {
               <Link2 className="w-7 h-7" style={{ color: "var(--foreground-subtle)" }} />
             </div>
             <div>
-              <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>Connect Your CMMS</h2>
+              <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>{t("connectTitle")}</h2>
               <p className="text-sm" style={{ color: "var(--foreground-muted)" }}>
-                Link Atlas CMMS to view your work orders, assets, and PM schedule in one place.
+                {t("connectDesc")}
               </p>
             </div>
             <div className="text-left space-y-3">
               <div>
                 <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>
-                  CMMS URL *
+                  {t("urlLabel")} *
                 </label>
-                <Input placeholder="https://your-cmms.factorylm.com"
+                <Input placeholder={t("urlPlaceholder")}
                   value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
               </div>
               <div>
                 <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>
-                  API Key
+                  {t("apiKeyLabel")}
                 </label>
-                <Input type="password" placeholder="sk-••••••••"
+                <Input type="password" placeholder={t("apiKeyPlaceholder")}
                   value={form.apiKey} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))} />
               </div>
               <Button onClick={connect} className="w-full h-10 gap-2 font-semibold">
-                <Database className="w-4 h-4" />Connect Atlas CMMS
+                <Database className="w-4 h-4" />{t("connectButton")}
               </Button>
             </div>
 
             <div className="flex items-start gap-2 p-3 rounded-lg text-left" style={{ backgroundColor: "rgba(37,99,235,0.08)" }}>
               <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "var(--brand-blue)" }} />
               <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
-                Your Atlas CMMS URL is the address where your Atlas instance is hosted.
-                Contact your administrator if you don't have access credentials.
+                {t("adminContact")}
               </p>
             </div>
           </div>
@@ -248,18 +250,18 @@ export default function CMMSPage() {
             onClick={() => setShowEdit(false)}>
             <div className="w-full rounded-t-2xl p-5 space-y-4" style={{ backgroundColor: "var(--surface-0)" }}
               onClick={e => e.stopPropagation()}>
-              <h3 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>Edit CMMS Settings</h3>
+              <h3 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("editSettings")}</h3>
               <div>
-                <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>CMMS URL *</label>
+                <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>{t("urlLabel")} *</label>
                 <Input value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
               </div>
               <div>
-                <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>New API Key (leave blank to keep current)</label>
-                <Input type="password" placeholder="sk-••••••••" value={form.apiKey} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))} />
+                <label className="text-[11px] font-medium uppercase tracking-wide mb-1 block" style={{ color: "var(--foreground-subtle)" }}>{t("newApiKeyLabel")}</label>
+                <Input type="password" placeholder={t("apiKeyPlaceholder")} value={form.apiKey} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))} />
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 h-10" onClick={() => setShowEdit(false)}>Cancel</Button>
-                <Button className="flex-1 h-10" onClick={connect}>Save</Button>
+                <Button variant="outline" className="flex-1 h-10" onClick={() => setShowEdit(false)}>{tCommon("cancel")}</Button>
+                <Button className="flex-1 h-10" onClick={connect}>{tCommon("save")}</Button>
               </div>
             </div>
           </div>

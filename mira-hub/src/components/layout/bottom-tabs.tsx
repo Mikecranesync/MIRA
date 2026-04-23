@@ -2,19 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { LayoutDashboard, ClipboardList, Plus, Wrench, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const MOBILE_TABS = [
-  { label: "Feed",    Icon: LayoutDashboard, href: "/feed" },
-  { label: "Assets",  Icon: Wrench,          href: "/assets" },
-  { label: "New WO",  Icon: Plus,            href: "/workorders/new", fab: true },
-  { label: "Orders",  Icon: ClipboardList,   href: "/workorders" },
-  { label: "More",    Icon: MoreHorizontal,  href: "/more" },
-];
-
 export function BottomTabs() {
   const pathname = usePathname();
+  const t = useTranslations("nav");
+
+  const MOBILE_TABS = [
+    { label: t("feed"),       Icon: LayoutDashboard, href: "/feed",            fab: false },
+    { label: t("assets"),     Icon: Wrench,          href: "/assets",          fab: false },
+    { label: "",              Icon: Plus,            href: "/workorders/new",  fab: true  },
+    { label: t("workOrders"), Icon: ClipboardList,   href: "/workorders",      fab: false },
+    { label: t("more"),       Icon: MoreHorizontal,  href: "/more",            fab: false },
+  ];
 
   return (
     <nav

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Search, FileText, BookOpen, Zap, ShieldCheck, ClipboardCheck, Truck, MapPin, Bot, Upload } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ const DOC_STATE_VARIANT: Record<string, "indexed" | "partial" | "superseded"> = 
 };
 
 export default function DocumentsPage() {
+  const t = useTranslations("documents");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
 
@@ -39,14 +41,14 @@ export default function DocumentsPage() {
       <div className="sticky top-0 z-20 border-b" style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <div className="px-4 md:px-6 pt-3 pb-3">
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>Documents</h1>
+            <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
             <Button size="sm" variant="outline" className="gap-1.5">
-              <Upload className="w-3.5 h-3.5" />Upload
+              <Upload className="w-3.5 h-3.5" />{t("upload")}
             </Button>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--foreground-subtle)" }} />
-            <Input placeholder="Search documents or linked assets…" value={query} onChange={e => setQuery(e.target.value)} className="pl-9" />
+            <Input placeholder={t("searchPlaceholder")} value={query} onChange={e => setQuery(e.target.value)} className="pl-9" />
           </div>
         </div>
       </div>
@@ -126,7 +128,7 @@ export default function DocumentsPage() {
           {visible.length === 0 && (
             <div className="text-center py-16">
               <FileText className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
-              <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>No documents match</p>
+              <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>{t("noDocuments")}</p>
               <p className="text-xs mt-1" style={{ color: "var(--foreground-subtle)" }}>Try a different search or category</p>
             </div>
           )}

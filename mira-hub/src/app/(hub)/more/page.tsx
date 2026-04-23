@@ -5,23 +5,27 @@ import {
   Calendar, MessageSquare, FileText, BarChart2,
   Users, Settings, Database, ChevronRight,
 } from "lucide-react";
-
-const MORE_ITEMS = [
-  { label: "Schedule",   desc: "PM calendar and upcoming tasks", Icon: Calendar,     href: "/schedule" },
-  { label: "Requests",   desc: "Submit and review work requests", Icon: MessageSquare, href: "/requests" },
-  { label: "Documents",  desc: "Manuals, SOPs, and certifications", Icon: FileText,  href: "/documents" },
-  { label: "CMMS",       desc: "Atlas CMMS integration",          Icon: Database,    href: "/cmms" },
-  { label: "Reports",    desc: "Maintenance analytics and KPIs",  Icon: BarChart2,   href: "/reports" },
-  { label: "Team",       desc: "Crew roster and assignments",      Icon: Users,       href: "/team" },
-  { label: "Admin",      desc: "Users, roles, and settings",       Icon: Settings,    href: "/admin/users" },
-];
+import { useTranslations } from "next-intl";
 
 export default function MorePage() {
+  const t = useTranslations("more");
+  const tNav = useTranslations("nav");
+
+  const MORE_ITEMS = [
+    { label: tNav("schedule"),  desc: t("items.schedule"),  Icon: Calendar,      href: "/schedule" },
+    { label: tNav("requests"),  desc: t("items.requests"),  Icon: MessageSquare, href: "/requests" },
+    { label: tNav("documents"), desc: t("items.documents"), Icon: FileText,      href: "/documents" },
+    { label: tNav("cmms"),      desc: t("items.cmms"),      Icon: Database,      href: "/cmms" },
+    { label: tNav("reports"),   desc: t("items.reports"),   Icon: BarChart2,     href: "/reports" },
+    { label: tNav("team"),      desc: t("items.team"),      Icon: Users,         href: "/team" },
+    { label: tNav("admin"),     desc: t("items.admin"),     Icon: Settings,      href: "/admin/users" },
+  ];
+
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
       <div className="sticky top-0 z-20 border-b" style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <div className="px-4 pt-3 pb-3">
-          <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>More</h1>
+          <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
         </div>
       </div>
 

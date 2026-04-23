@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, ArrowRight, Search, QrCode, Camera, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useTranslations } from "next-intl";
 
 /* ─── Mock asset search results ─────────────────────────────────────── */
 const ASSET_OPTIONS = [
@@ -15,14 +16,18 @@ const ASSET_OPTIONS = [
   { id: "5", name: "Pump Station A",     tag: "MC-PS-00A", location: "Basement" },
 ];
 
-const PRIORITIES = [
-  { value: "Low",      desc: "Planned / no urgency",              color: "#64748B", bg: "#F1F5F9" },
-  { value: "Medium",   desc: "Needs attention within a week",     color: "#EAB308", bg: "#FEF9C3" },
-  { value: "High",     desc: "Significant impact, act within 48h", color: "#EA580C", bg: "#FFF7ED" },
-  { value: "Critical", desc: "Production down or safety risk",     color: "#DC2626", bg: "#FEE2E2" },
-];
-
 export default function NewWorkOrderPage() {
+  const t = useTranslations("workorders");
+  const tCommon = useTranslations("common");
+  const tPriority = useTranslations("priority");
+
+  const PRIORITIES = [
+    { value: "Low",      label: tPriority("low"),      desc: "Planned / no urgency",               color: "#64748B", bg: "#F1F5F9" },
+    { value: "Medium",   label: tPriority("medium"),   desc: "Needs attention within a week",      color: "#EAB308", bg: "#FEF9C3" },
+    { value: "High",     label: tPriority("high"),     desc: "Significant impact, act within 48h", color: "#EA580C", bg: "#FFF7ED" },
+    { value: "Critical", label: tPriority("critical"), desc: "Production down or safety risk",      color: "#DC2626", bg: "#FEE2E2" },
+  ];
+
   const [step, setStep] = useState(1);
   const [assetQuery, setAssetQuery] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<typeof ASSET_OPTIONS[0] | null>(null);
@@ -57,10 +62,10 @@ export default function NewWorkOrderPage() {
         </p>
         <div className="flex gap-3">
           <Link href="/workorders">
-            <Button variant="secondary">View All Work Orders</Button>
+            <Button variant="secondary">{t("title")}</Button>
           </Link>
           <Button onClick={() => { setStep(1); setSubmitted(false); setSelectedAsset(null); setDescription(""); setPriority("Medium"); setAssetQuery(""); }}>
-            Create Another
+            {tCommon("create")}
           </Button>
         </div>
       </div>
@@ -78,7 +83,7 @@ export default function NewWorkOrderPage() {
               <ArrowLeft className="w-4 h-4" />
             </Button>
           </Link>
-          <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>New Work Order</h1>
+          <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("new")}</h1>
         </div>
 
         {/* Progress stepper */}
@@ -97,7 +102,7 @@ export default function NewWorkOrderPage() {
                 </div>
                 <span className="text-xs font-medium hidden sm:block"
                   style={{ color: step === s ? "var(--foreground)" : "var(--foreground-subtle)" }}>
-                  {s === 1 ? "Select Asset" : s === 2 ? "Describe Issue" : "Review"}
+                  {s === 1 ? tCommon("asset") : s === 2 ? tCommon("description") : "Review"}
                 </span>
               </div>
               {i < 2 && (
@@ -114,14 +119,14 @@ export default function NewWorkOrderPage() {
         {step === 1 && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>Select Asset</h2>
+              <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>{tCommon("asset")}</h2>
               <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>Search by name or tag, or scan the QR code on the equipment.</p>
             </div>
 
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--foreground-subtle)" }} />
-                <Input placeholder="Search assets…" value={assetQuery} onChange={e => setAssetQuery(e.target.value)} className="pl-9" />
+                <Input placeholder={`${tCommon("search")}…`} value={assetQuery} onChange={e => setAssetQuery(e.target.value)} className="pl-9" />
               </div>
               <Button variant="outline" size="icon" title="Scan QR">
                 <QrCode className="w-4 h-4" />
@@ -159,7 +164,7 @@ export default function NewWorkOrderPage() {
               disabled={!selectedAsset}
               onClick={() => setStep(2)}
             >
-              Continue <ArrowRight className="w-4 h-4 ml-1" />
+              {tCommon("save")} <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
         )}
@@ -168,7 +173,7 @@ export default function NewWorkOrderPage() {
         {step === 2 && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>Describe the Issue</h2>
+              <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>{tCommon("description")}</h2>
               <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
                 Asset: <strong style={{ color: "var(--foreground)" }}>{selectedAsset?.name}</strong>
               </p>
@@ -177,7 +182,7 @@ export default function NewWorkOrderPage() {
             {/* Description */}
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--foreground-muted)" }}>
-                Issue Description *
+                {tCommon("description")} *
               </label>
               <textarea
                 rows={5}
@@ -199,7 +204,7 @@ export default function NewWorkOrderPage() {
 
             {/* Photo upload placeholder */}
             <div>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--foreground-muted)" }}>Photos (optional)</label>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--foreground-muted)" }}>Photos ({tCommon("optional")})</label>
               <button
                 className="w-full border-2 border-dashed rounded-lg p-6 flex flex-col items-center gap-2 transition-colors hover:border-blue-400"
                 style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)" }}
@@ -224,7 +229,7 @@ export default function NewWorkOrderPage() {
                       backgroundColor: priority === p.value ? p.bg : "var(--surface-0)",
                     }}
                   >
-                    <p className="text-sm font-semibold" style={{ color: p.color }}>{p.value}</p>
+                    <p className="text-sm font-semibold" style={{ color: p.color }}>{p.label}</p>
                     <p className="text-[11px] mt-0.5 leading-tight" style={{ color: "var(--foreground-muted)" }}>{p.desc}</p>
                   </button>
                 ))}
@@ -233,7 +238,7 @@ export default function NewWorkOrderPage() {
 
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
-                <ArrowLeft className="w-4 h-4 mr-1" /> Back
+                <ArrowLeft className="w-4 h-4 mr-1" /> {tCommon("back")}
               </Button>
               <Button className="flex-1" disabled={!description.trim()} onClick={() => setStep(3)}>
                 Review <ArrowRight className="w-4 h-4 ml-1" />
@@ -246,16 +251,16 @@ export default function NewWorkOrderPage() {
         {step === 3 && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>Review & Submit</h2>
+              <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>Review & {tCommon("submit")}</h2>
               <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>Confirm the details before creating the work order.</p>
             </div>
 
             <div className="card divide-y" style={{ borderColor: "var(--border)" }}>
               {[
-                { label: "Asset",       value: `${selectedAsset?.name} (${selectedAsset?.tag})` },
-                { label: "Location",    value: selectedAsset?.location ?? "—" },
-                { label: "Priority",    value: priority },
-                { label: "Assigned To", value: "Unassigned (auto-assign later)" },
+                { label: tCommon("asset"),    value: `${selectedAsset?.name} (${selectedAsset?.tag})` },
+                { label: tCommon("location"), value: selectedAsset?.location ?? "—" },
+                { label: "Priority",          value: priority },
+                { label: "Assigned To",       value: "Unassigned (auto-assign later)" },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-start justify-between px-4 py-3">
                   <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>{label}</span>
@@ -263,17 +268,17 @@ export default function NewWorkOrderPage() {
                 </div>
               ))}
               <div className="px-4 py-3">
-                <span className="text-xs block mb-1" style={{ color: "var(--foreground-muted)" }}>Description</span>
+                <span className="text-xs block mb-1" style={{ color: "var(--foreground-muted)" }}>{tCommon("description")}</span>
                 <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>{description}</p>
               </div>
             </div>
 
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setStep(2)} className="flex-1">
-                <ArrowLeft className="w-4 h-4 mr-1" /> Edit
+                <ArrowLeft className="w-4 h-4 mr-1" /> {tCommon("edit")}
               </Button>
               <Button className="flex-1" onClick={submit}>
-                Create Work Order
+                {tCommon("create")} {t("title")}
               </Button>
             </div>
           </div>

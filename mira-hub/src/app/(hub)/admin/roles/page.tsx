@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Shield, Check, Minus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useTranslations } from "next-intl";
 
 type RoleKey = "admin" | "manager" | "scheduler" | "technician" | "operator";
 
@@ -104,16 +105,18 @@ const ROLES: RoleDef[] = [
 ];
 
 export default function AdminRolesPage() {
+  const t = useTranslations("admin");
+
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
       {/* Header */}
       <div className="sticky top-0 z-20 border-b" style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <div className="px-4 md:px-6 pt-3 pb-3">
-          <h1 className="text-base font-semibold mb-2" style={{ color: "var(--foreground)" }}>Roles & Permissions</h1>
+          <h1 className="text-base font-semibold mb-2" style={{ color: "var(--foreground)" }}>{t("rolesTab")}</h1>
           {/* Sub-nav */}
           <div className="flex gap-4 text-xs border-t pt-2" style={{ borderColor: "var(--border)" }}>
-            <Link href="/admin/users" className="pb-1 border-b-2 border-transparent" style={{ color: "var(--foreground-muted)" }}>Users</Link>
-            <Link href="/admin/roles" className="font-semibold pb-1 border-b-2" style={{ color: "var(--brand-blue)", borderColor: "var(--brand-blue)" }}>Roles & Permissions</Link>
+            <Link href="/admin/users" className="pb-1 border-b-2 border-transparent" style={{ color: "var(--foreground-muted)" }}>{t("usersTab")}</Link>
+            <Link href="/admin/roles" className="font-semibold pb-1 border-b-2" style={{ color: "var(--brand-blue)", borderColor: "var(--brand-blue)" }}>{t("rolesTab")}</Link>
           </div>
         </div>
       </div>
@@ -130,7 +133,7 @@ export default function AdminRolesPage() {
                     <Shield className="w-4 h-4" style={{ color: "var(--brand-blue)" }} />
                   </div>
                   <div>
-                    <Badge variant={role.badgeVariant} className="text-[10px]">{role.label}</Badge>
+                    <Badge variant={role.badgeVariant} className="text-[10px]">{t(`roles.${role.key}`)}</Badge>
                   </div>
                 </div>
                 <span className="text-[11px] font-medium" style={{ color: "var(--foreground-subtle)" }}>
@@ -150,7 +153,7 @@ export default function AdminRolesPage() {
                 <th className="px-4 py-3 text-left font-semibold sticky left-0" style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)", minWidth: 200 }}>Permission</th>
                 {ROLES.map(r => (
                   <th key={r.key} className="px-3 py-3 text-center font-semibold" style={{ color: "var(--foreground-muted)", minWidth: 100 }}>
-                    <Badge variant={r.badgeVariant} className="text-[10px]">{r.label}</Badge>
+                    <Badge variant={r.badgeVariant} className="text-[10px]">{t(`roles.${r.key}`)}</Badge>
                   </th>
                 ))}
               </tr>
@@ -193,7 +196,7 @@ export default function AdminRolesPage() {
           {ROLES.map(role => (
             <div key={role.key} className="card p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Badge variant={role.badgeVariant} className="text-[10px]">{role.label}</Badge>
+                <Badge variant={role.badgeVariant} className="text-[10px]">{t(`roles.${role.key}`)}</Badge>
                 <span className="text-xs" style={{ color: "var(--foreground-subtle)" }}>{role.description}</span>
               </div>
               <div className="space-y-1.5">

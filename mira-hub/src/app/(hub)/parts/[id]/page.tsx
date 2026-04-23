@@ -1,6 +1,7 @@
 "use client";
 
 import { use } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { ArrowLeft, Package, Bot, TrendingUp, TrendingDown, MapPin, DollarSign, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -8,13 +9,15 @@ import { Button } from "@/components/ui/button";
 import { PARTS, getStockStatus } from "@/lib/parts-data";
 
 const STOCK_CONFIG = {
-  ok:  { label: "In Stock",     color: "#16A34A", bg: "#DCFCE7", badgeVariant: "green"  as const },
-  low: { label: "At Reorder",   color: "#EAB308", bg: "#FEF9C3", badgeVariant: "yellow" as const },
-  out: { label: "Out of Stock", color: "#DC2626", bg: "#FEE2E2", badgeVariant: "red"    as const },
+  ok:  { labelKey: "stockStatus.ok",  color: "#16A34A", bg: "#DCFCE7", badgeVariant: "green"  as const },
+  low: { labelKey: "stockStatus.low", color: "#EAB308", bg: "#FEF9C3", badgeVariant: "yellow" as const },
+  out: { labelKey: "stockStatus.out", color: "#DC2626", bg: "#FEE2E2", badgeVariant: "red"    as const },
 };
 
 export default function PartDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const t = useTranslations("parts");
+  const tc = useTranslations("common");
   const part = PARTS.find(p => p.id === id) ?? PARTS[0];
   const status = getStockStatus(part);
   const cfg = STOCK_CONFIG[status];
@@ -34,7 +37,7 @@ export default function PartDetailPage({ params }: { params: Promise<{ id: strin
             <h1 className="text-base font-semibold leading-snug" style={{ color: "var(--foreground)" }}>{part.description}</h1>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span className="text-xs font-mono" style={{ color: "var(--foreground-subtle)" }}>{part.partNumber}</span>
-              <Badge variant={cfg.badgeVariant} className="text-[10px]">{cfg.label}</Badge>
+              <Badge variant={cfg.badgeVariant} className="text-[10px]">{t(cfg.labelKey)}</Badge>
               <Badge variant="secondary" className="text-[10px]">{part.category}</Badge>
             </div>
           </div>
@@ -56,20 +59,20 @@ export default function PartDetailPage({ params }: { params: Promise<{ id: strin
           style={{ backgroundColor: "var(--surface-1)" }}>
           <Package className="w-12 h-12" style={{ color: "var(--foreground-subtle)" }} />
           <p className="text-sm" style={{ color: "var(--foreground-muted)" }}>No photo on file</p>
-          <button className="text-xs font-medium" style={{ color: "var(--brand-blue)" }}>+ Add Photo</button>
+          <button className="text-xs font-medium" style={{ color: "var(--brand-blue)" }}>+ {tc("add")}</button>
         </div>
 
         {/* Info grid */}
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "OEM / Manufacturer", value: part.oem,              Icon: Package },
-            { label: "Category",           value: part.category,         Icon: Package },
-            { label: "Storeroom Location", value: part.location,         Icon: MapPin },
-            { label: "Unit Cost",          value: `$${part.unitCost.toFixed(2)}`, Icon: DollarSign },
-            { label: "Qty On Hand",        value: String(part.qtyOnHand), Icon: Package },
-            { label: "Reorder Point",      value: String(part.reorderPoint), Icon: RotateCcw },
-            { label: "Stock Value",        value: `$${totalValue}`,       Icon: DollarSign },
-            { label: "Stock Status",       value: cfg.label,              Icon: Package },
+            { label: "OEM / Manufacturer",   value: part.oem,              Icon: Package },
+            { label: "Category",             value: part.category,         Icon: Package },
+            { label: t("location"),          value: part.location,         Icon: MapPin },
+            { label: t("unitCost"),          value: `$${part.unitCost.toFixed(2)}`, Icon: DollarSign },
+            { label: t("qtyOnHand"),         value: String(part.qtyOnHand), Icon: Package },
+            { label: t("reorderPoint"),      value: String(part.reorderPoint), Icon: RotateCcw },
+            { label: "Stock Value",          value: `$${totalValue}`,       Icon: DollarSign },
+            { label: "Stock Status",          value: t(cfg.labelKey),        Icon: Package },
           ].map(({ label, value, Icon }) => (
             <div key={label} className="card p-3">
               <div className="flex items-center gap-1.5 mb-1">

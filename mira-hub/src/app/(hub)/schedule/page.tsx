@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X } from "lucide-react";
 import { useToast } from "@/providers/toast-provider";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +51,7 @@ function getCalendarDays(year: number, month: number) {
 }
 
 export default function SchedulePage() {
+  const t = useTranslations("schedule");
   const today = new Date();
   const [view, setView] = useState<"calendar" | "list">("calendar");
   const [year, setYear] = useState(today.getFullYear());
@@ -90,14 +92,14 @@ export default function SchedulePage() {
         <div className="px-4 md:px-6 pt-3 pb-3">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>PM Schedule</h1>
+              <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
               <div className="flex gap-3 mt-0.5">
                 {overdueCount > 0 && (
                   <span className="text-[11px] font-medium flex items-center gap-1" style={{ color: "var(--status-red)" }}>
-                    <AlertCircle className="w-3 h-3" />{overdueCount} overdue
+                    <AlertCircle className="w-3 h-3" />{t("overdueCount", { count: overdueCount })}
                   </span>
                 )}
-                <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{scheduledCount} upcoming</span>
+                <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{t("upcomingCount", { count: scheduledCount })}</span>
               </div>
             </div>
             {/* View toggle */}
@@ -105,12 +107,12 @@ export default function SchedulePage() {
               <button onClick={() => setView("calendar")}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors"
                 style={{ backgroundColor: view === "calendar" ? "var(--brand-blue)" : "var(--surface-1)", color: view === "calendar" ? "white" : "var(--foreground-muted)" }}>
-                <Calendar className="w-3.5 h-3.5" />Calendar
+                <Calendar className="w-3.5 h-3.5" />{t("calendar")}
               </button>
               <button onClick={() => setView("list")}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors"
                 style={{ backgroundColor: view === "list" ? "var(--brand-blue)" : "var(--surface-1)", color: view === "list" ? "white" : "var(--foreground-muted)" }}>
-                <List className="w-3.5 h-3.5" />List
+                <List className="w-3.5 h-3.5" />{t("list")}
               </button>
             </div>
           </div>
@@ -254,12 +256,13 @@ export default function SchedulePage() {
 function DayDetail({ selectedDay, pms, onClose, onSelectPM }: {
   selectedDay: string; pms: PM[]; onClose: () => void; onSelectPM: (pm: PM) => void;
 }) {
+  const t = useTranslations("schedule");
   const [, m, d] = selectedDay.split("-");
   return (
     <div className="mt-4 card p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-          {MONTHS[parseInt(m) - 1]} {parseInt(d)} — {pms.length} PM{pms.length !== 1 ? "s" : ""}
+          {MONTHS[parseInt(m) - 1]} {parseInt(d)} — {pms.length !== 1 ? t("pmCountPlural", { count: pms.length }) : t("pmCount", { count: pms.length })}
         </h3>
         <button onClick={onClose} style={{ color: "var(--foreground-subtle)" }}>
           <X className="w-4 h-4" />
@@ -289,6 +292,8 @@ function DayDetail({ selectedDay, pms, onClose, onSelectPM }: {
 }
 
 function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onComplete: () => void }) {
+  const t = useTranslations("schedule");
+  const tCommon = useTranslations("common");
   const cfg = STATUS_CFG[pm.status];
   return (
     <>
@@ -304,12 +309,12 @@ function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onC
         </div>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "Asset",      value: pm.asset,                Icon: Calendar },
-            { label: "Status",     value: cfg.label,               Icon: Clock },
-            { label: "Tech",       value: pm.tech,                 Icon: User },
-            { label: "Duration",   value: `${pm.durationH}h est.`, Icon: Clock },
-            { label: "Recurrence", value: pm.recur,                Icon: RotateCcw },
-            { label: "Due Date",   value: pm.date,                 Icon: Calendar },
+            { label: t("fields.asset"),      value: pm.asset,                Icon: Calendar },
+            { label: t("fields.status"),     value: cfg.label,               Icon: Clock },
+            { label: t("fields.tech"),       value: pm.tech,                 Icon: User },
+            { label: t("fields.duration"),   value: `${pm.durationH}h est.`, Icon: Clock },
+            { label: t("fields.recurrence"), value: pm.recur,                Icon: RotateCcw },
+            { label: t("fields.dueDate"),    value: pm.date,                 Icon: Calendar },
           ].map(({ label, value, Icon }) => (
             <div key={label} className="p-3 rounded-lg" style={{ backgroundColor: "var(--surface-1)" }}>
               <div className="flex items-center gap-1 mb-1">
@@ -323,11 +328,11 @@ function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onC
         <div className="flex gap-2">
           <button onClick={onComplete} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"
             style={{ backgroundColor: "#16A34A" }}>
-            Mark Complete
+            {t("markComplete")}
           </button>
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border"
             style={{ borderColor: "var(--border)", color: "var(--foreground-muted)", backgroundColor: "var(--surface-0)" }}>
-            Close
+            {tCommon("close")}
           </button>
         </div>
       </div>

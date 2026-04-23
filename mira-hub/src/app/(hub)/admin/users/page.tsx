@@ -6,6 +6,7 @@ import { UserPlus, Search, MoreHorizontal, CheckCircle2, XCircle, ShieldCheck } 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useTranslations } from "next-intl";
 
 type User = {
   id: string;
@@ -36,6 +37,10 @@ const INITIAL_USERS: User[] = [
 ];
 
 export default function AdminUsersPage() {
+  const t = useTranslations("admin");
+  const tStatus = useTranslations("status");
+  const tCommon = useTranslations("common");
+
   const [users, setUsers] = useState<User[]>(INITIAL_USERS);
   const [query, setQuery] = useState("");
   const [showInvite, setShowInvite] = useState(false);
@@ -77,20 +82,20 @@ export default function AdminUsersPage() {
         <div className="px-4 md:px-6 pt-3 pb-3">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>Users</h1>
+              <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("usersTab")}</h1>
               <div className="flex gap-3 mt-0.5">
-                <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{activeCount} active · {users.length - activeCount} inactive</span>
+                <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{activeCount} {tStatus("active")} · {users.length - activeCount} {tStatus("inactive")}</span>
               </div>
             </div>
             <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setShowInvite(true)}>
-              <UserPlus className="w-3.5 h-3.5" />Invite
+              <UserPlus className="w-3.5 h-3.5" />{t("inviteUser")}
             </Button>
           </div>
 
           {/* Role sub-nav */}
           <div className="flex gap-4 text-xs border-t pt-2" style={{ borderColor: "var(--border)" }}>
-            <Link href="/admin/users" className="font-semibold pb-1 border-b-2" style={{ color: "var(--brand-blue)", borderColor: "var(--brand-blue)" }}>Users</Link>
-            <Link href="/admin/roles" className="pb-1 border-b-2 border-transparent" style={{ color: "var(--foreground-muted)" }}>Roles & Permissions</Link>
+            <Link href="/admin/users" className="font-semibold pb-1 border-b-2" style={{ color: "var(--brand-blue)", borderColor: "var(--brand-blue)" }}>{t("usersTab")}</Link>
+            <Link href="/admin/roles" className="pb-1 border-b-2 border-transparent" style={{ color: "var(--foreground-muted)" }}>{t("rolesTab")}</Link>
           </div>
         </div>
       </div>
@@ -99,18 +104,18 @@ export default function AdminUsersPage() {
         {/* Invite form */}
         {showInvite && (
           <div className="card p-4 space-y-3">
-            <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Invite New User</h3>
+            <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{t("inviteUser")}</h3>
             <Input placeholder="Email address" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
             <div className="flex gap-2">
               <select value={inviteRole} onChange={e => setInviteRole(e.target.value as User["role"])}
                 className="flex-1 text-xs px-3 py-2 rounded-lg border"
                 style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)", color: "var(--foreground)" }}>
                 {(["technician","operator","scheduler","manager","admin"] as User["role"][]).map(r => (
-                  <option key={r} value={r} className="capitalize">{r}</option>
+                  <option key={r} value={r}>{t(`roles.${r}`)}</option>
                 ))}
               </select>
-              <Button size="sm" className="h-9" onClick={sendInvite}>Send Invite</Button>
-              <Button size="sm" variant="outline" className="h-9" onClick={() => setShowInvite(false)}>Cancel</Button>
+              <Button size="sm" className="h-9" onClick={sendInvite}>{t("inviteUser")}</Button>
+              <Button size="sm" variant="outline" className="h-9" onClick={() => setShowInvite(false)}>{tCommon("cancel")}</Button>
             </div>
           </div>
         )}
@@ -118,7 +123,7 @@ export default function AdminUsersPage() {
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--foreground-subtle)" }} />
-          <Input placeholder="Search users…" value={query} onChange={e => setQuery(e.target.value)} className="pl-9" />
+          <Input placeholder={`${tCommon("search")}…`} value={query} onChange={e => setQuery(e.target.value)} className="pl-9" />
         </div>
 
         {/* Desktop table */}
@@ -147,14 +152,14 @@ export default function AdminUsersPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <Badge variant={ROLE_BADGE[u.role]} className="text-[10px] capitalize">{u.role}</Badge>
+                    <Badge variant={ROLE_BADGE[u.role]} className="text-[10px]">{t(`roles.${u.role}`)}</Badge>
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: "var(--foreground-muted)" }}>{u.dept}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: "var(--foreground-muted)" }}>{u.lastActive}</td>
                   <td className="px-4 py-3">
                     {u.active
-                      ? <span className="flex items-center gap-1 text-xs" style={{ color: "#16A34A" }}><CheckCircle2 className="w-3.5 h-3.5" />Active</span>
-                      : <span className="flex items-center gap-1 text-xs" style={{ color: "#94A3B8" }}><XCircle className="w-3.5 h-3.5" />Inactive</span>
+                      ? <span className="flex items-center gap-1 text-xs" style={{ color: "#16A34A" }}><CheckCircle2 className="w-3.5 h-3.5" />{tStatus("active")}</span>
+                      : <span className="flex items-center gap-1 text-xs" style={{ color: "#94A3B8" }}><XCircle className="w-3.5 h-3.5" />{tStatus("inactive")}</span>
                     }
                   </td>
                   <td className="px-4 py-3">
@@ -168,7 +173,7 @@ export default function AdminUsersPage() {
                           <button onClick={() => toggleActive(u.id)}
                             className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--surface-1)] transition-colors"
                             style={{ color: u.active ? "#DC2626" : "#16A34A" }}>
-                            {u.active ? "Deactivate" : "Reactivate"}
+                            {u.active ? tStatus("inactive") : tStatus("active")}
                           </button>
                         </div>
                       )}
@@ -192,8 +197,8 @@ export default function AdminUsersPage() {
                 <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>{u.name}</p>
                 <p className="text-[11px] truncate" style={{ color: "var(--foreground-subtle)" }}>{u.email}</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge variant={ROLE_BADGE[u.role]} className="text-[10px] capitalize">{u.role}</Badge>
-                  {!u.active && <span className="text-[10px]" style={{ color: "#94A3B8" }}>Inactive</span>}
+                  <Badge variant={ROLE_BADGE[u.role]} className="text-[10px]">{t(`roles.${u.role}`)}</Badge>
+                  {!u.active && <span className="text-[10px]" style={{ color: "#94A3B8" }}>{tStatus("inactive")}</span>}
                 </div>
               </div>
             </div>

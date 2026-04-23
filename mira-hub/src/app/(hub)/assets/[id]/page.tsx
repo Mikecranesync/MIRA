@@ -2,6 +2,7 @@
 
 import { useState, use } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   ArrowLeft, Bot, Wrench, FileText, Package, Activity,
   CheckCircle2, AlertTriangle, AlertCircle, Clock,
@@ -73,6 +74,7 @@ const EVENT_ICON: Record<string, { Icon: React.ElementType; color: string }> = {
 };
 
 export default function AssetDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const t = useTranslations("assets");
   const { id } = use(params);
   const asset = ASSETS[id] ?? ASSETS["1"];
   const statusCfg = STATUS_CONFIG[asset.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.operational;
@@ -86,7 +88,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
         <div className="px-4 md:px-6 pt-3 pb-0">
           <Link href="/assets" className="inline-flex items-center gap-1 text-xs mb-2"
             style={{ color: "var(--brand-blue)" }}>
-            <ArrowLeft className="w-3.5 h-3.5" /> Assets
+            <ArrowLeft className="w-3.5 h-3.5" /> {t("title")}
           </Link>
 
           <div className="flex items-start justify-between gap-3 mb-3">
@@ -120,7 +122,11 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
                   color: activeTab === tab ? "var(--brand-blue)" : "var(--foreground-muted)",
                 }}
               >
-                {tab === "workorders" ? "Work Orders" : tab}
+                {tab === "workorders" ? t("tabs.workOrders") :
+                 tab === "overview"   ? t("tabs.details") :
+                 tab === "activity"   ? t("tabs.activity") :
+                 tab === "documents"  ? t("tabs.documents") :
+                 tab === "parts"      ? t("tabs.parts") : tab}
               </button>
             ))}
           </div>
@@ -141,6 +147,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
 
 /* ─── Overview Tab ──────────────────────────────────────────────────── */
 function OverviewTab({ asset }: { asset: typeof ASSETS["1"] }) {
+  const t = useTranslations("assets");
   return (
     <div className="space-y-4">
       {/* Chat CTA */}
@@ -155,14 +162,14 @@ function OverviewTab({ asset }: { asset: typeof ASSETS["1"] }) {
       {/* Info grid */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { label: "OEM", value: asset.oem, Icon: Cpu },
-          { label: "Model", value: asset.model, Icon: Cpu },
-          { label: "Serial #", value: asset.serial, Icon: Cpu },
-          { label: "Type", value: asset.type, Icon: Wrench },
-          { label: "Location", value: asset.location, Icon: MapPin },
-          { label: "Installed", value: asset.installed, Icon: Calendar },
-          { label: "Last PM", value: asset.lastPM, Icon: Calendar },
-          { label: "Next PM", value: asset.nextPM, Icon: Calendar },
+          { label: t("manufacturer"), value: asset.oem, Icon: Cpu },
+          { label: t("model"), value: asset.model, Icon: Cpu },
+          { label: t("serialNumber"), value: asset.serial, Icon: Cpu },
+          { label: t("category"), value: asset.type, Icon: Wrench },
+          { label: t("location"), value: asset.location, Icon: MapPin },
+          { label: t("installDate"), value: asset.installed, Icon: Calendar },
+          { label: t("lastPM"), value: asset.lastPM, Icon: Calendar },
+          { label: t("nextPM"), value: asset.nextPM, Icon: Calendar },
         ].map(({ label, value, Icon }) => (
           <div key={label} className="card p-3">
             <div className="flex items-center gap-1.5 mb-1">
@@ -220,6 +227,7 @@ function ActivityTab() {
 
 /* ─── Work Orders Tab ───────────────────────────────────────────────── */
 function WorkOrdersTab() {
+  const tWo = useTranslations("workorders");
   const STATUS_VARIANT: Record<string, "open" | "inprogress" | "completed" | "overdue"> = {
     open: "open", "in-progress": "inprogress", completed: "completed", overdue: "overdue",
   };
@@ -230,7 +238,7 @@ function WorkOrdersTab() {
     <div className="space-y-3">
       <Link href="/workorders/new">
         <Button variant="outline" size="sm" className="w-full">
-          <Wrench className="w-3.5 h-3.5 mr-1.5" /> Create Work Order for this Asset
+          <Wrench className="w-3.5 h-3.5 mr-1.5" /> {tWo("new")}
         </Button>
       </Link>
       {WO_LIST.map((wo) => (
@@ -289,10 +297,11 @@ function DocumentsTab() {
 
 /* ─── Parts Tab ─────────────────────────────────────────────────────── */
 function PartsTab() {
+  const tParts = useTranslations("parts");
   const STOCK_STYLE = {
-    ok:  { color: "#16A34A", bg: "#DCFCE7", label: "In Stock" },
-    low: { color: "#EAB308", bg: "#FEF9C3", label: "Low Stock" },
-    out: { color: "#DC2626", bg: "#FEE2E2", label: "Out of Stock" },
+    ok:  { color: "#16A34A", bg: "#DCFCE7", label: tParts("stockStatus.ok") },
+    low: { color: "#EAB308", bg: "#FEF9C3", label: tParts("stockStatus.low") },
+    out: { color: "#DC2626", bg: "#FEE2E2", label: tParts("stockStatus.out") },
   };
   // Map local part ids to real part ids
   const partIdMap: Record<string, string> = { "P-001": "P-001", "P-015": "P-002", "P-022": "P-003", "P-031": "P-007" };
@@ -324,7 +333,7 @@ function PartsTab() {
         );
       })}
       <Link href="/parts" className="text-xs font-medium" style={{ color: "var(--brand-blue)" }}>
-        View all parts →
+        {tParts("title")} →
       </Link>
     </div>
   );

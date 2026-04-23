@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
@@ -18,6 +19,8 @@ const PRIORITIES = [
 
 export default function NewRequestPage() {
   const router = useRouter();
+  const t = useTranslations("requests");
+  const tc = useTranslations("common");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [asset, setAsset] = useState("");
@@ -38,7 +41,7 @@ export default function NewRequestPage() {
           <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: "#DCFCE7" }}>
             <CheckCircle2 className="w-8 h-8" style={{ color: "#16A34A" }} />
           </div>
-          <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--foreground)" }}>Request Submitted</h2>
+          <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--foreground)" }}>{t("submitted")}</h2>
           <p className="text-sm" style={{ color: "var(--foreground-muted)" }}>Your request has been sent to the maintenance team for review.</p>
           <p className="text-xs mt-3" style={{ color: "var(--foreground-subtle)" }}>Redirecting to requests…</p>
         </div>
@@ -53,22 +56,22 @@ export default function NewRequestPage() {
           <Link href="/requests" className="inline-flex items-center gap-1 text-xs mb-2" style={{ color: "var(--brand-blue)" }}>
             <ArrowLeft className="w-3.5 h-3.5" />Requests
           </Link>
-          <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>New Maintenance Request</h1>
+          <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("newRequest")}</h1>
         </div>
       </div>
 
       <div className="px-4 md:px-6 py-5 max-w-xl space-y-5">
         <div>
-          <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: "var(--foreground-subtle)" }}>Issue Title *</label>
-          <Input placeholder="e.g. Pump making grinding noise" value={title} onChange={e => setTitle(e.target.value)} />
+          <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: "var(--foreground-subtle)" }}>{t("form.titleLabel")} *</label>
+          <Input placeholder={t("form.titlePlaceholder")} value={title} onChange={e => setTitle(e.target.value)} />
         </div>
 
         <div>
-          <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: "var(--foreground-subtle)" }}>Asset / Equipment *</label>
+          <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: "var(--foreground-subtle)" }}>{t("form.assetLabel")} *</label>
           <select value={asset} onChange={e => setAsset(e.target.value)}
             className="w-full text-sm px-3 py-2.5 rounded-lg border"
             style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)", color: "var(--foreground)" }}>
-            <option value="">Select an asset…</option>
+            <option value="">{t("form.assetPlaceholder")}</option>
             {ASSETS.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
@@ -84,7 +87,7 @@ export default function NewRequestPage() {
         </div>
 
         <div>
-          <label className="text-xs font-semibold uppercase tracking-wide mb-2 block" style={{ color: "var(--foreground-subtle)" }}>Priority / Urgency</label>
+          <label className="text-xs font-semibold uppercase tracking-wide mb-2 block" style={{ color: "var(--foreground-subtle)" }}>{t("form.priorityLabel")}</label>
           <div className="grid grid-cols-2 gap-2">
             {PRIORITIES.map(p => (
               <button key={p.value} onClick={() => setPriority(p.value)}
@@ -101,8 +104,8 @@ export default function NewRequestPage() {
         </div>
 
         <div>
-          <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: "var(--foreground-subtle)" }}>Description</label>
-          <textarea rows={4} placeholder="Describe the issue — when it started, what you observed, any sounds or smells…"
+          <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: "var(--foreground-subtle)" }}>{t("form.descriptionLabel")}</label>
+          <textarea rows={4} placeholder={t("form.descriptionPlaceholder")}
             value={description} onChange={e => setDescription(e.target.value)}
             className="w-full text-sm px-3 py-2.5 rounded-lg border resize-none"
             style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)", color: "var(--foreground)" }} />
@@ -110,10 +113,10 @@ export default function NewRequestPage() {
 
         <Button onClick={submit} className="w-full h-11 text-sm font-semibold"
           style={!title || !asset ? { opacity: 0.5, pointerEvents: "none" } : {}}>
-          Submit Request
+          {t("submitButton")}
         </Button>
         <Link href="/requests">
-          <Button variant="outline" className="w-full h-10 text-sm">Cancel</Button>
+          <Button variant="outline" className="w-full h-10 text-sm">{tc("cancel")}</Button>
         </Link>
       </div>
     </div>

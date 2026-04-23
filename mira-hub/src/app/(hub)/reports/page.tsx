@@ -5,6 +5,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { TrendingDown, TrendingUp, Clock, Wrench, CheckCircle2, AlertTriangle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /* ─── Mock data ─────────────────────────────────────────────────────── */
 const KPI = [
@@ -49,6 +50,8 @@ const PM_COLORS = ["#16A34A", "#DC2626", "#EAB308"];
 
 /* ─── Page ──────────────────────────────────────────────────────────── */
 export default function ReportsPage() {
+  const t = useTranslations("reports");
+
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
       {/* Header */}
@@ -56,8 +59,8 @@ export default function ReportsPage() {
         style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>Reports & Dashboard</h1>
-            <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>Last 30 days · Updated just now</p>
+            <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
+            <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>{t("subtitle")}</p>
           </div>
         </div>
       </div>

@@ -1,0 +1,370 @@
+{
+  "nav": {
+    "feed": "Registro de actividad",
+    "workOrders": "Órdenes de trabajo",
+    "assets": "Equipos",
+    "schedule": "Programa",
+    "requests": "Solicitudes",
+    "parts": "Refacciones",
+    "documents": "Documentos",
+    "reports": "Reportes",
+    "cmms": "CMMS",
+    "team": "Equipo",
+    "admin": "Administración",
+    "more": "Más",
+    "signOut": "Cerrar sesión"
+  },
+  "app": {
+    "name": "FactoryLM",
+    "tagline": "Para equipos de mantenimiento que ya son buenos y quieren ser excelentes",
+    "platform": "Plataforma de Mantenimiento Industrial",
+    "platformShort": "Plataforma de Inteligencia de Mantenimiento"
+  },
+  "theme": {
+    "dark": "Modo oscuro",
+    "light": "Modo claro"
+  },
+  "language": {
+    "select": "Idioma",
+    "en": "English",
+    "es": "Español",
+    "hi": "हिन्दी",
+    "zh": "中文"
+  },
+  "auth": {
+    "signIn": "Iniciar sesión en su cuenta",
+    "email": "Correo electrónico",
+    "emailPlaceholder": "usted@empresa.com",
+    "password": "Contraseña",
+    "signInButton": "Iniciar sesión",
+    "signingIn": "Iniciando sesión…",
+    "invalidCredentials": "Credenciales incorrectas",
+    "demo": "Demo"
+  },
+  "common": {
+    "submit": "Enviar",
+    "approve": "Aprobar",
+    "reject": "Rechazar",
+    "complete": "Completar",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "create": "Crear",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "add": "Agregar",
+    "close": "Cerrar",
+    "back": "Regresar",
+    "view": "Ver",
+    "upload": "Subir",
+    "download": "Descargar",
+    "open": "Abrir",
+    "loading": "Cargando…",
+    "noResults": "Sin resultados",
+    "required": "Requerido",
+    "optional": "Opcional",
+    "all": "Todos",
+    "new": "Nuevo",
+    "status": "Estado",
+    "type": "Tipo",
+    "date": "Fecha",
+    "location": "Ubicación",
+    "description": "Descripción",
+    "notes": "Notas",
+    "actions": "Acciones",
+    "details": "Detalles",
+    "asset": "Equipo",
+    "comingSoon": "Próximamente"
+  },
+  "status": {
+    "open": "Abierto",
+    "inProgress": "En progreso",
+    "completed": "Completado",
+    "overdue": "Vencido",
+    "scheduled": "Programado",
+    "pending": "Pendiente",
+    "approved": "Aprobado",
+    "rejected": "Rechazado",
+    "converted": "Convertido a OT",
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "maintenance": "Mantenimiento",
+    "available": "Disponible",
+    "onJob": "En trabajo",
+    "offDuty": "Fuera de turno",
+    "draft": "Borrador",
+    "superseded": "Reemplazado",
+    "underReview": "En revisión"
+  },
+  "priority": {
+    "low": "Bajo",
+    "medium": "Medio",
+    "high": "Alto",
+    "critical": "Crítico"
+  },
+  "feed": {
+    "title": "Registro de actividad",
+    "newRequest": "Nueva solicitud",
+    "allCaughtUp": "¡Todo al día!",
+    "noActivity": "Sin actividad nueva",
+    "markRead": "Marcar como leído",
+    "dismiss": "Descartar",
+    "showMore": "Ver más",
+    "showLess": "Ver menos",
+    "playBrief": "Reproducir resumen",
+    "stopBrief": "Detener",
+    "auditTrail": "Historial de auditoría",
+    "acknowledge": "Confirmar",
+    "addNote": "Agregar nota",
+    "kpi": {
+      "openWorkOrders": "Órdenes abiertas",
+      "overduePMs": "MPs vencidos",
+      "downtimeToday": "Paro hoy",
+      "wrenchTime": "Tiempo de herramienta"
+    }
+  },
+  "workorders": {
+    "title": "Órdenes de trabajo",
+    "new": "Nueva orden de trabajo",
+    "startWork": "Iniciar trabajo",
+    "resume": "Reanudar",
+    "pause": "Pausar",
+    "markComplete": "Marcar como completado",
+    "timeTracker": "Control de tiempo",
+    "estimated": "Est.",
+    "workInstructions": "Instrucciones de trabajo",
+    "partsUsed": "Refacciones usadas",
+    "logPart": "Registrar refacción",
+    "searchParts": "Buscar refacciones…",
+    "noPartsLogged": "Sin refacciones registradas.",
+    "viewInventory": "Ver inventario →",
+    "comments": "Comentarios",
+    "addComment": "Agregar comentario…",
+    "noComments": "Sin comentarios.",
+    "photos": "Fotos",
+    "noPhotos": "Sin fotos adjuntas",
+    "addPhoto": "+ Agregar",
+    "viewMira": "Conversación MIRA",
+    "openCmms": "CMMS",
+    "assignedTo": "Asignado a",
+    "dueDate": "Fecha límite",
+    "created": "Creado",
+    "overdueWarning": "Esta OT está vencida — requiere atención inmediata.",
+    "completedMessage": "Orden completada. Equipo devuelto al servicio.",
+    "started": "Trabajo iniciado — tiempo corriendo",
+    "paused": "Tiempo pausado — {time} registrado",
+    "markedComplete": "Orden de trabajo marcada como completada ✓",
+    "commentAdded": "Comentario agregado",
+    "partAdded": "{name} agregado",
+    "noWorkOrders": "Sin órdenes de trabajo",
+    "createFirst": "Cree su primera orden de trabajo",
+    "filters": {
+      "all": "Todos",
+      "open": "Abierto",
+      "inProgress": "En progreso",
+      "scheduled": "Programado",
+      "completed": "Completado",
+      "overdue": "Vencido"
+    }
+  },
+  "assets": {
+    "title": "Equipos",
+    "searchPlaceholder": "Buscar equipos…",
+    "noAssets": "Sin equipos encontrados",
+    "lastPM": "Último MP",
+    "nextPM": "Próximo MP",
+    "category": "Categoría",
+    "manufacturer": "Fabricante",
+    "model": "Modelo",
+    "serialNumber": "Número de serie",
+    "installDate": "Fecha de instalación",
+    "tabs": {
+      "details": "Detalles",
+      "workOrders": "Órdenes",
+      "documents": "Documentos",
+      "parts": "Refacciones",
+      "activity": "Actividad"
+    },
+    "filters": {
+      "all": "Todos",
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "maintenance": "Mantenimiento"
+    }
+  },
+  "parts": {
+    "title": "Refacciones e inventario",
+    "searchPlaceholder": "Buscar refacciones…",
+    "addPart": "Agregar refacción",
+    "noParts": "Sin refacciones encontradas",
+    "partNumber": "Núm. parte",
+    "description": "Descripción",
+    "qtyOnHand": "Cant. disponible",
+    "location": "Ubicación",
+    "unitCost": "Costo unitario",
+    "reorderPoint": "Punto de reorden",
+    "leadTime": "Tiempo de entrega",
+    "orderHistory": "Historial de pedidos",
+    "logUsage": "Registrar uso",
+    "orderNow": "Ordenar",
+    "stockStatus": {
+      "ok": "OK",
+      "low": "Bajo",
+      "out": "Agotado"
+    },
+    "filters": {
+      "all": "Todas",
+      "low": "Stock bajo",
+      "out": "Agotado"
+    }
+  },
+  "schedule": {
+    "title": "Programa de MP",
+    "overdueCount": "{count} vencido",
+    "upcomingCount": "{count} próximos",
+    "calendar": "Calendario",
+    "list": "Lista",
+    "markComplete": "Marcar como completado",
+    "pmCount": "{count} MP",
+    "pmCountPlural": "{count} MPs",
+    "fields": {
+      "asset": "Equipo",
+      "status": "Estado",
+      "tech": "Técnico",
+      "duration": "Duración",
+      "recurrence": "Recurrencia",
+      "dueDate": "Fecha"
+    },
+    "recurrence": {
+      "weekly": "Semanal",
+      "biweekly": "Quincenal",
+      "monthly": "Mensual",
+      "quarterly": "Trimestral",
+      "annual": "Anual"
+    }
+  },
+  "requests": {
+    "title": "Solicitudes de mantenimiento",
+    "awaitingReview": "{count} en espera de revisión",
+    "newRequest": "Nueva solicitud",
+    "submitRequest": "Enviar solicitud",
+    "submitButton": "Enviar solicitud",
+    "noRequests": "Sin solicitudes en esta categoría",
+    "approvedNote": "Aprobado — cree una Orden de Trabajo para asignar y programar este trabajo.",
+    "submitted": "Solicitud enviada — equipo notificado",
+    "approvedToast": "Solicitud aprobada ✓",
+    "rejectedToast": "Solicitud rechazada",
+    "form": {
+      "titleLabel": "Título",
+      "titlePlaceholder": "Describa brevemente el problema…",
+      "assetLabel": "Equipo",
+      "assetPlaceholder": "Seleccionar equipo…",
+      "priorityLabel": "Prioridad",
+      "descriptionLabel": "Descripción",
+      "descriptionPlaceholder": "Más detalles…"
+    },
+    "filters": {
+      "all": "Todos",
+      "pending": "Pendiente",
+      "approved": "Aprobado",
+      "rejected": "Rechazado",
+      "converted": "Convertido"
+    }
+  },
+  "documents": {
+    "title": "Documentos",
+    "searchPlaceholder": "Buscar documentos…",
+    "upload": "Subir",
+    "noDocuments": "Sin documentos encontrados",
+    "askMira": "Consultar MIRA sobre este documento",
+    "viewMira": "Ver conversación MIRA",
+    "versionHistory": "Historial de versiones",
+    "linkedAssets": "Equipos relacionados",
+    "current": "Actual",
+    "categories": {
+      "manual": "Manual",
+      "schematic": "Esquema",
+      "partsList": "Lista de refacciones",
+      "safety": "Seguridad",
+      "certificate": "Certificado",
+      "warranty": "Garantía",
+      "sop": "POS"
+    },
+    "filters": {
+      "all": "Todos"
+    }
+  },
+  "reports": {
+    "title": "Reportes",
+    "subtitle": "Análisis y KPIs",
+    "comingSoon": "Análisis completo próximamente."
+  },
+  "team": {
+    "title": "Equipo",
+    "noMembers": "Sin miembros del equipo",
+    "filters": {
+      "all": "Todos los turnos",
+      "day": "Diurno",
+      "evening": "Vespertino",
+      "night": "Nocturno"
+    }
+  },
+  "admin": {
+    "title": "Administración",
+    "usersTab": "Usuarios",
+    "rolesTab": "Roles y permisos",
+    "inviteUser": "Invitar usuario",
+    "noUsers": "Sin usuarios encontrados",
+    "roles": {
+      "admin": "Administrador",
+      "manager": "Gerente",
+      "scheduler": "Programador",
+      "technician": "Técnico",
+      "operator": "Operador"
+    }
+  },
+  "cmms": {
+    "title": "Integración CMMS",
+    "connected": "Conectado a Atlas CMMS",
+    "notConfigured": "No configurado",
+    "openAtlas": "Abrir Atlas",
+    "openAtlasFull": "Abrir Atlas CMMS",
+    "summary": "Resumen CMMS",
+    "quickLinks": "Accesos directos",
+    "connectionSettings": "Configuración de conexión",
+    "connectTitle": "Conectar su CMMS",
+    "connectDesc": "Vincule Atlas CMMS para ver sus órdenes de trabajo, equipos y programa de MP en un solo lugar.",
+    "urlLabel": "URL del CMMS",
+    "urlPlaceholder": "https://su-cmms.factorylm.com",
+    "apiKeyLabel": "Clave de API",
+    "apiKeyPlaceholder": "sk-••••••••",
+    "newApiKeyLabel": "Nueva clave de API (dejar en blanco para conservar la actual)",
+    "connectButton": "Conectar Atlas CMMS",
+    "editSettings": "Editar configuración",
+    "disconnect": "Desconectar",
+    "adminContact": "Contacte a su administrador si no tiene credenciales de acceso.",
+    "connected_badge": "Conectado",
+    "open": "Abierto",
+    "inProgress": "En progreso",
+    "overdue": "Vencido",
+    "completedWOs": "Completado",
+    "totalAssets": "Total",
+    "activeAssets": "Activo",
+    "inactiveAssets": "Inactivo",
+    "scheduledPMs": "Programado",
+    "overduePMs": "Vencido"
+  },
+  "more": {
+    "title": "Más",
+    "items": {
+      "schedule": "Calendario de MP y tareas próximas",
+      "requests": "Enviar y revisar solicitudes de trabajo",
+      "documents": "Manuales, POSs y certificaciones",
+      "cmms": "Integración Atlas CMMS",
+      "reports": "Análisis y KPIs de mantenimiento",
+      "team": "Lista de técnicos y asignaciones",
+      "admin": "Usuarios, roles y configuración"
+    }
+  }
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useState, useEffect, useRef } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import {
   ArrowLeft, Play, Square, Bot, Package, MessageSquare,
@@ -43,6 +44,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
   const [showPartPicker, setShowPartPicker] = useState(false);
   const [partQuery, setPartQuery] = useState("");
   const { toast } = useToast();
+  const t = useTranslations("workorders");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -57,23 +59,23 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
   function startWork() {
     setStatus("inprogress");
     setTimerRunning(true);
-    toast("Work started — timer running");
+    toast(t("started"));
   }
   function stopTimer() {
     setTimerRunning(false);
-    toast(`Timer paused — ${formatTimer(elapsed)} logged`);
+    toast(t("paused", { time: formatTimer(elapsed) }));
   }
   function completeWO() {
     setTimerRunning(false);
     setStatus("completed");
-    toast("Work order marked complete ✓");
+    toast(t("markedComplete"));
   }
 
   function addComment() {
     if (!commentText.trim()) return;
     setComments(prev => [...prev, { author: "Mike H.", ts: new Date().toISOString().slice(0, 16).replace("T", " "), text: commentText }]);
     setCommentText("");
-    toast("Comment added");
+    toast(t("commentAdded"));
   }
 
   function addPart(part: typeof PARTS[number]) {
@@ -85,7 +87,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
     }
     setShowPartPicker(false);
     setPartQuery("");
-    toast(`${part.description} added`);
+    toast(t("partAdded", { name: part.description }));
   }
 
   const StatusIcon = STATUS_ICON[status];
@@ -99,7 +101,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
       <div className="sticky top-0 z-20 border-b" style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <div className="px-4 md:px-6 pt-3 pb-3">
           <Link href="/workorders" className="inline-flex items-center gap-1 text-xs mb-2" style={{ color: "var(--brand-blue)" }}>
-            <ArrowLeft className="w-3.5 h-3.5" />Work Orders
+            <ArrowLeft className="w-3.5 h-3.5" />{t("title")}
           </Link>
           <div className="flex items-start justify-between gap-2">
             <div>
@@ -125,26 +127,26 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
           <a href="https://t.me/FactoryLMDiagnose_bot" target="_blank" rel="noopener noreferrer" className="flex-1">
             <Button className="w-full h-10 gap-2 text-sm font-semibold"
               style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
-              <Bot className="w-4 h-4" />MIRA Conversation
+              <Bot className="w-4 h-4" />{t("viewMira")}
             </Button>
           </a>
           <a href={`https://app.factorylm.com/workorders/${wo.id}`} target="_blank" rel="noopener noreferrer">
             <Button variant="outline" className="h-10 gap-1.5 text-sm px-3">
-              <ExternalLink className="w-4 h-4" />CMMS
+              <ExternalLink className="w-4 h-4" />{t("openCmms")}
             </Button>
           </a>
         </div>
 
         {/* Time Tracker */}
         <div className="card p-4">
-          <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>Time Tracker</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>{t("timeTracker")}</h3>
           <div className="flex items-center justify-between">
             <div>
               <div className="text-3xl font-mono font-bold" style={{ color: timerRunning ? "var(--brand-blue)" : "var(--foreground)" }}>
                 {formatTimer(elapsed)}
               </div>
               <p className="text-xs mt-0.5" style={{ color: "var(--foreground-subtle)" }}>
-                Est. {wo.estimatedH}h · {wo.type}
+                {t("estimated")} {wo.estimatedH}h · {wo.type}
               </p>
             </div>
             <div className="flex gap-2">
@@ -152,11 +154,11 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
                 <Button size="sm" onClick={startWork} className="gap-1.5 h-9"
                   style={status === "completed" ? { opacity: 0.5, pointerEvents: "none" } : {}}>
                   <Play className="w-3.5 h-3.5" />
-                  {status === "open" || status === "scheduled" ? "Start Work" : "Resume"}
+                  {status === "open" || status === "scheduled" ? t("startWork") : t("resume")}
                 </Button>
               ) : (
                 <Button size="sm" variant="outline" onClick={stopTimer} className="gap-1.5 h-9">
-                  <Square className="w-3.5 h-3.5" />Pause
+                  <Square className="w-3.5 h-3.5" />{t("pause")}
                 </Button>
               )}
             </div>
@@ -166,10 +168,10 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
         {/* Info grid */}
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "Assigned To", value: wo.assignee, Icon: User },
-            { label: "Due Date",    value: wo.due,       Icon: Calendar },
-            { label: "Created",     value: wo.created,   Icon: Clock },
-            { label: "Type",        value: wo.type,      Icon: Wrench },
+            { label: t("assignedTo"), value: wo.assignee, Icon: User },
+            { label: t("dueDate"),    value: wo.due,       Icon: Calendar },
+            { label: t("created"),    value: wo.created,   Icon: Clock },
+            { label: t("type"),       value: wo.type,      Icon: Wrench },
           ].map(({ label, value, Icon }) => (
             <div key={label} className="card p-3">
               <div className="flex items-center gap-1.5 mb-1">
@@ -184,7 +186,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
         {/* Notes */}
         {wo.notes && (
           <div className="card p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--foreground-subtle)" }}>Work Instructions</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--foreground-subtle)" }}>{t("workInstructions")}</h3>
             <p className="text-sm leading-relaxed" style={{ color: "var(--foreground-muted)" }}>{wo.notes}</p>
           </div>
         )}
@@ -195,25 +197,25 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
             <Camera className="w-5 h-5" style={{ color: "var(--foreground-subtle)" }} />
           </div>
           <div className="flex-1">
-            <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>Photos</p>
-            <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>No photos attached</p>
+            <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{t("photos")}</p>
+            <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>{t("noPhotos")}</p>
           </div>
-          <Button variant="outline" size="sm" className="text-xs">+ Add</Button>
+          <Button variant="outline" size="sm" className="text-xs">+ {t("addPhoto")}</Button>
         </div>
 
         {/* Parts Used */}
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--foreground-subtle)" }}>Parts Used</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--foreground-subtle)" }}>{t("partsUsed")}</h3>
             <button onClick={() => setShowPartPicker(v => !v)}
               className="flex items-center gap-1 text-xs font-medium" style={{ color: "var(--brand-blue)" }}>
-              <Plus className="w-3.5 h-3.5" />Log Part
+              <Plus className="w-3.5 h-3.5" />{t("logPart")}
             </button>
           </div>
 
           {showPartPicker && (
             <div className="mb-3 p-3 rounded-lg border space-y-2" style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-1)" }}>
-              <input placeholder="Search parts…" value={partQuery} onChange={e => setPartQuery(e.target.value)}
+              <input placeholder={t("searchParts")} value={partQuery} onChange={e => setPartQuery(e.target.value)}
                 className="w-full text-xs px-3 py-2 rounded-lg border"
                 style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)", color: "var(--foreground)" }} />
               <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -230,7 +232,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
           )}
 
           {partsUsed.length === 0 ? (
-            <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>No parts logged yet.</p>
+            <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>{t("noPartsLogged")}</p>
           ) : (
             <div className="space-y-2">
               {partsUsed.map(p => (
@@ -246,7 +248,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
                 </div>
               ))}
               <Link href="/parts" className="text-xs font-medium mt-1 inline-block" style={{ color: "var(--brand-blue)" }}>
-                View inventory →
+                {t("viewInventory")} →
               </Link>
             </div>
           )}
@@ -254,9 +256,9 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
 
         {/* Comments */}
         <div className="card p-4">
-          <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>Comments</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>{t("comments")}</h3>
           <div className="space-y-3 mb-3">
-            {comments.length === 0 && <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>No comments yet.</p>}
+            {comments.length === 0 && <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>{t("noComments")}</p>}
             {comments.map((c, i) => (
               <div key={i} className="flex gap-2.5">
                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
@@ -275,7 +277,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
           </div>
           <div className="flex gap-2">
             <input value={commentText} onChange={e => setCommentText(e.target.value)}
-              placeholder="Add a comment…"
+              placeholder={t("addComment")}
               onKeyDown={e => e.key === "Enter" && addComment()}
               className="flex-1 text-xs px-3 py-2 rounded-lg border"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)", color: "var(--foreground)" }} />
@@ -291,18 +293,18 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
             {status === "inprogress" && (
               <Button onClick={completeWO} className="w-full h-11 gap-2 font-semibold"
                 style={{ backgroundColor: "#16A34A" }}>
-                <CheckCircle2 className="w-4 h-4" />Mark Complete
+                <CheckCircle2 className="w-4 h-4" />{t("markComplete")}
               </Button>
             )}
             {(status === "open" || status === "scheduled") && (
               <Button onClick={startWork} className="w-full h-11 gap-2 font-semibold">
-                <Play className="w-4 h-4" />Start Work
+                <Play className="w-4 h-4" />{t("startWork")}
               </Button>
             )}
             {status === "overdue" && (
               <div className="flex items-center gap-2 p-3 rounded-xl" style={{ backgroundColor: "#FEF2F2" }}>
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: "#DC2626" }} />
-                <p className="text-xs font-medium" style={{ color: "#DC2626" }}>This WO is overdue — needs immediate attention.</p>
+                <p className="text-xs font-medium" style={{ color: "#DC2626" }}>{t("overdueWarning")}</p>
               </div>
             )}
           </div>
@@ -310,7 +312,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
         {status === "completed" && (
           <div className="flex items-center gap-2 p-3 rounded-xl" style={{ backgroundColor: "#DCFCE7" }}>
             <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: "#16A34A" }} />
-            <p className="text-xs font-medium" style={{ color: "#16A34A" }}>Work order completed. Asset returned to service.</p>
+            <p className="text-xs font-medium" style={{ color: "#16A34A" }}>{t("completedMessage")}</p>
           </div>
         )}
       </div>

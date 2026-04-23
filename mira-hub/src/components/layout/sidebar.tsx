@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   LayoutDashboard, ClipboardList, Wrench, Calendar,
   MessageSquare, Package, FileText, BarChart2, Users, Settings,
@@ -11,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/providers/access-control";
 import { useTheme } from "@/providers/theme-provider";
+import { LanguageSelector } from "@/components/ui/language-selector";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, ClipboardList, Wrench, Calendar,
@@ -21,10 +23,30 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const t = useTranslations("nav");
+  const tTheme = useTranslations("theme");
 
   const visible = NAV_ITEMS.filter((item) =>
     (item.roles as readonly string[]).includes(role)
   );
+
+  function navLabel(key: string): string {
+    const map: Record<string, string> = {
+      "feed":         t("feed"),
+      "workorders":   t("workOrders"),
+      "assets":       t("assets"),
+      "schedule":     t("schedule"),
+      "requests":     t("requests"),
+      "parts":        t("parts"),
+      "documents":    t("documents"),
+      "reports":      t("reports"),
+      "cmms":         t("cmms"),
+      "team":         t("team"),
+      "admin/users":  t("admin"),
+      "admin/roles":  t("admin"),
+    };
+    return map[key] ?? key;
+  }
 
   return (
     <aside
@@ -75,12 +97,13 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
         {visible.map((item) => {
           const Icon = ICON_MAP[item.icon] ?? Settings;
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
+          const label = navLabel(item.key);
 
           return (
             <Link
               key={item.key}
               href={item.href}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? label : undefined}
               className={cn(
                 "flex items-center rounded-lg text-sm font-medium transition-all duration-150 group",
                 collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5"
@@ -99,9 +122,8 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
               }}
             >
               <Icon className="w-4.5 h-4.5 flex-shrink-0" style={{ width: 18, height: 18 }} />
-              {!collapsed && <span className="nav-label text-sm">{item.label}</span>}
+              {!collapsed && <span className="nav-label text-sm">{label}</span>}
 
-              {/* Active indicator dot when collapsed */}
               {collapsed && active && (
                 <span className="absolute left-0 w-0.5 h-5 rounded-r-full"
                   style={{ backgroundColor: "var(--brand-blue)" }} />
@@ -112,13 +134,16 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       </nav>
 
       {/* User section */}
-      <div className="p-3 space-y-2" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
-        {/* Tagline (expanded only) */}
+      <div className="p-3 space-y-1" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
+        {/* Tagline */}
         {!collapsed && (
           <p className="text-[10px] text-center leading-tight pb-1" style={{ color: "#475569" }}>
             Maintenance Intelligence Platform
           </p>
         )}
+
+        {/* Language selector */}
+        <LanguageSelector collapsed={collapsed} />
 
         {/* Dark mode toggle */}
         <button onClick={toggleTheme}
@@ -126,14 +151,19 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
           style={{ color: "#64748B" }}
           onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--sidebar-hover)")}
           onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
-          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+          title={theme === "dark" ? tTheme("light") : tTheme("dark")}>
           {theme === "dark"
             ? <Sun className="w-4 h-4 flex-shrink-0" />
             : <Moon className="w-4 h-4 flex-shrink-0" />
           }
-          {!collapsed && <span className="ml-3 text-xs">{theme === "dark" ? "Light mode" : "Dark mode"}</span>}
+          {!collapsed && (
+            <span className="ml-3 text-xs">
+              {theme === "dark" ? tTheme("light") : tTheme("dark")}
+            </span>
+          )}
         </button>
 
+        {/* User */}
         {collapsed ? (
           <div className="flex justify-center">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
@@ -154,7 +184,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
             <button
               className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
               style={{ color: "#64748B" }}
-              title="Sign out"
+              title={t("signOut")}
             >
               <LogOut className="w-4 h-4" />
             </button>

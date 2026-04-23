@@ -1,0 +1,370 @@
+{
+  "nav": {
+    "feed": "गतिविधि फ़ीड",
+    "workOrders": "कार्य आदेश",
+    "assets": "उपकरण",
+    "schedule": "कार्यक्रम",
+    "requests": "अनुरोध",
+    "parts": "पुर्जे",
+    "documents": "दस्तावेज़",
+    "reports": "रिपोर्ट",
+    "cmms": "CMMS",
+    "team": "टीम",
+    "admin": "प्रशासन",
+    "more": "और",
+    "signOut": "साइन आउट"
+  },
+  "app": {
+    "name": "FactoryLM",
+    "tagline": "उन रखरखाव टीमों के लिए जो पहले से अच्छी हैं और बेहतरीन बनना चाहती हैं",
+    "platform": "औद्योगिक रखरखाव मंच",
+    "platformShort": "रखरखाव इंटेलिजेंस मंच"
+  },
+  "theme": {
+    "dark": "डार्क मोड",
+    "light": "लाइट मोड"
+  },
+  "language": {
+    "select": "भाषा",
+    "en": "English",
+    "es": "Español",
+    "hi": "हिन्दी",
+    "zh": "中文"
+  },
+  "auth": {
+    "signIn": "अपने खाते में साइन इन करें",
+    "email": "ईमेल पता",
+    "emailPlaceholder": "aap@company.com",
+    "password": "पासवर्ड",
+    "signInButton": "साइन इन करें",
+    "signingIn": "साइन इन हो रहा है…",
+    "invalidCredentials": "गलत लॉगिन जानकारी",
+    "demo": "डेमो"
+  },
+  "common": {
+    "submit": "जमा करें",
+    "approve": "स्वीकृत करें",
+    "reject": "अस्वीकृत करें",
+    "complete": "पूर्ण करें",
+    "cancel": "रद्द करें",
+    "save": "सहेजें",
+    "create": "बनाएं",
+    "edit": "संपादित करें",
+    "delete": "हटाएं",
+    "search": "खोजें",
+    "filter": "फ़िल्टर",
+    "add": "जोड़ें",
+    "close": "बंद करें",
+    "back": "वापस",
+    "view": "देखें",
+    "upload": "अपलोड",
+    "download": "डाउनलोड",
+    "open": "खोलें",
+    "loading": "लोड हो रहा है…",
+    "noResults": "कोई परिणाम नहीं",
+    "required": "आवश्यक",
+    "optional": "वैकल्पिक",
+    "all": "सभी",
+    "new": "नया",
+    "status": "स्थिति",
+    "type": "प्रकार",
+    "date": "तारीख",
+    "location": "स्थान",
+    "description": "विवरण",
+    "notes": "नोट्स",
+    "actions": "कार्रवाई",
+    "details": "विवरण",
+    "asset": "उपकरण",
+    "comingSoon": "जल्द आ रहा है"
+  },
+  "status": {
+    "open": "खुला",
+    "inProgress": "प्रगति में",
+    "completed": "पूर्ण",
+    "overdue": "विलंबित",
+    "scheduled": "निर्धारित",
+    "pending": "लंबित",
+    "approved": "स्वीकृत",
+    "rejected": "अस्वीकृत",
+    "converted": "WO में परिवर्तित",
+    "active": "सक्रिय",
+    "inactive": "निष्क्रिय",
+    "maintenance": "रखरखाव",
+    "available": "उपलब्ध",
+    "onJob": "काम पर",
+    "offDuty": "ड्यूटी से बाहर",
+    "draft": "मसौदा",
+    "superseded": "प्रतिस्थापित",
+    "underReview": "समीक्षाधीन"
+  },
+  "priority": {
+    "low": "कम",
+    "medium": "मध्यम",
+    "high": "उच्च",
+    "critical": "अति महत्वपूर्ण"
+  },
+  "feed": {
+    "title": "गतिविधि फ़ीड",
+    "newRequest": "नया अनुरोध",
+    "allCaughtUp": "सब अद्यतन है!",
+    "noActivity": "कोई नई गतिविधि नहीं",
+    "markRead": "पढ़ा हुआ चिह्नित करें",
+    "dismiss": "खारिज करें",
+    "showMore": "और दिखाएं",
+    "showLess": "कम दिखाएं",
+    "playBrief": "संक्षेप सुनें",
+    "stopBrief": "रोकें",
+    "auditTrail": "ऑडिट ट्रेल",
+    "acknowledge": "स्वीकार करें",
+    "addNote": "नोट जोड़ें",
+    "kpi": {
+      "openWorkOrders": "खुले कार्य आदेश",
+      "overduePMs": "विलंबित PM",
+      "downtimeToday": "आज का डाउनटाइम",
+      "wrenchTime": "कार्य समय"
+    }
+  },
+  "workorders": {
+    "title": "कार्य आदेश",
+    "new": "नया कार्य आदेश",
+    "startWork": "काम शुरू करें",
+    "resume": "फिर शुरू करें",
+    "pause": "रोकें",
+    "markComplete": "पूर्ण के रूप में चिह्नित करें",
+    "timeTracker": "समय ट्रैकर",
+    "estimated": "अनु.",
+    "workInstructions": "कार्य निर्देश",
+    "partsUsed": "उपयोग किए गए पुर्जे",
+    "logPart": "पुर्जा दर्ज करें",
+    "searchParts": "पुर्जे खोजें…",
+    "noPartsLogged": "कोई पुर्जा दर्ज नहीं।",
+    "viewInventory": "इन्वेंटरी देखें →",
+    "comments": "टिप्पणियां",
+    "addComment": "टिप्पणी जोड़ें…",
+    "noComments": "कोई टिप्पणी नहीं।",
+    "photos": "फ़ोटो",
+    "noPhotos": "कोई फ़ोटो संलग्न नहीं",
+    "addPhoto": "+ जोड़ें",
+    "viewMira": "MIRA वार्तालाप",
+    "openCmms": "CMMS",
+    "assignedTo": "सौंपा गया",
+    "dueDate": "नियत तारीख",
+    "created": "बनाया गया",
+    "overdueWarning": "यह WO विलंबित है — तत्काल ध्यान देने की जरूरत है।",
+    "completedMessage": "कार्य आदेश पूर्ण। उपकरण सेवा में वापस।",
+    "started": "काम शुरू — टाइमर चल रहा है",
+    "paused": "टाइमर रुका — {time} दर्ज",
+    "markedComplete": "कार्य आदेश पूर्ण चिह्नित ✓",
+    "commentAdded": "टिप्पणी जोड़ी गई",
+    "partAdded": "{name} जोड़ा गया",
+    "noWorkOrders": "कोई कार्य आदेश नहीं",
+    "createFirst": "अपना पहला कार्य आदेश बनाएं",
+    "filters": {
+      "all": "सभी",
+      "open": "खुला",
+      "inProgress": "प्रगति में",
+      "scheduled": "निर्धारित",
+      "completed": "पूर्ण",
+      "overdue": "विलंबित"
+    }
+  },
+  "assets": {
+    "title": "उपकरण",
+    "searchPlaceholder": "उपकरण खोजें…",
+    "noAssets": "कोई उपकरण नहीं मिला",
+    "lastPM": "पिछला PM",
+    "nextPM": "अगला PM",
+    "category": "श्रेणी",
+    "manufacturer": "निर्माता",
+    "model": "मॉडल",
+    "serialNumber": "सीरियल नंबर",
+    "installDate": "स्थापना तारीख",
+    "tabs": {
+      "details": "विवरण",
+      "workOrders": "कार्य आदेश",
+      "documents": "दस्तावेज़",
+      "parts": "पुर्जे",
+      "activity": "गतिविधि"
+    },
+    "filters": {
+      "all": "सभी",
+      "active": "सक्रिय",
+      "inactive": "निष्क्रिय",
+      "maintenance": "रखरखाव"
+    }
+  },
+  "parts": {
+    "title": "पुर्जे और इन्वेंटरी",
+    "searchPlaceholder": "पुर्जे खोजें…",
+    "addPart": "पुर्जा जोड़ें",
+    "noParts": "कोई पुर्जा नहीं मिला",
+    "partNumber": "पार्ट नं.",
+    "description": "विवरण",
+    "qtyOnHand": "उपलब्ध मात्रा",
+    "location": "स्थान",
+    "unitCost": "इकाई लागत",
+    "reorderPoint": "पुनः ऑर्डर बिंदु",
+    "leadTime": "लीड टाइम",
+    "orderHistory": "ऑर्डर इतिहास",
+    "logUsage": "उपयोग दर्ज करें",
+    "orderNow": "ऑर्डर करें",
+    "stockStatus": {
+      "ok": "ठीक",
+      "low": "कम",
+      "out": "स्टॉक खत्म"
+    },
+    "filters": {
+      "all": "सभी",
+      "low": "कम स्टॉक",
+      "out": "स्टॉक खत्म"
+    }
+  },
+  "schedule": {
+    "title": "PM कार्यक्रम",
+    "overdueCount": "{count} विलंबित",
+    "upcomingCount": "{count} आगामी",
+    "calendar": "कैलेंडर",
+    "list": "सूची",
+    "markComplete": "पूर्ण चिह्नित करें",
+    "pmCount": "{count} PM",
+    "pmCountPlural": "{count} PMs",
+    "fields": {
+      "asset": "उपकरण",
+      "status": "स्थिति",
+      "tech": "तकनीशियन",
+      "duration": "अवधि",
+      "recurrence": "पुनरावृत्ति",
+      "dueDate": "नियत तारीख"
+    },
+    "recurrence": {
+      "weekly": "साप्ताहिक",
+      "biweekly": "पाक्षिक",
+      "monthly": "मासिक",
+      "quarterly": "त्रैमासिक",
+      "annual": "वार्षिक"
+    }
+  },
+  "requests": {
+    "title": "रखरखाव अनुरोध",
+    "awaitingReview": "{count} समीक्षा की प्रतीक्षा में",
+    "newRequest": "नया अनुरोध",
+    "submitRequest": "अनुरोध दर्ज करें",
+    "submitButton": "अनुरोध जमा करें",
+    "noRequests": "इस श्रेणी में कोई अनुरोध नहीं",
+    "approvedNote": "स्वीकृत — कार्य सौंपने और शेड्यूल करने के लिए कार्य आदेश बनाएं।",
+    "submitted": "अनुरोध जमा — टीम को सूचित किया",
+    "approvedToast": "अनुरोध स्वीकृत ✓",
+    "rejectedToast": "अनुरोध अस्वीकृत",
+    "form": {
+      "titleLabel": "शीर्षक",
+      "titlePlaceholder": "समस्या का संक्षिप्त विवरण…",
+      "assetLabel": "उपकरण",
+      "assetPlaceholder": "उपकरण चुनें…",
+      "priorityLabel": "प्राथमिकता",
+      "descriptionLabel": "विवरण",
+      "descriptionPlaceholder": "अधिक जानकारी…"
+    },
+    "filters": {
+      "all": "सभी",
+      "pending": "लंबित",
+      "approved": "स्वीकृत",
+      "rejected": "अस्वीकृत",
+      "converted": "परिवर्तित"
+    }
+  },
+  "documents": {
+    "title": "दस्तावेज़",
+    "searchPlaceholder": "दस्तावेज़ खोजें…",
+    "upload": "अपलोड",
+    "noDocuments": "कोई दस्तावेज़ नहीं मिला",
+    "askMira": "इस दस्तावेज़ के बारे में MIRA से पूछें",
+    "viewMira": "MIRA वार्तालाप देखें",
+    "versionHistory": "संस्करण इतिहास",
+    "linkedAssets": "संबंधित उपकरण",
+    "current": "वर्तमान",
+    "categories": {
+      "manual": "मैनुअल",
+      "schematic": "स्कीमैटिक",
+      "partsList": "पुर्जों की सूची",
+      "safety": "सुरक्षा",
+      "certificate": "प्रमाणपत्र",
+      "warranty": "वारंटी",
+      "sop": "SOP"
+    },
+    "filters": {
+      "all": "सभी"
+    }
+  },
+  "reports": {
+    "title": "रिपोर्ट",
+    "subtitle": "विश्लेषण और KPI",
+    "comingSoon": "पूर्ण विश्लेषण जल्द आ रहा है।"
+  },
+  "team": {
+    "title": "टीम",
+    "noMembers": "कोई टीम सदस्य नहीं",
+    "filters": {
+      "all": "सभी शिफ्ट",
+      "day": "दिन",
+      "evening": "शाम",
+      "night": "रात"
+    }
+  },
+  "admin": {
+    "title": "प्रशासन",
+    "usersTab": "उपयोगकर्ता",
+    "rolesTab": "भूमिकाएं और अनुमतियां",
+    "inviteUser": "उपयोगकर्ता आमंत्रित करें",
+    "noUsers": "कोई उपयोगकर्ता नहीं मिला",
+    "roles": {
+      "admin": "प्रशासक",
+      "manager": "प्रबंधक",
+      "scheduler": "शेड्यूलर",
+      "technician": "तकनीशियन",
+      "operator": "ऑपरेटर"
+    }
+  },
+  "cmms": {
+    "title": "CMMS एकीकरण",
+    "connected": "Atlas CMMS से जुड़ा",
+    "notConfigured": "कॉन्फ़िगर नहीं",
+    "openAtlas": "Atlas खोलें",
+    "openAtlasFull": "Atlas CMMS खोलें",
+    "summary": "CMMS सारांश",
+    "quickLinks": "त्वरित लिंक",
+    "connectionSettings": "कनेक्शन सेटिंग",
+    "connectTitle": "अपना CMMS कनेक्ट करें",
+    "connectDesc": "अपने कार्य आदेश, उपकरण और PM कार्यक्रम एक स्थान पर देखने के लिए Atlas CMMS लिंक करें।",
+    "urlLabel": "CMMS URL",
+    "urlPlaceholder": "https://aapka-cmms.factorylm.com",
+    "apiKeyLabel": "API कुंजी",
+    "apiKeyPlaceholder": "sk-••••••••",
+    "newApiKeyLabel": "नई API कुंजी (वर्तमान रखने के लिए खाली छोड़ें)",
+    "connectButton": "Atlas CMMS कनेक्ट करें",
+    "editSettings": "सेटिंग संपादित करें",
+    "disconnect": "डिसकनेक्ट करें",
+    "adminContact": "यदि आपके पास लॉगिन जानकारी नहीं है तो अपने व्यवस्थापक से संपर्क करें।",
+    "connected_badge": "जुड़ा हुआ",
+    "open": "खुला",
+    "inProgress": "प्रगति में",
+    "overdue": "विलंबित",
+    "completedWOs": "पूर्ण",
+    "totalAssets": "कुल",
+    "activeAssets": "सक्रिय",
+    "inactiveAssets": "निष्क्रिय",
+    "scheduledPMs": "निर्धारित",
+    "overduePMs": "विलंबित"
+  },
+  "more": {
+    "title": "और",
+    "items": {
+      "schedule": "PM कैलेंडर और आगामी कार्य",
+      "requests": "कार्य अनुरोध जमा करें और समीक्षा करें",
+      "documents": "मैनुअल, SOPs और प्रमाणपत्र",
+      "cmms": "Atlas CMMS एकीकरण",
+      "reports": "रखरखाव विश्लेषण और KPI",
+      "team": "तकनीशियन सूची और असाइनमेंट",
+      "admin": "उपयोगकर्ता, भूमिकाएं और सेटिंग"
+    }
+  }
+}

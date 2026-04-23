@@ -1,0 +1,370 @@
+{
+  "nav": {
+    "feed": "Activity Feed",
+    "workOrders": "Work Orders",
+    "assets": "Assets",
+    "schedule": "Schedule",
+    "requests": "Requests",
+    "parts": "Parts",
+    "documents": "Documents",
+    "reports": "Reports",
+    "cmms": "CMMS",
+    "team": "Team",
+    "admin": "Admin",
+    "more": "More",
+    "signOut": "Sign out"
+  },
+  "app": {
+    "name": "FactoryLM",
+    "tagline": "For maintenance teams that are already good and want to be great",
+    "platform": "Industrial Maintenance Platform",
+    "platformShort": "Maintenance Intelligence Platform"
+  },
+  "theme": {
+    "dark": "Dark mode",
+    "light": "Light mode"
+  },
+  "language": {
+    "select": "Language",
+    "en": "English",
+    "es": "Español",
+    "hi": "हिन्दी",
+    "zh": "中文"
+  },
+  "auth": {
+    "signIn": "Sign in to your account",
+    "email": "Email address",
+    "emailPlaceholder": "you@company.com",
+    "password": "Password",
+    "signInButton": "Sign In",
+    "signingIn": "Signing in…",
+    "invalidCredentials": "Invalid credentials",
+    "demo": "Demo"
+  },
+  "common": {
+    "submit": "Submit",
+    "approve": "Approve",
+    "reject": "Reject",
+    "complete": "Complete",
+    "cancel": "Cancel",
+    "save": "Save",
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "search": "Search",
+    "filter": "Filter",
+    "add": "Add",
+    "close": "Close",
+    "back": "Back",
+    "view": "View",
+    "upload": "Upload",
+    "download": "Download",
+    "open": "Open",
+    "loading": "Loading…",
+    "noResults": "No results found",
+    "required": "Required",
+    "optional": "Optional",
+    "all": "All",
+    "new": "New",
+    "status": "Status",
+    "type": "Type",
+    "date": "Date",
+    "location": "Location",
+    "description": "Description",
+    "notes": "Notes",
+    "actions": "Actions",
+    "details": "Details",
+    "asset": "Asset",
+    "comingSoon": "Coming soon"
+  },
+  "status": {
+    "open": "Open",
+    "inProgress": "In Progress",
+    "completed": "Completed",
+    "overdue": "Overdue",
+    "scheduled": "Scheduled",
+    "pending": "Pending",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "converted": "Converted to WO",
+    "active": "Active",
+    "inactive": "Inactive",
+    "maintenance": "Maintenance",
+    "available": "Available",
+    "onJob": "On Job",
+    "offDuty": "Off Duty",
+    "draft": "Draft",
+    "superseded": "Superseded",
+    "underReview": "Under Review"
+  },
+  "priority": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "critical": "Critical"
+  },
+  "feed": {
+    "title": "Activity Feed",
+    "newRequest": "New Request",
+    "allCaughtUp": "All caught up!",
+    "noActivity": "No new activity",
+    "markRead": "Mark as read",
+    "dismiss": "Dismiss",
+    "showMore": "Show more",
+    "showLess": "Show less",
+    "playBrief": "Play Brief",
+    "stopBrief": "Stop",
+    "auditTrail": "Audit Trail",
+    "acknowledge": "Acknowledge",
+    "addNote": "Add Note",
+    "kpi": {
+      "openWorkOrders": "Open Work Orders",
+      "overduePMs": "Overdue PMs",
+      "downtimeToday": "Downtime Today",
+      "wrenchTime": "Wrench Time"
+    }
+  },
+  "workorders": {
+    "title": "Work Orders",
+    "new": "New Work Order",
+    "startWork": "Start Work",
+    "resume": "Resume",
+    "pause": "Pause",
+    "markComplete": "Mark Complete",
+    "timeTracker": "Time Tracker",
+    "estimated": "Est.",
+    "workInstructions": "Work Instructions",
+    "partsUsed": "Parts Used",
+    "logPart": "Log Part",
+    "searchParts": "Search parts…",
+    "noPartsLogged": "No parts logged yet.",
+    "viewInventory": "View inventory →",
+    "comments": "Comments",
+    "addComment": "Add a comment…",
+    "noComments": "No comments yet.",
+    "photos": "Photos",
+    "noPhotos": "No photos attached",
+    "addPhoto": "+ Add",
+    "viewMira": "MIRA Conversation",
+    "openCmms": "CMMS",
+    "assignedTo": "Assigned To",
+    "dueDate": "Due Date",
+    "created": "Created",
+    "overdueWarning": "This WO is overdue — needs immediate attention.",
+    "completedMessage": "Work order completed. Asset returned to service.",
+    "started": "Work started — timer running",
+    "paused": "Timer paused — {time} logged",
+    "markedComplete": "Work order marked complete ✓",
+    "commentAdded": "Comment added",
+    "partAdded": "{name} added",
+    "noWorkOrders": "No work orders yet",
+    "createFirst": "Create your first work order",
+    "filters": {
+      "all": "All",
+      "open": "Open",
+      "inProgress": "In Progress",
+      "scheduled": "Scheduled",
+      "completed": "Completed",
+      "overdue": "Overdue"
+    }
+  },
+  "assets": {
+    "title": "Assets",
+    "searchPlaceholder": "Search assets…",
+    "noAssets": "No assets found",
+    "lastPM": "Last PM",
+    "nextPM": "Next PM",
+    "category": "Category",
+    "manufacturer": "Manufacturer",
+    "model": "Model",
+    "serialNumber": "Serial Number",
+    "installDate": "Install Date",
+    "tabs": {
+      "details": "Details",
+      "workOrders": "Work Orders",
+      "documents": "Documents",
+      "parts": "Parts",
+      "activity": "Activity"
+    },
+    "filters": {
+      "all": "All",
+      "active": "Active",
+      "inactive": "Inactive",
+      "maintenance": "Maintenance"
+    }
+  },
+  "parts": {
+    "title": "Parts & Inventory",
+    "searchPlaceholder": "Search parts…",
+    "addPart": "Add Part",
+    "noParts": "No parts found",
+    "partNumber": "Part #",
+    "description": "Description",
+    "qtyOnHand": "Qty on Hand",
+    "location": "Location",
+    "unitCost": "Unit Cost",
+    "reorderPoint": "Reorder Point",
+    "leadTime": "Lead Time",
+    "orderHistory": "Order History",
+    "logUsage": "Log Usage",
+    "orderNow": "Order Now",
+    "stockStatus": {
+      "ok": "OK",
+      "low": "Low",
+      "out": "Out of Stock"
+    },
+    "filters": {
+      "all": "All Parts",
+      "low": "Low Stock",
+      "out": "Out of Stock"
+    }
+  },
+  "schedule": {
+    "title": "PM Schedule",
+    "overdueCount": "{count} overdue",
+    "upcomingCount": "{count} upcoming",
+    "calendar": "Calendar",
+    "list": "List",
+    "markComplete": "Mark Complete",
+    "pmCount": "{count} PM",
+    "pmCountPlural": "{count} PMs",
+    "fields": {
+      "asset": "Asset",
+      "status": "Status",
+      "tech": "Tech",
+      "duration": "Duration",
+      "recurrence": "Recurrence",
+      "dueDate": "Due Date"
+    },
+    "recurrence": {
+      "weekly": "Weekly",
+      "biweekly": "Bi-Weekly",
+      "monthly": "Monthly",
+      "quarterly": "Quarterly",
+      "annual": "Annual"
+    }
+  },
+  "requests": {
+    "title": "Maintenance Requests",
+    "awaitingReview": "{count} awaiting review",
+    "newRequest": "New Request",
+    "submitRequest": "Submit a Request",
+    "submitButton": "Submit Request",
+    "noRequests": "No requests in this category",
+    "approvedNote": "Approved — create a Work Order to assign and schedule this work.",
+    "submitted": "Request submitted — team notified",
+    "approvedToast": "Request approved ✓",
+    "rejectedToast": "Request rejected",
+    "form": {
+      "titleLabel": "Title",
+      "titlePlaceholder": "Briefly describe the issue…",
+      "assetLabel": "Asset",
+      "assetPlaceholder": "Select asset…",
+      "priorityLabel": "Priority",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "More details…"
+    },
+    "filters": {
+      "all": "All",
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "converted": "Converted"
+    }
+  },
+  "documents": {
+    "title": "Documents",
+    "searchPlaceholder": "Search documents…",
+    "upload": "Upload",
+    "noDocuments": "No documents found",
+    "askMira": "Ask MIRA About This Document",
+    "viewMira": "View MIRA Conversation",
+    "versionHistory": "Version History",
+    "linkedAssets": "Linked Assets",
+    "current": "Current",
+    "categories": {
+      "manual": "Manual",
+      "schematic": "Schematic",
+      "partsList": "Parts List",
+      "safety": "Safety",
+      "certificate": "Certificate",
+      "warranty": "Warranty",
+      "sop": "SOP"
+    },
+    "filters": {
+      "all": "All"
+    }
+  },
+  "reports": {
+    "title": "Reports",
+    "subtitle": "Analytics & KPIs",
+    "comingSoon": "Full analytics coming soon."
+  },
+  "team": {
+    "title": "Team",
+    "noMembers": "No team members",
+    "filters": {
+      "all": "All Shifts",
+      "day": "Day",
+      "evening": "Evening",
+      "night": "Night"
+    }
+  },
+  "admin": {
+    "title": "Admin",
+    "usersTab": "Users",
+    "rolesTab": "Roles & Permissions",
+    "inviteUser": "Invite User",
+    "noUsers": "No users found",
+    "roles": {
+      "admin": "Admin",
+      "manager": "Manager",
+      "scheduler": "Scheduler",
+      "technician": "Technician",
+      "operator": "Operator"
+    }
+  },
+  "cmms": {
+    "title": "CMMS Integration",
+    "connected": "Connected to Atlas CMMS",
+    "notConfigured": "Not configured",
+    "openAtlas": "Open Atlas",
+    "openAtlasFull": "Open Atlas CMMS",
+    "summary": "CMMS Summary",
+    "quickLinks": "Quick Links",
+    "connectionSettings": "Connection Settings",
+    "connectTitle": "Connect Your CMMS",
+    "connectDesc": "Link Atlas CMMS to view your work orders, assets, and PM schedule in one place.",
+    "urlLabel": "CMMS URL",
+    "urlPlaceholder": "https://your-cmms.factorylm.com",
+    "apiKeyLabel": "API Key",
+    "apiKeyPlaceholder": "sk-••••••••",
+    "newApiKeyLabel": "New API Key (leave blank to keep current)",
+    "connectButton": "Connect Atlas CMMS",
+    "editSettings": "Edit Settings",
+    "disconnect": "Disconnect",
+    "adminContact": "Contact your administrator if you don't have access credentials.",
+    "connected_badge": "Connected",
+    "open": "Open",
+    "inProgress": "In Progress",
+    "overdue": "Overdue",
+    "completedWOs": "Completed",
+    "totalAssets": "Total",
+    "activeAssets": "Active",
+    "inactiveAssets": "Inactive",
+    "scheduledPMs": "Scheduled",
+    "overduePMs": "Overdue"
+  },
+  "more": {
+    "title": "More",
+    "items": {
+      "schedule": "PM calendar and upcoming tasks",
+      "requests": "Submit and review work requests",
+      "documents": "Manuals, SOPs, and certifications",
+      "cmms": "Atlas CMMS integration",
+      "reports": "Maintenance analytics and KPIs",
+      "team": "Crew roster and assignments",
+      "admin": "Users, roles, and settings"
+    }
+  }
+}

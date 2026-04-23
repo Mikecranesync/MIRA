@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   Mic, ClipboardList, Bot, ShieldAlert, Calendar,
   Plus, QrCode, MessageSquarePlus, X, CheckCircle2,
@@ -127,11 +128,20 @@ function useSpeech() {
 }
 
 export default function FeedPage() {
+  const tFeed = useTranslations("feed");
+  const tWorkorders = useTranslations("workorders");
   const [fabOpen, setFabOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
   const [read, setRead] = useState<Set<number>>(new Set());
   const { speaking, speak } = useSpeech();
+
+  const KPI_LABEL_MAP: Record<string, string> = {
+    "Open Work Orders": tFeed("kpi.openWorkOrders"),
+    "Overdue PMs":      tFeed("kpi.overduePMs"),
+    "Downtime Today":   tFeed("kpi.downtimeToday"),
+    "Wrench Time":      tFeed("kpi.wrenchTime"),
+  };
 
   function handleRefresh() {
     setRefreshing(true);
@@ -147,7 +157,7 @@ export default function FeedPage() {
         <div className="flex items-center justify-between px-4 md:px-6 py-3">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>Activity Feed</h1>
+              <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{tFeed("title")}</h1>
               <Badge variant="secondary" className="text-[10px]">Live</Badge>
             </div>
             <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
@@ -178,7 +188,7 @@ export default function FeedPage() {
                   <TrendingUp className="w-3.5 h-3.5" style={{ color: "var(--foreground-subtle)" }} />
                 </div>
                 <div className="text-xl font-bold leading-none mt-1" style={{ color: "var(--foreground)" }}>{kpi.value}</div>
-                <div className="text-[11px] leading-tight" style={{ color: "var(--foreground-muted)" }}>{kpi.label}</div>
+                <div className="text-[11px] leading-tight" style={{ color: "var(--foreground-muted)" }}>{KPI_LABEL_MAP[kpi.label] ?? kpi.label}</div>
               </div>
             </Link>
           ))}
@@ -202,8 +212,7 @@ export default function FeedPage() {
         {visibleItems.length === 0 && (
           <div className="text-center py-16">
             <CheckCircle2 className="w-12 h-12 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
-            <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>All caught up!</p>
-            <p className="text-xs mt-1" style={{ color: "var(--foreground-subtle)" }}>No new activity to show</p>
+            <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>{tFeed("allCaughtUp")}</p>
           </div>
         )}
       </div>
@@ -213,9 +222,9 @@ export default function FeedPage() {
         {fabOpen && (
           <div className="flex flex-col items-end gap-2 mb-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
             {[
-              { label: "New Work Order", icon: ClipboardList,     href: "/workorders/new" },
-              { label: "Scan QR Code",   icon: QrCode,            href: "#" },
-              { label: "New Request",    icon: MessageSquarePlus, href: "/requests/new" },
+              { label: tWorkorders("new"), icon: ClipboardList,     href: "/workorders/new" },
+              { label: "Scan QR Code",    icon: QrCode,            href: "#" },
+              { label: tFeed("newRequest"), icon: MessageSquarePlus, href: "/requests/new" },
             ].map((action) => (
               <Link key={action.label} href={action.href}
                 className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white shadow-lg"
@@ -246,6 +255,7 @@ function FeedCard({ item, isRead, isSpeaking, onSpeak, onDismiss, onMarkRead }: 
   onDismiss: () => void;
   onMarkRead: () => void;
 }) {
+  const tFeed = useTranslations("feed");
   const [expanded, setExpanded] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
   const speakText = item.fullText ?? item.title + ". " + item.subtitle;
@@ -344,7 +354,7 @@ function FeedCard({ item, isRead, isSpeaking, onSpeak, onDismiss, onMarkRead }: 
                 <button onClick={() => setExpanded(v => !v)}
                   className="flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg transition-colors"
                   style={{ color: "var(--foreground-subtle)", backgroundColor: "var(--surface-1)" }}>
-                  {expanded ? <><ChevronUp className="w-3 h-3" />Less</> : <><ChevronDown className="w-3 h-3" />More</>}
+                  {expanded ? <><ChevronUp className="w-3 h-3" />{tFeed("showLess")}</> : <><ChevronDown className="w-3 h-3" />{tFeed("showMore")}</>}
                 </button>
               )}
 
@@ -353,7 +363,7 @@ function FeedCard({ item, isRead, isSpeaking, onSpeak, onDismiss, onMarkRead }: 
                 <button onClick={() => setShowAudit(v => !v)}
                   className="text-xs px-2 py-1.5 rounded-lg transition-colors"
                   style={{ color: "#DC2626", backgroundColor: "#FEF2F2" }}>
-                  Audit Trail
+                  {tFeed("auditTrail")}
                 </button>
               )}
             </div>
@@ -365,10 +375,10 @@ function FeedCard({ item, isRead, isSpeaking, onSpeak, onDismiss, onMarkRead }: 
       <div className="px-4 py-2 border-t flex justify-between" style={{ borderColor: "var(--border)" }}>
         <button onClick={onMarkRead} className="text-[11px] transition-colors"
           style={{ color: isRead ? "var(--foreground-subtle)" : "var(--brand-blue)" }}>
-          {isRead ? "Read" : "Mark as read"}
+          {isRead ? tFeed("markRead") : tFeed("markRead")}
         </button>
         <button onClick={onDismiss} className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>
-          Dismiss
+          {tFeed("dismiss")}
         </button>
       </div>
     </div>

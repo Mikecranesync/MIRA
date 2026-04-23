@@ -6,9 +6,11 @@ import { Factory, Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { authProvider } from "@/providers/auth-provider";
+import { useTranslations } from "next-intl";
 
 export default function LoginPage() {
   const router = useRouter();
+  const t = useTranslations("auth");
   const [email, setEmail] = useState("mike@factorylm.com");
   const [password, setPassword] = useState("admin123");
   const [showPw, setShowPw] = useState(false);
@@ -24,7 +26,7 @@ export default function LoginPage() {
     if (result.success) {
       router.push("/feed");
     } else {
-      setError(result.error?.message ?? "Invalid credentials");
+      setError(result.error?.message ?? t("invalidCredentials"));
     }
   }
 
@@ -44,23 +46,23 @@ export default function LoginPage() {
             <Factory className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">FactoryLM</h1>
-          <p className="text-slate-400 text-sm mt-1">Industrial Maintenance Platform</p>
+          <p className="text-slate-400 text-sm mt-1">{t("signIn")}</p>
         </div>
 
         {/* Card */}
         <div className="rounded-2xl border border-slate-700/50 p-8"
           style={{ background: "rgba(26,29,35,0.95)", backdropFilter: "blur(12px)", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
 
-          <h2 className="text-lg font-semibold text-white mb-6">Sign in to your account</h2>
+          <h2 className="text-lg font-semibold text-white mb-6">{t("signInButton")}</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Email address</label>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">{t("email")}</label>
               <Input
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="you@company.com"
+                placeholder={t("emailPlaceholder")}
                 autoComplete="email"
                 required
                 className="h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
@@ -68,7 +70,7 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">{t("password")}</label>
               <div className="relative">
                 <Input
                   type={showPw ? "text" : "password"}
@@ -101,12 +103,12 @@ export default function LoginPage() {
               disabled={loading}
               style={{ background: loading ? undefined : "linear-gradient(135deg, #2563EB, #0891B2)" }}
             >
-              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing in…</> : "Sign In"}
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> {t("signingIn")}</> : t("signInButton")}
             </Button>
           </form>
 
           <p className="text-center text-xs text-slate-500 mt-6">
-            Demo: <span className="text-slate-400 font-mono">mike@factorylm.com</span> /{" "}
+            {t("demo")}: <span className="text-slate-400 font-mono">mike@factorylm.com</span> /{" "}
             <span className="text-slate-400 font-mono">admin123</span>
           </p>
         </div>

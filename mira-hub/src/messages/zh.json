@@ -1,0 +1,370 @@
+{
+  "nav": {
+    "feed": "动态",
+    "workOrders": "工单",
+    "assets": "设备",
+    "schedule": "计划",
+    "requests": "报修",
+    "parts": "备件",
+    "documents": "文档",
+    "reports": "报告",
+    "cmms": "CMMS系统",
+    "team": "团队",
+    "admin": "管理",
+    "more": "更多",
+    "signOut": "退出登录"
+  },
+  "app": {
+    "name": "FactoryLM",
+    "tagline": "为优秀的维护团队提供卓越的智能支持",
+    "platform": "工业维护管理平台",
+    "platformShort": "智能维护管理平台"
+  },
+  "theme": {
+    "dark": "深色模式",
+    "light": "浅色模式"
+  },
+  "language": {
+    "select": "语言",
+    "en": "English",
+    "es": "Español",
+    "hi": "हिन्दी",
+    "zh": "中文"
+  },
+  "auth": {
+    "signIn": "登录您的账户",
+    "email": "邮箱地址",
+    "emailPlaceholder": "您的邮箱@公司.com",
+    "password": "密码",
+    "signInButton": "登录",
+    "signingIn": "正在登录…",
+    "invalidCredentials": "账号或密码错误",
+    "demo": "演示"
+  },
+  "common": {
+    "submit": "提交",
+    "approve": "批准",
+    "reject": "拒绝",
+    "complete": "完成",
+    "cancel": "取消",
+    "save": "保存",
+    "create": "创建",
+    "edit": "编辑",
+    "delete": "删除",
+    "search": "搜索",
+    "filter": "筛选",
+    "add": "添加",
+    "close": "关闭",
+    "back": "返回",
+    "view": "查看",
+    "upload": "上传",
+    "download": "下载",
+    "open": "打开",
+    "loading": "加载中…",
+    "noResults": "暂无结果",
+    "required": "必填",
+    "optional": "选填",
+    "all": "全部",
+    "new": "新建",
+    "status": "状态",
+    "type": "类型",
+    "date": "日期",
+    "location": "位置",
+    "description": "描述",
+    "notes": "备注",
+    "actions": "操作",
+    "details": "详情",
+    "asset": "设备",
+    "comingSoon": "即将推出"
+  },
+  "status": {
+    "open": "待处理",
+    "inProgress": "进行中",
+    "completed": "已完成",
+    "overdue": "逾期",
+    "scheduled": "已计划",
+    "pending": "待审核",
+    "approved": "已批准",
+    "rejected": "已拒绝",
+    "converted": "已转工单",
+    "active": "运行中",
+    "inactive": "停用",
+    "maintenance": "维护中",
+    "available": "空闲",
+    "onJob": "作业中",
+    "offDuty": "休班",
+    "draft": "草稿",
+    "superseded": "已废止",
+    "underReview": "审核中"
+  },
+  "priority": {
+    "low": "低",
+    "medium": "中",
+    "high": "高",
+    "critical": "紧急"
+  },
+  "feed": {
+    "title": "动态",
+    "newRequest": "新报修",
+    "allCaughtUp": "全部处理完毕！",
+    "noActivity": "暂无新动态",
+    "markRead": "标记为已读",
+    "dismiss": "忽略",
+    "showMore": "展开",
+    "showLess": "收起",
+    "playBrief": "播放简报",
+    "stopBrief": "停止",
+    "auditTrail": "审计记录",
+    "acknowledge": "确认",
+    "addNote": "添加备注",
+    "kpi": {
+      "openWorkOrders": "待处理工单",
+      "overduePMs": "逾期预防维护",
+      "downtimeToday": "今日停机",
+      "wrenchTime": "有效工时"
+    }
+  },
+  "workorders": {
+    "title": "工单",
+    "new": "新建工单",
+    "startWork": "开始作业",
+    "resume": "继续",
+    "pause": "暂停",
+    "markComplete": "标记完成",
+    "timeTracker": "工时记录",
+    "estimated": "预计",
+    "workInstructions": "作业指导",
+    "partsUsed": "使用备件",
+    "logPart": "记录备件",
+    "searchParts": "搜索备件…",
+    "noPartsLogged": "暂无备件记录。",
+    "viewInventory": "查看库存 →",
+    "comments": "评论",
+    "addComment": "添加评论…",
+    "noComments": "暂无评论。",
+    "photos": "照片",
+    "noPhotos": "暂无附件照片",
+    "addPhoto": "+ 添加",
+    "viewMira": "MIRA对话",
+    "openCmms": "CMMS",
+    "assignedTo": "负责人",
+    "dueDate": "截止日期",
+    "created": "创建时间",
+    "overdueWarning": "此工单已逾期 — 需立即处理。",
+    "completedMessage": "工单已完成，设备恢复运行。",
+    "started": "作业开始 — 计时中",
+    "paused": "计时暂停 — 已记录 {time}",
+    "markedComplete": "工单已标记完成 ✓",
+    "commentAdded": "评论已添加",
+    "partAdded": "已添加 {name}",
+    "noWorkOrders": "暂无工单",
+    "createFirst": "创建第一张工单",
+    "filters": {
+      "all": "全部",
+      "open": "待处理",
+      "inProgress": "进行中",
+      "scheduled": "已计划",
+      "completed": "已完成",
+      "overdue": "逾期"
+    }
+  },
+  "assets": {
+    "title": "设备",
+    "searchPlaceholder": "搜索设备…",
+    "noAssets": "暂无设备",
+    "lastPM": "上次保养",
+    "nextPM": "下次保养",
+    "category": "类别",
+    "manufacturer": "厂商",
+    "model": "型号",
+    "serialNumber": "序列号",
+    "installDate": "安装日期",
+    "tabs": {
+      "details": "详情",
+      "workOrders": "工单",
+      "documents": "文档",
+      "parts": "备件",
+      "activity": "动态"
+    },
+    "filters": {
+      "all": "全部",
+      "active": "运行中",
+      "inactive": "停用",
+      "maintenance": "维护中"
+    }
+  },
+  "parts": {
+    "title": "备件库存",
+    "searchPlaceholder": "搜索备件…",
+    "addPart": "添加备件",
+    "noParts": "暂无备件",
+    "partNumber": "件号",
+    "description": "名称",
+    "qtyOnHand": "库存数量",
+    "location": "存放位置",
+    "unitCost": "单价",
+    "reorderPoint": "补货点",
+    "leadTime": "采购周期",
+    "orderHistory": "采购记录",
+    "logUsage": "领用记录",
+    "orderNow": "立即采购",
+    "stockStatus": {
+      "ok": "正常",
+      "low": "偏低",
+      "out": "缺货"
+    },
+    "filters": {
+      "all": "全部",
+      "low": "库存偏低",
+      "out": "缺货"
+    }
+  },
+  "schedule": {
+    "title": "预防维护计划",
+    "overdueCount": "{count} 项逾期",
+    "upcomingCount": "{count} 项计划中",
+    "calendar": "日历",
+    "list": "列表",
+    "markComplete": "标记完成",
+    "pmCount": "{count} 项PM",
+    "pmCountPlural": "{count} 项PM",
+    "fields": {
+      "asset": "设备",
+      "status": "状态",
+      "tech": "技术员",
+      "duration": "工时",
+      "recurrence": "周期",
+      "dueDate": "计划日期"
+    },
+    "recurrence": {
+      "weekly": "每周",
+      "biweekly": "每两周",
+      "monthly": "每月",
+      "quarterly": "每季度",
+      "annual": "每年"
+    }
+  },
+  "requests": {
+    "title": "报修申请",
+    "awaitingReview": "{count} 条待审核",
+    "newRequest": "新报修",
+    "submitRequest": "提交申请",
+    "submitButton": "提交申请",
+    "noRequests": "该分类暂无申请",
+    "approvedNote": "已批准 — 请创建工单以分配和安排作业。",
+    "submitted": "申请已提交 — 团队已收到通知",
+    "approvedToast": "申请已批准 ✓",
+    "rejectedToast": "申请已拒绝",
+    "form": {
+      "titleLabel": "标题",
+      "titlePlaceholder": "简要描述问题…",
+      "assetLabel": "设备",
+      "assetPlaceholder": "选择设备…",
+      "priorityLabel": "优先级",
+      "descriptionLabel": "详细描述",
+      "descriptionPlaceholder": "更多详情…"
+    },
+    "filters": {
+      "all": "全部",
+      "pending": "待审核",
+      "approved": "已批准",
+      "rejected": "已拒绝",
+      "converted": "已转工单"
+    }
+  },
+  "documents": {
+    "title": "文档",
+    "searchPlaceholder": "搜索文档…",
+    "upload": "上传",
+    "noDocuments": "暂无文档",
+    "askMira": "向MIRA咨询此文档",
+    "viewMira": "查看MIRA对话",
+    "versionHistory": "版本历史",
+    "linkedAssets": "关联设备",
+    "current": "当前版本",
+    "categories": {
+      "manual": "操作手册",
+      "schematic": "电气图纸",
+      "partsList": "备件清单",
+      "safety": "安全规程",
+      "certificate": "合格证书",
+      "warranty": "保修文件",
+      "sop": "标准作业程序"
+    },
+    "filters": {
+      "all": "全部"
+    }
+  },
+  "reports": {
+    "title": "报告",
+    "subtitle": "数据分析与KPI",
+    "comingSoon": "完整数据分析即将推出。"
+  },
+  "team": {
+    "title": "团队",
+    "noMembers": "暂无团队成员",
+    "filters": {
+      "all": "全部班次",
+      "day": "白班",
+      "evening": "中班",
+      "night": "夜班"
+    }
+  },
+  "admin": {
+    "title": "管理",
+    "usersTab": "用户",
+    "rolesTab": "角色与权限",
+    "inviteUser": "邀请用户",
+    "noUsers": "暂无用户",
+    "roles": {
+      "admin": "管理员",
+      "manager": "经理",
+      "scheduler": "计划员",
+      "technician": "技术员",
+      "operator": "操作员"
+    }
+  },
+  "cmms": {
+    "title": "CMMS系统集成",
+    "connected": "已连接 Atlas CMMS",
+    "notConfigured": "未配置",
+    "openAtlas": "打开Atlas",
+    "openAtlasFull": "打开 Atlas CMMS",
+    "summary": "CMMS概览",
+    "quickLinks": "快捷入口",
+    "connectionSettings": "连接设置",
+    "connectTitle": "连接您的CMMS",
+    "connectDesc": "关联 Atlas CMMS，在一处查看工单、设备和预防维护计划。",
+    "urlLabel": "CMMS地址",
+    "urlPlaceholder": "https://您的cmms.factorylm.com",
+    "apiKeyLabel": "API密钥",
+    "apiKeyPlaceholder": "sk-••••••••",
+    "newApiKeyLabel": "新API密钥（留空保留当前密钥）",
+    "connectButton": "连接 Atlas CMMS",
+    "editSettings": "编辑设置",
+    "disconnect": "断开连接",
+    "adminContact": "如无访问凭证，请联系管理员。",
+    "connected_badge": "已连接",
+    "open": "待处理",
+    "inProgress": "进行中",
+    "overdue": "逾期",
+    "completedWOs": "已完成",
+    "totalAssets": "合计",
+    "activeAssets": "运行中",
+    "inactiveAssets": "停用",
+    "scheduledPMs": "已计划",
+    "overduePMs": "逾期"
+  },
+  "more": {
+    "title": "更多",
+    "items": {
+      "schedule": "预防维护日历与计划任务",
+      "requests": "提交和审核报修申请",
+      "documents": "操作手册、SOP和合格证书",
+      "cmms": "Atlas CMMS系统集成",
+      "reports": "维护数据分析与KPI",
+      "team": "技术员名单与任务分配",
+      "admin": "用户、角色和系统设置"
+    }
+  }
+}

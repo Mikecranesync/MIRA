@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   Search, QrCode, Wind, Zap, Cog, Thermometer, Droplets,
   Factory, Gauge, AlertCircle, CheckCircle2, AlertTriangle,
@@ -29,14 +30,22 @@ const STATUS_CONFIG = {
   idle:        { label: "Idle",            color: "#64748B", bg: "#F1F5F9", Icon: Gauge },
 };
 
-const FILTER_CHIPS = [
-  { key: "all",      label: "All Assets" },
-  { key: "critical", label: "Critical" },
-  { key: "warning",  label: "Needs Attention" },
-  { key: "idle",     label: "Idle / Down" },
+const FILTER_CHIP_KEYS = [
+  { key: "all" },
+  { key: "critical" },
+  { key: "warning" },
+  { key: "idle" },
 ];
 
+const FILTER_CHIP_LABELS: Record<string, string> = {
+  all: "filters.all",
+  critical: "filters.active",
+  warning: "filters.maintenance",
+  idle: "filters.inactive",
+};
+
 export default function AssetsPage() {
+  const t = useTranslations("assets");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
 
@@ -57,7 +66,7 @@ export default function AssetsPage() {
       <div className="sticky top-0 z-20 border-b px-4 md:px-6 py-3"
         style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
         <div className="flex items-center justify-between mb-3">
-          <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>Assets</h1>
+          <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
           <Button size="sm" className="gap-1.5">
             <QrCode className="w-3.5 h-3.5" />
             Scan QR
@@ -68,7 +77,7 @@ export default function AssetsPage() {
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--foreground-subtle)" }} />
           <Input
-            placeholder="Search assets or tag numbers…"
+            placeholder={t("searchPlaceholder")}
             value={query}
             onChange={e => setQuery(e.target.value)}
             className="pl-9"
@@ -77,7 +86,7 @@ export default function AssetsPage() {
 
         {/* Filter chips */}
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {FILTER_CHIPS.map((chip) => (
+          {FILTER_CHIP_KEYS.map((chip) => (
             <button
               key={chip.key}
               onClick={() => setFilter(chip.key)}
@@ -87,7 +96,7 @@ export default function AssetsPage() {
                 color: filter === chip.key ? "white" : "var(--foreground-muted)",
               }}
             >
-              {chip.label}
+              {t(FILTER_CHIP_LABELS[chip.key])}
             </button>
           ))}
         </div>
@@ -108,7 +117,7 @@ export default function AssetsPage() {
         {visible.length === 0 && (
           <div className="text-center py-16">
             <Search className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
-            <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>No assets match</p>
+            <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>{t("noAssets")}</p>
             <p className="text-xs mt-1" style={{ color: "var(--foreground-subtle)" }}>Try a different search or filter</p>
           </div>
         )}
@@ -118,6 +127,7 @@ export default function AssetsPage() {
 }
 
 function AssetTile({ asset }: { asset: typeof ASSETS[number] }) {
+  const t = useTranslations("assets");
   const status = STATUS_CONFIG[asset.status as keyof typeof STATUS_CONFIG];
   const Icon = asset.icon;
   const StatusIcon = status.Icon;
