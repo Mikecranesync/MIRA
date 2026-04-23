@@ -143,7 +143,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
         )}
 
         {/* Language selector */}
-        <LanguageSelector collapsed={collapsed} />
+        <LanguageSelector collapsed={collapsed} dropUp />
 
         {/* Dark mode toggle */}
         <button onClick={toggleTheme}
