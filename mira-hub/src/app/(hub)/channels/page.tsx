@@ -14,7 +14,14 @@ import {
   type ConnectionMeta,
 } from "@/lib/connections";
 
-type AuthStatus = Record<"telegram" | "slack" | "google" | "microsoft" | "dropbox" | "confluence", boolean>;
+type AuthStatus = {
+  telegram: { configured: boolean; botUsername: string | null };
+  slack: { configured: boolean; hasOAuth: boolean };
+  google: { hasOAuth: boolean };
+  microsoft: { hasOAuth: boolean };
+  dropbox: { hasOAuth: boolean };
+  confluence: { hasOAuth: boolean };
+};
 
 type CardProps = {
   emoji: string;
@@ -155,8 +162,12 @@ function ChannelsInner() {
 
   const [connections, setConnections] = useState<Partial<Record<Provider, ConnectionMeta>>>({});
   const [authStatus, setAuthStatus] = useState<AuthStatus>({
-    telegram: false, slack: false, google: false,
-    microsoft: false, dropbox: false, confluence: false,
+    telegram: { configured: false, botUsername: null },
+    slack: { configured: false, hasOAuth: false },
+    google: { hasOAuth: false },
+    microsoft: { hasOAuth: false },
+    dropbox: { hasOAuth: false },
+    confluence: { hasOAuth: false },
   });
   const [modal, setModal] = useState<"telegram" | "openwebui" | null>(null);
   const [telegramToken, setTelegramToken] = useState("");
@@ -295,7 +306,7 @@ function ChannelsInner() {
               onConnect={() => { window.location.href = "/hub/api/auth/slack"; }}
               onDisconnect={() => disconnect("slack")}
               connectedLabel={slackConn.workspace ?? "Workspace connected"}
-              disabled={!authStatus.slack && !slackConn.connected}
+              disabled={!authStatus.slack.configured && !authStatus.slack.hasOAuth && !slackConn.connected}
               disabledReason="Slack app credentials not configured"
             />
             <ConnectorCard
@@ -305,7 +316,7 @@ function ChannelsInner() {
               onConnect={() => { window.location.href = "/hub/api/auth/microsoft"; }}
               onDisconnect={() => disconnect("teams")}
               connectedLabel={teamsConn.email ?? teamsConn.displayName ?? "Teams connected"}
-              disabled={!authStatus.microsoft && !teamsConn.connected}
+              disabled={!authStatus.microsoft.hasOAuth && !teamsConn.connected}
               disabledReason="Azure app credentials not configured"
             />
             <ConnectorCard
@@ -364,7 +375,7 @@ function ChannelsInner() {
               onConnect={() => { window.location.href = "/hub/api/auth/microsoft"; }}
               onDisconnect={() => disconnect("microsoft")}
               connectedLabel={microsoftConn.email ?? microsoftConn.displayName ?? "Microsoft account connected"}
-              disabled={!authStatus.microsoft && !microsoftConn.connected}
+              disabled={!authStatus.microsoft.hasOAuth && !microsoftConn.connected}
               disabledReason="Azure app credentials not configured"
             />
             <ConnectorCard
@@ -374,7 +385,7 @@ function ChannelsInner() {
               onConnect={() => { window.location.href = "/hub/api/auth/dropbox"; }}
               onDisconnect={() => disconnect("dropbox")}
               connectedLabel={dropboxConn.email ?? dropboxConn.displayName ?? "Dropbox connected"}
-              disabled={!authStatus.dropbox && !dropboxConn.connected}
+              disabled={!authStatus.dropbox.hasOAuth && !dropboxConn.connected}
               disabledReason="Dropbox app credentials not configured"
             />
             <ConnectorCard
@@ -386,7 +397,7 @@ function ChannelsInner() {
               connectedLabel={
                 confluenceConn.siteName ?? confluenceConn.workspace ?? "Confluence site connected"
               }
-              disabled={!authStatus.confluence && !confluenceConn.connected}
+              disabled={!authStatus.confluence.hasOAuth && !confluenceConn.connected}
               disabledReason="Atlassian app credentials not configured"
             />
           </div>
