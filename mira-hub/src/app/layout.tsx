@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { RefineProviders } from "./refine-providers";
+import { ThemeProvider } from "@/providers/theme-provider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -18,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} h-full`}>
       <body className="h-full antialiased bg-background text-foreground">
-        <RefineProviders>{children}</RefineProviders>
+        <ThemeProvider><RefineProviders>{children}</RefineProviders></ThemeProvider>
       </body>
     </html>
   );

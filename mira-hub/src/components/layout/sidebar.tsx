@@ -6,10 +6,11 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, ClipboardList, Wrench, Calendar,
   MessageSquare, Package, FileText, BarChart2, Users, Settings,
-  Factory, ChevronLeft, ChevronRight, LogOut,
+  Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/providers/access-control";
+import { useTheme } from "@/providers/theme-provider";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, ClipboardList, Wrench, Calendar,
@@ -19,6 +20,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
 export function Sidebar({ role = "admin" }: { role?: string }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   const visible = NAV_ITEMS.filter((item) =>
     (item.roles as readonly string[]).includes(role)
@@ -110,7 +112,28 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       </nav>
 
       {/* User section */}
-      <div className="p-3" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
+      <div className="p-3 space-y-2" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
+        {/* Tagline (expanded only) */}
+        {!collapsed && (
+          <p className="text-[10px] text-center leading-tight pb-1" style={{ color: "#475569" }}>
+            Maintenance Intelligence Platform
+          </p>
+        )}
+
+        {/* Dark mode toggle */}
+        <button onClick={toggleTheme}
+          className="w-full flex items-center rounded-lg transition-colors px-2 py-1.5"
+          style={{ color: "#64748B" }}
+          onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--sidebar-hover)")}
+          onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+          {theme === "dark"
+            ? <Sun className="w-4 h-4 flex-shrink-0" />
+            : <Moon className="w-4 h-4 flex-shrink-0" />
+          }
+          {!collapsed && <span className="ml-3 text-xs">{theme === "dark" ? "Light mode" : "Dark mode"}</span>}
+        </button>
+
         {collapsed ? (
           <div className="flex justify-center">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"

@@ -144,11 +144,13 @@ function OverviewTab({ asset }: { asset: typeof ASSETS["1"] }) {
   return (
     <div className="space-y-4">
       {/* Chat CTA */}
-      <Button className="w-full h-12 text-sm font-semibold gap-2"
-        style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
-        <Bot className="w-5 h-5" />
-        Chat with MIRA about this asset
-      </Button>
+      <a href="https://t.me/FactoryLMDiagnose_bot" target="_blank" rel="noopener noreferrer">
+        <Button className="w-full h-12 text-sm font-semibold gap-2"
+          style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
+          <Bot className="w-5 h-5" />
+          Chat with MIRA about this asset
+        </Button>
+      </a>
 
       {/* Info grid */}
       <div className="grid grid-cols-2 gap-3">
