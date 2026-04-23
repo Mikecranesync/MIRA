@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Bot, Wrench, FileText, Package, Activity,
   CheckCircle2, AlertTriangle, AlertCircle, Clock,
-  QrCode, MapPin, Cpu, Calendar,
+  QrCode, MapPin, Cpu, Calendar, ChevronRight, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -179,10 +179,12 @@ function OverviewTab({ asset }: { asset: typeof ASSETS["1"] }) {
 
 /* ─── Activity Tab ──────────────────────────────────────────────────── */
 function ActivityTab() {
+  const [expanded, setExpanded] = useState<number | null>(null);
   return (
-    <div className="space-y-3">
+    <div className="space-y-1">
       {ACTIVITY_EVENTS.map((ev, i) => {
         const cfg = EVENT_ICON[ev.type] ?? EVENT_ICON.install;
+        const isExp = expanded === i;
         return (
           <div key={i} className="flex gap-3">
             <div className="flex flex-col items-center">
@@ -194,10 +196,21 @@ function ActivityTab() {
                 <div className="w-px flex-1 my-1" style={{ backgroundColor: "var(--border)" }} />
               )}
             </div>
-            <div className="flex-1 pb-3">
-              <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>{ev.ts}</p>
+            <button className="flex-1 pb-3 text-left" onClick={() => setExpanded(isExp ? null : i)}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>{ev.ts}</p>
+                {isExp ? <ChevronUp className="w-3 h-3 flex-shrink-0" style={{ color: "var(--foreground-subtle)" }} />
+                        : <ChevronDown className="w-3 h-3 flex-shrink-0" style={{ color: "var(--foreground-subtle)" }} />}
+              </div>
               <p className="text-sm mt-0.5 leading-relaxed" style={{ color: "var(--foreground)" }}>{ev.text}</p>
-            </div>
+              {isExp && (
+                <div className="mt-2 p-2 rounded-lg text-xs" style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-subtle)" }}>
+                  Type: {ev.type.toUpperCase()} · Timestamp: {ev.ts}
+                  {ev.type === "wo" && <><br /><Link href="/workorders/WO-2026-007" className="font-medium" style={{ color: "var(--brand-blue)" }}>View work order →</Link></>}
+                  {ev.type === "mira" && <><br /><a href="https://t.me/FactoryLMDiagnose_bot" target="_blank" rel="noopener noreferrer" className="font-medium" style={{ color: "var(--brand-blue)" }}>Chat with MIRA →</a></>}
+                </div>
+              )}
+            </button>
           </div>
         );
       })}
@@ -221,21 +234,24 @@ function WorkOrdersTab() {
         </Button>
       </Link>
       {WO_LIST.map((wo) => (
-        <div key={wo.id} className="card p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-mono" style={{ color: "var(--foreground-subtle)" }}>{wo.id}</span>
-                <Badge variant={PRIORITY_VARIANT[wo.priority] ?? "low"}>{wo.priority}</Badge>
-                <Badge variant={STATUS_VARIANT[wo.status] ?? "open"} className="capitalize">{wo.status}</Badge>
+        <Link key={wo.id} href={`/workorders/${wo.id}`}>
+          <div className="card p-4 hover:shadow-md transition-shadow cursor-pointer">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-mono" style={{ color: "var(--foreground-subtle)" }}>{wo.id}</span>
+                  <Badge variant={PRIORITY_VARIANT[wo.priority] ?? "low"}>{wo.priority}</Badge>
+                  <Badge variant={STATUS_VARIANT[wo.status] ?? "open"} className="capitalize">{wo.status}</Badge>
+                </div>
+                <p className="text-sm font-medium mt-1" style={{ color: "var(--foreground)" }}>{wo.title}</p>
+                <p className="text-xs mt-1" style={{ color: "var(--foreground-muted)" }}>
+                  {wo.tech} · Due {wo.date}
+                </p>
               </div>
-              <p className="text-sm font-medium mt-1" style={{ color: "var(--foreground)" }}>{wo.title}</p>
-              <p className="text-xs mt-1" style={{ color: "var(--foreground-muted)" }}>
-                {wo.tech} · Due {wo.date}
-              </p>
+              <ChevronRight className="w-4 h-4 flex-shrink-0 mt-1" style={{ color: "var(--foreground-subtle)" }} />
             </div>
           </div>
-        </div>
+        </Link>
       ))}
     </div>
   );
@@ -246,22 +262,26 @@ function DocumentsTab() {
   const DOC_STATE_VARIANT: Record<string, "indexed" | "partial" | "superseded"> = {
     indexed: "indexed", partial: "partial", superseded: "superseded",
   };
+  // Map local ids to real doc ids (d01 format)
+  const docIdMap: Record<string, string> = { d1: "d01", d2: "d02", d3: "d03", d4: "d09" };
   return (
     <div className="space-y-3">
       {DOCS_LIST.map((doc) => (
-        <div key={doc.id} className="card p-4 flex items-center gap-3">
-          <FileText className="w-8 h-8 flex-shrink-0 p-1.5 rounded-lg"
-            style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }} />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>{doc.name}</p>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <Badge variant="outline" className="text-[10px]">{doc.category}</Badge>
-              <Badge variant={DOC_STATE_VARIANT[doc.state]} className="capitalize text-[10px]">{doc.state}</Badge>
-              <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{doc.pages}p · {doc.date}</span>
+        <Link key={doc.id} href={`/documents/${docIdMap[doc.id] ?? "d01"}`}>
+          <div className="card p-4 flex items-center gap-3 hover:shadow-md transition-shadow cursor-pointer">
+            <FileText className="w-8 h-8 flex-shrink-0 p-1.5 rounded-lg"
+              style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>{doc.name}</p>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <Badge variant="outline" className="text-[10px]">{doc.category}</Badge>
+                <Badge variant={DOC_STATE_VARIANT[doc.state]} className="capitalize text-[10px]">{doc.state}</Badge>
+                <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{doc.pages}p · {doc.date}</span>
+              </div>
             </div>
+            <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--foreground-subtle)" }} />
           </div>
-          <Button size="sm" variant="ghost" className="flex-shrink-0 text-xs">Open</Button>
-        </div>
+        </Link>
       ))}
     </div>
   );
@@ -274,29 +294,38 @@ function PartsTab() {
     low: { color: "#EAB308", bg: "#FEF9C3", label: "Low Stock" },
     out: { color: "#DC2626", bg: "#FEE2E2", label: "Out of Stock" },
   };
+  // Map local part ids to real part ids
+  const partIdMap: Record<string, string> = { "P-001": "P-001", "P-015": "P-002", "P-022": "P-003", "P-031": "P-007" };
   return (
     <div className="space-y-3">
       {PARTS_LIST.map((part) => {
         const st = STOCK_STYLE[part.status as keyof typeof STOCK_STYLE];
         return (
-          <div key={part.id} className="card p-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Package className="w-8 h-8 p-1.5 rounded-lg flex-shrink-0"
-                style={{ backgroundColor: st.bg, color: st.color }} />
-              <div className="min-w-0">
-                <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{part.name}</p>
-                <p className="text-xs font-mono mt-0.5" style={{ color: "var(--foreground-subtle)" }}>{part.id}</p>
+          <Link key={part.id} href={`/parts/${partIdMap[part.id] ?? "P-001"}`}>
+            <div className="card p-4 flex items-center justify-between gap-3 hover:shadow-md transition-shadow cursor-pointer">
+              <div className="flex items-center gap-3 min-w-0">
+                <Package className="w-8 h-8 p-1.5 rounded-lg flex-shrink-0"
+                  style={{ backgroundColor: st.bg, color: st.color }} />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{part.name}</p>
+                  <p className="text-xs font-mono mt-0.5" style={{ color: "var(--foreground-subtle)" }}>{part.id}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="text-right">
+                  <p className="text-lg font-bold" style={{ color: st.color }}>{part.qty}</p>
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: st.bg, color: st.color }}>{st.label}</span>
+                </div>
+                <ChevronRight className="w-4 h-4" style={{ color: "var(--foreground-subtle)" }} />
               </div>
             </div>
-            <div className="text-right flex-shrink-0">
-              <p className="text-lg font-bold" style={{ color: st.color }}>{part.qty}</p>
-              <p className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{part.unit} · reorder at {part.reorder}</p>
-              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                style={{ backgroundColor: st.bg, color: st.color }}>{st.label}</span>
-            </div>
-          </div>
+          </Link>
         );
       })}
+      <Link href="/parts" className="text-xs font-medium" style={{ color: "var(--brand-blue)" }}>
+        View all parts →
+      </Link>
     </div>
   );
 }

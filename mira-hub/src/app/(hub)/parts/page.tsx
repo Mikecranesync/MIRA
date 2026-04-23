@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Package, ChevronRight, AlertCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Search, Package, ChevronRight, AlertCircle, AlertTriangle, CheckCircle2, ChevronsUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { PARTS, CATEGORIES, OEMS, getStockStatus } from "@/lib/parts-data";
@@ -20,13 +20,23 @@ const STATUS_FILTERS = [
   { key: "out", label: "Out of Stock" },
 ];
 
+type SortCol = "description" | "qtyOnHand" | "unitCost" | "status";
+type SortDir = "asc" | "desc";
+
 export default function PartsPage() {
   const [query, setQuery]         = useState("");
   const [oem, setOem]             = useState("all");
   const [category, setCategory]   = useState("all");
   const [stockFilter, setStock]   = useState("all");
+  const [sortCol, setSortCol]     = useState<SortCol | null>(null);
+  const [sortDir, setSortDir]     = useState<SortDir>("asc");
 
-  const visible = PARTS.filter(p => {
+  function handleSort(col: SortCol) {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  }
+
+  const filtered = PARTS.filter(p => {
     const status = getStockStatus(p);
     const matchQ    = !query   || p.description.toLowerCase().includes(query.toLowerCase()) || p.partNumber.toLowerCase().includes(query.toLowerCase());
     const matchOem  = oem === "all"      || p.oem === oem;
@@ -34,6 +44,16 @@ export default function PartsPage() {
     const matchStock = stockFilter === "all" || status === stockFilter;
     return matchQ && matchOem && matchCat && matchStock;
   });
+
+  const STATUS_ORDER = { out: 0, low: 1, ok: 2 };
+  const visible = sortCol ? [...filtered].sort((a, b) => {
+    let cmp = 0;
+    if (sortCol === "description") cmp = a.description.localeCompare(b.description);
+    else if (sortCol === "qtyOnHand") cmp = a.qtyOnHand - b.qtyOnHand;
+    else if (sortCol === "unitCost") cmp = a.unitCost - b.unitCost;
+    else if (sortCol === "status") cmp = STATUS_ORDER[getStockStatus(a)] - STATUS_ORDER[getStockStatus(b)];
+    return sortDir === "asc" ? cmp : -cmp;
+  }) : filtered;
 
   const outCount = PARTS.filter(p => getStockStatus(p) === "out").length;
   const lowCount = PARTS.filter(p => getStockStatus(p) === "low").length;
@@ -110,8 +130,28 @@ export default function PartsPage() {
               <table className="w-full text-sm">
                 <thead style={{ backgroundColor: "var(--surface-1)", borderBottom: "1px solid var(--border)" }}>
                   <tr>
-                    {["Part #", "Description", "OEM", "Category", "Qty", "Reorder", "Unit Cost", "Location", "Status", ""].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "var(--foreground-muted)" }}>{h}</th>
+                    {[
+                      { label: "Part #", col: null },
+                      { label: "Description", col: "description" as SortCol },
+                      { label: "OEM", col: null },
+                      { label: "Category", col: null },
+                      { label: "Qty", col: "qtyOnHand" as SortCol },
+                      { label: "Reorder", col: null },
+                      { label: "Unit Cost", col: "unitCost" as SortCol },
+                      { label: "Location", col: null },
+                      { label: "Status", col: "status" as SortCol },
+                      { label: "", col: null },
+                    ].map(({ label, col }) => (
+                      <th key={label} className="px-4 py-3 text-left text-xs font-semibold" style={{ color: "var(--foreground-muted)" }}>
+                        {col ? (
+                          <button onClick={() => handleSort(col)} className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors">
+                            {label}
+                            {sortCol === col
+                              ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)
+                              : <ChevronsUpDown className="w-3 h-3 opacity-40" />}
+                          </button>
+                        ) : label}
+                      </th>
                     ))}
                   </tr>
                 </thead>
