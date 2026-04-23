@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import time
 from typing import TYPE_CHECKING
 
 from .types import NormalizedChatEvent, NormalizedChatResponse
@@ -11,6 +13,9 @@ if TYPE_CHECKING:
     from shared.identity.service import IdentityService
 
 logger = logging.getLogger("mira-gsd")
+
+_RATE_LIMIT_MESSAGES = int(os.getenv("RATE_LIMIT_MESSAGES", "10"))
+_RATE_LIMIT_WINDOW = 60  # seconds
 
 
 class ChatDispatcher:
@@ -23,6 +28,29 @@ class ChatDispatcher:
         """
         self.engine = engine
         self._identity = identity_service
+        # {chat_id: [monotonic_timestamp, ...]} — pruned on every check
+        self._rate_windows: dict[str, list[float]] = {}
+
+    def _check_rate_limit(self, chat_id: str) -> bool:
+        """Return True if under limit, False if the user should be throttled.
+
+        Tracks the last _RATE_LIMIT_MESSAGES timestamps per chat_id in a
+        sliding window of _RATE_LIMIT_WINDOW seconds.
+        """
+        now = time.monotonic()
+        window = [ts for ts in self._rate_windows.get(chat_id, []) if now - ts < _RATE_LIMIT_WINDOW]
+        if len(window) >= _RATE_LIMIT_MESSAGES:
+            self._rate_windows[chat_id] = window
+            logger.warning(
+                "RATE_LIMIT_HIT chat_id=%s messages=%d window=%ds",
+                chat_id,
+                len(window),
+                _RATE_LIMIT_WINDOW,
+            )
+            return False
+        window.append(now)
+        self._rate_windows[chat_id] = window
+        return True
 
     async def dispatch(self, event: NormalizedChatEvent) -> NormalizedChatResponse:
         """Process one chat event and return a response."""
@@ -36,6 +64,16 @@ class ChatDispatcher:
             chat_id = f"{event.platform}:{event.external_channel_id}:{event.external_thread_id}"
         else:
             chat_id = f"{event.platform}:{event.external_channel_id}"
+
+        # Per-user rate limit — check before any engine work
+        if not self._check_rate_limit(chat_id):
+            return NormalizedChatResponse(
+                text=(
+                    "You're sending messages too quickly. "
+                    "Please wait a moment before sending another message."
+                ),
+                thread_id=event.external_thread_id,
+            )
 
         # Resolve canonical user_id via identity service when available
         user_id = event.user_id or event.external_user_id

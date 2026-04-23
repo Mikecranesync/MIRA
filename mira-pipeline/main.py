@@ -52,6 +52,11 @@ logger.propagate = True
 
 PIPELINE_API_KEY = os.getenv("PIPELINE_API_KEY", "")
 DB_PATH = os.getenv("MIRA_DB_PATH", "/data/mira.db")
+_API_RATE_LIMIT_RPM = int(os.getenv("API_RATE_LIMIT_RPM", "100"))
+_API_RATE_WINDOW = 60  # seconds
+
+# {client_key: [monotonic_timestamp, ...]}
+_api_rate_windows: dict[str, list[float]] = {}
 OPENWEBUI_URL = os.getenv("OPENWEBUI_BASE_URL", "http://mira-core:8080")
 OPENWEBUI_API_KEY = os.getenv("OPENWEBUI_API_KEY", "")
 COLLECTION_ID = os.getenv("KNOWLEDGE_COLLECTION_ID", "")
@@ -294,6 +299,49 @@ async def _auth(request: Request, call_next):
         if auth != expected:
             return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     return await call_next(request)
+
+
+@app.middleware("http")
+async def _rate_limit(request: Request, call_next):
+    """Per-client sliding-window rate limit: _API_RATE_LIMIT_RPM requests/minute."""
+    if request.url.path in ("/health", "/v1/models"):
+        return await call_next(request)
+
+    # Key by Authorization header (tenant) or remote IP
+    auth = request.headers.get("Authorization", "")
+    client_key = auth or (request.client.host if request.client else "unknown")
+
+    now = time.monotonic()
+    window = [ts for ts in _api_rate_windows.get(client_key, []) if now - ts < _API_RATE_WINDOW]
+
+    if len(window) >= _API_RATE_LIMIT_RPM:
+        _api_rate_windows[client_key] = window
+        reset_in = max(1, int(_API_RATE_WINDOW - (now - window[0])))
+        logger.warning(
+            "API_RATE_LIMIT_HIT client=%s requests=%d",
+            client_key[:30],
+            len(window),
+        )
+        return JSONResponse(
+            status_code=429,
+            content={"error": "Too Many Requests — slow down and retry"},
+            headers={
+                "X-RateLimit-Limit": str(_API_RATE_LIMIT_RPM),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": str(reset_in),
+                "Retry-After": str(reset_in),
+            },
+        )
+
+    window.append(now)
+    _api_rate_windows[client_key] = window
+
+    response = await call_next(request)
+    # Attach rate-limit headers to all non-429 responses
+    remaining = max(0, _API_RATE_LIMIT_RPM - len(window))
+    response.headers["X-RateLimit-Limit"] = str(_API_RATE_LIMIT_RPM)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    return response
 
 
 # ── Health ───────────────────────────────────────────────────────────────────
