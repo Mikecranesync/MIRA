@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import {
   Mic, ClipboardList, Bot, ShieldAlert, Calendar,
   Plus, QrCode, MessageSquarePlus, X, CheckCircle2,
-  Clock, AlertTriangle, TrendingUp, Wrench,
+  Clock, AlertTriangle, TrendingUp, Wrench, Cog,
   ChevronRight, RefreshCw, Volume2, VolumeX, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -225,6 +225,7 @@ export default function FeedPage() {
               { label: tWorkorders("new"), icon: ClipboardList,     href: "/workorders/new" },
               { label: tFeed("scanQr"),    icon: QrCode,            href: "#" },
               { label: tFeed("newRequest"), icon: MessageSquarePlus, href: "/requests/new" },
+              { label: "New Asset",        icon: Cog,               href: "/assets?create=1" },
             ].map((action) => (
               <Link key={action.label} href={action.href}
                 className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white shadow-lg"
