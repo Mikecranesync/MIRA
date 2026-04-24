@@ -298,6 +298,43 @@ services:
       retries: 3
       start_period: 10s
 
+  mira-hub:
+    build: ./mira-hub
+    container_name: mira-hub
+    ports:
+      - "127.0.0.1:3101:3000"
+    environment:
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.factorylm.com}
+      # Google Workspace OAuth
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      # Slack — both bot-token shortcut and full OAuth are supported by the route
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
+      - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET:-}
+      # Microsoft 365 / Teams (single Azure app covers both)
+      - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID:-}
+      - MICROSOFT_CLIENT_SECRET=${MICROSOFT_CLIENT_SECRET:-}
+      # Dropbox
+      - DROPBOX_APP_KEY=${DROPBOX_APP_KEY:-}
+      - DROPBOX_APP_SECRET=${DROPBOX_APP_SECRET:-}
+      # Atlassian Confluence
+      - ATLASSIAN_CLIENT_ID=${ATLASSIAN_CLIENT_ID:-}
+      - ATLASSIAN_CLIENT_SECRET=${ATLASSIAN_CLIENT_SECRET:-}
+      # Telegram (status endpoint reads these; route validates pasted tokens separately)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
+    networks:
+      - mira-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/hub/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
 networks:
   mira-net:
     driver: bridge
