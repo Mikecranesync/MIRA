@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { upsertBinding } from "@/lib/bindings";
+import { validateState, stateCookieName } from "@/lib/oauth-state";
 
 export const dynamic = "force-dynamic";
 
@@ -6,12 +8,14 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
+  const state = searchParams.get("state");
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.factorylm.com";
 
   if (error || !code) {
-    return NextResponse.redirect(
-      `${appUrl}/hub/channels?provider=dropbox&status=error&reason=${error ?? "no_code"}`
-    );
+    return errorRedirect(appUrl, error ?? "no_code");
+  }
+  if (!validateState(req, "dropbox", state)) {
+    return errorRedirect(appUrl, "state_mismatch");
   }
 
   const tokenRes = await fetch("https://api.dropboxapi.com/oauth2/token", {
@@ -25,20 +29,53 @@ export async function GET(req: NextRequest) {
       redirect_uri: `${appUrl}/hub/api/auth/dropbox/callback`,
     }),
   });
-
   const tokens = await tokenRes.json();
   if (tokens.error) {
-    return NextResponse.redirect(
-      `${appUrl}/hub/channels?provider=dropbox&status=error&reason=${tokens.error}`
-    );
+    return errorRedirect(appUrl, tokens.error_description ?? tokens.error);
   }
 
-  const meta = encodeURIComponent(JSON.stringify({
-    email: tokens.account_id ?? "",
-    displayName: "Dropbox",
-  }));
+  // Fetch account info for display meta
+  let email = "";
+  let displayName = "Dropbox";
+  try {
+    const accountRes = await fetch("https://api.dropboxapi.com/2/users/get_current_account", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (accountRes.ok) {
+      const acc = await accountRes.json();
+      email = acc.email ?? "";
+      displayName = acc.name?.display_name ?? "Dropbox";
+    }
+  } catch {
+    /* non-fatal; meta stays minimal */
+  }
 
+  const expiresAt = tokens.expires_in
+    ? new Date(Date.now() + Number(tokens.expires_in) * 1000)
+    : null;
+
+  await upsertBinding({
+    provider: "dropbox",
+    externalId: tokens.account_id ?? null,
+    accessToken: tokens.access_token ?? null,
+    refreshToken: tokens.refresh_token ?? null,
+    tokenExpiresAt: expiresAt,
+    scopes: (tokens.scope ?? "").split(" ").filter(Boolean),
+    meta: {
+      accountId: tokens.account_id ?? "",
+      email,
+      displayName,
+    },
+  });
+
+  const res = NextResponse.redirect(`${appUrl}/hub/channels?provider=dropbox&status=connected`);
+  res.cookies.delete(stateCookieName("dropbox"));
+  return res;
+}
+
+function errorRedirect(appUrl: string, reason: string) {
   return NextResponse.redirect(
-    `${appUrl}/hub/channels?provider=dropbox&status=connected&meta=${meta}`
+    `${appUrl}/hub/channels?provider=dropbox&status=error&reason=${encodeURIComponent(reason)}`,
   );
 }

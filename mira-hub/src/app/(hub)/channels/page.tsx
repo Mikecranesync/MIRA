@@ -6,10 +6,8 @@ import { Settings, X, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
-  getConnection,
-  setConnection,
-  removeConnection,
-  getAllConnections,
+  fetchConnections,
+  disconnect as apiDisconnect,
   type Provider,
   type ConnectionMeta,
 } from "@/lib/connections";
@@ -175,63 +173,60 @@ function ChannelsInner() {
   const [telegramError, setTelegramError] = useState<string | null>(null);
   const [openwebuiUrl, setOpenwebuiUrl] = useState("http://localhost:3000");
 
-  const refresh = useCallback(() => {
-    setConnections(getAllConnections());
+  const [transientErrors, setTransientErrors] = useState<Partial<Record<Provider, string>>>({});
+
+  const refresh = useCallback(async () => {
+    const data = await fetchConnections();
+    setConnections(data);
   }, []);
 
   useEffect(() => {
+    // The DB (via the OAuth callback) is the source of truth; URL params are
+    // only used to surface transient error reasons from a failed round-trip.
     const provider = searchParams.get("provider") as Provider | null;
     const status = searchParams.get("status");
-    const meta = searchParams.get("meta");
     const reason = searchParams.get("reason");
 
-    if (provider && status === "connected" && meta) {
-      try {
-        const parsed = JSON.parse(decodeURIComponent(meta));
-        setConnection(provider, { connected: true, ...parsed });
-      } catch { /* malformed meta */ }
+    if (provider && status === "error") {
+      setTransientErrors((prev) => ({ ...prev, [provider]: reason ?? "unknown" }));
       window.history.replaceState({}, "", window.location.pathname);
-    } else if (provider && status === "error") {
-      setConnection(provider, { connected: false, error: reason ?? "unknown" });
+    } else if (provider && status === "connected") {
       window.history.replaceState({}, "", window.location.pathname);
     }
 
     refresh();
 
-    fetch("/api/auth/status")
-      .then(r => r.json())
+    fetch("/hub/api/auth/status")
+      .then((r) => r.json())
       .then((d: AuthStatus) => setAuthStatus(d))
       .catch(() => {});
   }, [searchParams, refresh]);
 
   function conn(p: Provider): ConnectionMeta {
-    return connections[p] ?? { connected: false };
+    const base = connections[p] ?? { connected: false };
+    const err = transientErrors[p];
+    return err ? { ...base, error: err } : base;
   }
 
-  function disconnect(p: Provider) {
-    removeConnection(p);
-    refresh();
+  async function disconnect(p: Provider) {
+    await apiDisconnect(p);
+    await refresh();
   }
 
   async function handleTelegramConnect() {
     setTelegramLoading(true);
     setTelegramError(null);
     try {
-      const res = await fetch("/api/auth/telegram", {
+      const res = await fetch("/hub/api/auth/telegram", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: telegramToken.trim() }),
       });
       const data = await res.json();
       if (data.valid) {
-        setConnection("telegram", {
-          connected: true,
-          botUsername: data.bot?.username,
-          displayName: data.bot?.firstName ?? "MIRA Bot",
-        });
         setModal(null);
         setTelegramToken("");
-        refresh();
+        await refresh();
       } else {
         setTelegramError(data.error ?? "Invalid token — check with @BotFather");
       }
@@ -242,14 +237,19 @@ function ChannelsInner() {
     }
   }
 
-  function handleOpenWebuiConnect() {
-    setConnection("openwebui", {
-      connected: true,
-      displayName: "Open WebUI",
-      workspace: openwebuiUrl.trim(),
-    });
-    setModal(null);
-    refresh();
+  async function handleOpenWebuiConnect() {
+    try {
+      const res = await fetch("/hub/api/auth/openwebui", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: openwebuiUrl.trim() }),
+      });
+      if (!res.ok) return;
+      setModal(null);
+      await refresh();
+    } catch {
+      /* swallow; user can retry */
+    }
   }
 
   const telegramConn = conn("telegram");

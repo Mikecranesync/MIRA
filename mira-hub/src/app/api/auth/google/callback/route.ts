@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { upsertBinding } from "@/lib/bindings";
+import { validateState, stateCookieName } from "@/lib/oauth-state";
 
 export const dynamic = "force-dynamic";
 
@@ -6,19 +8,20 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
+  const state = searchParams.get("state");
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.factorylm.com";
 
   if (error || !code) {
-    return NextResponse.redirect(
-      `${appUrl}/hub/channels?provider=google&status=error&reason=${error ?? "no_code"}`
-    );
+    return errorRedirect(appUrl, error ?? "no_code");
+  }
+  if (!validateState(req, "google", state)) {
+    return errorRedirect(appUrl, "state_mismatch");
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID!;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
   const redirectUri = `${appUrl}/hub/api/auth/google/callback`;
 
-  // Exchange code for tokens
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -30,39 +33,41 @@ export async function GET(req: NextRequest) {
       grant_type: "authorization_code",
     }),
   });
-
   const tokens = await tokenRes.json();
-
   if (!tokenRes.ok || tokens.error) {
-    return NextResponse.redirect(
-      `${appUrl}/hub/channels?provider=google&status=error&reason=${tokens.error ?? "token_exchange_failed"}`
-    );
+    return errorRedirect(appUrl, tokens.error ?? "token_exchange_failed");
   }
 
-  // Get user info to show connected email
   const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
     headers: { Authorization: `Bearer ${tokens.access_token}` },
   });
   const user = await userRes.json();
 
-  // Get Drive file count (rough)
-  let fileCount = 0;
-  try {
-    const driveRes = await fetch(
-      "https://www.googleapis.com/drive/v3/files?pageSize=1&fields=nextPageToken",
-      { headers: { Authorization: `Bearer ${tokens.access_token}` } }
-    );
-    if (driveRes.ok) fileCount = -1; // -1 = "has files, count pending"
-  } catch {/* ignore */}
+  const expiresAt = tokens.expires_in
+    ? new Date(Date.now() + Number(tokens.expires_in) * 1000)
+    : null;
 
-  const meta = encodeURIComponent(JSON.stringify({
-    email: user.email ?? "",
-    name: user.name ?? "",
-    picture: user.picture ?? "",
-    fileCount,
-  }));
+  await upsertBinding({
+    provider: "google",
+    externalId: user.id ?? user.email ?? null,
+    accessToken: tokens.access_token ?? null,
+    refreshToken: tokens.refresh_token ?? null,
+    tokenExpiresAt: expiresAt,
+    scopes: (tokens.scope ?? "").split(" ").filter(Boolean),
+    meta: {
+      email: user.email ?? "",
+      displayName: user.name ?? user.email ?? "Google",
+      picture: user.picture ?? "",
+    },
+  });
 
+  const res = NextResponse.redirect(`${appUrl}/hub/channels?provider=google&status=connected`);
+  res.cookies.delete(stateCookieName("google"));
+  return res;
+}
+
+function errorRedirect(appUrl: string, reason: string) {
   return NextResponse.redirect(
-    `${appUrl}/hub/channels?provider=google&status=connected&meta=${meta}`
+    `${appUrl}/hub/channels?provider=google&status=error&reason=${encodeURIComponent(reason)}`,
   );
 }
