@@ -101,12 +101,14 @@ export async function sendBetaWelcomeEmail(
 /**
  * Send the "you're in" email after successful Stripe payment.
  * Includes JWT login link for immediate CMMS access.
+ * Also includes the tenant's magic-inbox address if their inbox_slug is set.
  */
 export async function sendActivatedEmail(
   email: string,
   firstName: string,
   company: string,
-  token: string
+  token: string,
+  inboxAddress: string | null = null,
 ): Promise<boolean> {
   return sendEmail({
     to: email,
@@ -118,6 +120,8 @@ export async function sendActivatedEmail(
       TOKEN: token,
       ACTIVATED_URL: `${PUBLIC_URL()}/activated?token=${token}`,
       CMMS_URL: `${PUBLIC_URL()}/api/cmms/login?token=${token}`,
+      INBOX_ADDRESS: inboxAddress || "",
+      INBOX_ADDRESS_URL: inboxAddress ? `mailto:${inboxAddress}` : "#",
     },
   });
 }

@@ -562,6 +562,23 @@
       <div class="status" id="status"></div>
     </section>
 
+    <section class="upload-panel reveal reveal-5" id="inbox-panel" hidden>
+      <div class="upload-header">
+        <div class="label"><span class="led ok"></span><span>MAGIC INBOX / READY</span></div>
+        <div class="channel">CH&nbsp;03 · EMAIL</div>
+      </div>
+      <div style="padding:28px 28px 24px;">
+        <p style="font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:var(--amber);margin-bottom:12px;">ALSO INCLUDED</p>
+        <h2 style="font-family:var(--font);font-size:20px;font-weight:600;letter-spacing:-0.02em;margin-bottom:8px;">Forward a manual by email</h2>
+        <p style="color:var(--text-secondary);font-size:14px;line-height:1.7;margin-bottom:20px;">Got a manual in your inbox? Forward it straight to MIRA &mdash; no login, no upload page. PDFs land in your knowledge base in about two minutes.</p>
+        <div id="inbox-card" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--surface-2,#171715);border:1px solid var(--border,rgba(255,255,255,0.07));border-radius:6px;padding:14px 16px;">
+          <a id="inbox-mailto" href="#" style="flex:1 1 auto;min-width:0;color:var(--amber,#f0a000);font-family:var(--mono);font-size:14px;font-weight:500;text-decoration:none;word-break:break-all;overflow-wrap:anywhere;">loading&hellip;</a>
+          <button type="button" id="inbox-copy" class="inbox-copy-btn" aria-label="Copy email address" style="flex:0 0 auto;background:transparent;color:var(--text,#e4e0d8);border:1px solid var(--border,rgba(255,255,255,0.12));padding:6px 12px;border-radius:4px;font:500 12px/1 var(--mono);cursor:pointer;letter-spacing:1px;text-transform:uppercase;">Copy</button>
+        </div>
+        <p style="margin:10px 0 0 0;color:var(--text-secondary);font-size:12px;line-height:1.5;">Tap the address to open your email app. Attach any OEM PDF and hit send.</p>
+      </div>
+    </section>
+
     <section class="upload-panel reveal reveal-5" id="csv-panel">
       <div class="upload-header">
         <div class="label"><span class="led" id="csv-led"></span><span id="csv-status-label">HISTORY IMPORT / READY</span></div>
@@ -684,10 +701,48 @@
 
       // Activation-status banner (issue #296) — if any provisioning step failed,
       // surface it with a Retry button instead of silently leaving the user stuck.
+      // Also surfaces the magic-inbox address when present.
       fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (me) {
-          if (!me || !me.provisioning || me.provisioning.ready) return;
+          if (!me) return;
+
+          // Magic inbox card: surface the mailto address when the tenant has one.
+          if (me.inbox && me.inbox.address) {
+            var panel = document.getElementById('inbox-panel');
+            var link = document.getElementById('inbox-mailto');
+            var copyBtn = document.getElementById('inbox-copy');
+            if (panel && link && copyBtn) {
+              link.textContent = me.inbox.address;
+              link.setAttribute('href', 'mailto:' + me.inbox.address);
+              panel.hidden = false;
+
+              copyBtn.addEventListener('click', function () {
+                var original = copyBtn.textContent;
+                var markCopied = function () {
+                  copyBtn.textContent = 'Copied';
+                  setTimeout(function () { copyBtn.textContent = original; }, 1600);
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                  navigator.clipboard.writeText(me.inbox.address)
+                    .then(markCopied)
+                    .catch(function () { copyBtn.textContent = 'Press Ctrl+C'; });
+                } else {
+                  // Legacy fallback for older browsers
+                  var sel = document.createRange();
+                  sel.selectNode(link);
+                  window.getSelection().removeAllRanges();
+                  window.getSelection().addRange(sel);
+                  try { document.execCommand('copy'); markCopied(); }
+                  catch (e) { copyBtn.textContent = 'Press Ctrl+C'; }
+                  window.getSelection().removeAllRanges();
+                }
+              });
+            }
+          }
+
+          // Provisioning retry banner
+          if (!me.provisioning || me.provisioning.ready) return;
           var msg;
           if (me.provisioning.atlas !== 'ok') {
             msg = "We're still finishing your CMMS setup.";
