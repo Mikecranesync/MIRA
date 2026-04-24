@@ -48,13 +48,13 @@ jobs:
           echo "=== Rebuild containers ==="
           if [ -n "${SERVICES:-}" ]; then
             echo "Selective rebuild: $SERVICES"
-            DOCKER_BUILDKIT=1 docker compose -f docker-compose.saas.yml build $SERVICES
-            docker compose -f docker-compose.saas.yml up -d --no-deps $SERVICES
+            DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $SERVICES
+            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps $SERVICES
           else
             echo "Full rebuild (mira-pipeline-saas, mira-bots)"
-            DOCKER_BUILDKIT=1 docker compose -f docker-compose.saas.yml build \
+            DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build \
               mira-pipeline mira-ingest mira-mcp
-            docker compose -f docker-compose.saas.yml up -d --no-deps \
+            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps \
               mira-pipeline mira-ingest mira-mcp
           fi
 
@@ -64,16 +64,16 @@ jobs:
           echo "mira-pipeline health: $STATUS"
           if [ "$STATUS" != "ok" ]; then
             echo "WARNING: health check returned $STATUS — check container logs"
-            docker compose -f docker-compose.saas.yml logs --tail=20 mira-pipeline-saas
+            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=20 mira-pipeline-saas
             exit 1
           fi
 
           echo "=== Deploy complete ==="
-          docker compose -f docker-compose.saas.yml ps --format "table {{.Name}}\t{{.Status}}"
+          doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml ps --format "table {{.Name}}\t{{.Status}}"
           ENDSSH
 
       - name: Notify failure
         if: failure()
         run: |
           echo "::error::VPS deploy failed — check logs above. SSH to 165.245.138.91 and run:"
-          echo "::error::  cd /opt/mira && docker compose -f docker-compose.saas.yml logs --tail=50"
+          echo "::error::  cd /opt/mira && doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=50"
