@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { upsertBinding } from "@/lib/bindings";
+import { validateState, stateCookieName } from "@/lib/oauth-state";
 
 export const dynamic = "force-dynamic";
 
@@ -6,12 +8,14 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
+  const state = searchParams.get("state");
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.factorylm.com";
 
   if (error || !code) {
-    return NextResponse.redirect(
-      `${appUrl}/hub/channels?provider=microsoft&status=error&reason=${error ?? "no_code"}`
-    );
+    return errorRedirect(appUrl, error ?? "no_code");
+  }
+  if (!validateState(req, "microsoft", state)) {
+    return errorRedirect(appUrl, "state_mismatch");
   }
 
   const tokenRes = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
@@ -25,12 +29,9 @@ export async function GET(req: NextRequest) {
       grant_type: "authorization_code",
     }),
   });
-
   const tokens = await tokenRes.json();
   if (tokens.error) {
-    return NextResponse.redirect(
-      `${appUrl}/hub/channels?provider=microsoft&status=error&reason=${tokens.error}`
-    );
+    return errorRedirect(appUrl, tokens.error);
   }
 
   const userRes = await fetch("https://graph.microsoft.com/v1.0/me", {
@@ -38,12 +39,30 @@ export async function GET(req: NextRequest) {
   });
   const user = await userRes.json();
 
-  const meta = encodeURIComponent(JSON.stringify({
-    email: user.mail ?? user.userPrincipalName ?? "",
-    name: user.displayName ?? "",
-  }));
+  const expiresAt = tokens.expires_in
+    ? new Date(Date.now() + Number(tokens.expires_in) * 1000)
+    : null;
 
+  await upsertBinding({
+    provider: "microsoft",
+    externalId: user.id ?? user.mail ?? user.userPrincipalName ?? null,
+    accessToken: tokens.access_token ?? null,
+    refreshToken: tokens.refresh_token ?? null,
+    tokenExpiresAt: expiresAt,
+    scopes: (tokens.scope ?? "").split(" ").filter(Boolean),
+    meta: {
+      email: user.mail ?? user.userPrincipalName ?? "",
+      displayName: user.displayName ?? "Microsoft 365",
+    },
+  });
+
+  const res = NextResponse.redirect(`${appUrl}/hub/channels?provider=microsoft&status=connected`);
+  res.cookies.delete(stateCookieName("microsoft"));
+  return res;
+}
+
+function errorRedirect(appUrl: string, reason: string) {
   return NextResponse.redirect(
-    `${appUrl}/hub/channels?provider=microsoft&status=connected&meta=${meta}`
+    `${appUrl}/hub/channels?provider=microsoft&status=error&reason=${encodeURIComponent(reason)}`,
   );
 }

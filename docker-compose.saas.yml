@@ -306,6 +306,10 @@ services:
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.factorylm.com}
+      # AES-256-GCM key for at-rest encryption of OAuth tokens in hub_channel_bindings
+      - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
+      # Default tenant for the dogfood / single-user Hub pass
+      - HUB_TENANT_ID=${HUB_TENANT_ID:-mike}
       # Google Workspace OAuth
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}

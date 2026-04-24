@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { newState, stateCookieName } from "@/lib/oauth-state";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +18,7 @@ export async function GET() {
     return NextResponse.json({ error: "Google OAuth not configured" }, { status: 503 });
   }
 
-  const state = Buffer.from(JSON.stringify({
-    nonce: Math.random().toString(36).slice(2),
-    ts: Date.now(),
-  })).toString("base64url");
-
+  const state = newState();
   const redirectUri = `${appUrl}/hub/api/auth/google/callback`;
 
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -34,6 +31,12 @@ export async function GET() {
   url.searchParams.set("state", state);
 
   const res = NextResponse.redirect(url.toString());
-  res.cookies.set("oauth_state_google", state, { httpOnly: true, maxAge: 600, path: "/" });
+  res.cookies.set(stateCookieName("google"), state, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: 600,
+    path: "/",
+  });
   return res;
 }

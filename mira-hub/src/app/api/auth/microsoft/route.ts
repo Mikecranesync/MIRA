@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { newState, stateCookieName } from "@/lib/oauth-state";
 
 export const dynamic = "force-dynamic";
 
@@ -10,11 +11,11 @@ export async function GET() {
 
   if (!clientId) {
     return NextResponse.redirect(
-      `${appUrl}/hub/channels?provider=microsoft&status=error&reason=oauth_not_configured`
+      `${appUrl}/hub/channels?provider=microsoft&status=error&reason=oauth_not_configured`,
     );
   }
 
-  const state = Buffer.from(Math.random().toString(36)).toString("base64url");
+  const state = newState();
   const url = new URL("https://login.microsoftonline.com/common/oauth2/v2.0/authorize");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("response_type", "code");
@@ -23,6 +24,12 @@ export async function GET() {
   url.searchParams.set("state", state);
 
   const res = NextResponse.redirect(url.toString());
-  res.cookies.set("oauth_state_microsoft", state, { httpOnly: true, maxAge: 600, path: "/" });
+  res.cookies.set(stateCookieName("microsoft"), state, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: 600,
+    path: "/",
+  });
   return res;
 }

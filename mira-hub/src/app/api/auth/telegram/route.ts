@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { upsertBinding } from "@/lib/bindings";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
   if (!me.ok) {
     return NextResponse.json(
       { error: me.description ?? "Invalid bot token" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -32,10 +33,23 @@ export async function POST(req: NextRequest) {
     });
     webhookResult = await whRes.json();
   } else {
-    // Get current webhook info
     const whInfoRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`);
     webhookResult = await whInfoRes.json();
   }
+
+  // Persist binding (bot token stored encrypted). Scopes are implicit in Telegram Bot API.
+  await upsertBinding({
+    provider: "telegram",
+    externalId: String(bot.id),
+    accessToken: token,
+    meta: {
+      botUsername: `@${bot.username}`,
+      displayName: bot.first_name,
+      canJoinGroups: bot.can_join_groups,
+      supportsInlineQueries: bot.supports_inline_queries,
+      webhookUrl: webhookResult?.result?.url ?? null,
+    },
+  });
 
   return NextResponse.json({
     valid: true,
