@@ -130,7 +130,23 @@ export interface InboxReceiptResult {
   ingested: { filename: string }[];
   skipped: { filename: string; reason: string }[];
   too_large: { filename: string; size_mb: number }[];
+  duplicates: { filename: string; original_filename: string; original_uploaded_at: string }[];
+  rejected: { filename: string; reason: string }[];
   errors: { filename: string; status: number | string }[];
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return "earlier";
+  // Trim to YYYY-MM-DD if we can parse it; otherwise pass through.
+  try {
+    const d = new Date(iso);
+    if (Number.isFinite(d.getTime())) {
+      return d.toISOString().slice(0, 10);
+    }
+  } catch {
+    // fall through
+  }
+  return iso;
 }
 
 function formatInboxReceiptBody(firstName: string, r: InboxReceiptResult): string {
@@ -147,6 +163,25 @@ function formatInboxReceiptBody(firstName: string, r: InboxReceiptResult): strin
     lines.push("");
   } else {
     lines.push("Nothing landed in your knowledge base from that email — see why below.");
+    lines.push("");
+  }
+
+  if (r.duplicates.length > 0) {
+    lines.push("Already in your KB (skipped to avoid duplicates):");
+    for (const f of r.duplicates) {
+      const when = formatDate(f.original_uploaded_at);
+      lines.push(`  - ${f.filename}  (original: ${f.original_filename}, uploaded ${when})`);
+    }
+    lines.push("");
+  }
+
+  if (r.rejected.length > 0) {
+    lines.push("Didn't look like a manual to me, so I left them out:");
+    for (const f of r.rejected) {
+      lines.push(`  - ${f.filename}  (${f.reason})`);
+    }
+    lines.push("");
+    lines.push("If I'm wrong, forward the file again with [force] at the start of the subject line.");
     lines.push("");
   }
 
