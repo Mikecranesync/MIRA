@@ -122,6 +122,116 @@ export async function sendActivatedEmail(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Magic email inbox (Unit 3) — receipt email after Postmark webhook fires
+// ---------------------------------------------------------------------------
+
+export interface InboxReceiptResult {
+  ingested: { filename: string }[];
+  skipped: { filename: string; reason: string }[];
+  too_large: { filename: string; size_mb: number }[];
+  errors: { filename: string; status: number | string }[];
+}
+
+function formatInboxReceiptBody(firstName: string, r: InboxReceiptResult): string {
+  const lines: string[] = [];
+  lines.push(`Hey ${firstName || "there"},`);
+  lines.push("");
+
+  if (r.ingested.length > 0) {
+    lines.push("Got it. Here's what landed in your knowledge base just now:");
+    lines.push("");
+    for (const f of r.ingested) {
+      lines.push(`  ${f.filename}  (searchable in Telegram within 2 min)`);
+    }
+    lines.push("");
+  } else {
+    lines.push("Nothing landed in your knowledge base from that email — see why below.");
+    lines.push("");
+  }
+
+  if (r.skipped.length > 0) {
+    lines.push("Skipped because they aren't PDFs:");
+    for (const f of r.skipped) {
+      lines.push(`  - ${f.filename}  (${f.reason})`);
+    }
+    lines.push("");
+  }
+
+  if (r.too_large.length > 0) {
+    lines.push("Too big (20 MB max per file):");
+    for (const f of r.too_large) {
+      lines.push(`  - ${f.filename}  (${f.size_mb} MB - reply and I'll share an upload link)`);
+    }
+    lines.push("");
+  }
+
+  if (r.errors.length > 0) {
+    lines.push("Hit a problem on these (we'll auto-retry once, but reply if it persists):");
+    for (const f of r.errors) {
+      lines.push(`  - ${f.filename}  (status ${f.status})`);
+    }
+    lines.push("");
+  }
+
+  if (r.ingested.length > 0) {
+    lines.push("Try it: ask MIRA in Telegram about anything from the new manual.");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Send the inbox receipt email via Resend (plain text, no HTML template).
+ * Variable-length file lists don't fit the {{VAR}} system, so this bypasses sendEmail().
+ * Dev-mode short-circuit: logs body instead of sending when RESEND_API_KEY is unset.
+ */
+export async function sendInboxReceiptEmail(
+  toEmail: string,
+  firstName: string,
+  result: InboxReceiptResult
+): Promise<boolean> {
+  const total = result.ingested.length;
+  const subject = total > 0
+    ? `MIRA - ${total} ${total === 1 ? "file" : "files"} added to your knowledge base`
+    : "MIRA - couldn't add anything from your last email";
+  const body = formatInboxReceiptBody(firstName, result);
+
+  const apiKey = RESEND_API_KEY();
+  if (!apiKey) {
+    console.log("[mailer] (dev-mode) RESEND_API_KEY unset; would send to", toEmail);
+    console.log("[mailer] subject:", subject);
+    console.log("[mailer] body:\n" + body);
+    return false;
+  }
+
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: `${FROM_NAME} <${FROM_EMAIL()}>`,
+        to: [toEmail],
+        subject,
+        text: body,
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.error("[mailer] inbox receipt Resend error:", resp.status, err);
+      return false;
+    }
+    console.log("[mailer] inbox receipt sent to", toEmail);
+    return true;
+  } catch (err) {
+    console.error("[mailer] inbox receipt send failed:", err);
+    return false;
+  }
+}
+
 /**
  * Beta nurture drip schedule — Loom-heavy education → payment at Day 7.
  *
