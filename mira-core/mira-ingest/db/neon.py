@@ -610,3 +610,66 @@ def write_session_analysis(result: dict) -> None:
             },
         )
         conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Magic-inbox safety gate (Unit 3.5): per-tenant content-hash dedup ledger.
+# Decoupled from knowledge_entries (which Open WebUI manages) — see
+# migrations/007_tenant_ingested_files.sql for the table definition.
+# ---------------------------------------------------------------------------
+
+
+def tenant_ingested_files_lookup(
+    tenant_id: str, content_hash: str
+) -> dict[str, Any] | None:
+    """Return existing ledger row for (tenant_id, content_hash) or None.
+
+    Fail-open on DB error: returns None so the caller proceeds with ingest
+    rather than silently dropping the file. (Same convention as
+    check_tier_limit — never block ingest on infra failures.)
+    """
+    if not tenant_id or not content_hash:
+        return None
+    try:
+        with _engine().connect() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        "SELECT filename, ingested_at, source "
+                        "FROM tenant_ingested_files "
+                        "WHERE tenant_id = :tid AND content_hash = :h LIMIT 1"
+                    ),
+                    {"tid": tenant_id, "h": content_hash},
+                )
+                .mappings()
+                .fetchone()
+            )
+        return dict(row) if row else None
+    except Exception:
+        return None
+
+
+def tenant_ingested_files_record(
+    tenant_id: str, content_hash: str, filename: str, source: str = "unknown"
+) -> None:
+    """Insert a ledger row. ON CONFLICT DO NOTHING — idempotent on retry.
+
+    Fail-open on DB error: logs nothing, swallows exception. The file is
+    already in Open WebUI by the time this runs; failing here would just
+    mean the next forward of the same file gets re-ingested.
+    """
+    if not tenant_id or not content_hash:
+        return
+    try:
+        with _engine().begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO tenant_ingested_files "
+                    "  (tenant_id, content_hash, filename, source) "
+                    "VALUES (:tid, :h, :fn, :src) "
+                    "ON CONFLICT (tenant_id, content_hash) DO NOTHING"
+                ),
+                {"tid": tenant_id, "h": content_hash, "fn": filename, "src": source},
+            )
+    except Exception:
+        pass

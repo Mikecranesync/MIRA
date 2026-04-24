@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import hashlib
 import io
 import json
 import logging
@@ -14,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+import pdfplumber
 from crawl_verifier import (
     OUTCOME_SUCCESS,
     classify_historical,
@@ -691,6 +693,8 @@ async def ingest_document_kb(
     collection_hint: str = Form(default=None),
     equipment_type: str = Form(default=None),
     tenant_id: str = Form(default=""),
+    relevance_gate: str = Form(default="off"),  # 'on' opts in (also requires RELEVANCE_GATE_ENABLED env)
+    source: str = Form(default="unknown"),  # 'inbox' | 'web-upload' | 'cron-oem' | 'unknown'
 ):
     """Upload a PDF to Open WebUI Knowledge Base.
 
@@ -736,11 +740,65 @@ async def ingest_document_kb(
     else:
         tenant_id, tenant_source = "", "default"
     logger.info(
-        "Document KB ingest tenant=%s source=%s filename=%s",
+        "Document KB ingest tenant=%s source=%s filename=%s ingest_source=%s",
         tenant_id or "(none)",
         tenant_source,
         fname,
+        source,
     )
+
+    # Compute content hash up front — used by both dedup gate and the
+    # post-success ledger record below.
+    content_hash = hashlib.sha256(raw).hexdigest()
+
+    # GATE 1: per-tenant content-hash dedup (Unit 3.5).
+    # Cheap DB lookup; fail-open via tenant_ingested_files_lookup itself.
+    if tenant_id:
+        from db.neon import tenant_ingested_files_lookup
+
+        existing = tenant_ingested_files_lookup(tenant_id, content_hash)
+        if existing:
+            logger.info(
+                "[dedup] hit tenant=%s hash=%s original=%s",
+                tenant_id,
+                content_hash[:12],
+                existing["filename"],
+            )
+            return {
+                "status": "duplicate",
+                "filename": fname,
+                "original_filename": existing["filename"],
+                "original_uploaded_at": existing["ingested_at"].isoformat()
+                if hasattr(existing["ingested_at"], "isoformat")
+                else str(existing["ingested_at"]),
+                "content_hash": content_hash,
+            }
+
+    # GATE 2: LLM relevance check (Unit 3.5). Opt-in via env + form flag.
+    # Inbox path always sets relevance_gate=on; web upload picker leaves
+    # it default-off so the existing UX doesn't change.
+    if (
+        relevance_gate == "on"
+        and os.getenv("RELEVANCE_GATE_ENABLED", "").lower() == "true"
+    ):
+        from relevance import classify_document
+
+        first_text = _extract_first_pages_text(raw, n=2)
+        is_manual, reason = await classify_document(first_text)
+        logger.info(
+            "[relevance] tenant=%s file=%s verdict=%s reason=%s",
+            tenant_id or "(none)",
+            fname,
+            "YES" if is_manual else "NO",
+            reason,
+        )
+        if not is_manual:
+            return {
+                "status": "rejected",
+                "filename": fname,
+                "reason": reason,
+                "content_hash": content_hash,
+            }
 
     # Tier limit check (fail open on DB errors — never block on infra failures)
     if tenant_id:
@@ -817,6 +875,14 @@ async def ingest_document_kb(
     except Exception as e:
         logger.warning("KB attach failed (non-fatal, file is uploaded): %s", e)
 
+    # Record the file in the per-tenant dedup ledger (Unit 3.5).
+    # Runs after OW attach so we only mark files we actually shipped to
+    # the KB. Fail-open: ledger record failure is not a user-visible error.
+    if tenant_id:
+        from db.neon import tenant_ingested_files_record
+
+        tenant_ingested_files_record(tenant_id, content_hash, fname, source=source)
+
     logger.info(
         "Document KB ingest complete: %s → collection='%s' processing_status=%s",
         fname,
@@ -832,7 +898,28 @@ async def ingest_document_kb(
         "file_id": file_id,
         "processing_status": processing_status,
         "equipment_type": equipment_type or "",
+        "content_hash": content_hash,
     }
+
+
+def _extract_first_pages_text(raw: bytes, n: int = 2) -> str:
+    """Extract text from the first N pages of a PDF for the relevance gate.
+
+    Returns "" on parse failure (relevance.classify_document treats empty
+    text as fail-open).
+    """
+    try:
+        with pdfplumber.open(io.BytesIO(raw)) as doc:
+            pages = doc.pages[:n]
+            chunks: list[str] = []
+            for page in pages:
+                txt = page.extract_text() or ""
+                if txt:
+                    chunks.append(txt)
+            return "\n\n".join(chunks)
+    except Exception as exc:
+        logger.warning("[relevance] pdfplumber extract failed: %s", exc)
+        return ""
 
 
 # ---------------------------------------------------------------------------
