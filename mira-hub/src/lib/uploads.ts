@@ -12,10 +12,13 @@ export type UploadStatus =
 
 export type UploadProvider = "google" | "dropbox" | "local";
 
+export type UploadKind = "document" | "photo";
+
 export interface Upload {
   id: string;
   tenantId: string;
   provider: UploadProvider;
+  kind: UploadKind;
   externalFileId: string | null;
   externalDownloadUrl: string | null;
   filename: string;
@@ -26,6 +29,7 @@ export interface Upload {
   statusDetail: string | null;
   kbFileId: string | null;
   kbChunkCount: number | null;
+  assetTag: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -54,6 +58,15 @@ export function ensureUploadsSchema(): Promise<void> {
         updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    // In-place migrations for pre-existing deployments (idempotent)
+    await pool.query(`
+      ALTER TABLE hub_uploads
+        ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'document'
+    `);
+    await pool.query(`
+      ALTER TABLE hub_uploads
+        ADD COLUMN IF NOT EXISTS asset_tag TEXT
+    `);
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_hub_uploads_tenant_status
         ON hub_uploads (tenant_id, status, created_at DESC)
@@ -65,6 +78,7 @@ export function ensureUploadsSchema(): Promise<void> {
 export interface CreateUploadInput {
   tenantId?: string;
   provider: UploadProvider;
+  kind?: UploadKind;
   externalFileId?: string | null;
   externalDownloadUrl?: string | null;
   filename: string;
@@ -72,6 +86,7 @@ export interface CreateUploadInput {
   sizeBytes?: number | null;
   externalCreatedAt?: string | Date | null;
   initialStatus?: UploadStatus;
+  assetTag?: string | null;
 }
 
 function rowToUpload(r: Record<string, unknown>): Upload {
@@ -79,6 +94,7 @@ function rowToUpload(r: Record<string, unknown>): Upload {
     id: r.id as string,
     tenantId: r.tenant_id as string,
     provider: r.provider as UploadProvider,
+    kind: ((r.kind as string) ?? "document") as UploadKind,
     externalFileId: (r.external_file_id as string | null) ?? null,
     externalDownloadUrl: (r.external_download_url as string | null) ?? null,
     filename: r.filename as string,
@@ -89,6 +105,7 @@ function rowToUpload(r: Record<string, unknown>): Upload {
     statusDetail: (r.status_detail as string | null) ?? null,
     kbFileId: (r.kb_file_id as string | null) ?? null,
     kbChunkCount: r.kb_chunk_count != null ? Number(r.kb_chunk_count) : null,
+    assetTag: (r.asset_tag as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
@@ -98,6 +115,7 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
   await ensureUploadsSchema();
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const status = input.initialStatus ?? "queued";
+  const kind = input.kind ?? "document";
   const createdAt =
     input.externalCreatedAt instanceof Date
       ? input.externalCreatedAt.toISOString()
@@ -106,14 +124,15 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
   const { rows } = await pool.query(
     `
     INSERT INTO hub_uploads
-      (tenant_id, provider, external_file_id, external_download_url,
-       filename, mime_type, size_bytes, external_created_at, status)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      (tenant_id, provider, kind, external_file_id, external_download_url,
+       filename, mime_type, size_bytes, external_created_at, status, asset_tag)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     RETURNING *
   `,
     [
       tenantId,
       input.provider,
+      kind,
       input.externalFileId ?? null,
       input.externalDownloadUrl ?? null,
       input.filename,
@@ -121,6 +140,7 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
       input.sizeBytes ?? null,
       createdAt,
       status,
+      input.assetTag ?? null,
     ],
   );
   return rowToUpload(rows[0]);

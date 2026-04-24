@@ -11,7 +11,12 @@ import {
   streamFromGoogleDrive,
   streamFromSignedUrl,
 } from "@/lib/fetch-adapters";
-import { forwardToIngest } from "@/lib/mira-ingest-client";
+import {
+  forwardToIngest,
+  forwardToPhotoIngest,
+  inferKindFromMime,
+  SUPPORTED_MIMES,
+} from "@/lib/mira-ingest-client";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +28,7 @@ interface CreatePayload {
   mimeType?: string;
   sizeBytes?: number;
   externalCreatedAt?: string;
+  assetTag?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -42,9 +48,14 @@ export async function POST(req: NextRequest) {
   if (!body.filename) {
     return NextResponse.json({ error: "filename_required" }, { status: 400 });
   }
-  if (body.mimeType && body.mimeType !== "application/pdf") {
+  const mime = body.mimeType ?? "application/pdf";
+  if (!SUPPORTED_MIMES.has(mime)) {
     return NextResponse.json(
-      { error: "only_pdf_supported", got: body.mimeType },
+      {
+        error: "unsupported_mime",
+        got: mime,
+        supported: Array.from(SUPPORTED_MIMES),
+      },
       { status: 400 },
     );
   }
@@ -65,18 +76,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const kind = inferKindFromMime(mime);
+
   const upload = await createUpload({
     provider: body.provider,
+    kind,
     externalFileId: body.externalFileId ?? null,
     externalDownloadUrl: body.externalDownloadUrl ?? null,
     filename: body.filename,
-    mimeType: body.mimeType ?? "application/pdf",
+    mimeType: mime,
     sizeBytes: body.sizeBytes ?? null,
     externalCreatedAt: body.externalCreatedAt ?? null,
     initialStatus: "queued",
+    assetTag: body.assetTag ?? null,
   });
 
-  after(() => runIngestPipeline(upload.id, body));
+  after(() => runIngestPipeline(upload.id, body, kind));
 
   return NextResponse.json(upload, { status: 201 });
 }
@@ -86,7 +101,11 @@ export async function GET() {
   return NextResponse.json(rows);
 }
 
-async function runIngestPipeline(uploadId: string, payload: CreatePayload): Promise<void> {
+async function runIngestPipeline(
+  uploadId: string,
+  payload: CreatePayload,
+  kind: "document" | "photo",
+): Promise<void> {
   try {
     await updateUploadStatus(uploadId, "fetching");
     let fetched;
@@ -98,15 +117,22 @@ async function runIngestPipeline(uploadId: string, payload: CreatePayload): Prom
     }
 
     await updateUploadStatus(uploadId, "parsing");
-    const result = await forwardToIngest(
-      fetched.stream,
-      payload.filename,
-      payload.mimeType ?? fetched.contentType,
-    );
-    await updateUploadStatus(uploadId, "parsed", null, {
-      kbFileId: result.fileId ?? undefined,
-      kbChunkCount: result.chunkCount ?? undefined,
-    });
+    const mime = payload.mimeType ?? fetched.contentType;
+
+    if (kind === "photo") {
+      const result = await forwardToPhotoIngest(fetched.stream, payload.filename, mime, {
+        assetTag: payload.assetTag ?? null,
+      });
+      await updateUploadStatus(uploadId, "parsed", result.description ?? null, {
+        kbFileId: result.photoId != null ? String(result.photoId) : undefined,
+      });
+    } else {
+      const result = await forwardToIngest(fetched.stream, payload.filename, mime);
+      await updateUploadStatus(uploadId, "parsed", null, {
+        kbFileId: result.fileId ?? undefined,
+        kbChunkCount: result.chunkCount ?? undefined,
+      });
+    }
   } catch (err) {
     console.error(`[uploads/${uploadId}] pipeline failed`, err);
     await updateUploadStatus(uploadId, "failed", (err as Error).message);

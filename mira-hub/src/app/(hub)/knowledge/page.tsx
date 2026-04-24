@@ -68,23 +68,27 @@ export default function KnowledgePage() {
       const rows = (await res.json()) as Array<{
         id: string;
         provider: "google" | "dropbox" | "local";
+        kind?: "document" | "photo";
         filename: string;
         sizeBytes: number | null;
         externalCreatedAt: string | null;
         status: UploadBlockData["status"];
         statusDetail: string | null;
         kbChunkCount: number | null;
+        assetTag: string | null;
       }>;
       setUploads(
         rows.map((r) => ({
           id: r.id,
           provider: r.provider,
+          kind: r.kind ?? "document",
           filename: r.filename,
           sizeBytes: r.sizeBytes,
           externalCreatedAt: r.externalCreatedAt,
           status: r.status,
           statusDetail: r.statusDetail,
           kbChunkCount: r.kbChunkCount,
+          assetTag: r.assetTag,
         })),
       );
     } catch {
@@ -103,28 +107,36 @@ export default function KnowledgePage() {
     return () => clearInterval(iv);
   }, [uploads, fetchUploads]);
 
-  async function handleLocalFile(file: File) {
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetch("/hub/api/uploads/local", { method: "POST", body: form });
-    if (res.ok) await fetchUploads();
+  async function handleLocalFiles(files: File[], assetTag: string | null) {
+    for (const file of files) {
+      const form = new FormData();
+      form.append("file", file);
+      if (assetTag) form.append("assetTag", assetTag);
+      await fetch("/hub/api/uploads/local", { method: "POST", body: form });
+    }
+    await fetchUploads();
   }
 
-  async function handleCloudPick(result: {
-    provider: "google" | "dropbox";
-    externalFileId?: string;
-    externalDownloadUrl?: string;
-    filename: string;
-    mimeType: string;
-    sizeBytes: number;
-    externalCreatedAt: string | null;
-  }) {
-    const res = await fetch("/hub/api/uploads", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(result),
-    });
-    if (res.ok) await fetchUploads();
+  async function handleCloudPicks(
+    results: Array<{
+      provider: "google" | "dropbox";
+      externalFileId?: string;
+      externalDownloadUrl?: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+      externalCreatedAt: string | null;
+    }>,
+    assetTag: string | null,
+  ) {
+    for (const result of results) {
+      await fetch("/hub/api/uploads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...result, assetTag: assetTag ?? undefined }),
+      });
+    }
+    await fetchUploads();
   }
 
   async function handleDeleteUpload(id: string) {
@@ -292,8 +304,8 @@ export default function KnowledgePage() {
       <UploadPicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        onLocalFile={handleLocalFile}
-        onCloudPick={handleCloudPick}
+        onLocalFiles={handleLocalFiles}
+        onCloudPicks={handleCloudPicks}
       />
     </div>
   );

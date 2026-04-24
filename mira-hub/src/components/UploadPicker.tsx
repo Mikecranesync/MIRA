@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Script from "next/script";
-import { X, Upload as UploadIcon } from "lucide-react";
+import { X, Upload as UploadIcon, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type PickResult = {
+export type PickResult = {
   provider: "google" | "dropbox";
   externalFileId?: string;
   externalDownloadUrl?: string;
@@ -14,6 +14,8 @@ type PickResult = {
   sizeBytes: number;
   externalCreatedAt: string | null;
 };
+
+type Asset = { id: number | string; tag: string; name: string };
 
 declare global {
   interface Window {
@@ -71,16 +73,38 @@ interface GooglePickerBuilder {
   build: () => { setVisible: (v: boolean) => void };
 }
 
+const ACCEPTED_MIME = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+].join(",");
+
+const DROPBOX_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
+
+function mimeFromExt(name: string): string {
+  const n = name.toLowerCase();
+  if (n.endsWith(".pdf")) return "application/pdf";
+  if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "image/jpeg";
+  if (n.endsWith(".png")) return "image/png";
+  if (n.endsWith(".webp")) return "image/webp";
+  if (n.endsWith(".heic")) return "image/heic";
+  if (n.endsWith(".heif")) return "image/heif";
+  return "application/octet-stream";
+}
+
 export function UploadPicker({
   open,
   onClose,
-  onLocalFile,
-  onCloudPick,
+  onLocalFiles,
+  onCloudPicks,
 }: {
   open: boolean;
   onClose: () => void;
-  onLocalFile: (file: File) => void | Promise<void>;
-  onCloudPick: (result: PickResult) => void | Promise<void>;
+  onLocalFiles: (files: File[], assetTag: string | null) => void | Promise<void>;
+  onCloudPicks: (results: PickResult[], assetTag: string | null) => void | Promise<void>;
 }) {
   const [googleReady, setGoogleReady] = useState(false);
   const [dropboxReady, setDropboxReady] = useState(false);
@@ -89,6 +113,10 @@ export function UploadPicker({
   const [dropboxAvailable, setDropboxAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [assetSearch, setAssetSearch] = useState("");
+  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -99,12 +127,31 @@ export function UploadPicker({
     fetch("/hub/api/picker/dropbox/key")
       .then((r) => setDropboxAvailable(r.ok))
       .catch(() => setDropboxAvailable(false));
+    fetch("/api/assets")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: Asset[] | unknown) => {
+        if (Array.isArray(data)) setAssets(data as Asset[]);
+      })
+      .catch(() => setAssets([]));
   }, [open]);
 
   useEffect(() => {
     if (!googleReady || pickerLoaded) return;
     window.gapi?.load("picker", () => setPickerLoaded(true));
   }, [googleReady, pickerLoaded]);
+
+  const filteredAssets = useMemo(() => {
+    if (assets.length === 0) return [];
+    const q = assetSearch.toLowerCase().trim();
+    if (!q) return assets.slice(0, 8);
+    return assets
+      .filter(
+        (a) =>
+          a.tag.toLowerCase().includes(q) ||
+          (a.name ?? "").toLowerCase().includes(q),
+      )
+      .slice(0, 8);
+  }, [assets, assetSearch]);
 
   async function openGoogle() {
     setError(null);
@@ -116,7 +163,7 @@ export function UploadPicker({
         throw new Error("Google Picker not loaded yet — try again in a moment");
       }
       const view = new window.google.picker.DocsView()
-        .setMimeTypes("application/pdf")
+        .setMimeTypes("application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif")
         .setIncludeFolders(true)
         .setSelectFolderEnabled(false);
       const picker = new window.google.picker.PickerBuilder()
@@ -124,10 +171,10 @@ export function UploadPicker({
         .setOAuthToken(accessToken)
         .setDeveloperKey(apiKey)
         .setAppId(appId)
+        .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
         .setCallback((data) => {
-          if (data.action === window.google!.picker.Action.PICKED && data.docs?.[0]) {
-            const doc = data.docs[0];
-            void onCloudPick({
+          if (data.action === window.google!.picker.Action.PICKED && data.docs && data.docs.length > 0) {
+            const results: PickResult[] = data.docs.map((doc) => ({
               provider: "google",
               externalFileId: doc.id,
               filename: doc.name,
@@ -136,7 +183,8 @@ export function UploadPicker({
               externalCreatedAt: doc.lastEditedUtc
                 ? new Date(Number(doc.lastEditedUtc)).toISOString()
                 : null,
-            });
+            }));
+            void onCloudPicks(results, selectedAsset);
             onClose();
           }
         })
@@ -153,18 +201,18 @@ export function UploadPicker({
       if (!window.Dropbox) throw new Error("Dropbox Chooser not loaded yet");
       window.Dropbox.choose({
         linkType: "direct",
-        multiselect: false,
-        extensions: [".pdf"],
+        multiselect: true,
+        extensions: DROPBOX_EXTENSIONS,
         success: (files) => {
-          const f = files[0];
-          void onCloudPick({
+          const results: PickResult[] = files.map((f) => ({
             provider: "dropbox",
             externalDownloadUrl: f.link,
             filename: f.name,
-            mimeType: "application/pdf",
+            mimeType: mimeFromExt(f.name),
             sizeBytes: f.bytes,
             externalCreatedAt: f.client_modified ?? null,
-          });
+          }));
+          void onCloudPicks(results, selectedAsset);
           onClose();
         },
       });
@@ -187,6 +235,11 @@ export function UploadPicker({
   }, [open, dropboxKey]);
 
   if (!open) return null;
+
+  const selectedLabel =
+    selectedAsset != null
+      ? assets.find((a) => a.tag === selectedAsset)?.tag ?? selectedAsset
+      : null;
 
   return (
     <>
@@ -221,28 +274,89 @@ export function UploadPicker({
             </button>
           </div>
 
+          {assets.length > 0 && (
+            <div className="mb-3">
+              <label className="text-xs font-medium" style={{ color: "var(--foreground-muted)" }}>
+                Link to asset (optional)
+              </label>
+              <div className="relative mt-1">
+                <Search
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5"
+                  style={{ color: "var(--foreground-subtle)" }}
+                />
+                <input
+                  type="text"
+                  placeholder={selectedLabel ? `Linked: ${selectedLabel}` : "Search assets or leave blank…"}
+                  value={assetSearch}
+                  onChange={(e) => setAssetSearch(e.target.value)}
+                  className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border"
+                  style={{
+                    backgroundColor: "var(--surface-1)",
+                    borderColor: "var(--border)",
+                    color: "var(--foreground)",
+                  }}
+                />
+              </div>
+              {assetSearch && filteredAssets.length > 0 && (
+                <div
+                  className="mt-1 max-h-36 overflow-y-auto rounded-lg border"
+                  style={{ backgroundColor: "var(--surface-1)", borderColor: "var(--border)" }}
+                >
+                  {filteredAssets.map((a) => (
+                    <button
+                      key={a.id}
+                      onClick={() => {
+                        setSelectedAsset(a.tag);
+                        setAssetSearch("");
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--surface-2)] transition-colors"
+                      style={{ color: "var(--foreground)" }}
+                    >
+                      <span className="font-medium">{a.tag}</span>
+                      {a.name && (
+                        <span className="ml-2" style={{ color: "var(--foreground-muted)" }}>
+                          {a.name}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selectedAsset && (
+                <button
+                  onClick={() => setSelectedAsset(null)}
+                  className="mt-1 text-[10px] underline"
+                  style={{ color: "var(--foreground-subtle)" }}
+                >
+                  Clear link
+                </button>
+              )}
+            </div>
+          )}
+
           <label
             className="flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl px-4 py-8 cursor-pointer transition-colors hover:bg-[var(--surface-1)]"
             style={{ borderColor: "var(--border)" }}
           >
             <UploadIcon className="w-6 h-6" style={{ color: "var(--foreground-muted)" }} />
             <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
-              Drop a PDF here or click to browse
+              Drop PDFs or photos here — or click to browse
             </span>
             <span className="text-xs" style={{ color: "var(--foreground-subtle)" }}>
-              Up to 20 MB
+              PDF, JPEG, PNG, WebP, HEIC · Up to 20 MB each
             </span>
             <input
               ref={fileInputRef}
               type="file"
-              accept="application/pdf,.pdf"
+              accept={ACCEPTED_MIME}
+              multiple
               className="sr-only"
               onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (f) {
-                  await onLocalFile(f);
-                  onClose();
-                }
+                const list = e.target.files;
+                if (!list || list.length === 0) return;
+                const files = Array.from(list);
+                await onLocalFiles(files, selectedAsset);
+                onClose();
               }}
             />
           </label>
