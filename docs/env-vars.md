@@ -43,3 +43,5 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `POSTMARK_INBOUND_TOKEN` | mira-web — shared secret Postmark sends back in `X-Auth-Token` header on inbound webhook (Unit 3 magic email inbox). Generate: `openssl rand -hex 24`. Set the same value in Postmark dashboard → Inbound Stream → Webhook auth. |
 | `MIRA_INGEST_URL`    | mira-web — base URL for mira-ingest (Unit 3 magic inbox forwards PDFs here). Default in container: `http://mira-ingest:8001`. |
 | `INBOX_DOMAIN`       | mira-web — domain shown in `/api/me` for the per-tenant address `kb+<slug>@<INBOX_DOMAIN>`. Default `inbox.factorylm.com`. |
+| `RELEVANCE_GATE_ENABLED` | mira-ingest — set `"true"` to run the LLM relevance check on PDFs ingested via the inbox path (Unit 3.5). Default off (backward-compat for web upload + nightly cron callers, which leave the gate's `relevance_gate=on` form field unset). Cost ~$0.00005/file via Groq. Fail-open on any Groq error. |
+| `GROQ_API_KEY`       | mira-bots, mira-pipeline (existing); also mira-ingest when `RELEVANCE_GATE_ENABLED=true` for the magic-inbox relevance classifier. |
