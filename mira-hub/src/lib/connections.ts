@@ -1,14 +1,3 @@
-/**
- * Client-side connection state.
- *
- * Previously localStorage-only; now the Hub's /api/connections is the source
- * of truth. This module is a thin async wrapper around that endpoint.
- *
- * The returned ConnectionMeta shape is preserved for backwards-compat with
- * the channels page's existing card props — callers just need to await
- * fetchConnections() up front and treat the result as read-only.
- */
-
 export type Provider =
   | "telegram"
   | "slack"
@@ -33,25 +22,38 @@ export type ConnectionMeta = {
   error?: string;
 };
 
-type ConnectionMap = Partial<Record<Provider, ConnectionMeta>>;
+const STORAGE_KEY = "mira_connections_v2";
 
-export async function fetchConnections(): Promise<ConnectionMap> {
+function read(): Partial<Record<Provider, ConnectionMeta>> {
+  if (typeof window === "undefined") return {};
   try {
-    const res = await fetch("/hub/api/connections", { cache: "no-store" });
-    if (!res.ok) return {};
-    return (await res.json()) as ConnectionMap;
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
   } catch {
     return {};
   }
 }
 
-export async function disconnect(provider: Provider): Promise<boolean> {
-  try {
-    const res = await fetch(`/hub/api/connections/${provider}`, {
-      method: "DELETE",
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
+function write(data: Partial<Record<Provider, ConnectionMeta>>) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+export function getConnection(provider: Provider): ConnectionMeta {
+  return read()[provider] ?? { connected: false };
+}
+
+export function setConnection(provider: Provider, meta: ConnectionMeta) {
+  const all = read();
+  all[provider] = { ...meta, connectedAt: meta.connectedAt ?? new Date().toISOString() };
+  write(all);
+}
+
+export function removeConnection(provider: Provider) {
+  const all = read();
+  delete all[provider];
+  write(all);
+}
+
+export function getAllConnections(): Partial<Record<Provider, ConnectionMeta>> {
+  return read();
 }
