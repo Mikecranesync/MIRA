@@ -26,8 +26,12 @@ from crawl_verifier import (
 )
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image
+from pillow_heif import register_heif_opener
 from pydantic import BaseModel
 from route_fallback import RETRY_ON, run_fallback
+
+# Enable HEIC/HEIF decoding in Pillow so iPhone photos ingest without conversion
+register_heif_opener()
 
 logger = logging.getLogger("mira-ingest")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -463,7 +467,7 @@ async def health_db():
 @app.post("/ingest/photo")
 async def ingest_photo(
     image: UploadFile = File(...),
-    asset_tag: str = Form(...),
+    asset_tag: str = Form(default="unassigned"),
     location: str = Form(default=""),
     notes: str = Form(default=""),
 ):

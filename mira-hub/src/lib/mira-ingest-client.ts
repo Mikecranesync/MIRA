@@ -6,6 +6,38 @@ export interface IngestResult {
   processingStatus: string | null;
 }
 
+export interface PhotoIngestResult {
+  status: string;
+  photoId: number | null;
+  description: string | null;
+  assetTag: string | null;
+  photoPath: string | null;
+}
+
+const MAX_BYTES = 20 * 1024 * 1024;
+
+async function streamToBlob(
+  stream: ReadableStream<Uint8Array>,
+  mimeType: string,
+): Promise<Blob> {
+  const chunks: Uint8Array[] = [];
+  const reader = stream.getReader();
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BYTES) {
+      throw new Error(`file exceeds 20 MB limit (${(total / 1024 / 1024).toFixed(1)} MB)`);
+    }
+    chunks.push(value);
+  }
+  return new Blob(chunks as BlobPart[], { type: mimeType });
+}
+
+/**
+ * PDF / document path — POSTs to mira-ingest `/ingest/document-kb`.
+ */
 export async function forwardToIngest(
   stream: ReadableStream<Uint8Array>,
   filename: string,
@@ -15,23 +47,7 @@ export async function forwardToIngest(
   const base = process.env.INGEST_URL;
   if (!base) throw new Error("INGEST_URL not set");
 
-  // Consume the stream into a Blob for multipart upload. mira-ingest's
-  // /ingest/document-kb endpoint expects multipart/form-data with a
-  // single `file` field (+ optional `filename`).
-  const chunks: Uint8Array[] = [];
-  const reader = stream.getReader();
-  let total = 0;
-  const MAX = 20 * 1024 * 1024;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX) {
-      throw new Error(`file exceeds 20 MB limit (${(total / 1024 / 1024).toFixed(1)} MB)`);
-    }
-    chunks.push(value);
-  }
-  const blob = new Blob(chunks as BlobPart[], { type: mimeType });
+  const blob = await streamToBlob(stream, mimeType);
 
   const form = new FormData();
   form.append("file", blob, filename);
@@ -53,3 +69,68 @@ export async function forwardToIngest(
     processingStatus: json.processing_status ?? null,
   };
 }
+
+/**
+ * Photo path — POSTs to mira-ingest `/ingest/photo`. Field name is `image`
+ * (not `file`), and `asset_tag` is required — when the user didn't pick an
+ * asset we send "unassigned" so the photo still gets sanitized, captioned,
+ * and embedded, and can be linked to an asset later from the asset page.
+ */
+export async function forwardToPhotoIngest(
+  stream: ReadableStream<Uint8Array>,
+  filename: string,
+  mimeType: string,
+  opts: { assetTag?: string | null; notes?: string; location?: string } = {},
+  signal?: AbortSignal,
+): Promise<PhotoIngestResult> {
+  const base = process.env.INGEST_URL;
+  if (!base) throw new Error("INGEST_URL not set");
+
+  const blob = await streamToBlob(stream, mimeType);
+
+  const form = new FormData();
+  form.append("image", blob, filename);
+  form.append(
+    "asset_tag",
+    opts.assetTag && opts.assetTag.length > 0 ? opts.assetTag : "unassigned",
+  );
+  form.append("location", opts.location ?? "");
+  form.append("notes", opts.notes ?? "");
+
+  const res = await fetch(`${base}/ingest/photo`, {
+    method: "POST",
+    body: form,
+    signal,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`photo ingest ${res.status}: ${json.detail ?? res.statusText}`);
+  }
+  return {
+    status: "ok",
+    photoId: typeof json.id === "number" ? json.id : null,
+    description: json.description ?? null,
+    assetTag: json.asset_tag ?? null,
+    photoPath: json.photo_path ?? null,
+  };
+}
+
+export function inferKindFromMime(mime: string | null | undefined): "document" | "photo" {
+  if (!mime) return "document";
+  if (mime.startsWith("image/")) return "photo";
+  return "document";
+}
+
+export const SUPPORTED_IMAGE_MIMES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+
+export const SUPPORTED_MIMES = new Set<string>([
+  "application/pdf",
+  ...SUPPORTED_IMAGE_MIMES,
+]);

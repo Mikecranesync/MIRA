@@ -1,17 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { X, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { X, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon, FileText, Tag } from "lucide-react";
 
 export type UploadBlockData = {
   id: string;
   provider: "google" | "dropbox" | "local";
+  kind: "document" | "photo";
   filename: string;
   sizeBytes: number | null;
   externalCreatedAt: string | null;
   status: "queued" | "fetching" | "parsing" | "parsed" | "failed" | "cancelled";
   statusDetail: string | null;
   kbChunkCount: number | null;
+  assetTag: string | null;
 };
 
 const PROVIDER_LABEL: Record<UploadBlockData["provider"], string> = {
@@ -46,6 +48,7 @@ export function UploadBlock({
   const [deleting, setDeleting] = useState(false);
   const parsed = upload.status === "parsed";
   const failed = upload.status === "failed";
+  const isPhoto = upload.kind === "photo";
 
   const statusLine = (() => {
     switch (upload.status) {
@@ -54,11 +57,19 @@ export function UploadBlock({
       case "fetching":
         return { icon: <Loader2 className="w-3.5 h-3.5 animate-spin" />, text: `Fetching from ${PROVIDER_LABEL[upload.provider]}…`, color: "var(--foreground-muted)" };
       case "parsing":
-        return { icon: <Loader2 className="w-3.5 h-3.5 animate-spin" />, text: "Parsing to KB…", color: "var(--foreground-muted)" };
+        return {
+          icon: <Loader2 className="w-3.5 h-3.5 animate-spin" />,
+          text: isPhoto ? "Describing & indexing photo…" : "Parsing to KB…",
+          color: "var(--foreground-muted)",
+        };
       case "parsed":
         return {
           icon: <CheckCircle2 className="w-3.5 h-3.5" />,
-          text: `Parsed${upload.kbChunkCount != null ? ` · ${upload.kbChunkCount} chunks` : ""}`,
+          text: isPhoto
+            ? upload.statusDetail
+              ? `Indexed: ${upload.statusDetail.slice(0, 80)}${upload.statusDetail.length > 80 ? "…" : ""}`
+              : "Photo indexed"
+            : `Parsed${upload.kbChunkCount != null ? ` · ${upload.kbChunkCount} chunks` : ""}`,
           color: "#16A34A",
         };
       case "failed":
@@ -78,6 +89,17 @@ export function UploadBlock({
       style={parsed ? { opacity: 0.6 } : failed ? { borderColor: "#DC262650" } : undefined}
     >
       <div
+        className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+        style={{ backgroundColor: "var(--surface-1)" }}
+      >
+        {isPhoto ? (
+          <ImageIcon className="w-4 h-4" style={{ color: "var(--brand-blue)" }} />
+        ) : (
+          <FileText className="w-4 h-4" style={{ color: "var(--brand-blue)" }} />
+        )}
+      </div>
+
+      <div
         className="flex-1 min-w-0"
         style={parsed ? { textDecoration: "line-through" } : undefined}
       >
@@ -87,6 +109,18 @@ export function UploadBlock({
         <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
           {PROVIDER_LABEL[upload.provider]} · {formatSize(upload.sizeBytes)} · {formatDate(upload.externalCreatedAt)}
         </p>
+        {upload.assetTag && (
+          <p
+            className="text-[11px] mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
+            style={{
+              backgroundColor: "var(--surface-1)",
+              color: "var(--foreground-muted)",
+            }}
+          >
+            <Tag className="w-3 h-3" />
+            {upload.assetTag}
+          </p>
+        )}
         <div className="flex items-center gap-1.5 mt-2">
           {statusLine.icon}
           <span className="text-[11px]" style={{ color: statusLine.color }}>
