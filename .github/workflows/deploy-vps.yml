@@ -36,7 +36,7 @@ jobs:
           SERVICES: ${{ github.event.inputs.services }}
         run: |
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
-            root@165.245.138.91 bash -s << 'ENDSSH'
+            root@165.245.138.91 "SERVICES='$SERVICES' bash -s" << 'ENDSSH'
 
           set -euo pipefail
           cd /opt/mira
