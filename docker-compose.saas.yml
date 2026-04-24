@@ -96,6 +96,9 @@ services:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - EMBED_TEXT_MODEL=nomic-embed-text
       - APIFY_API_KEY=${APIFY_API_KEY}
+      # Unit 3.5 — magic-inbox safety gates
+      - RELEVANCE_GATE_ENABLED=${RELEVANCE_GATE_ENABLED:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
     networks:
       - mira-net
     restart: unless-stopped
@@ -153,6 +156,10 @@ services:
       - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
+      # Unit 3 — magic email inbox
+      - POSTMARK_INBOUND_TOKEN=${POSTMARK_INBOUND_TOKEN:-}
+      - MIRA_INGEST_URL=${MIRA_INGEST_URL:-http://mira-ingest-saas:8001}
+      - INBOX_DOMAIN=${INBOX_DOMAIN:-inbox.factorylm.com}
     networks:
       - mira-net
       - cmms-ext
