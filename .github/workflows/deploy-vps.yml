@@ -49,12 +49,12 @@ jobs:
           if [ -n "${SERVICES:-}" ]; then
             echo "Selective rebuild: $SERVICES"
             DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $SERVICES
-            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps $SERVICES
+            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate $SERVICES
           else
             echo "Full rebuild (mira-pipeline-saas, mira-bots)"
             DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build \
               mira-pipeline mira-ingest mira-mcp
-            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps \
+            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
               mira-pipeline mira-ingest mira-mcp
           fi
 
