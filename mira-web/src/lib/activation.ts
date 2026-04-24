@@ -45,6 +45,7 @@ export interface ActivationDeps {
     firstName: string,
     company: string,
     token: string,
+    inboxAddress: string | null,
   ) => Promise<boolean>;
   updateTenantEmailStatus: (
     id: string,
@@ -124,7 +125,17 @@ export async function finalizeActivation(
       atlasUserId,
       atlasRole: "ADMIN",
     });
-    const sent = await deps.sendActivatedEmail(tenant.email, firstName, tenant.company, token);
+    const inboxDomain = process.env.INBOX_DOMAIN || "inbox.factorylm.com";
+    const inboxAddress = tenant.inbox_slug
+      ? `kb+${tenant.inbox_slug}@${inboxDomain}`
+      : null;
+    const sent = await deps.sendActivatedEmail(
+      tenant.email,
+      firstName,
+      tenant.company,
+      token,
+      inboxAddress,
+    );
     emailStatus = sent ? "sent" : "failed";
     await deps.updateTenantEmailStatus(tenant.id, emailStatus);
   } catch (err) {
