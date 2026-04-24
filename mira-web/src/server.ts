@@ -96,6 +96,7 @@ import { adminPages, adminApi } from "./routes/admin/qr-print.js";
 import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
 import { qrTest } from "./routes/qr-test.js";
+import { inbox } from "./routes/inbox.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -152,6 +153,9 @@ app.route("/", adminApi);               // handles POST /api/admin/qr-print-batc
 app.route("/admin", qrAnalytics);       // handles GET /admin/qr-analytics
 app.route("/admin", adminChannelPages); // handles GET /admin/channels
 app.route("/", adminChannelApi);        // handles POST /api/admin/channels
+
+// Magic email inbox (Unit 3): Postmark Inbound webhook
+app.route("/api/v1/inbox", inbox);       // POST /api/v1/inbox/postmark
 
 // ---------------------------------------------------------------------------
 // Static files
@@ -649,12 +653,17 @@ app.get("/api/me", requireActive, async (c) => {
     ready: tenant.atlas_provisioning_status === "ok"
         && tenant.activation_email_status !== "pending",
   };
+  const inboxDomain = process.env.INBOX_DOMAIN || "inbox.factorylm.com";
+  const inboxAddress = tenant.inbox_slug
+    ? `kb+${tenant.inbox_slug}@${inboxDomain}`
+    : null;
   return c.json({
     tenantId: user.sub,
     email: user.email,
     tier: "active",
     quota,
     provisioning,
+    inbox: { slug: tenant.inbox_slug, address: inboxAddress },
   });
 });
 

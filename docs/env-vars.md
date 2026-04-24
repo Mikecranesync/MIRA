@@ -40,3 +40,6 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `MIRA_RRF_K`         | mira-bots — Reciprocal Rank Fusion constant. Default `60` (Cormack et al. 2009). Raise to flatten rank influence, lower to sharpen it. Change only with an eval to back it. |
 | `SESSION_RECORDING_PATH` | mira-pipeline — directory for per-chat NDJSON session files. Default `/data/sessions`. VPS host path: `/opt/mira/mira-bridge/data/sessions`. Read by `tests/eval/analyze_sessions.py` cron to auto-generate eval fixtures. |
 | `EVAL_DISABLE_JUDGE` | `tests/eval/analyze_sessions.py` — set `"1"` to skip LLM grading (deterministic grades only; saves Groq tokens). |
+| `POSTMARK_INBOUND_TOKEN` | mira-web — shared secret Postmark sends back in `X-Auth-Token` header on inbound webhook (Unit 3 magic email inbox). Generate: `openssl rand -hex 24`. Set the same value in Postmark dashboard → Inbound Stream → Webhook auth. |
+| `MIRA_INGEST_URL`    | mira-web — base URL for mira-ingest (Unit 3 magic inbox forwards PDFs here). Default in container: `http://mira-ingest:8001`. |
+| `INBOX_DOMAIN`       | mira-web — domain shown in `/api/me` for the per-tenant address `kb+<slug>@<INBOX_DOMAIN>`. Default `inbox.factorylm.com`. |
