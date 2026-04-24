@@ -38,7 +38,28 @@ export interface Tenant {
   provisioning_attempts: number;
   provisioning_last_attempt_at: string | null;
   provisioning_last_error: string | null;
+  inbox_slug: string | null;
   created_at: string;
+}
+
+// 8-char [a-z0-9] slug, e.g. "k7m3xp9q". Used in kb+<slug>@inbox.factorylm.com.
+export function generateInboxSlug(): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let out = "";
+  for (let i = 0; i < 8; i++) {
+    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return out;
+}
+
+async function generateUniqueInboxSlug(): Promise<string> {
+  const db = sql();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = generateInboxSlug();
+    const rows = await db`SELECT 1 FROM plg_tenants WHERE inbox_slug = ${candidate} LIMIT 1`;
+    if (rows.length === 0) return candidate;
+  }
+  throw new Error("Failed to generate unique inbox_slug after 5 attempts");
 }
 
 // ---------------------------------------------------------------------------
@@ -56,7 +77,7 @@ export async function findTenantByEmail(
            atlas_provisioning_status,
            activation_email_status, demo_seed_status,
            provisioning_attempts, provisioning_last_attempt_at,
-           provisioning_last_error, created_at
+           provisioning_last_error, inbox_slug, created_at
     FROM plg_tenants WHERE email = ${email} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
@@ -72,7 +93,7 @@ export async function findTenantById(
            atlas_provisioning_status,
            activation_email_status, demo_seed_status,
            provisioning_attempts, provisioning_last_attempt_at,
-           provisioning_last_error, created_at
+           provisioning_last_error, inbox_slug, created_at
     FROM plg_tenants WHERE id = ${tenantId} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
@@ -88,8 +109,24 @@ export async function findTenantByStripeCustomerId(
            atlas_provisioning_status,
            activation_email_status, demo_seed_status,
            provisioning_attempts, provisioning_last_attempt_at,
-           provisioning_last_error, created_at
+           provisioning_last_error, inbox_slug, created_at
     FROM plg_tenants WHERE stripe_customer_id = ${stripeCustomerId} LIMIT 1`;
+  return (rows[0] as Tenant) || null;
+}
+
+export async function findTenantByInboxSlug(
+  slug: string
+): Promise<Tenant | null> {
+  const db = sql();
+  const rows = await db`
+    SELECT id, email, company, tier, first_name,
+           stripe_customer_id, stripe_subscription_id,
+           atlas_password, atlas_company_id, atlas_user_id,
+           atlas_provisioning_status,
+           activation_email_status, demo_seed_status,
+           provisioning_attempts, provisioning_last_attempt_at,
+           provisioning_last_error, inbox_slug, created_at
+    FROM plg_tenants WHERE inbox_slug = ${slug} LIMIT 1`;
   return (rows[0] as Tenant) || null;
 }
 
@@ -108,14 +145,16 @@ export async function createTenant(tenant: {
   atlasUserId: number;
 }): Promise<void> {
   const db = sql();
+  const inboxSlug = await generateUniqueInboxSlug();
   await db`
     INSERT INTO plg_tenants (id, email, company, first_name, tier,
                              atlas_password, atlas_company_id, atlas_user_id,
-                             created_at)
+                             inbox_slug, created_at)
     VALUES (${tenant.id}, ${tenant.email}, ${tenant.company},
             ${tenant.firstName}, ${tenant.tier},
             ${tenant.atlasPassword}, ${tenant.atlasCompanyId},
-            ${tenant.atlasUserId}, NOW())`;
+            ${tenant.atlasUserId},
+            ${inboxSlug}, NOW())`;
 }
 
 export async function updateTenantTier(
@@ -298,6 +337,19 @@ export async function ensureSchema(): Promise<void> {
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS provisioning_attempts INTEGER NOT NULL DEFAULT 0`;
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS provisioning_last_attempt_at TIMESTAMPTZ`;
   await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS provisioning_last_error TEXT`;
+
+  // Magic email inbox (Unit 3): each tenant gets a stable slug for kb+<slug>@inbox.factorylm.com.
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS inbox_slug TEXT`;
+  await db`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_plg_tenants_inbox_slug
+      ON plg_tenants (inbox_slug)
+      WHERE inbox_slug IS NOT NULL`;
+  // Backfill: any existing tenant without a slug gets one. Procedural to honor uniqueness.
+  const nullSlugRows = await db`SELECT id FROM plg_tenants WHERE inbox_slug IS NULL`;
+  for (const row of nullSlugRows) {
+    const slug = await generateUniqueInboxSlug();
+    await db`UPDATE plg_tenants SET inbox_slug = ${slug} WHERE id = ${row.id}`;
+  }
 
   // Backfill: existing active tenants with atlas='ok' had email+seed succeed historically.
   // Mark them 'sent'/'ok' so /api/me doesn't show a false "unfinished setup" banner.
