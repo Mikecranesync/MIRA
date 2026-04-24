@@ -1,5 +1,10 @@
 # Hot Cache — 2026-04-22 — CHARLIE
 
+## eval-fixer run — 2026-04-24
+- Scorecard: 47/57 passing (82%) — `tests/eval/runs/2026-04-22T0828-offline-text.md`
+- Action: issue-filed — #539 (10 failures across 3 files: engine.py MANUAL_LOOKUP_GATHERING exit bug dominates — 5 VFD/forensic fixtures stuck in gathering; plus pf520 Yaskawa cross-vendor leak, danfoss AQUA FC 202 missing, cmms WO keywords missing)
+- Multi-file cluster triggered hard stop; needs human triage. Scorecard unchanged since 2026-04-22 — watchdog ingesting the only post-fix baseline.
+
 ## eval-fixer run — 2026-04-23
 - Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-20T1011.md` (stale 3+ days)
 - Action: issue-filed — #525 (57 failures, 0 patchable; pipeline produced 0-char responses on every fixture)
