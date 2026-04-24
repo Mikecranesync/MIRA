@@ -19,7 +19,12 @@ services:
       dockerfile: mira-crawler/Dockerfile.celery
     container_name: mira-celery-worker
     restart: unless-stopped
-    command: celery -A mira_crawler.celery_app worker --concurrency=2 -Q ingest,discovery,celery --loglevel=info
+    command: celery -A mira_crawler.celery_app worker --concurrency=1 -Q ingest,discovery,celery,youtube-discovery,youtube-transcript,youtube-keyframes,youtube-patterns --loglevel=info
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1200M
     depends_on:
       mira-redis:
         condition: service_healthy

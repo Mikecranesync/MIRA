@@ -47,6 +47,10 @@ services:
       - core-net
       - bot-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 900M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -77,6 +81,10 @@ services:
       timeout: 10s
       retries: 3
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -113,6 +121,10 @@ services:
       retries: 3
       start_period: 15s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -177,6 +189,10 @@ services:
       retries: 3
       start_period: 15s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -196,6 +212,10 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768M
 
 volumes:
   open-webui-data:
