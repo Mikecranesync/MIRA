@@ -158,6 +158,64 @@ export async function getAccessToken(
   return decrypt(rows[0].access_token_enc);
 }
 
+export interface BindingRow {
+  provider: Provider;
+  externalId: string | null;
+  accessToken: string | null;   // decrypted
+  refreshToken: string | null;  // decrypted
+  tokenExpiresAt: Date | null;
+  scopes: string[];
+  meta: BindingMeta;
+  status: "connected" | "revoked";
+}
+
+export async function getBindingRow(
+  provider: Provider,
+  tenantId: string = DEFAULT_TENANT_ID,
+): Promise<BindingRow | null> {
+  await ensureSchema();
+  const { rows } = await pool.query(
+    `
+    SELECT provider, external_id, access_token_enc, refresh_token_enc,
+           token_expires_at, scopes, meta, status
+      FROM hub_channel_bindings
+     WHERE tenant_id = $1 AND provider = $2 AND status = 'connected'
+     LIMIT 1
+  `,
+    [tenantId, provider],
+  );
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    provider: r.provider,
+    externalId: r.external_id,
+    accessToken: decrypt(r.access_token_enc),
+    refreshToken: decrypt(r.refresh_token_enc),
+    tokenExpiresAt: r.token_expires_at ? new Date(r.token_expires_at) : null,
+    scopes: r.scopes ?? [],
+    meta: r.meta ?? {},
+    status: r.status,
+  };
+}
+
+export async function updateAccessToken(
+  provider: Provider,
+  accessToken: string,
+  tokenExpiresAt: Date,
+  tenantId: string = DEFAULT_TENANT_ID,
+): Promise<void> {
+  await pool.query(
+    `
+    UPDATE hub_channel_bindings
+       SET access_token_enc = $3,
+           token_expires_at = $4,
+           updated_at = NOW()
+     WHERE tenant_id = $1 AND provider = $2
+  `,
+    [tenantId, provider, encrypt(accessToken), tokenExpiresAt.toISOString()],
+  );
+}
+
 export async function revokeBinding(
   provider: Provider,
   tenantId: string = DEFAULT_TENANT_ID,
