@@ -329,6 +329,14 @@ services:
       # Telegram (status endpoint reads these; route validates pasted tokens separately)
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
+      # mira-ingest target for Knowledge upload pipeline
+      - INGEST_URL=${INGEST_URL:-http://mira-ingest-saas:8001}
+      # Google Picker API key (distinct from OAuth client secret) + project number
+      - GOOGLE_PICKER_API_KEY=${GOOGLE_PICKER_API_KEY:-}
+      - GOOGLE_CLOUD_PROJECT_NUMBER=${GOOGLE_CLOUD_PROJECT_NUMBER:-}
+      # Open WebUI delete-file auth for removing parsed files from KB
+      - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core-saas:8080}
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
     networks:
       - mira-net
     restart: unless-stopped
