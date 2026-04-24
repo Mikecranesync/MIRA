@@ -174,11 +174,89 @@ describe("POST /api/v1/inbox/postmark", () => {
     expect(fd.get("filename")).toBe("manual-yaskawa.pdf");
     expect(fd.get("file")).toBeInstanceOf(Blob);
 
+    // inbox path always opts the relevance gate ON (env still gates whether
+    // mira-ingest actually runs it)
+    expect(fd.get("relevance_gate")).toBe("on");
+    expect(fd.get("source")).toBe("inbox");
+
     await new Promise((r) => setTimeout(r, 5));
     expect(sentReceipts.length).toBe(1);
     expect(sentReceipts[0].email).toBe(FAKE_TENANT.email);
     expect(sentReceipts[0].result.ingested.map((x: any) => x.filename)).toEqual([
       "manual-yaskawa.pdf",
+    ]);
+    fetchSpy.mockRestore();
+  });
+
+  test("[force] in Subject sets relevance_gate=off on the forwarded form", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response('{"status":"ok"}', { status: 200 }),
+    );
+    const body = JSON.stringify({
+      MessageID: "test-msg-force",
+      From: "user@example.com",
+      To: "kb+abc12345@inbox.factorylm.com",
+      Subject: "[force] Re: Yaskawa drive",
+      Attachments: [pdfAttachment("ambiguous.pdf")],
+    });
+    const res = await postWebhook(body, { "X-Auth-Token": "test-token" });
+    expect(res.status).toBe(200);
+    const fd = (fetchSpy.mock.calls[0]![1] as RequestInit).body as FormData;
+    expect(fd.get("relevance_gate")).toBe("off");
+    fetchSpy.mockRestore();
+  });
+
+  test("mira-ingest returns status:duplicate → surfaces in receipt duplicates[]", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "duplicate",
+          filename: "manual-yaskawa.pdf",
+          original_filename: "manual-yaskawa-gs20.pdf",
+          original_uploaded_at: "2026-04-19T10:00:00Z",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const res = await postWebhook(
+      postmarkBody({ attachments: [pdfAttachment("manual-yaskawa.pdf")] }),
+      { "X-Auth-Token": "test-token" },
+    );
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 5));
+    const r0 = sentReceipts[0].result;
+    expect(r0.ingested.length).toBe(0);
+    expect(r0.duplicates).toEqual([
+      {
+        filename: "manual-yaskawa.pdf",
+        original_filename: "manual-yaskawa-gs20.pdf",
+        original_uploaded_at: "2026-04-19T10:00:00Z",
+      },
+    ]);
+    fetchSpy.mockRestore();
+  });
+
+  test("mira-ingest returns status:rejected → surfaces in receipt rejected[]", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "rejected",
+          filename: "agenda.pdf",
+          reason: "looks like a meeting agenda",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const res = await postWebhook(
+      postmarkBody({ attachments: [pdfAttachment("agenda.pdf")] }),
+      { "X-Auth-Token": "test-token" },
+    );
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 5));
+    const r0 = sentReceipts[0].result;
+    expect(r0.ingested.length).toBe(0);
+    expect(r0.rejected).toEqual([
+      { filename: "agenda.pdf", reason: "looks like a meeting agenda" },
     ]);
     fetchSpy.mockRestore();
   });

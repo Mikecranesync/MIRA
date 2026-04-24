@@ -65,14 +65,18 @@ function base64ToBytes(b64: string): Uint8Array {
 
 interface ProcessAttachmentResult {
   filename: string;
-  outcome: "ingested" | "skipped" | "too_large" | "error";
+  outcome: "ingested" | "skipped" | "too_large" | "duplicate" | "rejected" | "error";
   reason?: string;
   status?: number | string;
+  // populated when outcome === "duplicate"
+  original_filename?: string;
+  original_uploaded_at?: string;
 }
 
 async function forwardAttachment(
   att: PostmarkAttachment,
   tenant: Tenant,
+  relevanceGate: "on" | "off",
 ): Promise<ProcessAttachmentResult> {
   const filename = att.Name || "attachment.pdf";
   const ct = (att.ContentType || "").toLowerCase();
@@ -119,16 +123,50 @@ async function forwardAttachment(
   form.append("file", blob, filename);
   form.append("filename", filename);
   form.append("tenant_id", tenant.id);
+  form.append("source", "inbox");
+  form.append("relevance_gate", relevanceGate);
 
   try {
     const resp = await fetch(`${MIRA_INGEST_URL()}/ingest/document-kb`, {
       method: "POST",
       body: form,
     });
-    if (resp.ok) {
-      return { filename, outcome: "ingested", status: resp.status };
+
+    // mira-ingest returns 200 for success, duplicate, AND rejected (relevance gate).
+    // The status field in the JSON body is what we route on.
+    let body: any = null;
+    try {
+      body = await resp.json();
+    } catch {
+      // fall through — body stays null
     }
-    return { filename, outcome: "error", status: resp.status };
+
+    if (!resp.ok) {
+      return {
+        filename,
+        outcome: "error",
+        status: resp.status,
+        reason: body?.detail || undefined,
+      };
+    }
+
+    const ingestStatus = body?.status as string | undefined;
+    if (ingestStatus === "duplicate") {
+      return {
+        filename,
+        outcome: "duplicate",
+        original_filename: body?.original_filename || filename,
+        original_uploaded_at: body?.original_uploaded_at || "",
+      };
+    }
+    if (ingestStatus === "rejected") {
+      return {
+        filename,
+        outcome: "rejected",
+        reason: body?.reason || "didn't look like a manual",
+      };
+    }
+    return { filename, outcome: "ingested", status: resp.status };
   } catch (err) {
     console.error("[inbox] forward failed:", filename, err);
     return { filename, outcome: "error", status: "upstream-unreachable" };
@@ -172,12 +210,18 @@ inbox.post("/postmark", async (c) => {
     return c.json({ ok: true, ignored: "unknown-recipient" }, 200);
   }
 
+  // [force] in the Subject disables the relevance gate — escape hatch for
+  // when a user disagrees with a "didn't look like a manual" rejection.
+  const subject = payload.Subject || "";
+  const relevanceGate: "on" | "off" = /\[force\]/i.test(subject) ? "off" : "on";
+
   console.log(
-    "[inbox] received message=%s tenant=%s from=%s attachments=%d",
+    "[inbox] received message=%s tenant=%s from=%s attachments=%d gate=%s",
     payload.MessageID || "(none)",
     tenant.id,
     payload.From || "(none)",
     payload.Attachments?.length || 0,
+    relevanceGate,
   );
 
   // 5. Process attachments (sequential — keeps mira-ingest load bounded per email)
@@ -185,10 +229,12 @@ inbox.post("/postmark", async (c) => {
     ingested: [],
     skipped: [],
     too_large: [],
+    duplicates: [],
+    rejected: [],
     errors: [],
   };
   for (const att of payload.Attachments || []) {
-    const r = await forwardAttachment(att, tenant);
+    const r = await forwardAttachment(att, tenant, relevanceGate);
     if (r.outcome === "ingested") result.ingested.push({ filename: r.filename });
     else if (r.outcome === "skipped")
       result.skipped.push({ filename: r.filename, reason: r.reason || "not a PDF" });
@@ -196,6 +242,17 @@ inbox.post("/postmark", async (c) => {
       result.too_large.push({
         filename: r.filename,
         size_mb: Number((r.reason || "0").replace(/[^0-9.]/g, "")) || 0,
+      });
+    else if (r.outcome === "duplicate")
+      result.duplicates.push({
+        filename: r.filename,
+        original_filename: r.original_filename || r.filename,
+        original_uploaded_at: r.original_uploaded_at || "",
+      });
+    else if (r.outcome === "rejected")
+      result.rejected.push({
+        filename: r.filename,
+        reason: r.reason || "didn't look like a manual",
       });
     else
       result.errors.push({
