@@ -1,0 +1,320 @@
+openapi: 3.1.0
+info:
+  title: MIRA API
+  version: 1.0.0
+  description: |
+    MIRA is an AI-native industrial maintenance platform.
+
+    This spec is the source of truth for the public REST API at
+    https://{tenant}.factorylm.com/api/v1. Rendered docs live at
+    docs.factorylm.com (built from this file).
+
+    Scaffolded 2026-04-24 as a competitive-parity response to
+    Factory AI (f7i.ai). See docs/competitors/factory-ai.md for
+    the full analysis; the endpoint set here mirrors theirs (20
+    endpoints) plus net-new MIRA additions marked in descriptions.
+  contact:
+    name: MIRA support
+    url: https://factorylm.com
+  license:
+    name: Proprietary
+servers:
+  - url: https://{tenant}.factorylm.com/api/v1
+    description: Tenant-scoped production API
+    variables:
+      tenant:
+        default: acme
+        description: Customer subdomain
+security:
+  - bearerAuth: []
+tags:
+  - name: Assets
+    description: Assets + nested components (site → area → asset → component)
+  - name: Work Orders
+    description: 7-state lifecycle + safety gate
+  - name: PM Procedures
+    description: Preventive maintenance with first-class safety requirements
+  - name: Maintenance Strategies
+    description: 7 types with MTBF / availability / cost tracking
+  - name: Failure Codes
+    description: ISO 14224-aligned taxonomy (MIRA differentiator)
+  - name: Parts & Inventory
+    description: ABC/XYZ analysis, multi-vendor
+  - name: Purchase Orders
+    description: Dollar-threshold approval hierarchies
+  - name: External Events
+    description: Inbound SCADA/ERP/MES/weather ingest
+  - name: Notifications
+  - name: Webhooks
+    description: Outbound push (MIRA differentiator — Factory AI has no outbound)
+  - name: Sensors
+    description: Telemetry + FFT vibration analysis
+  - name: Chat
+    description: Streaming + BYO-LLM (MIRA differentiator)
+  - name: Templates
+    description: Open-source component template catalog
+  - name: Documents
+  - name: Customer Settings
+  - name: Auth
+    description: SSO via SAML + OIDC + SCIM (MIRA differentiator)
+  - name: Feedback
+
+paths:
+  /assets:
+    get:
+      tags: [Assets]
+      summary: List assets (tree by default)
+      parameters:
+        - { name: flat,         in: query, schema: { type: boolean, default: false } }
+        - { name: siteId,       in: query, schema: { type: string } }
+        - { name: parentId,     in: query, schema: { type: string, nullable: true } }
+        - { name: type,         in: query, schema: { type: string } }
+        - { name: criticality,  in: query, schema: { type: string, example: "high,critical" } }
+        - { name: search,       in: query, schema: { type: string } }
+        - { name: limit,        in: query, schema: { type: integer, default: 50, maximum: 500 } }
+        - { name: cursor,       in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Paginated list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssetList" }
+    post:
+      tags: [Assets]
+      summary: Create asset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssetCreate" }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Asset" } } } }
+  /assets/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:    { tags: [Assets], summary: Get asset,    responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Asset" } } } }, "404": { description: Not found } } }
+    put:    { tags: [Assets], summary: Update asset, requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AssetUpdate" } } } }, responses: { "200": { description: OK } } }
+    delete: { tags: [Assets], summary: Delete asset, parameters: [{ name: cascade, in: query, schema: { type: boolean, default: false } }], responses: { "204": { description: Deleted }, "409": { description: Has children (pass ?cascade=true)" } } }
+  /assets/{id}/components:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [Assets], summary: List direct children, responses: { "200": { description: OK } } }
+  /assets/{id}/qr:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:
+      tags: [Assets]
+      summary: QR code PNG for asset
+      parameters: [{ name: size, in: query, schema: { type: integer, default: 256 } }]
+      responses: { "200": { description: PNG, content: { image/png: {} } } }
+  /assets/{id}/chat:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [Chat]
+      summary: Asset-scoped streaming chat (BYO-LLM)
+      description: |
+        **MIRA differentiator.** Factory AI's equivalent is a GET-only retrieval endpoint
+        over admin-indexed manuals; ours is POST-and-stream with model choice.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChatRequest" }
+      responses:
+        "200":
+          description: SSE stream (when stream=true) or JSON (when stream=false)
+          content:
+            text/event-stream: {}
+            application/json:  { schema: { $ref: "#/components/schemas/ChatResponse" } }
+
+  /workorders:
+    get:  { tags: [Work Orders], summary: List work orders }
+    post: { tags: [Work Orders], summary: Create work order }
+  /workorders/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:    { tags: [Work Orders], summary: Get work order }
+    put:    { tags: [Work Orders], summary: Update / transition work order }
+    delete: { tags: [Work Orders], summary: Delete work order }
+  /workorders/{id}/tasks:  { get: { tags: [Work Orders] }, post: { tags: [Work Orders] } }
+  /workorders/{id}/parts:  { get: { tags: [Work Orders] }, post: { tags: [Work Orders] } }
+  /workorders/{id}/notes:  { get: { tags: [Work Orders] }, post: { tags: [Work Orders] } }
+  /workorders/{id}/media:  { get: { tags: [Work Orders] }, post: { tags: [Work Orders] } }
+  /workorders/{id}/safety/{reqId}/acknowledge:
+    post:
+      tags: [Work Orders]
+      summary: Acknowledge a safety requirement (required before in_progress)
+      description: "MIRA differentiator — Factory AI only disclaims safety in T&Cs."
+      parameters:
+        - { name: id,    in: path, required: true, schema: { type: string } }
+        - { name: reqId, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: Acknowledged } }
+
+  /pms:          { get: { tags: [PM Procedures] }, post: { tags: [PM Procedures] } }
+  /pms/{id}:     { get: { tags: [PM Procedures] }, put: { tags: [PM Procedures] }, delete: { tags: [PM Procedures] }, parameters: [{ name: id, in: path, required: true, schema: { type: string } }] }
+  /pms/{id}/createworkorder:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [PM Procedures], summary: Spawn a work order from this PM }
+
+  /maintenance-strategies:
+    get:  { tags: [Maintenance Strategies] }
+    post: { tags: [Maintenance Strategies] }
+  /maintenance-strategies/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [Maintenance Strategies] }
+    put: { tags: [Maintenance Strategies] }
+    delete: { tags: [Maintenance Strategies] }
+
+  /failure-codes:
+    get:  { tags: [Failure Codes], summary: "List ISO 14224-aligned failure codes" }
+    post: { tags: [Failure Codes] }
+  /failure-codes/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [Failure Codes] }
+    put: { tags: [Failure Codes] }
+    delete: { tags: [Failure Codes] }
+
+  /parts:       { get: { tags: [Parts & Inventory] }, post: { tags: [Parts & Inventory] } }
+  /inventory:   { get: { tags: [Parts & Inventory], summary: "Stock levels with ABC/XYZ class" } }
+  /purchase-orders:     { get: { tags: [Purchase Orders] }, post: { tags: [Purchase Orders] } }
+  /purchase-orders/{id}: { parameters: [{ name: id, in: path, required: true, schema: { type: string } }], get: { tags: [Purchase Orders] }, put: { tags: [Purchase Orders] } }
+
+  /external-events: { get: { tags: [External Events] }, post: { tags: [External Events] } }
+  /notifications:   { get: { tags: [Notifications] } }
+
+  /webhooks:
+    get:  { tags: [Webhooks], summary: "List webhooks (MIRA differentiator)" }
+    post: { tags: [Webhooks], summary: "Create webhook" }
+  /webhooks/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:    { tags: [Webhooks] }
+    put:    { tags: [Webhooks] }
+    delete: { tags: [Webhooks] }
+  /webhooks/{id}/rotate-secret:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [Webhooks] }
+  /webhooks/{id}/test:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [Webhooks] }
+  /webhooks/{id}/deliveries:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [Webhooks] }
+
+  /sensors/{id}/fft:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [Sensors]
+      summary: FFT + peak classification
+      description: "Accepts time-domain samples, returns spectrum + labeled peaks (1X/2X/BPFO/BPFI/gear-mesh)."
+  /sensors/{id}/report:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [Sensors], summary: Time-bucketed sensor series }
+
+  /templates:
+    get:  { tags: [Templates], summary: "Component template catalog (open-source YAML)" }
+  /assets/from-template:
+    post: { tags: [Templates], summary: Instantiate an asset tree from a template }
+
+  /documents:
+    get:  { tags: [Documents] }
+    post: { tags: [Documents] }
+
+  /customer-settings:
+    get: { tags: [Customer Settings] }
+    put: { tags: [Customer Settings] }
+
+  /auth/saml/metadata:
+    get: { tags: [Auth], summary: "SP metadata for IdP onboarding" }
+  /auth/saml/acs:
+    post: { tags: [Auth], summary: "SAML assertion consumer service" }
+  /auth/oidc/callback:
+    get: { tags: [Auth] }
+  /scim/v2/Users:
+    get:  { tags: [Auth], summary: "SCIM 2.0 user provisioning" }
+    post: { tags: [Auth] }
+
+  /feedback:
+    post: { tags: [Feedback] }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "Opaque string — see Authentication"
+  schemas:
+    Asset:
+      type: object
+      required: [id, tag, name, criticality, createdAt, updatedAt]
+      properties:
+        id:             { type: string }
+        tenantId:       { type: string }
+        tag:            { type: string }
+        name:           { type: string }
+        type:           { type: string, nullable: true }
+        manufacturer:   { type: string, nullable: true }
+        model:          { type: string, nullable: true }
+        serialNumber:   { type: string, nullable: true }
+        parentId:       { type: string, nullable: true }
+        siteId:         { type: string, nullable: true }
+        areaId:         { type: string, nullable: true }
+        location:       { type: string, nullable: true }
+        department:     { type: string, nullable: true }
+        criticality:    { type: string, enum: [low, medium, high, critical] }
+        installDate:    { type: string, format: date-time, nullable: true }
+        specifications: { type: object, additionalProperties: true }
+        operationalStatus: { type: string, enum: [running, idle, down, unknown], nullable: true }
+        createdAt:      { type: string, format: date-time }
+        updatedAt:      { type: string, format: date-time }
+    AssetCreate:
+      type: object
+      required: [name, manufacturer]
+      properties:
+        tag:            { type: string }
+        name:           { type: string }
+        manufacturer:   { type: string }
+        model:          { type: string }
+        serialNumber:   { type: string }
+        parentId:       { type: string, nullable: true }
+        criticality:    { type: string, enum: [low, medium, high, critical], default: medium }
+        specifications: { type: object, additionalProperties: true }
+    AssetUpdate:
+      type: object
+      properties:
+        name:           { type: string }
+        status:         { type: string }
+        criticality:    { type: string, enum: [low, medium, high, critical] }
+        lastMaintenanceDate: { type: string, format: date-time }
+        description:    { type: string }
+        specifications: { type: object, additionalProperties: true }
+    AssetList:
+      type: object
+      properties:
+        items:      { type: array, items: { $ref: "#/components/schemas/Asset" } }
+        nextCursor: { type: string, nullable: true }
+    ChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role:    { type: string, enum: [user, assistant, system] }
+              content: { type: string }
+        stream:          { type: boolean, default: true }
+        model:           { type: string, example: "claude-opus-4-7" }
+        includeManuals:  { type: boolean, default: true }
+        includeSensors:  { type: boolean, default: false }
+        includeHistory:  { type: boolean, default: true }
+    ChatResponse:
+      type: object
+      properties:
+        content: { type: string }
+        usage:
+          type: object
+          properties:
+            inputTokens:  { type: integer }
+            outputTokens: { type: integer }
+            totalTokens:  { type: integer }
+            model:        { type: string }
+            costUsd:      { type: number }
