@@ -400,7 +400,61 @@ app.get("/demo/work-orders", (c) =>
 // Registration
 // ---------------------------------------------------------------------------
 
+// Per-IP rate limiter for /api/register.
+// Token bucket: 5 requests per minute, 20 per hour. In-memory; single-instance OK.
+// Blocks signup-flood / SMTP-bomb attempts while keeping legit signup traffic free.
+const REGISTER_RATE_BUCKETS = new Map<string, { minute: number[]; hour: number[] }>();
+const REGISTER_LIMIT_PER_MINUTE = 5;
+const REGISTER_LIMIT_PER_HOUR = 20;
+
+function checkRegisterRateLimit(ip: string): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  const minuteAgo = now - 60_000;
+  const hourAgo = now - 3_600_000;
+  const bucket = REGISTER_RATE_BUCKETS.get(ip) ?? { minute: [], hour: [] };
+  bucket.minute = bucket.minute.filter((t) => t > minuteAgo);
+  bucket.hour = bucket.hour.filter((t) => t > hourAgo);
+  if (bucket.minute.length >= REGISTER_LIMIT_PER_MINUTE) {
+    return { allowed: false, retryAfterSec: Math.ceil((bucket.minute[0] + 60_000 - now) / 1000) };
+  }
+  if (bucket.hour.length >= REGISTER_LIMIT_PER_HOUR) {
+    return { allowed: false, retryAfterSec: Math.ceil((bucket.hour[0] + 3_600_000 - now) / 1000) };
+  }
+  bucket.minute.push(now);
+  bucket.hour.push(now);
+  REGISTER_RATE_BUCKETS.set(ip, bucket);
+  return { allowed: true, retryAfterSec: 0 };
+}
+
+function getClientIp(headers: Headers, fallback = "unknown"): string {
+  const fwd = headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]!.trim();
+  return headers.get("x-real-ip") || headers.get("cf-connecting-ip") || fallback;
+}
+
+// Cross-origin guard for /api/register — block browser-driven cross-origin POSTs.
+// Empty/null Origin (same-origin or curl) is allowed; any cross-origin Origin must
+// be in the allowlist. ALLOWED_ORIGINS env override comma-separated.
+const REGISTER_ALLOWED_ORIGINS = (process.env.PLG_REGISTER_ALLOWED_ORIGINS ||
+  "https://factorylm.com,https://www.factorylm.com,http://localhost:3000,http://localhost:3200")
+  .split(",").map(s => s.trim()).filter(Boolean);
+
 app.post("/api/register", async (c) => {
+  const origin = c.req.header("origin");
+  if (origin && !REGISTER_ALLOWED_ORIGINS.includes(origin)) {
+    return c.json({ error: "Forbidden origin" }, 403);
+  }
+
+  const ip = getClientIp(c.req.raw.headers);
+  const rl = checkRegisterRateLimit(ip);
+  if (!rl.allowed) {
+    c.header("Retry-After", String(rl.retryAfterSec));
+    return c.json(
+      { error: "Too many signup attempts. Please try again in a minute." },
+      429,
+    );
+  }
+
   const body = await c.req.json();
   const { email, company, firstName } = body;
 
