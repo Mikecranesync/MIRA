@@ -1,17 +1,33 @@
 // mira-web/src/routes/inbox.ts
 //
-// Magic email inbox (Unit 3 + 3.5): customer forwards an email with PDF
-// attachments to kb+<slug>@inbox.factorylm.com; Resend Inbound POSTs a
-// webhook here. We verify the Svix signature, resolve the tenant by slug,
-// fetch each attachment via Resend's Attachments API (download_url is
-// signed and valid for 1 hour), and stream the PDFs to mira-ingest.
+// Magic email inbox (Unit 3 + 3.5): customers forward email to
+// kb+<slug>@factorylm.com. A Google Apps Script running on the owner's
+// Workspace mailbox polls Gmail every minute, finds unread `kb+*`
+// messages, packages them up, signs the body with HMAC-SHA256, and
+// POSTs here.
 //
-// Always returns 200 to Resend on parse-able payloads (Resend retries on
-// non-2xx, which causes storms on real-customer issues like an unknown
-// slug). Auth failures and bad payloads are 401/400 — Resend handles those.
+// Why Apps Script instead of Resend/Postmark/SES inbound?
+//   • $0/month — no new vendor, uses existing Workspace
+//   • No DNS changes — Gmail's plus-addressing routes kb+* into the
+//     existing apex mailbox automatically
+//   • No risk to apex MX (Google Workspace stays untouched)
+//   • Modern HMAC auth, ours-end-to-end
+//
+// The script source lives at tools/apps-script/inbox-poller.gs.
+//
+// Payload shape (Apps Script controls this — we picked Postmark-style
+// for ease of inline attachment handling):
+//   {
+//     MessageID, From, To, Subject,
+//     Attachments: [ { Name, Content (base64), ContentType, ContentLength } ]
+//   }
+//
+// Always returns 200 on parse-able payloads (Apps Script retries the
+// next minute if it leaves a message unread; we don't want to cause
+// retry storms with non-2xx). Auth failures and bad payloads are 401/400.
 
 import { Hono } from "hono";
-import { Resend } from "resend";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { findTenantByInboxSlug, type Tenant } from "../lib/quota.js";
 import { sendInboxReceiptEmail, type InboxReceiptResult } from "../lib/mailer.js";
 
@@ -19,52 +35,69 @@ export const inbox = new Hono();
 
 const MIRA_INGEST_URL = () =>
   process.env.MIRA_INGEST_URL || "http://mira-ingest:8001";
+const HMAC_SECRET = () => process.env.INBOUND_HMAC_SECRET || "";
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024; // matches mira-ingest enforcement
 
-// Lazy-init the Resend client so missing creds at boot don't crash the process.
-let _resend: Resend | null = null;
-function resendClient(): Resend {
-  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY || "");
-  return _resend;
+// Webhook payload shape (Apps Script emits this — Postmark-style for ease)
+interface InboundAttachment {
+  Name?: string;
+  Content?: string; // base64
+  ContentType?: string;
+  ContentLength?: number;
+}
+interface InboundPayload {
+  MessageID?: string;
+  To?: string;
+  From?: string;
+  Subject?: string;
+  Attachments?: InboundAttachment[];
 }
 
-// Test-only seam: tests reset the cached client between cases.
-export function _resetResendClientForTests(): void {
-  _resend = null;
+// Verify HMAC-SHA256 hex signature of the raw body using a shared secret.
+// Constant-time compare via crypto.timingSafeEqual.
+function verifyHmacSignature(
+  rawBody: string,
+  signature: string,
+  secret: string,
+): boolean {
+  if (!signature || !secret) return false;
+  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+  if (expected.length !== signature.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(signature, "hex"));
+  } catch {
+    return false;
+  }
 }
 
-// Resend Inbound webhook payload shape (subset we use)
-interface ResendInboundEvent {
-  type?: string;
-  data?: {
-    email_id?: string;
-    from?: string;
-    to?: string[];
-    subject?: string;
-    attachments?: { filename?: string; content_type?: string }[];
-  };
-}
-
-// Extract the slug from kb+<slug>@inbox.factorylm.com (or any host).
-// Returns null when address shape doesn't match.
+// Extract slug from kb+<slug>@<host>. Returns null on no-match.
 export function extractSlug(toAddress: string | undefined | null): string | null {
   if (!toAddress) return null;
-  // Local-part may be inside angle brackets ("Inbox <kb+abc@...>")
   const angle = toAddress.match(/<([^>]+)>/);
   const addr = angle ? angle[1] : toAddress;
   const m = addr.match(/^kb\+([a-z0-9]{6,32})@/i);
   return m ? m[1].toLowerCase() : null;
 }
 
-// Resend's `data.to` is an array; we use the first kb+ address we find.
-function findInboxRecipient(toList: string[] | undefined): string | null {
-  if (!Array.isArray(toList)) return null;
-  for (const addr of toList) {
-    const slug = extractSlug(addr);
-    if (slug) return addr;
+// Apps Script joins To+Cc+Bcc into one comma-separated string. Find the
+// first kb+ address in any of them.
+function findInboxRecipient(toFlat: string | undefined): string | null {
+  if (!toFlat) return null;
+  for (const part of toFlat.split(",")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const slug = extractSlug(trimmed);
+    if (slug) return trimmed;
   }
   return null;
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
 }
 
 interface ProcessAttachmentResult {
@@ -72,20 +105,18 @@ interface ProcessAttachmentResult {
   outcome: "ingested" | "skipped" | "too_large" | "duplicate" | "rejected" | "error";
   reason?: string;
   status?: number | string;
-  // populated when outcome === "duplicate"
   original_filename?: string;
   original_uploaded_at?: string;
 }
 
 async function forwardAttachment(
-  filename: string,
-  contentType: string,
-  contentLength: number | null,
-  downloadUrl: string,
+  att: InboundAttachment,
   tenant: Tenant,
   relevanceGate: "on" | "off",
 ): Promise<ProcessAttachmentResult> {
-  const isPdfMime = (contentType || "").toLowerCase() === "application/pdf";
+  const filename = att.Name || "attachment.pdf";
+  const ct = (att.ContentType || "").toLowerCase();
+  const isPdfMime = ct === "application/pdf";
   const isPdfExt = filename.toLowerCase().endsWith(".pdf");
 
   if (!isPdfMime && !isPdfExt) {
@@ -96,27 +127,24 @@ async function forwardAttachment(
     };
   }
 
-  if (typeof contentLength === "number" && contentLength > MAX_PDF_BYTES) {
+  if (typeof att.ContentLength === "number" && att.ContentLength > MAX_PDF_BYTES) {
     return {
       filename,
       outcome: "too_large",
-      reason: `${Math.round(contentLength / (1024 * 1024))} MB`,
+      reason: `${Math.round(att.ContentLength / (1024 * 1024))} MB`,
     };
   }
 
-  // Download the attachment from Resend's signed URL (valid 1 hour).
-  let bytes: Uint8Array;
-  try {
-    const dl = await fetch(downloadUrl);
-    if (!dl.ok) {
-      return { filename, outcome: "error", status: `download-${dl.status}` };
-    }
-    bytes = new Uint8Array(await dl.arrayBuffer());
-  } catch (err) {
-    console.error("[inbox] attachment download failed:", filename, err);
-    return { filename, outcome: "error", status: "download-failed" };
+  if (!att.Content) {
+    return { filename, outcome: "error", status: "empty" };
   }
 
+  let bytes: Uint8Array;
+  try {
+    bytes = base64ToBytes(att.Content);
+  } catch {
+    return { filename, outcome: "error", status: "bad-base64" };
+  }
   if (bytes.length === 0) return { filename, outcome: "error", status: "empty" };
   if (bytes.length > MAX_PDF_BYTES) {
     return {
@@ -180,70 +208,58 @@ async function forwardAttachment(
 }
 
 inbox.post("/email", async (c) => {
-  // 1. Auth — Svix-style HMAC signature verify via Resend SDK.
-  const secret = process.env.RESEND_INBOUND_SECRET || "";
+  // 1. Auth — HMAC-SHA256 over raw body.
+  const secret = HMAC_SECRET();
   if (!secret) {
-    console.error("[inbox] RESEND_INBOUND_SECRET not set; refusing all webhooks");
+    console.error("[inbox] INBOUND_HMAC_SECRET not set; refusing all webhooks");
     return c.json({ error: "Webhook not configured" }, 500);
   }
 
   const rawBody = await c.req.text();
-  let payload: ResendInboundEvent;
-  try {
-    payload = resendClient().webhooks.verify({
-      payload: rawBody,
-      headers: {
-        id: c.req.header("svix-id") || "",
-        timestamp: c.req.header("svix-timestamp") || "",
-        signature: c.req.header("svix-signature") || "",
-      },
-      webhookSecret: secret,
-    }) as ResendInboundEvent;
-  } catch (err) {
-    console.warn("[inbox] svix verify failed:", err instanceof Error ? err.message : err);
+  const signature = (c.req.header("x-hmac-signature") || "").trim();
+  if (!verifyHmacSignature(rawBody, signature, secret)) {
+    console.warn("[inbox] HMAC verify failed");
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // 2. Filter on event type — Resend sends multiple event types per stream.
-  if (payload.type !== "email.received") {
-    console.log("[inbox] ignored event type:", payload.type);
-    return c.json({ ok: true, ignored: "wrong-event-type" }, 200);
+  // 2. Parse payload.
+  let payload: InboundPayload;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return c.json({ error: "Invalid JSON" }, 400);
   }
 
-  const data = payload.data || {};
-  const emailId = data.email_id;
-  if (!emailId) {
-    return c.json({ error: "Missing email_id" }, 400);
-  }
-
-  // 3. Resolve slug from the first kb+ recipient.
-  const inboxRecipient = findInboxRecipient(data.to);
+  // 3. Resolve slug from any kb+ address in To/Cc/Bcc.
+  const inboxRecipient = findInboxRecipient(payload.To);
   const slug = extractSlug(inboxRecipient);
   if (!slug) {
-    console.warn("[inbox] no kb+ recipient in", data.to);
+    console.warn("[inbox] no kb+ recipient in", payload.To);
     return c.json({ error: "Bad recipient address" }, 400);
   }
 
   // 4. Look up tenant.
   const tenant = await findTenantByInboxSlug(slug);
   if (!tenant) {
-    console.warn("[inbox] unknown slug:", slug, "from", data.from);
+    // Don't reveal slug-existence to outsiders — log + 200.
+    console.warn("[inbox] unknown slug:", slug, "from", payload.From);
     return c.json({ ok: true, ignored: "unknown-recipient" }, 200);
   }
 
   // [force] in subject disables the relevance gate for this send.
-  const subject = data.subject || "";
+  const subject = payload.Subject || "";
   const relevanceGate: "on" | "off" = /\[force\]/i.test(subject) ? "off" : "on";
 
   console.log(
-    "[inbox] received email_id=%s tenant=%s from=%s gate=%s",
-    emailId,
+    "[inbox] received message=%s tenant=%s from=%s attachments=%d gate=%s",
+    payload.MessageID || "(none)",
     tenant.id,
-    data.from || "(none)",
+    payload.From || "(none)",
+    payload.Attachments?.length || 0,
     relevanceGate,
   );
 
-  // 5. Fetch the attachment list (download_url is valid 1 hour).
+  // 5. Process attachments sequentially — bounds mira-ingest load per email.
   const result: InboxReceiptResult = {
     ingested: [],
     skipped: [],
@@ -252,44 +268,8 @@ inbox.post("/email", async (c) => {
     rejected: [],
     errors: [],
   };
-
-  let attachmentsList: {
-    filename?: string;
-    content_type?: string;
-    content_length?: number;
-    download_url?: string;
-  }[] = [];
-  try {
-    const listResp = await resendClient().emails.receiving.attachments.list({
-      emailId,
-    });
-    attachmentsList = (listResp as any)?.data || [];
-  } catch (err) {
-    console.error("[inbox] attachment list failed:", err);
-    // Receipt still fires so the customer knows we got their email but couldn't
-    // process attachments; record one error per known-from-payload attachment.
-    for (const att of data.attachments || []) {
-      result.errors.push({
-        filename: att.filename || "attachment",
-        status: "list-failed",
-      });
-    }
-    sendInboxReceiptEmail(tenant.email, tenant.first_name || "", result).catch(
-      (err) => console.error("[inbox] receipt email send error:", err),
-    );
-    return c.json({ ok: true, summary: result }, 200);
-  }
-
-  // 6. Process each attachment (sequential — bounds mira-ingest load).
-  for (const att of attachmentsList) {
-    const r = await forwardAttachment(
-      att.filename || "attachment.pdf",
-      att.content_type || "",
-      typeof att.content_length === "number" ? att.content_length : null,
-      att.download_url || "",
-      tenant,
-      relevanceGate,
-    );
+  for (const att of payload.Attachments || []) {
+    const r = await forwardAttachment(att, tenant, relevanceGate);
     if (r.outcome === "ingested") result.ingested.push({ filename: r.filename });
     else if (r.outcome === "skipped")
       result.skipped.push({ filename: r.filename, reason: r.reason || "not a PDF" });
@@ -316,7 +296,7 @@ inbox.post("/email", async (c) => {
       });
   }
 
-  // 7. Receipt email — fire and forget; don't block the 200 to Resend.
+  // 6. Receipt email — fire and forget; don't block the 200.
   sendInboxReceiptEmail(tenant.email, tenant.first_name || "", result).catch((err) =>
     console.error("[inbox] receipt email send error:", err),
   );
