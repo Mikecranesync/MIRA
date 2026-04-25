@@ -615,11 +615,23 @@ if __name__ == "__main__":
     from starlette.applications import Starlette
     from starlette.routing import Route
 
+    from exports import export_assets, export_work_orders
+
+    # Export routes authenticate via PLG JWT internally — skip MCP_REST_API_KEY check.
+    _EXPORT_PATH_PREFIX = "/api/v1/exports/"
+
     class BearerAuthMiddleware(BaseHTTPMiddleware):
-        """Require Authorization: Bearer {MCP_REST_API_KEY} on all REST requests except /health."""
+        """Require Authorization: Bearer {MCP_REST_API_KEY} on all REST requests.
+
+        Exemptions:
+          - /health (readiness probe)
+          - /api/v1/exports/* (authenticated internally via PLG JWT)
+        """
 
         async def dispatch(self, request, call_next):
             if request.url.path == "/health":
+                return await call_next(request)
+            if request.url.path.startswith(_EXPORT_PATH_PREFIX):
                 return await call_next(request)
             auth = request.headers.get("Authorization", "")
             if not MCP_REST_API_KEY or auth != f"Bearer {MCP_REST_API_KEY}":
@@ -742,6 +754,9 @@ if __name__ == "__main__":
             Route("/api/cmms/nameplate", rest_cmms_nameplate, methods=["POST"]),
             Route("/ingest/pdf", _rest_ingest_pdf, methods=["POST"]),
             Route("/api/embed", _rest_embed, methods=["POST"]),
+            # Unit 4 — Excel/CSV live export (PLG-JWT-authed, no MCP_REST_API_KEY needed)
+            Route("/api/v1/exports/assets.xlsx", export_assets),
+            Route("/api/v1/exports/work-orders.xlsx", export_work_orders),
         ],
         exception_handlers={404: _not_found},
     )
