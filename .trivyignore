@@ -1,0 +1,16 @@
+# Trivy ignore list — vulnerabilities accepted with justification.
+# Format: one CVE/GHSA id per line, optional comment.
+# Trivy reads this file from the working directory (repo root in our CI).
+# Reviewed periodically when bumping container deps.
+
+# GHSA-xqmj-j6mv-4862 — LiteLLM 1.83.0 Server-Side Template Injection in /prompts/test
+# Severity: HIGH. Fixed in litellm 1.83.7+.
+# Justification: litellm is a transitive dep of fastmcp in mira-mcp. mira-mcp does
+# NOT directly use litellm and does NOT expose the vulnerable /prompts/test endpoint
+# (mira-mcp's surface is FastMCP SSE on :8000 + a small REST API on :8001 — see
+# mira-mcp/CLAUDE.md). Pinning litellm>=1.83.7 directly creates an irreconcilable
+# dep conflict because litellm 1.83.7+ pins python-dotenv==1.0.1 while fastmcp
+# 3.2.0 requires python-dotenv>=1.1.0. Real fix waits on fastmcp upstream
+# releasing a version compatible with patched litellm. Re-evaluate every
+# fastmcp bump.
+GHSA-xqmj-j6mv-4862

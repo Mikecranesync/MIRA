@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MIRA pre-commit hook — shellcheck + rg security scan on staged files
+# MIRA pre-commit hook — shellcheck + gitleaks + rg debug-artifact scan on staged files
 # Installed via: git config core.hooksPath .githooks
 
 set -euo pipefail
@@ -46,44 +46,28 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 2. ripgrep — hardcoded credentials in staged .py files
+# 2. gitleaks — secrets scan on staged changes (mirrors CI)
+# ------------------------------------------------------------------
+bold "Scanning staged changes for secrets (gitleaks)..."
+GITLEAKS_BIN=$(command -v gitleaks 2>/dev/null || echo "/opt/homebrew/bin/gitleaks")
+if [ ! -x "$GITLEAKS_BIN" ]; then
+  yellow "  gitleaks not found — skipping (install: brew install gitleaks)"
+  WARNINGS=$((WARNINGS + 1))
+else
+  if "$GITLEAKS_BIN" protect --staged --redact --no-banner --config=.gitleaks.toml 2>&1; then
+    green "  ✓ No secrets detected in staged changes"
+    PASS=$((PASS + 1))
+  else
+    red "  🔴 gitleaks detected secrets in staged changes (see above)"
+    red "  → False positive? Add to .gitleaks.toml allowlist or use '# gitleaks:allow' comment"
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
+# ------------------------------------------------------------------
+# 3. ripgrep — leftover debug artifacts in staged .py files
 # ------------------------------------------------------------------
 if [ -n "$STAGED_PY" ]; then
-  bold "Scanning Python files for hardcoded credentials..."
-  RG_BIN=$(command -v rg 2>/dev/null || echo "/opt/homebrew/bin/rg")
-  if [ ! -x "$RG_BIN" ]; then
-    yellow "  ripgrep not found — skipping (install: brew install ripgrep)"
-    WARNINGS=$((WARNINGS + 1))
-  else
-    CRED_PATTERN='(?i)(password|secret|api_key|token|auth_key|passwd)\s*=\s*["\x27][^"\x27\$\{]{8,}["\x27]'
-    FOUND_CREDS=0
-    for f in $STAGED_PY; do
-      # Skip test files — fixture credentials are not real secrets
-      if [[ "$f" == *test* ]] || [[ "$f" == */tests/* ]]; then
-        continue
-      fi
-      if [ -f "$f" ]; then
-        MATCHES=$("$RG_BIN" --pcre2 --no-heading --line-number \
-          "$CRED_PATTERN" "$f" 2>/dev/null \
-          | grep -v 'os\.getenv\|environ\|getenv\|placeholder\|example\|# noqa\|nosec' \
-          || true)
-        if [ -n "$MATCHES" ]; then
-          red "  🔴 Possible hardcoded credential in $f:"
-          echo "$MATCHES" | sed 's/^/    /'
-          FOUND_CREDS=$((FOUND_CREDS + 1))
-          FAIL=$((FAIL + 1))
-        fi
-      fi
-    done
-    if [ $FOUND_CREDS -eq 0 ]; then
-      green "  ✓ No hardcoded credentials found"
-      PASS=$((PASS + 1))
-    fi
-  fi
-
-  # ------------------------------------------------------------------
-  # 3. ripgrep — leftover debug artifacts in staged .py files
-  # ------------------------------------------------------------------
   bold "Scanning Python files for debug artifacts..."
   DEBUG_FOUND=0
   for f in $STAGED_PY; do
