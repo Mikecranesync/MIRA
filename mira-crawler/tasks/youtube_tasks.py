@@ -6,6 +6,14 @@ Four tasks, four queues:
   youtube-keyframes  — extract_youtube_keyframes (per-video, 2 workers)
   youtube-patterns   — analyze_teaching_patterns (per-video, 1 worker)
 
+Reliability policy applied to every task:
+  - acks_late=False + reject_on_worker_lost=False → SIGKILL'd tasks die for good,
+    no infinite redelivery loop on OOM
+  - autoretry_for retries only on transient errors (httpx, sqlalchemy, OSError);
+    MemoryError / ImportError / SystemExit bubble immediately
+  - retry_backoff with jitter caps at 5 min; max_retries bounded
+  - soft_time_limit + time_limit so a hang dies cleanly instead of holding the worker
+
 CLI dry-run usage (Phase 1 gate):
   python -m mira_crawler.tasks.youtube_tasks discover --dry-run
   python -m mira_crawler.tasks.youtube_tasks ingest-transcript <video_id> --dry-run
@@ -18,6 +26,8 @@ from __future__ import annotations
 import logging
 import os
 
+import httpx
+
 logger = logging.getLogger("mira-crawler.youtube.tasks")
 
 try:
@@ -26,36 +36,53 @@ except ImportError:
     from celery_app import app
 
 
+# Transient exception classes — only these trigger Celery's autoretry.
+# MemoryError, ImportError, KeyError, ValueError etc. bubble up.
+_TRANSIENT = (
+    httpx.HTTPError,           # any httpx network/HTTP error
+    httpx.TimeoutException,
+    ConnectionError,
+    TimeoutError,
+    OSError,                    # disk full, broken pipe, etc.
+)
+
+_COMMON_TASK_OPTS = dict(
+    acks_late=False,
+    reject_on_worker_lost=False,
+    autoretry_for=_TRANSIENT,
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+)
+
+
 # ---------------------------------------------------------------------------
 # Task: discover_youtube_videos
 # Queue: youtube-discovery | Beat: every 15 min
 # ---------------------------------------------------------------------------
 
 @app.task(
-    bind=True,
     name="mira_crawler.tasks.youtube_tasks.discover_youtube_videos",
     queue="youtube-discovery",
     max_retries=2,
-    default_retry_delay=60,
+    soft_time_limit=300,
+    time_limit=420,
+    **_COMMON_TASK_OPTS,
 )
-def discover_youtube_videos(self, dry_run: bool = False) -> dict:
+def discover_youtube_videos(dry_run: bool = False) -> dict:
     """Search YouTube API for new industrial maintenance/PLC videos.
 
     Rotates through keyword seeds from sources.yaml. Quota-aware —
     skips when daily API units near limit.
     """
-    try:
-        from crawler.youtube_crawler import discover_videos
-        result = discover_videos(dry_run=dry_run)
+    from crawler.youtube_crawler import discover_videos
+    result = discover_videos(dry_run=dry_run)
 
-        # Queue transcript ingestion for each newly inserted video
-        if not dry_run and result.get("inserted", 0) > 0:
-            _queue_pending_transcripts()
+    # Queue transcript ingestion for each newly inserted video
+    if not dry_run and result.get("inserted", 0) > 0:
+        _queue_pending_transcripts()
 
-        return result
-    except Exception as exc:
-        logger.error("Discovery task failed: %s", exc)
-        raise self.retry(exc=exc)
+    return result
 
 
 def _queue_pending_transcripts() -> None:
@@ -88,32 +115,28 @@ def _queue_pending_transcripts() -> None:
 # ---------------------------------------------------------------------------
 
 @app.task(
-    bind=True,
     name="mira_crawler.tasks.youtube_tasks.ingest_youtube_transcript",
     queue="youtube-transcript",
     max_retries=3,
-    default_retry_delay=30,
+    soft_time_limit=420,
+    time_limit=600,
+    **_COMMON_TASK_OPTS,
 )
-def ingest_youtube_transcript(self, video_id: str, dry_run: bool = False) -> dict:
+def ingest_youtube_transcript(video_id: str, dry_run: bool = False) -> dict:
     """Extract + chunk + embed transcript for one video into NeonDB.
 
     On completion queues both keyframe extraction and pattern analysis.
     """
-    try:
-        from ingest.youtube_transcript import ingest_transcript
-        result = ingest_transcript(video_id, dry_run=dry_run)
+    from ingest.youtube_transcript import ingest_transcript
+    result = ingest_transcript(video_id, dry_run=dry_run)
 
-        status = result.get("status", "")
-        if not dry_run and status == "done":
-            # Kick off downstream tasks
-            extract_youtube_keyframes.apply_async(args=[video_id], queue="youtube-keyframes")
-            analyze_teaching_patterns.apply_async(args=[video_id], queue="youtube-patterns")
-            logger.info("Queued keyframes + patterns for %s", video_id)
+    status = result.get("status", "")
+    if not dry_run and status == "done":
+        extract_youtube_keyframes.apply_async(args=[video_id], queue="youtube-keyframes")
+        analyze_teaching_patterns.apply_async(args=[video_id], queue="youtube-patterns")
+        logger.info("Queued keyframes + patterns for %s", video_id)
 
-        return result
-    except Exception as exc:
-        logger.error("Transcript task failed for %s: %s", video_id, exc)
-        raise self.retry(exc=exc)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -122,28 +145,23 @@ def ingest_youtube_transcript(self, video_id: str, dry_run: bool = False) -> dic
 # ---------------------------------------------------------------------------
 
 @app.task(
-    bind=True,
     name="mira_crawler.tasks.youtube_tasks.extract_youtube_keyframes",
     queue="youtube-keyframes",
     max_retries=2,
-    default_retry_delay=120,
     # Soft 20-min time limit — keyframe extraction is CPU-bound
     soft_time_limit=1200,
     time_limit=1500,
+    **_COMMON_TASK_OPTS,
 )
-def extract_youtube_keyframes(self, video_id: str, dry_run: bool = False) -> dict:
+def extract_youtube_keyframes(video_id: str, dry_run: bool = False) -> dict:
     """Download video, extract scene-change keyframes, classify with Claude vision.
 
     Valuable frames (fault codes, wiring, ladder logic, HMI, etc.) are
     stored in PHOTOS_DIR + embedded with nomic-embed-vision → NeonDB.
     Temp video deleted immediately after frame extraction.
     """
-    try:
-        from ingest.youtube_keyframe import extract_keyframes
-        return extract_keyframes(video_id, dry_run=dry_run)
-    except Exception as exc:
-        logger.error("Keyframe task failed for %s: %s", video_id, exc)
-        raise self.retry(exc=exc)
+    from ingest.youtube_keyframe import extract_keyframes
+    return extract_keyframes(video_id, dry_run=dry_run)
 
 
 # ---------------------------------------------------------------------------
@@ -152,26 +170,22 @@ def extract_youtube_keyframes(self, video_id: str, dry_run: bool = False) -> dic
 # ---------------------------------------------------------------------------
 
 @app.task(
-    bind=True,
     name="mira_crawler.tasks.youtube_tasks.analyze_teaching_patterns",
     queue="youtube-patterns",
     max_retries=2,
-    default_retry_delay=60,
-    # Rate-limit: 1 pattern analysis per minute to manage Claude API cost
+    soft_time_limit=300,
+    time_limit=420,
     rate_limit="1/m",
+    **_COMMON_TASK_OPTS,
 )
-def analyze_teaching_patterns(self, video_id: str, dry_run: bool = False) -> dict:
+def analyze_teaching_patterns(video_id: str, dry_run: bool = False) -> dict:
     """Run Claude on full transcript to extract teaching structure patterns.
 
     Stores results in teaching_patterns table. Top patterns by
     engagement_score are injected into bot system prompts weekly.
     """
-    try:
-        from ingest.youtube_pattern import analyze_pattern
-        return analyze_pattern(video_id, dry_run=dry_run)
-    except Exception as exc:
-        logger.error("Pattern task failed for %s: %s", video_id, exc)
-        raise self.retry(exc=exc)
+    from ingest.youtube_pattern import analyze_pattern
+    return analyze_pattern(video_id, dry_run=dry_run)
 
 
 # ---------------------------------------------------------------------------

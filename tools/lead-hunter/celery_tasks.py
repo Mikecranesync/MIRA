@@ -165,22 +165,39 @@ def run_discover_and_enrich() -> dict:
     else:
         enriched_count = 0
 
-    # Persist to DB
+    # Persist to DB — retry on transient NeonDB errors (cold start, network blip)
+    from hardening import with_retries
+
     inserted = 0
     if db_url and fac_list:
         try:
-            inserted = hunt.upsert_facilities(fac_list, db_url)
+            inserted = with_retries(
+                lambda: hunt.upsert_facilities(fac_list, db_url),
+                name="upsert_facilities",
+                retries=3,
+                backoff=2.0,
+            )
             log.info("DB: %d new, %d updated", inserted, len(fac_list) - inserted)
         except Exception as e:
-            log.error("DB upsert failed: %s", e)
+            log.error("DB upsert failed after retries: %s", e)
 
-    # HubSpot push for qualified new facilities
+    # HubSpot push — bounded retries on transient 5xx / network
     hs_pushed = 0
+    hs_qualified = 0
     if hs_token and fac_list:
         qualified = [f for f in fac_list if f.icp_score >= 10]
+        hs_qualified = len(qualified)
         if qualified:
-            stats = hunt.push_to_hubspot(qualified, hs_token)
-            hs_pushed = stats.get("companies_created", 0) + stats.get("companies_updated", 0)
+            try:
+                stats = with_retries(
+                    lambda: hunt.push_to_hubspot(qualified, hs_token),
+                    name="push_to_hubspot",
+                    retries=2,
+                    backoff=3.0,
+                )
+                hs_pushed = stats.get("companies_created", 0) + stats.get("companies_updated", 0)
+            except Exception as e:
+                log.error("HubSpot push failed after retries: %s", e)
 
     # Update state
     state["requests_today"] = state.get("requests_today", 0) + requests_used
@@ -192,6 +209,7 @@ def run_discover_and_enrich() -> dict:
         "discovered": len(fac_list),
         "inserted": inserted,
         "enriched": enriched_count,
+        "hs_qualified": hs_qualified if hs_token and fac_list else 0,
         "hs_pushed": hs_pushed,
         "requests_used": requests_used,
         "requests_today": state["requests_today"],
