@@ -72,6 +72,7 @@
     "skill-creator@claude-plugins-official": true,
     "stripe@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true
+    "typescript-lsp@claude-plugins-official": true,
+    "ruff-lsp@mira-local": true
   }
 }

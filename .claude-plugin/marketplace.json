@@ -4,5 +4,21 @@
     "name": "MIRA",
     "email": "harperhousebuyers@gmail.com"
   },
-  "plugins": []
+  "plugins": [
+    {
+      "name": "ruff-lsp",
+      "description": "Ruff linter + formatter as an LSP server (uses `ruff server`).",
+      "source": "./plugins/ruff-lsp",
+      "lspServers": {
+        "ruff": {
+          "command": "ruff",
+          "args": ["server"],
+          "extensionToLanguage": {
+            ".py": "python",
+            ".pyi": "python"
+          }
+        }
+      }
+    }
+  ]
 }
