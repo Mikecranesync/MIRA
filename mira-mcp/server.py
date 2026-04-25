@@ -195,7 +195,7 @@ def get_fault_history(equipment_id: str = "", limit: int = 50) -> dict:
     if _viking_ok and MIRA_TENANT_ID:
         query = f"{equipment_id} fault history" if equipment_id else "fault history equipment"
         try:
-            context_chunks = _viking_retrieve(query, MIRA_TENANT_ID, top_k=3)
+            context_chunks = _viking_retrieve(query, MIRA_TENANT_ID, top_k=3)  # pyright: ignore[reportPossiblyUnboundVariable]
         except Exception as _e:
             sys.stderr.write(f"WARNING: viking_retrieve failed: {_e}\n")
 

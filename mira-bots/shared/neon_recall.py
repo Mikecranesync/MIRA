@@ -349,7 +349,7 @@ def recall_knowledge(
             logger.warning(
                 "NEON_DATABASE_URL not set — NeonDB recall disabled, using Open WebUI only"
             )
-            recall_knowledge._warned_url = True
+            recall_knowledge._warned_url = True  # pyright: ignore[reportFunctionMemberAccess]
         return []
     if not embedding or not tenant_id:
         return []

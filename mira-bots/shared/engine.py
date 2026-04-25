@@ -626,6 +626,7 @@ class Supervisor:
             # and cleared the gathering payload — fall through to normal diagnostic flow.
 
         # Always-on guardrail: safety and off-topic bypass ALL conversation state
+        intent = ""  # Initialize to ensure it's always defined for later checks
         if not photo_b64:
             sc = state.get("context", {}).get("session_context", {})
 
@@ -1437,6 +1438,8 @@ class Supervisor:
         """
         max_attempts = 1 if photo_b64 else (2 if self.nemotron.enabled else 1)
         query = message
+        raw = ""  # Initialize to ensure always defined for return
+        parsed = {}
 
         for attempt in range(max_attempts):
             try:

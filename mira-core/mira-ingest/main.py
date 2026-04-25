@@ -176,7 +176,7 @@ def _sanitize_image(data: bytes) -> bytes:
     w, h = img.size
     if max(w, h) > MAX_PX:
         scale = MAX_PX / max(w, h)
-        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        img = img.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=85, exif=b"")
     return buf.getvalue()

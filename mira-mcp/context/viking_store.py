@@ -66,7 +66,7 @@ def ingest_text(text: str, store_key: str, metadata: dict = None) -> int:
     """Store a text chunk under store_key. Returns row id."""
     meta = metadata or {}
     if _USE_OPENVIKING:
-        store = openviking.open(store_key, create=True)
+        store = openviking.open(store_key, create=True)  # pyright: ignore[reportPossiblyUnboundVariable]
         return store.add(text, metadata=meta)
 
     db_path = _fallback_db_path()
@@ -128,7 +128,7 @@ def retrieve(query: str, tenant_id: str, top_k: int = 5) -> list[dict]:
 
     if _USE_OPENVIKING:
         try:
-            store = openviking.open(store_key, create=False)
+            store = openviking.open(store_key, create=False)  # pyright: ignore[reportPossiblyUnboundVariable]
             results = store.search(query, top_k=top_k)
             return [{"content": r.text, "score": r.score, "metadata": r.metadata} for r in results]
         except Exception as e:

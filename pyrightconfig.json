@@ -13,11 +13,10 @@
     "tools",
     "**/tests"
   ],
-  "typeCheckingMode": "basic",
+  "typeCheckingMode": "standard",
   "pythonVersion": "3.12",
   "reportMissingImports": false,
   "reportMissingTypeStubs": false,
-  "reportGeneralClassIssues": false,
   "reportOptionalMemberAccess": false,
   "reportOptionalSubscript": false,
   "reportArgumentType": "warning",
