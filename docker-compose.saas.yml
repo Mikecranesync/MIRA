@@ -315,9 +315,21 @@ services:
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.factorylm.com}
       # AES-256-GCM key for at-rest encryption of OAuth tokens in hub_channel_bindings
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
-      # Default tenant for the dogfood / single-user Hub pass
+      # NextAuth (Auth.js) — sign-in for the post-paywall hub
+      # AUTH_SECRET: 32-byte random hex used to sign session JWTs
+      # NEXTAUTH_URL: must include the /hub basePath so callbacks land at /hub/api/auth/callback/google
+      - AUTH_SECRET=${AUTH_SECRET:-}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/hub}
+      - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/hub}
+      # Sign-in OAuth client (separate from the Drive-integration GOOGLE_CLIENT_ID — different scopes)
+      - GOOGLE_AUTH_CLIENT_ID=${GOOGLE_AUTH_CLIENT_ID:-}
+      - GOOGLE_AUTH_CLIENT_SECRET=${GOOGLE_AUTH_CLIENT_SECRET:-}
+      # Default tenant carried by lib helpers when no session is present (cron, scripts).
+      # Real API requests resolve tenant from the NextAuth session.
       - HUB_TENANT_ID=${HUB_TENANT_ID:-mike}
-      # Google Workspace OAuth
+      # Refine simple-rest data provider — must be set in prod or queries silently mock-fall-through
+      - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-https://app.factorylm.com}
+      # Google Workspace integration OAuth (Drive/Gmail) — distinct from sign-in client
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       # Slack — both bot-token shortcut and full OAuth are supported by the route

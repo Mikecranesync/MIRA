@@ -1,47 +1,63 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Factory, Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-function LoginForm() {
+const MIN_PW = 8;
+
+export default function SignupPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/feed";
-  const initialError = searchParams.get("error");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [error, setError] = useState(initialError ? "Sign in failed" : "");
+  const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError("");
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-    setLoading(false);
-    if (!result || result.error) {
-      setError(result?.error || "Invalid email or password");
+    if (password.length < MIN_PW) {
+      setError(`Password must be at least ${MIN_PW} characters`);
       return;
     }
-    router.push(callbackUrl);
-    router.refresh();
+    setLoading(true);
+    try {
+      const res = await fetch("/hub/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, name }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Could not create account");
+        return;
+      }
+      const result = await signIn("credentials", { email, password, redirect: false });
+      if (!result || result.error) {
+        setError("Account created — please sign in");
+        router.push("/login");
+        return;
+      }
+      router.push("/feed");
+      router.refresh();
+    } catch {
+      setError("Network error — try again");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleGoogle() {
     setGoogleLoading(true);
     setError("");
-    await signIn("google", { callbackUrl });
+    await signIn("google", { callbackUrl: "/feed" });
   }
 
   return (
@@ -69,7 +85,7 @@ function LoginForm() {
             <Factory className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">FactoryLM</h1>
-          <p className="text-slate-400 text-sm mt-1">Sign in to continue</p>
+          <p className="text-slate-400 text-sm mt-1">Create your account</p>
         </div>
 
         <div
@@ -96,7 +112,7 @@ function LoginForm() {
                 <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" />
               </svg>
             )}
-            <span>Sign in with Google</span>
+            <span>Continue with Google</span>
           </button>
 
           <div className="flex items-center gap-3 my-4">
@@ -106,6 +122,18 @@ function LoginForm() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Name (optional)</label>
+              <Input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                autoComplete="name"
+                className="h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
               <Input
@@ -126,9 +154,10 @@ function LoginForm() {
                   type={showPw ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
+                  placeholder={`At least ${MIN_PW} characters`}
+                  autoComplete="new-password"
                   required
+                  minLength={MIN_PW}
                   className="h-11 pr-10 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                 />
                 <button
@@ -155,30 +184,22 @@ function LoginForm() {
             >
               {loading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Signing in
+                  <Loader2 className="w-4 h-4 animate-spin" /> Creating account
                 </>
               ) : (
-                "Sign in"
+                "Create account"
               )}
             </Button>
           </form>
 
           <p className="text-center text-sm text-slate-400 mt-6">
-            Don&apos;t have an account?{" "}
-            <Link href="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
-              Create one
+            Already have an account?{" "}
+            <Link href="/login" className="text-blue-400 hover:text-blue-300 font-medium">
+              Sign in
             </Link>
           </p>
         </div>
       </div>
     </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-900" />}>
-      <LoginForm />
-    </Suspense>
   );
 }

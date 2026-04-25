@@ -7,12 +7,15 @@ import {
   inferKindFromMime,
   SUPPORTED_MIMES,
 } from "@/lib/mira-ingest-client";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 const MAX = 20 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   const form = await req.formData().catch(() => null);
   if (!form) return NextResponse.json({ error: "invalid_multipart" }, { status: 400 });
 
@@ -53,6 +56,7 @@ export async function POST(req: NextRequest) {
   const buffer = new Uint8Array(await file.arrayBuffer());
 
   const upload = await createUpload({
+    tenantId: ctx.tenantId,
     provider: "local",
     kind,
     filename: file.name,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -7,11 +8,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   const { id } = await params;
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM work_orders WHERE id = $1`,
-      [id]
+      `SELECT * FROM work_orders WHERE id = $1 AND tenant_id = $2`,
+      [id, ctx.tenantId],
     );
     if (rows.length === 0) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });

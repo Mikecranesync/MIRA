@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { upsertBinding } from "@/lib/bindings";
 import { newState, stateCookieName } from "@/lib/oauth-state";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   const clientId = process.env.SLACK_CLIENT_ID;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.factorylm.com";
 
@@ -13,6 +16,7 @@ export async function GET() {
     const botToken = process.env.SLACK_BOT_TOKEN;
     if (botToken) {
       await upsertBinding({
+        tenantId: ctx.tenantId,
         provider: "slack",
         accessToken: botToken,
         scopes: ["chat:write", "channels:read", "im:read", "im:write", "users:read"],
