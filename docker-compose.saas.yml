@@ -321,9 +321,11 @@ services:
       - AUTH_SECRET=${AUTH_SECRET:-}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/hub}
       - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/hub}
-      # Sign-in OAuth client (separate from the Drive-integration GOOGLE_CLIENT_ID — different scopes)
-      - GOOGLE_AUTH_CLIENT_ID=${GOOGLE_AUTH_CLIENT_ID:-}
-      - GOOGLE_AUTH_CLIENT_SECRET=${GOOGLE_AUTH_CLIENT_SECRET:-}
+      # Sign-in OAuth client. Named HUB_AUTH_GOOGLE_* to avoid collision with
+      # the existing GOOGLE_OAUTH_CLIENT_ID (Apps Script magic-inbox) and
+      # GOOGLE_CLIENT_ID (Drive integration). Different scopes than both.
+      - HUB_AUTH_GOOGLE_CLIENT_ID=${HUB_AUTH_GOOGLE_CLIENT_ID:-}
+      - HUB_AUTH_GOOGLE_CLIENT_SECRET=${HUB_AUTH_GOOGLE_CLIENT_SECRET:-}
       # Default tenant carried by lib helpers when no session is present (cron, scripts).
       # Real API requests resolve tenant from the NextAuth session.
       - HUB_TENANT_ID=${HUB_TENANT_ID:-mike}

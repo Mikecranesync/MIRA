@@ -28,8 +28,8 @@ declare module "next-auth/jwt" {
   }
 }
 
-const googleClientId = process.env.GOOGLE_AUTH_CLIENT_ID || "";
-const googleClientSecret = process.env.GOOGLE_AUTH_CLIENT_SECRET || "";
+const googleClientId = process.env.HUB_AUTH_GOOGLE_CLIENT_ID || "";
+const googleClientSecret = process.env.HUB_AUTH_GOOGLE_CLIENT_SECRET || "";
 
 const providers: NextAuthOptions["providers"] = [
   CredentialsProvider({
@@ -60,7 +60,7 @@ if (googleClientId && googleClientSecret) {
     }),
   );
 } else if (process.env.NODE_ENV === "production") {
-  console.warn("[auth] GOOGLE_AUTH_CLIENT_ID or GOOGLE_AUTH_CLIENT_SECRET unset — Google sign-in disabled");
+  console.warn("[auth] HUB_AUTH_GOOGLE_CLIENT_ID or HUB_AUTH_GOOGLE_CLIENT_SECRET unset — Google sign-in disabled");
 }
 
 export const authOptions: NextAuthOptions = {
