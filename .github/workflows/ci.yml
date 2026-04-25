@@ -282,9 +282,12 @@ jobs:
         run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 mira-ingest:scan
 
       - name: Build mira-bot-telegram
+        # Build context is the repo root (`.`) to match docker-compose.saas.yml
+        # — the Dockerfile's COPY instructions reference paths like
+        # `mira-bots/telegram/requirements.txt` and `VERSION` (at the repo root).
         run: |
           docker buildx build \
-            -f mira-bots/telegram/Dockerfile mira-bots/ \
+            -f mira-bots/telegram/Dockerfile . \
             --cache-from type=gha,scope=mira-telegram \
             --cache-to type=gha,mode=max,scope=mira-telegram \
             -t mira-telegram:scan --load
