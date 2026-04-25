@@ -528,6 +528,70 @@
       50%       { opacity: 0; }
     }
 
+    /* ── Named Features (above-fold trust strip) ── */
+    .named-features {
+      padding: 56px 0 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (max-width: 768px) { .named-features { padding: 40px 0 0; } }
+
+    .named-features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .named-features-grid { grid-template-columns: 1fr; gap: 14px; }
+    }
+
+    .named-feature {
+      display: block;
+      padding: 22px 22px 24px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color 240ms var(--ease-out), transform 240ms var(--ease-out), background 240ms var(--ease-out);
+    }
+
+    .named-feature:hover {
+      border-color: var(--border-hi);
+      transform: translateY(-2px);
+      background: #16171e;
+    }
+
+    .named-feature-name {
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      margin-bottom: 10px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .named-feature-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--amber);
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .named-feature-blurb {
+      font-size: 13.5px;
+      color: var(--text-dim);
+      line-height: 1.55;
+      font-weight: 300;
+      margin: 0;
+    }
+
     /* ── Feature sections ── */
     .features {
       padding: 120px 0;
@@ -1113,6 +1177,26 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Named features (3-pillar trust strip) ── -->
+  <section class="named-features" aria-label="Three core capabilities">
+    <div class="inner">
+      <div class="named-features-grid">
+        <a class="named-feature fade-in" href="/feature/voice-vision">
+          <div class="named-feature-name"><span class="named-feature-dot" aria-hidden="true"></span>Photo-to-Asset</div>
+          <p class="named-feature-blurb">Snap a nameplate. MIRA pulls the right manual and repair history before you finish typing.</p>
+        </a>
+        <a class="named-feature fade-in" href="#how-it-works">
+          <div class="named-feature-name"><span class="named-feature-dot" aria-hidden="true"></span>Magic Manual Inbox</div>
+          <p class="named-feature-blurb">Forward an OEM PDF to your inbox. Searchable in chat within 90 seconds &mdash; no upload tool.</p>
+        </a>
+        <a class="named-feature fade-in" href="/feature/fault-diagnosis">
+          <div class="named-feature-name"><span class="named-feature-dot" aria-hidden="true"></span>Source-Cited Answers</div>
+          <p class="named-feature-blurb">Every answer cites the manual, model, and section. No hallucinations &mdash; verifiable in seconds.</p>
+        </a>
       </div>
     </div>
   </section>
