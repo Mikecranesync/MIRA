@@ -293,14 +293,22 @@ class InferenceRouter:
         messages: list[dict],
         max_tokens: int = 1024,
         session_id: str = "unknown_unknown_unknown",
+        sanitize: bool = True,
     ) -> tuple[str, dict]:
         """Try each provider in cascade order. Return first successful response.
+
+        Messages are PII-sanitized by default (IPv4, MAC, serial numbers stripped).
+        Pass `sanitize=False` only for offline evals that need to verify the
+        sanitizer itself or test PII-detection paths.
 
         Returns (content_str, usage_dict) on success.
         Returns ("", {}) when all providers fail.
         """
         if not self.enabled:
             return "", {}
+
+        if sanitize:
+            messages = self.sanitize_context(messages)
 
         has_image = _has_image(messages)
         last_error: dict = {}

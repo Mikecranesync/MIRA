@@ -30,6 +30,7 @@ import { Hono } from "hono";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { findTenantByInboxSlug, type Tenant } from "../lib/quota.js";
 import { sendInboxReceiptEmail, type InboxReceiptResult } from "../lib/mailer.js";
+import { recordAuditEvent, requestMetadata } from "../lib/audit.js";
 
 export const inbox = new Hono();
 
@@ -38,6 +39,7 @@ const MIRA_INGEST_URL = () =>
 const HMAC_SECRET = () => process.env.INBOUND_HMAC_SECRET || "";
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024; // matches mira-ingest enforcement
+const MAX_TIMESTAMP_SKEW_SECONDS = 300; // ±5 min replay window
 
 // Webhook payload shape (Apps Script emits this — Postmark-style for ease)
 interface InboundAttachment {
@@ -54,15 +56,25 @@ interface InboundPayload {
   Attachments?: InboundAttachment[];
 }
 
-// Verify HMAC-SHA256 hex signature of the raw body using a shared secret.
-// Constant-time compare via crypto.timingSafeEqual.
-function verifyHmacSignature(
+// Verify HMAC-SHA256 hex signature over `<unix-timestamp>.<rawBody>`.
+// Constant-time compare via crypto.timingSafeEqual. Rejects requests with a
+// timestamp more than MAX_TIMESTAMP_SKEW_SECONDS off from server time —
+// blocks replay of captured signatures.
+function verifySignedRequest(
   rawBody: string,
   signature: string,
+  timestampHeader: string,
   secret: string,
 ): boolean {
-  if (!signature || !secret) return false;
-  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+  if (!signature || !secret || !timestampHeader) return false;
+
+  const ts = Number.parseInt(timestampHeader, 10);
+  if (!Number.isFinite(ts)) return false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSec - ts) > MAX_TIMESTAMP_SKEW_SECONDS) return false;
+
+  const signingPayload = `${ts}.${rawBody}`;
+  const expected = createHmac("sha256", secret).update(signingPayload).digest("hex");
   if (expected.length !== signature.length) return false;
   try {
     return timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(signature, "hex"));
@@ -217,7 +229,8 @@ inbox.post("/email", async (c) => {
 
   const rawBody = await c.req.text();
   const signature = (c.req.header("x-hmac-signature") || "").trim();
-  if (!verifyHmacSignature(rawBody, signature, secret)) {
+  const timestamp = (c.req.header("x-hmac-timestamp") || "").trim();
+  if (!verifySignedRequest(rawBody, signature, timestamp, secret)) {
     console.warn("[inbox] HMAC verify failed");
     return c.json({ error: "Unauthorized" }, 401);
   }
@@ -258,6 +271,24 @@ inbox.post("/email", async (c) => {
     payload.Attachments?.length || 0,
     relevanceGate,
   );
+
+  const meta = requestMetadata(c);
+  // Don't await — audit insert is best-effort and must not block the 200.
+  void recordAuditEvent({
+    tenantId: tenant.id,
+    actorType: "apps_script",
+    actorId: payload.From || "unknown",
+    action: "inbox.email.received",
+    resource: payload.MessageID || undefined,
+    metadata: {
+      from: payload.From,
+      subject: payload.Subject,
+      attachment_count: payload.Attachments?.length ?? 0,
+      relevance_gate: relevanceGate,
+    },
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
 
   // 5. Process attachments sequentially — bounds mira-ingest load per email.
   const result: InboxReceiptResult = {

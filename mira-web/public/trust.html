@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trust &amp; Security — FactoryLM</title>
+  <meta name="description" content="How FactoryLM protects your data: hosting, encryption, sub-processors, authentication, data deletion, and compliance roadmap.">
+  <link rel="canonical" href="https://factorylm.com/trust">
+  <meta property="og:title" content="Trust &amp; Security — FactoryLM">
+  <meta property="og:description" content="How FactoryLM protects your data: hosting, encryption, sub-processors, authentication, data deletion, and compliance roadmap.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://factorylm.com/trust">
+  <meta property="og:image" content="https://factorylm.com/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Trust &amp; Security — FactoryLM">
+  <meta name="twitter:description" content="How FactoryLM protects your data: hosting, encryption, sub-processors, authentication, data deletion, and compliance roadmap.">
+  <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0e11;
+      --surface: #13141a;
+      --surface-hi: #1a1b22;
+      --border: rgba(255,255,255,0.07);
+      --border-hi: rgba(255,255,255,0.14);
+      --text: #e8eaf0;
+      --text-dim: rgba(255,255,255,0.55);
+      --text-faint: rgba(255,255,255,0.28);
+      --amber: #f0a000;
+      --amber-dim: rgba(240,160,0,0.12);
+      --green: #4ade80;
+      --green-dim: rgba(74,222,128,0.12);
+      --font: 'Inter', sans-serif;
+      --max-w: 1080px;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(240,160,0,0.06) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .inner { max-width: var(--max-w); margin: 0 auto; padding: 0 40px; }
+    @media (max-width: 768px) { .inner { padding: 0 24px; } }
+
+    nav {
+      height: 56px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(13,14,17,0.85);
+      backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .nav-inner {
+      max-width: var(--max-w); margin: 0 auto; padding: 0 40px;
+      height: 100%; display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 8px;
+      text-decoration: none; color: var(--text); font-weight: 500; font-size: 15px;
+    }
+    .nav-logo svg { width: 22px; height: 22px; }
+    .nav-links { display: flex; gap: 28px; list-style: none; }
+    .nav-links a { font-size: 14px; color: rgba(255,255,255,0.6); text-decoration: none; }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      font-size: 13px; font-weight: 700; color: #0a0a08;
+      background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px; padding: 7px 14px; text-decoration: none;
+    }
+
+    .legal { padding: 80px 0 60px; max-width: 720px; margin: 0 auto; }
+    .legal h1 { font-size: clamp(28px, 3.5vw, 40px); font-weight: 400; letter-spacing: -0.02em; margin-bottom: 8px; }
+    .legal .effective { font-size: 13px; color: var(--text-faint); margin-bottom: 40px; }
+    .legal h2 { font-size: 20px; font-weight: 600; margin: 40px 0 12px; color: var(--amber); }
+    .legal h3 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+    .legal p { color: var(--text-dim); margin-bottom: 16px; line-height: 1.7; }
+    .legal ul, .legal ol { color: var(--text-dim); margin: 0 0 16px 20px; line-height: 1.7; }
+    .legal li { margin-bottom: 8px; }
+    .legal a { color: var(--amber); text-decoration: underline; }
+    .legal strong { color: var(--text); font-weight: 500; }
+    .legal table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; }
+    .legal th, .legal td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text-dim); }
+    .legal th { color: var(--text); font-weight: 500; }
+    .legal code { background: var(--surface-hi); padding: 1px 6px; border-radius: 4px; font-size: 13px; color: var(--text); }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px; font-weight: 600;
+      padding: 3px 8px; border-radius: 4px;
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .badge-live { background: var(--green-dim); color: var(--green); }
+    .badge-roadmap { background: var(--amber-dim); color: var(--amber); }
+
+    footer { border-top: 1px solid var(--border); margin-top: 60px; padding: 28px 0; }
+    .footer-inner { display: flex; justify-content: space-between; align-items: center; }
+    .footer-links { display: flex; gap: 20px; list-style: none; }
+    .footer-links a { color: var(--text-faint); text-decoration: none; font-size: 13px; }
+    .footer-links a:hover { color: var(--text-dim); }
+
+    @media (max-width: 640px) { .nav-links { display: none; } .footer-inner { flex-direction: column; gap: 16px; } }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" rx="5" fill="#f0a000"/><path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        FactoryLM
+      </a>
+      <ul class="nav-links">
+        <li><a href="/#features">Product</a></li>
+        <li><a href="/pricing">Pricing</a></li>
+        <li><a href="/blog">Blog</a></li>
+        <li><a href="/cmms">Troubleshooter</a></li>
+      </ul>
+      <a href="/cmms" class="nav-cta">Join the Beta</a>
+    </div>
+  </nav>
+
+  <main>
+    <div class="inner">
+      <div class="legal">
+        <h1>Trust &amp; Security</h1>
+        <p class="effective">Updated April 25, 2026</p>
+
+        <p>FactoryLM (MIRA) is built for industrial maintenance teams. This page describes how we protect the equipment manuals, work orders, photos, and conversations you trust us with. We aim for transparency: where we host, who touches your data, what we encrypt, and what's on the roadmap. Questions? <a href="mailto:security@factorylm.com">security@factorylm.com</a>.</p>
+
+        <h2>1. Hosting &amp; Encryption</h2>
+        <ul>
+          <li><strong>Application hosting:</strong> DigitalOcean (USA). Customer-facing services run on hardened Linux containers behind TLS.</li>
+          <li><strong>Database (MIRA core):</strong> NeonDB serverless Postgres, hosted in <strong>AWS us-east-1</strong>. Includes per-tenant accounts, knowledge base chunks, and audit events.</li>
+          <li><strong>Atlas CMMS data:</strong> each customer gets an isolated Postgres instance and MinIO object store — physical separation, not shared storage.</li>
+          <li><strong>Encryption in transit:</strong> TLS 1.2+ on every public endpoint. Database connections use SSL (Postgres <code>sslmode=require</code>).</li>
+          <li><strong>Encryption at rest:</strong> AES-256, applied by the underlying providers (Neon, AWS, MinIO defaults).</li>
+          <li><strong>Secrets management:</strong> all production credentials live in Doppler. No <code>.env</code> files in source control. Pre-commit and CI gates scan every change for credential leaks (<a href="https://github.com/gitleaks/gitleaks">gitleaks</a>).</li>
+        </ul>
+
+        <h2>2. Sub-processors</h2>
+        <p>Vendors that process customer data on our behalf:</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Sub-processor</th>
+              <th>Purpose</th>
+              <th>Region</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Anthropic (Claude API)</td>
+              <td>AI inference for chat, diagnosis, citations</td>
+              <td>USA</td>
+            </tr>
+            <tr>
+              <td>NeonDB (Neon Inc.)</td>
+              <td>Tenant data, knowledge base, audit log</td>
+              <td>AWS us-east-1, USA</td>
+            </tr>
+            <tr>
+              <td>DigitalOcean</td>
+              <td>Application hosting, customer-facing endpoints</td>
+              <td>USA</td>
+            </tr>
+            <tr>
+              <td>Stripe</td>
+              <td>Payment processing, subscription management</td>
+              <td>USA</td>
+            </tr>
+            <tr>
+              <td>Resend</td>
+              <td>Transactional email (signup, receipts, magic links)</td>
+              <td>USA</td>
+            </tr>
+            <tr>
+              <td>Google (Gmail + Apps Script)</td>
+              <td>Magic email inbox for manual ingestion (HMAC-signed)</td>
+              <td>USA</td>
+            </tr>
+            <tr>
+              <td>Twilio</td>
+              <td>WhatsApp / SMS adapter (optional, per tenant)</td>
+              <td>USA</td>
+            </tr>
+            <tr>
+              <td>Microsoft Azure</td>
+              <td>Microsoft Teams adapter (optional, per tenant)</td>
+              <td>USA</td>
+            </tr>
+            <tr>
+              <td>Apify</td>
+              <td>Scheduled crawler for OEM manual discovery</td>
+              <td>USA / EU (Czech)</td>
+            </tr>
+            <tr>
+              <td>Firecrawl</td>
+              <td>Alternative crawler for OEM manual discovery</td>
+              <td>USA</td>
+            </tr>
+            <tr>
+              <td>Langfuse</td>
+              <td>LLM call observability (telemetry only — no manual content)</td>
+              <td>EU (Germany)</td>
+            </tr>
+            <tr>
+              <td>Doppler</td>
+              <td>Secrets management (operational; no customer data)</td>
+              <td>USA</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>Material changes to this list are announced at least 30 days in advance to active subscribers.</p>
+
+        <h2>3. Data Isolation</h2>
+        <ul>
+          <li><strong>Atlas CMMS (work orders, assets, photos):</strong> each customer runs on their own Atlas container with their own Postgres database and MinIO bucket. Physical isolation — no shared tables.</li>
+          <li><strong>MIRA chat &amp; knowledge base (NeonDB):</strong> every query is scoped by <code>tenant_id</code>. A continuous integration test inserts data as Tenant A, queries as Tenant B, and fails the build if any row leaks across.</li>
+          <li><strong>Engineer access:</strong> production database credentials live in Doppler; access is logged and reviewed. Customer manual contents and conversation logs are not used for model training, internal benchmarking, or sales analytics.</li>
+        </ul>
+
+        <h2>4. Authentication</h2>
+        <ul>
+          <li><strong>Login:</strong> magic-link email (no passwords stored).</li>
+          <li><strong>Session:</strong> short-lived signed JWT, kept in browser <code>sessionStorage</code> (cleared when you close the tab).</li>
+          <li><strong>Multi-factor authentication (TOTP):</strong> <span class="badge badge-roadmap">Roadmap — Q3 2026</span> Available on every plan.</li>
+          <li><strong>Single sign-on (SAML / OIDC):</strong> <span class="badge badge-roadmap">Roadmap — Team plan</span> $497/mo Team tier with Okta and Microsoft Entra ID via WorkOS.</li>
+        </ul>
+
+        <h2>5. Audit Logging</h2>
+        <p><span class="badge badge-roadmap">Roadmap — Q3 2026</span> Append-only <code>audit_events</code> log capturing authentication, tenant-scoped writes, exports, and account-level actions. Available to customers on request.</p>
+
+        <h2>6. Data Retention &amp; Deletion</h2>
+        <ul>
+          <li><strong>Account data:</strong> retained while subscription is active.</li>
+          <li><strong>Account deletion:</strong> request via <a href="mailto:privacy@factorylm.com">privacy@factorylm.com</a> or the in-product "Delete account" button (Roadmap — Q3 2026). Hard purge of all tenant-scoped data within 30 days.</li>
+          <li><strong>Equipment manuals &amp; KB chunks:</strong> deleted within 30 days of account termination.</li>
+          <li><strong>Diagnostic query logs:</strong> 90 days for quality monitoring, then deleted.</li>
+          <li><strong>Server logs:</strong> 30 days.</li>
+          <li><strong>Payment records:</strong> per Stripe / tax / legal requirements, typically 7 years.</li>
+        </ul>
+
+        <h2>7. Compliance</h2>
+        <ul>
+          <li><strong>Data residency:</strong> primary data store is in the United States (AWS us-east-1).</li>
+          <li><strong>CCPA:</strong> California residents have rights to access, deletion, and opt-out of "sale" of personal information. We do not sell personal information. Submit requests to <a href="mailto:privacy@factorylm.com">privacy@factorylm.com</a>.</li>
+          <li><strong>SOC 2 Type II:</strong> <span class="badge badge-roadmap">Roadmap</span> Targeted attestation start once we reach our customer milestone. Pre-attestation security questions can be sent to <a href="mailto:security@factorylm.com">security@factorylm.com</a>; we'll respond with a written summary of controls.</li>
+          <li><strong>Penetration testing:</strong> <span class="badge badge-roadmap">Roadmap — annual</span> First third-party test scheduled to follow audit log + MFA rollout.</li>
+          <li><strong>HIPAA / FedRAMP / CMMC:</strong> not in scope. FactoryLM is a manufacturing maintenance tool; we don't process protected health, federal, or controlled defense information.</li>
+        </ul>
+
+        <h2 id="disclosure">8. Vulnerability Disclosure</h2>
+        <p>If you've found a security issue in FactoryLM or MIRA:</p>
+        <ul>
+          <li>Email <a href="mailto:security@factorylm.com">security@factorylm.com</a>. PGP key on request.</li>
+          <li>We aim to acknowledge within <strong>72 hours</strong> and follow a <strong>90-day coordinated disclosure</strong> window.</li>
+          <li>We do not currently operate a paid bug bounty program. We do credit researchers in <a href="#thanks">Acknowledgments</a> below (with permission).</li>
+          <li>Please don't run automated scanners against production tenants you don't own; reach out first and we'll provide a sandbox.</li>
+        </ul>
+        <p>Our machine-readable contact: <a href="/.well-known/security.txt"><code>/.well-known/security.txt</code></a> (RFC 9116).</p>
+
+        <h2>9. Contracting Documents</h2>
+        <ul>
+          <li><strong>Data Processing Addendum (DPA):</strong> <a href="/legal/dpa">/legal/dpa</a> — counter-signed copies available on request to <a href="mailto:legal@factorylm.com">legal@factorylm.com</a>.</li>
+          <li><strong>Privacy Policy:</strong> <a href="/privacy">/privacy</a></li>
+          <li><strong>Terms of Service:</strong> <a href="/terms">/terms</a></li>
+          <li><strong>Acceptable Use Policy:</strong> embedded in Terms §4.</li>
+        </ul>
+
+        <h2 id="thanks">10. Acknowledgments</h2>
+        <p>None yet. We'll list (with permission) researchers who have responsibly disclosed issues to <a href="mailto:security@factorylm.com">security@factorylm.com</a>.</p>
+
+        <h2>11. Changes</h2>
+        <p>Material changes to this page (new sub-processors, residency changes, certification milestones) are emailed to active subscribers and noted with the "Updated" date at the top.</p>
+
+        <h2>12. Contact</h2>
+        <p>
+          Security issues: <a href="mailto:security@factorylm.com">security@factorylm.com</a><br>
+          Privacy / data requests: <a href="mailto:privacy@factorylm.com">privacy@factorylm.com</a><br>
+          Legal / contracting: <a href="mailto:legal@factorylm.com">legal@factorylm.com</a><br>
+          FactoryLM, Inc. — Delaware, USA
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="inner">
+      <div class="footer-inner">
+        <a href="/" class="nav-logo" style="font-size:13px;">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18"><rect width="24" height="24" rx="5" fill="#f0a000"/><path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          FactoryLM
+        </a>
+        <ul class="footer-links">
+          <li><a href="/blog">Blog</a></li>
+          <li><a href="/cmms">Troubleshooter</a></li>
+          <li><a href="/trust">Trust</a></li>
+          <li><a href="/privacy">Privacy</a></li>
+          <li><a href="/terms">Terms</a></li>
+          <li><a href="mailto:contact@factorylm.com">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
