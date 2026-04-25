@@ -70,6 +70,7 @@
     "feature-dev@claude-plugins-official": true,
     "codex@openai-codex": true,
     "skill-creator@claude-plugins-official": true,
-    "stripe@claude-plugins-official": true
+    "stripe@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true
   }
 }
