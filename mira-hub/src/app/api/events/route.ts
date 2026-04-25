@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +28,11 @@ export async function GET() {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   try {
-    const { rows } = await pool.query(`
-      SELECT
+    const { rows } = await pool.query(
+      `SELECT
         id, work_order_number, telegram_username, source,
         equipment_type, manufacturer, model_number, location,
         title, description, fault_codes, symptoms,
@@ -37,9 +40,11 @@ export async function GET() {
         confidence_score, status, priority, route_taken,
         created_at
       FROM work_orders
+      WHERE tenant_id = $1
       ORDER BY created_at DESC
-      LIMIT 50
-    `);
+      LIMIT 50`,
+      [ctx.tenantId],
+    );
 
     const events = rows.map((wo) => ({
       id: wo.id,

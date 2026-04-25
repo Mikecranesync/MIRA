@@ -51,11 +51,11 @@ jobs:
             DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $SERVICES
             doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate $SERVICES
           else
-            echo "Full rebuild (mira-pipeline-saas, mira-bots)"
+            echo "Full rebuild (mira-pipeline, mira-ingest, mira-mcp, mira-hub)"
             DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build \
-              mira-pipeline mira-ingest mira-mcp
+              mira-pipeline mira-ingest mira-mcp mira-hub
             doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
-              mira-pipeline mira-ingest mira-mcp
+              mira-pipeline mira-ingest mira-mcp mira-hub
           fi
 
           echo "=== Health check ==="
@@ -66,6 +66,15 @@ jobs:
             echo "WARNING: health check returned $STATUS — check container logs"
             doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=20 mira-pipeline-saas
             exit 1
+          fi
+
+          echo "=== mira-hub health check ==="
+          HUB_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/hub/api/health || echo "unreachable")
+          echo "mira-hub health: $HUB_STATUS"
+          if [ "$HUB_STATUS" != "200" ]; then
+            echo "WARNING: mira-hub health returned $HUB_STATUS — check container logs"
+            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=20 mira-hub
+            # Don't fail the whole deploy on hub health alone — pipeline is the critical path
           fi
 
           echo "=== Deploy complete ==="

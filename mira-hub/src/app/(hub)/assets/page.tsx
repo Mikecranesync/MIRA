@@ -34,18 +34,6 @@ type Asset = {
   _isNew?: boolean;
 };
 
-/* ─── Mock fallback (shown when DB is empty) ────────────────────────── */
-const MOCK_ASSETS: Asset[] = [
-  { id: "1",  name: "Air Compressor #1", tag: "MC-AC-001", type: "Mechanical", manufacturer: null, model: null, serialNumber: null, location: "Building A", department: null, criticality: "high",   workOrderCount: 3, downtimeHours: 0, lastMaintenance: "2026-03-15", lastWorkOrder: null, lastFault: null, description: null, createdAt: null },
-  { id: "2",  name: "Conveyor Belt #3",  tag: "MC-CB-003", type: "Electrical", manufacturer: null, model: null, serialNumber: null, location: "Building B", department: null, criticality: "high",   workOrderCount: 7, downtimeHours: 4, lastMaintenance: "2026-01-20", lastWorkOrder: null, lastFault: "OC fault", description: null, createdAt: null },
-  { id: "3",  name: "CNC Mill #7",       tag: "MC-CN-007", type: "CNC",        manufacturer: null, model: null, serialNumber: null, location: "Shop Floor", department: null, criticality: "medium", workOrderCount: 1, downtimeHours: 0, lastMaintenance: "2026-04-01", lastWorkOrder: null, lastFault: null, description: null, createdAt: null },
-  { id: "4",  name: "HVAC Unit #2",      tag: "MC-HV-002", type: "HVAC",       manufacturer: null, model: null, serialNumber: null, location: "Roof",       department: null, criticality: "medium", workOrderCount: 5, downtimeHours: 8, lastMaintenance: "2025-12-10", lastWorkOrder: null, lastFault: "High temp", description: null, createdAt: null },
-  { id: "5",  name: "Pump Station A",    tag: "MC-PS-00A", type: "Fluid",      manufacturer: null, model: null, serialNumber: null, location: "Basement",  department: null, criticality: "high",   workOrderCount: 2, downtimeHours: 0, lastMaintenance: "2026-02-28", lastWorkOrder: null, lastFault: null, description: null, createdAt: null },
-  { id: "6",  name: "Press #2",          tag: "MC-PR-002", type: "Mechanical", manufacturer: null, model: null, serialNumber: null, location: "Building C", department: null, criticality: "low",    workOrderCount: 0, downtimeHours: 0, lastMaintenance: "2026-01-05", lastWorkOrder: null, lastFault: null, description: null, createdAt: null },
-  { id: "7",  name: "Boiler Unit B",     tag: "MC-BL-00B", type: "Thermal",    manufacturer: null, model: null, serialNumber: null, location: "Utility",   department: null, criticality: "high",   workOrderCount: 4, downtimeHours: 2, lastMaintenance: "2026-03-01", lastWorkOrder: null, lastFault: "High temp", description: null, createdAt: null },
-  { id: "8",  name: "Generator #1",      tag: "MC-GN-001", type: "Electrical", manufacturer: null, model: null, serialNumber: null, location: "Yard",      department: null, criticality: "critical", workOrderCount: 1, downtimeHours: 0, lastMaintenance: "2026-04-10", lastWorkOrder: null, lastFault: null, description: null, createdAt: null },
-];
-
 /* ─── OEM options ────────────────────────────────────────────────────── */
 const OEM_OPTIONS = [
   "Allen-Bradley", "Rockwell Automation", "Siemens", "ABB",
@@ -418,17 +406,27 @@ function AssetsPageInner() {
     if (searchParams.get("create") === "1") setShowCreate(true);
   }, [searchParams]);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   useEffect(() => {
-    fetch("/api/assets")
-      .then(r => r.json())
-      .then((data: Asset[] | { error: string }) => {
-        if (Array.isArray(data) && data.length > 0) {
+    fetch("/hub/api/assets")
+      .then(r => {
+        if (r.status === 401) {
+          window.location.href = "/hub/login?callbackUrl=/hub/assets";
+          return null;
+        }
+        return r.json();
+      })
+      .then((data) => {
+        if (data === null) return;
+        if (Array.isArray(data)) {
           setAssets(data);
+          setLoadError(null);
         } else {
-          setAssets(MOCK_ASSETS);
+          setLoadError((data as { error?: string }).error ?? "Failed to load assets");
         }
       })
-      .catch(() => setAssets(MOCK_ASSETS))
+      .catch((err) => setLoadError((err as Error).message ?? "Network error"))
       .finally(() => setLoading(false));
   }, []);
 

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertBinding } from "@/lib/bindings";
 import { validateState, stateCookieName } from "@/lib/oauth-state";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
@@ -35,6 +38,7 @@ export async function GET(req: NextRequest) {
   }
 
   await upsertBinding({
+    tenantId: ctx.tenantId,
     provider: "slack",
     externalId: data.team?.id ?? null,
     accessToken: data.access_token ?? null,
