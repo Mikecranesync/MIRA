@@ -88,12 +88,17 @@
   <link rel="stylesheet" href="/public/cmms.css">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#f5a623">
+  <!-- web-review #624: keep apple-* for older iOS but include the modern companion -->
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="FactoryLM">
   <link rel="apple-touch-icon" href="/public/icons/mira-192.png">
+  <!-- web-review #620: explicit favicon link so Slack/RSS/Google don't probe /favicon.ico → 404 -->
+  <link rel="icon" type="image/png" sizes="192x192" href="/public/icons/mira-192.png">
   <link rel="dns-prefetch" href="//unpkg.com">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <!-- web-review #621: defer kills render-blocking; pinning to a verified version is tracked in #621 -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
 </head>
 <body>
 <div class="page">
@@ -120,7 +125,7 @@
       <p>Works alongside your existing CMMS — MaintainX, Limble, or UpKeep. No migration. No rip-and-replace.</p>
 
       <!-- Signup Form -->
-      <div class="signup-card" id="signup-form-wrap">
+      <form class="signup-card" id="signup-form-wrap" onsubmit="event.preventDefault(); handleSignup(); return false;">
         <div class="form-row">
           <label for="f-email">Work email</label>
           <input type="email" id="f-email" placeholder="you@yourplant.com" autocomplete="email" required>
@@ -136,16 +141,16 @@
         <div class="form-row" style="margin-top:12px">
           <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:var(--text-sm);color:var(--text-secondary)">
             <input type="checkbox" id="f-terms" required style="margin-top:3px;flex-shrink:0;accent-color:var(--amber)">
-            <span>I agree to the <a href="/terms" target="_blank" style="color:var(--amber)">Terms of Service</a> and <a href="/privacy" target="_blank" style="color:var(--amber)">Privacy Policy</a></span>
+            <span>I agree to the <a href="/terms" target="_blank" rel="noopener" style="color:var(--amber)">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener" style="color:var(--amber)">Privacy Policy</a></span>
           </label>
         </div>
         <div id="form-error" class="form-error"></div>
-        <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
+        <button class="btn-primary" id="signup-btn" type="submit">
           <i data-lucide="zap" style="width:16px;height:16px"></i>
           Join the Beta — $97/mo
         </button>
         <p style="margin:8px 0 0;font-size:var(--text-xs);color:var(--text-muted);text-align:center">Site license — unlimited users. Cancel anytime.</p>
-      </div>
+      </form>
 
       <!-- Confirmation (shown after signup) -->
       <div class="download-step" id="download-step">
@@ -432,11 +437,17 @@ async function handleSignup() {
   const email = document.getElementById('f-email').value.trim();
   const company = document.getElementById('f-company').value.trim();
   const firstName = document.getElementById('f-firstname').value.trim();
+  const termsAccepted = document.getElementById('f-terms').checked;
   const errEl = document.getElementById('form-error');
   errEl.classList.remove('show');
 
   if (!email || !company) {
     errEl.textContent = 'Email and company name are required.';
+    errEl.classList.add('show');
+    return;
+  }
+  if (!termsAccepted) {
+    errEl.textContent = 'Please agree to the Terms of Service and Privacy Policy.';
     errEl.classList.add('show');
     return;
   }
@@ -491,8 +502,12 @@ async function initTicker() {
     const wos = await res.json();
     const list = document.getElementById('hero-wo-list');
     list.innerHTML = '';
+    // Seed with element wrappers (not innerHTML +=, which leaves whitespace Text nodes
+    // between elements; lastChild then picks a Text node and `.style` is undefined).
     for (let i = 0; i < Math.min(3, wos.length); i++) {
-      list.innerHTML += tickerCardHTML(wos[i]);
+      const seed = document.createElement('div');
+      seed.innerHTML = tickerCardHTML(wos[i]);
+      list.appendChild(seed);
     }
     lucide.createIcons();
 
@@ -504,9 +519,11 @@ async function initTicker() {
       card.innerHTML = tickerCardHTML(wos[idx]);
       list.insertBefore(card, list.firstChild);
       if (list.children.length > 3) {
-        const last = list.lastChild;
-        last.style.cssText += 'opacity:0;transform:translateY(8px)';
-        setTimeout(() => last.remove(), 400);
+        const last = list.lastElementChild;
+        if (last) {
+          last.style.cssText += 'opacity:0;transform:translateY(8px)';
+          setTimeout(() => last.remove(), 400);
+        }
       }
       requestAnimationFrame(() => requestAnimationFrame(() => {
         card.style.opacity = '1';
