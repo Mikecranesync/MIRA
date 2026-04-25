@@ -78,6 +78,7 @@
     "sql-lsp@mira-local": true,
     "dockerfile-lsp@mira-local": true,
     "toml-lsp@mira-local": true,
-    "shell-lsp@mira-local": true
+    "shell-lsp@mira-local": true,
+    "markdown-lsp@mira-local": true
   }
 }

@@ -91,6 +91,21 @@
           }
         }
       }
+    },
+    {
+      "name": "markdown-lsp",
+      "description": "Marksman markdown LSP for the wiki/ Obsidian vault.",
+      "source": "./plugins/markdown-lsp",
+      "lspServers": {
+        "marksman": {
+          "command": "marksman",
+          "args": ["server"],
+          "extensionToLanguage": {
+            ".md": "markdown",
+            ".markdown": "markdown"
+          }
+        }
+      }
     }
   ]
 }
