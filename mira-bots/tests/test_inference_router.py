@@ -1,10 +1,11 @@
 """Integration test — InferenceRouter with real industrial equipment images.
 
-Tests Claude API vision path against the 5 sample tag images.
-Requires INFERENCE_BACKEND=claude and ANTHROPIC_API_KEY to be set.
+Tests the cloud cascade vision path against the 5 sample tag images. Requires
+INFERENCE_BACKEND=cloud and at least one of GROQ_API_KEY (vision capable) or
+GEMINI_API_KEY to be set.
 
 Run:
-    INFERENCE_BACKEND=claude ANTHROPIC_API_KEY=<key> pytest tests/test_inference_router.py -v -s
+    INFERENCE_BACKEND=cloud GROQ_API_KEY=<key> pytest tests/test_inference_router.py -v -s
 """
 
 import asyncio
@@ -121,7 +122,8 @@ def router():
     r = InferenceRouter()
     if not r.enabled:
         pytest.skip(
-            "InferenceRouter not enabled — set INFERENCE_BACKEND=claude and ANTHROPIC_API_KEY"
+            "InferenceRouter not enabled — set INFERENCE_BACKEND=cloud and one of "
+            "GROQ_API_KEY / CEREBRAS_API_KEY / GEMINI_API_KEY"
         )
     return r
 
@@ -136,7 +138,7 @@ def test_vision_identification(router, filename, must_contain_any, must_not_cont
 
     content, usage = asyncio.run(router.complete(messages))
 
-    assert content, f"[{filename}] Empty response from Claude"
+    assert content, f"[{filename}] Empty response from cascade"
     print(f"\n[{filename}]\n  Response: {content}\n  Usage: {usage}")
 
     InferenceRouter.log_usage(usage)
@@ -156,7 +158,7 @@ def test_vision_identification(router, filename, must_contain_any, must_not_cont
 
 
 def test_sanitize_strips_ip(router):
-    """Confirm sanitizer removes IPv4 addresses before sending to Claude."""
+    """Confirm sanitizer removes IPv4 addresses before sending to a provider."""
     messages = [{"role": "user", "content": "Device at 192.168.1.100 is faulted"}]
     clean = InferenceRouter.sanitize_context(messages)
     assert "192.168" not in clean[0]["content"]
@@ -181,9 +183,9 @@ def test_fallback_when_disabled():
     """Router returns ('', {}) immediately when disabled — no API call made."""
     r = InferenceRouter.__new__(InferenceRouter)
     r.backend = "local"
-    r.api_key = ""
-    r.model = "claude-3-5-sonnet-20241022"
+    r.providers = []
     r.enabled = False
+    r._provider_call_windows = {}
 
     content, usage = asyncio.run(r.complete([{"role": "user", "content": "test"}]))
     assert content == ""
