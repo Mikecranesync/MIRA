@@ -33,6 +33,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from pipeline.v2 import audio as v2_audio
+from pipeline.v2 import metadata as v2_metadata
+from pipeline.v2 import panels as v2_panels
 from pipeline.v2 import render as v2_render
 from pipeline.v2 import tts as v2_tts
 from pipeline.v2 import verify as v2_verify
@@ -95,6 +97,10 @@ def main() -> int:
                         help="reuse cached beat clips (visual debug)")
     parser.add_argument("--skip-verify", action="store_true",
                         help="skip the post-build Playwright verification pass")
+    parser.add_argument("--regen-panels", action="store_true",
+                        help="force-regenerate shot source images via gpt-image-1 "
+                             "(otherwise cached output/v2/sources/ are reused; "
+                             "default falls back to legacy reference/<file>.png)")
     args = parser.parse_args()
 
     storyboard = yaml.safe_load(STORYBOARD_PATH.read_text())
@@ -116,9 +122,27 @@ def main() -> int:
         f"(elapsed {time.time()-t0:.1f}s)"
     )
 
+    # ── Stage 1.5: generate (or cache) shot source images via gpt-image-1 ─
+    # Opt-in only: --regen-panels triggers OpenAI calls. Default path uses
+    # cached output/v2/sources/<id>.png if present, else legacy reference/<file>.
+    console.rule("[bold]1.5/6 Shot sources (gpt-image-1)")
+
+    def _panel_progress(shot_id, path, *, mode, skipped):
+        tag_color = {"cache": "yellow", "legacy": "blue", "generated": "green"}[mode]
+        tag = f"[{tag_color}]{mode}[/{tag_color}]"
+        console.print(f"  [shot {shot_id}] {tag} {path.name}")
+
+    sources_dir = WORK_ROOT / "sources"
+    source_images = v2_panels.generate_shot_sources(
+        storyboard=storyboard,
+        reference_dir=REF_DIR,
+        out_dir=sources_dir,
+        force_regen=args.regen_panels,
+        progress_cb=_panel_progress,
+    )
+
     # ── Stage 2: pre-render canvas PNGs (letterbox to 1920x1080) ─────────
     console.rule("[bold]2/6 Letterbox canvas")
-    source_images = {shot["id"]: REF_DIR / shot["file"] for shot in storyboard["shots"]}
     canvas_dir = WORK_ROOT / "canvas"
     canvases = v2_render.canvas_pre_render(source_images=source_images, out_dir=canvas_dir)
     console.print(f"  [green]ok[/green] {len(canvases)} canvases")
@@ -240,6 +264,21 @@ def main() -> int:
     table.add_row("pivot at", f"{pivot_seconds:.1f}s")
     table.add_row("elapsed", f"{time.time()-t0:.1f}s")
     console.print(table)
+
+    # ── Stage 6.5: Emit YouTube + GEO metadata bundle ────────────────────
+    # Pure transformation of the manifest + storyboard — no API calls.
+    # Produces transcript.srt, transcript.md, youtube_description.md,
+    # schema_video_object.jsonld, llms_entry.md.
+    console.rule("[bold]6.5/7 Metadata bundle (SEO + GEO)")
+    metadata_dir = WORK_ROOT / "metadata"
+    artifacts = v2_metadata.emit_metadata_bundle(
+        manifest_path=WORK_ROOT / "build_manifest.json",
+        storyboard=storyboard,
+        final_video_path=final_path,
+        out_dir=metadata_dir,
+    )
+    for name, path in artifacts.items():
+        console.print(f"  [green]ok[/green] {name} -> {path.name}")
 
     # ── Stage 7 (optional): Playwright-driven verification ───────────────
     if args.skip_verify:

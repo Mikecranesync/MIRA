@@ -77,10 +77,62 @@ music:
     - shot_id: 4
       mood: resolution
 
+# Style + character invariants used by pipeline/v2/panels.py when generating
+# shot images programmatically via gpt-image-1.
+# When `generation.prompt` is set on a shot AND --regen-panels is passed,
+# panels.py renders that shot fresh. Otherwise (default), falls back to the
+# legacy `file:` reference image already on disk.
+# `master_prompt` is restated verbatim on every panel call (per OpenAI cookbook
+# pattern); `characters` is restated verbatim whenever a named character appears.
+style_guide:
+  master_prompt: |
+    Industrial comic book single-page layout. Gritty 1990s Vertigo aesthetic
+    — realistic characters, not cartoon, no superheroes. Dark steel blue +
+    amber + high-contrast black color palette with selective red warning
+    accents. Bold black comic panel borders. Documentary tone, dramatic
+    chiaroscuro lighting. Color and proportions consistent with the supplied
+    reference images.
+  characters:
+    rico: |
+      Floor tech, mid-30s, dark hair, glasses, navy blue coveralls with
+      white "RICO" name patch on chest. Slightly stocky build. Same face,
+      same outfit, same proportions across every panel he appears in.
+    deb: |
+      Shift supervisor, late-30s, short-cropped dark hair, glasses, slim
+      headset, plant-floor work jacket. Same face/proportions every panel.
+    marcus: |
+      Maintenance manager, 40s, dark complexion, thoughtful expression,
+      usually at a laptop in a maintenance office. Same face every panel.
+    elena: |
+      Engineering manager, 30s, remote — usually on a phone or laptop in an
+      office or home-office setting. Professional. Same face every panel.
+    holt: |
+      Director, senior, grey hair, dark suit jacket, calm authoritative
+      posture. Office or boardroom setting. Same face every panel.
+  generation_defaults:
+    model: gpt-image-1
+    quality: high                  # low | medium | high
+    size: 1536x1024                # landscape — best for comic pages
+    n: 2                           # generate 2, vision-score, pick best
+    input_fidelity: high           # critical for character consistency
+    output_format: png
+
 shots:
   - id: 1
     file: "ChatGPT Image Apr 24, 2026 at 02_05_37 PM.png"
     role: "Scene 1 title — fault detected on Line 5"
+    generation:
+      prompt: |
+        Wide overhead establishing shot of factory conveyor floor. Two parallel
+        conveyor lines visible: Line 4 still running on the left side, Line 5
+        stopped on the right. Top-right corner of the page: large red metal
+        warning sign reading "LINE 5 STOPPED" in bold sign-painter lettering.
+        Center-bottom: large industrial HMI control panel screen displaying
+        angry red text on black: "FAULT: 1.SOC B16.2 OCCUPIED TOO LONG".
+        Mid-foreground: Rico standing tense, looking up at the HMI. Workers
+        idle in background, arms crossed.
+      reference_anchors:
+        - "ChatGPT Image Apr 24, 2026 at 02_05_37 PM.png"
     beats:
       - text: "Day shift. Full house. Two conveyor lines."
         focal: {cx: 0.50, cy: 0.50, zoom: 1.0}     # wide establish (full image)
@@ -98,6 +150,22 @@ shots:
   - id: 2
     file: "ChatGPT Image Apr 24, 2026 at 02_11_45 PM.png"
     role: "Scene 1 frustration — Maximo is a graveyard"
+    generation:
+      prompt: |
+        Maintenance office interior, late afternoon, fluorescent overhead
+        lighting. Small window in the back wall showing the stopped Line 5
+        on the factory floor.
+        LEFT THIRD: Rico at a cluttered desk, head in hands, frustrated.
+        Coffee cup. Scattered papers. Same Rico as shot 1.
+        CENTER: legacy desktop monitor showing a Maximo CMMS interface —
+        corporate-blue 1990s UI, cramped dropdown menus, work-order list,
+        no useful information. Screen glow falling on Rico's face.
+        BOTTOM-LEFT: Battered paper binder on desk labeled "CONVEYOR MANUALS
+        2009", dog-eared pages, sticky notes, coffee stains, open to a faded
+        proximity-switch schematic.
+        Speech bubble from Rico: "The data is here. But it isn't."
+      reference_anchors:
+        - "ChatGPT Image Apr 24, 2026 at 02_11_45 PM.png"
     beats:
       - text: "Rico turns to Maximo. The CMMS that's supposed to have the answer."
         focal: {cx: 0.68, cy: 0.518, zoom: 1.6}    # Maximo screen
@@ -115,6 +183,27 @@ shots:
   - id: 3
     file: "ChatGPT Image Apr 24, 2026 at 02_22_55 PM.png"
     role: "Scene 1 pressure — clock running, leadership reacts"
+    generation:
+      prompt: |
+        Multi-panel comic page layout. Top banner + left wide panel + right
+        column of 4 character vignettes.
+        TOP BANNER (full page width, ~10% height): bold red sign-style text
+        "LINE 5 STOPPED — 21:03 ELAPSED" with a ticking analog wall clock
+        graphic to the right. Black background, red text.
+        LEFT 30% (vertical panel): Wide overhead of stopped conveyor floor,
+        Rico tiny in foreground, idle workers in background, time-pressure mood.
+        RIGHT 70%: 4 horizontal vignette panels stacked vertically, each
+        showing one character reacting:
+          - PANEL A (top): Deb on radio, brow furrowed, speech bubble:
+            "If this drags, they'll blame my shift."
+          - PANEL B: Marcus at laptop, downtime spreadsheet visible,
+            speech bubble: "Every minute is money. Every day, it's me."
+          - PANEL C: Elena on phone, looking offscreen frustrated,
+            speech bubble: "I can't see what my team can't see."
+          - PANEL D (bottom): Director Holt at office monitor, calmly serious,
+            speech bubble: "Customers don't care why. They care that we deliver."
+      reference_anchors:
+        - "ChatGPT Image Apr 24, 2026 at 02_22_55 PM.png"
     beats:
       - text: "Twenty-one minutes elapsed. The line is still down."
         focal: {cx: 0.394, cy: 0.05, zoom: 2.5}    # 21:03 ELAPSED sign
@@ -140,6 +229,25 @@ shots:
   - id: 4
     file: "ChatGPT Image Apr 24, 2026 at 11_53_02 AM.png"
     role: "Scene 2 pivot — Rico tries MIRA"
+    generation:
+      prompt: |
+        Multi-panel comic page, conveyor-floor setting. The mood pivots from
+        tension to focus.
+        TOP HALF (wide panel): Rico standing at a shift supervisor station,
+        confident posture, holding a tablet. Same Rico as earlier shots.
+        Conveyor visible behind him.
+        BOTTOM-LEFT panel: Close-up of MIRA app on the tablet — dark theme
+        UI with amber accents. Readable screen content:
+        "MIRA ALERT — Fault 1.SOC B16.2 — Proximity sensor Section B16
+        Station 2. History: 14 occurrences in 6 months. Recommended action:
+        Reset panel B16 — no parts required. Source: ENG-PL-4472 Rev C."
+        BOTTOM-RIGHT panel: Rico holding tablet at angle, expression shifting
+        from frustration to focus. Slack notification popping up on screen:
+        "Deb: Approved. Reset and log."
+        Style note: the MIRA app screens should be the only spots of clean
+        modern UI in an otherwise grimy industrial scene.
+      reference_anchors:
+        - "ChatGPT Image Apr 24, 2026 at 11_53_02 AM.png"
     beats:
       - text: "This time, Rico tries something different."
         focal: {cx: 0.50, cy: 0.25, zoom: 1.5}     # top wide establishing
@@ -161,6 +269,30 @@ shots:
   - id: 5
     file: "ChatGPT Image Apr 24, 2026 at 12_12_29 PM.png"
     role: "Scene 3 resolution — org aligns in under 90 seconds"
+    generation:
+      prompt: |
+        Multi-panel comic page, the resolution shot. Mood is confident,
+        forward-momentum, with WARMER tones than earlier pages — green
+        accent lights suggesting forward motion.
+        TOP ROW (2 panels side by side, larger):
+          - LEFT: Rico on the floor with tablet, posting to Slack
+            channel #plant-ops. Fault summary visible on screen, MIRA
+            recommendation chip attached as PDF. Speech bubble: "Posting
+            to plant-ops..."
+          - RIGHT: Deb at supervisor station, phone in hand, replying in
+            Slack: "Approved. Reset and log." Green APPROVED badge visible.
+            "Seen by 28" read receipt.
+        BOTTOM ROW (3 smaller reaction panels side by side):
+          - LEFT: Marcus at laptop, downtime chart on screen — old 21:14
+            average crossed out, new 6:03 in green. Speech bubble:
+            "Downtime is coming down."
+          - CENTER: Elena on remote phone, fault-history chart showing
+            14 occurrences, lightbulb expression. Speech bubble:
+            "Why has this happened 14 times?"
+          - RIGHT: Director Holt at office monitor, calm posture, speech
+            bubble: "This is how a plant runs."
+      reference_anchors:
+        - "ChatGPT Image Apr 24, 2026 at 12_12_29 PM.png"
     beats:
       - text: "One message to plant-ops."
         focal: {cx: 0.25, cy: 0.25, zoom: 2.0}     # PANEL 1 (Rico posting)
