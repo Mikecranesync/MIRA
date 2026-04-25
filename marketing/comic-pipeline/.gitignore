@@ -1,0 +1,22 @@
+# Generated artifacts (large, regenerable, not code).
+output/
+# Don't ignore the directory structure itself.
+!output/.gitkeep
+!output/panels/.gitkeep
+!output/audio/.gitkeep
+!output/scenes/.gitkeep
+!output/final/.gitkeep
+
+# Reference images: track the ChatGPT-supplied comic pages (essential build
+# inputs for storyboard_v2.yaml) but ignore scratch / WIP additions.
+reference/*
+!reference/.gitkeep
+!reference/*.png
+
+# Python cruft.
+__pycache__/
+*.pyc
+.venv/
+
+# macOS noise.
+.DS_Store
