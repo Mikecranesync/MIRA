@@ -154,7 +154,7 @@ app.route("/admin", qrAnalytics);       // handles GET /admin/qr-analytics
 app.route("/admin", adminChannelPages); // handles GET /admin/channels
 app.route("/", adminChannelApi);        // handles POST /api/admin/channels
 
-// Magic email inbox (Unit 3): Resend Inbound webhook
+// Magic email inbox (Unit 3): Google Apps Script poller webhook (HMAC-signed)
 app.route("/api/v1/inbox", inbox);       // POST /api/v1/inbox/email
 
 // ---------------------------------------------------------------------------

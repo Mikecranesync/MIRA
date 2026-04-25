@@ -156,10 +156,10 @@ services:
       - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
-      # Unit 3 — magic email inbox (Resend Inbound)
-      - RESEND_INBOUND_SECRET=${RESEND_INBOUND_SECRET:-}
+      # Unit 3 — magic email inbox (Apps Script + Gmail plus-addressing)
+      - INBOUND_HMAC_SECRET=${INBOUND_HMAC_SECRET:-}
       - MIRA_INGEST_URL=${MIRA_INGEST_URL:-http://mira-ingest-saas:8001}
-      - INBOX_DOMAIN=${INBOX_DOMAIN:-inbox.factorylm.com}
+      - INBOX_DOMAIN=${INBOX_DOMAIN:-factorylm.com}
     networks:
       - mira-net
       - cmms-ext
