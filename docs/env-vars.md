@@ -45,3 +45,7 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `INBOX_DOMAIN`       | mira-web — domain shown in `/api/me` for the per-tenant address `kb+<slug>@<INBOX_DOMAIN>`. Default `factorylm.com` (uses Gmail plus-addressing on the apex; no subdomain MX needed). |
 | `RELEVANCE_GATE_ENABLED` | mira-ingest — set `"true"` to run the LLM relevance check on PDFs ingested via the inbox path (Unit 3.5). Default off (backward-compat for web upload + nightly cron callers, which leave the gate's `relevance_gate=on` form field unset). Cost ~$0.00005/file via Groq. Fail-open on any Groq error. |
 | `GROQ_API_KEY`       | mira-bots, mira-pipeline (existing); also mira-ingest when `RELEVANCE_GATE_ENABLED=true` for the magic-inbox relevance classifier. |
+| `LEAD_HUNTER_TIMEOUT_SECS` | tools/lead-hunter — hard timeout for hourly run; default 1500 (25 min) |
+| `HARDENING_LOCK_DIR` | tools/lead-hunter — directory for singleton lock file; default `/tmp` |
+| `HARDENING_ALERT_LOG` | tools/lead-hunter — JSONL alert log path; default `marketing/prospects/hardening-alerts.jsonl` |
+| `DISCORD_ALERT_WEBHOOK` | tools/lead-hunter — optional Discord webhook URL for degraded/failed runs |
