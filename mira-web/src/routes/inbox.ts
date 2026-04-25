@@ -1,15 +1,17 @@
 // mira-web/src/routes/inbox.ts
 //
-// Magic email inbox (Unit 3): customer forwards an email with PDF attachments
-// to kb+<slug>@inbox.factorylm.com; Postmark Inbound POSTs JSON here. We
-// resolve the tenant by inbox_slug, stream each PDF to mira-ingest's
-// /ingest/document-kb endpoint, and fire a receipt email back to the sender.
+// Magic email inbox (Unit 3 + 3.5): customer forwards an email with PDF
+// attachments to kb+<slug>@inbox.factorylm.com; Resend Inbound POSTs a
+// webhook here. We verify the Svix signature, resolve the tenant by slug,
+// fetch each attachment via Resend's Attachments API (download_url is
+// signed and valid for 1 hour), and stream the PDFs to mira-ingest.
 //
-// Always returns 200 to Postmark on parse-able payloads (Postmark retries
-// non-2xx, which would cause storms on real customer issues like an unknown
-// slug). Auth failures and bad payloads are 401/400 — Postmark handles those.
+// Always returns 200 to Resend on parse-able payloads (Resend retries on
+// non-2xx, which causes storms on real-customer issues like an unknown
+// slug). Auth failures and bad payloads are 401/400 — Resend handles those.
 
 import { Hono } from "hono";
+import { Resend } from "resend";
 import { findTenantByInboxSlug, type Tenant } from "../lib/quota.js";
 import { sendInboxReceiptEmail, type InboxReceiptResult } from "../lib/mailer.js";
 
@@ -17,24 +19,31 @@ export const inbox = new Hono();
 
 const MIRA_INGEST_URL = () =>
   process.env.MIRA_INGEST_URL || "http://mira-ingest:8001";
-const POSTMARK_INBOUND_TOKEN = () => process.env.POSTMARK_INBOUND_TOKEN || "";
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024; // matches mira-ingest enforcement
 
-// Postmark Inbound webhook schema (subset we use)
-interface PostmarkAttachment {
-  Name?: string;
-  Content?: string; // base64
-  ContentType?: string;
-  ContentLength?: number;
+// Lazy-init the Resend client so missing creds at boot don't crash the process.
+let _resend: Resend | null = null;
+function resendClient(): Resend {
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY || "");
+  return _resend;
 }
-interface PostmarkInboundPayload {
-  MessageID?: string;
-  To?: string;
-  ToFull?: { Email?: string }[];
-  From?: string;
-  Subject?: string;
-  Attachments?: PostmarkAttachment[];
+
+// Test-only seam: tests reset the cached client between cases.
+export function _resetResendClientForTests(): void {
+  _resend = null;
+}
+
+// Resend Inbound webhook payload shape (subset we use)
+interface ResendInboundEvent {
+  type?: string;
+  data?: {
+    email_id?: string;
+    from?: string;
+    to?: string[];
+    subject?: string;
+    attachments?: { filename?: string; content_type?: string }[];
+  };
 }
 
 // Extract the slug from kb+<slug>@inbox.factorylm.com (or any host).
@@ -48,19 +57,14 @@ export function extractSlug(toAddress: string | undefined | null): string | null
   return m ? m[1].toLowerCase() : null;
 }
 
-// Pull the To address from either the canonical To string or ToFull[0].Email.
-function resolveToAddress(payload: PostmarkInboundPayload): string | null {
-  if (payload.To && payload.To.trim()) return payload.To;
-  const first = payload.ToFull?.[0]?.Email;
-  return first || null;
-}
-
-function base64ToBytes(b64: string): Uint8Array {
-  // atob is available in Bun runtime
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
+// Resend's `data.to` is an array; we use the first kb+ address we find.
+function findInboxRecipient(toList: string[] | undefined): string | null {
+  if (!Array.isArray(toList)) return null;
+  for (const addr of toList) {
+    const slug = extractSlug(addr);
+    if (slug) return addr;
+  }
+  return null;
 }
 
 interface ProcessAttachmentResult {
@@ -74,13 +78,14 @@ interface ProcessAttachmentResult {
 }
 
 async function forwardAttachment(
-  att: PostmarkAttachment,
+  filename: string,
+  contentType: string,
+  contentLength: number | null,
+  downloadUrl: string,
   tenant: Tenant,
   relevanceGate: "on" | "off",
 ): Promise<ProcessAttachmentResult> {
-  const filename = att.Name || "attachment.pdf";
-  const ct = (att.ContentType || "").toLowerCase();
-  const isPdfMime = ct === "application/pdf";
+  const isPdfMime = (contentType || "").toLowerCase() === "application/pdf";
   const isPdfExt = filename.toLowerCase().endsWith(".pdf");
 
   if (!isPdfMime && !isPdfExt) {
@@ -91,24 +96,27 @@ async function forwardAttachment(
     };
   }
 
-  if (typeof att.ContentLength === "number" && att.ContentLength > MAX_PDF_BYTES) {
+  if (typeof contentLength === "number" && contentLength > MAX_PDF_BYTES) {
     return {
       filename,
       outcome: "too_large",
-      reason: `${Math.round(att.ContentLength / (1024 * 1024))} MB`,
+      reason: `${Math.round(contentLength / (1024 * 1024))} MB`,
     };
   }
 
-  if (!att.Content) {
-    return { filename, outcome: "error", status: "empty" };
-  }
-
+  // Download the attachment from Resend's signed URL (valid 1 hour).
   let bytes: Uint8Array;
   try {
-    bytes = base64ToBytes(att.Content);
-  } catch {
-    return { filename, outcome: "error", status: "bad-base64" };
+    const dl = await fetch(downloadUrl);
+    if (!dl.ok) {
+      return { filename, outcome: "error", status: `download-${dl.status}` };
+    }
+    bytes = new Uint8Array(await dl.arrayBuffer());
+  } catch (err) {
+    console.error("[inbox] attachment download failed:", filename, err);
+    return { filename, outcome: "error", status: "download-failed" };
   }
+
   if (bytes.length === 0) return { filename, outcome: "error", status: "empty" };
   if (bytes.length > MAX_PDF_BYTES) {
     return {
@@ -132,13 +140,11 @@ async function forwardAttachment(
       body: form,
     });
 
-    // mira-ingest returns 200 for success, duplicate, AND rejected (relevance gate).
-    // The status field in the JSON body is what we route on.
     let body: any = null;
     try {
       body = await resp.json();
     } catch {
-      // fall through — body stays null
+      // body stays null on non-JSON
     }
 
     if (!resp.ok) {
@@ -173,58 +179,71 @@ async function forwardAttachment(
   }
 }
 
-inbox.post("/postmark", async (c) => {
-  // 1. Auth
-  const expectedToken = POSTMARK_INBOUND_TOKEN();
-  const presentedToken = c.req.header("X-Auth-Token") || "";
-  if (!expectedToken) {
-    console.error("[inbox] POSTMARK_INBOUND_TOKEN not set; refusing all webhooks");
+inbox.post("/email", async (c) => {
+  // 1. Auth — Svix-style HMAC signature verify via Resend SDK.
+  const secret = process.env.RESEND_INBOUND_SECRET || "";
+  if (!secret) {
+    console.error("[inbox] RESEND_INBOUND_SECRET not set; refusing all webhooks");
     return c.json({ error: "Webhook not configured" }, 500);
   }
-  if (presentedToken !== expectedToken) {
-    console.warn("[inbox] auth failure: bad X-Auth-Token");
+
+  const rawBody = await c.req.text();
+  let payload: ResendInboundEvent;
+  try {
+    payload = resendClient().webhooks.verify({
+      payload: rawBody,
+      headers: {
+        id: c.req.header("svix-id") || "",
+        timestamp: c.req.header("svix-timestamp") || "",
+        signature: c.req.header("svix-signature") || "",
+      },
+      webhookSecret: secret,
+    }) as ResendInboundEvent;
+  } catch (err) {
+    console.warn("[inbox] svix verify failed:", err instanceof Error ? err.message : err);
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // 2. Parse JSON
-  let payload: PostmarkInboundPayload;
-  try {
-    payload = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid JSON" }, 400);
+  // 2. Filter on event type — Resend sends multiple event types per stream.
+  if (payload.type !== "email.received") {
+    console.log("[inbox] ignored event type:", payload.type);
+    return c.json({ ok: true, ignored: "wrong-event-type" }, 200);
   }
 
-  // 3. Resolve slug
-  const toAddress = resolveToAddress(payload);
-  const slug = extractSlug(toAddress);
+  const data = payload.data || {};
+  const emailId = data.email_id;
+  if (!emailId) {
+    return c.json({ error: "Missing email_id" }, 400);
+  }
+
+  // 3. Resolve slug from the first kb+ recipient.
+  const inboxRecipient = findInboxRecipient(data.to);
+  const slug = extractSlug(inboxRecipient);
   if (!slug) {
-    console.warn("[inbox] malformed To address:", toAddress);
+    console.warn("[inbox] no kb+ recipient in", data.to);
     return c.json({ error: "Bad recipient address" }, 400);
   }
 
-  // 4. Look up tenant
+  // 4. Look up tenant.
   const tenant = await findTenantByInboxSlug(slug);
   if (!tenant) {
-    // Don't reveal slug-existence to outsiders. Log and 200.
-    console.warn("[inbox] unknown slug:", slug, "from", payload.From);
+    console.warn("[inbox] unknown slug:", slug, "from", data.from);
     return c.json({ ok: true, ignored: "unknown-recipient" }, 200);
   }
 
-  // [force] in the Subject disables the relevance gate — escape hatch for
-  // when a user disagrees with a "didn't look like a manual" rejection.
-  const subject = payload.Subject || "";
+  // [force] in subject disables the relevance gate for this send.
+  const subject = data.subject || "";
   const relevanceGate: "on" | "off" = /\[force\]/i.test(subject) ? "off" : "on";
 
   console.log(
-    "[inbox] received message=%s tenant=%s from=%s attachments=%d gate=%s",
-    payload.MessageID || "(none)",
+    "[inbox] received email_id=%s tenant=%s from=%s gate=%s",
+    emailId,
     tenant.id,
-    payload.From || "(none)",
-    payload.Attachments?.length || 0,
+    data.from || "(none)",
     relevanceGate,
   );
 
-  // 5. Process attachments (sequential — keeps mira-ingest load bounded per email)
+  // 5. Fetch the attachment list (download_url is valid 1 hour).
   const result: InboxReceiptResult = {
     ingested: [],
     skipped: [],
@@ -233,8 +252,44 @@ inbox.post("/postmark", async (c) => {
     rejected: [],
     errors: [],
   };
-  for (const att of payload.Attachments || []) {
-    const r = await forwardAttachment(att, tenant, relevanceGate);
+
+  let attachmentsList: {
+    filename?: string;
+    content_type?: string;
+    content_length?: number;
+    download_url?: string;
+  }[] = [];
+  try {
+    const listResp = await resendClient().emails.receiving.attachments.list({
+      emailId,
+    });
+    attachmentsList = (listResp as any)?.data || [];
+  } catch (err) {
+    console.error("[inbox] attachment list failed:", err);
+    // Receipt still fires so the customer knows we got their email but couldn't
+    // process attachments; record one error per known-from-payload attachment.
+    for (const att of data.attachments || []) {
+      result.errors.push({
+        filename: att.filename || "attachment",
+        status: "list-failed",
+      });
+    }
+    sendInboxReceiptEmail(tenant.email, tenant.first_name || "", result).catch(
+      (err) => console.error("[inbox] receipt email send error:", err),
+    );
+    return c.json({ ok: true, summary: result }, 200);
+  }
+
+  // 6. Process each attachment (sequential — bounds mira-ingest load).
+  for (const att of attachmentsList) {
+    const r = await forwardAttachment(
+      att.filename || "attachment.pdf",
+      att.content_type || "",
+      typeof att.content_length === "number" ? att.content_length : null,
+      att.download_url || "",
+      tenant,
+      relevanceGate,
+    );
     if (r.outcome === "ingested") result.ingested.push({ filename: r.filename });
     else if (r.outcome === "skipped")
       result.skipped.push({ filename: r.filename, reason: r.reason || "not a PDF" });
@@ -261,7 +316,7 @@ inbox.post("/postmark", async (c) => {
       });
   }
 
-  // 6. Receipt email — fire and forget; don't block the 200 to Postmark
+  // 7. Receipt email — fire and forget; don't block the 200 to Resend.
   sendInboxReceiptEmail(tenant.email, tenant.first_name || "", result).catch((err) =>
     console.error("[inbox] receipt email send error:", err),
   );

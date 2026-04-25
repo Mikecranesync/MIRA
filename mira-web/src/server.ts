@@ -154,8 +154,8 @@ app.route("/admin", qrAnalytics);       // handles GET /admin/qr-analytics
 app.route("/admin", adminChannelPages); // handles GET /admin/channels
 app.route("/", adminChannelApi);        // handles POST /api/admin/channels
 
-// Magic email inbox (Unit 3): Postmark Inbound webhook
-app.route("/api/v1/inbox", inbox);       // POST /api/v1/inbox/postmark
+// Magic email inbox (Unit 3): Resend Inbound webhook
+app.route("/api/v1/inbox", inbox);       // POST /api/v1/inbox/email
 
 // ---------------------------------------------------------------------------
 // Static files
