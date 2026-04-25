@@ -190,7 +190,6 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - VISION_MODEL=qwen2.5vl:7b
       - INFERENCE_BACKEND=cloud
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
@@ -245,7 +244,6 @@ services:
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - INFERENCE_BACKEND=cloud
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
