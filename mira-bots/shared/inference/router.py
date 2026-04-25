@@ -216,10 +216,10 @@ class InferenceRouter:
 
     # Soft hourly call limits per provider — log warning at 80%
     _PROVIDER_HOURLY_LIMITS: dict[str, int] = {
-        "groq": 1800,      # 30 RPM × 60 min
+        "groq": 1800,  # 30 RPM × 60 min
         "cerebras": 1800,
-        "gemini": 900,     # 15 RPM × 60 min
-        "claude": 5000,    # generous; real limit depends on tier
+        "gemini": 900,  # 15 RPM × 60 min
+        "claude": 5000,  # generous; real limit depends on tier
     }
 
     def __init__(self):
@@ -245,7 +245,9 @@ class InferenceRouter:
     def _track_provider_call(self, provider_name: str) -> None:
         """Record a call to provider_name and warn when approaching hourly limit."""
         now = time.monotonic()
-        window = [ts for ts in self._provider_call_windows.get(provider_name, []) if now - ts < 3600]
+        window = [
+            ts for ts in self._provider_call_windows.get(provider_name, []) if now - ts < 3600
+        ]
         window.append(now)
         self._provider_call_windows[provider_name] = window
 

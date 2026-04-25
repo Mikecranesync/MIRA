@@ -112,16 +112,20 @@ def test_dedup_hit_returns_duplicate_status_and_skips_openwebui(client):
         "ingested_at": MagicMock(isoformat=lambda: "2026-04-19T10:00:00+00:00"),
         "source": "inbox",
     }
-    with patch.object(
-        ingest_main,
-        "_get_or_create_kb_collection",
-        new=AsyncMock(),
-    ) as mock_collection, patch(
-        "db.neon.tenant_ingested_files_lookup",
-        return_value=existing,
-    ), patch(
-        "db.neon.check_tier_limit",
-        return_value=(True, ""),
+    with (
+        patch.object(
+            ingest_main,
+            "_get_or_create_kb_collection",
+            new=AsyncMock(),
+        ) as mock_collection,
+        patch(
+            "db.neon.tenant_ingested_files_lookup",
+            return_value=existing,
+        ),
+        patch(
+            "db.neon.check_tier_limit",
+            return_value=(True, ""),
+        ),
     ):
         resp = _post_doc(client)
 
@@ -195,21 +199,20 @@ def test_relevance_gate_yes_proceeds_with_ingest(client, monkeypatch):
     assert resp.json()["status"] == "ok"
 
 
-def test_relevance_gate_no_returns_rejected_status_and_skips_openwebui(
-    client, monkeypatch
-):
+def test_relevance_gate_no_returns_rejected_status_and_skips_openwebui(client, monkeypatch):
     monkeypatch.setenv("RELEVANCE_GATE_ENABLED", "true")
-    with patch.object(
-        ingest_main,
-        "_get_or_create_kb_collection",
-        new=AsyncMock(),
-    ) as mock_collection, patch(
-        "db.neon.tenant_ingested_files_lookup", return_value=None
-    ), patch(
-        "db.neon.check_tier_limit", return_value=(True, "")
-    ), patch(
-        "relevance.classify_document",
-        new=AsyncMock(return_value=(False, "looks like a meeting agenda")),
+    with (
+        patch.object(
+            ingest_main,
+            "_get_or_create_kb_collection",
+            new=AsyncMock(),
+        ) as mock_collection,
+        patch("db.neon.tenant_ingested_files_lookup", return_value=None),
+        patch("db.neon.check_tier_limit", return_value=(True, "")),
+        patch(
+            "relevance.classify_document",
+            new=AsyncMock(return_value=(False, "looks like a meeting agenda")),
+        ),
     ):
         resp = _post_doc(client, relevance_gate="on")
 
@@ -272,9 +275,7 @@ def test_relevance_gate_disabled_by_default_skips_classifier(client, monkeypatch
     classify_mock.assert_not_called()
 
 
-def test_relevance_gate_form_off_skips_classifier_even_when_env_on(
-    client, monkeypatch
-):
+def test_relevance_gate_form_off_skips_classifier_even_when_env_on(client, monkeypatch):
     """Web upload picker leaves relevance_gate=off; gate stays off even with env on."""
     monkeypatch.setenv("RELEVANCE_GATE_ENABLED", "true")
     classify_mock = AsyncMock(return_value=(False, "should not be called"))

@@ -102,9 +102,7 @@ def build_print_reply(vision_data: dict) -> str:
         "faulted",
         "tripped",
     )
-    fault_items = [
-        item for item in items_list if any(kw in item.lower() for kw in _FAULT_KEYWORDS)
-    ]
+    fault_items = [item for item in items_list if any(kw in item.lower() for kw in _FAULT_KEYWORDS)]
     if fault_items:
         preview = ", ".join(fault_items[:4])
         fault_summary = "; ".join(fault_items[:3])

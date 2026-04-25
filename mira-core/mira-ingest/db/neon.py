@@ -619,9 +619,7 @@ def write_session_analysis(result: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def tenant_ingested_files_lookup(
-    tenant_id: str, content_hash: str
-) -> dict[str, Any] | None:
+def tenant_ingested_files_lookup(tenant_id: str, content_hash: str) -> dict[str, Any] | None:
     """Return existing ledger row for (tenant_id, content_hash) or None.
 
     Fail-open on DB error: returns None so the caller proceeds with ingest

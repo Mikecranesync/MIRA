@@ -74,9 +74,7 @@ def load_state(db_path: str, chat_id: str) -> dict:
     db = sqlite3.connect(db_path)
     db.execute("PRAGMA journal_mode=WAL")
     db.row_factory = sqlite3.Row
-    row = db.execute(
-        "SELECT * FROM conversation_state WHERE chat_id = ?", (chat_id,)
-    ).fetchone()
+    row = db.execute("SELECT * FROM conversation_state WHERE chat_id = ?", (chat_id,)).fetchone()
     db.close()
     if row:
         state = dict(row)
