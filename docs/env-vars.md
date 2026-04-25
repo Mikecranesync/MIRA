@@ -30,3 +30,7 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `ATLAS_DB_PASSWORD`  | atlas-db (PostgreSQL)                |
 | `ATLAS_JWT_SECRET`   | atlas-api (JWT signing)              |
 | `ATLAS_MINIO_PASSWORD`| atlas-minio (file storage)          |
+| `LEAD_HUNTER_TIMEOUT_SECS` | tools/lead-hunter — hard timeout for hourly run; default 1500 (25 min) |
+| `HARDENING_LOCK_DIR` | tools/lead-hunter — directory for singleton lock file; default `/tmp` |
+| `HARDENING_ALERT_LOG` | tools/lead-hunter — JSONL alert log path; default `marketing/prospects/hardening-alerts.jsonl` |
+| `DISCORD_ALERT_WEBHOOK` | tools/lead-hunter — optional Discord webhook URL for degraded/failed runs |
