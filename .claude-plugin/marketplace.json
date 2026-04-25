@@ -76,6 +76,21 @@
           }
         }
       }
+    },
+    {
+      "name": "shell-lsp",
+      "description": "bash-language-server (uses shellcheck) for the 26 shell scripts in MIRA.",
+      "source": "./plugins/shell-lsp",
+      "lspServers": {
+        "bash": {
+          "command": "bash-language-server",
+          "args": ["start"],
+          "extensionToLanguage": {
+            ".sh": "shellscript",
+            ".bash": "shellscript"
+          }
+        }
+      }
     }
   ]
 }
