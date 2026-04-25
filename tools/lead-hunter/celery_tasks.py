@@ -334,14 +334,21 @@ def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> tuple[int, i
 try:
     from celery import shared_task
 
-    @shared_task(name="lead_hunter.discover_and_enrich", bind=True, max_retries=2)
+    @shared_task(name="lead_hunter.discover_and_enrich", bind=True, max_retries=0)
     def discover_and_enrich(self):
-        """Celery task: hourly lead discovery + enrichment."""
-        try:
-            return run_discover_and_enrich()
-        except Exception as exc:
-            log.error("Hourly task failed: %s", exc)
-            raise self.retry(exc=exc, countdown=300)
+        """Celery task: hourly lead discovery + enrichment.
+
+        Delegates to run_hourly.main() so the singleton lock, hard timeout,
+        preflight checks, and alert sink ALL apply (parity with launchd path).
+        Celery's own retry is disabled (max_retries=0) — run_hourly's
+        with_retries layer handles transient failures internally and the
+        next hour will re-run anyway.
+        """
+        sys.path.insert(0, str(Path(__file__).parent))
+        from run_hourly import main as run_main
+        rc = run_main()
+        log.info("lead_hunter.discover_and_enrich rc=%d", rc)
+        return {"exit_code": rc}
 
 except ImportError:
     # Celery not installed — task available only via run_hourly.py
