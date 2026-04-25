@@ -6,14 +6,13 @@ so subsequent refactors are safe.
 from __future__ import annotations
 
 import json
-import os
+import signal as _signal
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 import pytest
-
 
 # ---------------- singleton_lock ----------------
 
@@ -113,8 +112,6 @@ def test_with_retries_does_not_retry_unlisted_exception(monkeypatch):
         with_retries(fn, name="t", retries=3, retry_on=(ConnectionError,))
     assert calls["n"] == 1
 
-
-import signal as _signal
 
 # ---------------- hard_timeout ----------------
 

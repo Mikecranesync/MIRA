@@ -1,10 +1,6 @@
 """Tests for run_hourly._run silent-failure detectors and exit codes."""
 from __future__ import annotations
 
-import os
-
-import pytest
-
 
 def _stub_required_env(monkeypatch):
     monkeypatch.setenv("NEON_DATABASE_URL", "postgres://stub")

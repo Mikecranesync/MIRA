@@ -86,9 +86,8 @@ def run_discover_and_enrich() -> dict:
     """Execute one hourly discovery + enrichment cycle. Returns run stats."""
     # Import here to allow running without Celery
     sys.path.insert(0, str(Path(__file__).parent))
-    import hunt
     import discover
-    import enrich
+    import hunt
 
     state = _load_state()
     if not _check_daily_budget(state):
@@ -145,11 +144,9 @@ def run_discover_and_enrich() -> dict:
     # Phase 1c: Standard queries for this city (reuse existing search logic)
     if requests_used < DISCOVERY_RATE["max_requests_per_run"] and ddg_fails[0] < 5:
         log.info("Standard DDG queries for %s...", city_name)
-        ddg_dead = False
         with httpx.Client(timeout=20) as client:
             for qt in hunt.QUERY_TEMPLATES:
                 if ddg_fails[0] >= 5:
-                    ddg_dead = True
                     break
                 if requests_used >= DISCOVERY_RATE["max_requests_per_run"]:
                     break
@@ -254,10 +251,10 @@ def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> tuple[int, i
     Returns (succeeded, attempted). attempted == 0 means nothing eligible —
     not a partial failure.
     """
-    import psycopg2
+    import enrich
     import httpx
     import hunt
-    import enrich
+    import psycopg2
 
     enriched = 0
     attempted = 0
