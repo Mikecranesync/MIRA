@@ -64,6 +64,13 @@ import { seedAssetFromNameplate } from "./seed/knowledge-seed.js";
 import { importCSV } from "./lib/csv-import.js";
 import { sendBetaWelcomeEmail, sendActivatedEmail } from "./lib/mailer.js";
 import { startDripScheduler } from "./lib/drip.js";
+import { recordAuditEvent, requestMetadata } from "./lib/audit.js";
+import {
+  requestSoftDelete,
+  purgePendingDeletions,
+} from "./lib/account-deletion.js";
+import { getMfaState } from "./lib/quota.js";
+import { decryptSecret, verifyTotp, findRecoveryCodeIndex } from "./lib/mfa.js";
 import {
   createCheckoutSession,
   createPortalSession,
@@ -97,6 +104,7 @@ import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
 import { qrTest } from "./routes/qr-test.js";
 import { inbox } from "./routes/inbox.js";
+import { mfa } from "./routes/mfa.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -157,6 +165,77 @@ app.route("/", adminChannelApi);        // handles POST /api/admin/channels
 // Magic email inbox (Unit 3): Google Apps Script poller webhook (HMAC-signed)
 app.route("/api/v1/inbox", inbox);       // POST /api/v1/inbox/email
 
+// MFA (TOTP) — Tier 1 #9. Free on every plan; SSO is the upsell.
+app.route("/api/auth/mfa", mfa);         // setup / enable / disable / status
+
+// Account deletion (Tier 1 #8) — CCPA "right to be forgotten" answer.
+// Soft delete now, hard purge after 30 days.
+app.delete("/api/v1/account", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  const tenant = await findTenantById(user.sub);
+  if (!tenant) return c.json({ error: "Tenant not found" }, 404);
+
+  const body = (await c.req.json().catch(() => null)) as
+    | { confirm?: string; code?: string; recovery_code?: string; reason?: string }
+    | null;
+
+  // Defensive confirmation phrase — protects against XSRF / accidental
+  // clicks. Exact-match required.
+  if (body?.confirm !== "DELETE") {
+    return c.json(
+      { error: "Send {\"confirm\":\"DELETE\"} in the body to proceed." },
+      400,
+    );
+  }
+
+  // If MFA is enabled, require re-auth (TOTP or recovery code) before
+  // accepting the deletion. Stops a stolen session from nuking an account.
+  const mfaState = await getMfaState(user.sub);
+  if (mfaState.enabled && mfaState.secretEnc) {
+    const code = (body?.code ?? "").trim();
+    const recovery = (body?.recovery_code ?? "").trim();
+    let pass = false;
+    try {
+      const secret = decryptSecret(mfaState.secretEnc);
+      if (/^\d{6}$/.test(code) && verifyTotp(secret, code)) pass = true;
+    } catch {
+      pass = false;
+    }
+    if (!pass && recovery) {
+      const idx = findRecoveryCodeIndex(recovery, mfaState.recoveryCodesHashed);
+      if (idx >= 0) pass = true;
+    }
+    if (!pass) {
+      return c.json({ error: "MFA re-auth required (code or recovery_code)" }, 401);
+    }
+  }
+
+  const meta = requestMetadata(c);
+  const result = await requestSoftDelete({
+    tenant,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+    reason: body?.reason,
+  });
+  return c.json(result, 200);
+});
+
+// Daily worker — runs the hard purge for tenants past their 30-day grace.
+const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+if (process.env.NODE_ENV !== "test" && process.env.MIRA_DISABLE_PURGE_WORKER !== "1") {
+  setInterval(() => {
+    purgePendingDeletions().catch((err) =>
+      console.error("[purge] worker error:", err),
+    );
+  }, PURGE_INTERVAL_MS);
+  // First run on a 60s delay so the server is fully up.
+  setTimeout(() => {
+    purgePendingDeletions().catch((err) =>
+      console.error("[purge] worker error (initial):", err),
+    );
+  }, 60_000);
+}
+
 // ---------------------------------------------------------------------------
 // Static files
 // ---------------------------------------------------------------------------
@@ -189,6 +268,8 @@ app.get("/sitemap.xml", (c) => {
     })),
     { loc: "/privacy", priority: "0.3", freq: "yearly" },
     { loc: "/terms", priority: "0.3", freq: "yearly" },
+    { loc: "/trust", priority: "0.4", freq: "monthly" },
+    { loc: "/legal/dpa", priority: "0.3", freq: "yearly" },
   ];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -273,6 +354,27 @@ app.get("/privacy", async (c) => {
 
 app.get("/terms", async (c) => {
   const file = Bun.file("./public/terms.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+app.get("/trust", async (c) => {
+  const file = Bun.file("./public/trust.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+app.get("/.well-known/security.txt", async (c) => {
+  const file = Bun.file("./public/.well-known/security.txt");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+});
+
+app.get("/legal/dpa", async (c) => {
+  const file = Bun.file("./public/legal/dpa.html");
   return new Response(await file.text(), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
@@ -446,6 +548,15 @@ app.post("/api/register", async (c) => {
       atlasUserId: 0,
     });
 
+    const meta = requestMetadata(c);
+    void recordAuditEvent({
+      tenantId,
+      action: "tenant.signup",
+      metadata: { email, company },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
     // Send beta welcome email (async, don't block response)
     sendBetaWelcomeEmail(
       email,
@@ -535,6 +646,15 @@ app.post("/api/stripe/webhook", async (c) => {
       await updateTenantTier(tenantId, "active");
       console.log("[stripe-webhook] Tenant activated:", tenantId);
 
+      void recordAuditEvent({
+        tenantId,
+        actorType: "system",
+        actorId: "stripe.webhook",
+        action: "tenant.activated",
+        resource: subscriptionId,
+        metadata: { customer_id: customerId, subscription_id: subscriptionId },
+      });
+
       const tenant = await findTenantById(tenantId);
       if (!tenant) {
         console.error("[stripe-webhook] Tenant not found after activation:", tenantId);
@@ -571,6 +691,13 @@ app.post("/api/stripe/webhook", async (c) => {
       if (tenantId) {
         await updateTenantTier(tenantId, "churned");
         console.log("[stripe-webhook] Tenant churned:", tenantId);
+        void recordAuditEvent({
+          tenantId,
+          actorType: "system",
+          actorId: "stripe.webhook",
+          action: "tenant.churned",
+          resource: sub.id,
+        });
       } else {
         // Fallback: look up by customer ID
         const customerId = typeof sub.customer === "string"
@@ -581,6 +708,14 @@ app.post("/api/stripe/webhook", async (c) => {
           if (tenant) {
             await updateTenantTier(tenant.id, "churned");
             console.log("[stripe-webhook] Tenant churned (by customer):", tenant.id);
+            void recordAuditEvent({
+              tenantId: tenant.id,
+              actorType: "system",
+              actorId: "stripe.webhook",
+              action: "tenant.churned",
+              resource: sub.id,
+              metadata: { matched_via: "customer_id" },
+            });
           }
         }
       }
@@ -787,6 +922,7 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
   }
 
   const started = Date.now();
+  const meta = requestMetadata(c);
   try {
     const resp = await fetch(`${MIRA_INGEST_URL()}/ingest/document-kb`, {
       method: "POST",
@@ -802,6 +938,20 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
       latencyMs,
     );
 
+    void recordAuditEvent({
+      tenantId: user.sub,
+      action: "manual.uploaded",
+      resource: file.name || "upload.pdf",
+      metadata: {
+        size_bytes: file.size,
+        ingest_status: resp.status,
+        latency_ms: latencyMs,
+        equipment_type: typeof equipmentType === "string" ? equipmentType : null,
+      },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
     const contentType = resp.headers.get("content-type") || "application/json";
     return new Response(bodyText, {
       status: resp.status,
@@ -809,6 +959,14 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
     });
   } catch (err) {
     console.error("[ingest-manual] Proxy failed:", err);
+    void recordAuditEvent({
+      tenantId: user.sub,
+      action: "manual.uploaded",
+      resource: file.name || "upload.pdf",
+      metadata: { size_bytes: file.size, error: "upstream-unreachable" },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
     return c.json({ error: "Ingest upstream unreachable" }, 502);
   }
 });
