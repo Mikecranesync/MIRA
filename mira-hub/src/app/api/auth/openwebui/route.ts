@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertBinding } from "@/lib/bindings";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /**
  * POST /hub/api/auth/openwebui
  *
- * Open WebUI has no OAuth flow; Mike runs his own instance. We just record
- * the base URL so the Hub knows which instance to talk to (and so the card
- * persists across browser clears).
+ * Open WebUI has no OAuth flow; the customer runs their own instance. We
+ * record the base URL so the Hub knows which instance to talk to.
  */
 export async function POST(req: NextRequest) {
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   const { url, apiKey } = await req.json();
 
   if (!url || typeof url !== "string") {
@@ -39,6 +41,7 @@ export async function POST(req: NextRequest) {
   }
 
   await upsertBinding({
+    tenantId: ctx.tenantId,
     provider: "openwebui",
     externalId: parsed.origin,
     accessToken: apiKey ?? null,

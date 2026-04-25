@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -29,17 +30,21 @@ export async function GET() {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   try {
-    const { rows } = await pool.query(`
-      SELECT
+    const { rows } = await pool.query(
+      `SELECT
         id, equipment_number, manufacturer, model_number, serial_number,
         equipment_type, location, department, criticality,
         work_order_count, total_downtime_hours,
         last_maintenance_date, last_work_order_at,
         last_reported_fault, description, created_at
       FROM cmms_equipment
-      ORDER BY last_work_order_at DESC NULLS LAST, created_at DESC
-    `);
+      WHERE tenant_id = $1
+      ORDER BY last_work_order_at DESC NULLS LAST, created_at DESC`,
+      [ctx.tenantId],
+    );
     return NextResponse.json(rows.map(rowToAsset));
   } catch (err) {
     console.error("[api/assets GET]", err);
@@ -51,6 +56,8 @@ export async function POST(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   try {
     const body = await req.json();
     const { name, tag, manufacturer, model, serialNumber, location, criticality, installDate } = body;
@@ -65,13 +72,14 @@ export async function POST(req: Request) {
 
     const { rows } = await pool.query(
       `INSERT INTO cmms_equipment
-         (equipment_number, manufacturer, model_number, serial_number,
+         (tenant_id, equipment_number, manufacturer, model_number, serial_number,
           location, criticality, installation_date, description)
-       VALUES ($1, $2, $3, $4, $5, $6::criticalitylevel, $7, $8)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::criticalitylevel, $8, $9)
        RETURNING
          id, equipment_number, manufacturer, model_number, serial_number,
          equipment_type, location, criticality, description, created_at`,
       [
+        ctx.tenantId,
         tag?.trim() || null,
         manufacturer.trim(),
         model?.trim() || null,
@@ -80,7 +88,7 @@ export async function POST(req: Request) {
         safeLevel,
         installDate || null,
         name?.trim() || null,
-      ]
+      ],
     );
 
     return NextResponse.json(rowToAsset(rows[0]), { status: 201 });

@@ -40,6 +40,18 @@ const mockProvider: DataProvider = {
 
 const pipelineUrl = process.env.NEXT_PUBLIC_PIPELINE_API_URL;
 
+// Warn at runtime (not at build static-page gen) so prod misconfig is visible
+// in container logs without spamming the build output.
+if (
+  !pipelineUrl &&
+  process.env.NODE_ENV === "production" &&
+  typeof window !== "undefined"
+) {
+  console.error(
+    "[hubDataProvider] NEXT_PUBLIC_PIPELINE_API_URL is unset in production — set it in docker-compose.saas.yml mira-hub env block",
+  );
+}
+
 export const hubDataProvider: DataProvider = pipelineUrl
   ? dataProvider(pipelineUrl)
   : mockProvider;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { newState, stateCookieName } from "@/lib/oauth-state";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,8 @@ const SCOPES = [
 ].join(" ");
 
 export async function GET() {
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.factorylm.com";
 

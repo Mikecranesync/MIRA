@@ -17,6 +17,7 @@ import {
   inferKindFromMime,
   SUPPORTED_MIMES,
 } from "@/lib/mira-ingest-client";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,8 @@ interface CreatePayload {
 }
 
 export async function POST(req: NextRequest) {
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   let body: CreatePayload;
   try {
     body = await req.json();
@@ -79,6 +82,7 @@ export async function POST(req: NextRequest) {
   const kind = inferKindFromMime(mime);
 
   const upload = await createUpload({
+    tenantId: ctx.tenantId,
     provider: body.provider,
     kind,
     externalFileId: body.externalFileId ?? null,
@@ -91,13 +95,15 @@ export async function POST(req: NextRequest) {
     assetTag: body.assetTag ?? null,
   });
 
-  after(() => runIngestPipeline(upload.id, body, kind));
+  after(() => runIngestPipeline(upload.id, body, kind, ctx.tenantId));
 
   return NextResponse.json(upload, { status: 201 });
 }
 
 export async function GET() {
-  const rows = await listUploads();
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
+  const rows = await listUploads(ctx.tenantId);
   return NextResponse.json(rows);
 }
 
@@ -105,12 +111,13 @@ async function runIngestPipeline(
   uploadId: string,
   payload: CreatePayload,
   kind: "document" | "photo",
+  tenantId: string,
 ): Promise<void> {
   try {
     await updateUploadStatus(uploadId, "fetching");
     let fetched;
     if (payload.provider === "google") {
-      const { accessToken } = await ensureFreshAccessToken("google");
+      const { accessToken } = await ensureFreshAccessToken("google", tenantId);
       fetched = await streamFromGoogleDrive(payload.externalFileId!, accessToken);
     } else {
       fetched = await streamFromSignedUrl(payload.externalDownloadUrl!);

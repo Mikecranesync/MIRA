@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Processing Addendum — FactoryLM</title>
+  <meta name="description" content="FactoryLM Data Processing Addendum (DPA) for B2B customers. Covers processing scope, sub-processors, security measures, data subject rights handling, breach notification, and termination.">
+  <link rel="canonical" href="https://factorylm.com/legal/dpa">
+  <meta property="og:title" content="Data Processing Addendum — FactoryLM">
+  <meta property="og:description" content="FactoryLM Data Processing Addendum (DPA) for B2B customers.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://factorylm.com/legal/dpa">
+  <meta property="og:image" content="https://factorylm.com/og-image.png">
+  <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0e11;
+      --surface: #13141a;
+      --surface-hi: #1a1b22;
+      --border: rgba(255,255,255,0.07);
+      --border-hi: rgba(255,255,255,0.14);
+      --text: #e8eaf0;
+      --text-dim: rgba(255,255,255,0.55);
+      --text-faint: rgba(255,255,255,0.28);
+      --amber: #f0a000;
+      --amber-dim: rgba(240,160,0,0.12);
+      --font: 'Inter', sans-serif;
+      --max-w: 1080px;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(240,160,0,0.06) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .inner { max-width: var(--max-w); margin: 0 auto; padding: 0 40px; }
+    @media (max-width: 768px) { .inner { padding: 0 24px; } }
+    nav {
+      height: 56px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(13,14,17,0.85);
+      backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .nav-inner {
+      max-width: var(--max-w); margin: 0 auto; padding: 0 40px;
+      height: 100%; display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 8px;
+      text-decoration: none; color: var(--text); font-weight: 500; font-size: 15px;
+    }
+    .nav-logo svg { width: 22px; height: 22px; }
+    .nav-links { display: flex; gap: 28px; list-style: none; }
+    .nav-links a { font-size: 14px; color: rgba(255,255,255,0.6); text-decoration: none; }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      font-size: 13px; font-weight: 700; color: #0a0a08;
+      background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px; padding: 7px 14px; text-decoration: none;
+    }
+
+    .legal { padding: 80px 0 60px; max-width: 760px; margin: 0 auto; }
+    .legal h1 { font-size: clamp(28px, 3.5vw, 40px); font-weight: 400; letter-spacing: -0.02em; margin-bottom: 8px; }
+    .legal .effective { font-size: 13px; color: var(--text-faint); margin-bottom: 40px; }
+    .legal h2 { font-size: 20px; font-weight: 600; margin: 40px 0 12px; color: var(--amber); }
+    .legal h3 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+    .legal p { color: var(--text-dim); margin-bottom: 16px; line-height: 1.7; }
+    .legal ul, .legal ol { color: var(--text-dim); margin: 0 0 16px 20px; line-height: 1.7; }
+    .legal li { margin-bottom: 8px; }
+    .legal a { color: var(--amber); text-decoration: underline; }
+    .legal strong { color: var(--text); font-weight: 500; }
+    .legal table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; }
+    .legal th, .legal td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text-dim); vertical-align: top; }
+    .legal th { color: var(--text); font-weight: 500; }
+    .legal code { background: var(--surface-hi); padding: 1px 6px; border-radius: 4px; font-size: 13px; color: var(--text); }
+    .legal blockquote {
+      border-left: 3px solid var(--amber);
+      padding: 8px 16px;
+      margin: 16px 0 24px;
+      background: var(--amber-dim);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .signature-block {
+      margin-top: 48px; padding-top: 32px; border-top: 1px solid var(--border);
+      display: grid; grid-template-columns: 1fr 1fr; gap: 32px;
+    }
+    .signature-block .col { font-size: 13px; color: var(--text-dim); }
+    .signature-block .line {
+      border-bottom: 1px solid var(--border-hi); height: 32px; margin: 24px 0 4px;
+    }
+    @media (max-width: 640px) {
+      .nav-links { display: none; }
+      .signature-block { grid-template-columns: 1fr; }
+    }
+
+    footer { border-top: 1px solid var(--border); margin-top: 60px; padding: 28px 0; }
+    .footer-inner { display: flex; justify-content: space-between; align-items: center; }
+    .footer-links { display: flex; gap: 20px; list-style: none; }
+    .footer-links a { color: var(--text-faint); text-decoration: none; font-size: 13px; }
+    .footer-links a:hover { color: var(--text-dim); }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" rx="5" fill="#f0a000"/><path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        FactoryLM
+      </a>
+      <ul class="nav-links">
+        <li><a href="/#features">Product</a></li>
+        <li><a href="/pricing">Pricing</a></li>
+        <li><a href="/blog">Blog</a></li>
+        <li><a href="/cmms">Troubleshooter</a></li>
+      </ul>
+      <a href="/cmms" class="nav-cta">Join the Beta</a>
+    </div>
+  </nav>
+
+  <main>
+    <div class="inner">
+      <div class="legal">
+        <h1>Data Processing Addendum</h1>
+        <p class="effective">Version 1.0 — effective April 25, 2026</p>
+
+        <blockquote>
+          This DPA forms part of the <a href="/terms">Terms of Service</a> between FactoryLM, Inc. ("FactoryLM" — Processor) and the Customer (Controller) using the FactoryLM service (the "Service"). It governs FactoryLM's processing of Customer Data on the Customer's behalf. Counter-signed copies are available on request to <a href="mailto:legal@factorylm.com">legal@factorylm.com</a>.
+        </blockquote>
+
+        <h2>1. Definitions</h2>
+        <ul>
+          <li><strong>Controller / Customer:</strong> the party using the Service, who determines the purposes of processing.</li>
+          <li><strong>Processor / FactoryLM:</strong> FactoryLM, Inc., a Delaware corporation, processing data on the Controller's behalf.</li>
+          <li><strong>Customer Data:</strong> any data submitted to or generated by the Service in connection with the Customer's use, including equipment manuals, work orders, asset registries, attachments, diagnostic queries, and personal information of the Customer's authorized users.</li>
+          <li><strong>Personal Information:</strong> information about an identified or identifiable natural person (e.g., authorized-user names, work emails, IP addresses).</li>
+          <li><strong>Sub-processor:</strong> a third party engaged by FactoryLM to process Customer Data; current list at <a href="/trust">/trust</a>.</li>
+          <li><strong>Applicable Law:</strong> data-protection laws applicable to the Customer's use of the Service. The Service is offered to United States customers only as of the effective date; FactoryLM is not registered as a GDPR data controller.</li>
+        </ul>
+
+        <h2>2. Scope &amp; Roles</h2>
+        <p>FactoryLM processes Customer Data solely as a Processor on the Controller's documented instructions. The Customer's use of the Service constitutes such instructions; supplemental instructions may be issued in writing to <a href="mailto:legal@factorylm.com">legal@factorylm.com</a>.</p>
+
+        <h2>3. Nature, Purpose, and Duration of Processing</h2>
+        <table>
+          <thead><tr><th>Topic</th><th>Detail</th></tr></thead>
+          <tbody>
+            <tr><td>Subject matter</td><td>Provision of the Service: AI-assisted industrial-maintenance diagnostics, equipment-manual ingestion, and CMMS work-order management.</td></tr>
+            <tr><td>Categories of data subjects</td><td>The Customer's authorized users (technicians, supervisors, plant managers).</td></tr>
+            <tr><td>Categories of personal data</td><td>Name, work email, company name, role/permission, IP address, user-agent, audit-log entries.</td></tr>
+            <tr><td>Categories of non-personal data</td><td>Equipment manuals (OEM), work orders, asset registries, photos, diagnostic queries, AI responses.</td></tr>
+            <tr><td>Purpose</td><td>To provide, maintain, secure, and improve the Service for the Customer.</td></tr>
+            <tr><td>Duration</td><td>For the term of the Customer's subscription, plus the deletion grace window in §9.</td></tr>
+          </tbody>
+        </table>
+
+        <h2>4. FactoryLM Obligations</h2>
+        <ul>
+          <li><strong>Documented instructions:</strong> FactoryLM processes Customer Data only on the Controller's documented instructions.</li>
+          <li><strong>Confidentiality:</strong> FactoryLM ensures personnel authorized to process Customer Data are bound by appropriate confidentiality obligations.</li>
+          <li><strong>Security:</strong> FactoryLM maintains appropriate technical and organizational measures as described at <a href="/trust">/trust</a>, including TLS in transit, AES-256 encryption at rest by underlying providers, hardened access controls, and append-only audit logging.</li>
+          <li><strong>Sub-processor controls:</strong> see §5.</li>
+          <li><strong>Data subject rights:</strong> FactoryLM assists the Controller in responding to data-subject requests as described in §7.</li>
+          <li><strong>Breach notification:</strong> see §8.</li>
+          <li><strong>Audit:</strong> see §11.</li>
+        </ul>
+
+        <h2>5. Sub-processors</h2>
+        <p>The Customer authorizes FactoryLM to engage Sub-processors to process Customer Data, subject to the following:</p>
+        <ol>
+          <li>The current list of Sub-processors is published at <a href="/trust">/trust</a>.</li>
+          <li>FactoryLM enters into written contracts with each Sub-processor imposing data-protection obligations no less protective than those in this DPA.</li>
+          <li>FactoryLM remains liable for the acts and omissions of its Sub-processors as if FactoryLM were performing them directly.</li>
+          <li>FactoryLM provides at least 30 days' advance notice (by email to active subscribers and update to <a href="/trust">/trust</a>) before adding or replacing a Sub-processor. The Customer may object on reasonable data-protection grounds; if the parties cannot agree on an alternative within 30 days, the Customer may terminate this DPA per §10.</li>
+        </ol>
+
+        <h2>6. Security Measures</h2>
+        <p>FactoryLM implements and maintains:</p>
+        <ul>
+          <li><strong>Encryption in transit:</strong> TLS 1.2+ on all public endpoints; SSL on database connections.</li>
+          <li><strong>Encryption at rest:</strong> AES-256 (Neon, AWS, MinIO defaults).</li>
+          <li><strong>Access control:</strong> least-privilege IAM, magic-link authentication with optional TOTP MFA, per-tenant scoping at the application layer enforced by automated tests.</li>
+          <li><strong>Secrets management:</strong> all production credentials in Doppler; pre-commit and CI gates scan for credential leaks.</li>
+          <li><strong>Logging:</strong> append-only audit log of authentication, tenant-scoped writes, exports, and account-level events.</li>
+          <li><strong>Vulnerability management:</strong> dependency scanning, Trivy image scanning in CI, semgrep + bandit static analysis, vulnerability disclosure mailbox at <a href="mailto:security@factorylm.com">security@factorylm.com</a>.</li>
+          <li><strong>Compliance roadmap:</strong> SOC 2 Type II attestation in progress; current status published at <a href="/trust">/trust</a>.</li>
+        </ul>
+
+        <h2>7. Data Subject Rights</h2>
+        <p>FactoryLM provides reasonable assistance to the Controller in responding to requests from data subjects exercising rights under Applicable Law (right to know, deletion, correction, portability, opt-out of sale). Standard mechanisms:</p>
+        <ul>
+          <li><strong>Account deletion:</strong> the Controller may submit <code>DELETE /api/v1/account</code> in-product or email <a href="mailto:privacy@factorylm.com">privacy@factorylm.com</a>. Hard purge within 30 days of request.</li>
+          <li><strong>Access / portability:</strong> Customer Data export available on request to <a href="mailto:privacy@factorylm.com">privacy@factorylm.com</a>; standard format JSON or CSV.</li>
+          <li><strong>Correction:</strong> available via in-product editing for most fields; otherwise on request.</li>
+        </ul>
+        <p>FactoryLM responds to such requests within 30 days unless a longer period is required by Applicable Law.</p>
+
+        <h2>8. Personal Data Breach Notification</h2>
+        <p>FactoryLM notifies the Controller without undue delay, and in any event within <strong>72 hours</strong>, after becoming aware of a personal-data breach affecting Customer Data. The notification includes (to the extent known):</p>
+        <ul>
+          <li>The nature of the breach, including categories and approximate number of data subjects and records concerned.</li>
+          <li>The likely consequences of the breach.</li>
+          <li>Measures taken or proposed to address the breach and mitigate possible adverse effects.</li>
+          <li>The contact point for further information.</li>
+        </ul>
+        <p>Notifications are sent to the Controller's billing email on file unless an alternative security contact has been provided in writing to <a href="mailto:legal@factorylm.com">legal@factorylm.com</a>.</p>
+
+        <h2>9. Return and Deletion of Customer Data</h2>
+        <p>On termination of the Service, FactoryLM:</p>
+        <ol>
+          <li>Provides the Controller a 30-day window during which Customer Data may be exported.</li>
+          <li>After the 30-day window (or on earlier written instruction from the Controller), securely deletes Customer Data from production systems, including Sub-processor systems where technically feasible.</li>
+          <li>Retains records required by Applicable Law (e.g., payment records for tax / audit purposes) for the minimum period required.</li>
+        </ol>
+
+        <h2>10. Term &amp; Termination</h2>
+        <p>This DPA continues for the duration of the Customer's subscription to the Service and survives until all Customer Data has been deleted in accordance with §9. The Customer may terminate this DPA on the grounds described in §5(4).</p>
+
+        <h2>11. Audit</h2>
+        <p>FactoryLM makes available to the Controller, on request to <a href="mailto:legal@factorylm.com">legal@factorylm.com</a>, the following information demonstrating compliance:</p>
+        <ul>
+          <li>The current Trust page (<a href="/trust">/trust</a>), including security measures, Sub-processor list, and certification status.</li>
+          <li>SOC 2 attestation reports under NDA (when available).</li>
+          <li>Penetration-test summaries (when available).</li>
+          <li>Responses to commonly used vendor security questionnaires (e.g., CAIQ-Lite, VSA-Core).</li>
+        </ul>
+        <p>On-site audits are not generally provided. Independent third-party audits commissioned by the Controller may be requested with at least 60 days' notice; reasonable costs and confidentiality obligations apply, and audits must be limited to records and systems relevant to the processing of the Controller's Customer Data.</p>
+
+        <h2>12. International Transfers</h2>
+        <p>Customer Data is processed and stored in the United States (AWS us-east-1 for primary database; DigitalOcean USA for application hosting). FactoryLM is not registered as a GDPR data controller and does not currently offer service in the European Union. If the Customer is located outside the United States, the Customer is responsible for ensuring that its use of the Service complies with applicable cross-border-transfer laws.</p>
+
+        <h2>13. Liability</h2>
+        <p>The liability of each party under this DPA is subject to the limitations of liability set out in the <a href="/terms">Terms of Service</a>. This DPA does not increase or reduce the liability of either party as set out in the Terms.</p>
+
+        <h2>14. Governing Law</h2>
+        <p>This DPA is governed by the laws of the State of Delaware, USA, without regard to conflict-of-law principles, consistent with the <a href="/terms">Terms of Service</a>.</p>
+
+        <h2>15. Order of Precedence</h2>
+        <p>If there is any conflict between this DPA and the Terms of Service, this DPA controls with respect to data-protection matters.</p>
+
+        <h2>16. Contact</h2>
+        <p>
+          Privacy / data subject requests: <a href="mailto:privacy@factorylm.com">privacy@factorylm.com</a><br>
+          Security incidents and disclosures: <a href="mailto:security@factorylm.com">security@factorylm.com</a><br>
+          Contracting and DPA counter-signature: <a href="mailto:legal@factorylm.com">legal@factorylm.com</a><br>
+          FactoryLM, Inc. — Delaware, USA
+        </p>
+
+        <div class="signature-block">
+          <div class="col">
+            <strong>For Controller (Customer)</strong>
+            <div class="line"></div>
+            Signature
+            <div class="line"></div>
+            Printed name
+            <div class="line"></div>
+            Title
+            <div class="line"></div>
+            Date
+            <div class="line"></div>
+            Company
+          </div>
+          <div class="col">
+            <strong>For Processor (FactoryLM, Inc.)</strong>
+            <div class="line"></div>
+            Signature
+            <div class="line"></div>
+            Printed name
+            <div class="line"></div>
+            Title
+            <div class="line"></div>
+            Date
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="inner">
+      <div class="footer-inner">
+        <a href="/" class="nav-logo" style="font-size:13px;">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18"><rect width="24" height="24" rx="5" fill="#f0a000"/><path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          FactoryLM
+        </a>
+        <ul class="footer-links">
+          <li><a href="/blog">Blog</a></li>
+          <li><a href="/cmms">Troubleshooter</a></li>
+          <li><a href="/trust">Trust</a></li>
+          <li><a href="/privacy">Privacy</a></li>
+          <li><a href="/terms">Terms</a></li>
+          <li><a href="/legal/dpa">DPA</a></li>
+          <li><a href="mailto:contact@factorylm.com">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

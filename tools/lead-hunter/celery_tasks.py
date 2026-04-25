@@ -30,7 +30,18 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
+from hardening import with_retries
+
 log = logging.getLogger("lead-hunter.celery")
+
+# Exception classes that justify retrying a discovery HTTP call
+_HTTP_RETRY = (
+    httpx.TransportError,   # connect / read timeouts, network errors
+    httpx.HTTPStatusError,  # 5xx if .raise_for_status() is called
+    ConnectionError,
+    TimeoutError,
+)
 
 # ---------------------------------------------------------------------------
 # State: rotate through cities each run
@@ -75,8 +86,6 @@ def _check_daily_budget(state: dict) -> bool:
 
 def run_discover_and_enrich() -> dict:
     """Execute one hourly discovery + enrichment cycle. Returns run stats."""
-    import httpx
-
     # Import here to allow running without Celery
     sys.path.insert(0, str(Path(__file__).parent))
     import discover
@@ -90,13 +99,6 @@ def run_discover_and_enrich() -> dict:
     db_url = os.environ.get("NEON_DATABASE_URL", "")
     hunter_key = os.environ.get("HUNTER_API_KEY", "")
     hs_token = os.environ.get("HUBSPOT_ACCESS_TOKEN") or os.environ.get("HUBSPOT_API_KEY", "")
-
-    # Apply schema if DB available
-    if db_url:
-        try:
-            hunt.apply_schema(db_url)
-        except Exception as e:
-            log.warning("Schema apply (non-fatal): %s", e)
 
     # Pick city for this run (rotate)
     cities = hunt.CITIES
@@ -112,7 +114,17 @@ def run_discover_and_enrich() -> dict:
     if city_idx == 0:
         log.info("Running MSCA directory scrape...")
         with httpx.Client(timeout=20) as client:
-            msca_facs = discover.scrape_msca(client)
+            try:
+                msca_facs = with_retries(
+                    lambda: discover.scrape_msca(client),
+                    name="scrape_msca",
+                    retries=2,
+                    backoff=3.0,
+                    retry_on=_HTTP_RETRY,
+                )
+            except Exception as e:
+                log.warning("scrape_msca failed after retries: %s", e)
+                msca_facs = []
             requests_used += 1
             for f in msca_facs:
                 if f.key not in new_facilities:
@@ -144,7 +156,17 @@ def run_discover_and_enrich() -> dict:
                 if requests_used >= DISCOVERY_RATE["max_requests_per_run"]:
                     break
                 query = qt.format(city=city_name)
-                results = discover._ddg_search(query, client)
+                try:
+                    results = with_retries(
+                        lambda: discover._ddg_search(query, client),
+                        name=f"ddg_search:{qt[:20]}",
+                        retries=1,  # discovery loop already absorbs single fails via ddg_fails
+                        backoff=2.0,
+                        retry_on=_HTTP_RETRY,
+                    )
+                except Exception as e:
+                    log.warning("ddg_search retry exhausted (%s): %s", qt[:30], e)
+                    results = None
                 requests_used += 1
                 if results is None:
                     ddg_fails[0] += 1
@@ -165,28 +187,43 @@ def run_discover_and_enrich() -> dict:
 
     # Phase 2: Enrich top un-enriched facilities
     if db_url:
-        enriched_count = _enrich_unenriched(
+        enriched_count, enriched_attempted = _enrich_unenriched(
             db_url, hunter_key, DISCOVERY_RATE["max_enrichments_per_run"]
         )
     else:
-        enriched_count = 0
+        enriched_count, enriched_attempted = 0, 0
 
-    # Persist to DB
+    # Persist to DB — retry on transient NeonDB errors (cold start, network blip)
     inserted = 0
     if db_url and fac_list:
         try:
-            inserted = hunt.upsert_facilities(fac_list, db_url)
+            inserted = with_retries(
+                lambda: hunt.upsert_facilities(fac_list, db_url),
+                name="upsert_facilities",
+                retries=3,
+                backoff=2.0,
+            )
             log.info("DB: %d new, %d updated", inserted, len(fac_list) - inserted)
         except Exception as e:
-            log.error("DB upsert failed: %s", e)
+            log.error("DB upsert failed after retries: %s", e)
 
-    # HubSpot push for qualified new facilities
+    # HubSpot push — bounded retries on transient 5xx / network
     hs_pushed = 0
+    hs_qualified = 0
     if hs_token and fac_list:
         qualified = [f for f in fac_list if f.icp_score >= 10]
+        hs_qualified = len(qualified)
         if qualified:
-            stats = hunt.push_to_hubspot(qualified, hs_token)
-            hs_pushed = stats.get("companies_created", 0) + stats.get("companies_updated", 0)
+            try:
+                stats = with_retries(
+                    lambda: hunt.push_to_hubspot(qualified, hs_token),
+                    name="push_to_hubspot",
+                    retries=2,
+                    backoff=3.0,
+                )
+                hs_pushed = stats.get("companies_created", 0) + stats.get("companies_updated", 0)
+            except Exception as e:
+                log.error("HubSpot push failed after retries: %s", e)
 
     # Update state
     state["requests_today"] = state.get("requests_today", 0) + requests_used
@@ -198,6 +235,8 @@ def run_discover_and_enrich() -> dict:
         "discovered": len(fac_list),
         "inserted": inserted,
         "enriched": enriched_count,
+        "enriched_attempted": enriched_attempted,
+        "hs_qualified": hs_qualified if hs_token and fac_list else 0,
         "hs_pushed": hs_pushed,
         "requests_used": requests_used,
         "requests_today": state["requests_today"],
@@ -213,90 +252,83 @@ def run_discover_and_enrich() -> dict:
     return run_result
 
 
-def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> int:
-    """Enrich facilities that have a website but no contacts yet."""
+def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> tuple[int, int]:
+    """Enrich facilities that have a website but no contacts yet.
+
+    Returns (succeeded, attempted). attempted == 0 means nothing eligible —
+    not a partial failure.
+    """
     import enrich
     import httpx
     import hunt
     import psycopg2
 
-    conn = psycopg2.connect(db_url)
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT f.id, f.name, f.city, f.website, f.phone, f.icp_score, f.notes
-        FROM prospect_facilities f
-        LEFT JOIN prospect_contacts c ON c.facility_id = f.id
-        WHERE f.website IS NOT NULL AND f.website != ''
-          AND c.id IS NULL
-          AND f.icp_score >= 6
-        ORDER BY f.icp_score DESC
-        LIMIT %s
-        """,
-        (limit,),
-    )
-    rows = cur.fetchall()
-    conn.close()
-
-    if not rows:
-        return 0
-
     enriched = 0
-    with httpx.Client(timeout=15) as client:
-        for row in rows:
-            fid, name, city, website, phone, icp_score, notes = row
-            f = hunt.Facility(
-                name=name,
-                city=city,
-                website=website or "",
-                phone=phone or "",
-                icp_score=icp_score or 0,
-                notes=notes or "",
+    attempted = 0
+
+    with psycopg2.connect(db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT f.id, f.name, f.city, f.website, f.phone, f.icp_score, f.notes
+                FROM prospect_facilities f
+                LEFT JOIN prospect_contacts c ON c.facility_id = f.id
+                WHERE f.website IS NOT NULL AND f.website != ''
+                  AND c.id IS NULL
+                  AND f.icp_score >= 6
+                ORDER BY f.icp_score DESC
+                LIMIT %s
+                """,
+                (limit,),
             )
-            try:
-                log.info("Enriching: %s (%s)", name[:50], (website or "")[:40])
-                result = enrich.scrape_facility_deep(f, client)
-                enrich.apply_enrichment(f, result, hunter_key, client)
-                f.icp_score = hunt.score_facility(f)
+            rows = cur.fetchall()
 
-                # Save enrichment back to DB
-                conn2 = psycopg2.connect(db_url)
-                cur2 = conn2.cursor()
-                if f.phone:
-                    cur2.execute(
-                        "UPDATE prospect_facilities SET phone=%s, updated_at=NOW() WHERE id=%s",
-                        (f.phone, fid),
-                    )
-                if "vfd_keywords_found" in f.notes:
-                    cur2.execute(
-                        "UPDATE prospect_facilities SET notes=%s, icp_score=%s, updated_at=NOW() WHERE id=%s",
-                        (f.notes, f.icp_score, fid),
-                    )
-                if f.contacts:
-                    for c in f.contacts:
-                        cur2.execute(
-                            """
-                            INSERT INTO prospect_contacts (facility_id, name, title, email, phone, source, confidence)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            ON CONFLICT DO NOTHING
-                            """,
-                            (
-                                fid,
-                                c.get("name"),
-                                c.get("title"),
-                                c.get("email"),
-                                c.get("phone"),
-                                c.get("source", "website"),
-                                c.get("confidence", "low"),
-                            ),
-                        )
-                conn2.commit()
-                conn2.close()
-                enriched += 1
-            except Exception as e:
-                log.debug("Enrich failed %s: %s", name, e)
+        if not rows:
+            return 0, 0
 
-    return enriched
+        attempted = len(rows)
+        with httpx.Client(timeout=15) as client:
+            for row in rows:
+                fid, name, city, website, phone, icp_score, notes = row
+                f = hunt.Facility(
+                    name=name, city=city, website=website or "",
+                    phone=phone or "", icp_score=icp_score or 0, notes=notes or "",
+                )
+                try:
+                    log.info("Enriching: %s (%s)", name[:50], (website or "")[:40])
+                    result = enrich.scrape_facility_deep(f, client)
+                    enrich.apply_enrichment(f, result, hunter_key, client)
+                    f.icp_score = hunt.score_facility(f)
+
+                    with conn.cursor() as cur2:
+                        if f.phone:
+                            cur2.execute(
+                                "UPDATE prospect_facilities SET phone=%s, updated_at=NOW() WHERE id=%s",
+                                (f.phone, fid),
+                            )
+                        if "vfd_keywords_found" in f.notes:
+                            cur2.execute(
+                                "UPDATE prospect_facilities SET notes=%s, icp_score=%s, updated_at=NOW() WHERE id=%s",
+                                (f.notes, f.icp_score, fid),
+                            )
+                        if f.contacts:
+                            for c in f.contacts:
+                                cur2.execute(
+                                    """
+                                    INSERT INTO prospect_contacts (facility_id, name, title, email, phone, source, confidence)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                    ON CONFLICT DO NOTHING
+                                    """,
+                                    (fid, c.get("name"), c.get("title"), c.get("email"),
+                                     c.get("phone"), c.get("source", "website"), c.get("confidence", "low")),
+                                )
+                    conn.commit()
+                    enriched += 1
+                except Exception as e:
+                    log.warning("Enrich failed %s: %s", name, e)
+                    conn.rollback()  # release transaction state on this connection
+
+    return enriched, attempted
 
 
 # ---------------------------------------------------------------------------
@@ -306,14 +338,21 @@ def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> int:
 try:
     from celery import shared_task
 
-    @shared_task(name="lead_hunter.discover_and_enrich", bind=True, max_retries=2)
+    @shared_task(name="lead_hunter.discover_and_enrich", bind=True, max_retries=0)
     def discover_and_enrich(self):
-        """Celery task: hourly lead discovery + enrichment."""
-        try:
-            return run_discover_and_enrich()
-        except Exception as exc:
-            log.error("Hourly task failed: %s", exc)
-            raise self.retry(exc=exc, countdown=300)
+        """Celery task: hourly lead discovery + enrichment.
+
+        Delegates to run_hourly.main() so the singleton lock, hard timeout,
+        preflight checks, and alert sink ALL apply (parity with launchd path).
+        Celery's own retry is disabled (max_retries=0) — run_hourly's
+        with_retries layer handles transient failures internally and the
+        next hour will re-run anyway.
+        """
+        sys.path.insert(0, str(Path(__file__).parent))
+        from run_hourly import main as run_main
+        rc = run_main()
+        log.info("lead_hunter.discover_and_enrich rc=%d", rc)
+        return {"exit_code": rc}
 
 except ImportError:
     # Celery not installed — task available only via run_hourly.py

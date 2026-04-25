@@ -64,6 +64,13 @@ import { seedAssetFromNameplate } from "./seed/knowledge-seed.js";
 import { importCSV } from "./lib/csv-import.js";
 import { sendBetaWelcomeEmail, sendActivatedEmail } from "./lib/mailer.js";
 import { startDripScheduler } from "./lib/drip.js";
+import { recordAuditEvent, requestMetadata } from "./lib/audit.js";
+import {
+  requestSoftDelete,
+  purgePendingDeletions,
+} from "./lib/account-deletion.js";
+import { getMfaState } from "./lib/quota.js";
+import { decryptSecret, verifyTotp, findRecoveryCodeIndex } from "./lib/mfa.js";
 import {
   createCheckoutSession,
   createPortalSession,
@@ -97,6 +104,7 @@ import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
 import { qrTest } from "./routes/qr-test.js";
 import { inbox } from "./routes/inbox.js";
+import { mfa } from "./routes/mfa.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -157,6 +165,77 @@ app.route("/", adminChannelApi);        // handles POST /api/admin/channels
 // Magic email inbox (Unit 3): Google Apps Script poller webhook (HMAC-signed)
 app.route("/api/v1/inbox", inbox);       // POST /api/v1/inbox/email
 
+// MFA (TOTP) — Tier 1 #9. Free on every plan; SSO is the upsell.
+app.route("/api/auth/mfa", mfa);         // setup / enable / disable / status
+
+// Account deletion (Tier 1 #8) — CCPA "right to be forgotten" answer.
+// Soft delete now, hard purge after 30 days.
+app.delete("/api/v1/account", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  const tenant = await findTenantById(user.sub);
+  if (!tenant) return c.json({ error: "Tenant not found" }, 404);
+
+  const body = (await c.req.json().catch(() => null)) as
+    | { confirm?: string; code?: string; recovery_code?: string; reason?: string }
+    | null;
+
+  // Defensive confirmation phrase — protects against XSRF / accidental
+  // clicks. Exact-match required.
+  if (body?.confirm !== "DELETE") {
+    return c.json(
+      { error: "Send {\"confirm\":\"DELETE\"} in the body to proceed." },
+      400,
+    );
+  }
+
+  // If MFA is enabled, require re-auth (TOTP or recovery code) before
+  // accepting the deletion. Stops a stolen session from nuking an account.
+  const mfaState = await getMfaState(user.sub);
+  if (mfaState.enabled && mfaState.secretEnc) {
+    const code = (body?.code ?? "").trim();
+    const recovery = (body?.recovery_code ?? "").trim();
+    let pass = false;
+    try {
+      const secret = decryptSecret(mfaState.secretEnc);
+      if (/^\d{6}$/.test(code) && verifyTotp(secret, code)) pass = true;
+    } catch {
+      pass = false;
+    }
+    if (!pass && recovery) {
+      const idx = findRecoveryCodeIndex(recovery, mfaState.recoveryCodesHashed);
+      if (idx >= 0) pass = true;
+    }
+    if (!pass) {
+      return c.json({ error: "MFA re-auth required (code or recovery_code)" }, 401);
+    }
+  }
+
+  const meta = requestMetadata(c);
+  const result = await requestSoftDelete({
+    tenant,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+    reason: body?.reason,
+  });
+  return c.json(result, 200);
+});
+
+// Daily worker — runs the hard purge for tenants past their 30-day grace.
+const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+if (process.env.NODE_ENV !== "test" && process.env.MIRA_DISABLE_PURGE_WORKER !== "1") {
+  setInterval(() => {
+    purgePendingDeletions().catch((err) =>
+      console.error("[purge] worker error:", err),
+    );
+  }, PURGE_INTERVAL_MS);
+  // First run on a 60s delay so the server is fully up.
+  setTimeout(() => {
+    purgePendingDeletions().catch((err) =>
+      console.error("[purge] worker error (initial):", err),
+    );
+  }, 60_000);
+}
+
 // ---------------------------------------------------------------------------
 // Static files
 // ---------------------------------------------------------------------------
@@ -189,6 +268,8 @@ app.get("/sitemap.xml", (c) => {
     })),
     { loc: "/privacy", priority: "0.3", freq: "yearly" },
     { loc: "/terms", priority: "0.3", freq: "yearly" },
+    { loc: "/trust", priority: "0.4", freq: "monthly" },
+    { loc: "/legal/dpa", priority: "0.3", freq: "yearly" },
   ];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -226,6 +307,34 @@ app.get("/", async (c) => {
 app.get("/api/health", (c) =>
   c.json({ status: "ok", service: "mira-web", version: "0.2.1" })
 );
+
+// PostHog analytics init (closes #618)
+// Public API key is safe in HTML, but we serve it from server env so
+// dev/staging/prod can use different projects without source changes.
+// If PLG_POSTHOG_KEY is unset, a no-op stub is shipped so calls to
+// posthog.capture(...) in HTML never throw — analytics is disabled silently.
+const POSTHOG_HOST = (process.env.PLG_POSTHOG_HOST || "https://us.i.posthog.com").trim();
+app.get("/posthog-init.js", (c) => {
+  const key = (process.env.PLG_POSTHOG_KEY || "").trim();
+  c.header("Content-Type", "application/javascript; charset=utf-8");
+  // Cache for 5 minutes — same as static assets — but vary by host so a
+  // key rotation is picked up quickly without a hard reload.
+  c.header("Cache-Control", "public, max-age=300");
+  if (!key) {
+    return c.body(
+      "// PostHog: PLG_POSTHOG_KEY is unset; analytics disabled.\n" +
+      "window.posthog={capture:function(){},identify:function(){},init:function(){},reset:function(){}};\n",
+    );
+  }
+  // Stock PostHog snippet, plus a tiny convenience: track clicks on any
+  // [data-cta] element so marketing CTAs show up in funnels without the
+  // HTML having to call posthog.capture() manually.
+  return c.body(
+    "!function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(\".\");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement(\"script\")).type=\"text/javascript\",p.crossOrigin=\"anonymous\",p.async=!0,p.src=s.api_host.replace(\".i.posthog.com\",\"-assets.i.posthog.com\")+\"/static/array.js\",(r=t.getElementsByTagName(\"script\")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a=\"posthog\",u.people=u.people||[],u.toString=function(t){var e=\"posthog\";return\"posthog\"!==a&&(e+=\".\"+a),t||(e+=\" (stub)\"),e},u.people.toString=function(){return u.toString(1)+\".people (stub)\"},o=\"init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey canRenderSurveyAsync identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing\".split(\" \"),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);\n" +
+    `posthog.init(${JSON.stringify(key)}, { api_host: ${JSON.stringify(POSTHOG_HOST)}, person_profiles: "identified_only", capture_pageview: true });\n` +
+    "document.addEventListener('click', function(e){var el=e.target.closest('[data-cta]');if(el){posthog.capture('cta_click',{cta:el.getAttribute('data-cta'),href:el.getAttribute('href')||null,page:location.pathname});}}, {capture:true});\n",
+  );
+});
 
 // Serve CMMS page
 app.get("/cmms", async (c) => {
@@ -273,6 +382,27 @@ app.get("/privacy", async (c) => {
 
 app.get("/terms", async (c) => {
   const file = Bun.file("./public/terms.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+app.get("/trust", async (c) => {
+  const file = Bun.file("./public/trust.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+app.get("/.well-known/security.txt", async (c) => {
+  const file = Bun.file("./public/.well-known/security.txt");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+});
+
+app.get("/legal/dpa", async (c) => {
+  const file = Bun.file("./public/legal/dpa.html");
   return new Response(await file.text(), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
@@ -400,7 +530,61 @@ app.get("/demo/work-orders", (c) =>
 // Registration
 // ---------------------------------------------------------------------------
 
+// Per-IP rate limiter for /api/register.
+// Token bucket: 5 requests per minute, 20 per hour. In-memory; single-instance OK.
+// Blocks signup-flood / SMTP-bomb attempts while keeping legit signup traffic free.
+const REGISTER_RATE_BUCKETS = new Map<string, { minute: number[]; hour: number[] }>();
+const REGISTER_LIMIT_PER_MINUTE = 5;
+const REGISTER_LIMIT_PER_HOUR = 20;
+
+function checkRegisterRateLimit(ip: string): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  const minuteAgo = now - 60_000;
+  const hourAgo = now - 3_600_000;
+  const bucket = REGISTER_RATE_BUCKETS.get(ip) ?? { minute: [], hour: [] };
+  bucket.minute = bucket.minute.filter((t) => t > minuteAgo);
+  bucket.hour = bucket.hour.filter((t) => t > hourAgo);
+  if (bucket.minute.length >= REGISTER_LIMIT_PER_MINUTE) {
+    return { allowed: false, retryAfterSec: Math.ceil((bucket.minute[0] + 60_000 - now) / 1000) };
+  }
+  if (bucket.hour.length >= REGISTER_LIMIT_PER_HOUR) {
+    return { allowed: false, retryAfterSec: Math.ceil((bucket.hour[0] + 3_600_000 - now) / 1000) };
+  }
+  bucket.minute.push(now);
+  bucket.hour.push(now);
+  REGISTER_RATE_BUCKETS.set(ip, bucket);
+  return { allowed: true, retryAfterSec: 0 };
+}
+
+function getClientIp(headers: Headers, fallback = "unknown"): string {
+  const fwd = headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]!.trim();
+  return headers.get("x-real-ip") || headers.get("cf-connecting-ip") || fallback;
+}
+
+// Cross-origin guard for /api/register — block browser-driven cross-origin POSTs.
+// Empty/null Origin (same-origin or curl) is allowed; any cross-origin Origin must
+// be in the allowlist. ALLOWED_ORIGINS env override comma-separated.
+const REGISTER_ALLOWED_ORIGINS = (process.env.PLG_REGISTER_ALLOWED_ORIGINS ||
+  "https://factorylm.com,https://www.factorylm.com,http://localhost:3000,http://localhost:3200")
+  .split(",").map(s => s.trim()).filter(Boolean);
+
 app.post("/api/register", async (c) => {
+  const origin = c.req.header("origin");
+  if (origin && !REGISTER_ALLOWED_ORIGINS.includes(origin)) {
+    return c.json({ error: "Forbidden origin" }, 403);
+  }
+
+  const ip = getClientIp(c.req.raw.headers);
+  const rl = checkRegisterRateLimit(ip);
+  if (!rl.allowed) {
+    c.header("Retry-After", String(rl.retryAfterSec));
+    return c.json(
+      { error: "Too many signup attempts. Please try again in a minute." },
+      429,
+    );
+  }
+
   const body = await c.req.json();
   const { email, company, firstName } = body;
 
@@ -444,6 +628,15 @@ app.post("/api/register", async (c) => {
       atlasPassword: "",
       atlasCompanyId: 0,
       atlasUserId: 0,
+    });
+
+    const meta = requestMetadata(c);
+    void recordAuditEvent({
+      tenantId,
+      action: "tenant.signup",
+      metadata: { email, company },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
     });
 
     // Send beta welcome email (async, don't block response)
@@ -535,6 +728,15 @@ app.post("/api/stripe/webhook", async (c) => {
       await updateTenantTier(tenantId, "active");
       console.log("[stripe-webhook] Tenant activated:", tenantId);
 
+      void recordAuditEvent({
+        tenantId,
+        actorType: "system",
+        actorId: "stripe.webhook",
+        action: "tenant.activated",
+        resource: subscriptionId,
+        metadata: { customer_id: customerId, subscription_id: subscriptionId },
+      });
+
       const tenant = await findTenantById(tenantId);
       if (!tenant) {
         console.error("[stripe-webhook] Tenant not found after activation:", tenantId);
@@ -571,6 +773,13 @@ app.post("/api/stripe/webhook", async (c) => {
       if (tenantId) {
         await updateTenantTier(tenantId, "churned");
         console.log("[stripe-webhook] Tenant churned:", tenantId);
+        void recordAuditEvent({
+          tenantId,
+          actorType: "system",
+          actorId: "stripe.webhook",
+          action: "tenant.churned",
+          resource: sub.id,
+        });
       } else {
         // Fallback: look up by customer ID
         const customerId = typeof sub.customer === "string"
@@ -581,6 +790,14 @@ app.post("/api/stripe/webhook", async (c) => {
           if (tenant) {
             await updateTenantTier(tenant.id, "churned");
             console.log("[stripe-webhook] Tenant churned (by customer):", tenant.id);
+            void recordAuditEvent({
+              tenantId: tenant.id,
+              actorType: "system",
+              actorId: "stripe.webhook",
+              action: "tenant.churned",
+              resource: sub.id,
+              metadata: { matched_via: "customer_id" },
+            });
           }
         }
       }
@@ -787,6 +1004,7 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
   }
 
   const started = Date.now();
+  const meta = requestMetadata(c);
   try {
     const resp = await fetch(`${MIRA_INGEST_URL()}/ingest/document-kb`, {
       method: "POST",
@@ -802,6 +1020,20 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
       latencyMs,
     );
 
+    void recordAuditEvent({
+      tenantId: user.sub,
+      action: "manual.uploaded",
+      resource: file.name || "upload.pdf",
+      metadata: {
+        size_bytes: file.size,
+        ingest_status: resp.status,
+        latency_ms: latencyMs,
+        equipment_type: typeof equipmentType === "string" ? equipmentType : null,
+      },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
     const contentType = resp.headers.get("content-type") || "application/json";
     return new Response(bodyText, {
       status: resp.status,
@@ -809,6 +1041,14 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
     });
   } catch (err) {
     console.error("[ingest-manual] Proxy failed:", err);
+    void recordAuditEvent({
+      tenantId: user.sub,
+      action: "manual.uploaded",
+      resource: file.name || "upload.pdf",
+      metadata: { size_bytes: file.size, error: "upstream-unreachable" },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
     return c.json({ error: "Ingest upstream unreachable" }, 502);
   }
 });

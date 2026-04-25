@@ -129,3 +129,41 @@ class TestRouterComplete:
         content, usage = await router.complete([{"role": "user", "content": "VFD fault F-201"}])
         assert content == "diagnosis result"
         assert usage["provider"] == "claude"
+
+    async def test_complete_sanitizes_by_default(self, router_with_providers):
+        """complete() must scrub IPs/MACs/serials before reaching the provider —
+        opt-in sanitization is the wrong default; one forgetful caller leaks PII."""
+        router = router_with_providers
+        captured: dict = {}
+
+        async def fake_call_provider(provider, messages, *_args, **_kwargs):
+            captured["messages"] = messages
+            return ("ok", {"provider": "claude"})
+
+        router._call_provider = fake_call_provider
+        await router.complete(
+            [{"role": "user", "content": "PLC at 10.0.0.5 (MAC AA:BB:CC:DD:EE:FF) S/N ABC123"}]
+        )
+        sent = captured["messages"][0]["content"]
+        assert "10.0.0.5" not in sent
+        assert "AA:BB:CC:DD:EE:FF" not in sent
+        assert "ABC123" not in sent
+        assert "[IP]" in sent and "[MAC]" in sent and "[SN]" in sent
+
+    async def test_complete_sanitize_false_passes_raw(self, router_with_providers):
+        """sanitize=False is the bypass for offline evals that test the sanitizer itself."""
+        router = router_with_providers
+        captured: dict = {}
+
+        async def fake_call_provider(provider, messages, *_args, **_kwargs):
+            captured["messages"] = messages
+            return ("ok", {"provider": "claude"})
+
+        router._call_provider = fake_call_provider
+        await router.complete(
+            [{"role": "user", "content": "raw 10.0.0.5"}],
+            sanitize=False,
+        )
+        sent = captured["messages"][0]["content"]
+        assert "10.0.0.5" in sent
+        assert "[IP]" not in sent

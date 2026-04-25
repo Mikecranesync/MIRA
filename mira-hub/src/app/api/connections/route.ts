@@ -1,21 +1,17 @@
 import { NextResponse } from "next/server";
 import { listBindings, type Binding } from "@/lib/bindings";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-/**
- * GET /hub/api/connections
- *
- * Returns the current user's channel/integration bindings. Shape matches
- * Partial<Record<Provider, ConnectionMeta>> so the client can swap in place
- * for its previous localStorage reads.
- */
 export async function GET() {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   try {
-    const bindings = await listBindings();
+    const bindings = await listBindings(ctx.tenantId);
     return NextResponse.json(toClientShape(bindings));
   } catch (err) {
     console.error("[api/connections] GET", err);

@@ -88,12 +88,21 @@
   <link rel="stylesheet" href="/public/cmms.css">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#f5a623">
+  <!-- web-review #624: keep apple-* for older iOS but include the modern companion -->
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="FactoryLM">
   <link rel="apple-touch-icon" href="/public/icons/mira-192.png">
-  <link rel="dns-prefetch" href="//unpkg.com">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <!-- web-review #620: explicit favicon link so Slack/RSS/Google don't probe /favicon.ico → 404 -->
+  <link rel="icon" type="image/png" sizes="192x192" href="/public/icons/mira-192.png">
+  <!-- web-review #621: self-hosted lucide v1.11.0 (ISC) — removes unpkg supply-chain + render coupling -->
+  <script src="/public/lib/lucide.min.js"
+          integrity="sha384-7PArHXNzg1s/WgbAH9xkBpx4T6MJ0jPAxaEM9yld+zvdFEjSf+wzzv0hDnem/6rw"
+          crossorigin="anonymous"
+          defer></script>
+  <!-- PostHog analytics (closes #618) — server injects PLG_POSTHOG_KEY; no-op stub if unset -->
+  <script src="/posthog-init.js" defer></script>
 </head>
 <body>
 <div class="page">
@@ -120,7 +129,7 @@
       <p>Works alongside your existing CMMS — MaintainX, Limble, or UpKeep. No migration. No rip-and-replace.</p>
 
       <!-- Signup Form -->
-      <div class="signup-card" id="signup-form-wrap">
+      <form class="signup-card" id="signup-form-wrap" onsubmit="event.preventDefault(); handleSignup(); return false;">
         <div class="form-row">
           <label for="f-email">Work email</label>
           <input type="email" id="f-email" placeholder="you@yourplant.com" autocomplete="email" required>
@@ -136,16 +145,16 @@
         <div class="form-row" style="margin-top:12px">
           <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:var(--text-sm);color:var(--text-secondary)">
             <input type="checkbox" id="f-terms" required style="margin-top:3px;flex-shrink:0;accent-color:var(--amber)">
-            <span>I agree to the <a href="/terms" target="_blank" style="color:var(--amber)">Terms of Service</a> and <a href="/privacy" target="_blank" style="color:var(--amber)">Privacy Policy</a></span>
+            <span>I agree to the <a href="/terms" target="_blank" rel="noopener" style="color:var(--amber)">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener" style="color:var(--amber)">Privacy Policy</a></span>
           </label>
         </div>
         <div id="form-error" class="form-error"></div>
-        <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
+        <button class="btn-primary" id="signup-btn" type="submit">
           <i data-lucide="zap" style="width:16px;height:16px"></i>
           Join the Beta — $97/mo
         </button>
         <p style="margin:8px 0 0;font-size:var(--text-xs);color:var(--text-muted);text-align:center">Site license — unlimited users. Cancel anytime.</p>
-      </div>
+      </form>
 
       <!-- Confirmation (shown after signup) -->
       <div class="download-step" id="download-step">
@@ -432,12 +441,22 @@ async function handleSignup() {
   const email = document.getElementById('f-email').value.trim();
   const company = document.getElementById('f-company').value.trim();
   const firstName = document.getElementById('f-firstname').value.trim();
+  const termsAccepted = document.getElementById('f-terms').checked;
   const errEl = document.getElementById('form-error');
   errEl.classList.remove('show');
+
+  posthog.capture('signup_submit', { has_first_name: !!firstName, terms_accepted: termsAccepted });
 
   if (!email || !company) {
     errEl.textContent = 'Email and company name are required.';
     errEl.classList.add('show');
+    posthog.capture('signup_error', { reason: 'missing_required_fields' });
+    return;
+  }
+  if (!termsAccepted) {
+    errEl.textContent = 'Please agree to the Terms of Service and Privacy Policy.';
+    errEl.classList.add('show');
+    posthog.capture('signup_error', { reason: 'terms_not_accepted' });
     return;
   }
 
@@ -454,15 +473,20 @@ async function handleSignup() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');
 
+    // Identify the user in PostHog so all subsequent events tie back to them.
+    posthog.identify(email, { company: company, first_name: firstName || null });
+
     // Active user returning — has token, show dashboard
     if (data.token) {
       AUTH.token = data.token;
       sessionStorage.setItem('flm_token', data.token);
+      posthog.capture('signup_success', { tenant_returning: true });
       await activateAuth();
       return;
     }
 
     // Pending user — show "check your email"
+    posthog.capture('signup_success', { tenant_returning: false });
     const name = firstName || email.split('@')[0];
     document.getElementById('signup-form-wrap').classList.add('hidden');
     document.getElementById('download-step').classList.add('show');
@@ -471,6 +495,7 @@ async function handleSignup() {
       `Check your email — we'll send you a series of short Loom videos showing what MIRA can do. When you're ready, a payment link unlocks everything.`;
 
   } catch (err) {
+    posthog.capture('signup_error', { reason: 'request_failed', message: err.message });
     errEl.textContent = err.message;
     errEl.classList.add('show');
     btn.disabled = false;
@@ -491,8 +516,12 @@ async function initTicker() {
     const wos = await res.json();
     const list = document.getElementById('hero-wo-list');
     list.innerHTML = '';
+    // Seed with element wrappers (not innerHTML +=, which leaves whitespace Text nodes
+    // between elements; lastChild then picks a Text node and `.style` is undefined).
     for (let i = 0; i < Math.min(3, wos.length); i++) {
-      list.innerHTML += tickerCardHTML(wos[i]);
+      const seed = document.createElement('div');
+      seed.innerHTML = tickerCardHTML(wos[i]);
+      list.appendChild(seed);
     }
     lucide.createIcons();
 
@@ -504,9 +533,11 @@ async function initTicker() {
       card.innerHTML = tickerCardHTML(wos[idx]);
       list.insertBefore(card, list.firstChild);
       if (list.children.length > 3) {
-        const last = list.lastChild;
-        last.style.cssText += 'opacity:0;transform:translateY(8px)';
-        setTimeout(() => last.remove(), 400);
+        const last = list.lastElementChild;
+        if (last) {
+          last.style.cssText += 'opacity:0;transform:translateY(8px)';
+          setTimeout(() => last.remove(), 400);
+        }
       }
       requestAnimationFrame(() => requestAnimationFrame(() => {
         card.style.opacity = '1';

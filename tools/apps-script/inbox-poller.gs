@@ -111,7 +111,10 @@ function postMessageToWebhook(msg, secret) {
   };
 
   const body = JSON.stringify(payload);
-  const sig = hmacSha256Hex(body, secret);
+  // Sign `<unix-timestamp>.<body>` so the server can reject replays older
+  // than its skew window (currently ±5 minutes).
+  const ts = Math.floor(Date.now() / 1000);
+  const sig = hmacSha256Hex(ts + '.' + body, secret);
 
   const resp = UrlFetchApp.fetch(WEBHOOK_URL, {
     method: 'post',
@@ -119,6 +122,7 @@ function postMessageToWebhook(msg, secret) {
     payload: body,
     headers: {
       'X-Hmac-Signature': sig,
+      'X-Hmac-Timestamp': String(ts),
     },
     muteHttpExceptions: true,
     followRedirects: false,
@@ -163,12 +167,16 @@ function testWebhook() {
     Subject: 'Apps Script connection test',
     Attachments: [],
   });
-  const sig = hmacSha256Hex(body, secret);
+  const ts = Math.floor(Date.now() / 1000);
+  const sig = hmacSha256Hex(ts + '.' + body, secret);
   const resp = UrlFetchApp.fetch(WEBHOOK_URL, {
     method: 'post',
     contentType: 'application/json',
     payload: body,
-    headers: { 'X-Hmac-Signature': sig },
+    headers: {
+      'X-Hmac-Signature': sig,
+      'X-Hmac-Timestamp': String(ts),
+    },
     muteHttpExceptions: true,
   });
   Logger.log('Response: ' + resp.getResponseCode() + ' ' + resp.getContentText());

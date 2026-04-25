@@ -510,6 +510,8 @@
       .cta-start { padding: 14px 24px; font-size: 12px; }
     }
   </style>
+  <!-- PostHog analytics (closes #618) — server injects PLG_POSTHOG_KEY; no-op stub if unset -->
+  <script src="/posthog-init.js" defer></script>
 </head>
 <body>
   <main class="page">

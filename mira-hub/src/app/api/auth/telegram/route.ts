@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertBinding } from "@/lib/bindings";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   const { token, setWebhook, webhookUrl } = await req.json();
 
   if (!token || typeof token !== "string" || !token.match(/^\d+:[\w-]{35}$/)) {
@@ -39,6 +42,7 @@ export async function POST(req: NextRequest) {
 
   // Persist binding (bot token stored encrypted). Scopes are implicit in Telegram Bot API.
   await upsertBinding({
+    tenantId: ctx.tenantId,
     provider: "telegram",
     externalId: String(bot.id),
     accessToken: token,

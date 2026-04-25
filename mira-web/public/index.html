@@ -1012,6 +1012,8 @@
 
     .footer-links a:hover { color: var(--text-dim); }
   </style>
+  <!-- PostHog analytics (closes #618) — server injects PLG_POSTHOG_KEY; no-op stub if unset -->
+  <script src="/posthog-init.js" defer></script>
 </head>
 
 <body>
