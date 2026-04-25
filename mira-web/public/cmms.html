@@ -96,9 +96,11 @@
   <link rel="apple-touch-icon" href="/public/icons/mira-192.png">
   <!-- web-review #620: explicit favicon link so Slack/RSS/Google don't probe /favicon.ico → 404 -->
   <link rel="icon" type="image/png" sizes="192x192" href="/public/icons/mira-192.png">
-  <link rel="dns-prefetch" href="//unpkg.com">
-  <!-- web-review #621: defer kills render-blocking; pinning to a verified version is tracked in #621 -->
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+  <!-- web-review #621: self-hosted lucide v1.11.0 (ISC) — removes unpkg supply-chain + render coupling -->
+  <script src="/public/lib/lucide.min.js"
+          integrity="sha384-7PArHXNzg1s/WgbAH9xkBpx4T6MJ0jPAxaEM9yld+zvdFEjSf+wzzv0hDnem/6rw"
+          crossorigin="anonymous"
+          defer></script>
   <!-- PostHog analytics (closes #618) — server injects PLG_POSTHOG_KEY; no-op stub if unset -->
   <script src="/posthog-init.js" defer></script>
 </head>
