@@ -244,6 +244,149 @@ export async function recordProvisioningAttempt(
      WHERE id = ${tenantId}`;
 }
 
+// MFA persistence helpers (Tier 1 #9). The TOTP secret is stored encrypted
+// (lib/mfa.ts → encryptSecret); recovery codes are stored as SHA-256 hashes.
+export interface MfaState {
+  enabled: boolean;
+  secretEnc: string | null;
+  recoveryCodesHashed: string[];
+  enrolledAt: string | null;
+}
+
+export async function getMfaState(tenantId: string): Promise<MfaState> {
+  const db = sql();
+  const rows = await db`
+    SELECT mfa_enabled, mfa_secret_enc, mfa_recovery_codes_hashed, mfa_enrolled_at
+      FROM plg_tenants WHERE id = ${tenantId} LIMIT 1`;
+  const r = rows[0] as
+    | {
+        mfa_enabled: boolean;
+        mfa_secret_enc: string | null;
+        mfa_recovery_codes_hashed: string[] | null;
+        mfa_enrolled_at: string | null;
+      }
+    | undefined;
+  return {
+    enabled: r?.mfa_enabled ?? false,
+    secretEnc: r?.mfa_secret_enc ?? null,
+    recoveryCodesHashed: r?.mfa_recovery_codes_hashed ?? [],
+    enrolledAt: r?.mfa_enrolled_at ?? null,
+  };
+}
+
+/** Stage a pending enrollment — secret stored, but not yet enabled. */
+export async function stageMfaEnrollment(
+  tenantId: string,
+  secretEnc: string,
+  recoveryCodesHashed: string[],
+): Promise<void> {
+  const db = sql();
+  await db`
+    UPDATE plg_tenants
+       SET mfa_secret_enc = ${secretEnc},
+           mfa_recovery_codes_hashed = ${recoveryCodesHashed},
+           mfa_enabled = FALSE,
+           mfa_enrolled_at = NULL
+     WHERE id = ${tenantId}`;
+}
+
+export async function activateMfa(tenantId: string): Promise<void> {
+  const db = sql();
+  await db`
+    UPDATE plg_tenants
+       SET mfa_enabled = TRUE,
+           mfa_enrolled_at = NOW()
+     WHERE id = ${tenantId}`;
+}
+
+export async function clearMfa(tenantId: string): Promise<void> {
+  const db = sql();
+  await db`
+    UPDATE plg_tenants
+       SET mfa_enabled = FALSE,
+           mfa_secret_enc = NULL,
+           mfa_recovery_codes_hashed = NULL,
+           mfa_enrolled_at = NULL
+     WHERE id = ${tenantId}`;
+}
+
+export async function consumeRecoveryCodeAt(
+  tenantId: string,
+  index: number,
+  remaining: string[],
+): Promise<void> {
+  const db = sql();
+  // Replace the array with the remaining list (caller has already removed
+  // the consumed entry). Atomic single-row update.
+  void index; // index is informational; remaining[] is authoritative
+  await db`
+    UPDATE plg_tenants
+       SET mfa_recovery_codes_hashed = ${remaining}
+     WHERE id = ${tenantId}`;
+}
+
+// Account deletion (Tier 1 #8) — soft delete with 30-day grace window.
+export interface DeletionState {
+  deletedAt: string | null;
+  purgeAfter: string | null;
+}
+
+const DELETION_GRACE_DAYS = 30;
+
+export async function getDeletionState(
+  tenantId: string,
+): Promise<DeletionState> {
+  const db = sql();
+  const rows = await db`
+    SELECT deleted_at, purge_after FROM plg_tenants WHERE id = ${tenantId} LIMIT 1`;
+  const r = rows[0] as
+    | { deleted_at: string | null; purge_after: string | null }
+    | undefined;
+  return {
+    deletedAt: r?.deleted_at ?? null,
+    purgeAfter: r?.purge_after ?? null,
+  };
+}
+
+export async function markTenantDeleted(tenantId: string): Promise<void> {
+  const db = sql();
+  await db`
+    UPDATE plg_tenants
+       SET deleted_at = NOW(),
+           purge_after = NOW() + (${DELETION_GRACE_DAYS} || ' days')::INTERVAL,
+           tier = 'churned'
+     WHERE id = ${tenantId}
+       AND deleted_at IS NULL`;
+}
+
+/** Tenants past their purge_after — eligible for hard delete by the worker. */
+export async function listTenantsAwaitingPurge(): Promise<
+  Array<{ id: string; email: string; deleted_at: string }>
+> {
+  const db = sql();
+  const rows = await db`
+    SELECT id, email, deleted_at
+      FROM plg_tenants
+     WHERE purge_after IS NOT NULL
+       AND purge_after < NOW()
+     ORDER BY purge_after ASC
+     LIMIT 100`;
+  return rows as Array<{ id: string; email: string; deleted_at: string }>;
+}
+
+/**
+ * Hard-delete tenant data after grace window. Removes audit + query rows
+ * (where the tenant_id FK lives) and finally the tenant row itself.
+ * Knowledge entries / Atlas / MinIO / Langfuse purges are coordinated by
+ * lib/account-deletion.ts; this function just covers NeonDB plg_*.
+ */
+export async function hardDeleteTenant(tenantId: string): Promise<void> {
+  const db = sql();
+  await db`DELETE FROM plg_query_log WHERE tenant_id = ${tenantId}`;
+  await db`DELETE FROM audit_events WHERE tenant_id = ${tenantId}`;
+  await db`DELETE FROM plg_tenants WHERE id = ${tenantId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Query quota
 // ---------------------------------------------------------------------------
@@ -376,4 +519,44 @@ export async function ensureSchema(): Promise<void> {
   await db`
     CREATE INDEX IF NOT EXISTS idx_plg_query_log_tenant_date
     ON plg_query_log (tenant_id, created_at)`;
+
+  // MFA columns (Tier 1 #9). Free on Starter tier. The TOTP secret is
+  // encrypted at app layer with PLG_JWT_SECRET-derived key (see lib/mfa.ts);
+  // the column stores the AES-256-GCM ciphertext + nonce. Recovery codes
+  // are SHA-256 hashed at rest, single-use.
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS mfa_secret_enc TEXT`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS mfa_recovery_codes_hashed TEXT[]`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS mfa_enrolled_at TIMESTAMPTZ`;
+
+  // Account deletion (Tier 1 #8). Soft delete with a 30-day grace window
+  // before the hard purge runs. CCPA / "right to be forgotten" answer.
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`;
+  await db`ALTER TABLE plg_tenants ADD COLUMN IF NOT EXISTS purge_after TIMESTAMPTZ`;
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_plg_tenants_purge_after
+      ON plg_tenants (purge_after)
+      WHERE purge_after IS NOT NULL`;
+
+  // Audit log (Tier 1 #7) — append-only event trail for security questionnaire
+  // answers + future SOC 2 audit. Don't UPDATE/DELETE rows from app code.
+  await db`
+    CREATE TABLE IF NOT EXISTS audit_events (
+      id         BIGSERIAL PRIMARY KEY,
+      tenant_id  TEXT NOT NULL REFERENCES plg_tenants(id),
+      actor_id   TEXT NOT NULL,
+      actor_type TEXT NOT NULL DEFAULT 'tenant',
+      action     TEXT NOT NULL,
+      resource   TEXT,
+      metadata   JSONB,
+      ip         TEXT,
+      user_agent TEXT,
+      ts         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`;
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_audit_events_tenant_ts
+      ON audit_events (tenant_id, ts DESC)`;
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_audit_events_action_ts
+      ON audit_events (action, ts DESC)`;
 }
