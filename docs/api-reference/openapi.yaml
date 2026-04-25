@@ -94,7 +94,7 @@ paths:
       - { name: id, in: path, required: true, schema: { type: string } }
     get:    { tags: [Assets], summary: Get asset,    responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Asset" } } } }, "404": { description: Not found } } }
     put:    { tags: [Assets], summary: Update asset, requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AssetUpdate" } } } }, responses: { "200": { description: OK } } }
-    delete: { tags: [Assets], summary: Delete asset, parameters: [{ name: cascade, in: query, schema: { type: boolean, default: false } }], responses: { "204": { description: Deleted }, "409": { description: Has children (pass ?cascade=true)" } } }
+    delete: { tags: [Assets], summary: Delete asset, parameters: [{ name: cascade, in: query, schema: { type: boolean, default: false } }], responses: { "204": { description: Deleted }, "409": { description: "Has children (pass ?cascade=true)" } } }
   /assets/{id}/components:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     get: { tags: [Assets], summary: List direct children, responses: { "200": { description: OK } } }
