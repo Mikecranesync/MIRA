@@ -127,3 +127,57 @@ export async function recordScan(input: RecordScanInput): Promise<string> {
 
   return rows[0].scan_id as string;
 }
+
+// ---------------------------------------------------------------------------
+// Asset context cache — written by QR handler, read by Python /start handler
+// ---------------------------------------------------------------------------
+
+export interface AssetContextPayload {
+  asset_name: string;
+  asset_model: string;
+  asset_area: string;
+  atlas_asset_id: number;
+  work_orders: Array<{
+    id: number;
+    title: string;
+    status: string;
+    priority: string;
+    createdAt: string;
+    completedAt: string | null;
+    description: string;
+  }>;
+  pre_loaded_at: string;
+}
+
+/**
+ * Upsert the pre-loaded asset context into asset_context_cache.
+ *
+ * Keyed by (tenant_id, asset_tag) — this table bridges the TS QR handler
+ * (which knows tenant + asset but not chat_id) to the Python /start handler
+ * (which knows chat_id once the user taps the Telegram deep link).
+ *
+ * Never throws — returns false on failure so the QR redirect still completes.
+ */
+export async function upsertAssetContextCache(
+  tenantId: string,
+  assetTag: string,
+  atlasAssetId: number,
+  payload: AssetContextPayload,
+): Promise<boolean> {
+  try {
+    const db = sql();
+    const payloadJson = JSON.stringify(payload);
+    await db`
+      INSERT INTO asset_context_cache
+        (tenant_id, asset_tag, atlas_asset_id, context_json, pre_loaded_at)
+      VALUES
+        (${tenantId}::uuid, ${assetTag}, ${atlasAssetId}, ${payloadJson}::jsonb, NOW())
+      ON CONFLICT (tenant_id, asset_tag) DO UPDATE SET
+        atlas_asset_id = EXCLUDED.atlas_asset_id,
+        context_json   = EXCLUDED.context_json,
+        pre_loaded_at  = NOW()`;
+    return true;
+  } catch {
+    return false;
+  }
+}

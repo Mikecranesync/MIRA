@@ -235,3 +235,87 @@ export async function listWorkOrders(
   if (!resp.ok) return { error: `Failed to list WOs (${resp.status})` };
   return resp.json();
 }
+
+/**
+ * Work order summary — safe subset of Atlas WO fields for FSM context injection.
+ * Never leaks internal IDs beyond what's needed for the "same symptom?" prompt.
+ */
+export interface WorkOrderSummary {
+  id: number;
+  title: string;
+  status: string;
+  priority: string;
+  createdAt: string;
+  completedAt: string | null;
+  description: string;
+}
+
+/**
+ * Fetch the last `limit` work orders for a specific Atlas asset (by numeric ID).
+ *
+ * Returns an empty array on any failure — callers must treat absence of WOs as
+ * a clean slate, not an error.  Never throws.
+ *
+ * Atlas WO search endpoint accepts `assetId` filter via POST body.
+ * Falls back to the global search filtered client-side if the per-asset filter
+ * is not supported by the Atlas version deployed.
+ */
+export async function getWorkOrdersForAsset(
+  atlasAssetId: number,
+  limit = 5,
+): Promise<WorkOrderSummary[]> {
+  if (!atlasAssetId || atlasAssetId <= 0) return [];
+  try {
+    const token = await adminToken();
+    const resp = await fetch(`${ATLAS_URL}/work-orders/search`, {
+      method: "POST",
+      headers: headers(token),
+      body: JSON.stringify({
+        pageSize: limit,
+        pageNum: 0,
+        assetId: atlasAssetId,
+        sortBy: "createdAt",
+        sortDirection: "DESC",
+      }),
+    });
+
+    if (!resp.ok) return [];
+    const data = (await resp.json()) as {
+      content?: Array<Record<string, unknown>>;
+    };
+    const rows = data.content ?? [];
+    return rows.slice(0, limit).map((r): WorkOrderSummary => ({
+      id: Number(r.id ?? 0),
+      title: String(r.title ?? ""),
+      status: String(r.status ?? ""),
+      priority: String(r.priority ?? ""),
+      createdAt: String(r.createdAt ?? r.created_at ?? ""),
+      completedAt: r.completedAt != null ? String(r.completedAt) : null,
+      description: String(r.description ?? "").slice(0, 500),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetch asset metadata (name, model, area) from Atlas by numeric ID.
+ * Returns null on any failure.  Never throws.
+ */
+export async function getAssetMetadata(
+  atlasAssetId: number,
+): Promise<{ id: number; name: string; model: string; area: string } | null> {
+  if (!atlasAssetId || atlasAssetId <= 0) return null;
+  try {
+    const data = await getAsset(atlasAssetId);
+    if (!data) return null;
+    return {
+      id: Number(data.id ?? atlasAssetId),
+      name: String(data.name ?? ""),
+      model: String(data.model ?? ""),
+      area: String(data.area ?? ""),
+    };
+  } catch {
+    return null;
+  }
+}
