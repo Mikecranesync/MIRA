@@ -467,7 +467,7 @@ async def health_db():
 @app.post("/ingest/photo")
 async def ingest_photo(
     image: UploadFile = File(...),
-    asset_tag: str = Form(default="unassigned"),
+    asset_tag: str = Form(...),
     location: str = Form(default=""),
     notes: str = Form(default=""),
 ):
