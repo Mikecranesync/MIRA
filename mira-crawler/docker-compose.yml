@@ -23,8 +23,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.5"
-          memory: 1200M
+          cpus: "2"
+          memory: 4096M
     depends_on:
       mira-redis:
         condition: service_healthy
