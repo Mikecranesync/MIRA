@@ -19,6 +19,49 @@
           }
         }
       }
+    },
+    {
+      "name": "yaml-lsp",
+      "description": "yaml-language-server with schema validation for Compose, GitHub Actions, and Doppler configs.",
+      "source": "./plugins/yaml-lsp",
+      "lspServers": {
+        "yaml": {
+          "command": "yaml-language-server",
+          "args": ["--stdio"],
+          "extensionToLanguage": {
+            ".yml": "yaml",
+            ".yaml": "yaml"
+          }
+        }
+      }
+    },
+    {
+      "name": "sql-lsp",
+      "description": "PostgreSQL Language Server (postgres-language-server) — Postgres-aware syntax checking for NeonDB migrations and schemas.",
+      "source": "./plugins/sql-lsp",
+      "lspServers": {
+        "sql": {
+          "command": "postgres-language-server",
+          "args": [],
+          "extensionToLanguage": {
+            ".sql": "sql"
+          }
+        }
+      }
+    },
+    {
+      "name": "dockerfile-lsp",
+      "description": "dockerfile-language-server-nodejs for the 16 Dockerfiles in MIRA.",
+      "source": "./plugins/dockerfile-lsp",
+      "lspServers": {
+        "dockerfile": {
+          "command": "docker-langserver",
+          "args": ["--stdio"],
+          "extensionToLanguage": {
+            ".dockerfile": "dockerfile"
+          }
+        }
+      }
     }
   ]
 }

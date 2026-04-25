@@ -73,6 +73,9 @@
     "stripe@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
-    "ruff-lsp@mira-local": true
+    "ruff-lsp@mira-local": true,
+    "yaml-lsp@mira-local": true,
+    "sql-lsp@mira-local": true,
+    "dockerfile-lsp@mira-local": true
   }
 }
