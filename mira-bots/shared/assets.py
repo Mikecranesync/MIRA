@@ -65,7 +65,7 @@ def list_top_levels(tenant_id: str, depth: int = 2) -> list[dict]:
     if not tenant_id or depth < 1:
         return []
     engine, text = _connect()
-    if engine is None:
+    if engine is None or text is None:
         return []
     try:
         sql = """
@@ -97,7 +97,7 @@ def list_children(tenant_id: str, parent_path: str) -> list[dict]:
     if not tenant_id or not _validate_ltree_path(parent_path):
         return []
     engine, text = _connect()
-    if engine is None:
+    if engine is None or text is None:
         return []
     try:
         # ltree's `~` operator with `parent.*{1}` matches paths that are
@@ -136,7 +136,7 @@ def get_asset(tenant_id: str, full_path: str) -> dict | None:
     if not tenant_id or not _validate_ltree_path(full_path):
         return None
     engine, text = _connect()
-    if engine is None:
+    if engine is None or text is None:
         return None
     try:
         sql = """
