@@ -308,6 +308,34 @@ app.get("/api/health", (c) =>
   c.json({ status: "ok", service: "mira-web", version: "0.2.1" })
 );
 
+// PostHog analytics init (closes #618)
+// Public API key is safe in HTML, but we serve it from server env so
+// dev/staging/prod can use different projects without source changes.
+// If PLG_POSTHOG_KEY is unset, a no-op stub is shipped so calls to
+// posthog.capture(...) in HTML never throw — analytics is disabled silently.
+const POSTHOG_HOST = (process.env.PLG_POSTHOG_HOST || "https://us.i.posthog.com").trim();
+app.get("/posthog-init.js", (c) => {
+  const key = (process.env.PLG_POSTHOG_KEY || "").trim();
+  c.header("Content-Type", "application/javascript; charset=utf-8");
+  // Cache for 5 minutes — same as static assets — but vary by host so a
+  // key rotation is picked up quickly without a hard reload.
+  c.header("Cache-Control", "public, max-age=300");
+  if (!key) {
+    return c.body(
+      "// PostHog: PLG_POSTHOG_KEY is unset; analytics disabled.\n" +
+      "window.posthog={capture:function(){},identify:function(){},init:function(){},reset:function(){}};\n",
+    );
+  }
+  // Stock PostHog snippet, plus a tiny convenience: track clicks on any
+  // [data-cta] element so marketing CTAs show up in funnels without the
+  // HTML having to call posthog.capture() manually.
+  return c.body(
+    "!function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(\".\");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement(\"script\")).type=\"text/javascript\",p.crossOrigin=\"anonymous\",p.async=!0,p.src=s.api_host.replace(\".i.posthog.com\",\"-assets.i.posthog.com\")+\"/static/array.js\",(r=t.getElementsByTagName(\"script\")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a=\"posthog\",u.people=u.people||[],u.toString=function(t){var e=\"posthog\";return\"posthog\"!==a&&(e+=\".\"+a),t||(e+=\" (stub)\"),e},u.people.toString=function(){return u.toString(1)+\".people (stub)\"},o=\"init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey canRenderSurveyAsync identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing\".split(\" \"),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);\n" +
+    `posthog.init(${JSON.stringify(key)}, { api_host: ${JSON.stringify(POSTHOG_HOST)}, person_profiles: "identified_only", capture_pageview: true });\n` +
+    "document.addEventListener('click', function(e){var el=e.target.closest('[data-cta]');if(el){posthog.capture('cta_click',{cta:el.getAttribute('data-cta'),href:el.getAttribute('href')||null,page:location.pathname});}}, {capture:true});\n",
+  );
+});
+
 // Serve CMMS page
 app.get("/cmms", async (c) => {
   const file = Bun.file("./public/cmms.html");
