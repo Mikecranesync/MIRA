@@ -274,8 +274,8 @@ async def test_missing_token_returns_401():
 
 @pytest.mark.asyncio
 async def test_wrong_secret_returns_401(monkeypatch):
-    monkeypatch.setenv("PLG_JWT_SECRET", "real-secret")
-    token = _make_token(secret="wrong-secret")
+    monkeypatch.setenv("PLG_JWT_SECRET", "rs")
+    token = _make_token(secret="ws")
     req = _make_request(bearer=token)
     resp = await exports.export_work_orders(req)
     assert resp.status_code == 401
