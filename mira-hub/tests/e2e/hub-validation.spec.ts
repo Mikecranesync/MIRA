@@ -1,24 +1,29 @@
 /**
  * FactoryLM Hub — Comprehensive Validation Suite
- * Tests every page, button, link, and interaction against:
- *   https://app.factorylm.com/hub/
- * Login: mike@factorylm.com / admin123
+ *
+ * Run against any base URL with E2E_BASE_URL. Credentials come from
+ * E2E_HUB_EMAIL / E2E_HUB_PASSWORD — set them in your shell or in
+ * playwright.config.ts. The hardcoded mike@factorylm.com / admin123
+ * dev creds are NEVER shipped to production.
  */
 
 import { test, expect, Page, BrowserContext } from "@playwright/test";
 
-const BASE = "https://app.factorylm.com";
+const BASE = process.env.E2E_BASE_URL ?? "https://app.factorylm.com";
 const HUB = `${BASE}/hub`;
-const LOGIN_EMAIL = "mike@factorylm.com";
-const LOGIN_PASSWORD = "admin123";
+const LOGIN_EMAIL = process.env.E2E_HUB_EMAIL ?? "mike@factorylm.com";
+const LOGIN_PASSWORD = process.env.E2E_HUB_PASSWORD ?? "";
 
 // ── Shared login helper ──────────────────────────────────────────────────────
 
 async function login(page: Page): Promise<void> {
+  if (!LOGIN_PASSWORD) {
+    throw new Error("E2E_HUB_PASSWORD env var is required");
+  }
   await page.goto(`${HUB}/login`, { waitUntil: "networkidle" });
   await page.fill('input[type="email"]', LOGIN_EMAIL);
   await page.fill('input[type="password"]', LOGIN_PASSWORD);
-  await page.click('button:has-text("Sign In")');
+  await page.click('button[type="submit"]');
   await page.waitForURL(`${HUB}/feed`, { timeout: 15_000 });
 }
 
@@ -42,11 +47,25 @@ test.afterAll(async () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 test.describe("1. Auth", () => {
-  test("login page renders email + password inputs and Sign In button", async ({ page }) => {
+  test("login page renders email + password inputs and Sign in button", async ({ page }) => {
     await page.goto(`${HUB}/login`, { waitUntil: "networkidle" });
     await expect(page.locator('input[type="email"]')).toBeVisible();
     await expect(page.locator('input[type="password"]')).toBeVisible();
-    await expect(page.locator('button:has-text("Sign In")')).toBeVisible();
+    await expect(page.locator('button[type="submit"]')).toBeVisible();
+  });
+
+  test("login page exposes Sign in with Google button", async ({ page }) => {
+    await page.goto(`${HUB}/login`, { waitUntil: "networkidle" });
+    await expect(page.getByText(/Sign in with Google/i)).toBeVisible();
+  });
+
+  test("unauthenticated /hub/feed redirects to /hub/login", async ({ page }) => {
+    const ctx = await page.context().browser()?.newContext();
+    if (!ctx) throw new Error("no browser context");
+    const fresh = await ctx.newPage();
+    await fresh.goto(`${HUB}/feed`, { waitUntil: "networkidle" });
+    await expect(fresh).toHaveURL(/\/hub\/login/);
+    await ctx.close();
   });
 
   test("invalid credentials show an error message", async ({ page }) => {

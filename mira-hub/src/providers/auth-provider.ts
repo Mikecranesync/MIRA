@@ -1,58 +1,57 @@
 "use client";
 
 import type { AuthProvider } from "@refinedev/core";
-
-const TEST_USER = {
-  email: "mike@factorylm.com",
-  password: "admin123",
-  name: "Mike Harper",
-  role: "admin",
-  avatar: "MH",
-};
+import { signIn, signOut, getSession } from "next-auth/react";
 
 export const authProvider: AuthProvider = {
-  login: async ({ email, password }) => {
-    if (email === TEST_USER.email && password === TEST_USER.password) {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("hub_user", JSON.stringify({ email: TEST_USER.email, name: TEST_USER.name, role: TEST_USER.role, avatar: TEST_USER.avatar }));
-      }
-      return { success: true, redirectTo: "/feed" };
+  login: async ({ email, password }: { email: string; password: string }) => {
+    const result = await signIn("credentials", {
+      email,
+      password,
+      redirect: false,
+    });
+    if (!result || result.error) {
+      return {
+        success: false,
+        error: { message: result?.error ?? "Invalid credentials", name: "LoginError" },
+      };
     }
-    return { success: false, error: { message: "Invalid credentials", name: "LoginError" } };
+    return { success: true, redirectTo: "/feed" };
   },
 
   logout: async () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("hub_user");
-    }
+    await signOut({ redirect: false });
     return { success: true, redirectTo: "/login" };
   },
 
   check: async () => {
-    if (typeof window !== "undefined" && localStorage.getItem("hub_user")) {
-      return { authenticated: true };
-    }
+    const session = await getSession();
+    if (session?.user) return { authenticated: true };
     return { authenticated: false, redirectTo: "/login" };
   },
 
   getPermissions: async () => {
-    if (typeof window !== "undefined") {
-      const raw = localStorage.getItem("hub_user");
-      if (raw) return JSON.parse(raw).role;
-    }
-    return null;
+    const session = await getSession();
+    return (session?.user as { role?: string } | undefined)?.role ?? "owner";
   },
 
   getIdentity: async () => {
-    if (typeof window !== "undefined") {
-      const raw = localStorage.getItem("hub_user");
-      if (raw) return JSON.parse(raw);
-    }
-    return null;
+    const session = await getSession();
+    if (!session?.user) return null;
+    const u = session.user;
+    return {
+      id: u.id,
+      email: u.email,
+      name: u.name ?? u.email,
+      tenantId: u.tenantId,
+      avatar: (u.name ?? u.email ?? "?").slice(0, 2).toUpperCase(),
+    };
   },
 
   onError: async (error) => {
-    if (error?.status === 401) return { logout: true };
+    if ((error as { status?: number })?.status === 401) {
+      return { logout: true, redirectTo: "/login" };
+    }
     return { error };
   },
 };

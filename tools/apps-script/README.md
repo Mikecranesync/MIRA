@@ -73,7 +73,9 @@ processInbox() searches "is:unread to:(kb+@) newer_than:1d"
     │    on non-2xx or throw: leave unread (auto-retry next minute)
     ▼
 mira-web /api/v1/inbox/email
-    │  verifyHmacSignature(body, X-Hmac-Signature, INBOUND_HMAC_SECRET)
+    │  verifySignedRequest(body, X-Hmac-Signature, X-Hmac-Timestamp, INBOUND_HMAC_SECRET)
+    │   - HMAC over `<unix-timestamp>.<body>`
+    │   - reject if timestamp >5 min off (replay-window guard)
     │  extract slug, look up tenant
     │  forward each attachment to mira-ingest /ingest/document-kb
     │  fire receipt email

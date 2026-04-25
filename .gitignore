@@ -6,6 +6,9 @@ mira_copy/outputs/*
 .tmp_*
 .claude/worktrees/
 
+# Skill eval workspaces (skill-creator iteration runs; rebuilt locally per session)
+.claude/skills/*-workspace/
+
 # Secrets — NEVER commit these
 .env
 *.env.local
@@ -164,3 +167,5 @@ wiki/.smart-env/
 # the repo even if iCloud re-creates them locally.
 **/* 2.md
 **/* 2.txt
+
+.claire/

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUpload, updateUploadStatus, deleteUpload } from "@/lib/uploads";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +10,10 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   const { id } = await params;
-  const row = await getUpload(id);
+  const row = await getUpload(id, ctx.tenantId);
   if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   if (!TERMINAL.includes(row.status)) {
@@ -26,7 +29,7 @@ export async function DELETE(
     }
   }
 
-  await deleteUpload(id);
+  await deleteUpload(id, ctx.tenantId);
   return NextResponse.json({ ok: true, action: "deleted" });
 }
 

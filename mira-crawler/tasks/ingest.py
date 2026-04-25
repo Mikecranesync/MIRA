@@ -5,12 +5,20 @@ Reuses existing mira-crawler pipeline modules:
 - chunker.py for semantic chunking
 - embedder.py for Ollama embedding
 - store.py for NeonDB insert + dedup
+
+Reliability:
+  - HEAD pre-flight + post-download size check, default 50MB cap (env-tunable)
+  - Streams to tempfile instead of loading body into memory
+  - autoretry only on transient errors (httpx, OS, conn) — MemoryError bubbles
+  - acks_late=False so OOM kills don't trigger redelivery loop
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import tempfile
+from pathlib import Path
 
 import httpx
 
@@ -22,10 +30,31 @@ except ImportError:
 logger = logging.getLogger("mira-crawler.tasks.ingest")
 
 DOWNLOAD_TIMEOUT = int(os.getenv("INGEST_DOWNLOAD_TIMEOUT", "60"))
-MAX_PDF_BYTES = int(os.getenv("INGEST_MAX_PDF_BYTES", str(150 * 1024 * 1024)))  # 150 MB
+# Default lowered from 150MB to 50MB — Docling's PDF parser uses 5-10× the file
+# size during extraction (image OCR pass), so 50MB ≈ 250–500MB working set.
+MAX_PDF_BYTES = int(os.getenv("INGEST_MAX_PDF_BYTES", str(50 * 1024 * 1024)))
+
+_TRANSIENT = (
+    httpx.HTTPError,
+    httpx.TimeoutException,
+    ConnectionError,
+    TimeoutError,
+    OSError,
+)
 
 
-@app.task(bind=True, max_retries=3, default_retry_delay=30)
+@app.task(
+    bind=True,
+    max_retries=3,
+    soft_time_limit=600,
+    time_limit=900,
+    acks_late=False,
+    reject_on_worker_lost=False,
+    autoretry_for=_TRANSIENT,
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+)
 def ingest_url(self, url: str, manufacturer: str = "",
                model: str = "", source_type: str = "equipment_manual"):
     """Download, extract, chunk, embed, and store one document.
@@ -88,25 +117,43 @@ def ingest_url(self, url: str, manufacturer: str = "",
             except Exception:
                 pass
 
+        # Stream download to a tempfile so a misbehaving server (no
+        # Content-Length, chunked-encoding bomb, etc.) can't OOM the worker.
+        # Abort mid-stream if we cross the size cap.
+        tmp = tempfile.NamedTemporaryFile(prefix="mira-ingest-", suffix=".bin", delete=False)
+        tmp_path = Path(tmp.name)
+        downloaded = 0
         try:
-            resp = httpx.get(
-                url,
+            with httpx.Client(
                 timeout=DOWNLOAD_TIMEOUT,
                 follow_redirects=True,
                 headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
-            )
-            resp.raise_for_status()
-            data = resp.content
-            content_type = resp.headers.get("content-type", "")
-            if len(data) > MAX_PDF_BYTES and ("application/pdf" in content_type or is_pdf_url):
-                logger.warning(
-                    "Skipping %s — downloaded %d MB exceeds limit",
-                    url[:80], len(data) // 1024 // 1024,
-                )
-                return {"url": url, "inserted": 0, "error": "file_too_large"}
-        except Exception as exc:
-            logger.warning("Download failed for %s: %s — retrying", url[:80], exc)
-            raise self.retry(exc=exc)
+            ) as client:
+                with client.stream("GET", url) as resp:
+                    resp.raise_for_status()
+                    content_type = resp.headers.get("content-type", "")
+                    for chunk in resp.iter_bytes(chunk_size=64 * 1024):
+                        downloaded += len(chunk)
+                        if downloaded > MAX_PDF_BYTES and (
+                            "application/pdf" in content_type or is_pdf_url
+                        ):
+                            tmp.close()
+                            tmp_path.unlink(missing_ok=True)
+                            logger.warning(
+                                "Aborted streaming download of %s — exceeded %d MB cap mid-stream",
+                                url[:80], MAX_PDF_BYTES // 1024 // 1024,
+                            )
+                            return {"url": url, "inserted": 0, "error": "file_too_large"}
+                        tmp.write(chunk)
+            tmp.close()
+            data = tmp_path.read_bytes()
+        except _TRANSIENT as exc:
+            tmp.close()
+            tmp_path.unlink(missing_ok=True)
+            logger.warning("Download failed for %s: %s — Celery will retry", url[:80], exc)
+            raise  # autoretry_for handles the retry
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
     # 3. Extract text blocks
     is_pdf = url.lower().endswith(".pdf") or "application/pdf" in content_type

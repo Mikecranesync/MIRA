@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { ensureFreshAccessToken } from "@/lib/token-refresh";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const apiKey = process.env.GOOGLE_PICKER_API_KEY;
   const appId = process.env.GOOGLE_CLOUD_PROJECT_NUMBER;
@@ -23,7 +26,7 @@ export async function GET() {
   }
 
   try {
-    const { accessToken, expiresAt } = await ensureFreshAccessToken("google");
+    const { accessToken, expiresAt } = await ensureFreshAccessToken("google", ctx.tenantId);
     return NextResponse.json({
       accessToken,
       apiKey,

@@ -37,6 +37,40 @@ const FAKE_TENANT = {
 mock.module("../../lib/quota.js", () => ({
   findTenantByInboxSlug: async (slug: string) =>
     slug === "abc12345" ? FAKE_TENANT : null,
+  // Stubs so sibling test files that transitively import these don't break
+  // when bun runs the suite together (mock.module is process-global).
+  findTenantById: async () => null,
+  findTenantByEmail: async () => null,
+  findTenantByStripeCustomerId: async () => null,
+  getQuota: async () => ({ used: 0, limit: 100, remaining: 100 }),
+  getQueriesUsedToday: async () => 0,
+  hasQuotaRemaining: async () => true,
+  logQuery: async () => {},
+  createTenant: async () => {},
+  updateTenantTier: async () => {},
+  updateTenantStripe: async () => {},
+  updateTenantAtlas: async () => {},
+  updateTenantCmmsConfig: async () => {},
+  getTenantCmmsTier: async () => "base",
+  updateTenantEmailStatus: async () => {},
+  updateTenantSeedStatus: async () => {},
+  recordProvisioningAttempt: async () => {},
+  generateInboxSlug: () => "stub1234",
+  getMfaState: async () => ({
+    enabled: false,
+    secretEnc: null,
+    recoveryCodesHashed: [],
+    enrolledAt: null,
+  }),
+  stageMfaEnrollment: async () => {},
+  activateMfa: async () => {},
+  clearMfa: async () => {},
+  consumeRecoveryCodeAt: async () => {},
+  getDeletionState: async () => ({ deletedAt: null, purgeAfter: null }),
+  markTenantDeleted: async () => {},
+  listTenantsAwaitingPurge: async () => [],
+  hardDeleteTenant: async () => {},
+  ensureSchema: async () => {},
 }));
 
 const sentReceipts: { email: string; firstName: string; result: any }[] = [];
@@ -45,6 +79,18 @@ mock.module("../../lib/mailer.js", () => ({
     sentReceipts.push({ email, firstName, result });
     return true;
   },
+}));
+
+// Audit log writes go to NeonDB in production; stub them out for the inbox
+// route tests so they don't try to open a real DB connection. The audit
+// behavior itself is best-effort and tested separately.
+const auditEvents: any[] = [];
+mock.module("../../lib/audit.js", () => ({
+  recordAuditEvent: async (ev: any) => {
+    auditEvents.push(ev);
+    return true;
+  },
+  requestMetadata: () => ({ ip: "127.0.0.1", userAgent: "bun-test" }),
 }));
 
 const { inbox, extractSlug } = await import("../inbox.js");
@@ -75,23 +121,39 @@ function inboundBody(opts: {
   });
 }
 
-function signBody(body: string, secret = "test_hmac_secret_value"): string {
-  return createHmac("sha256", secret).update(body).digest("hex");
+function signRequest(
+  body: string,
+  ts: number,
+  secret = "test_hmac_secret_value",
+): string {
+  return createHmac("sha256", secret).update(`${ts}.${body}`).digest("hex");
 }
 
 async function postWebhook(
   body: string,
   headers: Record<string, string> = {},
-  options: { sign?: boolean | string } = { sign: true },
+  options: {
+    sign?: boolean | string;
+    timestamp?: number | string | null;
+  } = { sign: true },
 ) {
   const finalHeaders: Record<string, string> = {
     "Content-Type": "application/json",
     ...headers,
   };
+  const ts =
+    options.timestamp === undefined || options.timestamp === null
+      ? Math.floor(Date.now() / 1000)
+      : Number(options.timestamp);
   if (options.sign === true) {
-    finalHeaders["X-Hmac-Signature"] = signBody(body);
+    finalHeaders["X-Hmac-Signature"] = signRequest(body, ts);
   } else if (typeof options.sign === "string") {
     finalHeaders["X-Hmac-Signature"] = options.sign;
+  }
+  if (options.timestamp !== null) {
+    finalHeaders["X-Hmac-Timestamp"] = String(
+      options.timestamp ?? Math.floor(Date.now() / 1000),
+    );
   }
   return inbox.request("/email", {
     method: "POST",
@@ -102,6 +164,7 @@ async function postWebhook(
 
 beforeEach(() => {
   sentReceipts.length = 0;
+  auditEvents.length = 0;
 });
 
 // --- pure-function tests ---------------------------------------------------
@@ -149,13 +212,56 @@ describe("POST /api/v1/inbox/email", () => {
 
   test("401 on signature computed with wrong secret", async () => {
     const body = inboundBody({});
-    const wrongSig = signBody(body, "different_secret");
-    const res = await postWebhook(body, {}, { sign: wrongSig });
+    const ts = Math.floor(Date.now() / 1000);
+    const wrongSig = signRequest(body, ts, "different_secret");
+    const res = await postWebhook(body, {}, { sign: wrongSig, timestamp: ts });
     expect(res.status).toBe(401);
   });
 
   test("401 on signature length mismatch (no array OOB)", async () => {
     const res = await postWebhook(inboundBody({}), {}, { sign: "abc" });
+    expect(res.status).toBe(401);
+  });
+
+  test("401 on missing X-Hmac-Timestamp header", async () => {
+    const body = inboundBody({});
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = signRequest(body, ts);
+    const res = await postWebhook(body, {}, { sign: sig, timestamp: null });
+    expect(res.status).toBe(401);
+  });
+
+  test("401 on stale timestamp (>5 min old) — replay-window guard", async () => {
+    const body = inboundBody({});
+    const stale = Math.floor(Date.now() / 1000) - 600; // 10 min ago
+    const sig = signRequest(body, stale);
+    const res = await postWebhook(body, {}, { sign: sig, timestamp: stale });
+    expect(res.status).toBe(401);
+  });
+
+  test("401 on far-future timestamp (>5 min ahead)", async () => {
+    const body = inboundBody({});
+    const future = Math.floor(Date.now() / 1000) + 600; // 10 min ahead
+    const sig = signRequest(body, future);
+    const res = await postWebhook(body, {}, { sign: sig, timestamp: future });
+    expect(res.status).toBe(401);
+  });
+
+  test("401 on non-numeric X-Hmac-Timestamp", async () => {
+    const body = inboundBody({});
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = signRequest(body, ts);
+    const res = await postWebhook(body, {}, { sign: sig, timestamp: "not-a-number" });
+    expect(res.status).toBe(401);
+  });
+
+  test("401 on signature replay with mismatched timestamp", async () => {
+    // Captured signature for ts=A, but request claims ts=B → mismatch.
+    const body = inboundBody({});
+    const tsA = Math.floor(Date.now() / 1000);
+    const tsB = tsA + 10;
+    const sigForA = signRequest(body, tsA);
+    const res = await postWebhook(body, {}, { sign: sigForA, timestamp: tsB });
     expect(res.status).toBe(401);
   });
 
@@ -168,12 +274,14 @@ describe("POST /api/v1/inbox/email", () => {
 
   test("400 on body that fails JSON parse (but signature valid for those bytes)", async () => {
     const garbled = "{not json at all";
+    const ts = Math.floor(Date.now() / 1000);
     const res = await inbox.request("/email", {
       method: "POST",
       body: garbled,
       headers: {
         "Content-Type": "application/json",
-        "X-Hmac-Signature": signBody(garbled),
+        "X-Hmac-Signature": signRequest(garbled, ts),
+        "X-Hmac-Timestamp": String(ts),
       },
     });
     expect(res.status).toBe(400);
@@ -191,6 +299,24 @@ describe("POST /api/v1/inbox/email", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     await new Promise((r) => setTimeout(r, 5));
     expect(sentReceipts.length).toBe(0);
+    fetchSpy.mockRestore();
+  });
+
+  test("inbox.email.received audit event fires for valid email", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response('{"status":"ok"}', { status: 200 }),
+    );
+    const res = await postWebhook(
+      inboundBody({ attachments: [pdfAttachment("doc.pdf")] }),
+    );
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 5));
+    const received = auditEvents.find((e) => e.action === "inbox.email.received");
+    expect(received).toBeTruthy();
+    expect(received.tenantId).toBe(FAKE_TENANT.id);
+    expect(received.actorType).toBe("apps_script");
+    expect(received.metadata.attachment_count).toBe(1);
+    expect(received.metadata.relevance_gate).toBe("on");
     fetchSpy.mockRestore();
   });
 

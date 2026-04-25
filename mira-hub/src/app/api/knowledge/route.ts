@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -7,8 +8,11 @@ export async function GET() {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   try {
-    const { rows } = await pool.query(`
+    const { rows } = await pool.query(
+      `
       SELECT
         system_category, subcategory, manufacturer, product_family,
         doc_type, source, COUNT(*) as chunk_count,
@@ -16,9 +20,12 @@ export async function GET() {
         MAX(created_at) as last_indexed,
         array_agg(DISTINCT title ORDER BY title) FILTER (WHERE title IS NOT NULL) as sample_titles
       FROM kb_chunks
+      WHERE tenant_id = $1
       GROUP BY system_category, subcategory, manufacturer, product_family, doc_type, source
       ORDER BY chunk_count DESC, avg_quality DESC NULLS LAST
-    `);
+    `,
+      [ctx.tenantId],
+    );
 
     const docs = rows.map((r, i) => {
       const name = [r.manufacturer, r.product_family, r.system_category, r.subcategory]

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -7,9 +8,11 @@ export async function GET() {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   try {
-    // Group work orders by telegram_username as conversation threads
-    const { rows } = await pool.query(`
+    const { rows } = await pool.query(
+      `
       SELECT
         telegram_username,
         source,
@@ -20,19 +23,22 @@ export async function GET() {
         COUNT(CASE WHEN safety_warnings != '{}' THEN 1 END) as safety_count,
         MAX(title) as last_message
       FROM work_orders
-      WHERE telegram_username IS NOT NULL
+      WHERE telegram_username IS NOT NULL AND tenant_id = $1
       GROUP BY telegram_username, source
       ORDER BY last_activity DESC
       LIMIT 30
-    `);
+    `,
+      [ctx.tenantId],
+    );
 
-    // Also get actual telegram messages
-    const { rows: tgRows } = await pool.query(`
-      SELECT username, chat_id, content, timestamp, is_from_bot, metadata
-      FROM telegram_messages
-      ORDER BY timestamp DESC
-      LIMIT 50
-    `);
+    const { rows: tgRows } = await pool.query(
+      `SELECT username, chat_id, content, timestamp, is_from_bot, metadata
+         FROM telegram_messages
+        WHERE tenant_id = $1
+        ORDER BY timestamp DESC
+        LIMIT 50`,
+      [ctx.tenantId],
+    );
 
     const threads = rows.map((r) => ({
       id: r.telegram_username,

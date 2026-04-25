@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { sessionOr401 } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -7,9 +8,11 @@ export async function GET() {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
   try {
-    // Traffic from work_orders (grouped by source)
-    const { rows: woRows } = await pool.query(`
+    const { rows: woRows } = await pool.query(
+      `
       SELECT
         source,
         COUNT(*) as total_events,
@@ -17,19 +20,24 @@ export async function GET() {
         COUNT(CASE WHEN created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as events_24h,
         MAX(created_at) as last_activity
       FROM work_orders
-      WHERE source IS NOT NULL
+      WHERE source IS NOT NULL AND tenant_id = $1
       GROUP BY source
       ORDER BY total_events DESC
-    `);
+    `,
+      [ctx.tenantId],
+    );
 
-    // Real telegram traffic
-    const { rows: tgRows } = await pool.query(`
+    const { rows: tgRows } = await pool.query(
+      `
       SELECT
         COUNT(*) as total_messages,
         COUNT(DISTINCT chat_id) as unique_chats,
         MAX(timestamp) as last_message
       FROM telegram_messages
-    `);
+      WHERE tenant_id = $1
+    `,
+      [ctx.tenantId],
+    );
 
     const tg = tgRows[0];
     const channels = woRows.map((r) => ({
@@ -42,7 +50,6 @@ export async function GET() {
       healthy: true,
     }));
 
-    // Supplement telegram with actual message count
     if (tg && Number(tg.total_messages) > 0) {
       const existing = channels.find((c) => c.id === "telegram");
       if (existing) {
