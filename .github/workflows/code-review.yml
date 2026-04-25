@@ -119,8 +119,8 @@ jobs:
               body: summary,
             });
 
-  claude-review:
-    name: Claude AI Code Review
+  ai-review:
+    name: AI Code Review
     runs-on: ubuntu-latest
     needs: static-analysis
     steps:
@@ -134,7 +134,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install LLM SDKs
-        run: pip install anthropic httpx
+        run: pip install httpx
 
       - name: Get PR diff
         id: diff
@@ -152,22 +152,23 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           DIFF_LINES: ${{ steps.diff.outputs.diff_lines }}
         run: |
           python3 - << 'PYEOF'
-          # Multi-provider LLM cascade — mirrors mira-bots/shared/inference/router.py.
-          # Order: Groq → Cerebras → Gemini → Claude (Groq fastest per 2026-04-21
-          # latency audit; Claude last as it's the most expensive).
-          # Any provider that errors (auth, billing, rate-limit, server error) falls
-          # through to the next. If all fail, soft-skip with a comment so PRs aren't
-          # blocked by infra issues.
+          # Multi-provider LLM cascade — mirrors mira-bots/shared/inference/router.py
+          # post-Anthropic-removal (PR #610). Order: Groq → Cerebras → Gemini.
+          # Groq leads (fastest per 2026-04-21 latency audit). All three expose
+          # OpenAI-compatible /chat/completions, so a single httpx call works
+          # across all of them. No Anthropic tier — that dependency was removed
+          # project-wide; do not add it back.
+          # Any provider error (auth, billing, rate-limit, network, server) falls
+          # through to the next. If every tier fails, soft-skip with a comment
+          # so PRs aren't blocked on LLM-infra issues.
           import os
           import sys
           import httpx
-          import anthropic
 
           with open("/tmp/pr_truncated.diff") as f:
               diff = f.read()
@@ -198,8 +199,7 @@ jobs:
           {diff[:12000]}
           ```"""
 
-          # OpenAI-compatible providers (Groq, Cerebras, Gemini all expose /chat/completions)
-          openai_compat = [
+          providers = [
               ("groq", os.environ.get("GROQ_API_KEY", ""),
                "https://api.groq.com/openai/v1/chat/completions",
                "llama-3.3-70b-versatile"),
@@ -215,7 +215,7 @@ jobs:
           review_text = None
           provider_used = None
 
-          for name, key, url, model in openai_compat:
+          for name, key, url, model in providers:
               if not key:
                   attempts.append(f"{name}: skipped (no key)")
                   continue
@@ -237,26 +237,6 @@ jobs:
                   attempts.append(f"{name}: {type(e).__name__} — {str(e)[:120]}")
                   print(f"[{name}] failed: {e}")
 
-          # Anthropic last (most expensive) — uses different SDK, separate try
-          if review_text is None:
-              anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
-              if not anthropic_key:
-                  attempts.append("claude: skipped (no key)")
-              else:
-                  try:
-                      client = anthropic.Anthropic(api_key=anthropic_key)
-                      message = client.messages.create(
-                          model="claude-sonnet-4-6",
-                          max_tokens=2048,
-                          messages=[{"role": "user", "content": prompt}],
-                      )
-                      review_text = message.content[0].text
-                      provider_used = "claude (claude-sonnet-4-6)"
-                      attempts.append("claude: ok")
-                  except Exception as e:
-                      attempts.append(f"claude: {type(e).__name__} — {str(e)[:120]}")
-                      print(f"[claude] failed: {e}")
-
           if review_text is None:
               # All providers failed — soft-skip rather than block PRs on infra
               print("All LLM providers failed — skipping review.")
@@ -277,10 +257,8 @@ jobs:
               f.write(review_text)
           PYEOF
 
-      - name: Post Claude review as PR comment
+      - name: Post AI review as PR comment
         uses: actions/github-script@v7
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
           script: |
             const fs = require('fs');
@@ -288,15 +266,15 @@ jobs:
             try {
               review = fs.readFileSync('/tmp/claude-review.md', 'utf8');
             } catch (e) {
-              review = '⚠️ Claude review file not found.';
+              review = '⚠️ AI review file not found.';
             }
 
-            const body = `## 🤖 Claude AI Code Review
+            const body = `## 🤖 AI Code Review
 
             ${review}
 
             ---
-            *Reviewed by Claude Sonnet 4.6 via [MIRA automated code review pipeline](../.github/workflows/code-review.yml)*
+            *Generated by the [MIRA automated code review pipeline](../.github/workflows/code-review.yml) (Groq → Cerebras → Gemini cascade)*
             *To trigger self-fix: run \`bash scripts/pr_self_fix.sh ${{ github.event.pull_request.number }}\`*`;
 
             await github.rest.issues.createComment({
