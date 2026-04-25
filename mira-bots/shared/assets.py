@@ -117,10 +117,14 @@ def list_children(tenant_id: str, parent_path: str) -> list[dict]:
             LIMIT 50
         """
         with engine.connect() as conn:
-            rows = conn.execute(
-                text(sql),
-                {"tid": tenant_id, "parent": parent_path},
-            ).mappings().fetchall()
+            rows = (
+                conn.execute(
+                    text(sql),
+                    {"tid": tenant_id, "parent": parent_path},
+                )
+                .mappings()
+                .fetchall()
+            )
         return [dict(r) for r in rows]
     except Exception as e:
         logger.warning("assets.list_children failed parent=%s: %s", parent_path, e)
@@ -149,10 +153,14 @@ def get_asset(tenant_id: str, full_path: str) -> dict | None:
             LIMIT 1
         """
         with engine.connect() as conn:
-            row = conn.execute(
-                text(sql),
-                {"tid": tenant_id, "path": full_path},
-            ).mappings().fetchone()
+            row = (
+                conn.execute(
+                    text(sql),
+                    {"tid": tenant_id, "path": full_path},
+                )
+                .mappings()
+                .fetchone()
+            )
         return dict(row) if row else None
     except Exception as e:
         logger.warning("assets.get_asset failed path=%s: %s", full_path, e)

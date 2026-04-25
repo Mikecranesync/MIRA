@@ -559,9 +559,7 @@ async def asset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     tenant_id = os.environ.get("MIRA_TENANT_ID", "")
     if not tenant_id:
-        await update.message.reply_text(
-            "Asset hierarchy not configured (MIRA_TENANT_ID unset)."
-        )
+        await update.message.reply_text("Asset hierarchy not configured (MIRA_TENANT_ID unset).")
         return
 
     arg = context.args[0].strip() if context.args else ""
