@@ -1,0 +1,169 @@
+# MIRA Comic Explainer v1 — scene scripts
+# Schema echoes tools/seedance-scenarios.yaml for cross-pipeline consistency.
+#
+# Each scene has:
+#   voiceover_text         — TTS input (style instruction prepended at runtime)
+#   reference_images       — optional list of paths (relative to reference_root)
+#                            that gpt-image-1 uses as style anchors via the
+#                            images.edit() endpoint for character consistency
+#   panels                 — list; each panel has prompt + duration_seconds
+#
+# Durations per scene sum (Scene1..5): 15 + 15 + 17 + 15 + 17 = 79s total.
+
+scenes:
+
+  # =========================================================================
+  "1":
+    title: "BEFORE MIRA — The Scramble"
+    reference_images: []   # populate once comic references are in place
+    voiceover_text: |
+      Day shift. Full house. Line 5 just went down. The fault code is cryptic.
+      The manual is from 2009. And every minute the line sits still, it costs.
+      This is what maintenance looked like before MIRA.
+    panels:
+      - id: 1
+        duration_seconds: 5
+        prompt: |
+          Wide shot of conveyor floor, Line 5 stopped, red strobes flashing,
+          workers stepping back. HMI panel foreground showing FAULT: 1.SOC
+          B16.2 OCCUPIED TOO LONG in red on black industrial screen. RICO
+          labeled in blue coveralls looking up at the panel, tense.
+      - id: 2
+        duration_seconds: 5
+        prompt: |
+          Rico at a cluttered Maximo terminal in the maintenance room. Legacy
+          blue IBM Maximo UI on screen, no useful data. Dog-eared paper binder
+          on desk labeled CONVEYOR MANUALS 2009. Radio crackles on desk with
+          speech bubble from radio: "Rico, ETA? Director Holt is calling."
+      - id: 3
+        duration_seconds: 5
+        prompt: |
+          Wide shot from behind of Rico walking the full conveyor floor alone,
+          workers idle in background with arms crossed. Overhead wall clock
+          showing 21 minutes elapsed. Caption overlay: "21 minutes. Every time."
+
+  # =========================================================================
+  "2":
+    title: "MIRA ANSWERS"
+    reference_images: []
+    voiceover_text: |
+      This time, he tries something different. The answer was always there.
+      It just needed somewhere to live.
+    panels:
+      - id: 1
+        duration_seconds: 5
+        prompt: |
+          Extreme close-up of Rico's hands holding a tablet. MIRA dark-theme
+          UI loading. Search bar shows typed query: "1.SOC B16.2 occupied too
+          long". His face faintly reflected in the screen, tense expression.
+      - id: 2
+        duration_seconds: 6
+        prompt: |
+          Full MIRA response screen on tablet held at angle. Readable text:
+          "FAULT IDENTIFIED — Proximity sensor Conveyor Section B16 Station 2.
+          Fault History: 14 occurrences in 6 months. Recommended Action:
+          Reset fault at panel B16 — no parts required." Cited document chip:
+          "ENG-PL-4472 Rev C — tap to open." Small inset of a PDF schematic
+          with a proximity switch circled in amber.
+      - id: 3
+        duration_seconds: 4
+        prompt: |
+          Rico at panel B16 on the conveyor frame, one hand on reset button,
+          tablet in other hand showing MIRA recommendation. Looking at
+          camera, confident. Slack notification pops on tablet: "Deb: Go
+          ahead. Reset approved."
+
+  # =========================================================================
+  "3":
+    title: "THE ORG CONNECTS"
+    reference_images: []
+    voiceover_text: |
+      One tech. One tablet. The whole org on the same page in under 90
+      seconds. One message. One approval. Everyone aligned.
+    panels:
+      - id: 1
+        duration_seconds: 6
+        prompt: |
+          Rico on floor with tablet showing Slack dark mode UI, channel
+          #plant-ops. His message posted with fault summary, MIRA recommendation,
+          PDF attachment chip "ENG-PL-4472_RevC.pdf 2.4MB". Emoji reactions
+          below the message. Small speech bubble: "Posting to #plant-ops..."
+      - id: 2
+        duration_seconds: 5
+        prompt: |
+          Close-up of Deb at supervisor station reading Slack on phone. Thread
+          shows her reply: "Approved. Reset and log." Green APPROVED label
+          visible. "Seen by 28" read receipt. Channel sidebar shows
+          #maintenance #engineering #operations #leadership #plant-ops active.
+          Speech bubble: "Finally, one source of truth."
+      - id: 3
+        duration_seconds: 6
+        prompt: |
+          Triptych panel — three vertical slices in one frame.
+          LEFT: Marcus at laptop showing "PLANT DOWNTIME LINE 5 DOWN 6:03 vs
+          21:14 avg", speech bubble "Downtime is coming down."
+          CENTER: Elena remote on phone, MIRA fault history showing 14
+          occurrences, speech bubble "Why has this happened 14 times?"
+          RIGHT: Director Holt at office monitor, "PLANT OVERVIEW LINE 5
+          RECOVERING 6:03", speech bubble "This is how a plant runs."
+
+  # =========================================================================
+  "4":
+    title: "THE LINE COMES BACK UP"
+    reference_images: []
+    voiceover_text: |
+      21 minutes. Then 6. That is not luck. That is what happens when your
+      data actually works for you.
+    panels:
+      - id: 1
+        duration_seconds: 4
+        prompt: |
+          Rico's hand on the reset button at panel B16. Close-up, dramatic
+          industrial lighting, slight motion blur on his finger pressing.
+      - id: 2
+        duration_seconds: 5
+        prompt: |
+          Conveyor belt begins moving. Green lights activating in sequence
+          down the line. Workers returning to stations. Overhead sign
+          LINE 5 RUNNING switching from red to green.
+      - id: 3
+        duration_seconds: 6
+        prompt: |
+          Split panel with bold dividing line between two worlds.
+          LEFT (old world): paper work order on clipboard, wall clock at 21
+          minutes, Marcus looking exhausted at desk.
+          RIGHT (new world): MIRA work order closed in 6 minutes on a tablet
+          screen, Marcus watching line run through a window, relieved.
+
+  # =========================================================================
+  "5":
+    title: "FOLLOW THROUGH + END CARD"
+    reference_images: []
+    voiceover_text: |
+      The fault will happen again. The difference is — next time, everyone
+      already knows what to do. Stop fighting your CMMS. Start knowing your
+      plant. MIRA by FactoryLM.
+    panels:
+      - id: 1
+        duration_seconds: 5
+        prompt: |
+          Elena's engineering team in a meeting. MIRA bar chart on screen
+          showing all 14 historical occurrences, average downtime dropping
+          from 21 minutes to 6 minutes. Root cause investigation assigned
+          and tracked, clear labels readable on chart.
+      - id: 2
+        duration_seconds: 4
+        prompt: |
+          Director Holt in leadership meeting, referencing data calmly on a
+          tablet. Not panicking. Informed. Confident posture. Other executives
+          listening. Wood-paneled boardroom.
+      - id: 3
+        duration_seconds: 8
+        prompt: |
+          FINAL SPLASH END CARD. Rico in foreground on conveyor floor,
+          confident, tablet in hand, green lights behind him. MIRA interface
+          glowing on tablet. Large bold caption across top third:
+          "STOP FIGHTING YOUR CMMS. START KNOWING YOUR PLANT."
+          Sub-caption: "MIRA by FactoryLM — Built for the floor. Connected to
+          everyone."
+          CTA text at bottom: "Request a demo at factorylm.com"

@@ -1,0 +1,102 @@
+# MIRA Comic Explainer v1 — 7-image cut.
+# This is the v1 storyboard schema (one TTS, static framing). For the
+# paced / camera-tracked / scored build, see scripts/storyboard_v2.yaml.
+#
+# Built from the 7 ChatGPT-generated comic references the user dropped in
+# reference/. The original 15-panel spec assumed we'd generate everything
+# from text; these 7 finished comic pages replace Scenes 1 and 3 entirely
+# and carry enough character/UI design to narrate the full arc with zero
+# new image generation.
+#
+# Vision analysis per image (at the time of the build):
+#
+#   "1774x887 02_05_37 PM" — Scene 1 title panel: "DAY SHIFT. FULL HOUSE.
+#     LINE 5 JUST WENT DOWN." Rico foregrounded at HMI showing FAULT: 1.SOC
+#     B16.2 — OCCUPIED TOO LONG. Workers stepping back in background.
+#
+#   "1774x887 02_11_45 PM" — Scene 1 frustration: "THE ANSWER EXISTS
+#     SOMEWHERE. NOBODY KNOWS WHERE." Rico head-in-hands at cluttered
+#     Maximo terminal, 2009 CONVEYOR MANUALS binder, SAFETY FIRST poster,
+#     MAINTENANCE MAKES IT HAPPEN coffee mug.
+#
+#   "1536x1024 02_22_55 PM" — Scene 1 pressure: LINE 5 STOPPED 21:03
+#     ELAPSED. Rico walking alone down the corridor. Character-reaction
+#     row of Deb/Marcus/Elena/Director Holt each with a speech bubble.
+#
+#   "1536x1024 11_53_02 AM" — Scene 2: the pivot. Top wide establishing
+#     with RICO labeled; bottom-row panels of Rico working on a component,
+#     phone showing MIRA ALERT 1.SOC B16.2, tablet in hand, "FOUR MINUTE
+#     WALK TO OPS BOOTH" caption.
+#
+#   "1672x941 12_12_29 PM" — Scene 3 clean 4-panel: Rico posting to
+#     #plant-ops, Deb approving, team reactions (Marcus / Elena / Director
+#     Holt), Line 5 running. Closing caption: "ONE MESSAGE. ONE APPROVAL.
+#     EVERYONE ALIGNED. BACK UP. MOVING FORWARD."
+#
+# Two images are held in reserve (not in the cut):
+#   - "11_46_35 AM" (pure establishing, not needed — image 5 covers it)
+#   - "11_57_50 AM" (earlier draft of Scene 3; superseded by 12_12_29)
+
+title: "MIRA Comic Explainer v1"
+version: 1
+
+video:
+  width: 1920
+  height: 1080
+  fps: 24
+  fit_mode: letterbox     # preserve all content — comic text must stay legible
+  zoom_amount: 0.0        # static framing, no Ken Burns (text-heavy pages)
+  transition_duration: 0.5
+  output_name: mira_explainer_v1.mp4
+
+audio:
+  tts_model: tts-1-hd
+  tts_voice: onyx
+  style_instruction: |
+    Speak in a calm, confident, floor-level industrial professional tone.
+    Not a commercial announcer. Think LinkedIn thought leader who has
+    actually turned a wrench. Measured pace. Slight gravitas on key lines.
+
+# Ordered shot list. The multi_image_assembler auto-divides audio duration
+# evenly across images, so we aim for natural per-image dwell by sizing the
+# narration beat per shot to roughly match.
+shots:
+  - file: "ChatGPT Image Apr 24, 2026 at 02_05_37 PM.png"
+    role: "Scene 1 title — fault detected"
+    narration_beat: |
+      Day shift. Full house. Two conveyor lines. Line 4 is running.
+      Line 5 just went down.
+
+  - file: "ChatGPT Image Apr 24, 2026 at 02_11_45 PM.png"
+    role: "Scene 1 frustration — Maximo is a graveyard"
+    narration_beat: |
+      The fault code says 1-SOC B-16-2. Occupied too long. Nobody on
+      the floor remembers what that means. The manual is from 2009.
+      The answer exists somewhere. Nobody knows where.
+
+  - file: "ChatGPT Image Apr 24, 2026 at 02_22_55 PM.png"
+    role: "Scene 1 pressure — 21 minutes elapsed, leadership reacting"
+    narration_beat: |
+      Twenty-one minutes elapsed. Deb is on the radio. Marcus is
+      running the numbers. Elena can't see what her team can't see.
+      Director Holt doesn't care why — customers don't care why.
+
+  - file: "ChatGPT Image Apr 24, 2026 at 11_53_02 AM.png"
+    role: "Scene 2 pivot — Rico tries MIRA"
+    narration_beat: |
+      This time, Rico tries something different. He pulls up MIRA.
+      Types in the fault code. In seconds, MIRA answers. Proximity
+      sensor, Section B-sixteen. This has happened fourteen times
+      already. Recommended fix — reset the panel. No parts needed.
+
+  - file: "ChatGPT Image Apr 24, 2026 at 12_12_29 PM.png"
+    role: "Scene 3 resolution — org aligns in under 90 seconds"
+    narration_beat: |
+      One message to plant-ops. Approved by Deb. Seen by twenty-eight.
+      Marcus sees downtime coming down. Elena finally sees the pattern.
+      Director Holt sees a plant that runs. One message. One approval.
+      Moving forward. This is how a plant runs with MIRA.
+
+# Narration is rendered as a single continuous track — the assembler then
+# divides that audio evenly across the 5 shots, giving each shot roughly
+# the dwell time its beat needs.
