@@ -78,3 +78,7 @@
 - Created SCHEMA.md, index.md, hot.md, log.md
 - Created gotcha pages for SSH keychain, NeonDB SSL, competing pollers, intent guard
 - Machine: Windows Dev
+
+## 2026-04-25T00:45:21Z — session auto-commit
+
+Changed: `wiki/.smart-env/`
