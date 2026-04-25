@@ -29,7 +29,18 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
+from hardening import with_retries
+
 log = logging.getLogger("lead-hunter.celery")
+
+# Exception classes that justify retrying a discovery HTTP call
+_HTTP_RETRY = (
+    httpx.TransportError,   # connect / read timeouts, network errors
+    httpx.HTTPStatusError,  # 5xx if .raise_for_status() is called
+    ConnectionError,
+    TimeoutError,
+)
 
 # ---------------------------------------------------------------------------
 # State: rotate through cities each run
@@ -73,8 +84,6 @@ def _check_daily_budget(state: dict) -> bool:
 
 def run_discover_and_enrich() -> dict:
     """Execute one hourly discovery + enrichment cycle. Returns run stats."""
-    import httpx
-
     # Import here to allow running without Celery
     sys.path.insert(0, str(Path(__file__).parent))
     import hunt
@@ -111,7 +120,17 @@ def run_discover_and_enrich() -> dict:
     if city_idx == 0:
         log.info("Running MSCA directory scrape...")
         with httpx.Client(timeout=20) as client:
-            msca_facs = discover.scrape_msca(client)
+            try:
+                msca_facs = with_retries(
+                    lambda: discover.scrape_msca(client),
+                    name="scrape_msca",
+                    retries=2,
+                    backoff=3.0,
+                    retry_on=_HTTP_RETRY,
+                )
+            except Exception as e:
+                log.warning("scrape_msca failed after retries: %s", e)
+                msca_facs = []
             requests_used += 1
             for f in msca_facs:
                 if f.key not in new_facilities:
@@ -142,7 +161,17 @@ def run_discover_and_enrich() -> dict:
                 if requests_used >= DISCOVERY_RATE["max_requests_per_run"]:
                     break
                 query = qt.format(city=city_name)
-                results = discover._ddg_search(query, client)
+                try:
+                    results = with_retries(
+                        lambda: discover._ddg_search(query, client),
+                        name=f"ddg_search:{qt[:20]}",
+                        retries=1,  # discovery loop already absorbs single fails via ddg_fails
+                        backoff=2.0,
+                        retry_on=_HTTP_RETRY,
+                    )
+                except Exception as e:
+                    log.warning("ddg_search retry exhausted (%s): %s", qt[:30], e)
+                    results = None
                 requests_used += 1
                 if results is None:
                     ddg_fails[0] += 1
@@ -166,8 +195,6 @@ def run_discover_and_enrich() -> dict:
         enriched_count = 0
 
     # Persist to DB — retry on transient NeonDB errors (cold start, network blip)
-    from hardening import with_retries
-
     inserted = 0
     if db_url and fac_list:
         try:
