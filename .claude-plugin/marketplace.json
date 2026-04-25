@@ -62,6 +62,20 @@
           }
         }
       }
+    },
+    {
+      "name": "toml-lsp",
+      "description": "Taplo TOML language server for pyproject.toml and .gitleaks.toml.",
+      "source": "./plugins/toml-lsp",
+      "lspServers": {
+        "taplo": {
+          "command": "taplo",
+          "args": ["lsp", "stdio"],
+          "extensionToLanguage": {
+            ".toml": "toml"
+          }
+        }
+      }
     }
   ]
 }
