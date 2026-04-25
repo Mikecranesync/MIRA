@@ -245,7 +245,10 @@ def alert(report: RunReport, alert_log: str | Path | None = None) -> None:
     """
     if report.is_healthy():
         return
-    alert_log = Path(alert_log or os.getenv("HARDENING_ALERT_LOG", "/tmp/hardening-alerts.jsonl"))
+    # Default to a persistent path under marketing/prospects so /tmp wipe on reboot
+    # doesn't lose alert history. Override with HARDENING_ALERT_LOG.
+    default_log = Path(__file__).parent.parent.parent / "marketing" / "prospects" / "hardening-alerts.jsonl"
+    alert_log = Path(alert_log or os.getenv("HARDENING_ALERT_LOG", str(default_log)))
     alert_log.parent.mkdir(parents=True, exist_ok=True)
     with open(alert_log, "a") as fh:
         fh.write(json.dumps(asdict(report), default=str) + "\n")
