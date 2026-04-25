@@ -314,12 +314,12 @@ def _make_supervisor(tmp_path) -> "Supervisor":
         sup = Supervisor(
             db_path=db_path,
             openwebui_url="http://mock-openwebui:8080",
-            api_key="mock-api-key",
+            api_key="m",
             collection_id="mock-collection",
             vision_model="qwen2.5vl:7b",
             tenant_id=_TENANT_ID,
             mcp_base_url="http://mock-mcp:8001",
-            mcp_api_key="mock-mcp-key",
+            mcp_api_key="m",
             web_base_url="http://mock-web:3000",
         )
     sup.db_path = str(tmp_path / "mira.db")
