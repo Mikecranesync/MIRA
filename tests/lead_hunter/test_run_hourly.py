@@ -61,6 +61,8 @@ def test_run_returns_zero_on_clean_run(monkeypatch):
         "city": "X", "discovered": 5, "enriched": 5, "enriched_attempted": 5,
         "inserted": 5, "hs_pushed": 5,
     })
+    import hunt as hunt_mod
+    monkeypatch.setattr(hunt_mod, "apply_schema", lambda url: None)
     rc = run_hourly._run()
     assert rc == 0
 
@@ -74,4 +76,41 @@ def test_run_skip_marks_degraded(monkeypatch):
     })
     rc = run_hourly._run()
     # skip without other failures: degraded -> exit 1
+    assert rc == 1
+
+
+def test_run_marks_schema_step_as_skip_when_no_db(monkeypatch):
+    """When NEON_DATABASE_URL is set (required passes preflight) but apply_schema
+    succeeds, downstream clean run -> exit 0."""
+    import run_hourly
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://stub")
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "stub")
+    monkeypatch.setenv("HUBSPOT_API_KEY", "stub")
+    monkeypatch.setenv("SERPER_API_KEY", "stub")
+    monkeypatch.setattr("celery_tasks.run_discover_and_enrich", lambda: {
+        "city": "X", "discovered": 5, "enriched": 5, "enriched_attempted": 5,
+        "inserted": 5, "hs_pushed": 5,
+    })
+    import hunt as hunt_mod
+    monkeypatch.setattr(hunt_mod, "apply_schema", lambda url: None)
+    rc = run_hourly._run()
+    # Clean run path -> exit 0
+    assert rc == 0
+
+
+def test_run_step_records_schema_failure(monkeypatch):
+    import run_hourly
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgres://stub")
+
+    def boom(url):
+        raise RuntimeError("migration broke")
+
+    import hunt as hunt_mod
+    monkeypatch.setattr(hunt_mod, "apply_schema", boom)
+    monkeypatch.setattr("celery_tasks.run_discover_and_enrich", lambda: {
+        "city": "X", "discovered": 0, "enriched": 0, "enriched_attempted": 0,
+        "inserted": 0, "hs_pushed": 0,
+    })
+    rc = run_hourly._run()
+    # Schema failure -> step fails -> overall fail -> exit 1
     assert rc == 1

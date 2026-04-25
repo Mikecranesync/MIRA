@@ -74,6 +74,18 @@ def _run() -> int:
         if not present.get("SERPER_API_KEY"):
             report.add_alert("SERPER_API_KEY missing — discovery will fall back to DuckDuckGo")
 
+    # 1b. Apply DB schema (idempotent)
+    db_url = os.environ.get("NEON_DATABASE_URL", "")
+    with report.step("apply_schema") as step:
+        if not db_url:
+            step.status = "skip"
+            step.detail["reason"] = "no NEON_DATABASE_URL"
+        else:
+            sys.path.insert(0, str(Path(__file__).parent))
+            import hunt as hunt_mod
+            hunt_mod.apply_schema(db_url)
+            step.detail["applied"] = True
+
     # 2. Run discovery + enrichment with the hard timeout wrapping ONLY this work
     discovered = enriched = enriched_attempted = inserted = hs_pushed = 0
     with report.step("discover_and_enrich") as step:

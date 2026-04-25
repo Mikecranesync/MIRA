@@ -99,13 +99,6 @@ def run_discover_and_enrich() -> dict:
     hunter_key = os.environ.get("HUNTER_API_KEY", "")
     hs_token = os.environ.get("HUBSPOT_ACCESS_TOKEN") or os.environ.get("HUBSPOT_API_KEY", "")
 
-    # Apply schema if DB available
-    if db_url:
-        try:
-            hunt.apply_schema(db_url)
-        except Exception as e:
-            log.warning("Schema apply (non-fatal): %s", e)
-
     # Pick city for this run (rotate)
     cities = hunt.CITIES
     city_idx = state.get("city_index", 0) % len(cities)
