@@ -2,7 +2,7 @@
 
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -10,10 +10,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "mira-bots"))
 
 from shared.inference.router import (
     InferenceRouter,
-    _Provider,
     _ProviderSkip,
     _build_providers,
-    _convert_images_for_claude,
     _has_image,
 )
 
@@ -30,28 +28,37 @@ class TestBuildProviders:
             providers = _build_providers()
         assert len(providers) == 1
         assert providers[0].name == "groq"
-        assert providers[0].format == "openai"
 
     def test_all_three_providers_in_order(self):
         env = {
             "GROQ_API_KEY": "gsk_test",
             "CEREBRAS_API_KEY": "csk_test",
-            "ANTHROPIC_API_KEY": "sk-ant-test",
+            "GEMINI_API_KEY": "gem_test",
         }
         with patch.dict(os.environ, env, clear=True):
             providers = _build_providers()
         assert len(providers) == 3
-        assert [p.name for p in providers] == ["groq", "cerebras", "claude"]
+        assert [p.name for p in providers] == ["groq", "cerebras", "gemini"]
 
-    def test_cerebras_and_claude_no_groq(self):
+    def test_cerebras_and_gemini_no_groq(self):
         env = {
             "CEREBRAS_API_KEY": "csk_test",
-            "ANTHROPIC_API_KEY": "sk-ant-test",
+            "GEMINI_API_KEY": "gem_test",
         }
         with patch.dict(os.environ, env, clear=True):
             providers = _build_providers()
         assert len(providers) == 2
-        assert [p.name for p in providers] == ["cerebras", "claude"]
+        assert [p.name for p in providers] == ["cerebras", "gemini"]
+
+    def test_anthropic_key_is_ignored(self):
+        """ANTHROPIC_API_KEY must NOT add a Claude provider — Anthropic was removed."""
+        env = {
+            "GROQ_API_KEY": "gsk_test",
+            "ANTHROPIC_API_KEY": "sk-ant-should-be-ignored",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            providers = _build_providers()
+        assert [p.name for p in providers] == ["groq"]
 
     def test_custom_model_names(self):
         env = {
@@ -73,11 +80,12 @@ class TestRouterEnabled:
             router = InferenceRouter()
         assert router.enabled is True
 
-    def test_enabled_with_claude_backend_legacy(self):
-        env = {"INFERENCE_BACKEND": "claude", "ANTHROPIC_API_KEY": "sk-ant-test"}
+    def test_legacy_claude_backend_no_longer_enables(self):
+        """INFERENCE_BACKEND=claude was a legacy alias; Anthropic removed → disabled."""
+        env = {"INFERENCE_BACKEND": "claude", "GROQ_API_KEY": "gsk_test"}
         with patch.dict(os.environ, env, clear=True):
             router = InferenceRouter()
-        assert router.enabled is True
+        assert router.enabled is False
 
     def test_disabled_with_local_backend(self):
         env = {"INFERENCE_BACKEND": "local", "GROQ_API_KEY": "gsk_test"}
@@ -142,32 +150,6 @@ class TestHasImage:
         assert _has_image(msgs) is True
 
 
-class TestConvertImagesForClaude:
-    def test_converts_image_url_to_base64_source(self):
-        msgs = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": "data:image/jpeg;base64,AAAA"},
-                    },
-                ],
-            }
-        ]
-        result = _convert_images_for_claude(msgs)
-        block = result[0]["content"][0]
-        assert block["type"] == "image"
-        assert block["source"]["type"] == "base64"
-        assert block["source"]["media_type"] == "image/jpeg"
-        assert block["source"]["data"] == "AAAA"
-
-    def test_passthrough_text_blocks(self):
-        msgs = [{"role": "user", "content": "plain text"}]
-        result = _convert_images_for_claude(msgs)
-        assert result[0]["content"] == "plain text"
-
-
 class TestProviderSkip:
     def test_skip_contains_info(self):
         skip = _ProviderSkip("groq", "rate_limit")
@@ -182,14 +164,15 @@ class TestCascadeComplete:
         env = {"INFERENCE_BACKEND": "local"}
         with patch.dict(os.environ, env, clear=True):
             router = InferenceRouter()
-        content, usage = await router.complete([{"role": "user", "content": "hi"}])
+        content, _usage = await router.complete([{"role": "user", "content": "hi"}])
         assert content == ""
 
-    async def test_skips_openai_providers_for_image_requests(self):
+    async def test_image_request_uses_provider_with_vision_model(self):
+        """Groq has a vision model; Cerebras does not — image request should hit Groq."""
         env = {
             "INFERENCE_BACKEND": "cloud",
             "GROQ_API_KEY": "gsk_test",
-            "ANTHROPIC_API_KEY": "sk-ant-test",
+            "CEREBRAS_API_KEY": "csk_test",
         }
         with patch.dict(os.environ, env, clear=True):
             router = InferenceRouter()
@@ -204,12 +187,17 @@ class TestCascadeComplete:
             }
         ]
 
-        with patch.object(router, "_call_anthropic") as mock_claude:
-            mock_claude.return_value = ("claude response", {"input_tokens": 10, "output_tokens": 5, "provider": "claude"})
-            content, usage = await router.complete(messages)
+        with patch.object(router, "_call_openai_compat") as mock_call:
+            mock_call.return_value = (
+                "groq vision response",
+                {"input_tokens": 10, "output_tokens": 5, "provider": "groq"},
+            )
+            content, _ = await router.complete(messages)
 
-        assert content == "claude response"
-        mock_claude.assert_called_once()
+        assert content == "groq vision response"
+        # Cerebras (no vision_model) must be skipped — only one call total
+        assert mock_call.call_count == 1
+        assert mock_call.call_args[0][0].name == "groq"
 
     async def test_cascade_falls_through_on_skip(self):
         env = {
@@ -220,14 +208,12 @@ class TestCascadeComplete:
         with patch.dict(os.environ, env, clear=True):
             router = InferenceRouter()
 
-        with (
-            patch.object(router, "_call_openai_compat") as mock_openai,
-        ):
+        with patch.object(router, "_call_openai_compat") as mock_openai:
             mock_openai.side_effect = [
                 _ProviderSkip("groq", "rate_limit"),
                 ("cerebras response", {"input_tokens": 10, "output_tokens": 5, "provider": "cerebras"}),
             ]
-            content, usage = await router.complete([{"role": "user", "content": "test"}])
+            content, _ = await router.complete([{"role": "user", "content": "test"}])
 
         assert content == "cerebras response"
         assert mock_openai.call_count == 2
@@ -242,6 +228,6 @@ class TestCascadeComplete:
 
         with patch.object(router, "_call_openai_compat") as mock_openai:
             mock_openai.side_effect = _ProviderSkip("groq", "timeout")
-            content, usage = await router.complete([{"role": "user", "content": "test"}])
+            content, _ = await router.complete([{"role": "user", "content": "test"}])
 
         assert content == ""

@@ -890,10 +890,7 @@ async def api_spend():
         results = []
         for r in rows:
             model, calls, inp, out = r
-            if "claude" in (model or "").lower():
-                cost = (inp * 0.000003) + (out * 0.000015)
-            else:
-                cost = 0.0
+            cost = 0.0  # All current providers (Groq/Cerebras/Gemini) are free-tier
             results.append(
                 {
                     "model": model,

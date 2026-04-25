@@ -25,7 +25,6 @@ def _make_provider(name: str) -> _Provider:
         api_url="https://api.example.com/v1/chat/completions",
         api_key="test-key",
         model="test-model",
-        format="openai",
     )
 
 
@@ -34,7 +33,7 @@ def _make_router() -> InferenceRouter:
         "INFERENCE_BACKEND": "cloud",
         "GROQ_API_KEY": "gk-test",
         "CEREBRAS_API_KEY": "cb-test",
-        "ANTHROPIC_API_KEY": "ant-test",
+        "GEMINI_API_KEY": "gem-test",
     }):
         return InferenceRouter()
 
@@ -57,7 +56,7 @@ async def test_cascade_skips_failed_provider():
         return ("Good diagnostic reply", {"provider": provider.name})
 
     router.enabled = True
-    with patch.object(router, "_call_provider", side_effect=mock_call_provider):
+    with patch.object(router, "_call_openai_compat", side_effect=mock_call_provider):
         reply, meta = await router.complete(
             [{"role": "user", "content": "VFD shows E.OC.3"}]
         )
@@ -77,7 +76,7 @@ async def test_all_providers_fail_returns_empty():
         raise _ProviderSkip(provider.name, "all down")
 
     router.enabled = True
-    with patch.object(router, "_call_provider", side_effect=always_skip):
+    with patch.object(router, "_call_openai_compat", side_effect=always_skip):
         try:
             reply, meta = await router.complete(
                 [{"role": "user", "content": "Test message"}]
@@ -102,7 +101,7 @@ async def test_cascade_stops_at_first_success():
         return ("Winner reply", {"provider": provider.name})
 
     router.enabled = True
-    with patch.object(router, "_call_provider", side_effect=first_wins):
+    with patch.object(router, "_call_openai_compat", side_effect=first_wins):
         reply, _ = await router.complete([{"role": "user", "content": "test"}])
 
     assert call_count == 1

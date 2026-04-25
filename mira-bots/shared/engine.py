@@ -298,7 +298,8 @@ class Supervisor:
         # Nemotron client — enabled only when NVIDIA_API_KEY is set
         self.nemotron = NemotronClient()
 
-        # Inference router — enabled only when INFERENCE_BACKEND=claude + ANTHROPIC_API_KEY set
+        # Inference router — enabled when INFERENCE_BACKEND=cloud and at least one of
+        # GROQ_API_KEY / CEREBRAS_API_KEY / GEMINI_API_KEY is set.
         self.router = InferenceRouter()
 
         # Initialize workers

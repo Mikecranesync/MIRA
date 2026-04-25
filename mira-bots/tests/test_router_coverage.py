@@ -100,13 +100,12 @@ class TestRouterComplete:
             "os.environ",
             {
                 "INFERENCE_BACKEND": "cloud",
-                "ANTHROPIC_API_KEY": "sk-ant-test",
+                "GROQ_API_KEY": "gsk_test",
             },
         ):
             with patch("shared.inference.router._build_providers") as mock_build:
                 mock_provider = MagicMock()
-                mock_provider.name = "claude"
-                mock_provider.format = "anthropic"
+                mock_provider.name = "groq"
                 mock_provider.vision_model = ""
                 mock_provider.enabled = True
                 mock_build.return_value = [mock_provider]
@@ -123,9 +122,9 @@ class TestRouterComplete:
 
     async def test_complete_returns_first_success(self, router_with_providers):
         router = router_with_providers
-        router._call_provider = AsyncMock(
-            return_value=("diagnosis result", {"provider": "claude", "input_tokens": 50})
+        router._call_openai_compat = AsyncMock(
+            return_value=("diagnosis result", {"provider": "groq", "input_tokens": 50})
         )
         content, usage = await router.complete([{"role": "user", "content": "VFD fault F-201"}])
         assert content == "diagnosis result"
-        assert usage["provider"] == "claude"
+        assert usage["provider"] == "groq"

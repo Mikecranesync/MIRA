@@ -2,11 +2,10 @@
 fastapi==0.115.*
 uvicorn[standard]==0.34.*
 
-# GSDEngine dependencies (match mira-bots/telegram/requirements.txt)
+# Supervisor dependencies (match mira-bots/telegram/requirements.txt)
 httpx==0.27.*
 Pillow>=12.0
 pytesseract>=0.3
-anthropic>=0.40
 PyYAML==6.0.3
 langfuse>=2.50.0,<3.0.0
 sqlalchemy>=2.0
