@@ -11,6 +11,7 @@ import yaml
 
 from .. import neon_recall as _neon_recall
 from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
+from ..inference.router import InferenceRouter
 from ..langfuse_setup import trace_rag_query
 
 # Max tokens to allocate for conversation history in the prompt.
@@ -631,15 +632,26 @@ class RAGWorker:
         return None
 
     async def _call_llm(self, messages: list[dict], model: str = None) -> str:
-        """Call LLM — cloud cascade (Groq→Cerebras→Claude) then Open WebUI fallback."""
+        """Call LLM — cloud cascade (Groq→Cerebras→Claude) then Open WebUI fallback.
+
+        PII sanitization (IPv4/MAC/serial → placeholders) is applied to every
+        outbound LLM call regardless of which backend is reached. The cascade
+        path sanitizes inside `router.complete()`; the Open WebUI fallback is
+        sanitized here so neither path can leak.
+        """
+        clean = (
+            self.router.sanitize_context(messages)
+            if self.router
+            else InferenceRouter.sanitize_context(messages)
+        )
+
         if self.router and self.router.enabled:
-            clean = self.router.sanitize_context(messages)
-            content, usage = await self.router.complete(clean, max_tokens=2048)
+            content, usage = await self.router.complete(clean, max_tokens=2048, sanitize=False)
             if content:
                 self.router.log_usage(usage)
                 return content
 
-        return await self._call_openwebui(messages, model=model)
+        return await self._call_openwebui(clean, model=model)
 
     async def _call_openwebui(self, messages: list[dict], model: str = None) -> str:
         """Call Open WebUI chat completions API with observability logging."""
