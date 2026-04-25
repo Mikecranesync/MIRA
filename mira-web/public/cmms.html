@@ -99,6 +99,8 @@
   <link rel="dns-prefetch" href="//unpkg.com">
   <!-- web-review #621: defer kills render-blocking; pinning to a verified version is tracked in #621 -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+  <!-- PostHog analytics (closes #618) — server injects PLG_POSTHOG_KEY; no-op stub if unset -->
+  <script src="/posthog-init.js" defer></script>
 </head>
 <body>
 <div class="page">
@@ -441,14 +443,18 @@ async function handleSignup() {
   const errEl = document.getElementById('form-error');
   errEl.classList.remove('show');
 
+  posthog.capture('signup_submit', { has_first_name: !!firstName, terms_accepted: termsAccepted });
+
   if (!email || !company) {
     errEl.textContent = 'Email and company name are required.';
     errEl.classList.add('show');
+    posthog.capture('signup_error', { reason: 'missing_required_fields' });
     return;
   }
   if (!termsAccepted) {
     errEl.textContent = 'Please agree to the Terms of Service and Privacy Policy.';
     errEl.classList.add('show');
+    posthog.capture('signup_error', { reason: 'terms_not_accepted' });
     return;
   }
 
@@ -465,15 +471,20 @@ async function handleSignup() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');
 
+    // Identify the user in PostHog so all subsequent events tie back to them.
+    posthog.identify(email, { company: company, first_name: firstName || null });
+
     // Active user returning — has token, show dashboard
     if (data.token) {
       AUTH.token = data.token;
       sessionStorage.setItem('flm_token', data.token);
+      posthog.capture('signup_success', { tenant_returning: true });
       await activateAuth();
       return;
     }
 
     // Pending user — show "check your email"
+    posthog.capture('signup_success', { tenant_returning: false });
     const name = firstName || email.split('@')[0];
     document.getElementById('signup-form-wrap').classList.add('hidden');
     document.getElementById('download-step').classList.add('show');
@@ -482,6 +493,7 @@ async function handleSignup() {
       `Check your email — we'll send you a series of short Loom videos showing what MIRA can do. When you're ready, a payment link unlocks everything.`;
 
   } catch (err) {
+    posthog.capture('signup_error', { reason: 'request_failed', message: err.message });
     errEl.textContent = err.message;
     errEl.classList.add('show');
     btn.disabled = false;
