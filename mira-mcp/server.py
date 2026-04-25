@@ -612,10 +612,9 @@ async def get_agent_status() -> dict:
 
 if __name__ == "__main__":
     import uvicorn
+    from exports import export_assets, export_work_orders
     from starlette.applications import Starlette
     from starlette.routing import Route
-
-    from exports import export_assets, export_work_orders
 
     # Export routes authenticate via PLG JWT internally — skip MCP_REST_API_KEY check.
     _EXPORT_PATH_PREFIX = "/api/v1/exports/"
