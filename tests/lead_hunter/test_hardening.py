@@ -53,3 +53,62 @@ def test_singleton_lock_releases_on_exception(tmp_path):
             raise RuntimeError("boom")
     # Lock file gone even after exception
     assert not (tmp_path / ".test-lh-3.lock").exists()
+
+
+# ---------------- with_retries ----------------
+
+def test_with_retries_returns_value_on_first_success():
+    from hardening import with_retries
+    calls = []
+    def fn():
+        calls.append(1)
+        return "ok"
+    assert with_retries(fn, name="t", retries=3) == "ok"
+    assert calls == [1]
+
+
+def test_with_retries_retries_then_succeeds(monkeypatch):
+    from hardening import with_retries
+    monkeypatch.setattr("hardening.time.sleep", lambda s: None)
+    monkeypatch.setattr("hardening.random.uniform", lambda a, b: 1.0)
+    calls = {"n": 0}
+    def fn():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise ConnectionError("transient")
+        return "ok"
+    assert with_retries(fn, name="t", retries=3, retry_on=(ConnectionError,)) == "ok"
+    assert calls["n"] == 3
+
+
+def test_with_retries_exhausts_and_raises_last(monkeypatch):
+    from hardening import with_retries
+    monkeypatch.setattr("hardening.time.sleep", lambda s: None)
+    monkeypatch.setattr("hardening.random.uniform", lambda a, b: 1.0)
+    def fn():
+        raise ConnectionError("always fails")
+    with pytest.raises(ConnectionError, match="always fails"):
+        with_retries(fn, name="t", retries=2, retry_on=(ConnectionError,))
+
+
+def test_with_retries_does_not_retry_give_up_class(monkeypatch):
+    from hardening import with_retries
+    monkeypatch.setattr("hardening.time.sleep", lambda s: None)
+    calls = {"n": 0}
+    def fn():
+        calls["n"] += 1
+        raise KeyboardInterrupt()
+    with pytest.raises(KeyboardInterrupt):
+        with_retries(fn, name="t", retries=5)
+    assert calls["n"] == 1  # No retry on KeyboardInterrupt
+
+
+def test_with_retries_does_not_retry_unlisted_exception(monkeypatch):
+    from hardening import with_retries
+    calls = {"n": 0}
+    def fn():
+        calls["n"] += 1
+        raise ValueError("not in retry_on")
+    with pytest.raises(ValueError):
+        with_retries(fn, name="t", retries=3, retry_on=(ConnectionError,))
+    assert calls["n"] == 1
