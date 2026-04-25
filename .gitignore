@@ -167,3 +167,5 @@ wiki/.smart-env/
 # the repo even if iCloud re-creates them locally.
 **/* 2.md
 **/* 2.txt
+
+.claire/
