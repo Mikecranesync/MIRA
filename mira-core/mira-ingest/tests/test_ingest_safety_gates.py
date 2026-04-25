@@ -7,7 +7,6 @@ branch in main.ingest_document_kb (lines ~708-835).
 
 from __future__ import annotations
 
-import io
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
