@@ -5,7 +5,3 @@ openviking==0.3.9
 pdfplumber==0.11.9
 python-multipart==0.0.26
 httpx==0.28.*
-# Transitive (via fastmcp). Pinned >=1.83.7 to patch GHSA-xqmj-j6mv-4862 —
-# Server-Side Template Injection in /prompts/test (HIGH). Trivy CI gate
-# blocks builds with HIGH/CRITICAL vulns.
-litellm>=1.83.7
