@@ -133,7 +133,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install anthropic SDK
+      - name: Install LLM SDKs
         run: pip install anthropic httpx
 
       - name: Get PR diff
@@ -146,33 +146,34 @@ jobs:
           echo "diff_lines=$LINES" >> $GITHUB_OUTPUT
           echo "Diff: $LINES lines"
 
-      - name: Claude AI review
-        id: claude_review
+      - name: AI review (multi-provider cascade)
+        id: ai_review
         env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           DIFF_LINES: ${{ steps.diff.outputs.diff_lines }}
         run: |
           python3 - << 'PYEOF'
-          import anthropic
+          # Multi-provider LLM cascade — mirrors mira-bots/shared/inference/router.py.
+          # Order: Groq → Cerebras → Gemini → Claude (Groq fastest per 2026-04-21
+          # latency audit; Claude last as it's the most expensive).
+          # Any provider that errors (auth, billing, rate-limit, server error) falls
+          # through to the next. If all fail, soft-skip with a comment so PRs aren't
+          # blocked by infra issues.
           import os
           import sys
-
-          api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-          if not api_key:
-              print("ANTHROPIC_API_KEY not set — skipping Claude review")
-              with open("/tmp/claude-review.md", "w") as f:
-                  f.write("⚠️ Claude review skipped — ANTHROPIC_API_KEY not configured in repo secrets.")
-              sys.exit(0)
+          import httpx
+          import anthropic
 
           with open("/tmp/pr_truncated.diff") as f:
               diff = f.read()
 
           pr_title = os.environ.get("PR_TITLE", "")
           diff_lines = os.environ.get("DIFF_LINES", "?")
-
-          client = anthropic.Anthropic(api_key=api_key)
 
           prompt = f"""You are reviewing a pull request for the MIRA project — an AI-powered industrial maintenance diagnostic platform.
 
@@ -197,19 +198,83 @@ jobs:
           {diff[:12000]}
           ```"""
 
-          message = client.messages.create(
-              model="claude-sonnet-4-6",
-              max_tokens=2048,
-              messages=[{"role": "user", "content": prompt}],
-          )
+          # OpenAI-compatible providers (Groq, Cerebras, Gemini all expose /chat/completions)
+          openai_compat = [
+              ("groq", os.environ.get("GROQ_API_KEY", ""),
+               "https://api.groq.com/openai/v1/chat/completions",
+               "llama-3.3-70b-versatile"),
+              ("cerebras", os.environ.get("CEREBRAS_API_KEY", ""),
+               "https://api.cerebras.ai/v1/chat/completions",
+               "llama-3.3-70b"),
+              ("gemini", os.environ.get("GEMINI_API_KEY", ""),
+               "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+               "gemini-2.5-flash"),
+          ]
 
-          review_text = message.content[0].text
+          attempts = []
+          review_text = None
+          provider_used = None
+
+          for name, key, url, model in openai_compat:
+              if not key:
+                  attempts.append(f"{name}: skipped (no key)")
+                  continue
+              try:
+                  resp = httpx.post(
+                      url,
+                      headers={"Authorization": f"Bearer {key}",
+                               "Content-Type": "application/json"},
+                      json={"model": model, "max_tokens": 2048,
+                            "messages": [{"role": "user", "content": prompt}]},
+                      timeout=60.0,
+                  )
+                  resp.raise_for_status()
+                  review_text = resp.json()["choices"][0]["message"]["content"]
+                  provider_used = f"{name} ({model})"
+                  attempts.append(f"{name}: ok")
+                  break
+              except Exception as e:
+                  attempts.append(f"{name}: {type(e).__name__} — {str(e)[:120]}")
+                  print(f"[{name}] failed: {e}")
+
+          # Anthropic last (most expensive) — uses different SDK, separate try
+          if review_text is None:
+              anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+              if not anthropic_key:
+                  attempts.append("claude: skipped (no key)")
+              else:
+                  try:
+                      client = anthropic.Anthropic(api_key=anthropic_key)
+                      message = client.messages.create(
+                          model="claude-sonnet-4-6",
+                          max_tokens=2048,
+                          messages=[{"role": "user", "content": prompt}],
+                      )
+                      review_text = message.content[0].text
+                      provider_used = "claude (claude-sonnet-4-6)"
+                      attempts.append("claude: ok")
+                  except Exception as e:
+                      attempts.append(f"claude: {type(e).__name__} — {str(e)[:120]}")
+                      print(f"[claude] failed: {e}")
+
+          if review_text is None:
+              # All providers failed — soft-skip rather than block PRs on infra
+              print("All LLM providers failed — skipping review.")
+              for a in attempts:
+                  print(f"  · {a}")
+              with open("/tmp/claude-review.md", "w") as f:
+                  f.write("⚠️ AI review skipped — all providers in the cascade failed.\n\n")
+                  f.write("Attempts:\n")
+                  for a in attempts:
+                      f.write(f"- `{a}`\n")
+              sys.exit(0)
+
+          print(f"Review complete via {provider_used}.")
+          for a in attempts:
+              print(f"  · {a}")
           with open("/tmp/claude-review.md", "w") as f:
+              f.write(f"_Review by: **{provider_used}**_\n\n")
               f.write(review_text)
-
-          print("Claude review complete.")
-          print(f"Input tokens: {message.usage.input_tokens}")
-          print(f"Output tokens: {message.usage.output_tokens}")
           PYEOF
 
       - name: Post Claude review as PR comment
