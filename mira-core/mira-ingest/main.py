@@ -697,7 +697,9 @@ async def ingest_document_kb(
     collection_hint: str = Form(default=None),
     equipment_type: str = Form(default=None),
     tenant_id: str = Form(default=""),
-    relevance_gate: str = Form(default="off"),  # 'on' opts in (also requires RELEVANCE_GATE_ENABLED env)
+    relevance_gate: str = Form(
+        default="off"
+    ),  # 'on' opts in (also requires RELEVANCE_GATE_ENABLED env)
     source: str = Form(default="unknown"),  # 'inbox' | 'web-upload' | 'cron-oem' | 'unknown'
 ):
     """Upload a PDF to Open WebUI Knowledge Base.
@@ -781,10 +783,7 @@ async def ingest_document_kb(
     # GATE 2: LLM relevance check (Unit 3.5). Opt-in via env + form flag.
     # Inbox path always sets relevance_gate=on; web upload picker leaves
     # it default-off so the existing UX doesn't change.
-    if (
-        relevance_gate == "on"
-        and os.getenv("RELEVANCE_GATE_ENABLED", "").lower() == "true"
-    ):
+    if relevance_gate == "on" and os.getenv("RELEVANCE_GATE_ENABLED", "").lower() == "true":
         from relevance import classify_document
 
         first_text = _extract_first_pages_text(raw, n=2)

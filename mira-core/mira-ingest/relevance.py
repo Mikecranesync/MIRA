@@ -48,9 +48,7 @@ _PROMPT = (
 )
 
 
-async def classify_document(
-    first_page_text: str, *, timeout_s: float = 5.0
-) -> tuple[bool, str]:
+async def classify_document(first_page_text: str, *, timeout_s: float = 5.0) -> tuple[bool, str]:
     """Returns (is_manual, reason).
 
     On YES: returns (True, "<category>") e.g. (True, "manual").

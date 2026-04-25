@@ -199,9 +199,7 @@ def _maybe_append_citation_footer(reply: str, kb_status: dict | None = None) -> 
     return reply + "\n".join(lines)
 
 
-def format_reply(
-    parsed: dict, user_message: str = "", kb_status: dict | None = None
-) -> str:
+def format_reply(parsed: dict, user_message: str = "", kb_status: dict | None = None) -> str:
     """Format parsed response for display.
 
     Shape rules (2026-04-19 audit):
@@ -234,11 +232,7 @@ def format_reply(
 
     if len(cleaned) < 2:
         pass
-    elif (
-        len(cleaned) == 2
-        and _YES_OPTION_RE.match(cleaned[0])
-        and _NO_OPTION_RE.match(cleaned[1])
-    ):
+    elif len(cleaned) == 2 and _YES_OPTION_RE.match(cleaned[0]) and _NO_OPTION_RE.match(cleaned[1]):
         reply = deduplicate_options(reply, cleaned)
         suffix = f"Reply: {cleaned[0]} or {cleaned[1]}."
         if not reply.rstrip().endswith((".", "?", "!")):

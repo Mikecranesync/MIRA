@@ -593,6 +593,7 @@ async def _startup(application: Application) -> None:
 async def _conflict_error_handler(update: object, context) -> None:
     """On 409 Conflict sleep 15s and let PTB retry — avoids crash-restart loop."""
     import asyncio
+
     from telegram.error import Conflict as TGConflict
 
     if isinstance(context.error, TGConflict):

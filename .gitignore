@@ -140,3 +140,27 @@ factorylm.properties
 # Observability data volumes (managed by Docker)
 observability/grafana/provisioning/dashboards/celery-tasks.json
 .hypothesis/
+
+# Test coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+
+# Playwright MCP session ephemera (per-session, regenerable)
+.playwright-mcp/
+
+# Marketing video binaries — large, regenerable; keep spend.json tracked
+marketing/videos/**/*.mp4
+marketing/videos/**/*.mov
+marketing/videos/**/*.webm
+
+# Obsidian per-machine state (track plugin config under .obsidian/, not these)
+wiki/.obsidian/workspace*
+wiki/.obsidian/app.json
+wiki/.obsidian/appearance.json
+wiki/.smart-env/
+
+# iCloud sync duplicates (filename ending in " 2.ext"). Keep them out of
+# the repo even if iCloud re-creates them locally.
+**/* 2.md
+**/* 2.txt
