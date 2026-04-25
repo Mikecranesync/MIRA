@@ -1,0 +1,65 @@
+# MIRA comic pipeline — configurable values (no secrets here; use Doppler)
+
+# ── Image generation (OpenAI gpt-image-1) ─────────────────────────────────
+image_model: gpt-image-1
+image_quality: high          # low | medium | high | auto
+image_size: 1536x1024        # landscape 3:2 cinematic comic panel
+image_output_format: png
+
+# Per-panel cost estimates (USD) used by run_pipeline.py --dry-run.
+# Calibrate against actual OpenAI pricing; values below are spec table.
+cost_per_panel_usd:
+  low: 0.016
+  medium: 0.042
+  high: 0.167
+
+# ── Voiceover (OpenAI TTS) ────────────────────────────────────────────────
+tts_model: tts-1-hd
+tts_voice: onyx              # deep male, reads as "industrial professional"
+cost_per_scene_tts_usd: 0.030
+
+# ── Video (ffmpeg) ────────────────────────────────────────────────────────
+video_fps: 24
+video_width: 1920
+video_height: 1080
+video_bitrate: 8M
+audio_bitrate: 192k
+
+# Ken Burns + transitions
+ken_burns_zoom_amount: 0.03  # 3% total zoom over panel duration
+transition_duration: 0.4     # seconds crossfade between panels
+
+# Ambient background hum mixed under voiceover
+ambient_volume_db: -25       # low-volume factory hum (see assemble_final.py)
+
+# ── Paths ─────────────────────────────────────────────────────────────────
+# Output root — matches sibling seedance-video-gen output convention.
+output_root: ~/mira/marketing/videos/comic-v1
+# Per-run working dirs (panels, audio, scene clips) stay under the project:
+work_root: output
+# Shared reference image directory (seedance-compatible):
+reference_root: ~/mira/marketing/references
+# Shared spend log (shared with seedance pipeline):
+spend_log: ~/mira/marketing/videos/spend.json
+
+# ── Retry / concurrency ───────────────────────────────────────────────────
+max_retries: 5
+retry_base_delay_seconds: 2.0   # exponential backoff: base * 2^attempt
+
+# ── Master style prompt prepended to every panel ──────────────────────────
+master_style_context: |
+  Industrial comic book art style. Gritty factory conveyor floor setting.
+  Dark steel blue, amber, and high-contrast black color palette. Bold comic
+  panel border lines. Realistic characters. No superheroes.
+  Characters: Rico (floor tech, dark hair, glasses, blue coveralls with name
+  patch); Deb (shift supervisor, headset, glasses); Marcus (maintenance
+  manager, dark complexion, thoughtful expression); Elena (engineering
+  manager, remote, laptop or phone); Director Holt (senior, grey hair,
+  office setting). Maintain consistent character appearance across all
+  panels.
+
+# ── Voiceover style instruction prepended to every voice line ─────────────
+voiceover_style_instruction: |
+  Speak in a calm, confident, floor-level industrial professional tone.
+  Not a commercial announcer. Think LinkedIn thought leader who has
+  actually turned a wrench. Measured pace. Slight gravitas on key lines.

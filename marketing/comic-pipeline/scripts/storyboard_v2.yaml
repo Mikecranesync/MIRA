@@ -1,0 +1,188 @@
+# MIRA Comic Explainer v2 — paced, camera-tracked, scored.
+#
+# Differences from v1:
+#   - Per-beat narration (one TTS call per sentence, slower 0.9× speed)
+#   - Per-beat focal points: camera animates from beat to beat via piecewise
+#     zoompan (true pan/zoom, not crossfade-as-cut)
+#   - Synthesized 2-mood ambient score (problem → resolution at shot 4)
+#   - Sidechain ducking so bed drops -12 dB during spoken passages
+#
+# Focals are CANVAS-NORMALIZED coords (0-1 fractions of the 1920x1080 canvas
+# AFTER source has been letterboxed to fit). Pre-computed by hand from the
+# vision-analyzed source dimensions:
+#   1774x887 (shots 1, 2):  canvas y = 0.056 + source_y × 0.889 (60 px bars top/bottom)
+#   1536x1024 (shots 3, 4): canvas x = 0.078 + source_x × 0.844 (150 px pillars L/R)
+#   1672x941  (shot 5):     ≈ identity (source ≈ 16:9 already)
+#
+# Camera motion model: within a shot, one continuous zoompan filter. During
+# beat N's "hold" period (duration − 0.6s), camera is parked at focal N.
+# During the final 0.6s of beat N, camera pans linearly to focal N+1. The
+# last beat in each shot has no pan-out. Between shots: separate clips with
+# xfade=0.6s. Audio plays through the xfade.
+
+title: "MIRA Comic Explainer v2"
+version: 2
+
+video:
+  width: 1920
+  height: 1080
+  fps: 24
+  shot_xfade_duration: 0.6
+  intra_beat_pan_duration: 0.6
+  output_name: mira_explainer_v2.mp4
+
+audio:
+  tts_model: tts-1-hd
+  tts_voice: onyx
+  tts_speed: 0.90              # slower than default 1.0 for documentary cadence
+  pause_within_shot: 0.5       # silence between beats inside a shot
+  pause_between_shots: 1.0     # silence at shot boundaries
+  style_instruction: |
+    Speak in a calm, confident, floor-level industrial professional tone.
+    Slow, deliberate pace. Pause naturally between thoughts. This is
+    documentary, not advertising — measured, weighty, and patient.
+
+music:
+  bed_volume_db: -18
+  duck_threshold: 0.05         # voice level above this triggers ducking
+  duck_ratio: 6                # 6:1 compression
+  duck_attack_ms: 80
+  duck_release_ms: 400
+  crossfade_seconds: 3.0       # mood transition at the pivot
+
+  moods:
+    problem:
+      # Low industrial drone — A1 (55) + E2 (82.4) + dissonant F2 (87.3) + brown noise
+      sines:
+        - {freq: 55.0,  weight: 0.45}
+        - {freq: 82.4,  weight: 0.30}
+        - {freq: 87.3,  weight: 0.15}      # minor 2nd dissonance — anxiety
+      noise:
+        color: brown
+        weight: 0.10
+    resolution:
+      # Warm C major triad with octave shimmer — confident, forward
+      sines:
+        - {freq: 65.4,  weight: 0.30}      # C2
+        - {freq: 98.0,  weight: 0.25}      # G2
+        - {freq: 130.8, weight: 0.25}      # C3
+        - {freq: 164.8, weight: 0.20}      # E3
+      noise:
+        color: pink
+        weight: 0.05
+
+  cues:
+    - shot_id: 1
+      mood: problem
+    - shot_id: 4
+      mood: resolution
+
+shots:
+  - id: 1
+    file: "ChatGPT Image Apr 24, 2026 at 02_05_37 PM.png"
+    role: "Scene 1 title — fault detected on Line 5"
+    beats:
+      - text: "Day shift. Full house. Two conveyor lines."
+        focal: {cx: 0.50, cy: 0.50, zoom: 1.0}     # wide establish (full image)
+        target: "wide establish"
+        duration: 5.0
+      - text: "Line four is running. Line five just went down."
+        focal: {cx: 0.75, cy: 0.216, zoom: 2.5}    # LINE 5 STOPPED sign top-right
+        target: "LINE 5 STOPPED sign"
+        duration: 4.5
+      - text: "The fault code is cryptic. Nobody on the floor remembers what it means."
+        focal: {cx: 0.40, cy: 0.634, zoom: 1.8}    # HMI fault screen
+        target: "HMI fault: 1.SOC B16.2"
+        duration: 5.0
+
+  - id: 2
+    file: "ChatGPT Image Apr 24, 2026 at 02_11_45 PM.png"
+    role: "Scene 1 frustration — Maximo is a graveyard"
+    beats:
+      - text: "Rico turns to Maximo. The CMMS that's supposed to have the answer."
+        focal: {cx: 0.68, cy: 0.518, zoom: 1.6}    # Maximo screen
+        target: "Maximo UI"
+        duration: 5.0
+      - text: "He scrolls. The data is there. But it isn't."
+        focal: {cx: 0.20, cy: 0.545, zoom: 2.0}    # Rico's frustrated face
+        target: "Rico head in hands"
+        duration: 4.5
+      - text: "The manual is from two thousand nine. The answer exists somewhere. Nobody knows where."
+        focal: {cx: 0.25, cy: 0.821, zoom: 2.0}    # CONVEYOR MANUALS 2009 binder
+        target: "2009 binder"
+        duration: 6.0
+
+  - id: 3
+    file: "ChatGPT Image Apr 24, 2026 at 02_22_55 PM.png"
+    role: "Scene 1 pressure — clock running, leadership reacts"
+    beats:
+      - text: "Twenty-one minutes elapsed. The line is still down."
+        focal: {cx: 0.394, cy: 0.05, zoom: 2.5}    # 21:03 ELAPSED sign
+        target: "LINE 5 STOPPED 21:03"
+        duration: 4.0
+      - text: "Deb is on the radio. If this drags, they'll blame her shift."
+        focal: {cx: 0.774, cy: 0.20, zoom: 2.5}    # Deb panel
+        target: "Deb — shift supervisor"
+        duration: 4.5
+      - text: "Marcus is running the numbers. Every minute is money. Every day, it's him."
+        focal: {cx: 0.774, cy: 0.40, zoom: 2.5}    # Marcus panel
+        target: "Marcus — maintenance manager"
+        duration: 4.5
+      - text: "Elena can't see what her team can't see."
+        focal: {cx: 0.774, cy: 0.60, zoom: 2.5}    # Elena panel
+        target: "Elena — engineering manager"
+        duration: 4.0
+      - text: "Director Holt: customers don't care why. They care that we deliver."
+        focal: {cx: 0.774, cy: 0.83, zoom: 2.5}    # Holt panel
+        target: "Director Holt"
+        duration: 4.5
+
+  - id: 4
+    file: "ChatGPT Image Apr 24, 2026 at 11_53_02 AM.png"
+    role: "Scene 2 pivot — Rico tries MIRA"
+    beats:
+      - text: "This time, Rico tries something different."
+        focal: {cx: 0.50, cy: 0.25, zoom: 1.5}     # top wide establishing
+        target: "wide top establishing"
+        duration: 4.0
+      - text: "He pulls up MIRA on his tablet. Types in the fault code."
+        focal: {cx: 0.605, cy: 0.78, zoom: 2.5}    # Rico with tablet (panel C)
+        target: "Rico with tablet"
+        duration: 4.5
+      - text: "MIRA answers in seconds. Proximity sensor, Section B-sixteen. This has happened fourteen times already."
+        focal: {cx: 0.394, cy: 0.78, zoom: 2.5}    # MIRA ALERT phone (panel B)
+        target: "MIRA ALERT phone screen"
+        duration: 6.0
+      - text: "Recommended fix: reset the panel. No parts needed."
+        focal: {cx: 0.50, cy: 0.50, zoom: 1.2}     # pull back to whole page
+        target: "pull-back, whole page"
+        duration: 4.5
+
+  - id: 5
+    file: "ChatGPT Image Apr 24, 2026 at 12_12_29 PM.png"
+    role: "Scene 3 resolution — org aligns in under 90 seconds"
+    beats:
+      - text: "One message to plant-ops."
+        focal: {cx: 0.25, cy: 0.25, zoom: 2.0}     # PANEL 1 (Rico posting)
+        target: "Rico posts to Slack"
+        duration: 4.0
+      - text: "Approved by Deb. Seen by twenty-eight."
+        focal: {cx: 0.75, cy: 0.25, zoom: 2.0}     # PANEL 2 (Deb approves)
+        target: "Deb approves in Slack"
+        duration: 4.0
+      - text: "Marcus sees downtime coming down."
+        focal: {cx: 0.165, cy: 0.625, zoom: 2.5}   # Marcus inset
+        target: "Marcus reaction"
+        duration: 3.5
+      - text: "Elena finally sees the pattern."
+        focal: {cx: 0.50, cy: 0.625, zoom: 2.5}    # Elena inset
+        target: "Elena reaction"
+        duration: 3.5
+      - text: "Director Holt sees a plant that runs."
+        focal: {cx: 0.83, cy: 0.625, zoom: 2.5}    # Holt inset
+        target: "Holt reaction"
+        duration: 3.5
+      - text: "One message. One approval. Moving forward. This is how a plant runs with MIRA."
+        focal: {cx: 0.50, cy: 0.50, zoom: 1.0}     # full pull-back — entire Scene 3 page visible
+        target: "full pull-back, whole Scene 3 page"
+        duration: 6.0
