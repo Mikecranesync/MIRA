@@ -1,0 +1,174 @@
+name: web-review canary
+
+# Daily synthetic audit of factorylm.com using the .claude/skills/web-review/ tooling.
+#
+# Why GitHub Actions and not the Claude Code remote routine? The Anthropic
+# Code-routines sandbox blocks egress to factorylm.com (verified 2026-04-25 dry
+# run — see issue body / wiki/reviews/2026-04-25-factorylm.com.md). GHA runners
+# have unrestricted egress + node + python out of the box.
+#
+# Output: appends to wiki/reviews/<date>-factorylm.com.md and commits to main.
+# The vault commit gives a diffable history without spamming the issue tracker.
+# Filing automation is gated until v2.6 of the v3-hardening plan ships
+# (`--auto-comment-only`); for now, humans triage anything new.
+
+on:
+  schedule:
+    - cron: "0 16 * * *"   # 16:00 UTC = 12:00 EDT / 11:00 EST (DST drift accepted for a canary)
+  workflow_dispatch: {}    # manual trigger from the Actions tab — useful before tomorrow's first scheduled run
+
+jobs:
+  audit:
+    name: Headless audit (Lighthouse + headers + edges)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # needed to commit the wiki report back to main
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the commit-and-push step doesn't surprise reviewers
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Lighthouse
+        run: npm install -g lighthouse@12
+
+      - name: Verify skill is on main
+        id: skill
+        run: |
+          if [ ! -f .claude/skills/web-review/SKILL.md ]; then
+            echo "::error::web-review skill not found on main. Did PR #626 merge?"
+            exit 1
+          fi
+          echo "skill_ok=true" >> "$GITHUB_OUTPUT"
+
+      - name: Pick top 5 URLs from sitemap
+        id: urls
+        run: |
+          mkdir -p /tmp/wr
+          curl -fsS https://factorylm.com/sitemap.xml > /tmp/wr/sitemap.xml
+          python3 - <<'PY'
+          import re
+          xml = open('/tmp/wr/sitemap.xml').read()
+          entries = re.findall(r'<url>(.*?)</url>', xml, re.DOTALL)
+          rows = []
+          for e in entries:
+              loc = re.search(r'<loc>([^<]+)</loc>', e)
+              pri = re.search(r'<priority>([^<]+)</priority>', e)
+              if loc:
+                  rows.append((loc.group(1).strip(), float(pri.group(1)) if pri else 0.5))
+          rows.sort(key=lambda r: -r[1])
+          with open('/tmp/wr/top5.txt', 'w') as f:
+              f.write('\n'.join(u for u, _ in rows[:5]) + '\n')
+          print('Top 5:')
+          for u, p in rows[:5]:
+              print(f'  {p:.2f}  {u}')
+          PY
+          echo "Picked $(wc -l </tmp/wr/top5.txt) URLs"
+
+      - name: Headers + edges (once per host)
+        run: |
+          ORIGIN=https://factorylm.com
+          python3 .claude/skills/web-review/scripts/audit.py --headers $ORIGIN > /tmp/wr/headers.json
+          python3 .claude/skills/web-review/scripts/audit.py --edges   $ORIGIN > /tmp/wr/edges.json
+          echo "Headers findings: $(jq length /tmp/wr/headers.json)"
+          echo "Edges findings:   $(jq length /tmp/wr/edges.json)"
+
+      - name: Lighthouse per URL
+        run: |
+          while IFS= read -r url; do
+            [ -z "$url" ] && continue
+            hash=$(echo "$url" | sha256sum | cut -c1-8)
+            echo "::group::Lighthouse: $url"
+            if lighthouse "$url" --quiet --output=json \
+                --only-categories=performance,accessibility,seo,best-practices \
+                --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
+                > /tmp/wr/lh-$hash.json 2>/tmp/wr/lh-$hash.err; then
+              python3 .claude/skills/web-review/scripts/audit.py --lighthouse /tmp/wr/lh-$hash.json \
+                > /tmp/wr/findings-$hash.json
+              echo "  findings: $(jq length /tmp/wr/findings-$hash.json)"
+            else
+              echo "  Lighthouse failed: $(tail -3 /tmp/wr/lh-$hash.err)"
+            fi
+            echo "::endgroup::"
+          done < /tmp/wr/top5.txt
+
+      - name: Merge + dedup + sort findings
+        run: |
+          python3 - <<'PY'
+          import json, glob
+          seen = {}
+          inputs = ['/tmp/wr/headers.json', '/tmp/wr/edges.json'] + glob.glob('/tmp/wr/findings-*.json')
+          for f in inputs:
+              try:
+                  for it in json.load(open(f)):
+                      seen.setdefault(it.get('id', repr(it)), it)
+              except Exception as e:
+                  print(f'  skipped {f}: {e}')
+          rank = {'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3}
+          items = sorted(
+              seen.values(),
+              key=lambda x: (
+                  rank.get(x.get('severity', 'P3'), 9),
+                  (x.get('page') or '/').count('/'),
+                  -x.get('occurrences', 1),
+              ),
+          )
+          json.dump(items, open('/tmp/wr/all.json', 'w'), indent=2)
+          print(f'Total unique findings: {len(items)}')
+          for s in ('P0', 'P1', 'P2', 'P3'):
+              n = sum(1 for x in items if x.get('severity') == s)
+              if n:
+                  print(f'  {s}: {n}')
+          PY
+
+      - name: Write vault report
+        run: |
+          mkdir -p wiki/reviews
+          python3 .claude/skills/web-review/scripts/write_report.py \
+            --host factorylm.com \
+            --findings-file /tmp/wr/all.json \
+            --out "wiki/reviews/$(date -u +%F)-factorylm.com.md"
+          echo "::notice::Report written to wiki/reviews/$(date -u +%F)-factorylm.com.md"
+
+      - name: Commit + push wiki report
+        run: |
+          git config user.email "web-review-canary@factorylm.com"
+          git config user.name "web-review canary"
+          git add wiki/reviews/
+          if git diff --cached --quiet; then
+            echo "::notice::No wiki changes to commit (report unchanged)."
+            exit 0
+          fi
+          git commit -m "chore(web-review): daily canary $(date -u +%FT%H%MZ)"
+          git push origin HEAD:main
+
+      - name: Surface P0/P1 in run summary
+        if: always()
+        run: |
+          if [ ! -f /tmp/wr/all.json ]; then
+            echo "No findings file produced." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "## web-review canary — $(date -u +%FT%H%MZ)"
+            echo ""
+            for s in P0 P1 P2 P3; do
+              n=$(jq "[.[] | select(.severity == \"$s\")] | length" /tmp/wr/all.json)
+              [ "$n" -gt 0 ] && echo "- $s: $n"
+            done
+            echo ""
+            echo "### High-severity items"
+            jq -r '.[] | select(.severity == "P0" or .severity == "P1") | "- **" + .severity + "** \(.page) — \(.title)"' /tmp/wr/all.json
+            echo ""
+            echo "Full report: \`wiki/reviews/$(date -u +%F)-factorylm.com.md\`"
+          } >> "$GITHUB_STEP_SUMMARY"
