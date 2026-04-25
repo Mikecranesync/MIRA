@@ -194,11 +194,11 @@ def run_discover_and_enrich() -> dict:
 
     # Phase 2: Enrich top un-enriched facilities
     if db_url:
-        enriched_count = _enrich_unenriched(
+        enriched_count, enriched_attempted = _enrich_unenriched(
             db_url, hunter_key, DISCOVERY_RATE["max_enrichments_per_run"]
         )
     else:
-        enriched_count = 0
+        enriched_count, enriched_attempted = 0, 0
 
     # Persist to DB — retry on transient NeonDB errors (cold start, network blip)
     inserted = 0
@@ -242,6 +242,7 @@ def run_discover_and_enrich() -> dict:
         "discovered": len(fac_list),
         "inserted": inserted,
         "enriched": enriched_count,
+        "enriched_attempted": enriched_attempted,
         "hs_qualified": hs_qualified if hs_token and fac_list else 0,
         "hs_pushed": hs_pushed,
         "requests_used": requests_used,
@@ -258,8 +259,12 @@ def run_discover_and_enrich() -> dict:
     return run_result
 
 
-def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> int:
-    """Enrich facilities that have a website but no contacts yet."""
+def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> tuple[int, int]:
+    """Enrich facilities that have a website but no contacts yet.
+
+    Returns (succeeded, attempted). attempted == 0 means nothing eligible —
+    not a partial failure.
+    """
     import enrich
     import httpx
     import hunt
@@ -284,7 +289,7 @@ def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> int:
     conn.close()
 
     if not rows:
-        return 0
+        return 0, 0
 
     enriched = 0
     with httpx.Client(timeout=15) as client:
@@ -339,9 +344,9 @@ def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> int:
                 conn2.close()
                 enriched += 1
             except Exception as e:
-                log.debug("Enrich failed %s: %s", name, e)
+                log.warning("Enrich failed %s: %s", name, e)
 
-    return enriched
+    return enriched, len(rows)
 
 
 # ---------------------------------------------------------------------------

@@ -75,7 +75,7 @@ def _run() -> int:
             report.add_alert("SERPER_API_KEY missing — discovery will fall back to DuckDuckGo")
 
     # 2. Run discovery + enrichment with the hard timeout wrapping ONLY this work
-    discovered = enriched = inserted = hs_pushed = 0
+    discovered = enriched = enriched_attempted = inserted = hs_pushed = 0
     with report.step("discover_and_enrich") as step:
         from celery_tasks import run_discover_and_enrich
         result = run_discover_and_enrich()
@@ -85,11 +85,13 @@ def _run() -> int:
         else:
             discovered = result.get("discovered", 0)
             enriched = result.get("enriched", 0)
+            enriched_attempted = result.get("enriched_attempted", 0)
             inserted = result.get("inserted", 0)
             hs_pushed = result.get("hs_pushed", 0)
             step.detail.update({
                 "discovered": discovered,
                 "enriched": enriched,
+                "enriched_attempted": enriched_attempted,
                 "inserted": inserted,
                 "hs_pushed": hs_pushed,
                 "city": result.get("city", "?"),
@@ -112,6 +114,12 @@ def _run() -> int:
             report.add_alert(
                 f"Inserted {inserted} new facilities but pushed 0 to HubSpot — "
                 "either no leads cleared ICP+real-name gate, or HubSpot auth failed"
+            )
+        # Partial enrichment failure — most attempts failed but we got some
+        if enriched_attempted >= 4 and enriched / max(enriched_attempted, 1) < 0.5:
+            report.add_alert(
+                f"Enrichment partial failure: {enriched}/{enriched_attempted} succeeded "
+                "(<50%) — Firecrawl/Hunter degraded or many sites blocking scrapers"
             )
         step.detail["assertions_passed"] = len(report.alerts) == 0
 
