@@ -1,0 +1,17 @@
+id: why_derating_41
+description: "Why does VFD derating matter — conceptual question about ambient temp and switching frequency"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [temperature, switching, frequency, heat, ambient, derat, IGBT]
+expected_vendor: any
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [explanatory, teaching-pattern, why-how, derating, thermal]
+turns:
+  - role: user
+    content: "Why do I need to derate my VFD when I raise the carrier frequency?"
+  - role: user
+    content: "Trying to reduce motor whine — want to go from 4kHz to 10kHz"
+  - role: user
+    content: "It's a 15HP drive in a panel that gets to about 45C in the summer"

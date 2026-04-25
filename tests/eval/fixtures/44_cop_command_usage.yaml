@@ -1,0 +1,15 @@
+id: cop_command_usage_44
+description: "COP (Copy) ladder instruction — PLC programming teaching topic from YouTube KB"
+expected_final_state: DIAGNOSIS
+max_turns: 3
+expected_keywords: [source, destination, length, array, copy, tag, element]
+expected_vendor: Rockwell
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [plc, youtube-niche, ladder-logic, cop-command]
+turns:
+  - role: user
+    content: "When should I use COP versus MOV in ladder logic? My recipe system needs to copy parameter tables."
+  - role: user
+    content: "Each recipe is 20 elements — flow rate, temp, dwell time, etc. All REAL type."

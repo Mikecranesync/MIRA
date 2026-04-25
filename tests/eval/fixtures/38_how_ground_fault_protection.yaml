@@ -1,0 +1,17 @@
+id: how_ground_fault_protection_38
+description: "How-question about VFD ground-fault protection mechanism — tests conceptual explanation"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [current, imbalance, phase, leakage, sum, winding, insulation]
+expected_vendor: any
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [explanatory, teaching-pattern, how-it-works, ground-fault]
+turns:
+  - role: user
+    content: "How does a VFD actually detect a ground fault before it damages anything?"
+  - role: user
+    content: "Trying to understand the protection logic — is it measuring leakage current or something else?"
+  - role: user
+    content: "Does the drive see it on the input side or the output to the motor?"

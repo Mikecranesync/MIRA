@@ -1,0 +1,17 @@
+id: why_undervoltage_trips_37
+description: "Technician asks WHY a fault occurs, not just WHAT to do — tests explanatory teaching transfer"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [DC bus, capacitor, voltage, sag, input, power, drop]
+expected_vendor: any
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [explanatory, teaching-pattern, why-how, undervoltage]
+turns:
+  - role: user
+    content: "Why does my VFD trip on undervoltage during motor start? The input voltage looks fine on my meter."
+  - role: user
+    content: "460V three-phase input, reads 458V steady at the disconnect even during startup"
+  - role: user
+    content: "PF525, 10HP motor, long cable run from the service entrance — maybe 200ft"

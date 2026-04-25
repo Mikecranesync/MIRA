@@ -1,0 +1,17 @@
+id: multimeter_technique_40
+description: "How-to question on multimeter technique — tests YouTube-style procedural teaching"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [winding, resistance, terminal, megger, continuity, measure, ohm]
+expected_vendor: any
+wo_expected: false
+safety_expected: true
+skip_citation_check: true
+tags: [explanatory, teaching-pattern, how-to, multimeter, technique]
+turns:
+  - role: user
+    content: "How do I check a motor winding with a multimeter if I suspect an internal short?"
+  - role: user
+    content: "Three-phase 460V motor, I have the drive locked out and leads off the terminals"
+  - role: user
+    content: "Standard Fluke 87V, do I need a megger or will the resistance setting catch it?"

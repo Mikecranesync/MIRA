@@ -1,0 +1,17 @@
+id: why_acceleration_matters_39
+description: "Why does accel ramp cause overcurrent — conceptual teaching question"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [inertia, torque, current, load, ramp, slope, accelerat]
+expected_vendor: any
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [explanatory, teaching-pattern, why-how, acceleration]
+turns:
+  - role: user
+    content: "Why does a short accel time cause overcurrent on startup? The motor is rated for the load."
+  - role: user
+    content: "I'm running a centrifugal pump, accel set to 3 seconds"
+  - role: user
+    content: "Motor is a 5HP and the pump is rated for the flow — sized correctly I think"

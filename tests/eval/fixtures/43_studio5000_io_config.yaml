@@ -1,0 +1,17 @@
+id: studio5000_io_config_43
+description: "Studio 5000 IO config troubleshooting — common YouTube tutorial topic"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [module, IO, configuration, download, slot, tag, online]
+expected_vendor: Rockwell
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [plc, youtube-niche, studio5000, io-config]
+turns:
+  - role: user
+    content: "How do I check if an IO module is actually talking to my Studio 5000 PLC? My tags aren't updating."
+  - role: user
+    content: "CompactLogix 5370, module is a 1769-IQ32 in slot 3, I'm online with the controller"
+  - role: user
+    content: "The controller properties show no faults, but input state doesn't change when I toggle a field switch"

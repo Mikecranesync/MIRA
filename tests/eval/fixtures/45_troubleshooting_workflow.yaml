@@ -1,0 +1,17 @@
+id: troubleshooting_workflow_45
+description: "General troubleshooting methodology — YouTube tutorial pattern: gather info, narrow, isolate"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [operator, history, pattern, isolate, symptom, recent, change]
+expected_vendor: any
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [workflow, youtube-niche, teaching-pattern, methodology]
+turns:
+  - role: user
+    content: "Whole packaging line has been shutting down randomly once a shift. Where should I even start?"
+  - role: user
+    content: "Started about three weeks ago, no obvious trigger, operators say it just 'stops'"
+  - role: user
+    content: "No fault codes on the main HMI, drives all show READY when it happens"

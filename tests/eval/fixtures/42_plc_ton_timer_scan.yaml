@@ -1,0 +1,17 @@
+id: plc_ton_timer_scan_42
+description: "PLC TON timer scan behavior — covered in YouTube KB, thin in VFD manuals"
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [timer, scan, accumulator, preset, done, enable, delay]
+expected_vendor: any
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [plc, youtube-niche, ladder-logic, timer]
+turns:
+  - role: user
+    content: "My TON timer in ladder logic isn't completing — it counts up then resets back to zero. Why?"
+  - role: user
+    content: "Preset is 5000ms, I can see the accumulator rising but it never hits done"
+  - role: user
+    content: "Studio 5000, the rung condition goes true/false during my process cycle"
