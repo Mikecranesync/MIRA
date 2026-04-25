@@ -50,6 +50,7 @@ _GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 _ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 _ANTHROPIC_VERSION = "2023-06-01"
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+_OLLAMA_URL_DEFAULT = "http://localhost:11434/api/chat"
 
 DIMENSIONS = ("groundedness", "helpfulness", "tone", "instruction_following", "conversational_flow")
 
@@ -157,6 +158,9 @@ class Judge:
         self._claude_model = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
         self._gemini_key = os.getenv("GEMINI_API_KEY", "")
         self._gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self._ollama_url = os.getenv("OLLAMA_JUDGE_URL", _OLLAMA_URL_DEFAULT)
+        self._ollama_model = os.getenv("OLLAMA_JUDGE_MODEL", "qwen2.5vl:7b")
+        self._ollama_enabled = os.getenv("OLLAMA_JUDGE_ENABLED", "1") == "1"
 
         available = []
         if self._groq_key:
@@ -165,6 +169,8 @@ class Judge:
             available.append(f"claude:{self._claude_model}")
         if self._gemini_key:
             available.append(f"gemini:{self._gemini_model}")
+        if self._ollama_enabled:
+            available.append(f"ollama:{self._ollama_model}")
 
         if not available:
             logger.warning("Judge: no API keys set — judge calls will return errors")
@@ -190,14 +196,19 @@ class Judge:
                 return "groq"
             if self._gemini_key:
                 return "gemini"
+            if self._ollama_enabled:
+                return "ollama"
             return None
 
-        # groq / cerebras / gemini / unknown → prefer Claude
+        # groq / cerebras / gemini / unknown → Claude → Gemini → Ollama
         if self._anthropic_key:
             return "claude"
-        # If Claude unavailable and source is not Groq, try Groq
+        if self._gemini_key and "gemini" not in src:
+            return "gemini"
         if self._groq_key and "groq" not in src:
             return "groq"
+        if self._ollama_enabled:
+            return "ollama"
         return None
 
     # ── Provider API calls (sync — eval runner is script, not async service) ──
@@ -246,11 +257,24 @@ class Judge:
         }
         with httpx.Client(timeout=30) as client:
             resp = client.post(
-                f"{_GEMINI_URL}?key={self._gemini_key}",
+                _GEMINI_URL,
                 json=payload,
+                headers={"Authorization": f"Bearer {self._gemini_key}"},
             )
             resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
+
+    def _call_ollama(self, prompt: str) -> str:
+        payload = {
+            "model": self._ollama_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "options": {"temperature": 0.1, "num_predict": 512},
+        }
+        with httpx.Client(timeout=90) as client:
+            resp = client.post(self._ollama_url, json=payload)
+            resp.raise_for_status()
+        return resp.json()["message"]["content"]
 
     def _call_provider(self, provider: str, prompt: str) -> str:
         if provider == "groq":
@@ -259,6 +283,8 @@ class Judge:
             return self._call_claude(prompt)
         if provider == "gemini":
             return self._call_gemini(prompt)
+        if provider == "ollama":
+            return self._call_ollama(prompt)
         raise ValueError(f"Unknown judge provider: {provider!r}")
 
     def _parse_json(self, text: str) -> dict:
@@ -375,41 +401,64 @@ class Judge:
                 scores=scores,
                 notes=notes,
             )
-        except httpx.HTTPStatusError as e:
-            msg = f"HTTP {e.response.status_code}: {e.response.text[:300]}"
-            logger.error("Judge HTTP error (%s): %s", provider, msg)
-            # Claude billing/quota errors → fall back to Groq automatically
-            if provider == "claude" and e.response.status_code in (400, 402, 429) and self._groq_key:
-                logger.warning(
-                    "Claude judge failed (HTTP %d) — falling back to Groq",
-                    e.response.status_code,
+        except (httpx.HTTPStatusError, json.JSONDecodeError, KeyError, ValueError) as e:
+            if isinstance(e, httpx.HTTPStatusError):
+                msg = f"HTTP {e.response.status_code}: {e.response.text[:300]}"
+                logger.error("Judge HTTP error (%s): %s", provider, msg)
+            else:
+                msg = f"Parse error: {e}"
+                logger.error("Judge parse error (%s/%s): %s", provider, scenario_id, e)
+
+            # Cascade through remaining providers, skipping the one that just failed
+            # and the generator (to preserve cross-model routing).
+            tried = {provider}
+            fallback_chain = []
+            for cand in ("claude", "gemini", "groq", "ollama"):
+                if cand in tried:
+                    continue
+                if cand == "groq" and "groq" in (generated_by or "").lower():
+                    continue
+                if cand == "claude" and "claude" in (generated_by or "").lower():
+                    continue
+                if cand == "gemini" and "gemini" in (generated_by or "").lower():
+                    continue
+                key_ok = (
+                    (cand == "groq" and self._groq_key) or
+                    (cand == "claude" and self._anthropic_key) or
+                    (cand == "gemini" and self._gemini_key) or
+                    (cand == "ollama" and self._ollama_enabled)
                 )
+                if key_ok:
+                    fallback_chain.append(cand)
+
+            for fb in fallback_chain:
+                logger.warning("Judge %s failed — falling back to %s", provider, fb)
                 try:
-                    raw_text = self._call_groq(prompt)
+                    raw_text = self._call_provider(fb, prompt)
                     data = self._parse_json(raw_text)
                     scores, notes = self._validate_result(data)
+                    fb_model = {
+                        "groq": self._groq_model,
+                        "claude": self._claude_model,
+                        "gemini": self._gemini_model,
+                        "ollama": self._ollama_model,
+                    }[fb]
                     return JudgeResult(
                         scenario_id=scenario_id,
-                        judge_model=self._groq_model,
-                        judge_provider="groq",
+                        judge_model=fb_model,
+                        judge_provider=fb,
                         scores=scores,
                         notes=notes,
                     )
                 except Exception as fallback_e:
-                    logger.error("Groq fallback also failed: %s", fallback_e)
+                    logger.error("%s fallback also failed: %s", fb, fallback_e)
+                    tried.add(fb)
+
             return JudgeResult(
                 scenario_id=scenario_id,
                 judge_model=judge_model,
                 judge_provider=provider,
                 error=msg,
-            )
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            logger.error("Judge parse error (%s/%s): %s", provider, scenario_id, e)
-            return JudgeResult(
-                scenario_id=scenario_id,
-                judge_model=judge_model,
-                judge_provider=provider,
-                error=f"Parse error: {e}",
             )
         except Exception as e:
             logger.error("Judge unexpected error (%s/%s): %s", provider, scenario_id, e)
