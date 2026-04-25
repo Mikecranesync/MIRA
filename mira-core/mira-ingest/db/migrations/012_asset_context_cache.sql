@@ -1,6 +1,10 @@
--- mira-core/mira-ingest/db/migrations/011_asset_context_cache.sql
+-- mira-core/mira-ingest/db/migrations/012_asset_context_cache.sql
 --
 -- Unit 7 (90-day MVP): QR scan pre-load asset context.
+--
+-- Numbered 012 (not 011) because Unit 5 (PR #642, in-flight in parallel
+-- session) took 011 for the UNS assets table before this branch shipped.
+-- Pure-additive migration — no ordering dependency on 011.
 --
 -- Two changes:
 --
@@ -17,7 +21,7 @@
 -- Safe to run multiple times.
 --
 -- Run with:
---   doppler run -p factorylm -c prd -- psql "$NEON_DATABASE_URL" -f 011_asset_context_cache.sql
+--   doppler run -p factorylm -c prd -- psql "$NEON_DATABASE_URL" -f 012_asset_context_cache.sql
 --
 -- Rollback:
 --   DROP TABLE IF EXISTS asset_context_cache;
