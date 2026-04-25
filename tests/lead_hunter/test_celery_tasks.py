@@ -81,3 +81,20 @@ def test_discovery_ddg_search_uses_with_retries(monkeypatch):
     celery_tasks.run_discover_and_enrich()
     assert any(n.startswith("ddg_search:") for n in calls), \
         f"Expected ddg_search:* to be wrapped; got {calls}"
+
+
+def test_celery_task_delegates_to_run_hourly_main(monkeypatch):
+    """The @shared_task body must call run_hourly.main(), not run_discover_and_enrich().
+
+    Use source inspection: verify that the Celery task delegates to run_hourly.main()
+    and does not call run_discover_and_enrich() directly.
+    """
+    pytest.importorskip("celery")
+    import inspect
+    import celery_tasks
+
+    src = inspect.getsource(celery_tasks.discover_and_enrich)
+    assert "from run_hourly import main" in src or "run_hourly.main" in src, \
+        "Celery task must import and call run_hourly.main()"
+    assert "run_discover_and_enrich()" not in src, \
+        "Celery task must NOT call run_discover_and_enrich() directly"
