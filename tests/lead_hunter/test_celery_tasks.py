@@ -1,9 +1,6 @@
 """Tests that retries cover the discovery HTTP loop, not just DB/HubSpot."""
 from __future__ import annotations
 
-from unittest.mock import patch
-
-import httpx
 import pytest
 
 
@@ -50,8 +47,8 @@ def test_discovery_msca_call_uses_with_retries(monkeypatch):
 
 def test_discovery_ddg_search_uses_with_retries(monkeypatch):
     import celery_tasks
-    import hunt as hunt_mod
     import discover as discover_mod
+    import hunt as hunt_mod
 
     calls = []
     def fake_with_retries(fn, *, name, **kw):
@@ -91,6 +88,7 @@ def test_celery_task_delegates_to_run_hourly_main(monkeypatch):
     """
     pytest.importorskip("celery")
     import inspect
+
     import celery_tasks
 
     src = inspect.getsource(celery_tasks.discover_and_enrich)
