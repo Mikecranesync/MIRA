@@ -36,6 +36,7 @@ import yaml
 logger = logging.getLogger("mira-gsd")
 
 _PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "diagnose" / "active.yaml"
+_STYLE_ADDENDUM_PATH = Path(os.getenv("YOUTUBE_STYLE_PROMPT_PATH", "/data/youtube_style_prompt.txt"))
 
 # PII sanitization patterns
 _IPV4_RE = re.compile(
@@ -55,17 +56,30 @@ ANTHROPIC_VERSION = "2023-06-01"
 
 
 def get_system_prompt() -> str:
-    """Load system prompt from prompts/diagnose/active.yaml on each call."""
+    """Load system prompt from prompts/diagnose/active.yaml on each call.
+
+    Appends YouTube teaching-pattern style addendum if present at
+    YOUTUBE_STYLE_PROMPT_PATH (default /data/youtube_style_prompt.txt).
+    """
     try:
         with open(_PROMPT_PATH) as f:
             data = yaml.safe_load(f)
-        return data.get("system_prompt", "")
+        base = data.get("system_prompt", "")
     except FileNotFoundError:
         logger.warning("active.yaml not found at %s — using empty system prompt", _PROMPT_PATH)
-        return ""
+        base = ""
     except Exception as e:
         logger.error("Failed to load active.yaml: %s", e)
-        return ""
+        base = ""
+
+    if _STYLE_ADDENDUM_PATH.exists():
+        try:
+            addendum = _STYLE_ADDENDUM_PATH.read_text().strip()
+            if addendum:
+                return f"{base}\n\n{addendum}"
+        except Exception as e:
+            logger.warning("Failed to read style addendum: %s", e)
+    return base
 
 
 def _classify_http_error(status_code: int) -> str:

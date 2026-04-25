@@ -286,18 +286,26 @@ def _synthesize_rules(rows: list) -> list[str]:
     """Collapse top patterns into concrete style rules."""
     rules = []
 
+    def _parse(val):
+        if isinstance(val, dict):
+            return val
+        try:
+            return json.loads(val) if val else {}
+        except (TypeError, ValueError):
+            return {}
+
     # Tally opening hooks
-    hooks = [json.loads(r[0]).get("opening_hook", "") for r in rows if r[0]]
+    hooks = [_parse(r[0]).get("opening_hook", "") for r in rows if r[0]]
     if hooks.count("real fault scenario") >= 2:
         rules.append("Open with the actual fault scenario — show the error on the equipment first")
 
     # Tally resolution formats
-    formats = [json.loads(r[0]).get("resolution_format", "") for r in rows if r[0]]
+    formats = [_parse(r[0]).get("resolution_format", "") for r in rows if r[0]]
     if any("verify" in f for f in formats):
         rules.append("Always end with a verification step the tech can perform immediately")
 
     # Check if most teach on real equipment
-    camera = [json.loads(r[0]).get("teaches_to_camera", False) for r in rows if r[0]]
+    camera = [_parse(r[0]).get("teaches_to_camera", False) for r in rows if r[0]]
     if sum(camera) >= 3:
         rules.append("Refer to what the tech can physically observe — not just theory")
 

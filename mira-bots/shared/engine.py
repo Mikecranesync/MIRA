@@ -163,6 +163,7 @@ _STATE_ALIASES: dict[str, str] = {
     "DIAGNOSTIC": "DIAGNOSIS",
     "DIAGNOSIS_SUMMARY": "DIAGNOSIS",
     "FAULT_ANALYSIS": "DIAGNOSIS",
+    "FAULT_DIAGNOSIS": "DIAGNOSIS",
     "ANALYZING": "DIAGNOSIS",
     "ANALYSIS": "DIAGNOSIS",
     "ROOT_CAUSE": "DIAGNOSIS",
@@ -2377,28 +2378,31 @@ class Supervisor:
             state["exchange_count"] += 1
             return state
 
+        proposed: str | None = None
         if parsed.get("next_state"):
-            proposed = _STATE_ALIASES.get(parsed["next_state"], parsed["next_state"])
-            if proposed in self._VALID_STATES:
-                state["state"] = proposed
+            raw = parsed["next_state"]
+            candidate = _STATE_ALIASES.get(raw, raw)
+            if candidate in self._VALID_STATES:
+                proposed = candidate
             else:
                 logger.warning(
-                    "Invalid FSM state '%s' from LLM (current: %s) — holding at %s",
-                    proposed,
-                    current,
+                    "Invalid FSM state '%s' from LLM (current: %s) — falling through to implicit advance",
+                    raw,
                     current,
                 )
-        else:
-            if current == "ASSET_IDENTIFIED":
-                state["state"] = "Q1"
-            elif current == "DIAGNOSIS_REVISION":
-                # No LLM-proposed state while in revision — treat as DIAGNOSIS so the
-                # self-critique gate can run again on the regenerated response.
-                state["state"] = "DIAGNOSIS"
-            elif current in STATE_ORDER:
-                idx = STATE_ORDER.index(current)
-                if idx + 1 < len(STATE_ORDER):
-                    state["state"] = STATE_ORDER[idx + 1]
+
+        if proposed:
+            state["state"] = proposed
+        elif current == "ASSET_IDENTIFIED":
+            state["state"] = "Q1"
+        elif current == "DIAGNOSIS_REVISION":
+            # No LLM-proposed state while in revision — treat as DIAGNOSIS so the
+            # self-critique gate can run again on the regenerated response.
+            state["state"] = "DIAGNOSIS"
+        elif current in STATE_ORDER:
+            idx = STATE_ORDER.index(current)
+            if idx + 1 < len(STATE_ORDER):
+                state["state"] = STATE_ORDER[idx + 1]
 
         if state["state"] in ("RESOLVED", "SAFETY_ALERT"):
             state["final_state"] = state["state"]
