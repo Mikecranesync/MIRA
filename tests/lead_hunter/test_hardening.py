@@ -159,3 +159,107 @@ def test_preflight_secrets_treats_blank_as_missing(monkeypatch):
     with pytest.raises(SystemExit) as exc_info:
         preflight_secrets(["BLANK_REQ"])
     assert exc_info.value.code == 2
+
+
+# ---------------- RunReport ----------------
+
+def test_runreport_step_ok_path():
+    from hardening import RunReport
+    r = RunReport(routine="t")
+    with r.step("a") as step:
+        step.detail["x"] = 1
+    r.finalize()
+    assert r.steps[0].status == "ok"
+    assert r.steps[0].detail == {"x": 1}
+    assert r.overall == "ok"
+    assert r.is_healthy()
+
+
+def test_runreport_step_fail_swallows_exception_and_marks_overall():
+    from hardening import RunReport
+    r = RunReport(routine="t")
+    with r.step("a"):
+        raise ValueError("kaboom")
+    r.finalize()
+    assert r.steps[0].status == "fail"
+    assert "ValueError: kaboom" in r.steps[0].error
+    assert r.overall == "fail"
+    assert not r.is_healthy()
+
+
+def test_runreport_skip_marks_degraded():
+    from hardening import RunReport
+    r = RunReport(routine="t")
+    with r.step("a") as step:
+        step.status = "skip"
+        step.detail["reason"] = "no data"
+    r.finalize()
+    assert r.overall == "degraded"
+
+
+def test_runreport_alert_marks_degraded():
+    from hardening import RunReport
+    r = RunReport(routine="t")
+    with r.step("a"):
+        pass
+    r.add_alert("something is sus")
+    r.finalize()
+    assert r.overall == "degraded"
+    assert r.alerts == ["something is sus"]
+
+
+def test_runreport_to_json_is_valid():
+    from hardening import RunReport
+    r = RunReport(routine="t")
+    with r.step("a"):
+        pass
+    r.finalize()
+    parsed = json.loads(r.to_json())
+    assert parsed["routine"] == "t"
+    assert parsed["overall"] == "ok"
+    assert len(parsed["steps"]) == 1
+
+
+# ---------------- alert() ----------------
+
+def test_alert_noop_on_healthy(tmp_path, monkeypatch):
+    from hardening import RunReport, alert
+    monkeypatch.delenv("DISCORD_ALERT_WEBHOOK", raising=False)
+    r = RunReport(routine="t")
+    with r.step("a"):
+        pass
+    r.finalize()
+    log_path = tmp_path / "alerts.jsonl"
+    alert(r, alert_log=log_path)
+    assert not log_path.exists()
+
+
+def test_alert_appends_jsonl_on_failure(tmp_path, monkeypatch):
+    from hardening import RunReport, alert
+    monkeypatch.delenv("DISCORD_ALERT_WEBHOOK", raising=False)
+    r = RunReport(routine="t")
+    with r.step("a"):
+        raise RuntimeError("nope")
+    r.finalize()
+    log_path = tmp_path / "alerts.jsonl"
+    alert(r, alert_log=log_path)
+    line = log_path.read_text().strip()
+    parsed = json.loads(line)
+    assert parsed["routine"] == "t"
+    assert parsed["overall"] == "fail"
+
+
+def test_alert_appends_jsonl_on_degraded(tmp_path, monkeypatch):
+    from hardening import RunReport, alert
+    monkeypatch.delenv("DISCORD_ALERT_WEBHOOK", raising=False)
+    r = RunReport(routine="t")
+    with r.step("a"):
+        pass
+    r.add_alert("partial failure")
+    r.finalize()
+    log_path = tmp_path / "alerts.jsonl"
+    alert(r, alert_log=log_path)
+    assert log_path.exists()
+    parsed = json.loads(log_path.read_text().strip())
+    assert parsed["overall"] == "degraded"
+    assert parsed["alerts"] == ["partial failure"]
