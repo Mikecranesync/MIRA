@@ -263,83 +263,72 @@ def _enrich_unenriched(db_url: str, hunter_key: str, limit: int) -> tuple[int, i
     import hunt
     import psycopg2
 
-    conn = psycopg2.connect(db_url)
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT f.id, f.name, f.city, f.website, f.phone, f.icp_score, f.notes
-        FROM prospect_facilities f
-        LEFT JOIN prospect_contacts c ON c.facility_id = f.id
-        WHERE f.website IS NOT NULL AND f.website != ''
-          AND c.id IS NULL
-          AND f.icp_score >= 6
-        ORDER BY f.icp_score DESC
-        LIMIT %s
-        """,
-        (limit,),
-    )
-    rows = cur.fetchall()
-    conn.close()
-
-    if not rows:
-        return 0, 0
-
     enriched = 0
-    with httpx.Client(timeout=15) as client:
-        for row in rows:
-            fid, name, city, website, phone, icp_score, notes = row
-            f = hunt.Facility(
-                name=name,
-                city=city,
-                website=website or "",
-                phone=phone or "",
-                icp_score=icp_score or 0,
-                notes=notes or "",
+    attempted = 0
+
+    with psycopg2.connect(db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT f.id, f.name, f.city, f.website, f.phone, f.icp_score, f.notes
+                FROM prospect_facilities f
+                LEFT JOIN prospect_contacts c ON c.facility_id = f.id
+                WHERE f.website IS NOT NULL AND f.website != ''
+                  AND c.id IS NULL
+                  AND f.icp_score >= 6
+                ORDER BY f.icp_score DESC
+                LIMIT %s
+                """,
+                (limit,),
             )
-            try:
-                log.info("Enriching: %s (%s)", name[:50], (website or "")[:40])
-                result = enrich.scrape_facility_deep(f, client)
-                enrich.apply_enrichment(f, result, hunter_key, client)
-                f.icp_score = hunt.score_facility(f)
+            rows = cur.fetchall()
 
-                # Save enrichment back to DB
-                conn2 = psycopg2.connect(db_url)
-                cur2 = conn2.cursor()
-                if f.phone:
-                    cur2.execute(
-                        "UPDATE prospect_facilities SET phone=%s, updated_at=NOW() WHERE id=%s",
-                        (f.phone, fid),
-                    )
-                if "vfd_keywords_found" in f.notes:
-                    cur2.execute(
-                        "UPDATE prospect_facilities SET notes=%s, icp_score=%s, updated_at=NOW() WHERE id=%s",
-                        (f.notes, f.icp_score, fid),
-                    )
-                if f.contacts:
-                    for c in f.contacts:
-                        cur2.execute(
-                            """
-                            INSERT INTO prospect_contacts (facility_id, name, title, email, phone, source, confidence)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            ON CONFLICT DO NOTHING
-                            """,
-                            (
-                                fid,
-                                c.get("name"),
-                                c.get("title"),
-                                c.get("email"),
-                                c.get("phone"),
-                                c.get("source", "website"),
-                                c.get("confidence", "low"),
-                            ),
-                        )
-                conn2.commit()
-                conn2.close()
-                enriched += 1
-            except Exception as e:
-                log.warning("Enrich failed %s: %s", name, e)
+        if not rows:
+            return 0, 0
 
-    return enriched, len(rows)
+        attempted = len(rows)
+        with httpx.Client(timeout=15) as client:
+            for row in rows:
+                fid, name, city, website, phone, icp_score, notes = row
+                f = hunt.Facility(
+                    name=name, city=city, website=website or "",
+                    phone=phone or "", icp_score=icp_score or 0, notes=notes or "",
+                )
+                try:
+                    log.info("Enriching: %s (%s)", name[:50], (website or "")[:40])
+                    result = enrich.scrape_facility_deep(f, client)
+                    enrich.apply_enrichment(f, result, hunter_key, client)
+                    f.icp_score = hunt.score_facility(f)
+
+                    with conn.cursor() as cur2:
+                        if f.phone:
+                            cur2.execute(
+                                "UPDATE prospect_facilities SET phone=%s, updated_at=NOW() WHERE id=%s",
+                                (f.phone, fid),
+                            )
+                        if "vfd_keywords_found" in f.notes:
+                            cur2.execute(
+                                "UPDATE prospect_facilities SET notes=%s, icp_score=%s, updated_at=NOW() WHERE id=%s",
+                                (f.notes, f.icp_score, fid),
+                            )
+                        if f.contacts:
+                            for c in f.contacts:
+                                cur2.execute(
+                                    """
+                                    INSERT INTO prospect_contacts (facility_id, name, title, email, phone, source, confidence)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                    ON CONFLICT DO NOTHING
+                                    """,
+                                    (fid, c.get("name"), c.get("title"), c.get("email"),
+                                     c.get("phone"), c.get("source", "website"), c.get("confidence", "low")),
+                                )
+                    conn.commit()
+                    enriched += 1
+                except Exception as e:
+                    log.warning("Enrich failed %s: %s", name, e)
+                    conn.rollback()  # release transaction state on this connection
+
+    return enriched, attempted
 
 
 # ---------------------------------------------------------------------------
