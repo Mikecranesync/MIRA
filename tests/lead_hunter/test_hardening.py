@@ -112,3 +112,50 @@ def test_with_retries_does_not_retry_unlisted_exception(monkeypatch):
     with pytest.raises(ValueError):
         with_retries(fn, name="t", retries=3, retry_on=(ConnectionError,))
     assert calls["n"] == 1
+
+
+import signal as _signal
+
+# ---------------- hard_timeout ----------------
+
+@pytest.mark.skipif(not hasattr(_signal, "SIGALRM"), reason="SIGALRM unavailable on this platform")
+def test_hard_timeout_raises_after_expiry():
+    from hardening import hard_timeout
+    with pytest.raises(TimeoutError):
+        with hard_timeout(1):
+            time.sleep(2)
+
+
+def test_hard_timeout_clears_on_normal_exit():
+    from hardening import hard_timeout
+    with hard_timeout(5):
+        pass
+    # Subsequent sleep must not get interrupted
+    time.sleep(0.05)
+
+
+# ---------------- preflight_secrets ----------------
+
+def test_preflight_secrets_returns_map(monkeypatch):
+    from hardening import preflight_secrets
+    monkeypatch.setenv("PRESENT_REQ", "value")
+    monkeypatch.setenv("PRESENT_OPT", "value")
+    monkeypatch.delenv("MISSING_OPT", raising=False)
+    m = preflight_secrets(["PRESENT_REQ"], ["PRESENT_OPT", "MISSING_OPT"])
+    assert m == {"PRESENT_REQ": True, "PRESENT_OPT": True, "MISSING_OPT": False}
+
+
+def test_preflight_secrets_exits_2_on_missing_required(monkeypatch):
+    from hardening import preflight_secrets
+    monkeypatch.delenv("REQUIRED_X", raising=False)
+    with pytest.raises(SystemExit) as exc_info:
+        preflight_secrets(["REQUIRED_X"])
+    assert exc_info.value.code == 2
+
+
+def test_preflight_secrets_treats_blank_as_missing(monkeypatch):
+    from hardening import preflight_secrets
+    monkeypatch.setenv("BLANK_REQ", "   ")
+    with pytest.raises(SystemExit) as exc_info:
+        preflight_secrets(["BLANK_REQ"])
+    assert exc_info.value.code == 2
