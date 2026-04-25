@@ -8,7 +8,7 @@
     {
       "name": "ruff-lsp",
       "description": "Ruff linter + formatter as an LSP server (uses `ruff server`).",
-      "source": "./plugins/ruff-lsp",
+      "source": "./.claude-plugin/plugins/ruff-lsp",
       "lspServers": {
         "ruff": {
           "command": "ruff",
@@ -23,7 +23,7 @@
     {
       "name": "yaml-lsp",
       "description": "yaml-language-server with schema validation for Compose, GitHub Actions, and Doppler configs.",
-      "source": "./plugins/yaml-lsp",
+      "source": "./.claude-plugin/plugins/yaml-lsp",
       "lspServers": {
         "yaml": {
           "command": "yaml-language-server",
@@ -38,7 +38,7 @@
     {
       "name": "sql-lsp",
       "description": "PostgreSQL Language Server (postgres-language-server) — Postgres-aware syntax checking for NeonDB migrations and schemas.",
-      "source": "./plugins/sql-lsp",
+      "source": "./.claude-plugin/plugins/sql-lsp",
       "lspServers": {
         "sql": {
           "command": "postgres-language-server",
@@ -52,7 +52,7 @@
     {
       "name": "dockerfile-lsp",
       "description": "dockerfile-language-server-nodejs for the 16 Dockerfiles in MIRA.",
-      "source": "./plugins/dockerfile-lsp",
+      "source": "./.claude-plugin/plugins/dockerfile-lsp",
       "lspServers": {
         "dockerfile": {
           "command": "docker-langserver",
@@ -66,7 +66,7 @@
     {
       "name": "toml-lsp",
       "description": "Taplo TOML language server for pyproject.toml and .gitleaks.toml.",
-      "source": "./plugins/toml-lsp",
+      "source": "./.claude-plugin/plugins/toml-lsp",
       "lspServers": {
         "taplo": {
           "command": "taplo",
@@ -80,7 +80,7 @@
     {
       "name": "shell-lsp",
       "description": "bash-language-server (uses shellcheck) for the 26 shell scripts in MIRA.",
-      "source": "./plugins/shell-lsp",
+      "source": "./.claude-plugin/plugins/shell-lsp",
       "lspServers": {
         "bash": {
           "command": "bash-language-server",
@@ -95,7 +95,7 @@
     {
       "name": "markdown-lsp",
       "description": "Marksman markdown LSP for the wiki/ Obsidian vault.",
-      "source": "./plugins/markdown-lsp",
+      "source": "./.claude-plugin/plugins/markdown-lsp",
       "lspServers": {
         "marksman": {
           "command": "marksman",
