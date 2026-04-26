@@ -141,7 +141,7 @@ function CreateAssetModal({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/assets", {
+      const res = await fetch("/hub/api/assets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

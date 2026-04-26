@@ -198,7 +198,7 @@ function ChannelsInner() {
 
     refresh();
 
-    fetch("/api/auth/status")
+    fetch("/hub/api/auth/status")
       .then(r => r.json())
       .then((d: AuthStatus) => setAuthStatus(d))
       .catch(() => {});
@@ -217,7 +217,7 @@ function ChannelsInner() {
     setTelegramLoading(true);
     setTelegramError(null);
     try {
-      const res = await fetch("/api/auth/telegram", {
+      const res = await fetch("/hub/api/auth/telegram", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: telegramToken.trim() }),

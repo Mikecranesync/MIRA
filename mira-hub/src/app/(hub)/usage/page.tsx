@@ -32,7 +32,7 @@ export default function UsagePage() {
   } | null>(null);
 
   useEffect(() => {
-    fetch("/api/usage").then(r => r.json()).then(setData).catch(console.error);
+    fetch("/hub/api/usage").then(r => r.json()).then(setData).catch(console.error);
   }, []);
 
   const month = data?.thisMonth;
