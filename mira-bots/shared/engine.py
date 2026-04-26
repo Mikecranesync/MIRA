@@ -335,6 +335,66 @@ class Supervisor:
         """Remove the session photo when it expires or session resets."""
         clear_session_photo(self.db_path, chat_id)
 
+    @staticmethod
+    def _background_state_for(state: dict) -> str:
+        """Return the steady-state FSM node for non-diagnostic turns."""
+        return "ASSET_IDENTIFIED" if state.get("asset_identified") else "IDLE"
+
+    def _clear_diagnostic_carryover(
+        self,
+        chat_id: str,
+        state: dict,
+        *,
+        clear_photo: bool = False,
+        target_state: str | None = None,
+    ) -> dict:
+        """Drop stale diagnostic baggage when the user pivots to a new ask."""
+        ctx = state.get("context") or {}
+        sc = ctx.get("session_context") or {}
+
+        if sc:
+            ctx["session_context"] = {
+                "equipment_type": sc.get("equipment_type"),
+                "manufacturer": sc.get("manufacturer"),
+                "last_question": None,
+                "last_options": [],
+            }
+
+        state["fault_category"] = None
+        state["final_state"] = None
+        state["state"] = target_state or self._background_state_for(state)
+
+        if clear_photo:
+            ctx.pop("photo_turn", None)
+            self._clear_session_photo(chat_id)
+
+        state["context"] = ctx
+        return state
+
+    def _load_recent_session_photo(self, chat_id: str, state: dict) -> str | None:
+        """Load the prior photo only while it is still within the follow-up window."""
+        ctx = state.get("context") or {}
+        photo_turn = ctx.get("photo_turn", 0)
+        if photo_turn <= 0:
+            return None
+
+        turns_since_photo = state["exchange_count"] - photo_turn
+        if turns_since_photo >= PHOTO_MEMORY_TURNS:
+            self._clear_session_photo(chat_id)
+            ctx.pop("photo_turn", None)
+            state["context"] = ctx
+            return None
+
+        session_photo = self._load_session_photo(chat_id)
+        if session_photo:
+            logger.info(
+                "Session photo loaded for turn %d (photo at turn %d, %d turns ago)",
+                state["exchange_count"],
+                photo_turn,
+                turns_since_photo,
+            )
+        return session_photo
+
     def _build_print_reply(self, vision_data: dict) -> str:
         return build_print_reply(vision_data)
 
@@ -486,25 +546,8 @@ class Supervisor:
         if (state.get("context") or {}).get("pm_suggestion_pending") and not photo_b64:
             return await self._handle_pm_suggestion_pending(chat_id, message, state, trace_id)
 
-        # Photo persistence: load stored session photo for text follow-ups
-        _session_photo = None
-        if not photo_b64:
-            ctx = state.get("context") or {}
-            photo_turn = ctx.get("photo_turn", 0)
-            if photo_turn > 0 and state["exchange_count"] - photo_turn < PHOTO_MEMORY_TURNS:
-                _session_photo = self._load_session_photo(chat_id)
-                if _session_photo:
-                    logger.info(
-                        "Session photo loaded for turn %d (photo at turn %d, %d turns ago)",
-                        state["exchange_count"],
-                        photo_turn,
-                        state["exchange_count"] - photo_turn,
-                    )
-            elif photo_turn > 0:
-                # Photo memory expired
-                self._clear_session_photo(chat_id)
-                ctx.pop("photo_turn", None)
-                state["context"] = ctx
+        if message.strip() and state.get("final_state") == "RESOLVED":
+            state["final_state"] = None
 
         # Phase 3 — honest crawl-failure prefix: check if a prior doc-crawl exhausted
         _honest_prefix = ""
@@ -543,17 +586,6 @@ class Supervisor:
                     _ctx_opt["session_context"] = _sc_opt
                     state["context"] = _ctx_opt
                     self._save_state(chat_id, state)
-
-            # Session follow-up detection: now runs on the already-expanded message.
-            if detect_session_followup(message, sc, state["state"]):
-                return await self._handle_session_followup(
-                    message,
-                    state,
-                    chat_id,
-                    session_photo=_session_photo,
-                    tenant_id=resolved_tenant,
-                    honest_prefix=_honest_prefix,
-                )
 
             # LLM conversation router — determines what the user wants THIS turn.
             # Runs in parallel with the synchronous keyword classifier as a fast fallback.
@@ -620,8 +652,29 @@ class Supervisor:
             # Procedural how-to questions: answer from knowledge, skip doc crawl.
             # Keyword "instructional" also routes here via the fallback mapping above.
             if _router_intent == "answer_question" or _keyword_intent == "instructional":
+                if detect_session_followup(message, sc, state["state"]):
+                    return await self._handle_session_followup(
+                        message,
+                        state,
+                        chat_id,
+                        session_photo=self._load_recent_session_photo(chat_id, state),
+                        tenant_id=resolved_tenant,
+                        honest_prefix=_honest_prefix,
+                    )
                 return await self._handle_instructional_question(
                     chat_id, message, state, trace_id
+                )
+
+            if _router_intent == "continue_current" and detect_session_followup(
+                message, sc, state["state"]
+            ):
+                return await self._handle_session_followup(
+                    message,
+                    state,
+                    chat_id,
+                    session_photo=self._load_recent_session_photo(chat_id, state),
+                    tenant_id=resolved_tenant,
+                    honest_prefix=_honest_prefix,
                 )
 
             # find_documentation: let the existing specificity-gate block handle it below
@@ -802,6 +855,8 @@ class Supervisor:
                 )
             else:
                 state["state"] = "ASSET_IDENTIFIED"
+                state["fault_category"] = None
+                state["final_state"] = None
                 existing_sc = ctx.get("session_context", {})
                 ctx["session_context"] = {
                     "equipment_type": str(vision_data["vision_result"])[:80],
@@ -926,7 +981,10 @@ class Supervisor:
 
         # RAG worker with self-correction: text queries and photo+intent queries
         # Use session photo for follow-up text questions within PHOTO_MEMORY_TURNS
-        effective_photo = photo_b64 or _session_photo
+        session_photo = None
+        if not photo_b64 and state.get("state") != "IDLE":
+            session_photo = self._load_recent_session_photo(chat_id, state)
+        effective_photo = photo_b64 or session_photo
         try:
             with tl_span(t, "rag_worker"):
                 raw, parsed = await self._call_with_correction(
@@ -1579,6 +1637,8 @@ class Supervisor:
             "last_question": None,
             "last_options": [],
         }
+        state["fault_category"] = None
+        state["final_state"] = None
         state["asset_identified"] = f"{manufacturer}, {model}"
         state["context"] = ctx
 
@@ -1764,6 +1824,7 @@ class Supervisor:
         initial_vendor: str,
     ) -> dict:
         """Set FSM to MANUAL_LOOKUP_GATHERING and ask for the first missing field."""
+        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         ctx = state.get("context") or {}
         gathered: dict = {}
         if initial_vendor:
@@ -1772,7 +1833,7 @@ class Supervisor:
         ctx["manual_lookup_gathering"] = {
             "collected": gathered,
             "attempts": 0,
-            "prior_state": state["state"],
+            "prior_state": self._background_state_for(state),
         }
         state["state"] = "MANUAL_LOOKUP_GATHERING"
         state["context"] = ctx
@@ -2046,6 +2107,7 @@ class Supervisor:
         self, chat_id: str, message: str, state: dict, trace_id: str
     ) -> dict:
         """Answer a general industrial question — uses RAG for equipment-specific specs."""
+        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         asset = state.get("asset_identified", "")
         msg_lower = message.lower()
         needs_rag = asset and any(kw in msg_lower for kw in self._SPEC_KEYWORDS)
@@ -2111,7 +2173,11 @@ class Supervisor:
         ctx.pop("cmms_pending", None)
         ctx.pop("cmms_wo_draft", None)
         ctx.pop("pending_doc_job", None)
+        ctx.pop("photo_turn", None)
+        state["fault_category"] = None
+        state["final_state"] = None
         state["context"] = ctx
+        self._clear_session_photo(chat_id)
         self._save_state(chat_id, state)
 
         if new_asset:
@@ -2298,6 +2364,7 @@ class Supervisor:
         Bypasses the doc-crawl path and the Q1/Q2/Q3 diagnosis FSM. Injects
         the known asset context so the answer is equipment-specific when available.
         """
+        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         asset = state.get("asset_identified", "")
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
@@ -2360,6 +2427,7 @@ class Supervisor:
         direct (specific request) path and the gathering subroutine share one code path.
         Never raises.
         """
+        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         asset = state.get("asset_identified", "")
         combined = " ".join(filter(None, [vendor_override, model_override, message, asset])).strip()
         mfr = vendor_override or vendor_name_from_text(combined) or ""

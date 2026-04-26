@@ -620,48 +620,41 @@ _GREETING_VARIANTS = [
     ("Hey. What's the equipment and what's it doing?"),
 ]
 
-SESSION_FOLLOWUP_SIGNALS = [
-    "you said",
-    "you mentioned",
-    "you told me",
-    "link",
-    "url",
-    "website",
-    "manufacturer",
-    "datasheet",
-    "manual",
-    "document",
-    "earlier",
-    "before",
-    "last time",
-    "again",
-    "repeat",
-    "what was",
-    "where did",
-    "explain",
-    "why",
-    "tell me more",
-    "go deeper",
-    "how does that work",
-    "what does that mean",
-    "break it down",
-    "more detail",
-]
+SESSION_FOLLOWUP_PATTERNS = (
+    re.compile(r"\byou (?:said|mentioned|told me)\b"),
+    re.compile(r"\b(?:earlier|before|last time)\b"),
+    re.compile(r"\bwhat was\b"),
+    re.compile(r"\bwhere did\b"),
+    re.compile(r"^(?:why|explain)\b"),
+    re.compile(r"\btell me more\b"),
+    re.compile(r"\bgo deeper\b"),
+    re.compile(r"\bhow does that work\b"),
+    re.compile(r"\bwhat does that mean\b"),
+    re.compile(r"\bbreak it down\b"),
+    re.compile(r"\bmore detail\b"),
+    re.compile(r"\brepeat\b"),
+    re.compile(r"^(?:again)\b"),
+)
 
 
 def detect_session_followup(message: str, session_context: dict, fsm_state: str) -> bool:
     """Return True if message is a follow-up to an active diagnostic session.
 
-    Fires when: state is not IDLE, session_context exists, and message
-    contains a signal word suggesting the technician is continuing the session
-    (e.g. asking for a link, referencing something MIRA said earlier).
+    Fires when: state is not IDLE, session_context exists, and the message
+    explicitly references earlier assistant context.
+
+    Deliberately excludes generic documentation terms like "manual" or
+    "website" so those can route through the normal documentation flow instead
+    of getting trapped in stale follow-up state.
     """
     if fsm_state == "IDLE":
         return False
     if not session_context:
         return False
-    msg_lower = message.lower()
-    return any(sig in msg_lower for sig in SESSION_FOLLOWUP_SIGNALS)
+    msg_lower = message.lower().strip()
+    if not msg_lower:
+        return False
+    return any(pattern.search(msg_lower) for pattern in SESSION_FOLLOWUP_PATTERNS)
 
 
 _SELECTION_RE = re.compile(r"^\s*(?:option\s+)?(\d+)[.\-,):]?\s*", re.IGNORECASE)
