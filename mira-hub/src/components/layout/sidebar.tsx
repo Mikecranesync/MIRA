@@ -60,23 +60,25 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       {/* Logo */}
       <div className="flex items-center justify-between px-4 py-4"
         style={{ borderBottom: "1px solid var(--sidebar-border)", minHeight: 56 }}>
-        {!collapsed && (
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+        <Link href="/feed" className="flex items-center gap-2.5 min-w-0">
+          {!collapsed && (
+            <>
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
+                <Factory className="w-4 h-4 text-white" />
+              </div>
+              <span className="font-bold text-sm tracking-tight" style={{ color: "var(--sidebar-fg)" }}>
+                FactoryLM
+              </span>
+            </>
+          )}
+          {collapsed && (
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center mx-auto"
               style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
               <Factory className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-sm tracking-tight" style={{ color: "var(--sidebar-fg)" }}>
-              FactoryLM
-            </span>
-          </div>
-        )}
-        {collapsed && (
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center mx-auto"
-            style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
-            <Factory className="w-4 h-4 text-white" />
-          </div>
-        )}
+          )}
+        </Link>
         <button
           onClick={() => setCollapsed(c => !c)}
           className="w-6 h-6 rounded-md flex items-center justify-center transition-colors ml-auto"
