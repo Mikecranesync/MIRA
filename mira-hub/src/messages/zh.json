@@ -598,7 +598,8 @@
     "pending": "待处理",
     "chunks": "个片段",
     "inRAG": "在RAG中",
-    "search": "搜索知识库…"
+    "search": "搜索知识库…",
+    "emptyStateOnboarding": "上传您的第一份手册，开始获得 MIRA 提供的带来源引用的答案。"
   },
   "channels": {
     "title": "渠道",

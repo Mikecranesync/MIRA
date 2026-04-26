@@ -598,7 +598,8 @@
     "pending": "Pendiente",
     "chunks": "fragmentos",
     "inRAG": "en RAG",
-    "search": "Buscar en la base de conocimiento…"
+    "search": "Buscar en la base de conocimiento…",
+    "emptyStateOnboarding": "Sube tu primer manual para comenzar a obtener respuestas con fuentes citadas de MIRA."
   },
   "channels": {
     "title": "Canales",

@@ -184,6 +184,8 @@ export default function KnowledgePage() {
             <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
               {loading
                 ? "Loading…"
+                : stats.totalDocs === 0
+                ? t("emptyStateOnboarding")
                 : `${stats.totalDocs} ${t("indexed")} · ${stats.totalChunks.toLocaleString()} ${t("chunks")} ${t("inRAG")}`}
             </p>
           </div>

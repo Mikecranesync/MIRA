@@ -598,7 +598,8 @@
     "pending": "Pending",
     "chunks": "chunks",
     "inRAG": "in RAG",
-    "search": "Search knowledge base…"
+    "search": "Search knowledge base…",
+    "emptyStateOnboarding": "Upload your first manual to start getting source-cited answers from MIRA."
   },
   "channels": {
     "title": "Channels",
