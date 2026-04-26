@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "bun run --watch src/server.ts",
     "start": "bun run src/server.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "snapshot:before": "bun run scripts/design-snapshot.ts before",
+    "snapshot:after": "bun run scripts/design-snapshot.ts after",
+    "verify:live": "bun run scripts/verify-deployment.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.0",
@@ -19,7 +22,8 @@
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "@types/bun": "^1.2.0",
-    "@types/qrcode": "^1.5.6"
+    "@types/qrcode": "^1.5.6",
+    "playwright": "^1.59.1"
   },
   "license": "UNLICENSED"
 }

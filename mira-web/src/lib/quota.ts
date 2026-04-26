@@ -559,4 +559,31 @@ export async function ensureSchema(): Promise<void> {
   await db`
     CREATE INDEX IF NOT EXISTS idx_audit_events_action_ts
       ON audit_events (action, ts DESC)`;
+
+  // Magic-link tokens (#SO-070)
+  await db`
+    CREATE TABLE IF NOT EXISTS plg_magic_link_tokens (
+      token_hash  TEXT PRIMARY KEY,
+      tenant_id   TEXT NOT NULL REFERENCES plg_tenants(id) ON DELETE CASCADE,
+      email       TEXT NOT NULL,
+      expires_at  TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`;
+  await db`CREATE INDEX IF NOT EXISTS idx_plg_mlt_email ON plg_magic_link_tokens (email)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_plg_mlt_expires ON plg_magic_link_tokens (expires_at)`;
+
+  // Audit trail (#SO-070; reusable for other auth events)
+  await db`
+    CREATE TABLE IF NOT EXISTS plg_audit_log (
+      id         SERIAL PRIMARY KEY,
+      tenant_id  TEXT,
+      email      TEXT,
+      action     TEXT NOT NULL,
+      ip         TEXT,
+      user_agent TEXT,
+      meta_json  TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`;
+  await db`CREATE INDEX IF NOT EXISTS idx_plg_audit_email_time ON plg_audit_log (email, created_at)`;
 }
