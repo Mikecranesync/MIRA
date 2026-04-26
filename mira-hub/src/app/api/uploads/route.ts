@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import {
   createUpload,
+  findUploadByExternalFileId,
   listUploads,
   updateUploadStatus,
+  type Upload,
   type UploadProvider,
 } from "@/lib/uploads";
 import { ensureFreshAccessToken } from "@/lib/token-refresh";
@@ -90,19 +92,49 @@ export async function POST(req: NextRequest) {
   const kind = inferKindFromMime(mime);
   const requestId = req.headers.get("x-request-id") ?? randomUUID();
 
-  const upload = await createUpload({
-    tenantId: ctx.tenantId,
-    provider: body.provider,
-    kind,
-    externalFileId: body.externalFileId ?? null,
-    externalDownloadUrl: body.externalDownloadUrl ?? null,
-    filename: body.filename,
-    mimeType: mime,
-    sizeBytes: body.sizeBytes ?? null,
-    externalCreatedAt: body.externalCreatedAt ?? null,
-    initialStatus: "queued",
-    assetTag,
-  });
+  // Idempotency: re-picking the same Drive/Dropbox file should return the
+  // existing row, not duplicate the entire fetch → forward → KB pipeline.
+  // body.externalFileId is required for both google + dropbox per the
+  // validation above.
+  if (body.externalFileId) {
+    const existing = await findUploadByExternalFileId(
+      ctx.tenantId,
+      body.provider,
+      body.externalFileId,
+    );
+    if (existing) {
+      return idempotentResponse(existing, requestId);
+    }
+  }
+
+  let upload: Upload;
+  try {
+    upload = await createUpload({
+      tenantId: ctx.tenantId,
+      provider: body.provider,
+      kind,
+      externalFileId: body.externalFileId ?? null,
+      externalDownloadUrl: body.externalDownloadUrl ?? null,
+      filename: body.filename,
+      mimeType: mime,
+      sizeBytes: body.sizeBytes ?? null,
+      externalCreatedAt: body.externalCreatedAt ?? null,
+      initialStatus: "queued",
+      assetTag,
+    });
+  } catch (err) {
+    // Race fallback: another request beat us to the unique index between
+    // the pre-flight findUploadByExternalFileId() and the INSERT.
+    if (isUniqueViolation(err) && body.externalFileId) {
+      const existing = await findUploadByExternalFileId(
+        ctx.tenantId,
+        body.provider,
+        body.externalFileId,
+      );
+      if (existing) return idempotentResponse(existing, requestId);
+    }
+    throw err;
+  }
 
   const log = makeUploadLogger({ requestId, uploadId: upload.id, tenantId: ctx.tenantId });
   log.log("queued", {
@@ -121,6 +153,43 @@ export async function POST(req: NextRequest) {
   void runIngestPipeline(upload.id, body, kind, ctx.tenantId, requestId, assetTag);
 
   return NextResponse.json(upload, { status: 201, headers: { "X-Request-Id": requestId } });
+}
+
+const IN_FLIGHT_STATUSES: ReadonlyArray<string> = ["queued", "fetching", "parsing"];
+
+function isUniqueViolation(err: unknown): boolean {
+  // pg's UniqueViolation has SQLSTATE 23505
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: string }).code === "23505"
+  );
+}
+
+function idempotentResponse(existing: Upload, requestId: string): NextResponse {
+  if (existing.status === "parsed") {
+    return NextResponse.json(
+      { ...existing, alreadyImported: true },
+      { status: 200, headers: { "X-Request-Id": requestId } },
+    );
+  }
+  if (IN_FLIGHT_STATUSES.includes(existing.status)) {
+    return NextResponse.json(
+      { ...existing, alreadyInProgress: true },
+      { status: 200, headers: { "X-Request-Id": requestId } },
+    );
+  }
+  // failed or cancelled — caller should DELETE first to retry
+  return NextResponse.json(
+    {
+      error: "previous_upload_terminal",
+      status: existing.status,
+      hint: "DELETE /hub/api/uploads/:id then re-upload",
+      existing,
+    },
+    { status: 409, headers: { "X-Request-Id": requestId } },
+  );
 }
 
 export async function GET() {

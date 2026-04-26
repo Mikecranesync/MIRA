@@ -71,6 +71,14 @@ export function ensureUploadsSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_hub_uploads_tenant_status
         ON hub_uploads (tenant_id, status, created_at DESC)
     `);
+    // Idempotency for cloud-source uploads (#700) — re-picking the same
+    // Drive/Dropbox file should return the existing row, not duplicate
+    // the entire fetch → forward → KB pipeline.
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_hub_uploads_dedup
+        ON hub_uploads (tenant_id, provider, external_file_id)
+        WHERE external_file_id IS NOT NULL
+    `);
   })();
   return schemaReady;
 }
@@ -170,6 +178,29 @@ export async function getUpload(
   const { rows } = await pool.query(
     `SELECT * FROM hub_uploads WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
     [id, tenantId],
+  );
+  return rows[0] ? rowToUpload(rows[0]) : null;
+}
+
+/**
+ * Look up an existing upload by its cloud-source identity (tenant + provider
+ * + external_file_id). Returns null when none exists. Used for idempotency
+ * (#700) — re-picking the same Drive/Dropbox file finds the prior row
+ * instead of duplicating the pipeline.
+ */
+export async function findUploadByExternalFileId(
+  tenantId: string,
+  provider: UploadProvider,
+  externalFileId: string,
+): Promise<Upload | null> {
+  await ensureUploadsSchema();
+  const { rows } = await pool.query(
+    `SELECT * FROM hub_uploads
+       WHERE tenant_id = $1
+         AND provider = $2
+         AND external_file_id = $3
+       LIMIT 1`,
+    [tenantId, provider, externalFileId],
   );
   return rows[0] ? rowToUpload(rows[0]) : null;
 }
