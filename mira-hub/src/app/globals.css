@@ -12,16 +12,22 @@
   --status-yellow: #EAB308;
   --status-red: #DC2626;
   --status-gray: #64748B;
+  --status-orange: #EA580C;
   --status-green-bg: #DCFCE7;
   --status-yellow-bg: #FEF9C3;
   --status-red-bg: #FEE2E2;
   --status-gray-bg: #F1F5F9;
+  --status-orange-bg: #FFF7ED;
 
   /* Light mode surfaces */
-  --background: #F8FAFC;
+  --background: #FAFAFA;
   --surface-0: #FFFFFF;
   --surface-1: #F1F5F9;
   --surface-2: #E2E8F0;
+
+  /* Border */
+  --border-default: #E2E8F0;
+  --border-strong: #CBD5E1;
 
   /* Foregrounds */
   --foreground: #0F172A;
@@ -37,26 +43,34 @@
   --sidebar-width: 260px;
   --sidebar-collapsed-width: 64px;
 
-  /* Spacing */
+  /* Spacing — 8px grid */
   --space-1: 8px;
   --space-2: 16px;
   --space-3: 24px;
   --space-4: 32px;
   --space-5: 40px;
   --space-6: 48px;
+  --page-padding: 24px;
+  --card-padding: 20px;
+  --card-gap: 16px;
+  --section-gap: 32px;
 
   /* Card */
   --radius-card: 8px;
-  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --radius-lg: 12px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
   --shadow-card-hover: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.06);
   --shadow-fab: 0 4px 14px 0 rgb(37 99 235 / 0.35);
 
   /* Typography */
+  --font-size-display: 36px;
   --font-size-body: 14px;
+  --font-size-small: 13px;
   --font-size-label: 12px;
-  --font-size-h1: 24px;
-  --font-size-h2: 20px;
-  --font-size-h3: 16px;
+  --font-size-h1: 30px;
+  --font-size-h2: 24px;
+  --font-size-h3: 20px;
+  --font-size-h4: 18px;
 
   /* shadcn / Tailwind compat aliases */
   --card: var(--surface-0);
@@ -98,6 +112,10 @@
   --sidebar-hover: #1A1D23;
   --sidebar-border: #21252D;
 
+  --border-default: #2D333B;
+  --border-strong: #3D4451;
+  --status-orange-bg: #431407;
+
   --card: var(--surface-0);
   --card-foreground: var(--foreground);
   --popover: var(--surface-1);
@@ -129,6 +147,7 @@
   --color-status-yellow: var(--status-yellow);
   --color-status-red: var(--status-red);
   --color-status-gray: var(--status-gray);
+  --color-status-orange: var(--status-orange);
   --color-brand: var(--brand-blue);
   --color-brand-cyan: var(--brand-cyan);
   --color-surface-0: var(--surface-0);
@@ -179,6 +198,96 @@ body {
 .status-yellow { color: var(--status-yellow); background: var(--status-yellow-bg); }
 .status-red    { color: var(--status-red);    background: var(--status-red-bg); }
 .status-gray   { color: var(--status-gray);   background: var(--status-gray-bg); }
+.status-orange { color: var(--status-orange); background: var(--status-orange-bg); }
+
+/* ─── Badge / Pill ──────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+.badge-green  { color: var(--status-green);  background: var(--status-green-bg); }
+.badge-yellow { color: var(--status-yellow); background: var(--status-yellow-bg); }
+.badge-red    { color: var(--status-red);    background: var(--status-red-bg); }
+.badge-gray   { color: var(--status-gray);   background: var(--status-gray-bg); }
+.badge-orange { color: var(--status-orange); background: var(--status-orange-bg); }
+.badge-blue   { color: var(--brand-blue);    background: #EFF6FF; }
+
+/* ─── Status Dot ────────────────────────────────────────────────────── */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-green  { background: var(--status-green); }
+.dot-yellow { background: var(--status-yellow); }
+.dot-red    { background: var(--status-red); }
+.dot-gray   { background: var(--status-gray); }
+.dot-orange { background: var(--status-orange); }
+
+/* ─── Typography Scale ──────────────────────────────────────────────── */
+.text-display {
+  font-size: var(--font-size-display);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.text-h1 { font-size: var(--font-size-h1); font-weight: 700; line-height: 1.2; }
+.text-h2 { font-size: var(--font-size-h2); font-weight: 600; line-height: 1.3; }
+.text-h3 { font-size: var(--font-size-h3); font-weight: 600; line-height: 1.4; }
+.text-h4 { font-size: var(--font-size-h4); font-weight: 600; line-height: 1.4; }
+.text-small  { font-size: var(--font-size-small); }
+.text-xsmall { font-size: var(--font-size-label); font-weight: 500; }
+
+/* ─── Table Utilities ───────────────────────────────────────────────── */
+.data-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-body); }
+.data-table th {
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  color: var(--foreground-muted);
+  border-bottom: 1px solid var(--border-default, var(--surface-2));
+  background: var(--surface-1);
+}
+.data-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-default, var(--surface-2));
+  color: var(--foreground);
+}
+.data-table tr:hover td { background: var(--surface-1); }
+
+/* ─── KPI Card ──────────────────────────────────────────────────────── */
+.kpi-value {
+  font-size: var(--font-size-display);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.kpi-label {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--foreground-muted);
+}
+
+/* ─── Page Layout Helpers ───────────────────────────────────────────── */
+.page-header {
+  padding: 16px var(--page-padding);
+  border-bottom: 1px solid var(--border-default, var(--surface-2));
+  background: var(--surface-0);
+}
+.page-content { padding: var(--page-padding); }
 
 /* ─── Scrollbars ────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
