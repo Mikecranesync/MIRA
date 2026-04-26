@@ -17,7 +17,7 @@ export async function DELETE(
   if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   if (!TERMINAL.includes(row.status)) {
-    await updateUploadStatus(id, "cancelled", "user cancelled");
+    await updateUploadStatus(id, ctx.tenantId, "cancelled", "user cancelled");
     return NextResponse.json({ ok: true, action: "cancelled" });
   }
 

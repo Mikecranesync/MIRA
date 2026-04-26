@@ -85,19 +85,19 @@ export async function POST(req: NextRequest) {
         const result = await forwardToPhotoIngest(stream(), file.name, mime, {
           assetTag,
         });
-        await updateUploadStatus(upload.id, "parsed", result.description ?? null, {
+        await updateUploadStatus(upload.id, ctx.tenantId, "parsed", result.description ?? null, {
           kbFileId: result.photoId != null ? String(result.photoId) : undefined,
         });
       } else {
         const result = await forwardToIngest(stream(), file.name, mime);
-        await updateUploadStatus(upload.id, "parsed", null, {
+        await updateUploadStatus(upload.id, ctx.tenantId, "parsed", null, {
           kbFileId: result.fileId ?? undefined,
           kbChunkCount: result.chunkCount ?? undefined,
         });
       }
     } catch (err) {
       console.error(`[uploads/local/${upload.id}] failed`, err);
-      await updateUploadStatus(upload.id, "failed", (err as Error).message).catch(
+      await updateUploadStatus(upload.id, ctx.tenantId, "failed", (err as Error).message).catch(
         (statusErr) => console.error(`[uploads/local/${upload.id}] also failed to mark failed`, statusErr),
       );
     }
