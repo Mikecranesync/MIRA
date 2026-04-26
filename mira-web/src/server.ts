@@ -162,6 +162,11 @@ app.use("/manifest.json", serveStatic({ path: "./public/manifest.json" }));
 app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
 app.use("/robots.txt", serveStatic({ path: "./public/robots.txt" }));
 app.use("/og-image.png", serveStatic({ path: "./public/og-image.png" }));
+// Wave A+B design-system assets — root-served so head() can reference them
+// without the /public/ prefix (matches the head() helper's <link> output).
+app.use("/_tokens.css", serveStatic({ path: "./public/_tokens.css" }));
+app.use("/_components.css", serveStatic({ path: "./public/_components.css" }));
+app.use("/sun-toggle.js", serveStatic({ path: "./public/sun-toggle.js" }));
 
 // Dynamic sitemap (replaces static file)
 app.get("/sitemap.xml", (c) => {
