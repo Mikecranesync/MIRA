@@ -81,6 +81,7 @@ from .session_manager import (
     record_exchange,
     save_state,
 )
+from .session_memory import save_session  # noqa: F401 — re-exported for test patching + Unit 7 FSM
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
@@ -475,6 +476,23 @@ class Supervisor:
         message = strip_mentions(message)
 
         state = self._load_state(chat_id)
+
+        # Unit 7 — QR pre-load context injection.
+        # When the /start command stored a qr_preload_prompt in session_context,
+        # prepend it to the first message so the LLM can reference prior WO history.
+        # The prompt is consumed once (popped) so subsequent messages are clean.
+        sc = (state.get("context") or {}).get("session_context", {})
+        _qr_prompt = sc.pop("qr_preload_prompt", None)
+        if _qr_prompt and not photo_b64:
+            message = f"{_qr_prompt}\n\nTechnician message: {message}"
+            # Persist the pop so the prompt is only injected once
+            state.setdefault("context", {})["session_context"] = sc
+            self._save_state(chat_id, state)
+            logger.info(
+                "QR_PRELOAD_INJECTED chat_id=%s asset_tag=%s",
+                chat_id,
+                sc.get("qr_asset_tag", "?"),
+            )
 
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
@@ -2523,8 +2541,22 @@ class Supervisor:
     _VALID_STATES = VALID_STATES  # re-exported from fsm for class-level access
 
     def _advance_state(self, state: dict, parsed: dict) -> dict:
-        """Advance FSM state. Delegates to fsm.advance_state."""
-        return advance_state(state, parsed)
+        """Advance FSM state. Delegates to fsm.advance_state.
+
+        After advancing, persists fault_category into NeonDB session_memory
+        when a category is newly identified — enables cross-session recall.
+        """
+        updated = advance_state(state, parsed)
+        # Auto-persist to NeonDB when fault category is first identified
+        if updated.get("fault_category") and updated.get("asset_identified"):
+            chat_id = updated.get("chat_id", "")
+            if chat_id:
+                save_session(
+                    chat_id,
+                    updated["asset_identified"],
+                    last_seen_fault=updated.get("fault_category"),
+                )
+        return updated
 
     def _format_reply(self, parsed: dict, user_message: str = "") -> str:
         """Format parsed response for display. Delegates to response_formatter.format_reply."""

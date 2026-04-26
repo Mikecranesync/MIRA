@@ -12,6 +12,11 @@ from PIL import Image
 from shared import tts
 from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
+from shared.session_memory import (
+    build_preload_prompt,
+    load_asset_context_cache,
+    save_session,
+)
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.error import Conflict
@@ -295,6 +300,100 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"Voice responses are currently {status}.\nUse /voice on or /voice off to change."
         )
+
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start [asset_tag] — entry point from QR deep links.
+
+    When a technician scans a QR code, the Telegram deep link fires
+    /start <asset_tag>.  This handler:
+
+    1. Greets the technician immediately so there's no dead air.
+    2. Reads the pre-loaded asset context from asset_context_cache
+       (written by the TS QR handler a few seconds earlier).
+    3. If work orders exist, injects a MIRA MEMORY block into the FSM
+       so the *next* message the user sends gets a contextual reply
+       (e.g. "I see WO-1234 was logged on this pump — same symptom?").
+    4. Falls back to a generic greeting when no asset_tag is supplied or
+       the asset_context_cache is empty / stale.
+
+    Security: per-tenant scoping is enforced via MIRA_TENANT_ID env var.
+    Cross-tenant leakage is not possible because the cache lookup filters
+    on (tenant_id, asset_tag).
+    """
+    chat_id = str(update.effective_chat.id)
+    args = context.args or []
+    asset_tag = args[0] if args else ""
+    tenant_id = os.environ.get("MIRA_TENANT_ID", "")
+
+    if not asset_tag:
+        # Plain /start (not from QR scan) — regular greeting
+        await update.message.reply_text(
+            "Hey — I'm MIRA, your maintenance copilot. "
+            "Send me a photo of equipment, a fault code, or describe what's going on."
+        )
+        return
+
+    # Immediately acknowledge so the technician knows the bot is alive
+    await update.message.reply_text(
+        f"Got it — looking up context for asset *{asset_tag}*...",
+        parse_mode="Markdown",
+    )
+
+    # Read pre-loaded context from asset_context_cache
+    ctx = load_asset_context_cache(tenant_id, asset_tag) if tenant_id else None
+
+    if ctx and ctx.get("work_orders"):
+        # Build asset description for session_memory
+        asset_name = ctx.get("asset_name", "")
+        asset_model = ctx.get("asset_model", "")
+        asset_label = " ".join(filter(None, [asset_name, asset_model])) or asset_tag
+
+        # Persist into user_asset_sessions so future turns can access context_json
+        save_session(
+            chat_id=chat_id,
+            asset_id=asset_label,
+            context_json=ctx,
+        )
+
+        # Build a human-readable prompt prefix and inject into engine FSM state
+        prompt = build_preload_prompt(ctx)
+        if prompt:
+            state = engine._load_state(chat_id)
+            sc = state.get("context", {}).get("session_context", {})
+            sc["qr_preload_prompt"] = prompt
+            sc["qr_asset_tag"] = asset_tag
+            state["asset_identified"] = asset_label
+            state.setdefault("context", {})["session_context"] = sc
+            engine._save_state(chat_id, state)
+
+        wo_count = len(ctx.get("work_orders", []))
+        last_wo = ctx["work_orders"][0]
+        last_wo_id = last_wo.get("id", "?")
+        last_wo_title = last_wo.get("title", "")[:60]
+        reply = (
+            f"Ready for *{asset_label}*. "
+            f"I found {wo_count} prior work order(s) on this asset — "
+            f"most recent: WO-{last_wo_id} ({last_wo_title}). "
+            f"What's going on with it today?"
+        )
+        await update.message.reply_text(reply, parse_mode="Markdown")
+    else:
+        # No pre-loaded context — clean slate
+        asset_label = asset_tag
+        reply = (
+            f"Ready for asset *{asset_tag}*. "
+            "No prior work orders found. What's going on with it today?"
+        )
+        await update.message.reply_text(reply, parse_mode="Markdown")
+
+    logger.info(
+        "QR /start chat_id=%s asset_tag=%s tenant=%s has_context=%s",
+        chat_id,
+        asset_tag,
+        tenant_id,
+        ctx is not None and bool(ctx.get("work_orders")),
+    )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -608,6 +707,7 @@ async def _conflict_error_handler(update: object, context) -> None:
 
 def main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(_startup).build()
+    app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))
     app.add_handler(CommandHandler("status", status_command))
