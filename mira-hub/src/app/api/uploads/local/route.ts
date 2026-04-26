@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
 import { createUpload, updateUploadStatus } from "@/lib/uploads";
 import {
   forwardToIngest,
@@ -67,7 +66,13 @@ export async function POST(req: NextRequest) {
     assetTag,
   });
 
-  after(async () => {
+  // Background ingest. Used to be wrapped in `after()` from "next/server",
+  // but Next.js 16 standalone throws `Error: ENVIRONMENT_FALLBACK` and the
+  // callback never runs — so the upload row stayed at status="parsing"
+  // forever and the UI spun. mira-hub runs as a long-lived standalone
+  // server (worker isn't killed after each request), so a plain
+  // fire-and-forget Promise stays alive until it resolves.
+  void (async () => {
     try {
       const stream = () =>
         new ReadableStream<Uint8Array>({
@@ -92,9 +97,11 @@ export async function POST(req: NextRequest) {
       }
     } catch (err) {
       console.error(`[uploads/local/${upload.id}] failed`, err);
-      await updateUploadStatus(upload.id, "failed", (err as Error).message);
+      await updateUploadStatus(upload.id, "failed", (err as Error).message).catch(
+        (statusErr) => console.error(`[uploads/local/${upload.id}] also failed to mark failed`, statusErr),
+      );
     }
-  });
+  })();
 
   return NextResponse.json(upload, { status: 201 });
 }

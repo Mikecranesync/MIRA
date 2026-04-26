@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
 import {
   createUpload,
   listUploads,
@@ -95,7 +94,12 @@ export async function POST(req: NextRequest) {
     assetTag: body.assetTag ?? null,
   });
 
-  after(() => runIngestPipeline(upload.id, body, kind, ctx.tenantId));
+  // Background ingest. Used to be wrapped in `after()` from "next/server",
+  // but Next.js 16 standalone throws `Error: ENVIRONMENT_FALLBACK` and the
+  // callback never runs — uploads stayed at status="queued" forever. mira-hub
+  // runs as a long-lived standalone server, so a plain fire-and-forget
+  // Promise stays alive until it resolves.
+  void runIngestPipeline(upload.id, body, kind, ctx.tenantId);
 
   return NextResponse.json(upload, { status: 201 });
 }
