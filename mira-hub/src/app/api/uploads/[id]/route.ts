@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto";
 import { getUpload, updateUploadStatus, deleteUpload } from "@/lib/uploads";
 import { sessionOr401 } from "@/lib/session";
 import { makeUploadLogger } from "@/lib/upload-log";
+import { composeTimeout, isAbortError } from "@/lib/abort-helpers";
+
+const OPENWEBUI_DELETE_TIMEOUT_MS = 10_000;
 
 export const dynamic = "force-dynamic";
 
@@ -44,10 +47,17 @@ async function deleteFromOpenWebUi(fileId: string): Promise<void> {
   const base = process.env.OPENWEBUI_BASE_URL;
   const apiKey = process.env.OPENWEBUI_API_KEY;
   if (!base || !apiKey) return;
-  const res = await fetch(`${base}/api/v1/files/${encodeURIComponent(fileId)}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${base}/api/v1/files/${encodeURIComponent(fileId)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: composeTimeout(undefined, OPENWEBUI_DELETE_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (isAbortError(err)) throw new Error(`timeout: openwebui delete (${OPENWEBUI_DELETE_TIMEOUT_MS}ms)`);
+    throw err;
+  }
   if (!res.ok && res.status !== 404) {
     throw new Error(`openwebui delete ${res.status}`);
   }
