@@ -118,7 +118,7 @@ async function runIngestPipeline(
   tenantId: string,
 ): Promise<void> {
   try {
-    await updateUploadStatus(uploadId, "fetching");
+    await updateUploadStatus(uploadId, tenantId, "fetching");
     let fetched;
     if (payload.provider === "google") {
       const { accessToken } = await ensureFreshAccessToken("google", tenantId);
@@ -127,25 +127,25 @@ async function runIngestPipeline(
       fetched = await streamFromSignedUrl(payload.externalDownloadUrl!);
     }
 
-    await updateUploadStatus(uploadId, "parsing");
+    await updateUploadStatus(uploadId, tenantId, "parsing");
     const mime = payload.mimeType ?? fetched.contentType;
 
     if (kind === "photo") {
       const result = await forwardToPhotoIngest(fetched.stream, payload.filename, mime, {
         assetTag: payload.assetTag ?? null,
       });
-      await updateUploadStatus(uploadId, "parsed", result.description ?? null, {
+      await updateUploadStatus(uploadId, tenantId, "parsed", result.description ?? null, {
         kbFileId: result.photoId != null ? String(result.photoId) : undefined,
       });
     } else {
       const result = await forwardToIngest(fetched.stream, payload.filename, mime);
-      await updateUploadStatus(uploadId, "parsed", null, {
+      await updateUploadStatus(uploadId, tenantId, "parsed", null, {
         kbFileId: result.fileId ?? undefined,
         kbChunkCount: result.chunkCount ?? undefined,
       });
     }
   } catch (err) {
     console.error(`[uploads/${uploadId}] pipeline failed`, err);
-    await updateUploadStatus(uploadId, "failed", (err as Error).message);
+    await updateUploadStatus(uploadId, tenantId, "failed", (err as Error).message);
   }
 }

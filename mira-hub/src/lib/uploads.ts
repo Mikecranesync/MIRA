@@ -176,6 +176,7 @@ export async function getUpload(
 
 export async function updateUploadStatus(
   id: string,
+  tenantId: string,
   status: UploadStatus,
   detail?: string | null,
   extras?: { kbFileId?: string; kbChunkCount?: number },
@@ -183,14 +184,15 @@ export async function updateUploadStatus(
   await pool.query(
     `
     UPDATE hub_uploads
-       SET status = $2,
-           status_detail = COALESCE($3, status_detail),
-           kb_file_id = COALESCE($4, kb_file_id),
-           kb_chunk_count = COALESCE($5, kb_chunk_count),
+       SET status = $3,
+           status_detail = COALESCE($4, status_detail),
+           kb_file_id = COALESCE($5, kb_file_id),
+           kb_chunk_count = COALESCE($6, kb_chunk_count),
            updated_at = NOW()
      WHERE id = $1
+       AND tenant_id = $2
   `,
-    [id, status, detail ?? null, extras?.kbFileId ?? null, extras?.kbChunkCount ?? null],
+    [id, tenantId, status, detail ?? null, extras?.kbFileId ?? null, extras?.kbChunkCount ?? null],
   );
 }
 
