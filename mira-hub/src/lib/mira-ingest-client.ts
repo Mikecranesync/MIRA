@@ -37,12 +37,15 @@ async function streamToBlob(
 
 /**
  * PDF / document path — POSTs to mira-ingest `/ingest/document-kb`.
+ *
+ * `requestId` is propagated as `X-Request-Id` so mira-ingest logs the same
+ * id and the full upload can be correlated across hub → ingest → OpenWebUI.
  */
 export async function forwardToIngest(
   stream: ReadableStream<Uint8Array>,
   filename: string,
   mimeType: string,
-  signal?: AbortSignal,
+  opts: { requestId?: string; signal?: AbortSignal } = {},
 ): Promise<IngestResult> {
   const base = process.env.INGEST_URL;
   if (!base) throw new Error("INGEST_URL not set");
@@ -53,10 +56,14 @@ export async function forwardToIngest(
   form.append("file", blob, filename);
   form.append("filename", filename);
 
+  const headers: Record<string, string> = {};
+  if (opts.requestId) headers["X-Request-Id"] = opts.requestId;
+
   const res = await fetch(`${base}/ingest/document-kb`, {
     method: "POST",
     body: form,
-    signal,
+    headers,
+    signal: opts.signal,
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -80,8 +87,13 @@ export async function forwardToPhotoIngest(
   stream: ReadableStream<Uint8Array>,
   filename: string,
   mimeType: string,
-  opts: { assetTag?: string | null; notes?: string; location?: string } = {},
-  signal?: AbortSignal,
+  opts: {
+    assetTag?: string | null;
+    notes?: string;
+    location?: string;
+    requestId?: string;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<PhotoIngestResult> {
   const base = process.env.INGEST_URL;
   if (!base) throw new Error("INGEST_URL not set");
@@ -97,10 +109,14 @@ export async function forwardToPhotoIngest(
   form.append("location", opts.location ?? "");
   form.append("notes", opts.notes ?? "");
 
+  const headers: Record<string, string> = {};
+  if (opts.requestId) headers["X-Request-Id"] = opts.requestId;
+
   const res = await fetch(`${base}/ingest/photo`, {
     method: "POST",
     body: form,
-    signal,
+    headers,
+    signal: opts.signal,
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {

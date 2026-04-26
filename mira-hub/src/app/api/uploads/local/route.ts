@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { createUpload, updateUploadStatus } from "@/lib/uploads";
 import {
   forwardToIngest,
@@ -7,6 +8,7 @@ import {
   SUPPORTED_MIMES,
 } from "@/lib/mira-ingest-client";
 import { sessionOr401 } from "@/lib/session";
+import { makeUploadLogger } from "@/lib/upload-log";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +68,16 @@ export async function POST(req: NextRequest) {
     assetTag,
   });
 
+  const requestId = req.headers.get("x-request-id") ?? randomUUID();
+  const log = makeUploadLogger({ requestId, uploadId: upload.id, tenantId: ctx.tenantId });
+  log.log("parsing", {
+    provider: "local",
+    kind,
+    filename: file.name,
+    mimeType: mime,
+    sizeBytes: file.size,
+  });
+
   // Background ingest. Used to be wrapped in `after()` from "next/server",
   // but Next.js 16 standalone throws `Error: ENVIRONMENT_FALLBACK` and the
   // callback never runs — so the upload row stayed at status="parsing"
@@ -84,24 +96,27 @@ export async function POST(req: NextRequest) {
       if (kind === "photo") {
         const result = await forwardToPhotoIngest(stream(), file.name, mime, {
           assetTag,
+          requestId,
         });
         await updateUploadStatus(upload.id, ctx.tenantId, "parsed", result.description ?? null, {
           kbFileId: result.photoId != null ? String(result.photoId) : undefined,
         });
+        log.log("parsed", { photoId: result.photoId, kind });
       } else {
-        const result = await forwardToIngest(stream(), file.name, mime);
+        const result = await forwardToIngest(stream(), file.name, mime, { requestId });
         await updateUploadStatus(upload.id, ctx.tenantId, "parsed", null, {
           kbFileId: result.fileId ?? undefined,
           kbChunkCount: result.chunkCount ?? undefined,
         });
+        log.log("parsed", { kind, kbFileId: result.fileId, kbChunkCount: result.chunkCount });
       }
     } catch (err) {
-      console.error(`[uploads/local/${upload.id}] failed`, err);
+      log.error("failed", err);
       await updateUploadStatus(upload.id, ctx.tenantId, "failed", (err as Error).message).catch(
-        (statusErr) => console.error(`[uploads/local/${upload.id}] also failed to mark failed`, statusErr),
+        (statusErr) => log.error("status_update_failed", statusErr),
       );
     }
   })();
 
-  return NextResponse.json(upload, { status: 201 });
+  return NextResponse.json(upload, { status: 201, headers: { "X-Request-Id": requestId } });
 }
