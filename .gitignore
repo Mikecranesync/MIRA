@@ -152,6 +152,10 @@ htmlcov/
 # Playwright MCP session ephemera (per-session, regenerable)
 .playwright-mcp/
 
+# Playwright test runner artifacts — regenerated on every test run
+mira-hub/test-results/
+mira-hub/playwright-report/
+
 # Marketing video binaries — large, regenerable; keep spend.json tracked
 marketing/videos/**/*.mp4
 marketing/videos/**/*.mov
