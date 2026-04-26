@@ -9,6 +9,7 @@ import {
 } from "@/lib/mira-ingest-client";
 import { sessionOr401 } from "@/lib/session";
 import { makeUploadLogger } from "@/lib/upload-log";
+import { validateAssetTag } from "@/lib/asset-tag";
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +50,11 @@ export async function POST(req: NextRequest) {
   }
 
   const assetTagRaw = form.get("assetTag");
-  const assetTag =
-    typeof assetTagRaw === "string" && assetTagRaw.trim().length > 0
-      ? assetTagRaw.trim()
-      : null;
+  const assetTagCheck = validateAssetTag(assetTagRaw);
+  if (!assetTagCheck.ok) {
+    return NextResponse.json({ error: assetTagCheck.reason }, { status: 400 });
+  }
+  const assetTag = assetTagCheck.value;
   const kind = inferKindFromMime(mime);
   const buffer = new Uint8Array(await file.arrayBuffer());
 

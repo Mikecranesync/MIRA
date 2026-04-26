@@ -19,6 +19,7 @@ import {
 } from "@/lib/mira-ingest-client";
 import { sessionOr401 } from "@/lib/session";
 import { makeUploadLogger } from "@/lib/upload-log";
+import { validateAssetTag } from "@/lib/asset-tag";
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +81,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const assetTagCheck = validateAssetTag(body.assetTag);
+  if (!assetTagCheck.ok) {
+    return NextResponse.json({ error: assetTagCheck.reason }, { status: 400 });
+  }
+  const assetTag = assetTagCheck.value;
+
   const kind = inferKindFromMime(mime);
   const requestId = req.headers.get("x-request-id") ?? randomUUID();
 
@@ -94,7 +101,7 @@ export async function POST(req: NextRequest) {
     sizeBytes: body.sizeBytes ?? null,
     externalCreatedAt: body.externalCreatedAt ?? null,
     initialStatus: "queued",
-    assetTag: body.assetTag ?? null,
+    assetTag,
   });
 
   const log = makeUploadLogger({ requestId, uploadId: upload.id, tenantId: ctx.tenantId });
@@ -111,7 +118,7 @@ export async function POST(req: NextRequest) {
   // callback never runs — uploads stayed at status="queued" forever. mira-hub
   // runs as a long-lived standalone server, so a plain fire-and-forget
   // Promise stays alive until it resolves.
-  void runIngestPipeline(upload.id, body, kind, ctx.tenantId, requestId);
+  void runIngestPipeline(upload.id, body, kind, ctx.tenantId, requestId, assetTag);
 
   return NextResponse.json(upload, { status: 201, headers: { "X-Request-Id": requestId } });
 }
@@ -129,6 +136,7 @@ async function runIngestPipeline(
   kind: "document" | "photo",
   tenantId: string,
   requestId: string,
+  assetTag: string | null,
 ): Promise<void> {
   const log = makeUploadLogger({ requestId, uploadId, tenantId });
   try {
@@ -149,7 +157,7 @@ async function runIngestPipeline(
 
     if (kind === "photo") {
       const result = await forwardToPhotoIngest(fetched.stream, payload.filename, mime, {
-        assetTag: payload.assetTag ?? null,
+        assetTag,
         requestId,
       });
       await updateUploadStatus(uploadId, tenantId, "parsed", result.description ?? null, {
