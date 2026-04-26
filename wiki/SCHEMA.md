@@ -57,6 +57,8 @@ When new operational knowledge arrives (incident resolved, deploy completed, con
 5. Append to `wiki/log.md`
 6. Cross-link: if a gotcha references a node, link to it. If a service runs on a node, link to it.
 
+**Drop-folder ingest into `raw/`:** drop generated `.md` files (eval reports, deploy outputs, transcripts) into `~/MiraDrop/` on whichever node you're working on. A launchd watcher (`tools/wiki_raw_ingest.py`) moves the file into `wiki/raw/<YYYY-MM-DD>/`, dedupes by SHA-256, and commits — no auto-push. See [[nodes/wiki-sync]].
+
 ### Query
 
 When the user asks an operational question:

@@ -119,6 +119,7 @@ bash install/smoke_test.sh
 - **ADRs:** `docs/adr/`
 - **Ops wiki:** `wiki/` — **Session start: read `wiki/hot.md`. Session end: update it.**
 - **Wiki schema:** `wiki/SCHEMA.md`
+- **Wiki sync across nodes + `~/MiraDrop/` auto-ingest:** `wiki/nodes/wiki-sync.md`
 - **Skills:** `.claude/skills/`
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
