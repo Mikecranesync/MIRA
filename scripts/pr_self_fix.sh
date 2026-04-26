@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # pr_self_fix.sh — reads PR review comments, extracts 🔴 IMPORTANT flags,
-# feeds them to Claude for fixes, commits + pushes. Loops up to 3 times.
+# feeds them to the LLM cascade for fixes, commits + pushes. Loops up to 3 times.
 #
 # Usage: bash scripts/pr_self_fix.sh <PR_NUMBER>
-# Requires: gh CLI authenticated, ANTHROPIC_API_KEY set (or in Doppler)
+# Requires: gh CLI authenticated, plus at least one of GROQ_API_KEY /
+# CEREBRAS_API_KEY / GEMINI_API_KEY (Doppler factorylm/prd in CI).
+# Anthropic was removed from MIRA permanently (PR #610) — never reintroduce.
 
 set -euo pipefail
 
@@ -36,35 +38,31 @@ print('\n'.join(issues))
 "
 }
 
-apply_claude_fixes() {
+apply_cascade_fixes() {
   local issues="$1"
   local diff
   diff=$(git diff HEAD~1..HEAD 2>/dev/null || git diff --cached 2>/dev/null || echo "")
 
-  log "Sending issues to Claude for fix suggestions..."
-  python3 - << PYEOF
-import anthropic, os, sys, subprocess, json
+  log "Sending issues to LLM cascade (Groq → Cerebras → Gemini) for fix suggestions..."
+  python3 - "$issues" "${diff:0:8000}" << 'PYEOF'
+"""Cascade-based fix proposer. Tries Groq → Cerebras → Gemini in order;
+returns the first non-empty response. No Anthropic — removed PR #610."""
+import os, sys, json
+import urllib.request, urllib.error
 
-api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-if not api_key:
-    print("ERROR: ANTHROPIC_API_KEY not set", file=sys.stderr)
-    sys.exit(1)
+issues = sys.argv[1]
+diff = sys.argv[2]
 
-issues = """$issues"""
-diff = """${diff:0:8000}"""
-
-client = anthropic.Anthropic(api_key=api_key)
-
-prompt = f"""You are a code fixer for the MIRA project (Python/FastAPI, industrial maintenance AI).
+PROMPT = f"""You are a code fixer for the MIRA project (Python/FastAPI, industrial maintenance AI).
 
 The following IMPORTANT issues were found in a code review:
 
 {issues}
 
 Recent diff context:
-\`\`\`diff
+```diff
 {diff}
-\`\`\`
+```
 
 For each 🔴 IMPORTANT issue:
 1. Identify the specific file and line where the issue is
@@ -75,21 +73,59 @@ Format each fix as:
 ### Fix N: <issue summary>
 **File:** <path>
 **Change:**
-\`\`\`diff
+```diff
 <unified diff>
-\`\`\`
+```
 **Why:** <one sentence>
 
 Focus only on 🔴 IMPORTANT issues. Skip suggestions and warnings.
 Keep fixes minimal and targeted — no refactoring beyond the issue."""
 
-message = client.messages.create(
-    model="claude-sonnet-4-6",
-    max_tokens=4096,
-    messages=[{"role": "user", "content": prompt}],
-)
+PROVIDERS = [
+    ("groq", "https://api.groq.com/openai/v1/chat/completions",
+     os.environ.get("GROQ_API_KEY", ""),
+     os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")),
+    ("cerebras", "https://api.cerebras.ai/v1/chat/completions",
+     os.environ.get("CEREBRAS_API_KEY", ""),
+     os.environ.get("CEREBRAS_MODEL", "llama3.1-8b")),
+    ("gemini", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+     os.environ.get("GEMINI_API_KEY", ""),
+     os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")),
+]
 
-print(message.content[0].text)
+def call(provider, url, key, model):
+    if not key:
+        return None
+    payload = json.dumps({
+        "model": model,
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": PROMPT}],
+        "temperature": 0.1,
+    }).encode()
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read())
+        return data["choices"][0]["message"]["content"]
+    except (urllib.error.URLError, KeyError, json.JSONDecodeError) as e:
+        print(f"[cascade] {provider} failed: {e}", file=sys.stderr)
+        return None
+
+for name, url, key, model in PROVIDERS:
+    out = call(name, url, key, model)
+    if out:
+        print(f"[cascade] used {name}/{model}", file=sys.stderr)
+        print(out)
+        sys.exit(0)
+
+print("ERROR: all cascade providers failed (set at least one of GROQ_API_KEY / "
+      "CEREBRAS_API_KEY / GEMINI_API_KEY)", file=sys.stderr)
+sys.exit(1)
 PYEOF
 }
 
@@ -108,9 +144,8 @@ commit_and_push() {
   git diff --name-only | xargs -r git add
   git commit -m "fix(auto-review): loop ${loop} — address 🔴 IMPORTANT review findings
 
-Applied by pr_self_fix.sh from PR #${PR_NUMBER} review comments.
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+Applied by pr_self_fix.sh from PR #${PR_NUMBER} review comments,
+using the LLM cascade (Groq → Cerebras → Gemini)."
   git push origin "$branch"
   log "Pushed fix loop $loop to $branch"
   return 0
@@ -130,16 +165,16 @@ while [ $LOOP -lt $MAX_LOOPS ]; do
   log "Found issues:"
   echo "$ISSUES"
 
-  # Apply fixes (Claude outputs instructions; human/CI applies them)
-  FIXES=$(apply_claude_fixes "$ISSUES")
-  log "Claude fix suggestions:"
+  # Apply fixes (cascade outputs instructions; human/CI applies them)
+  FIXES=$(apply_cascade_fixes "$ISSUES")
+  log "Cascade fix suggestions:"
   echo "$FIXES"
 
   # Write fix suggestions to a temp file for reference
   echo "$FIXES" > /tmp/pr_self_fix_loop${LOOP}.md
   log "Fix suggestions written to /tmp/pr_self_fix_loop${LOOP}.md"
 
-  # Check if Claude's output contains actual diffs we can apply
+  # Check if the cascade's output contains actual diffs we can apply
   if echo "$FIXES" | grep -q '```diff'; then
     log "Attempting to extract and apply diffs..."
     echo "$FIXES" > /tmp/pr_fixes_raw.txt

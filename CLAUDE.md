@@ -2,8 +2,8 @@
 
 **Version:** v3.4.0 | **Updated:** 2026-04-17
 **One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `local` → Open WebUI → qwen2.5vl:7b
-**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → GSDEngine → Anthropic API
+**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Gemini (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
+**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
 
 ---
 
@@ -15,8 +15,8 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **No cloud except:** Anthropic Claude API + NeonDB (Doppler-managed secrets).
-3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the Claude API call.
+2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 — never reintroduce).
+3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler (`factorylm/prd`). Never in `.env` files committed to git.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
 6. **Commits:** Conventional format (`feat/fix/security/docs/refactor/test/chore/BREAKING`).
@@ -31,7 +31,7 @@ MIRA/
 ├── mira-bots/       # Telegram, Slack adapters + shared diagnostic engine
 ├── mira-bridge/     # Node-RED orchestration, SQLite WAL shared state
 ├── mira-mcp/        # FastMCP server, NeonDB recall, equipment diagnostic tools
-├── mira-pipeline/   # OpenAI-compat API wrapping GSDEngine — active VPS chat path
+├── mira-pipeline/   # OpenAI-compat API wrapping Supervisor (shared/engine.py) — active VPS chat path
 ├── mira-web/        # PLG funnel — Hono/Bun, Stripe, /cmms landing + Mira AI chat
 ├── mira-cmms/       # Atlas CMMS — work orders, PM scheduling, asset registry
 ├── mira-crawler/    # KB ingest + manual chunker (OEM discovery pipeline)
@@ -104,7 +104,7 @@ bash install/smoke_test.sh
 - **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
 - **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
 - **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
-- **Gemini key blocked** — 403 in Doppler. Cascade falls through to Groq/Claude.
+- **Gemini key blocked** — 403 in Doppler. Cascade falls through to next provider; if all fail, falls through to Open WebUI/Ollama.
 
 ---
 
@@ -146,10 +146,10 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 
 | Component | File | What it does |
 |-----------|------|-------------|
-| GitHub Action | `.github/workflows/code-review.yml` | shellcheck → ast-grep (IPs/secrets) → Claude Sonnet review → PR comment |
+| GitHub Action | `.github/workflows/code-review.yml` | shellcheck → ast-grep (IPs/secrets) → cascade review (Groq → Cerebras → Gemini) → PR comment |
 | ast-grep rules | `.ast-grep-rules/` | Hardcoded IPs, secrets, missing socket error handling, raw FastAPI body |
 | ast-grep config | `sgconfig.yml` | Rule discovery (replaces diffray — diffray v0.5.4 requires OpenAI) |
-| Self-fix script | `scripts/pr_self_fix.sh` | Reads 🔴 IMPORTANT review comments, asks Claude for patches, applies + pushes (up to 3 loops) |
+| Self-fix script | `scripts/pr_self_fix.sh` | Reads 🔴 IMPORTANT review comments, asks the LLM cascade for patches, applies + pushes (up to 3 loops) |
 | Pre-commit hook | `.githooks/pre-commit` | shellcheck + rg credential scan + debug artifact scan on staged files |
 
 **To trigger manually:** `gh workflow run code-review.yml`
