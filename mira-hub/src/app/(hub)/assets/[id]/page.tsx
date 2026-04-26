@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, useEffect } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
@@ -73,12 +73,46 @@ const EVENT_ICON: Record<string, { Icon: React.ElementType; color: string }> = {
   install: { Icon: Cpu,         color: "#64748B" },
 };
 
+type ApiAsset = {
+  id: string; tag: string; name: string; manufacturer: string | null;
+  model: string | null; serialNumber: string | null; type: string | null;
+  location: string | null; criticality: string; workOrderCount: number;
+  lastMaintenance: string | null; lastFault: string | null; installDate: string | null;
+};
+
+function apiToDisplay(a: ApiAsset): typeof ASSETS["1"] {
+  return {
+    name: a.name || "Unknown Asset",
+    tag: a.tag,
+    oem: a.manufacturer ?? "—",
+    model: a.model ?? "—",
+    status: a.lastFault ? "warning" : "operational",
+    serial: a.serialNumber ?? "—",
+    installed: a.installDate ? a.installDate.slice(0, 10) : "—",
+    criticality: a.criticality.charAt(0).toUpperCase() + a.criticality.slice(1),
+    location: a.location ?? "—",
+    lastPM: a.lastMaintenance ? a.lastMaintenance.slice(0, 10) : "—",
+    nextPM: "—",
+    type: a.type ?? "—",
+  };
+}
+
 export default function AssetDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const t = useTranslations("assets");
   const { id } = use(params);
-  const asset = ASSETS[id] ?? ASSETS["1"];
-  const statusCfg = STATUS_CONFIG[asset.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.operational;
   const [activeTab, setActiveTab] = useState("overview");
+  const [apiAsset, setApiAsset] = useState<ApiAsset | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`/hub/api/assets/${id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data && !data.error) setApiAsset(data); })
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  const asset = apiAsset ? apiToDisplay(apiAsset) : (ASSETS[id] ?? ASSETS["1"]);
+  const statusCfg = STATUS_CONFIG[asset.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.operational;
 
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
@@ -94,7 +128,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="min-w-0">
               <h1 className="text-lg font-semibold leading-tight" style={{ color: "var(--foreground)" }}>
-                {asset.name}
+                {loading ? <span className="inline-block w-48 h-5 rounded animate-pulse" style={{ backgroundColor: "var(--surface-1)" }} /> : asset.name}
               </h1>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <span className="text-xs font-mono" style={{ color: "var(--foreground-subtle)" }}>{asset.tag}</span>
