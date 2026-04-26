@@ -233,7 +233,9 @@
       "active": "运行中",
       "inactive": "停用",
       "maintenance": "维护中"
-    }
+    },
+    "noAssetsYet": "暂无资产",
+    "registerFirstAsset": "注册您的第一项资产，开始跟踪诊断、工单和历史记录。"
   },
   "parts": {
     "title": "备件库存",

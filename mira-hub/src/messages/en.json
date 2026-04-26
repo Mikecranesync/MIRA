@@ -233,7 +233,9 @@
       "active": "Active",
       "inactive": "Inactive",
       "maintenance": "Maintenance"
-    }
+    },
+    "noAssetsYet": "No assets yet",
+    "registerFirstAsset": "Register your first asset to start tracking diagnostics, work orders, and history."
   },
   "parts": {
     "title": "Parts & Inventory",
