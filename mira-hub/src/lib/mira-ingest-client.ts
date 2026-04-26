@@ -1,5 +1,8 @@
 // mira-hub/src/lib/mira-ingest-client.ts
 import { sniffMime, isMimeCompatible } from "./sniff-mime";
+import { composeTimeout, isAbortError } from "./abort-helpers";
+
+const INGEST_TIMEOUT_MS = 120_000; // mira-ingest can poll OpenWebUI for ~40s+ on large PDFs
 
 export class MimeMismatchError extends Error {
   declared: string;
@@ -86,12 +89,18 @@ export async function forwardToIngest(
   const headers: Record<string, string> = {};
   if (opts.requestId) headers["X-Request-Id"] = opts.requestId;
 
-  const res = await fetch(`${base}/ingest/document-kb`, {
-    method: "POST",
-    body: form,
-    headers,
-    signal: opts.signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${base}/ingest/document-kb`, {
+      method: "POST",
+      body: form,
+      headers,
+      signal: composeTimeout(opts.signal, INGEST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (isAbortError(err)) throw new Error(`timeout: mira-ingest document-kb (${INGEST_TIMEOUT_MS}ms)`);
+    throw err;
+  }
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(`ingest ${res.status}: ${json.detail ?? res.statusText}`);
@@ -140,12 +149,18 @@ export async function forwardToPhotoIngest(
   const headers: Record<string, string> = {};
   if (opts.requestId) headers["X-Request-Id"] = opts.requestId;
 
-  const res = await fetch(`${base}/ingest/photo`, {
-    method: "POST",
-    body: form,
-    headers,
-    signal: opts.signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${base}/ingest/photo`, {
+      method: "POST",
+      body: form,
+      headers,
+      signal: composeTimeout(opts.signal, INGEST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (isAbortError(err)) throw new Error(`timeout: mira-ingest photo (${INGEST_TIMEOUT_MS}ms)`);
+    throw err;
+  }
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(`photo ingest ${res.status}: ${json.detail ?? res.statusText}`);
