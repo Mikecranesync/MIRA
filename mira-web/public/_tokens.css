@@ -1,0 +1,133 @@
+/* FactoryLM × MIRA design tokens — see docs/design-system-2026-04-26.md. Do NOT edit values without updating the design system doc and component tests. */
+
+:root {
+  /* Primary — workspace (light theme) */
+  --fl-navy-900:  #1B365D;
+  --fl-navy-700:  #23476F;
+  --fl-orange-600:#C9531C;
+  --fl-orange-500:#E67139;
+  --fl-sky-100:   #E6F0FA;
+
+  /* Surfaces */
+  --fl-bg-50:     #F5F6F8;
+  --fl-card-0:    #FFFFFF;
+  --fl-rule-200:  #E1E5EA;
+
+  /* Text */
+  --fl-ink-900:   #1B2530;
+  --fl-muted-600: #5C6770;
+
+  /* Status */
+  --fl-good:      #1F8E5A;
+  --fl-warn:      #C77B0A;
+  --fl-bad:       #B5341E;
+
+  /* State pill backgrounds (the four-state honesty story) */
+  --fl-state-indexed-bg:     #DCEFE3;
+  --fl-state-indexed-text:   #16623F;
+  --fl-state-partial-bg:     #FFF3D6;
+  --fl-state-partial-text:   #856204;
+  --fl-state-failed-bg:      #FBDDD3;
+  --fl-state-failed-text:    #862415;
+  --fl-state-superseded-bg:  #E2E5E9;
+  --fl-state-superseded-text:#455261;
+
+  /* Safety alert */
+  --fl-safety-bg:     #FCE9E5;
+  --fl-safety-border: #B5341E;
+  --fl-safety-text:   #5A1E13;
+
+  /* Shadows */
+  --fl-shadow-sm: 0 1px 2px rgba(15,23,30,.04), 0 4px 16px rgba(15,23,30,.06);
+  --fl-shadow-md: 0 4px 12px rgba(0,0,0,.06);
+  --fl-shadow-lg: 0 24px 48px rgba(0,0,0,.25);
+
+  /* Radii */
+  --fl-radius-sm:  8px;
+  --fl-radius-md:  10px;
+  --fl-radius-lg:  12px;
+  --fl-radius-xl:  14px;
+  --fl-radius-pill:999px;
+
+  /* Spacing scale */
+  --fl-sp-1:  4px;
+  --fl-sp-2:  8px;
+  --fl-sp-3:  12px;
+  --fl-sp-4:  16px;
+  --fl-sp-5:  20px;
+  --fl-sp-6:  24px;
+  --fl-sp-8:  32px;
+  --fl-sp-10: 40px;
+
+  /* Type scale */
+  --fl-type-xs:  11px;
+  --fl-type-sm:  12px;
+  --fl-type-base:14px;
+  --fl-type-md:  16px;
+  --fl-type-lg:  18px;
+  --fl-type-xl:  22px;
+  --fl-type-2xl: 24px;
+  --fl-type-3xl: 32px;
+  --fl-type-4xl: 40px;
+
+  /* Letter spacing */
+  --fl-ls-tight: -.2px;
+  --fl-ls-wide:   .4px;
+  --fl-ls-caps:   .8px;
+
+  /* Font stacks */
+  --fl-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  --fl-font-mono: ui-monospace, SFMono-Regular, Menlo, "Roboto Mono", monospace;
+}
+
+/* Typography base */
+html, body {
+  font-family: var(--fl-font-sans);
+  font-size: var(--fl-type-base);
+  line-height: 1.45;
+  color: var(--fl-ink-900);
+  background: var(--fl-bg-50);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Monospace utility — asset tags, sensor IDs */
+.fl-mono {
+  font-family: var(--fl-font-mono);
+}
+.fl-muted {
+  color: var(--fl-muted-600);
+}
+
+/* Sun-readable override (high-contrast outdoor mode) */
+body.sun {
+  --fl-bg-50:     #F0F0F0;
+  --fl-card-0:    #FFFFFF;
+  --fl-rule-200:  #404040;
+  --fl-navy-900:  #000000;
+  --fl-orange-600:#C8400A;
+  --fl-muted-600: #2A2A2A;
+  --fl-ink-900:   #000000;
+  font-weight: 500;
+}
+body.sun .topbar      { background: #000; }
+body.sun .hero        { background: #000; }
+body.sun .panel,
+body.sun .chat        { box-shadow: 0 0 0 2px #000; }
+body.sun .file        { border-width: 2px; border-color: #000; }
+body.sun .state       { border: 1.5px solid #000; }
+body.sun .primary-btn { background: #000; }
+body.sun .ghost-btn   { border-width: 2px; border-color: #000; }
+
+/* Pulse animation — vibration trending indicator */
+@keyframes fl-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(255,210,122,.7); }
+  70%  { box-shadow: 0 0 0 12px rgba(255,210,122,0); }
+  100% { box-shadow: 0 0 0 0   rgba(255,210,122,0); }
+}
+.fl-dot-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #FFD27A;
+  animation: fl-pulse 2.2s infinite;
+}
