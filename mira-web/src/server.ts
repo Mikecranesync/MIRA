@@ -28,6 +28,7 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
+import { renderHome } from "./views/home.js";
 import { signToken, requireAuth, requireActive, type MiraTokenPayload } from "./lib/auth.js";
 import { buildSessionCookie } from "./lib/cookie-session.js";
 import {
@@ -215,12 +216,9 @@ ${pages
 // Routes
 // ---------------------------------------------------------------------------
 
-// Homepage
-app.get("/", async (c) => {
-  const file = Bun.file("./public/index.html");
-  return new Response(await file.arrayBuffer(), {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
+// Homepage — server-rendered via renderHome() (composes head() + Wave-B helpers)
+app.get("/", (c) => {
+  return c.html(renderHome(c.req.url));
 });
 
 // Health probe
