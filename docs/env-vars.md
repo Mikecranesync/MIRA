@@ -7,17 +7,17 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `TELEGRAM_BOT_TOKEN` | mira-bot-telegram                    |
 | `SLACK_BOT_TOKEN`    | mira-bot-slack                       |
 | `SLACK_APP_TOKEN`    | mira-bot-slack (Socket Mode)         |
-| `ANTHROPIC_API_KEY`  | mira-bots (Claude inference)         |
 | `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
-| `GEMINI_API_KEY`     | mira-bots, mira-pipeline (Gemini — primary free tier) |
-| `GEMINI_MODEL`       | mira-bots, mira-pipeline — default: gemini-2.5-flash |
-| `GEMINI_VISION_MODEL`| mira-bots, mira-pipeline — default: gemini-2.5-flash |
-| `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — secondary free tier) |
+| `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — first in cascade, fastest) |
 | `GROQ_MODEL`         | mira-bots, mira-pipeline — default: llama-3.3-70b-versatile |
 | `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: meta-llama/llama-4-scout-17b-16e-instruct |
-| `CEREBRAS_API_KEY`   | mira-bots (Cerebras — tertiary free tier) |
-| `CEREBRAS_MODEL`     | mira-bots — default: llama3.1-8b |
-| `CLAUDE_MODEL`       | mira-bots — default: claude-sonnet-4-6 |
+| `CEREBRAS_API_KEY`   | mira-bots, mira-pipeline (Cerebras — second in cascade) |
+| `CEREBRAS_MODEL`     | mira-bots, mira-pipeline — default: llama3.1-8b |
+| `GEMINI_API_KEY`     | mira-bots, mira-pipeline (Gemini — third in cascade, vision-capable) |
+| `GEMINI_MODEL`       | mira-bots, mira-pipeline — default: gemini-2.5-flash |
+| `GEMINI_VISION_MODEL`| mira-bots, mira-pipeline — default: gemini-2.5-flash |
+| ~~`ANTHROPIC_API_KEY`~~ | **REMOVED PR #610** — Anthropic dependency ripped out 2026-04-25; runtime silently ignores this key if set |
+| ~~`CLAUDE_MODEL`~~      | **REMOVED PR #610** — see above |
 | `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest, mira-pipeline |
 | `PIPELINE_API_KEY`   | mira-pipeline (bearer auth), mira-core (OPENAI_API_KEYS) |
 | `MCP_REST_API_KEY`   | mira-mcp (server), mira-bots (client)|
