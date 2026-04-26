@@ -1,5 +1,8 @@
 // mira-hub/src/lib/fetch-adapters.ts
 import { composeTimeout, isAbortError } from "./abort-helpers";
+import { assertSafeUrl } from "./ssrf-guard";
+
+const MAX_REDIRECTS = 3;
 
 /**
  * Returns a Response object whose body is the file stream, plus parsed
@@ -49,12 +52,37 @@ export async function streamFromSignedUrl(
   url: string,
   signal?: AbortSignal,
 ): Promise<FetchedFile> {
-  let res: Response;
-  try {
-    res = await fetch(url, { signal: composeTimeout(signal, SIGNED_URL_TIMEOUT_MS) });
-  } catch (err) {
-    if (isAbortError(err)) throw new Error(`timeout: signed url fetch (${SIGNED_URL_TIMEOUT_MS}ms)`);
-    throw err;
+  // Validate the user-controlled URL before any network I/O — protocol,
+  // hostname allowlist, no IP literals. Throws SsrfBlockedError on
+  // rejection (caller catches and surfaces as upload failure).
+  let target = assertSafeUrl(url);
+
+  // Manual redirect handling: every Location must re-pass the SSRF check
+  // so a 302 from dropboxusercontent.com to 169.254.169.254 is rejected.
+  const composedSignal = composeTimeout(signal, SIGNED_URL_TIMEOUT_MS);
+  let res: Response | null = null;
+  for (let i = 0; i <= MAX_REDIRECTS; i++) {
+    try {
+      res = await fetch(target.toString(), {
+        signal: composedSignal,
+        redirect: "manual",
+      });
+    } catch (err) {
+      if (isAbortError(err)) throw new Error(`timeout: signed url fetch (${SIGNED_URL_TIMEOUT_MS}ms)`);
+      throw err;
+    }
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) throw new Error(`signed url ${res.status} with no location`);
+      // Resolve relative redirects against the previous target
+      target = assertSafeUrl(new URL(location, target).toString());
+      continue;
+    }
+    break;
+  }
+  if (!res) throw new Error("signed url: redirect loop");
+  if (res.status >= 300 && res.status < 400) {
+    throw new Error(`signed url: too many redirects (>${MAX_REDIRECTS})`);
   }
   if (!res.ok) {
     throw new Error(`signed url fetch ${res.status}`);
