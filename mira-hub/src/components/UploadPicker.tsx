@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import Script from "next/script";
 import { X, Upload as UploadIcon, Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -402,6 +403,7 @@ export function UploadPicker({
               size="sm"
               disabled={!googleAvailable || !pickerLoaded || uploading}
               onClick={openGoogle}
+              title={!googleAvailable ? "Connect Google Workspace in Channels to enable" : undefined}
             >
               {googleAvailable && !pickerLoaded ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1 inline" />Loading…</>
@@ -414,6 +416,7 @@ export function UploadPicker({
               size="sm"
               disabled={!dropboxAvailable || !dropboxReady || uploading}
               onClick={openDropbox}
+              title={!dropboxAvailable ? "Connect Dropbox in Channels to enable" : undefined}
             >
               {dropboxAvailable && !dropboxReady ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1 inline" />Loading…</>
@@ -426,7 +429,13 @@ export function UploadPicker({
           {!googleAvailable && !dropboxAvailable && (
             <p className="text-[11px] mt-2 text-center" style={{ color: "var(--foreground-subtle)" }}>
               Connect Google Workspace or Dropbox in{" "}
-              <span className="font-medium" style={{ color: "var(--foreground-muted)" }}>Channels</span>{" "}
+              <Link
+                href="/hub/channels"
+                className="font-medium underline-offset-2 hover:underline"
+                style={{ color: "var(--brand-blue)" }}
+              >
+                Channels
+              </Link>{" "}
               to enable cloud picking.
             </p>
           )}
