@@ -1,3 +1,34 @@
+# Hot Cache — 2026-04-25 — BRAVO
+
+## Session — 2026-04-26 (BRAVO, marketing landing-page recon)
+
+- **Recon artifact added**: `docs/recon/marketing-landing-pages-2026-04-26/recon-notes.md` compares public `factorylm.com` and `factorylm.com/cmms` against public Factory AI (`f7i.ai`) plus current competitor references.
+- **Screenshots captured**: homepage/pricing/trial screenshots saved in `docs/recon/marketing-landing-pages-2026-04-26/screenshots/` for FactoryLM, Factory AI, MaintainX, UpKeep, Limble, and Fiix.
+- **Key finding**: FactoryLM's product thesis is strong, but the first viewport lacks trust proof and the `/cmms` beta form asks for too much too early.
+- **Highest-leverage recommendation**: make `/cmms` the tester funnel with passwordless magic-link entry, ask only for email first, and land users in a seeded sample workspace or guided first diagnostic.
+- **Competitor patterns to borrow**: Factory AI page sequencing, UpKeep hero composition, MaintainX free-trial clarity, Limble dark-theme polish, Fiix credibility stacking.
+- **Safety**: no public forms submitted, no emails sent, no beta signups created.
+
+## Session — 2026-04-25 (BRAVO, repo sync baseline)
+
+- **Repo sync baseline implemented**: switched from stale `feat/lsp-claude-code` to fresh `codex/repo-sync-baseline` tracking `origin/main` at `ca3c54a`.
+- **Preserved old branch tip**: local branch `codex/preserve-lsp-claude-code-20260425` points at the previous LSP checkout; it was 44 commits ahead / 204 behind `origin/main`.
+- **Local untracked work preserved**: `.agents/`, `AGENTS.md`, `.playwright-mcp/page-2026-04-12*.yml`, and `marketing/prospects/hardening-alerts.jsonl` remain present.
+- **Baseline note added**: `docs/developer/repo-sync-baseline-2026-04-25.md` records current branch, preserved work, coordination check, collaboration map, and verification results.
+- **Coordination check**: open PRs include #637 Unit 9a landing, #635 CI billing/auth skip, #634 hub auth secret, #610 Anthropic runtime removal. MVP plan currently shows Unit 6 hybrid retrieval claimed by `agent-claude`; avoid `neon_recall.py` / migration 006 until coordinated.
+- **Verification**:
+  - `pytest mira-bots/tests/test_citation_gate.py -v` passed: 25/25.
+  - `pytest tests/ -m "not network and not slow"` still blocked during collection after network rerun: missing `hypothesis`, broken local `starlette` import for FastAPI, and `shared.session_memory` import resolution.
+  - `cd mira-web && bun test` failed on existing environment/dependency issues: `@neondatabase/serverless` missing named `Client`, missing `NEON_DATABASE_URL` for QR tracker, and Stripe network behavior in account deletion test.
+
+## Session — 2026-04-25 (BRAVO, Factory AI / Hub recon)
+
+- **Recon artifact added**: `docs/recon/factory-ai-hub-2026-04-25/recon-notes.md` compares signed-in Factory AI (`app.f7i.ai`) against signed-in FactoryLM Hub (`app.factorylm.com/hub/*`) for layout, styling, functions, flows, and bootstrap recommendations.
+- **Screenshots captured**: 43 PNGs in `docs/recon/factory-ai-hub-2026-04-25/screenshots/`, including Factory AI registry/assets/work orders/inventory/purchasing/knowledge/settings/AI tour and FactoryLM feed/event-log/conversations/knowledge/channels/workorders.
+- **Key design takeaway**: Factory AI's polish comes from a consistent shell, persistent right-side AI rail, dense table tooling, skeletons, and finished empty states; FactoryLM has stronger industrial content but needs route reliability and shell polish.
+- **Hub issues found live**: `/hub/assets` bounced to login from a signed-in page, `/hub/usage` failed with a browser load error even after reload, and New Work Order step 1 labels the progression button `Save` despite a 3-step wizard.
+- **No live records changed**: no submit/save/delete/acknowledge/dismiss/connect actions were completed; upload/file-picker flows were inspected without selecting files.
+
 # Hot Cache — 2026-04-22 — CHARLIE
 
 ## eval-fixer run — 2026-04-23
