@@ -51,7 +51,7 @@ export default function KnowledgePage() {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
-    fetch("/api/knowledge")
+    fetch("/hub/api/knowledge")
       .then((r) => r.json())
       .then((data) => {
         setDocs(data.docs ?? []);

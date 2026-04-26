@@ -127,7 +127,7 @@ export function UploadPicker({
     fetch("/hub/api/picker/dropbox/key")
       .then((r) => setDropboxAvailable(r.ok))
       .catch(() => setDropboxAvailable(false));
-    fetch("/api/assets")
+    fetch("/hub/api/assets")
       .then((r) => (r.ok ? r.json() : []))
       .then((data: Asset[] | unknown) => {
         if (Array.isArray(data)) setAssets(data as Asset[]);
