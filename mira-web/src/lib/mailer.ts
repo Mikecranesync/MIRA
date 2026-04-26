@@ -99,6 +99,25 @@ export async function sendBetaWelcomeEmail(
 }
 
 /**
+ * Send a magic-link sign-in email (#SO-070).
+ * Single-use, 10-minute TTL token. Lands at /sample after click.
+ */
+export async function sendMagicLinkEmail(
+  email: string,
+  loginUrl: string
+): Promise<boolean> {
+  return sendEmail({
+    to: email,
+    subject: "Your FactoryLM sign-in link",
+    templateName: "magic-link",
+    vars: {
+      LOGIN_URL: loginUrl,
+      EMAIL: email,
+    },
+  });
+}
+
+/**
  * Send the "you're in" email after successful Stripe payment.
  * Includes JWT login link for immediate CMMS access.
  * Also includes the tenant's magic-inbox address if their inbox_slug is set.

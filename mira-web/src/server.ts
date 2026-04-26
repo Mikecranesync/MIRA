@@ -29,6 +29,16 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { renderHome } from "./views/home.js";
+import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
+import {
+  createMagicLink,
+  validateAndConsumeToken,
+  buildMagicLinkUrl,
+  checkMagicLinkRateLimit,
+  neonMagicLinkStorage,
+  auditMagicLink,
+} from "./lib/magic-link.js";
+import { sendMagicLinkEmail } from "./lib/mailer.js";
 import { signToken, requireAuth, requireActive, type MiraTokenPayload } from "./lib/auth.js";
 import { buildSessionCookie } from "./lib/cookie-session.js";
 import {
@@ -251,6 +261,7 @@ app.use("/og-image.png", serveStatic({ path: "./public/og-image.png" }));
 app.use("/_tokens.css", serveStatic({ path: "./public/_tokens.css" }));
 app.use("/_components.css", serveStatic({ path: "./public/_components.css" }));
 app.use("/sun-toggle.js", serveStatic({ path: "./public/sun-toggle.js" }));
+app.use("/posthog-init.js", serveStatic({ path: "./public/posthog-init.js" }));
 
 // Dynamic sitemap (replaces static file)
 app.get("/sitemap.xml", (c) => {
@@ -339,12 +350,14 @@ app.get("/posthog-init.js", (c) => {
   );
 });
 
-// Serve CMMS page
-app.get("/cmms", async (c) => {
-  const file = Bun.file("./public/cmms.html");
-  return new Response(await file.arrayBuffer(), {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
+// CMMS landing — server-rendered (#SO-070): one-input magic-link form
+app.get("/cmms", (c) => {
+  return c.html(renderCmms(c.req.url));
+});
+
+// Sample workspace placeholder (#SO-070 AC4) — Phase-0 destination after sign-in.
+app.get("/sample", (c) => {
+  return c.html(renderSamplePlaceholder());
 });
 
 // Post-payment single-purpose upload page (activation email lands here).
@@ -655,6 +668,188 @@ app.post("/api/register", async (c) => {
     return c.json({ error: "Registration failed. Please try again." }, 500);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Magic-link sign-in (#SO-070)
+// ---------------------------------------------------------------------------
+
+app.post("/api/magic-link", async (c) => {
+  let email: string;
+  try {
+    const body = await c.req.json();
+    email = String(body?.email ?? "").trim().toLowerCase();
+  } catch {
+    return c.json({ error: "Invalid request body" }, 400);
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json(
+      { error: "That email doesn't look right — check it and try again" },
+      400
+    );
+  }
+
+  const ip =
+    c.req.header("cf-connecting-ip") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "";
+  const userAgent = c.req.header("user-agent") ?? "";
+
+  if (!checkMagicLinkRateLimit(email)) {
+    auditMagicLink({
+      email,
+      action: "magic_link.rate_limited",
+      ip,
+      userAgent,
+    }).catch(() => {});
+    return c.json(
+      { error: "Please wait a minute before requesting another link." },
+      429
+    );
+  }
+
+  try {
+    let tenant = await findTenantByEmail(email);
+    if (!tenant) {
+      const tenantId = crypto.randomUUID();
+      await createTenant({
+        id: tenantId,
+        email,
+        company: "",
+        firstName: "",
+        tier: "pending",
+        atlasPassword: "",
+        atlasCompanyId: 0,
+        atlasUserId: 0,
+      });
+      tenant = await findTenantByEmail(email);
+    }
+    if (!tenant) {
+      console.error("[magic-link] Tenant lookup failed after create");
+      return c.json({ error: "Something went wrong. Please try again." }, 500);
+    }
+
+    const storage = neonMagicLinkStorage();
+    const created = await createMagicLink(storage, {
+      tenantId: tenant.id,
+      email,
+    });
+
+    const publicUrl = process.env.PUBLIC_URL || "https://factorylm.com";
+    const loginUrl = buildMagicLinkUrl(publicUrl, created.token, email);
+
+    auditMagicLink({
+      email,
+      action: "magic_link.requested",
+      tenantId: tenant.id,
+      ip,
+      userAgent,
+    }).catch(() => {});
+
+    sendMagicLinkEmail(email, loginUrl)
+      .then((sent) =>
+        auditMagicLink({
+          email,
+          action: sent ? "magic_link.sent" : "magic_link.invalid",
+          tenantId: tenant!.id,
+          ip,
+          userAgent,
+          meta: sent ? undefined : { reason: "send_failed" },
+        }).catch(() => {})
+      )
+      .catch((err) => console.error("[magic-link] Send failed:", err));
+
+    return c.json({
+      success: true,
+      message: "Check your email for the sign-in link.",
+    });
+  } catch (err) {
+    console.error("[magic-link] Error:", err);
+    return c.json({ error: "Something went wrong. Please try again." }, 500);
+  }
+});
+
+app.get("/api/magic/login", async (c) => {
+  const token = c.req.query("token") ?? "";
+  const queryEmail = c.req.query("email") ?? "";
+  if (!token) {
+    return c.html(magicLinkErrorPage("Missing token"), 400);
+  }
+
+  const ip =
+    c.req.header("cf-connecting-ip") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "";
+  const userAgent = c.req.header("user-agent") ?? "";
+
+  try {
+    const storage = neonMagicLinkStorage();
+    const result = await validateAndConsumeToken(storage, token);
+    if (!result.ok) {
+      auditMagicLink({
+        email: queryEmail,
+        action: "magic_link.invalid",
+        ip,
+        userAgent,
+        meta: { reason: result.reason },
+      }).catch(() => {});
+      const msg =
+        result.reason === "expired"
+          ? "This sign-in link has expired. Request a new one below."
+          : result.reason === "already_consumed"
+            ? "This sign-in link has already been used. Request a new one."
+            : "We couldn't verify that link. Request a new one below.";
+      return c.html(magicLinkErrorPage(msg), 410);
+    }
+
+    const tenant = await findTenantById(result.tenantId);
+    if (!tenant) {
+      return c.html(magicLinkErrorPage("Account not found"), 404);
+    }
+
+    const sessionToken = await signToken({
+      tenantId: tenant.id,
+      email: tenant.email,
+      tier: tenant.tier,
+      atlasCompanyId: tenant.atlas_company_id || 0,
+      atlasUserId: tenant.atlas_user_id || 0,
+      atlasRole: "USER",
+    });
+
+    auditMagicLink({
+      email: tenant.email,
+      action: "magic_link.consumed",
+      tenantId: tenant.id,
+      ip,
+      userAgent,
+    }).catch(() => {});
+
+    c.header("Set-Cookie", buildSessionCookie(sessionToken));
+    return c.redirect("/sample", 302);
+  } catch (err) {
+    console.error("[magic-link/login] Error:", err);
+    return c.html(magicLinkErrorPage("Something went wrong"), 500);
+  }
+});
+
+function magicLinkErrorPage(msg: string): string {
+  const safe = msg.replace(/[<>]/g, "");
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><title>Sign-in link invalid — FactoryLM</title>
+<link rel="stylesheet" href="/_tokens.css">
+<style>
+  body { font-family: var(--fl-font-sans); padding: 48px 24px; max-width: 560px; margin: 0 auto; }
+  .card { background: var(--fl-card-0); border: 1px solid var(--fl-rule-200); border-radius: 12px; padding: 32px; box-shadow: var(--fl-shadow-sm); text-align: center; }
+  h1 { color: var(--fl-navy-900); margin: 0 0 16px; }
+  p  { color: var(--fl-muted-600); line-height: 1.55; margin: 0 0 24px; }
+  a  { color: var(--fl-navy-900); }
+</style></head><body>
+<div class="card">
+  <h1>Sign-in link unavailable</h1>
+  <p>${safe}</p>
+  <p><a href="/cmms">Request a new sign-in link →</a></p>
+</div></body></html>`;
+}
 
 // ---------------------------------------------------------------------------
 // Stripe — Checkout, Webhook, Billing Portal
