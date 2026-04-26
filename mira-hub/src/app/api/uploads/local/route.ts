@@ -10,6 +10,7 @@ import {
 import { sessionOr401 } from "@/lib/session";
 import { makeUploadLogger } from "@/lib/upload-log";
 import { validateAssetTag } from "@/lib/asset-tag";
+import { sniffMime, isMimeCompatible } from "@/lib/sniff-mime";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,17 @@ export async function POST(req: NextRequest) {
   const assetTag = assetTagCheck.value;
   const kind = inferKindFromMime(mime);
   const buffer = new Uint8Array(await file.arrayBuffer());
+
+  // Magic-byte sniff: client-supplied File.type and extension are both
+  // controllable. Reject any payload whose first bytes don't match the
+  // declared MIME's general category.
+  const sniffed = sniffMime(buffer.subarray(0, 16));
+  if (!isMimeCompatible(mime, sniffed)) {
+    return NextResponse.json(
+      { error: "content_does_not_match_declared_mime", declared: mime, sniffed },
+      { status: 400 },
+    );
+  }
 
   const upload = await createUpload({
     tenantId: ctx.tenantId,

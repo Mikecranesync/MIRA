@@ -1,4 +1,17 @@
 // mira-hub/src/lib/mira-ingest-client.ts
+import { sniffMime, isMimeCompatible } from "./sniff-mime";
+
+export class MimeMismatchError extends Error {
+  declared: string;
+  sniffed: string | null;
+  constructor(declared: string, sniffed: string | null) {
+    super(`content_does_not_match_declared_mime: declared=${declared} sniffed=${sniffed}`);
+    this.name = "MimeMismatchError";
+    this.declared = declared;
+    this.sniffed = sniffed;
+  }
+}
+
 export interface IngestResult {
   status: string;
   fileId: string | null;
@@ -36,6 +49,19 @@ async function streamToBlob(
 }
 
 /**
+ * Read the first bytes of a Blob and reject if they don't match the
+ * declared MIME's general category. Throws MimeMismatchError on rejection
+ * so the upload pipeline can mark the row failed with a clear reason.
+ */
+async function assertMimeMatchesBlob(blob: Blob, declared: string): Promise<void> {
+  const head = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  const sniffed = sniffMime(head);
+  if (!isMimeCompatible(declared, sniffed)) {
+    throw new MimeMismatchError(declared, sniffed);
+  }
+}
+
+/**
  * PDF / document path — POSTs to mira-ingest `/ingest/document-kb`.
  *
  * `requestId` is propagated as `X-Request-Id` so mira-ingest logs the same
@@ -51,6 +77,7 @@ export async function forwardToIngest(
   if (!base) throw new Error("INGEST_URL not set");
 
   const blob = await streamToBlob(stream, mimeType);
+  await assertMimeMatchesBlob(blob, mimeType);
 
   const form = new FormData();
   form.append("file", blob, filename);
@@ -99,6 +126,7 @@ export async function forwardToPhotoIngest(
   if (!base) throw new Error("INGEST_URL not set");
 
   const blob = await streamToBlob(stream, mimeType);
+  await assertMimeMatchesBlob(blob, mimeType);
 
   const form = new FormData();
   form.append("image", blob, filename);
