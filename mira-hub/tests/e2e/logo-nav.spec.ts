@@ -31,7 +31,7 @@ const DESKTOP_PAGES = [
 // Create test user before suite, delete after
 // ---------------------------------------------------------------------------
 test.beforeAll(async ({ request }) => {
-  const res = await request.post(`${HUB}/api/auth/register`, {
+  const res = await request.post(`${HUB}/api/auth/register/`, {
     data: { email: "playwright@factorylm.com", password: "TestPass123", name: "Playwright" },
   });
   // 200 = created, 409 = already exists — both fine
