@@ -1,33 +1,32 @@
-import { withAuth } from "next-auth/middleware";
-import { NextResponse } from "next/server";
+import { withAuth, type NextRequestWithAuth } from "next-auth/middleware";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 
-// Explicit `secret` is required for the edge-runtime middleware to find
-// the JWT signing key. next-auth/middleware defaults to reading
-// process.env.NEXTAUTH_SECRET only — if that's unset and getToken throws,
-// withAuth silently falls through and the request proceeds (resulting in
-// a 200 instead of a 302). We use AUTH_SECRET (Auth.js v5 convention)
-// throughout the rest of the stack, so plumb it explicitly here.
-export default withAuth(
-  function middleware(req) {
-    // Root of the basePath (i.e. /hub/) — `redirect()` from a Server
-    // Component is silently swallowed in Next.js 16.2.4 standalone + basePath
-    // (response comes back 200 with empty body and no Location header).
-    // Doing the redirect here in middleware where NextResponse.redirect is
-    // a known-good primitive avoids that path entirely.
-    if (req.nextUrl.pathname === "/") {
-      const url = req.nextUrl.clone();
-      url.pathname = "/feed";
-      return NextResponse.redirect(url);
-    }
-    return NextResponse.next();
+// withAuth's two-arg form runs the inner middleware ONLY when authorized.
+// When AUTH_SECRET is unset in the runtime env, getToken throws and withAuth
+// silently returns NextResponse.next() without invoking the inner function
+// at all (per PR #634's issue body). That means we can't put the basePath
+// root redirect inside withAuth — it has to fire before withAuth gets the
+// chance to fall through.
+const authMiddleware = withAuth({
+  pages: {
+    signIn: "/login",
   },
-  {
-    pages: {
-      signIn: "/login",
-    },
-    secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+});
+
+export default async function middleware(req: NextRequest, ev: NextFetchEvent) {
+  // Basepath root → redirect to /feed. `redirect()` from a Server Component
+  // is silently swallowed in Next.js 16.2.4 standalone + basePath (response
+  // comes back chunked, 0 bytes, no Location header), so the redirect has
+  // to live here. /feed itself goes through authMiddleware below, so the
+  // auth gate is preserved.
+  if (req.nextUrl.pathname === "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/feed";
+    return NextResponse.redirect(url);
   }
-);
+  return authMiddleware(req as NextRequestWithAuth, ev);
+}
 
 export const config = {
   matcher: [
