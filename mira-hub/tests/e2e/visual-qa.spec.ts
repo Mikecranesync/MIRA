@@ -23,6 +23,20 @@ async function loginHub(page: Page) {
   await page.waitForURL(/\/hub\/feed\/?/, { timeout: 20_000 });
 }
 
+// Create test user before suite, delete after
+test.beforeAll(async ({ request }) => {
+  const res = await request.post(`${HUB}/api/auth/register/`, {
+    data: { email: "playwright@factorylm.com", password: "TestPass123", name: "Playwright" },
+  });
+  console.log(`test user setup: ${res.status()}`);
+});
+
+test.afterAll(async ({ request }) => {
+  await request.delete(`${HUB}/api/auth/account/`, {
+    headers: { "Content-Type": "application/json" },
+  }).catch(() => {});
+});
+
 // ---------------------------------------------------------------------------
 // 1. Homepage — desktop
 // ---------------------------------------------------------------------------
