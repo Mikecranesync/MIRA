@@ -4,24 +4,17 @@ import {
   createUpload,
   findUploadByExternalFileId,
   listUploads,
-  updateUploadStatus,
   type Upload,
   type UploadProvider,
 } from "@/lib/uploads";
-import { ensureFreshAccessToken } from "@/lib/token-refresh";
 import {
-  streamFromGoogleDrive,
-  streamFromSignedUrl,
-} from "@/lib/fetch-adapters";
-import {
-  forwardToIngest,
-  forwardToPhotoIngest,
   inferKindFromMime,
   SUPPORTED_MIMES,
 } from "@/lib/mira-ingest-client";
 import { sessionOr401 } from "@/lib/session";
 import { makeUploadLogger } from "@/lib/upload-log";
 import { validateAssetTag } from "@/lib/asset-tag";
+import { runIngestPipeline } from "@/lib/upload-pipeline";
 
 export const dynamic = "force-dynamic";
 
@@ -145,12 +138,18 @@ export async function POST(req: NextRequest) {
     sizeBytes: body.sizeBytes ?? null,
   });
 
-  // Background ingest. Used to be wrapped in `after()` from "next/server",
-  // but Next.js 16 standalone throws `Error: ENVIRONMENT_FALLBACK` and the
-  // callback never runs — uploads stayed at status="queued" forever. mira-hub
-  // runs as a long-lived standalone server, so a plain fire-and-forget
-  // Promise stays alive until it resolves.
-  void runIngestPipeline(upload.id, body, kind, ctx.tenantId, requestId, assetTag);
+  void runIngestPipeline({
+    uploadId: upload.id,
+    tenantId: ctx.tenantId,
+    requestId,
+    provider: body.provider,
+    externalFileId: body.externalFileId ?? null,
+    externalDownloadUrl: body.externalDownloadUrl ?? null,
+    filename: body.filename,
+    mimeType: mime,
+    kind,
+    assetTag,
+  });
 
   return NextResponse.json(upload, { status: 201, headers: { "X-Request-Id": requestId } });
 }
@@ -199,54 +198,3 @@ export async function GET() {
   return NextResponse.json(rows);
 }
 
-async function runIngestPipeline(
-  uploadId: string,
-  payload: CreatePayload,
-  kind: "document" | "photo",
-  tenantId: string,
-  requestId: string,
-  assetTag: string | null,
-): Promise<void> {
-  const log = makeUploadLogger({ requestId, uploadId, tenantId });
-  try {
-    await updateUploadStatus(uploadId, tenantId, "fetching");
-    log.log("fetching", { provider: payload.provider });
-
-    let fetched;
-    if (payload.provider === "google") {
-      const { accessToken } = await ensureFreshAccessToken("google", tenantId);
-      fetched = await streamFromGoogleDrive(payload.externalFileId!, accessToken);
-    } else {
-      fetched = await streamFromSignedUrl(payload.externalDownloadUrl!);
-    }
-
-    await updateUploadStatus(uploadId, tenantId, "parsing");
-    const mime = payload.mimeType ?? fetched.contentType;
-    log.log("parsing", { mimeType: mime });
-
-    if (kind === "photo") {
-      const result = await forwardToPhotoIngest(fetched.stream, payload.filename, mime, {
-        assetTag,
-        requestId,
-      });
-      await updateUploadStatus(uploadId, tenantId, "parsed", result.description ?? null, {
-        kbFileId: result.photoId != null ? String(result.photoId) : undefined,
-      });
-      log.log("parsed", { photoId: result.photoId, kind });
-    } else {
-      const result = await forwardToIngest(fetched.stream, payload.filename, mime, { requestId });
-      await updateUploadStatus(uploadId, tenantId, "parsed", null, {
-        kbFileId: result.fileId ?? undefined,
-        kbChunkCount: result.chunkCount ?? undefined,
-      });
-      log.log("parsed", {
-        kind,
-        kbFileId: result.fileId,
-        kbChunkCount: result.chunkCount,
-      });
-    }
-  } catch (err) {
-    log.error("failed", err);
-    await updateUploadStatus(uploadId, tenantId, "failed", (err as Error).message);
-  }
-}
