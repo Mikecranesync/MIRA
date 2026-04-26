@@ -8,6 +8,11 @@ interface BtnOpts {
   ariaLabel?: string;
   disabled?: boolean;
   href?: string;
+  cta?: string;
+}
+
+function ctaAttr(cta?: string): string {
+  return cta ? ` data-cta="${cta}"` : "";
 }
 
 export function btnPrimary(label: string, opts: BtnOpts = {}): string {
@@ -15,10 +20,11 @@ export function btnPrimary(label: string, opts: BtnOpts = {}): string {
   const aria = opts.ariaLabel ? ` aria-label="${opts.ariaLabel}"` : "";
   const disabled = opts.disabled ? " disabled" : "";
   const click = opts.onclick ? ` onclick="${opts.onclick}"` : "";
+  const cta = ctaAttr(opts.cta);
   if (opts.href) {
-    return `<a href="${opts.href}" class="fl-btn fl-btn-primary"${aria}>${label}</a>`;
+    return `<a href="${opts.href}" class="fl-btn fl-btn-primary"${aria}${cta}>${label}</a>`;
   }
-  return `<button type="${type}" class="fl-btn fl-btn-primary"${aria}${disabled}${click}>${label}</button>`;
+  return `<button type="${type}" class="fl-btn fl-btn-primary"${aria}${disabled}${cta}${click}>${label}</button>`;
 }
 
 export function btnGhost(label: string, opts: BtnOpts = {}): string {
@@ -26,10 +32,11 @@ export function btnGhost(label: string, opts: BtnOpts = {}): string {
   const aria = opts.ariaLabel ? ` aria-label="${opts.ariaLabel}"` : "";
   const disabled = opts.disabled ? " disabled" : "";
   const click = opts.onclick ? ` onclick="${opts.onclick}"` : "";
+  const cta = ctaAttr(opts.cta);
   if (opts.href) {
-    return `<a href="${opts.href}" class="fl-btn fl-btn-ghost"${aria}>${label}</a>`;
+    return `<a href="${opts.href}" class="fl-btn fl-btn-ghost"${aria}${cta}>${label}</a>`;
   }
-  return `<button type="${type}" class="fl-btn fl-btn-ghost"${aria}${disabled}${click}>${label}</button>`;
+  return `<button type="${type}" class="fl-btn fl-btn-ghost"${aria}${disabled}${cta}${click}>${label}</button>`;
 }
 
 export function btnMic(opts: BtnOpts = {}): string {
