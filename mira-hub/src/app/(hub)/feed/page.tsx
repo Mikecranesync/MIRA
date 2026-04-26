@@ -187,8 +187,8 @@ export default function FeedPage() {
                   </div>
                   <TrendingUp className="w-3.5 h-3.5" style={{ color: "var(--foreground-subtle)" }} />
                 </div>
-                <div className="text-xl font-bold leading-none mt-1" style={{ color: "var(--foreground)" }}>{kpi.value}</div>
-                <div className="text-[11px] leading-tight" style={{ color: "var(--foreground-muted)" }}>{KPI_LABEL_MAP[kpi.label] ?? kpi.label}</div>
+                <div className="kpi-value mt-1" style={{ color: "var(--foreground)" }}>{kpi.value}</div>
+                <div className="kpi-label mt-0.5">{KPI_LABEL_MAP[kpi.label] ?? kpi.label}</div>
               </div>
             </Link>
           ))}

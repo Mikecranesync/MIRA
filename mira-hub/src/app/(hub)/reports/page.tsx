@@ -80,8 +80,8 @@ export default function ReportsPage() {
                   {Math.abs(kpi.trend)}%
                 </div>
               </div>
-              <div className="text-2xl font-bold leading-none" style={{ color: kpi.color }}>{kpi.value}</div>
-              <div className="text-[11px] leading-tight" style={{ color: "var(--foreground-muted)" }}>{t(kpi.labelKey)}</div>
+              <div className="kpi-value" style={{ color: kpi.color }}>{kpi.value}</div>
+              <div className="kpi-label mt-0.5">{t(kpi.labelKey)}</div>
             </div>
           ))}
         </div>
@@ -163,8 +163,8 @@ export default function ReportsPage() {
               </ResponsiveContainer>
             </div>
             <div className="text-center -mt-4">
-              <p className="text-3xl font-bold" style={{ color: "#16A34A" }}>87%</p>
-              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>{t("overallCompliance")}</p>
+              <p className="kpi-value" style={{ color: "var(--status-green)" }}>87%</p>
+              <p className="kpi-label mt-0.5">{t("overallCompliance")}</p>
             </div>
           </ChartCard>
         </div>

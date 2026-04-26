@@ -104,8 +104,8 @@ export default function UsagePage() {
               <div className="w-7 h-7 rounded-lg flex items-center justify-center mb-2" style={{ backgroundColor: `${kpi.color}15` }}>
                 <kpi.Icon className="w-3.5 h-3.5" style={{ color: kpi.color }} />
               </div>
-              <div className="text-xl font-bold" style={{ color: "var(--foreground)" }}>{kpi.value}</div>
-              <div className="text-[11px] leading-tight mt-0.5" style={{ color: "var(--foreground-muted)" }}>{kpi.label}</div>
+              <div className="kpi-value" style={{ color: "var(--foreground)" }}>{kpi.value}</div>
+              <div className="kpi-label mt-0.5">{kpi.label}</div>
             </div>
           ))}
         </div>
