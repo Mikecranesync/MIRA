@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import {
   createUpload,
   listUploads,
@@ -17,6 +18,7 @@ import {
   SUPPORTED_MIMES,
 } from "@/lib/mira-ingest-client";
 import { sessionOr401 } from "@/lib/session";
+import { makeUploadLogger } from "@/lib/upload-log";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +81,7 @@ export async function POST(req: NextRequest) {
   }
 
   const kind = inferKindFromMime(mime);
+  const requestId = req.headers.get("x-request-id") ?? randomUUID();
 
   const upload = await createUpload({
     tenantId: ctx.tenantId,
@@ -94,14 +97,23 @@ export async function POST(req: NextRequest) {
     assetTag: body.assetTag ?? null,
   });
 
+  const log = makeUploadLogger({ requestId, uploadId: upload.id, tenantId: ctx.tenantId });
+  log.log("queued", {
+    provider: body.provider,
+    kind,
+    filename: body.filename,
+    mimeType: mime,
+    sizeBytes: body.sizeBytes ?? null,
+  });
+
   // Background ingest. Used to be wrapped in `after()` from "next/server",
   // but Next.js 16 standalone throws `Error: ENVIRONMENT_FALLBACK` and the
   // callback never runs — uploads stayed at status="queued" forever. mira-hub
   // runs as a long-lived standalone server, so a plain fire-and-forget
   // Promise stays alive until it resolves.
-  void runIngestPipeline(upload.id, body, kind, ctx.tenantId);
+  void runIngestPipeline(upload.id, body, kind, ctx.tenantId, requestId);
 
-  return NextResponse.json(upload, { status: 201 });
+  return NextResponse.json(upload, { status: 201, headers: { "X-Request-Id": requestId } });
 }
 
 export async function GET() {
@@ -116,9 +128,13 @@ async function runIngestPipeline(
   payload: CreatePayload,
   kind: "document" | "photo",
   tenantId: string,
+  requestId: string,
 ): Promise<void> {
+  const log = makeUploadLogger({ requestId, uploadId, tenantId });
   try {
     await updateUploadStatus(uploadId, tenantId, "fetching");
+    log.log("fetching", { provider: payload.provider });
+
     let fetched;
     if (payload.provider === "google") {
       const { accessToken } = await ensureFreshAccessToken("google", tenantId);
@@ -129,23 +145,31 @@ async function runIngestPipeline(
 
     await updateUploadStatus(uploadId, tenantId, "parsing");
     const mime = payload.mimeType ?? fetched.contentType;
+    log.log("parsing", { mimeType: mime });
 
     if (kind === "photo") {
       const result = await forwardToPhotoIngest(fetched.stream, payload.filename, mime, {
         assetTag: payload.assetTag ?? null,
+        requestId,
       });
       await updateUploadStatus(uploadId, tenantId, "parsed", result.description ?? null, {
         kbFileId: result.photoId != null ? String(result.photoId) : undefined,
       });
+      log.log("parsed", { photoId: result.photoId, kind });
     } else {
-      const result = await forwardToIngest(fetched.stream, payload.filename, mime);
+      const result = await forwardToIngest(fetched.stream, payload.filename, mime, { requestId });
       await updateUploadStatus(uploadId, tenantId, "parsed", null, {
         kbFileId: result.fileId ?? undefined,
         kbChunkCount: result.chunkCount ?? undefined,
       });
+      log.log("parsed", {
+        kind,
+        kbFileId: result.fileId,
+        kbChunkCount: result.chunkCount,
+      });
     }
   } catch (err) {
-    console.error(`[uploads/${uploadId}] pipeline failed`, err);
+    log.error("failed", err);
     await updateUploadStatus(uploadId, tenantId, "failed", (err as Error).message);
   }
 }
