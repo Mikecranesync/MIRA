@@ -16,6 +16,7 @@ from pathlib import Path
 
 import httpx
 import pdfplumber
+from asset_tag import sanitize_asset_tag
 from crawl_verifier import (
     OUTCOME_SUCCESS,
     classify_historical,
@@ -506,6 +507,8 @@ async def ingest_photo(
             raise
         except Exception:
             pass  # fail open — never block on DB errors
+
+    asset_tag = sanitize_asset_tag(asset_tag)
 
     raw = await image.read()
     if not raw:
