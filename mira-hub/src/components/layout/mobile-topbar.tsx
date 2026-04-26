@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Sun, Moon, Factory } from "lucide-react";
 import { useTheme } from "@/providers/theme-provider";
 import { useTranslations } from "next-intl";
@@ -19,7 +20,7 @@ export function MobileTopBar() {
       }}
     >
       {/* Logo */}
-      <div className="flex items-center gap-2">
+      <Link href="/feed" className="flex items-center gap-2">
         <div
           className="w-6 h-6 rounded-md flex items-center justify-center"
           style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}
@@ -29,7 +30,7 @@ export function MobileTopBar() {
         <span className="text-sm font-bold tracking-tight" style={{ color: "#F8FAFC" }}>
           FactoryLM
         </span>
-      </div>
+      </Link>
 
       {/* Right controls */}
       <div className="flex items-center gap-1">
