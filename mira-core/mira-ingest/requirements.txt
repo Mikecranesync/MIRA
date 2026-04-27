@@ -2,7 +2,7 @@ fastapi==0.136.*
 uvicorn[standard]==0.44.*
 httpx==0.28.*
 Pillow>=10.0
-pillow-heif>=0.18
+pillow-heif>=1.3.0
 python-multipart==0.0.26
 pytest==9.*
 pytest-asyncio==1.3.*
