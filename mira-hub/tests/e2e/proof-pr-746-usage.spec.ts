@@ -26,11 +26,12 @@ test("hard reload /usage — no crash, API 200, chart rendered or no-data messag
   page.on("pageerror", e => errors.push(e.message));
   page.on("response", r => { if (r.url().includes("/api/usage")) apiStatuses.push({ url: r.url(), status: r.status() }); });
 
-  // Login
+  // Login (password is in a collapsible section — expand it first)
   await page.goto(`${HUB}/login`, { waitUntil: "domcontentloaded" });
-  await page.fill('input[type="email"]', CREDS.email);
+  await page.click("text=Sign in with password");
+  await page.locator('input[type="email"]').last().fill(CREDS.email);
   await page.fill('input[type="password"]', CREDS.password);
-  await page.click('button[type="submit"]');
+  await page.getByRole('button', { name: /^Sign in$/ }).click();
   await page.waitForURL(/\/hub\/feed\/?/, { timeout: 25_000 });
   console.log("✅ Logged in:", page.url());
 
