@@ -529,16 +529,19 @@
   "more": {
     "title": "More",
     "items": {
+      "conversations": "Chat history with MIRA across all channels",
       "alerts": "Active safety and equipment alerts",
       "knowledge": "Equipment manuals and indexed docs",
+      "assets": "Equipment registry and live status",
+      "workorders": "Create and track maintenance jobs",
+      "schedule": "PM calendar and upcoming tasks",
+      "requests": "Submit and review work requests",
+      "parts": "Spare parts inventory and reorder points",
+      "documents": "Manuals, SOPs, and certifications",
+      "reports": "Maintenance analytics and KPIs",
       "channels": "Telegram, WhatsApp, Voice, Email",
       "integrations": "CMMS, webhooks, and API settings",
       "usage": "Actions used and billing tier",
-      "schedule": "PM calendar and upcoming tasks",
-      "requests": "Submit and review work requests",
-      "documents": "Manuals, SOPs, and certifications",
-      "cmms": "Atlas CMMS integration",
-      "reports": "Maintenance analytics and KPIs",
       "team": "Crew roster and assignments",
       "admin": "Users, roles, and settings"
     }
