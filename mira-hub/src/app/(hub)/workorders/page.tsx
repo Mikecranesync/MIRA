@@ -6,10 +6,20 @@ import { Search, Plus, User, Calendar as CalIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { WORK_ORDERS, STATUS_LABEL, PRIORITY_VARIANT, STATUS_VARIANT } from "@/lib/workorders-data";
+import { WORK_ORDERS, STATUS_LABEL, PRIORITY_VARIANT, STATUS_VARIANT, type WorkOrder } from "@/lib/workorders-data";
 import { useTranslations } from "next-intl";
 
 const STATUS_TABS = ["all", "open", "inprogress", "scheduled", "completed", "overdue"] as const;
+
+/* A WO is visually overdue if its status is the explicit "overdue" enum, OR
+   if its due date has passed and it's not already completed. The list page
+   was previously only checking the status field, so an in-progress WO past
+   its due date showed no overdue indicator. (#719) */
+function isOverdue(wo: WorkOrder): boolean {
+  if (wo.status === "overdue") return true;
+  if (wo.status === "completed") return false;
+  return new Date(wo.due) < new Date();
+}
 
 export default function WorkOrdersPage() {
   const tWO = useTranslations("workorders");
@@ -92,8 +102,14 @@ export default function WorkOrdersPage() {
                   <span className="flex items-center gap-1 text-xs" style={{ color: "var(--foreground-muted)" }}>
                     <User className="w-3 h-3" />{wo.assignee}
                   </span>
-                  <span className="flex items-center gap-1 text-xs" style={{ color: wo.status === "overdue" ? "var(--status-red)" : "var(--foreground-muted)" }}>
+                  <span className="flex items-center gap-1 text-xs" style={{ color: isOverdue(wo) ? "var(--status-red)" : "var(--foreground-muted)" }}>
                     <CalIcon className="w-3 h-3" />{tWO("dueDate")} {wo.due}
+                    {isOverdue(wo) && wo.status !== "overdue" && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+                            style={{ backgroundColor: "#FEE2E2", color: "#DC2626" }}>
+                        {tWO("filters.overdue")}
+                      </span>
+                    )}
                   </span>
                 </div>
               </div>

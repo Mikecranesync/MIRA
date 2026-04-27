@@ -164,7 +164,7 @@ export default function NewWorkOrderPage() {
               disabled={!selectedAsset}
               onClick={() => setStep(2)}
             >
-              {tCommon("save")} <ArrowRight className="w-4 h-4 ml-1" />
+              {tCommon("description")} <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
         )}

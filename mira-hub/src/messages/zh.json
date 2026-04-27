@@ -233,7 +233,9 @@
       "active": "运行中",
       "inactive": "停用",
       "maintenance": "维护中"
-    }
+    },
+    "noAssetsYet": "暂无资产",
+    "registerFirstAsset": "注册您的第一项资产，开始跟踪诊断、工单和历史记录。"
   },
   "parts": {
     "title": "备件库存",
@@ -616,7 +618,8 @@
     "pending": "待处理",
     "chunks": "个片段",
     "inRAG": "在RAG中",
-    "search": "搜索知识库…"
+    "search": "搜索知识库…",
+    "emptyStateOnboarding": "上传您的第一份手册，开始获得 MIRA 提供的带来源引用的答案。"
   },
   "channels": {
     "title": "渠道",
