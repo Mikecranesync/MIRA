@@ -304,7 +304,11 @@ services:
       start_period: 10s
 
   mira-hub:
-    build: ./mira-hub
+    build:
+      context: ./mira-hub
+      args:
+        NEXT_PUBLIC_BASE_PATH: ""
+        NEXT_PUBLIC_API_BASE: ""
     container_name: mira-hub
     ports:
       - "127.0.0.1:3101:3000"
