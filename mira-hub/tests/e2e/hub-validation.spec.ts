@@ -24,7 +24,7 @@ async function login(page: Page): Promise<void> {
   await page.fill('input[type="email"]', LOGIN_EMAIL);
   await page.fill('input[type="password"]', LOGIN_PASSWORD);
   await page.click('button[type="submit"]');
-  await page.waitForURL(`${HUB}/feed`, { timeout: 15_000 });
+  await page.waitForURL(/\/hub\/feed\/?$/, { timeout: 15_000 });
 }
 
 // ── Shared fixture: logged-in page ───────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { BottomTabs } from "@/components/layout/bottom-tabs";
 import { MobileTopBar } from "@/components/layout/mobile-topbar";
+import { TrialBanner } from "@/components/trial-banner";
 
 // Force dynamic rendering on all (hub)/* pages so the auth middleware
 // runs on every request. Without this, pages with no data fetching
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
 export default function HubLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex flex-col h-full min-h-screen" style={{ backgroundColor: "var(--background)" }}>
+      <TrialBanner />
       {/* Mobile-only sticky top bar */}
       <MobileTopBar />
 

@@ -6,6 +6,8 @@ export interface SessionContext {
   userId: string;
   tenantId: string;
   email: string;
+  status: string;
+  trialExpiresAt: string | null;
 }
 
 export class UnauthorizedError extends Error {
@@ -55,6 +57,8 @@ export async function requireSession(): Promise<SessionContext> {
     userId: token.uid as string,
     tenantId: token.tid as string,
     email: (token.email as string) ?? "",
+    status: (token.status as string) ?? "trial",
+    trialExpiresAt: (token.trialExpiresAt as string) ?? null,
   };
 }
 
