@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { decode } from "next-auth/jwt";
 import { cookies } from "next/headers";
 
 export interface SessionContext {
@@ -15,32 +15,37 @@ export class UnauthorizedError extends Error {
   }
 }
 
-// Use getToken + next/headers cookies instead of getServerSession.
-// In Next.js 16+ the headers/cookies APIs are async; getServerSession from
-// next-auth v4 was written for synchronous headers() and can silently return
-// null in App Router Route Handlers on Next.js 16, causing false 401s for
-// authenticated users.  getToken with the raw cookie store is the same
-// mechanism the middleware already uses reliably.
+// Decode the next-auth JWT directly from the cookie store.
 //
-// Cookie name: next-auth v4 uses __Secure- prefix on HTTPS. Detect which
-// cookie is actually present rather than relying on NEXTAUTH_URL or req.url
-// (both absent when constructing a fake req from next/headers cookies).
+// Why not getServerSession: In Next.js 16+ the headers/cookies APIs are async;
+// next-auth v4's getServerSession uses synchronous headers() internally and
+// silently returns null in App Router Route Handlers, causing false 401s.
+//
+// Why not getToken with a synthetic req: getToken derives the decryption key
+// using HKDF with the cookie name as salt. It auto-selects the salt based on
+// secureCookie, which it infers from NEXTAUTH_URL or req.url — both absent in
+// a synthetic req. If it guesses wrong (e.g., picks plain name when HTTPS uses
+// __Secure-), the HKDF key mismatches and the token silently decodes as null.
+//
+// This approach: read the cookie directly from next/headers, detect the correct
+// name (and salt) by checking which cookie is actually present, then call
+// decode() with that salt explicitly. Works in dev (HTTP) and prod (HTTPS).
 export async function requireSession(): Promise<SessionContext> {
   const cookieStore = await cookies();
 
   const SECURE_NAME = "__Secure-next-auth.session-token";
   const REGULAR_NAME = "next-auth.session-token";
-  const cookieName = cookieStore.get(SECURE_NAME) ? SECURE_NAME : REGULAR_NAME;
 
-  const cookieHeader = cookieStore.getAll()
-    .map(c => `${c.name}=${c.value}`)
-    .join("; ");
+  const secureCookie = cookieStore.get(SECURE_NAME);
+  const regularCookie = cookieStore.get(REGULAR_NAME);
+  const cookieValue = (secureCookie ?? regularCookie)?.value;
 
-  const token = await getToken({
-    req: { headers: { cookie: cookieHeader } } as Parameters<typeof getToken>[0]["req"],
-    secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "",
-    cookieName,
-  });
+  if (!cookieValue) throw new UnauthorizedError();
+
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "";
+  // v4.24.14 encodes session JWTs with salt="" (the default); passing any
+  // other salt derives a different HKDF key and silently fails decryption.
+  const token = await decode({ token: cookieValue, secret });
 
   if (!token?.uid || !token?.tid) {
     throw new UnauthorizedError();
