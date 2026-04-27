@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from unittest.mock import patch
 
-sys.path.insert(0, "mira-bots")
-sys.path.insert(0, "mira-bots/telegram")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.modules.pop("chat_adapter", None)  # isolate from other bot adapters
 
 import pytest
@@ -25,7 +26,7 @@ async def test_adapter_populates_tenant_id_from_resolver():
             "text": "hello",
         },
     }
-    with patch("shared.chat_tenant.resolve", return_value="t_acme"):
+    with patch("chat_adapter.chat_tenant_resolve", return_value="t_acme"):
         evt = await adapter.normalize_incoming(raw)
     assert evt.tenant_id == "t_acme"
     assert evt.external_user_id == "555"
@@ -43,6 +44,6 @@ async def test_adapter_empty_tenant_when_resolver_returns_empty():
             "text": "stranger",
         },
     }
-    with patch("shared.chat_tenant.resolve", return_value=""):
+    with patch("chat_adapter.chat_tenant_resolve", return_value=""):
         evt = await adapter.normalize_incoming(raw)
     assert evt.tenant_id == ""
