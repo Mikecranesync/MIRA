@@ -270,6 +270,9 @@ async def lifespan(app: FastAPI):
     # Start feedback sync background thread (polls Open WebUI DB for new ratings)
     sync_thread = threading.Thread(target=feedback_sync_loop, daemon=True)
     sync_thread.start()
+    # Start PM midnight scheduler — fires daily at UTC midnight, creates WOs for due PMs
+    from shared.pm_scheduler import run_midnight_scheduler
+    asyncio.create_task(run_midnight_scheduler())
     _ver = Path("/app/VERSION").read_text().strip() if Path("/app/VERSION").exists() else "unknown"
     logger.info("MIRA Pipeline started — version=%s db=%s", _ver, DB_PATH)
     yield
@@ -1325,4 +1328,125 @@ async def agent_run_now(agent_name: str, request: Request):
         logger.error("AGENT_RUN_ERROR agent=%s error=%s", agent_name, exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+
+# ── PM Schedule Extractor — NORTH STAR FLYWHEEL CORE ────────────────────────
+# Auto-PM Pipeline step 4: chunks → structured PM schedules → NeonDB storage
+# POST /api/pm/extract  → run full extraction + store + return schedules
+# GET  /api/pm/schedules → query stored schedules for a model
+
+
+@app.post("/api/pm/extract")
+async def pm_extract(request: Request):
+    """Extract PM schedules from an equipment's indexed manual chunks.
+
+    Body JSON: { "manufacturer": "Yaskawa", "model_number": "GA500",
+                 "tenant_id": "mike", "equipment_id": null }
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON body")
+
+    manufacturer = str(body.get("manufacturer", "")).strip()
+    model_number = str(body.get("model_number", "")).strip()
+    tenant_id = str(body.get("tenant_id", "mike")).strip() or "mike"
+    equipment_id = body.get("equipment_id")
+
+    if not manufacturer or not model_number:
+        raise HTTPException(400, "manufacturer and model_number are required")
+
+    from shared.pm_extractor import (
+        extract_pm_schedules,
+        get_chunks_for_model,
+        store_pm_schedules,
+    )
+
+    chunks = get_chunks_for_model(manufacturer, model_number)
+    if not chunks:
+        return {
+            "manufacturer": manufacturer,
+            "model_number": model_number,
+            "chunks_found": 0,
+            "schedules": [],
+            "message": "No PM-relevant chunks found for this equipment model",
+        }
+
+    schedules = await extract_pm_schedules(chunks, manufacturer, model_number)
+    stored = store_pm_schedules(
+        schedules,
+        manufacturer=manufacturer,
+        model_number=model_number,
+        tenant_id=tenant_id,
+        equipment_id=equipment_id,
+    )
+
+    logger.info(
+        "PM_EXTRACT manufacturer=%s model=%s chunks=%d schedules=%d stored=%d",
+        manufacturer,
+        model_number,
+        len(chunks),
+        len(schedules),
+        stored,
+    )
+
+    return {
+        "manufacturer": manufacturer,
+        "model_number": model_number,
+        "chunks_found": len(chunks),
+        "schedules_extracted": len(schedules),
+        "schedules_stored": stored,
+        "schedules": schedules,
+    }
+
+
+@app.get("/api/pm/schedules")
+async def pm_schedules_list(
+    tenant_id: str = "mike",
+    manufacturer: str = "",
+    model_number: str = "",
+    equipment_id: str = "",
+):
+    """Return stored PM schedules from NeonDB for a tenant."""
+    from shared.pm_extractor import get_stored_pm_schedules
+
+    schedules = get_stored_pm_schedules(
+        tenant_id=tenant_id,
+        manufacturer=manufacturer or None,
+        model_number=model_number or None,
+        equipment_id=equipment_id or None,
+    )
+    return {
+        "tenant_id": tenant_id,
+        "count": len(schedules),
+        "schedules": schedules,
+    }
+
+
+# ── PM Work Order Auto-Generator — Auto-PM Pipeline step 5 ──────────────────
+# POST /api/pm/generate-work-orders → check due PMs, create WOs, advance schedule
+
+
+@app.post("/api/pm/generate-work-orders")
+async def pm_generate_work_orders(request: Request):
+    """Manually trigger PM work order generation for due schedules.
+
+    Body JSON (optional): { "tenant_id": "mike" }
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    tenant_id: str | None = body.get("tenant_id") or None
+
+    from shared.pm_scheduler import generate_due_work_orders
+
+    result = await generate_due_work_orders(tenant_id=tenant_id)
+    logger.info(
+        "PM_GENERATE_WO_MANUAL tenant=%s created=%d due=%d",
+        tenant_id,
+        result["work_orders_created"],
+        result["due_pms_found"],
+    )
+    return result
 

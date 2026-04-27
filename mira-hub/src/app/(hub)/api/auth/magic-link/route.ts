@@ -6,8 +6,9 @@ export const dynamic = "force-dynamic";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function sendMagicLinkEmail(email: string, token: string): Promise<void> {
-  const baseUrl = process.env.NEXTAUTH_URL ?? "https://app.factorylm.com/hub";
-  const magicUrl = `${baseUrl}/magic?token=${token}`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.factorylm.com";
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "/hub";
+  const magicUrl = `${appUrl}${apiBase}/magic?token=${token}`;
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.warn("[magic-link] RESEND_API_KEY not set — skipping email send");

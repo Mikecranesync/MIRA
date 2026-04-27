@@ -2,6 +2,8 @@ import { test, expect } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
+
 // Proof-of-work spec for PR #709 (structured JSON logs + X-Request-Id).
 // Verifies:
 //   1. /hub/api/health still 200 after rebuild
@@ -23,7 +25,7 @@ const OUT_DIR = path.resolve(process.cwd(), "test-results/proof-pr-709");
 test.beforeAll(() => fs.mkdirSync(OUT_DIR, { recursive: true }));
 
 test("hub health endpoint returns 200 after rebuild", async ({ request }) => {
-  const res = await request.get("https://app.factorylm.com/hub/api/health");
+  const res = await request.get(`${HUB}/api/health`);
   expect(res.status()).toBe(200);
   const body = await res.text();
   console.log(`health body: ${body.slice(0, 200)}`);
@@ -31,7 +33,7 @@ test("hub health endpoint returns 200 after rebuild", async ({ request }) => {
 
 test("/hub/api/uploads (unauth) → 307 → /hub/login (auth gate intact)", async ({ request }) => {
   // maxRedirects: 0 to see the raw 307 (not the 200 from following to /hub/login)
-  const res = await request.get("https://app.factorylm.com/hub/api/uploads/", {
+  const res = await request.get(`${HUB}/api/uploads/`, {
     maxRedirects: 0,
     failOnStatusCode: false,
   });
@@ -48,7 +50,7 @@ test("/hub/upload page renders + screenshot proof", async ({ page }) => {
     if (m.type() === "error") consoleErrors.push(m.text());
   });
 
-  await page.goto("https://app.factorylm.com/hub/upload", {
+  await page.goto(`${HUB}/upload`, {
     waitUntil: "networkidle",
     timeout: 20000,
   });

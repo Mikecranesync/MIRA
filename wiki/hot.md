@@ -1,4 +1,30 @@
-# Hot Cache — 2026-04-22 — CHARLIE
+# Hot Cache — 2026-04-27 — CHARLIE
+
+## eval-fixer run — 2026-04-27
+- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0103.md`
+- Action: issue-filed (#753)
+- All 57 fixtures failed `cp_pipeline_active` with 0-char responses — pipeline silent across the board, infra/cascade issue, not patchable. State stayed IDLE because no response was ever generated.
+
+## Session — 2026-04-27 (CHARLIE, PM end-to-end demo)
+
+- **PM Work Order Auto-Generator shipped**: `pm_scheduler.py` + `/api/pm/generate-work-orders` in mira-pipeline. Generates WOs from due `pm_schedules`, mirrors to Atlas CMMS, runs at UTC midnight via asyncio task. Fixed enums: `auto_pm` (sourcetype), `PM` (routetype), `user_id='pm_scheduler'`, equipment_id FK via `_resolve_equipment_id()`.
+- **26 PMs extracted** across 8 equipment models (Yaskawa, Rockwell, Allen-Bradley, Danfoss, Siemens). 43 WOs in mike tenant, 3 auto-generated (Auto-PM source).
+- **Hub WO page**: now fetches live from NeonDB via new `/api/work-orders` route. Auto-PM badge (Sparkles), Telegram badge, source citations, parts preview. Fixed basePath URL bug: `fetch("/hub/api/...")` not `fetch("/api/...")`.
+- **Hub Schedule page**: fetches 26 real PMs via `/hub/api/pm-schedules`. "26 AI-extracted" badge. Calendar shows live data.
+- **STRATEGY.md + NORTH_STAR.md** committed to repo root. CLAUDE.md updated with screenshot rule.
+- **Auto-trigger PM extraction**: `_maybe_trigger_pm_extraction()` in mira-ingest fires after `ingest_document_kb` success.
+- **PR #732 merged** (5 UX fixes — #688 #719 #720 #721 #722).
+- **Promo screenshots** (8): schedule + WO pages at desktop+mobile. In `docs/promo-screenshots/`.
+- **NEXTAUTH_SECRET**: hardcoded in `/opt/mira/docker-compose.hub.yml` on VPS (not in Doppler — add it!).
+- **Issue #690** (SPF/DKIM): DNS check shows no SPF/DMARC configured. Action plan in issue comments. Manual DNS work for Mike.
+
+## Next Actions (2026-04-27 priority order)
+
+1. **#690 SPF/DKIM** — Mike adds SPF+DMARC+DKIM CNAMEs to DNS registrar (5 records, manual). Documented in issue.
+2. **NEXTAUTH_SECRET** — add to Doppler `factorylm/prd` so it survives hub rebuilds (current hardcode in docker-compose.hub.yml will be lost on next git pull on VPS).
+3. **WO detail page** — rewrite to fetch real WO from NeonDB (currently hardcoded fallback); add `/api/work-orders/[id]` route.
+4. **PM scheduler midnight run** — confirm it ran overnight (check mira-pipeline-saas logs morning of 2026-04-28).
+5. **Branch cleanup** — `feat/hub-741-login-gate` has all hub work; PR + merge to main.
 
 ## eval-fixer run — 2026-04-23
 - Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-20T1011.md` (stale 3+ days)

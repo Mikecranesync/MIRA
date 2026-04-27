@@ -52,6 +52,8 @@ FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY", "")
 FIRECRAWL_API_BASE = "https://api.firecrawl.dev/v1"
 APIFY_API_KEY = os.getenv("APIFY_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+PIPELINE_BASE_URL = os.getenv("PIPELINE_BASE_URL", "http://mira-pipeline-saas:9099")
+PIPELINE_API_KEY = os.getenv("PIPELINE_API_KEY", "")
 
 # Manufacturer → primary doc-search URL (Firecrawl maps these to find model PDFs)
 _MANUFACTURER_DOC_URLS: dict[str, str] = {
@@ -711,6 +713,80 @@ async def search_photos(body: dict):
 
 
 # ---------------------------------------------------------------------------
+# PM Extraction trigger — fires after a manual is successfully ingested
+# ---------------------------------------------------------------------------
+
+_PM_FNAME_STRIP = re.compile(r"[_\-\.]")
+
+
+def _parse_manufacturer_model(equipment_type: str, fname: str) -> tuple[str, str] | None:
+    """Parse (manufacturer, model_number) from equipment_type or filename.
+
+    equipment_type preferred ("Yaskawa GA500" → ("Yaskawa", "GA500")).
+    Falls back to filename stem split ("Yaskawa_GA500_Manual.pdf" → ("Yaskawa", "GA500")).
+    Returns None if we can't extract both parts.
+    """
+    src = equipment_type.strip()
+    if not src:
+        stem = re.sub(r"\.pdf$", "", fname, flags=re.IGNORECASE).strip()
+        src = _PM_FNAME_STRIP.sub(" ", stem)
+    parts = [p for p in src.split() if p]
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    return None
+
+
+def _maybe_trigger_pm_extraction(equipment_type: str, fname: str, tenant_id: str) -> None:
+    """Fire-and-forget PM extraction via mira-pipeline REST API.
+
+    Parses manufacturer + model from equipment_type or filename, then calls
+    POST /api/pm/extract on the pipeline. Non-blocking — failures are logged only.
+    """
+    if not PIPELINE_BASE_URL or not PIPELINE_API_KEY:
+        return
+
+    parsed = _parse_manufacturer_model(equipment_type, fname)
+    if not parsed:
+        logger.debug("PM extraction skipped: cannot parse manufacturer+model from %r / %r", equipment_type, fname)
+        return
+
+    manufacturer, model_number = parsed
+
+    async def _call():
+        try:
+            async with httpx.AsyncClient(timeout=300) as client:
+                resp = await client.post(
+                    f"{PIPELINE_BASE_URL}/api/pm/extract",
+                    headers={"Authorization": f"Bearer {PIPELINE_API_KEY}"},
+                    json={
+                        "manufacturer": manufacturer,
+                        "model_number": model_number,
+                        "tenant_id": tenant_id or "mike",
+                    },
+                )
+            if resp.is_success:
+                data = resp.json()
+                logger.info(
+                    "PM_EXTRACT_AUTO manufacturer=%s model=%s chunks=%d stored=%d",
+                    manufacturer,
+                    model_number,
+                    data.get("chunks_found", 0),
+                    data.get("schedules_stored", 0),
+                )
+            else:
+                logger.warning(
+                    "PM_EXTRACT_AUTO non-success: %s %s", resp.status_code, resp.text[:200]
+                )
+        except Exception as exc:
+            logger.warning("PM_EXTRACT_AUTO failed (non-fatal): %s", exc)
+
+    asyncio.create_task(_call())
+    logger.info(
+        "PM_EXTRACT_AUTO queued for %s %s (tenant=%s)", manufacturer, model_number, tenant_id
+    )
+
+
+# ---------------------------------------------------------------------------
 # Document KB ingest — upload original PDF to Open WebUI, let it chunk + embed
 # ---------------------------------------------------------------------------
 
@@ -917,6 +993,10 @@ async def ingest_document_kb(
         col_name,
         processing_status,
     )
+
+    # Auto-trigger PM extraction (North Star flywheel step 4→5).
+    # Parse manufacturer + model from equipment_type or filename, then fire-and-forget.
+    _maybe_trigger_pm_extraction(equipment_type or "", fname, tenant_id or MIRA_TENANT_ID)
 
     return {
         "status": "ok",
