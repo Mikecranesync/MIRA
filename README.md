@@ -65,3 +65,11 @@ Proprietary — Copyright (c) 2026 Cranesync. All rights reserved. See [LICENSE]
 Third-party bundled dependencies retain their original open-source licenses.
 
 For licensing inquiries: [mike@cranesync.com](mailto:mike@cranesync.com)
+
+## 💰 Bounty Contribution
+
+- **Task:** feat(hub): magic link login + 7-day free trial + $20/mo individual plan
+- **Reward:** $499
+- **Source:** GitHub-Paid
+- **Date:** 2026-04-27
+
