@@ -371,6 +371,17 @@ services:
       # Open WebUI delete-file auth for removing parsed files from KB
       - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core-saas:8080}
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      # LLM cascade for AI Reports (Groq → Cerebras → Gemini)
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      # Atlas CMMS live stats (public URL — mira-hub is not on cmms-ext network)
+      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-https://cmms.factorylm.com}
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
     networks:
       - mira-net
     restart: unless-stopped
