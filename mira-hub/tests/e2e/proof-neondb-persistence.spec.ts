@@ -17,7 +17,8 @@ import * as fs from "fs";
 import * as path from "path";
 
 const HUB = process.env.HUB_URL ?? "https://app.factorylm.com";
-const STATE_FILE = path.join("test-results", "neondb-persistence-user.json");
+// Use absolute path outside test-results/ (playwright clears that dir on each run)
+const STATE_FILE = path.join(__dirname, ".state/neondb-persistence-user.json");
 const EMAIL = `neondb-proof-${Date.now()}@factorylm-test.com`;
 const PASSWORD = "Persist1234!";
 
@@ -50,8 +51,10 @@ test("Phase 1 proof: user survives container rebuild", async ({ page }) => {
   expect(url).toMatch(/\/feed/);
   console.log(`✅ User ${state.email} survived container rebuild — logged in at ${url}`);
 
+  const screenshotDir = path.join(__dirname, "../../docs/promo-screenshots");
+  fs.mkdirSync(screenshotDir, { recursive: true });
   await page.screenshot({
-    path: path.join("docs/promo-screenshots", "neondb-persistence-proof-2026-04-27.png"),
+    path: path.join(screenshotDir, "neondb-persistence-proof-2026-04-27.png"),
     fullPage: false,
   });
   console.log(`📸 Screenshot saved`);
