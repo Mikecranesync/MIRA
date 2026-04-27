@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/auth";
+import { getToken } from "next-auth/jwt";
+import { cookies } from "next/headers";
 
 export interface SessionContext {
   userId: string;
@@ -15,15 +15,31 @@ export class UnauthorizedError extends Error {
   }
 }
 
+// Use getToken + next/headers cookies instead of getServerSession.
+// In Next.js 16+ the headers/cookies APIs are async; getServerSession from
+// next-auth v4 was written for synchronous headers() and can silently return
+// null in App Router Route Handlers on Next.js 16, causing false 401s for
+// authenticated users.  getToken with the raw cookie store is the same
+// mechanism the middleware already uses reliably.
 export async function requireSession(): Promise<SessionContext> {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || !session.user.tenantId) {
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore.getAll()
+    .map(c => `${c.name}=${c.value}`)
+    .join("; ");
+
+  const token = await getToken({
+    req: { headers: { cookie: cookieHeader } } as Parameters<typeof getToken>[0]["req"],
+    secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "",
+  });
+
+  if (!token?.uid || !token?.tid) {
     throw new UnauthorizedError();
   }
+
   return {
-    userId: session.user.id,
-    tenantId: session.user.tenantId,
-    email: session.user.email,
+    userId: token.uid as string,
+    tenantId: token.tid as string,
+    email: (token.email as string) ?? "",
   };
 }
 
@@ -44,11 +60,9 @@ export async function sessionOr401(): Promise<SessionContext | NextResponse> {
 }
 
 export async function getSessionOrNull(): Promise<SessionContext | null> {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || !session.user.tenantId) return null;
-  return {
-    userId: session.user.id,
-    tenantId: session.user.tenantId,
-    email: session.user.email,
-  };
+  try {
+    return await requireSession();
+  } catch {
+    return null;
+  }
 }
