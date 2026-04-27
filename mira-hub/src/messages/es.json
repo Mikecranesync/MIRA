@@ -557,8 +557,8 @@
       "integrations": "CMMS, webhooks y configuración de API",
       "usage": "Acciones usadas y nivel de facturación",
       "team": "Lista de técnicos y asignaciones",
-      "admin": "Usuarios, roles y configuración",
-      "cmms": "Integración Atlas CMMS"
+      "cmms": "Integración Atlas CMMS",
+      "admin": "Usuarios, roles y configuración"
     }
   },
   "eventLog": {

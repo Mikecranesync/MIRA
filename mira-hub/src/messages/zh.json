@@ -557,8 +557,8 @@
       "integrations": "CMMS、Webhooks和API设置",
       "usage": "已用操作次数和账单等级",
       "team": "技术员名单与任务分配",
-      "admin": "用户、角色和系统设置",
-      "cmms": "Atlas CMMS系统集成"
+      "cmms": "Atlas CMMS系统集成",
+      "admin": "用户、角色和系统设置"
     }
   },
   "eventLog": {
