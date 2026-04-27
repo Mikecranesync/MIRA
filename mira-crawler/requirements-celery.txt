@@ -19,5 +19,5 @@ apify-client>=1.7.0
 PyYAML>=6.0.0
 
 # 24/7 ingest pipeline deps
-feedparser>=6.0.0
+feedparser>=6.0.12
 yt-dlp>=2024.0.0
