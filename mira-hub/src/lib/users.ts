@@ -1,4 +1,5 @@
 import pool from "@/lib/db";
+import { ensureDataSchema } from "@/lib/data-schema";
 
 export type UserStatus = "pending" | "trial" | "approved" | "expired" | "admin";
 
@@ -77,6 +78,8 @@ export function ensureSchema(): Promise<void> {
       UPDATE hub_users SET trial_expires_at = created_at + INTERVAL '7 days'
       WHERE status = 'trial' AND trial_expires_at IS NULL
     `);
+    // Phase 2: idempotent migrations for pipeline-managed tables
+    await ensureDataSchema();
   })();
   return schemaReady;
 }
