@@ -13,7 +13,6 @@ import re
 from typing import Any
 
 from sqlalchemy import Engine
-from sqlalchemy.engine import Connection
 
 # Tenant-scoped tables — every read/write must filter on tenant_id.
 TENANT_TABLES: frozenset[str] = frozenset(
@@ -65,7 +64,7 @@ class TenantScopedSession:
     def execute(self, statement: Any, params: dict[str, Any] | None = None) -> Any:
         sql_text = str(statement.compile(compile_kwargs={"literal_binds": False}))
         self._check(sql_text)
-        with self._engine.connect() as conn:  # type: Connection
+        with self._engine.connect() as conn:
             result = conn.execute(statement, params or {})
             conn.commit()
             return result
