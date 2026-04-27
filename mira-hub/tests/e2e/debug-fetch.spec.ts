@@ -1,7 +1,5 @@
 import { test, expect } from "@playwright/test";
 
-const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
-
 test("debug: what URL does /hub/assets page fetch?", async ({ page }) => {
   const fetchedUrls: string[] = [];
   page.on("request", req => {
@@ -12,14 +10,14 @@ test("debug: what URL does /hub/assets page fetch?", async ({ page }) => {
   });
 
   // login
-  await page.goto(`${HUB}/login`, { waitUntil: "networkidle" });
+  await page.goto(`${process.env.HUB_URL ?? "https://app.factorylm.com/hub"}/login`, { waitUntil: "networkidle" });
   await page.fill('input[type="email"]', "mike@factorylm.com");
   await page.fill('input[type="password"]', "admin123");
   await page.click('button:has-text("Sign In")');
   await page.waitForURL(/\/hub\/feed/, { timeout: 15_000 });
 
   // navigate to assets
-  await page.goto(`${HUB}/assets`, { waitUntil: "networkidle" });
+  await page.goto(`${process.env.HUB_URL ?? "https://app.factorylm.com/hub"}/assets`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2000);
 
   console.log("=== Asset-related requests ===");

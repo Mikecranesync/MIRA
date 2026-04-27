@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { upsertBinding } from "@/lib/bindings";
 import { validateState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, OAUTH_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       grant_type: "authorization_code",
       client_id: process.env.DROPBOX_APP_KEY!,
       client_secret: process.env.DROPBOX_APP_SECRET!,
-      redirect_uri: `${appUrl}${API_BASE}/api/auth/dropbox/callback`,
+      redirect_uri: `${appUrl}${OAUTH_BASE}/api/auth/dropbox/callback`,
     }),
   });
   const tokens = await tokenRes.json();

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { newState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, OAUTH_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,7 @@ export async function GET() {
   }
 
   const state = newState();
-  const redirectUri = `${appUrl}${API_BASE}/api/auth/google/callback`;
+  const redirectUri = `${appUrl}${OAUTH_BASE}/api/auth/google/callback`;
 
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", clientId);

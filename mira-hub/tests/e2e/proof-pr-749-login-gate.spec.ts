@@ -8,7 +8,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 
-const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
+const HUB = "https://app.factorylm.com/hub";
 const ADMIN = { email: "playwright@factorylm.com", password: "TestPass123" };
 const outDir = path.join(__dirname, "../../test-results/proof-pr-749");
 

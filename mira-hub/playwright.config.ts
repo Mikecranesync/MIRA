@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Phase 1: HUB_URL unset → hub at /hub (default).
-// Phase 2: HUB_URL=https://app.factorylm.com → hub at root.
+// Phase 1: HUB_URL unset → hub at https://app.factorylm.com/hub (current).
+// Phase 2: HUB_URL=https://app.factorylm.com → hub serves at root.
 export const HUB_URL = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
 
 export default defineConfig({
