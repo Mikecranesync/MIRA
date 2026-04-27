@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import {
   Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
+  ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
   Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,7 @@ import { LanguageSelector } from "@/components/ui/language-selector";
 const ICON_MAP: Record<string, React.ElementType> = {
   Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
+  ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
 };
 
 export function Sidebar({ role = "admin" }: { role?: string }) {
@@ -38,6 +40,12 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "alerts":        t("alerts"),
       "knowledge":     t("knowledge"),
       "assets":        t("assets"),
+      "workorders":    t("workOrders"),
+      "schedule":      t("schedule"),
+      "requests":      t("requests"),
+      "parts":         t("parts"),
+      "documents":     t("documents"),
+      "reports":       t("reports"),
       "channels":      t("channels"),
       "integrations":  t("integrations"),
       "usage":         t("usage"),

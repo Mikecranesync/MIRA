@@ -282,13 +282,27 @@
     "pmCount": "{count} 项PM",
     "pmCountPlural": "{count} 项PM",
     "days": {
-      "sun": "日", "mon": "一", "tue": "二", "wed": "三",
-      "thu": "四", "fri": "五", "sat": "六"
+      "sun": "日",
+      "mon": "一",
+      "tue": "二",
+      "wed": "三",
+      "thu": "四",
+      "fri": "五",
+      "sat": "六"
     },
     "months": {
-      "jan": "一月", "feb": "二月", "mar": "三月", "apr": "四月",
-      "may": "五月", "jun": "六月", "jul": "七月", "aug": "八月",
-      "sep": "九月", "oct": "十月", "nov": "十一月", "dec": "十二月"
+      "jan": "一月",
+      "feb": "二月",
+      "mar": "三月",
+      "apr": "四月",
+      "may": "五月",
+      "jun": "六月",
+      "jul": "七月",
+      "aug": "八月",
+      "sep": "九月",
+      "oct": "十月",
+      "nov": "十一月",
+      "dec": "十二月"
     },
     "statusLabels": {
       "scheduled": "已计划",
@@ -529,18 +543,22 @@
   "more": {
     "title": "更多",
     "items": {
+      "conversations": "与MIRA跨渠道的聊天记录",
       "alerts": "安全和设备警报",
       "knowledge": "设备手册和已索引文档",
+      "assets": "设备注册表和实时状态",
+      "workorders": "创建和跟踪维护工单",
+      "schedule": "预防维护日历与计划任务",
+      "requests": "提交和审核报修申请",
+      "parts": "备件库存和补货点",
+      "documents": "操作手册、SOP和合格证书",
+      "reports": "维护数据分析与KPI",
       "channels": "Telegram、WhatsApp、语音、邮件",
       "integrations": "CMMS、Webhooks和API设置",
       "usage": "已用操作次数和账单等级",
-      "schedule": "预防维护日历与计划任务",
-      "requests": "提交和审核报修申请",
-      "documents": "操作手册、SOP和合格证书",
-      "cmms": "Atlas CMMS系统集成",
-      "reports": "维护数据分析与KPI",
       "team": "技术员名单与任务分配",
-      "admin": "用户、角色和系统设置"
+      "admin": "用户、角色和系统设置",
+      "cmms": "Atlas CMMS系统集成"
     }
   },
   "eventLog": {
