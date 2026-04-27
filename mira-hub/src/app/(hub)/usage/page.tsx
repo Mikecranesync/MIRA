@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { BarChart2, Zap, MessageSquare, Users, TrendingUp, Calendar } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
+import { API_BASE } from "@/lib/config";
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from "recharts";
@@ -32,7 +33,7 @@ export default function UsagePage() {
   } | null>(null);
 
   useEffect(() => {
-    fetch("/hub/api/usage").then(r => r.json()).then(setData).catch(console.error);
+    fetch(`${API_BASE}/api/usage`).then(r => r.json()).then(setData).catch(console.error);
   }, []);
 
   const month = data?.thisMonth;

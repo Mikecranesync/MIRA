@@ -7,7 +7,7 @@ import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-const HUB = "https://app.factorylm.com/hub";
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
 
 test.setTimeout(180_000);
 

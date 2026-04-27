@@ -8,7 +8,7 @@ import { test, expect, Page, Browser } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 
-const HUB = "https://app.factorylm.com/hub";
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
 const OUT = path.join("test-results", "hub-audit");
 const REPORT: { page: string; status: "pass" | "warn" | "fail"; notes: string[] }[] = [];
 

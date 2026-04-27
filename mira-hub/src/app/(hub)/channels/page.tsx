@@ -6,6 +6,7 @@ import { Settings, X, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
+import { API_BASE } from "@/lib/config";
   getConnection,
   setConnection,
   removeConnection,
@@ -198,7 +199,7 @@ function ChannelsInner() {
 
     refresh();
 
-    fetch("/hub/api/auth/status")
+    fetch(`${API_BASE}/api/auth/status`)
       .then(r => r.json())
       .then((d: AuthStatus) => setAuthStatus(d))
       .catch(() => {});
@@ -217,7 +218,7 @@ function ChannelsInner() {
     setTelegramLoading(true);
     setTelegramError(null);
     try {
-      const res = await fetch("/hub/api/auth/telegram", {
+      const res = await fetch(`${API_BASE}/api/auth/telegram`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: telegramToken.trim() }),
@@ -303,7 +304,7 @@ function ChannelsInner() {
               emoji="💼" name="Slack"
               description="Team-wide MIRA alerts, work order updates, and maintenance requests"
               conn={slackConn}
-              onConnect={() => { window.location.href = "/hub/api/auth/slack"; }}
+              onConnect={() => { window.location.href = `${API_BASE}/api/auth/slack`; }}
               onDisconnect={() => disconnect("slack")}
               connectedLabel={slackConn.workspace ?? "Workspace connected"}
               disabled={!authStatus.slack.configured && !authStatus.slack.hasOAuth && !slackConn.connected}
@@ -313,7 +314,7 @@ function ChannelsInner() {
               emoji="🔷" name="Microsoft Teams"
               description="Enterprise integration for organizations running on Microsoft 365"
               conn={teamsConn}
-              onConnect={() => { window.location.href = "/hub/api/auth/microsoft"; }}
+              onConnect={() => { window.location.href = `${API_BASE}/api/auth/microsoft`; }}
               onDisconnect={() => disconnect("teams")}
               connectedLabel={teamsConn.email ?? teamsConn.displayName ?? "Teams connected"}
               disabled={!authStatus.microsoft.hasOAuth && !teamsConn.connected}
@@ -364,7 +365,7 @@ function ChannelsInner() {
               emoji="🔵" name="Google Workspace"
               description="Google Drive files, shared docs, and Gmail threads indexed for MIRA"
               conn={googleConn}
-              onConnect={() => { window.location.href = "/hub/api/auth/google"; }}
+              onConnect={() => { window.location.href = `${API_BASE}/api/auth/google`; }}
               onDisconnect={() => disconnect("google")}
               connectedLabel={googleConn.email ?? googleConn.displayName ?? "Google account connected"}
             />
@@ -372,7 +373,7 @@ function ChannelsInner() {
               emoji="🟦" name="Microsoft 365"
               description="SharePoint libraries, OneDrive files, and Outlook email ingest"
               conn={microsoftConn}
-              onConnect={() => { window.location.href = "/hub/api/auth/microsoft"; }}
+              onConnect={() => { window.location.href = `${API_BASE}/api/auth/microsoft`; }}
               onDisconnect={() => disconnect("microsoft")}
               connectedLabel={microsoftConn.email ?? microsoftConn.displayName ?? "Microsoft account connected"}
               disabled={!authStatus.microsoft.hasOAuth && !microsoftConn.connected}
@@ -382,7 +383,7 @@ function ChannelsInner() {
               emoji="📦" name="Dropbox"
               description="Manuals, schematics, and maintenance documents stored in Dropbox"
               conn={dropboxConn}
-              onConnect={() => { window.location.href = "/hub/api/auth/dropbox"; }}
+              onConnect={() => { window.location.href = `${API_BASE}/api/auth/dropbox`; }}
               onDisconnect={() => disconnect("dropbox")}
               connectedLabel={dropboxConn.email ?? dropboxConn.displayName ?? "Dropbox connected"}
               disabled={!authStatus.dropbox.hasOAuth && !dropboxConn.connected}
@@ -392,7 +393,7 @@ function ChannelsInner() {
               emoji="📝" name="Confluence"
               description="Atlassian Confluence wiki pages and knowledge base articles"
               conn={confluenceConn}
-              onConnect={() => { window.location.href = "/hub/api/auth/confluence"; }}
+              onConnect={() => { window.location.href = `${API_BASE}/api/auth/confluence`; }}
               onDisconnect={() => disconnect("confluence")}
               connectedLabel={
                 confluenceConn.siteName ?? confluenceConn.workspace ?? "Confluence site connected"

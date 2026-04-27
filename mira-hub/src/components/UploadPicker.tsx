@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Script from "next/script";
 import { X, Upload as UploadIcon, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { API_BASE } from "@/lib/config";
 
 export type PickResult = {
   provider: "google" | "dropbox";
@@ -121,13 +122,13 @@ export function UploadPicker({
   useEffect(() => {
     if (!open) return;
     setError(null);
-    fetch("/hub/api/picker/google/token")
+    fetch(`${API_BASE}/api/picker/google/token`)
       .then((r) => setGoogleAvailable(r.ok))
       .catch(() => setGoogleAvailable(false));
-    fetch("/hub/api/picker/dropbox/key")
+    fetch(`${API_BASE}/api/picker/dropbox/key`)
       .then((r) => setDropboxAvailable(r.ok))
       .catch(() => setDropboxAvailable(false));
-    fetch("/hub/api/assets")
+    fetch(`${API_BASE}/api/assets`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data: Asset[] | unknown) => {
         if (Array.isArray(data)) setAssets(data as Asset[]);
@@ -156,7 +157,7 @@ export function UploadPicker({
   async function openGoogle() {
     setError(null);
     try {
-      const tokenRes = await fetch("/hub/api/picker/google/token");
+      const tokenRes = await fetch(`${API_BASE}/api/picker/google/token`);
       if (!tokenRes.ok) throw new Error("Google not connected");
       const { accessToken, apiKey, appId } = await tokenRes.json();
       if (!window.google?.picker || !pickerLoaded) {
@@ -222,7 +223,7 @@ export function UploadPicker({
   }
 
   async function fetchAppKey(): Promise<string> {
-    const res = await fetch("/hub/api/picker/dropbox/key");
+    const res = await fetch(`${API_BASE}/api/picker/dropbox/key`);
     if (!res.ok) return "";
     const { appKey } = await res.json();
     return appKey as string;

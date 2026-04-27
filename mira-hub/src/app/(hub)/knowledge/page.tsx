@@ -5,6 +5,7 @@ import { Search, BookOpen, FileText, Upload, CheckCircle2, Clock } from "lucide-
 import { useTranslations } from "next-intl";
 import { UploadPicker } from "@/components/UploadPicker";
 import { UploadBlock, type UploadBlockData } from "@/components/UploadBlock";
+import { API_BASE } from "@/lib/config";
 
 type IndexStatus = "indexed";
 
@@ -51,7 +52,7 @@ export default function KnowledgePage() {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
-    fetch("/hub/api/knowledge")
+    fetch(`${API_BASE}/api/knowledge`)
       .then((r) => r.json())
       .then((data) => {
         setDocs(data.docs ?? []);
@@ -63,7 +64,7 @@ export default function KnowledgePage() {
 
   const fetchUploads = useCallback(async () => {
     try {
-      const res = await fetch("/hub/api/uploads", { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/uploads`, { cache: "no-store" });
       if (!res.ok) return;
       const rows = (await res.json()) as Array<{
         id: string;
@@ -112,7 +113,7 @@ export default function KnowledgePage() {
       const form = new FormData();
       form.append("file", file);
       if (assetTag) form.append("assetTag", assetTag);
-      await fetch("/hub/api/uploads/local", { method: "POST", body: form });
+      await fetch(`${API_BASE}/api/uploads/local`, { method: "POST", body: form });
     }
     await fetchUploads();
   }
@@ -130,7 +131,7 @@ export default function KnowledgePage() {
     assetTag: string | null,
   ) {
     for (const result of results) {
-      await fetch("/hub/api/uploads", {
+      await fetch(`${API_BASE}/api/uploads`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...result, assetTag: assetTag ?? undefined }),

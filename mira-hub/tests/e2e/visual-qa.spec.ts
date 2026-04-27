@@ -7,7 +7,7 @@ import { test, expect, Page, Browser } from "@playwright/test";
 import * as path from "path";
 
 const MARKETING = "https://factorylm.com";
-const HUB = "https://app.factorylm.com/hub";
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
 const OUT = path.join("test-results", "visual-qa");
 
 async function shot(page: Page, name: string, fullPage = true) {
