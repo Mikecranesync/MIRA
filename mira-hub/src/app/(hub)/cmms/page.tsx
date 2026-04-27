@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/providers/toast-provider";
 import { useTranslations } from "next-intl";
 
-const DEFAULT_CMMS_URL = "https://app.factorylm.com";
+const DEFAULT_CMMS_URL = "https://cmms.factorylm.com";
 
 const CMMS_SUMMARY = {
   workOrders: { open: 12, inprogress: 4, overdue: 2, completed: 89 },
