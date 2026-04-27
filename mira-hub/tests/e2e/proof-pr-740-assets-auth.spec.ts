@@ -28,11 +28,12 @@ test("authenticated user stays on /assets (no login redirect)", async ({ page })
     }
   });
 
-  // Login
+  // Login (password is in a collapsible section — expand it first)
   await page.goto(`${HUB}/login`, { waitUntil: "domcontentloaded" });
-  await page.fill('input[type="email"]', CREDS.email);
+  await page.click("text=Sign in with password");
+  await page.locator('input[type="email"]').last().fill(CREDS.email);
   await page.fill('input[type="password"]', CREDS.password);
-  await page.click('button[type="submit"]');
+  await page.getByRole('button', { name: /^Sign in$/ }).click();
   await page.waitForURL(/\/hub\/feed\/?/, { timeout: 25_000 });
   console.log("✅ Logged in:", page.url());
 

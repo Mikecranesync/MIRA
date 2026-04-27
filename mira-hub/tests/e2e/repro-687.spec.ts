@@ -13,9 +13,10 @@ test("repro #687/#717 — /usage hard reload + chart blank", async ({ page }) =>
   page.on("response", r => { if (r.url().includes("/api/")) apiCalls.push({ url: r.url(), status: r.status() }); });
 
   await page.goto(`${HUB}/login`, { waitUntil: "domcontentloaded" });
-  await page.fill('input[type="email"]', CREDS.email);
+  await page.click("text=Sign in with password");
+  await page.locator('input[type="email"]').last().fill(CREDS.email);
   await page.fill('input[type="password"]', CREDS.password);
-  await page.click('button[type="submit"]');
+  await page.getByRole('button', { name: /^Sign in$/ }).click();
   await page.waitForURL(/\/hub\/feed\/?/, { timeout: 25_000 });
   console.log("Logged in:", page.url());
 
