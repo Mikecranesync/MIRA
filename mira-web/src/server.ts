@@ -675,9 +675,12 @@ app.post("/api/register", async (c) => {
 
 app.post("/api/magic-link", async (c) => {
   let email: string;
+  let plan: string | undefined;
   try {
     const body = await c.req.json();
     email = String(body?.email ?? "").trim().toLowerCase();
+    const rawPlan = String(body?.plan ?? "").trim().toLowerCase();
+    plan = rawPlan && /^[a-z]{1,32}$/.test(rawPlan) ? rawPlan : undefined;
   } catch {
     return c.json({ error: "Invalid request body" }, 400);
   }
@@ -744,6 +747,7 @@ app.post("/api/magic-link", async (c) => {
       tenantId: tenant.id,
       ip,
       userAgent,
+      meta: plan ? { plan } : undefined,
     }).catch(() => {});
 
     sendMagicLinkEmail(email, loginUrl)
