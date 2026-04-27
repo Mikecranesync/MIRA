@@ -84,6 +84,30 @@ export async function createPortalSession(
 }
 
 /**
+ * Create a Stripe Checkout session without a pre-existing customer.
+ * Stripe collects email + card on its own hosted page.
+ * Used for direct "Buy Now" buttons on the pricing page.
+ */
+export async function createDirectCheckoutSession(): Promise<string> {
+  const priceId = process.env.STRIPE_PRICE_ID;
+  if (!priceId) throw new Error("STRIPE_PRICE_ID not set");
+
+  const stripe = getStripe();
+  const base = BASE_URL();
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: "https://app.factorylm.com/feed/?checkout=success",
+    cancel_url: `${base}/pricing?checkout=cancelled`,
+    allow_promotion_codes: true,
+  });
+
+  if (!session.url) throw new Error("Stripe session created without URL");
+  return session.url;
+}
+
+/**
  * Verify and construct a Stripe webhook event from raw body + signature.
  */
 export async function constructWebhookEvent(
