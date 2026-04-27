@@ -13,7 +13,7 @@ sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
 
 # Apify
-apify-client>=1.7.0
+apify-client>=2.5.0
 
 # YAML config
 PyYAML>=6.0.0
