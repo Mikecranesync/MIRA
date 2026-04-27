@@ -32,7 +32,7 @@ export default function CMMSPage() {
     setConfig({ url: form.url, apiKey: form.apiKey });
     setConfigured(true);
     setShowEdit(false);
-    toast("Atlas CMMS connected ✓", "success");
+    toast("FactoryLM Works connected ✓", "success");
   }
 
   function disconnect() {
@@ -76,7 +76,7 @@ export default function CMMSPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Atlas CMMS</p>
+                  <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>FactoryLM Works</p>
                   <Badge variant="green" className="text-[10px] gap-1">
                     <CheckCircle2 className="w-2.5 h-2.5" />{t("connected_badge")}
                   </Badge>

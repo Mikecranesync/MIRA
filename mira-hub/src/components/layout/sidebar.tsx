@@ -183,7 +183,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       <div className="p-3 space-y-1" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
         {!collapsed && (
           <p className="text-[10px] text-center leading-tight pb-1" style={{ color: "#475569" }}>
-            Maintenance Intelligence Platform
+            Maintenance Intelligence &amp; Resource Assistant
           </p>
         )}
 
