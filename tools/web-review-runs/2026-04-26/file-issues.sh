@@ -4,7 +4,6 @@
 set -euo pipefail
 
 REPO=Mikecranesync/MIRA
-TODAY=$(date -u +%F)
 
 say() { echo ">>> $*" >&2; }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { upsertBinding } from "@/lib/bindings";
 import { validateState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
+import { API_BASE, OAUTH_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
       code,
       client_id: process.env.MICROSOFT_CLIENT_ID!,
       client_secret: process.env.MICROSOFT_CLIENT_SECRET!,
-      redirect_uri: `${appUrl}/hub/api/auth/microsoft/callback`,
+      redirect_uri: `${appUrl}${OAUTH_BASE}/api/auth/microsoft/callback`,
       grant_type: "authorization_code",
     }),
   });
@@ -60,13 +61,13 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  const res = NextResponse.redirect(`${appUrl}/hub/channels?provider=microsoft&status=connected`);
+  const res = NextResponse.redirect(`${appUrl}${API_BASE}/channels?provider=microsoft&status=connected`);
   res.cookies.delete(stateCookieName("microsoft"));
   return res;
 }
 
 function errorRedirect(appUrl: string, reason: string) {
   return NextResponse.redirect(
-    `${appUrl}/hub/channels?provider=microsoft&status=error&reason=${encodeURIComponent(reason)}`,
+    `${appUrl}${API_BASE}/channels?provider=microsoft&status=error&reason=${encodeURIComponent(reason)}`,
   );
 }

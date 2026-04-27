@@ -7,6 +7,7 @@ import { signIn } from "next-auth/react";
 import { Factory, Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { API_BASE } from "@/lib/config";
 
 const MIN_PW = 8;
 
@@ -29,7 +30,7 @@ export default function SignupPage() {
     }
     setLoading(true);
     try {
-      const res = await fetch("/hub/api/auth/register", {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, name }),

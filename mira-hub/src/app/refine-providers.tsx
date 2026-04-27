@@ -5,10 +5,11 @@ import { SessionProvider } from "next-auth/react";
 import { hubDataProvider } from "@/providers/data-provider";
 import { authProvider } from "@/providers/auth-provider";
 import { accessControlProvider } from "@/providers/access-control";
+import { API_BASE } from "@/lib/config";
 
 export function RefineProviders({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider basePath="/hub/api/auth">
+    <SessionProvider basePath={`${API_BASE}/api/auth`}>
       <Refine
         dataProvider={hubDataProvider}
         authProvider={authProvider}

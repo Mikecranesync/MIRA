@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Zap, MessageSquare, Users, TrendingUp, Calendar } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { API_BASE } from "@/lib/config";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -40,9 +41,9 @@ export default function UsagePage() {
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
-    fetch("/hub/api/usage")
+    fetch(`${API_BASE}/api/usage`)
       .then(r => {
-        if (r.status === 401) { router.push("/login?callbackUrl=/hub/usage"); return null; }
+        if (r.status === 401) { router.push(`${API_BASE}/login?callbackUrl=${API_BASE}/usage`); return null; }
         return r.json();
       })
       .then(d => { if (d) setData(d); })
