@@ -7,8 +7,9 @@
 
 ---
 
-## North Star
-Read `NORTH_STAR.md` before starting any feature work. Every PR should reference which part of the flywheel it supports.
+## North Star + Strategy
+- **Technical flywheel:** `NORTH_STAR.md` — read before any feature work; every PR references which flywheel step it supports
+- **Commercial strategy:** `STRATEGY.md` — ICP, pricing tiers, GTM motion, competitive moat
 
 ## Coding Principles → `wiki/references/coding-principles.md`
 ## KANBAN Board → `wiki/references/kanban.md`
