@@ -884,6 +884,54 @@ app.get("/api/checkout", async (c) => {
   }
 });
 
+// Direct checkout from pricing page — finds/creates pending tenant then redirects to Stripe.
+// Accepts { email, company? }. Returns { url } for JS redirect or redirects directly.
+app.post("/api/checkout/start", async (c) => {
+  const ip = getClientIp(c.req.raw.headers);
+  const rl = checkRegisterRateLimit(ip);
+  if (!rl.allowed) {
+    c.header("Retry-After", String(rl.retryAfterSec));
+    return c.json({ error: "Too many attempts. Try again shortly." }, 429);
+  }
+
+  let body: { email?: string; company?: string };
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const { email, company } = body;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: "Valid email required" }, 400);
+  }
+
+  try {
+    let tenantId: string;
+    const existing = await findTenantByEmail(email);
+    if (existing) {
+      tenantId = existing.id;
+      if (existing.tier === "active") {
+        return c.json({ url: "/cmms?payment=success" });
+      }
+    } else {
+      tenantId = crypto.randomUUID();
+      await createTenant({
+        id: tenantId,
+        email,
+        company: company || email.split("@")[1] || "unknown",
+        firstName: "",
+        tier: "pending",
+        atlasPassword: "",
+        atlasCompanyId: 0,
+        atlasUserId: 0,
+      });
+    }
+
+    const checkoutUrl = await createCheckoutSession(tenantId, email);
+    return c.json({ url: checkoutUrl });
+  } catch (err) {
+    console.error("[checkout/start] Error:", err);
+    return c.json({ error: "Failed to create checkout session" }, 500);
+  }
+});
+
 // Stripe webhook (unauthenticated — Stripe sends events here)
 app.post("/api/stripe/webhook", async (c) => {
   const signature = c.req.header("stripe-signature");

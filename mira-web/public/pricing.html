@@ -219,6 +219,19 @@
     }
     .faq-q.open + .faq-a { display: block; }
 
+    /* Checkout form */
+    .checkout-form { display: flex; flex-direction: column; gap: 8px; }
+    .checkout-email {
+      width: 100%; padding: 10px 12px; border-radius: 6px;
+      background: var(--surface-hi); border: 1px solid var(--border-hi);
+      color: var(--text); font-size: 14px; font-family: var(--font);
+      outline: none; transition: border-color 150ms;
+    }
+    .checkout-email:focus { border-color: var(--amber); }
+    .checkout-email::placeholder { color: var(--text-faint); }
+    .checkout-form button { width: 100%; cursor: pointer; border: none; font-family: var(--font); }
+    .checkout-form button:disabled { opacity: 0.6; cursor: not-allowed; }
+
     /* Footer */
     footer {
       border-top: 1px solid var(--border);
@@ -276,7 +289,10 @@
               <li>Telegram, Slack, and web chat</li>
               <li>Photo-to-diagnosis</li>
             </ul>
-            <a href="/cmms" class="card-cta card-cta-primary">Start with MIRA</a>
+            <form class="checkout-form" data-plan="troubleshooter">
+              <input type="email" name="email" placeholder="Work email" required autocomplete="email" class="checkout-email" />
+              <button type="submit" class="card-cta card-cta-primary">Start with MIRA →</button>
+            </form>
             <p class="card-footnote">14-day money-back guarantee</p>
           </div>
 
@@ -293,7 +309,10 @@
               <li>All 3 adapters bundled (one price)</li>
               <li>Priority support</li>
             </ul>
-            <a href="/cmms" class="card-cta card-cta-ghost">Get MIRA Integrated</a>
+            <form class="checkout-form" data-plan="integrated">
+              <input type="email" name="email" placeholder="Work email" required autocomplete="email" class="checkout-email" />
+              <button type="submit" class="card-cta card-cta-ghost">Get MIRA Integrated →</button>
+            </form>
             <p class="card-footnote">14-day money-back guarantee</p>
           </div>
 
@@ -393,6 +412,36 @@
     document.querySelectorAll('.faq-q').forEach(function (q) {
       q.addEventListener('click', function () {
         q.classList.toggle('open');
+      });
+    });
+
+    document.querySelectorAll('.checkout-form').forEach(function (form) {
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var btn = form.querySelector('button');
+        var emailInput = form.querySelector('input[name="email"]');
+        var original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Redirecting…';
+        try {
+          var res = await fetch('/api/checkout/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailInput.value })
+          });
+          var data = await res.json();
+          if (data.url) {
+            window.location.href = data.url;
+          } else {
+            alert(data.error || 'Something went wrong. Please try again.');
+            btn.disabled = false;
+            btn.textContent = original;
+          }
+        } catch (err) {
+          alert('Network error. Please try again.');
+          btn.disabled = false;
+          btn.textContent = original;
+        }
       });
     });
   </script>
