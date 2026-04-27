@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
@@ -394,6 +394,7 @@ function AssetsPageInner() {
   const t = useTranslations("assets");
   const tCommon = useTranslations("common");
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -412,7 +413,7 @@ function AssetsPageInner() {
     fetch("/hub/api/assets")
       .then(r => {
         if (r.status === 401) {
-          window.location.href = "/hub/login?callbackUrl=/hub/assets";
+          router.push("/login?callbackUrl=/hub/assets");
           return null;
         }
         return r.json();
