@@ -1,0 +1,4 @@
+# Per-run scratch only. Final renders live under marketing/videos/<gen-id>/
+# and are tracked there explicitly.
+*
+!.gitignore

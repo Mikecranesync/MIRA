@@ -1,0 +1,24 @@
+# Pilot — 3-frame screenshot demo
+# Validates the screenshot-stitching path before committing to the full
+# 17-frame UX flow. Each frame gets one narration line; the assembler
+# divides total audio time evenly across frames.
+slug: ux-demo-pilot-2026-04-27
+output_dir: marketing/videos/ux-demo-pilot-2026-04-27
+width: 1920
+height: 1080
+zoom_amount: 0.02       # very subtle Ken Burns — UI text must stay crisp
+transition_duration: 0.5
+fit_mode: letterbox     # preserve all source pixels (no center-crop)
+tts_voice: onyx
+tts_model: gpt-4o-mini-tts
+voiceover_style: |
+  Speak as a confident industrial maintenance product narrator. Clear,
+  matter-of-fact, slightly conversational. No theatrics.
+
+frames:
+  - image: tools/audit/app-screenshots/ux-01-photo-upload.png
+    narration: "Snap a photo of the broken equipment with your phone."
+  - image: tools/audit/app-screenshots/ux-03-oc-fault.png
+    narration: "MIRA reads the nameplate, identifies the drive, and confirms the overcurrent fault."
+  - image: tools/audit/app-screenshots/ux-16-summary.png
+    narration: "Two minutes later, you have the root cause and the next step."
