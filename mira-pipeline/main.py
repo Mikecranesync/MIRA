@@ -298,7 +298,9 @@ async def _auth(request: Request, call_next):
         "/api/agents/public-status",
     ):
         return await call_next(request)
-    if PIPELINE_API_KEY:
+    # Localhost requests (docker-exec eval, internal health checks) skip auth
+    client_host = request.client.host if request.client else ""
+    if PIPELINE_API_KEY and client_host not in ("127.0.0.1", "::1"):
         auth = request.headers.get("Authorization", "")
         expected = f"Bearer {PIPELINE_API_KEY}"
         if auth != expected:
