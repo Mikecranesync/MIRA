@@ -2,6 +2,8 @@ import { test, expect } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
+
 // Proof-of-work spec for PR #707 (tenant_id filter on updateUploadStatus).
 // The DB-level change is exercised on every upload status transition. We can't
 // fully drive an authed upload from CI, so we verify:
@@ -20,7 +22,7 @@ const OUT_DIR = path.resolve(process.cwd(), "test-results/proof-pr-707");
 test.beforeAll(() => fs.mkdirSync(OUT_DIR, { recursive: true }));
 
 test("hub health endpoint returns 200 after rebuild", async ({ request }) => {
-  const res = await request.get("https://app.factorylm.com/hub/api/health");
+  const res = await request.get(`${HUB}/api/health`);
   expect(res.status()).toBe(200);
   const body = await res.text();
   console.log(`health body: ${body.slice(0, 200)}`);
@@ -32,7 +34,7 @@ test("/hub/upload redirects unauth user to /hub/login with callbackUrl", async (
     if (m.type() === "error") consoleErrors.push(m.text());
   });
 
-  await page.goto("https://app.factorylm.com/hub/upload", { waitUntil: "networkidle", timeout: 20000 });
+  await page.goto(`${HUB}/upload`, { waitUntil: "networkidle", timeout: 20000 });
 
   const finalUrl = page.url();
   console.log(`final url: ${finalUrl}`);
@@ -49,7 +51,7 @@ test("/hub/upload redirects unauth user to /hub/login with callbackUrl", async (
 test("/hub/api/uploads (unauth) returns 401 not 500", async ({ request }) => {
   // The route still exists and the new tenantId-bearing updateUploadStatus
   // signature did not break import resolution. 401 = healthy guard. 500 = bad.
-  const res = await request.get("https://app.factorylm.com/hub/api/uploads");
+  const res = await request.get(`${HUB}/api/uploads`);
   expect([401, 200]).toContain(res.status());
   console.log(`/hub/api/uploads status: ${res.status()}`);
 });

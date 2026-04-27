@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { upsertBinding } from "@/lib/bindings";
 import { newState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
+import { API_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +23,10 @@ export async function GET() {
         scopes: ["chat:write", "channels:read", "im:read", "im:write", "users:read"],
         meta: { workspace: "FactoryLM", displayName: "Slack (bot token)", method: "bot_token" },
       });
-      return NextResponse.redirect(`${appUrl}/hub/channels?provider=slack&status=connected`);
+      return NextResponse.redirect(`${appUrl}${API_BASE}/channels?provider=slack&status=connected`);
     }
     return NextResponse.redirect(
-      `${appUrl}/hub/channels?provider=slack&status=error&reason=oauth_not_configured`,
+      `${appUrl}${API_BASE}/channels?provider=slack&status=error&reason=oauth_not_configured`,
     );
   }
 
@@ -33,7 +34,7 @@ export async function GET() {
   const url = new URL("https://slack.com/oauth/v2/authorize");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("scope", "chat:write,channels:read,im:read,im:write,users:read");
-  url.searchParams.set("redirect_uri", `${appUrl}/hub/api/auth/slack/callback`);
+  url.searchParams.set("redirect_uri", `${appUrl}${API_BASE}/api/auth/slack/callback`);
   url.searchParams.set("state", state);
 
   const res = NextResponse.redirect(url.toString());

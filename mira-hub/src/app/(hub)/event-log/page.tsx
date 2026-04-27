@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslations } from "next-intl";
+import { API_BASE } from "@/lib/config";
 
 type SyncStatus = "synced" | "pending" | "failed" | "none";
 type Channel = "telegram" | "whatsapp" | "voice" | "email" | "webui";
@@ -156,7 +157,7 @@ export default function EventLogPage() {
 
   const loadEvents = useCallback(async () => {
     try {
-      const res = await fetch("/hub/api/events");
+      const res = await fetch(`${API_BASE}/api/events`);
       if (res.ok) {
         const data = await res.json();
         setEvents(Array.isArray(data) ? data.map(apiRowToEvent) : []);

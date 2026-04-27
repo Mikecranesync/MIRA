@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X, Sparkles, Package, Wrench, ShieldAlert, BookOpen } from "lucide-react";
 import { useToast } from "@/providers/toast-provider";
 import { Badge } from "@/components/ui/badge";
+import { API_BASE } from "@/lib/config";
 
 type PM = {
   id: string;
@@ -72,7 +73,7 @@ export default function SchedulePage() {
 
   // Fetch real PM schedules from API on mount
   useEffect(() => {
-    fetch("/hub/api/pm-schedules")
+    fetch(`${API_BASE}/api/pm-schedules`)
       .then(r => r.json())
       .then((data: { count: number; schedules: PM[] }) => {
         if (data.schedules && data.schedules.length > 0) {

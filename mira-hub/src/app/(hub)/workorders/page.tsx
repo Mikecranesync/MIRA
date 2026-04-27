@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useTranslations } from "next-intl";
+import { API_BASE } from "@/lib/config";
 
 type WO = {
   id: string;
@@ -66,7 +67,7 @@ export default function WorkOrdersPage() {
   const [autoPMCount, setAutoPMCount] = useState(0);
 
   useEffect(() => {
-    fetch("/hub/api/work-orders")
+    fetch(`${API_BASE}/api/work-orders`)
       .then(r => r.json())
       .then((data: { count: number; work_orders: WO[] }) => {
         if (data.work_orders) {

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Search, CheckCircle2, XCircle, ShieldCheck, Clock, Loader2, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useTranslations } from "next-intl";
+import { API_BASE } from "@/lib/config";
 
 type ApiUser = {
   id: string;
@@ -35,7 +36,7 @@ export default function AdminUsersPage() {
   const [updating, setUpdating] = useState<string | null>(null);
 
   async function loadUsers() {
-    const res = await fetch("/hub/api/admin/users");
+    const res = await fetch(`${API_BASE}/api/admin/users`);
     if (!res.ok) return;
     const { users: data } = await res.json() as { users: ApiUser[] };
     setUsers(data);

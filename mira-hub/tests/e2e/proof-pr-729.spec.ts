@@ -2,6 +2,8 @@ import { test, expect } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
+
 // Proof-of-work spec for PR #729 (magic-byte file sniffing).
 //
 // The actual sniff-and-reject path requires an authenticated POST
@@ -16,12 +18,12 @@ const OUT_DIR = path.resolve(process.cwd(), "test-results/proof-pr-729");
 test.beforeAll(() => fs.mkdirSync(OUT_DIR, { recursive: true }));
 
 test("hub health endpoint returns 200 after rebuild", async ({ request }) => {
-  const res = await request.get("https://app.factorylm.com/hub/api/health");
+  const res = await request.get(`${HUB}/api/health`);
   expect(res.status()).toBe(200);
 });
 
 test("/hub/api/uploads/local (unauth) → 307 → /hub/login", async ({ request }) => {
-  const res = await request.post("https://app.factorylm.com/hub/api/uploads/local/", {
+  const res = await request.post(`${HUB}/api/uploads/local/`, {
     maxRedirects: 0,
     failOnStatusCode: false,
   });
@@ -35,7 +37,7 @@ test("/hub/upload renders + screenshot proof", async ({ page }) => {
     if (m.type() === "error") consoleErrors.push(m.text());
   });
 
-  await page.goto("https://app.factorylm.com/hub/upload", {
+  await page.goto(`${HUB}/upload`, {
     waitUntil: "networkidle",
     timeout: 20000,
   });

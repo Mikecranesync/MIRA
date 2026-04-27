@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { newState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
+import { API_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function GET() {
 
   if (!clientId) {
     return NextResponse.redirect(
-      `${appUrl}/hub/channels?provider=confluence&status=error&reason=oauth_not_configured`,
+      `${appUrl}${API_BASE}/channels?provider=confluence&status=error&reason=oauth_not_configured`,
     );
   }
 
@@ -24,7 +25,7 @@ export async function GET() {
     "scope",
     "read:confluence-content.all read:confluence-space.summary offline_access",
   );
-  url.searchParams.set("redirect_uri", `${appUrl}/hub/api/auth/confluence/callback`);
+  url.searchParams.set("redirect_uri", `${appUrl}${API_BASE}/api/auth/confluence/callback`);
   url.searchParams.set("state", state);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("prompt", "consent");

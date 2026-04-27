@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { upsertBinding } from "@/lib/bindings";
 import { validateState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
+import { API_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
       client_id: process.env.ATLASSIAN_CLIENT_ID,
       client_secret: process.env.ATLASSIAN_CLIENT_SECRET,
       code,
-      redirect_uri: `${appUrl}/hub/api/auth/confluence/callback`,
+      redirect_uri: `${appUrl}${API_BASE}/api/auth/confluence/callback`,
     }),
   });
   const tokens = await tokenRes.json();
@@ -65,13 +66,13 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  const res = NextResponse.redirect(`${appUrl}/hub/channels?provider=confluence&status=connected`);
+  const res = NextResponse.redirect(`${appUrl}${API_BASE}/channels?provider=confluence&status=connected`);
   res.cookies.delete(stateCookieName("confluence"));
   return res;
 }
 
 function errorRedirect(appUrl: string, reason: string) {
   return NextResponse.redirect(
-    `${appUrl}/hub/channels?provider=confluence&status=error&reason=${encodeURIComponent(reason)}`,
+    `${appUrl}${API_BASE}/channels?provider=confluence&status=error&reason=${encodeURIComponent(reason)}`,
   );
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { newState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
+import { API_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function GET() {
 
   if (!appKey) {
     return NextResponse.redirect(
-      `${appUrl}/hub/channels?provider=dropbox&status=error&reason=oauth_not_configured`,
+      `${appUrl}${API_BASE}/channels?provider=dropbox&status=error&reason=oauth_not_configured`,
     );
   }
 
@@ -21,7 +22,7 @@ export async function GET() {
   url.searchParams.set("client_id", appKey);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("token_access_type", "offline");
-  url.searchParams.set("redirect_uri", `${appUrl}/hub/api/auth/dropbox/callback`);
+  url.searchParams.set("redirect_uri", `${appUrl}${API_BASE}/api/auth/dropbox/callback`);
   url.searchParams.set("state", state);
 
   const res = NextResponse.redirect(url.toString());

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { upsertBinding } from "@/lib/bindings";
 import { validateState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
+import { API_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
 
   const clientId = process.env.GOOGLE_CLIENT_ID!;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
-  const redirectUri = `${appUrl}/hub/api/auth/google/callback`;
+  const redirectUri = `${appUrl}${API_BASE}/api/auth/google/callback`;
 
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -65,13 +66,13 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  const res = NextResponse.redirect(`${appUrl}/hub/channels?provider=google&status=connected`);
+  const res = NextResponse.redirect(`${appUrl}${API_BASE}/channels?provider=google&status=connected`);
   res.cookies.delete(stateCookieName("google"));
   return res;
 }
 
 function errorRedirect(appUrl: string, reason: string) {
   return NextResponse.redirect(
-    `${appUrl}/hub/channels?provider=google&status=error&reason=${encodeURIComponent(reason)}`,
+    `${appUrl}${API_BASE}/channels?provider=google&status=error&reason=${encodeURIComponent(reason)}`,
   );
 }

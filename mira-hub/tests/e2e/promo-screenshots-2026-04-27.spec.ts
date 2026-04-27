@@ -8,7 +8,7 @@ import { test } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 
-const HUB = "https://app.factorylm.com/hub";
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
 const ADMIN = { email: "playwright@factorylm.com", password: "TestPass123" };
 const OUT = path.join(__dirname, "../../../docs/promo-screenshots");
 

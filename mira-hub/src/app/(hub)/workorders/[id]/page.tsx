@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PARTS } from "@/lib/parts-data";
 import { useToast } from "@/providers/toast-provider";
+import { API_BASE } from "@/lib/config";
 
 type Priority = "critical" | "high" | "medium" | "low";
 
