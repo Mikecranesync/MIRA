@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X, Sparkles } from "lucide-react";
+import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X, Sparkles, Package, Wrench, ShieldAlert, BookOpen } from "lucide-react";
 import { useToast } from "@/providers/toast-provider";
 import { Badge } from "@/components/ui/badge";
 
@@ -18,6 +18,11 @@ type PM = {
   auto_extracted?: boolean;
   source_citation?: string | null;
   criticality?: string;
+  parts_needed?: string[];
+  tools_needed?: string[];
+  safety_requirements?: string[];
+  manufacturer?: string | null;
+  model_number?: string | null;
 };
 
 // Fallback shown while loading or when no extracted PMs exist
@@ -325,36 +330,113 @@ function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onC
   const t = useTranslations("schedule");
   const tCommon = useTranslations("common");
   const cfg = STATUS_CFG[pm.status];
+  const critColor: Record<string, string> = { critical: "#DC2626", high: "#F97316", medium: "#2563EB", low: "#64748B" };
+  const crit = pm.criticality ?? "medium";
   return (
     <>
       <div className="fixed inset-0 z-40" style={{ backgroundColor: "rgba(0,0,0,0.4)" }} onClick={onClose} />
       <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl p-5 space-y-4"
-        style={{ backgroundColor: "var(--surface-0)", maxHeight: "80vh", overflowY: "auto" }}>
+        style={{ backgroundColor: "var(--surface-0)", maxHeight: "85vh", overflowY: "auto" }}>
+
+        {/* Title row */}
         <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className="text-xs font-mono" style={{ color: "var(--foreground-subtle)" }}>{pm.id}</p>
-            <h3 className="text-base font-semibold mt-0.5" style={{ color: "var(--foreground)" }}>{pm.title}</h3>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <p className="text-xs font-mono" style={{ color: "var(--foreground-subtle)" }}>{pm.id}</p>
+              {pm.auto_extracted && (
+                <span className="text-[10px] flex items-center gap-1 px-1.5 py-0.5 rounded-full font-medium"
+                  style={{ backgroundColor: "rgba(37,99,235,0.1)", color: "var(--brand-blue)" }}>
+                  <Sparkles className="w-2.5 h-2.5" />AI-extracted from manual
+                </span>
+              )}
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase"
+                style={{ backgroundColor: critColor[crit] + "18", color: critColor[crit] }}>
+                {crit}
+              </span>
+            </div>
+            <h3 className="text-base font-semibold leading-snug" style={{ color: "var(--foreground)" }}>{pm.title}</h3>
+            <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>{pm.asset}</p>
           </div>
           <button onClick={onClose} style={{ color: "var(--foreground-subtle)" }}><X className="w-5 h-5" /></button>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+
+        {/* Schedule grid */}
+        <div className="grid grid-cols-2 gap-2">
           {[
-            { label: t("fields.asset"),      value: pm.asset,                Icon: Calendar },
             { label: t("fields.status"),     value: t(cfg.labelKey),         Icon: Clock },
-            { label: t("fields.tech"),       value: pm.tech,                 Icon: User },
-            { label: t("fields.duration"),   value: `${pm.durationH}h est.`, Icon: Clock },
-            { label: t("fields.recurrence"), value: pm.recur,                Icon: RotateCcw },
             { label: t("fields.dueDate"),    value: pm.date,                 Icon: Calendar },
+            { label: t("fields.recurrence"), value: pm.recur,                Icon: RotateCcw },
+            { label: t("fields.duration"),   value: `${pm.durationH}h est.`, Icon: Clock },
           ].map(({ label, value, Icon }) => (
             <div key={label} className="p-3 rounded-lg" style={{ backgroundColor: "var(--surface-1)" }}>
               <div className="flex items-center gap-1 mb-1">
                 <Icon className="w-3 h-3" style={{ color: "var(--foreground-subtle)" }} />
                 <span className="text-[10px] uppercase tracking-wide" style={{ color: "var(--foreground-subtle)" }}>{label}</span>
               </div>
-              <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{value}</p>
+              <p className="text-xs font-medium" style={{ color: "var(--foreground)" }}>{value}</p>
             </div>
           ))}
         </div>
+
+        {/* Parts needed */}
+        {pm.parts_needed && pm.parts_needed.length > 0 && (
+          <div className="rounded-xl p-3 space-y-1.5" style={{ backgroundColor: "var(--surface-1)" }}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Package className="w-3.5 h-3.5" style={{ color: "var(--foreground-subtle)" }} />
+              <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--foreground-subtle)" }}>Parts Needed</span>
+            </div>
+            {pm.parts_needed.map((p, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: "var(--brand-blue)" }} />
+                <span className="text-xs" style={{ color: "var(--foreground)" }}>{p}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Tools needed */}
+        {pm.tools_needed && pm.tools_needed.length > 0 && (
+          <div className="rounded-xl p-3 space-y-1.5" style={{ backgroundColor: "var(--surface-1)" }}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Wrench className="w-3.5 h-3.5" style={{ color: "var(--foreground-subtle)" }} />
+              <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--foreground-subtle)" }}>Tools</span>
+            </div>
+            {pm.tools_needed.map((tool, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#64748B" }} />
+                <span className="text-xs" style={{ color: "var(--foreground)" }}>{tool}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Safety requirements */}
+        {pm.safety_requirements && pm.safety_requirements.length > 0 && (
+          <div className="rounded-xl p-3 space-y-1.5 border" style={{ backgroundColor: "#FFF7ED", borderColor: "#FDBA74" }}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <ShieldAlert className="w-3.5 h-3.5" style={{ color: "#F97316" }} />
+              <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#F97316" }}>Safety Requirements</span>
+            </div>
+            {pm.safety_requirements.map((s, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: "#F97316" }} />
+                <span className="text-xs font-medium" style={{ color: "#92400E" }}>{s}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Manual citation */}
+        {pm.source_citation && (
+          <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: "var(--surface-1)" }}>
+            <BookOpen className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "var(--foreground-subtle)" }} />
+            <div>
+              <span className="text-[10px] uppercase tracking-wide block mb-0.5" style={{ color: "var(--foreground-subtle)" }}>Manual Reference</span>
+              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>{pm.source_citation}</p>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2">
           <button onClick={onComplete} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"
             style={{ backgroundColor: "#16A34A" }}>
