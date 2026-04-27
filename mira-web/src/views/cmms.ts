@@ -227,7 +227,8 @@ function navbar(): string {
   <nav class="fl-topbar-nav" aria-label="Primary">
     <a href="/" data-cta="cmms-nav-home">Home</a>
     <a href="/pricing" data-cta="cmms-nav-pricing">Pricing</a>
-    <a href="/limitations" data-cta="cmms-nav-limitations">Limitations</a>
+    <!-- TODO: /limitations page not yet built; link disabled until page exists -->
+    <a href="#" data-cta="cmms-nav-limitations" aria-disabled="true">Limitations</a>
   </nav>
   <div></div>
 </header>`;
@@ -310,7 +311,8 @@ function footer(): string {
   <div class="fl-footer-inner">
     <p class="fl-footer-brand">FactoryLM &middot; Built for industrial maintenance.</p>
     <ul class="fl-footer-links">
-      <li><a href="/limitations" data-cta="cmms-footer-limitations">Limitations</a></li>
+      <!-- TODO: /limitations page not yet built; link disabled until page exists -->
+      <li><a href="#" data-cta="cmms-footer-limitations" aria-disabled="true">Limitations</a></li>
       <li><a href="/trust" data-cta="cmms-footer-trust">Trust</a></li>
       <li><a href="/privacy" data-cta="cmms-footer-privacy">Privacy</a></li>
       <li><a href="/terms" data-cta="cmms-footer-terms">Terms</a></li>
