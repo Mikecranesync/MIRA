@@ -512,7 +512,7 @@
     }
   },
   "cmms": {
-    "title": "CMMS系统集成",
+    "title": "Atlas CMMS设置",
     "connected": "已连接 Atlas CMMS",
     "notConfigured": "未配置",
     "openAtlas": "打开Atlas",

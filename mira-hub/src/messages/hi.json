@@ -512,7 +512,7 @@
     }
   },
   "cmms": {
-    "title": "CMMS एकीकरण",
+    "title": "Atlas CMMS सेटअप",
     "connected": "Atlas CMMS से जुड़ा",
     "notConfigured": "कॉन्फ़िगर नहीं",
     "openAtlas": "Atlas खोलें",

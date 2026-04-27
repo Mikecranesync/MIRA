@@ -512,7 +512,7 @@
     }
   },
   "cmms": {
-    "title": "Integración CMMS",
+    "title": "Configuración Atlas CMMS",
     "connected": "Conectado a Atlas CMMS",
     "notConfigured": "No configurado",
     "openAtlas": "Abrir Atlas",
