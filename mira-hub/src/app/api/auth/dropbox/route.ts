@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { newState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, OAUTH_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ export async function GET() {
   url.searchParams.set("client_id", appKey);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("token_access_type", "offline");
-  url.searchParams.set("redirect_uri", `${appUrl}${API_BASE}/api/auth/dropbox/callback`);
+  url.searchParams.set("redirect_uri", `${appUrl}${OAUTH_BASE}/api/auth/dropbox/callback`);
   url.searchParams.set("state", state);
 
   const res = NextResponse.redirect(url.toString());
