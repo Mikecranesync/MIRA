@@ -66,7 +66,7 @@ export default function WorkOrdersPage() {
   const [autoPMCount, setAutoPMCount] = useState(0);
 
   useEffect(() => {
-    fetch("/api/work-orders")
+    fetch("/hub/api/work-orders")
       .then(r => r.json())
       .then((data: { count: number; work_orders: WO[] }) => {
         if (data.work_orders) {

@@ -72,7 +72,7 @@ export default function SchedulePage() {
 
   // Fetch real PM schedules from API on mount
   useEffect(() => {
-    fetch("/api/pm-schedules")
+    fetch("/hub/api/pm-schedules")
       .then(r => r.json())
       .then((data: { count: number; schedules: PM[] }) => {
         if (data.schedules && data.schedules.length > 0) {
