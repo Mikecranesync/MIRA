@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -61,12 +61,22 @@ function NavItem({ item, collapsed, active, label }: NavItemProps) {
   );
 }
 
+type MeData = { name: string; initials: string; role: string };
+
 export function Sidebar({ role = "admin" }: { role?: string }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const t = useTranslations("nav");
   const tTheme = useTranslations("theme");
+  const [me, setMe] = useState<MeData | null>(null);
+
+  useEffect(() => {
+    fetch("/api/me")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: MeData | null) => d && setMe(d))
+      .catch(() => {});
+  }, []);
 
   const visible = NAV_ITEMS.filter((item) =>
     (item.roles as readonly string[]).includes(role)
@@ -200,18 +210,18 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
           <div className="flex justify-center">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
               style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)", color: "white" }}>
-              MH
+              {me?.initials ?? "?"}
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
               style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)", color: "white" }}>
-              MH
+              {me?.initials ?? "?"}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate" style={{ color: "var(--sidebar-fg)" }}>Mike Harper</p>
-              <p className="text-[11px] capitalize" style={{ color: "#64748B" }}>{role}</p>
+              <p className="text-xs font-medium truncate" style={{ color: "var(--sidebar-fg)" }}>{me?.name ?? "—"}</p>
+              <p className="text-[11px] capitalize" style={{ color: "#64748B" }}>{me?.role ?? role}</p>
             </div>
             <button
               className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
