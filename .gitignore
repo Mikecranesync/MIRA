@@ -152,6 +152,11 @@ htmlcov/
 # Playwright MCP session ephemera (per-session, regenerable)
 .playwright-mcp/
 
+# Web-review skill working directories (bare-date dirs hold node_modules,
+# audit JSON, probe scripts — regenerable). Per-PR proof dirs (date-pr-NNN)
+# are explicitly tracked.
+tools/web-review-runs/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
+
 # Marketing video binaries — large, regenerable; keep spend.json tracked
 marketing/videos/**/*.mp4
 marketing/videos/**/*.mov
