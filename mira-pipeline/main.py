@@ -270,6 +270,9 @@ async def lifespan(app: FastAPI):
     # Start feedback sync background thread (polls Open WebUI DB for new ratings)
     sync_thread = threading.Thread(target=feedback_sync_loop, daemon=True)
     sync_thread.start()
+    # Start PM midnight scheduler — fires daily at UTC midnight, creates WOs for due PMs
+    from shared.pm_scheduler import run_midnight_scheduler
+    asyncio.create_task(run_midnight_scheduler())
     _ver = Path("/app/VERSION").read_text().strip() if Path("/app/VERSION").exists() else "unknown"
     logger.info("MIRA Pipeline started — version=%s db=%s", _ver, DB_PATH)
     yield
@@ -1417,4 +1420,33 @@ async def pm_schedules_list(
         "count": len(schedules),
         "schedules": schedules,
     }
+
+
+# ── PM Work Order Auto-Generator — Auto-PM Pipeline step 5 ──────────────────
+# POST /api/pm/generate-work-orders → check due PMs, create WOs, advance schedule
+
+
+@app.post("/api/pm/generate-work-orders")
+async def pm_generate_work_orders(request: Request):
+    """Manually trigger PM work order generation for due schedules.
+
+    Body JSON (optional): { "tenant_id": "mike" }
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    tenant_id: str | None = body.get("tenant_id") or None
+
+    from shared.pm_scheduler import generate_due_work_orders
+
+    result = await generate_due_work_orders(tenant_id=tenant_id)
+    logger.info(
+        "PM_GENERATE_WO_MANUAL tenant=%s created=%d due=%d",
+        tenant_id,
+        result["work_orders_created"],
+        result["due_pms_found"],
+    )
+    return result
 
