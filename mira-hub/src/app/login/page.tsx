@@ -4,7 +4,7 @@ import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { Factory, Loader2, Eye, EyeOff } from "lucide-react";
+import { Factory, Loader2, Eye, EyeOff, Mail, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -18,6 +18,10 @@ function LoginForm() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [magicEmail, setMagicEmail] = useState("");
+  const [magicLoading, setMagicLoading] = useState(false);
+  const [magicSent, setMagicSent] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [error, setError] = useState(initialError ? "Sign in failed" : "");
 
   async function handleSubmit(e: React.FormEvent) {
@@ -42,6 +46,29 @@ function LoginForm() {
     setGoogleLoading(true);
     setError("");
     await signIn("google", { callbackUrl });
+  }
+
+  async function handleMagicLink(e: React.FormEvent) {
+    e.preventDefault();
+    if (!magicEmail) return;
+    setMagicLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/hub/api/auth/magic-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: magicEmail }),
+      });
+      if (res.ok) {
+        setMagicSent(true);
+      } else {
+        setError("Failed to send magic link. Try again.");
+      }
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setMagicLoading(false);
+    }
   }
 
   return (
@@ -80,6 +107,7 @@ function LoginForm() {
             boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
           }}
         >
+          {/* Google */}
           <button
             type="button"
             onClick={handleGoogle}
@@ -96,77 +124,130 @@ function LoginForm() {
                 <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" />
               </svg>
             )}
-            <span>Sign in with Google</span>
+            <span>Continue with Google</span>
           </button>
 
-          <div className="flex items-center gap-3 my-4">
+          <div className="flex items-center gap-3 mb-4">
             <div className="flex-1 h-px bg-slate-700/50" />
             <span className="text-xs text-slate-500">or</span>
             <div className="flex-1 h-px bg-slate-700/50" />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@company.com"
-                autoComplete="email"
-                required
-                className="h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
-              />
+          {/* Magic link */}
+          {magicSent ? (
+            <div className="text-center py-2 mb-4">
+              <Mail className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+              <p className="text-white font-semibold text-sm">Check your inbox</p>
+              <p className="text-slate-400 text-xs mt-1">We sent a sign-in link to <strong>{magicEmail}</strong></p>
+              <button onClick={() => setMagicSent(false)} className="text-blue-400 text-xs mt-2 hover:text-blue-300">
+                Send again
+              </button>
             </div>
-
-            <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
-              <div className="relative">
+          ) : (
+            <form onSubmit={handleMagicLink} className="mb-4">
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Email magic link</label>
+              <div className="flex gap-2">
                 <Input
-                  type={showPw ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
+                  type="email"
+                  value={magicEmail}
+                  onChange={(e) => setMagicEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  autoComplete="email"
                   required
-                  className="h-11 pr-10 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                  className="flex-1 h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                 />
                 <button
-                  type="button"
-                  onClick={() => setShowPw((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                  type="submit"
+                  disabled={magicLoading || !magicEmail}
+                  className="px-4 h-11 rounded-md font-medium text-white text-sm disabled:opacity-50 flex items-center gap-1.5"
+                  style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)" }}
                 >
-                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {magicLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
                 </button>
               </div>
-            </div>
+            </form>
+          )}
 
-            {error && (
-              <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
-                {error}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 h-px bg-slate-700/50" />
+            <span className="text-xs text-slate-500">or</span>
+            <div className="flex-1 h-px bg-slate-700/50" />
+          </div>
+
+          {/* Password — collapsible */}
+          <button
+            type="button"
+            onClick={() => setShowPasswordForm(v => !v)}
+            className="w-full flex items-center justify-between text-xs text-slate-400 hover:text-slate-200 transition-colors mb-3"
+          >
+            <span>Sign in with password</span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${showPasswordForm ? "rotate-180" : ""}`} />
+          </button>
+
+          {showPasswordForm && (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  autoComplete="email"
+                  required
+                  className="h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                />
               </div>
-            )}
 
-            <Button
-              type="submit"
-              className="w-full h-11 text-base font-semibold mt-2"
-              disabled={loading}
-              style={{ background: loading ? undefined : "linear-gradient(135deg, #2563EB, #0891B2)" }}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Signing in
-                </>
-              ) : (
-                "Sign in"
-              )}
-            </Button>
-          </form>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
+                <div className="relative">
+                  <Input
+                    type={showPw ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    required
+                    className="h-11 pr-10 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                  >
+                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full h-11 text-base font-semibold"
+                disabled={loading}
+                style={{ background: loading ? undefined : "linear-gradient(135deg, #2563EB, #0891B2)" }}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Signing in
+                  </>
+                ) : (
+                  "Sign in"
+                )}
+              </Button>
+            </form>
+          )}
+
+          {error && (
+            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400 mt-4">
+              {error}
+            </div>
+          )}
 
           <p className="text-center text-sm text-slate-400 mt-6">
             Don&apos;t have an account?{" "}
             <Link href="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
-              Create one
+              Start free trial
             </Link>
           </p>
         </div>

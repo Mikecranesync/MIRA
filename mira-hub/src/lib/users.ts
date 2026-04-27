@@ -1,5 +1,7 @@
 import pool from "@/lib/db";
 
+export type UserStatus = "pending" | "trial" | "approved" | "expired" | "admin";
+
 export interface HubUser {
   id: string;
   email: string;
@@ -8,6 +10,9 @@ export interface HubUser {
   tenantId: string;
   name: string | null;
   role: string;
+  status: UserStatus;
+  trialExpiresAt: Date | null;
+  plan: string | null;
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -32,9 +37,12 @@ export function ensureSchema(): Promise<void> {
         google_sub     TEXT,
         tenant_id      TEXT NOT NULL REFERENCES hub_tenants(id),
         name           TEXT,
-        role           TEXT NOT NULL DEFAULT 'owner',
-        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        role             TEXT NOT NULL DEFAULT 'owner',
+        status           TEXT NOT NULL DEFAULT 'trial',
+        trial_expires_at TIMESTAMPTZ,
+        plan             TEXT,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
     await pool.query(`
@@ -49,6 +57,16 @@ export function ensureSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_hub_users_tenant
         ON hub_users (tenant_id)
     `);
+    // Idempotent migrations: add new columns to existing tables
+    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'trial'`);
+    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS plan TEXT`);
+    // Promote admin and set trial expiry for existing trial users
+    await pool.query(`UPDATE hub_users SET status = 'admin' WHERE email_lower = 'mike@factorylm.com' AND status != 'admin'`);
+    await pool.query(`
+      UPDATE hub_users SET trial_expires_at = created_at + INTERVAL '7 days'
+      WHERE status = 'trial' AND trial_expires_at IS NULL
+    `);
   })();
   return schemaReady;
 }
@@ -62,14 +80,18 @@ function rowToUser(r: Record<string, unknown>): HubUser {
     tenantId: String(r.tenant_id),
     name: (r.name as string) ?? null,
     role: String(r.role ?? "owner"),
+    status: (r.status as UserStatus) ?? "trial",
+    trialExpiresAt: r.trial_expires_at ? new Date(r.trial_expires_at as string) : null,
+    plan: (r.plan as string) ?? null,
   };
 }
+
+const USER_COLS = "id, email, password_hash, google_sub, tenant_id, name, role, status, trial_expires_at, plan";
 
 export async function findUserByEmail(email: string): Promise<HubUser | null> {
   await ensureSchema();
   const { rows } = await pool.query(
-    `SELECT id, email, password_hash, google_sub, tenant_id, name, role
-       FROM hub_users WHERE email_lower = LOWER($1) LIMIT 1`,
+    `SELECT ${USER_COLS} FROM hub_users WHERE email_lower = LOWER($1) LIMIT 1`,
     [email],
   );
   return rows[0] ? rowToUser(rows[0]) : null;
@@ -78,11 +100,74 @@ export async function findUserByEmail(email: string): Promise<HubUser | null> {
 export async function findUserById(id: string): Promise<HubUser | null> {
   await ensureSchema();
   const { rows } = await pool.query(
-    `SELECT id, email, password_hash, google_sub, tenant_id, name, role
-       FROM hub_users WHERE id = $1 LIMIT 1`,
+    `SELECT ${USER_COLS} FROM hub_users WHERE id = $1 LIMIT 1`,
     [id],
   );
   return rows[0] ? rowToUser(rows[0]) : null;
+}
+
+export async function listAllUsers(): Promise<HubUser[]> {
+  await ensureSchema();
+  const { rows } = await pool.query(
+    `SELECT ${USER_COLS}, created_at FROM hub_users ORDER BY created_at DESC`,
+  );
+  return rows.map(rowToUser);
+}
+
+export async function updateUserStatus(id: string, status: UserStatus): Promise<void> {
+  await ensureSchema();
+  await pool.query(
+    `UPDATE hub_users SET status = $1, updated_at = NOW() WHERE id = $2`,
+    [status, id],
+  );
+}
+
+// ── Magic link tokens ──────────────────────────────────────────────────────────
+
+let magicSchemaReady: Promise<void> | null = null;
+
+function ensureMagicSchema(): Promise<void> {
+  if (magicSchemaReady) return magicSchemaReady;
+  magicSchemaReady = (async () => {
+    await ensureSchema();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS hub_magic_tokens (
+        token      TEXT PRIMARY KEY,
+        email      TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at    TIMESTAMPTZ
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_magic_tokens_email ON hub_magic_tokens (email)
+    `);
+  })();
+  return magicSchemaReady;
+}
+
+export async function createMagicToken(email: string): Promise<string> {
+  await ensureMagicSchema();
+  const { randomUUID } = await import("crypto");
+  const token = randomUUID();
+  await pool.query(
+    `INSERT INTO hub_magic_tokens (token, email, expires_at)
+     VALUES ($1, $2, NOW() + INTERVAL '15 minutes')
+     ON CONFLICT (token) DO NOTHING`,
+    [token, email.toLowerCase()],
+  );
+  return token;
+}
+
+export async function validateMagicToken(token: string): Promise<{ email: string } | null> {
+  await ensureMagicSchema();
+  const { rows } = await pool.query(
+    `UPDATE hub_magic_tokens
+     SET used_at = NOW()
+     WHERE token = $1 AND expires_at > NOW() AND used_at IS NULL
+     RETURNING email`,
+    [token],
+  );
+  return rows[0] ? { email: String(rows[0].email) } : null;
 }
 
 export interface EnsureUserAndTenantInput {
@@ -132,8 +217,8 @@ export async function ensureUserAndTenant(
     const {
       rows: [user],
     } = await client.query(
-      `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO hub_users (email, password_hash, google_sub, tenant_id, name, status, trial_expires_at)
+       VALUES ($1, $2, $3, $4, $5, 'trial', NOW() + INTERVAL '7 days')
        RETURNING id, email`,
       [input.email, input.passwordHash ?? null, input.googleSub ?? null, tenantId, input.name ?? null],
     );
