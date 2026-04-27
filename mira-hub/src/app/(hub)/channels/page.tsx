@@ -5,8 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { Settings, X, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
-import {
 import { API_BASE } from "@/lib/config";
+import {
   getConnection,
   setConnection,
   removeConnection,
