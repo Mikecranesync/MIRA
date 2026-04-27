@@ -421,6 +421,9 @@
     "title": "Reportes",
     "subtitle": "Análisis y KPIs",
     "comingSoon": "Análisis completo próximamente.",
+    "generateReport": "Generar informe IA",
+    "generating": "Generando…",
+    "aiReport": "Informe de mantenimiento IA",
     "overallCompliance": "Cumplimiento general",
     "kpiLabels": {
       "mttr": "MTTR",

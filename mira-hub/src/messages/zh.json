@@ -421,6 +421,9 @@
     "title": "报告",
     "subtitle": "数据分析与KPI",
     "comingSoon": "完整数据分析即将推出。",
+    "generateReport": "生成AI报告",
+    "generating": "生成中…",
+    "aiReport": "AI维护报告",
     "overallCompliance": "整体达标率",
     "kpiLabels": {
       "mttr": "平均修复时间",

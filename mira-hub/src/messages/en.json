@@ -407,6 +407,9 @@
     "title": "Reports",
     "subtitle": "Analytics & KPIs",
     "comingSoon": "Full analytics coming soon.",
+    "generateReport": "Generate AI Report",
+    "generating": "Generating…",
+    "aiReport": "AI Maintenance Report",
     "overallCompliance": "Overall compliance",
     "kpiLabels": {
       "mttr": "MTTR",

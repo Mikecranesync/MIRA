@@ -421,6 +421,9 @@
     "title": "रिपोर्ट",
     "subtitle": "विश्लेषण और KPI",
     "comingSoon": "पूर्ण विश्लेषण जल्द आ रहा है।",
+    "generateReport": "AI रिपोर्ट बनाएं",
+    "generating": "बन रहा है…",
+    "aiReport": "AI रखरखाव रिपोर्ट",
     "overallCompliance": "कुल अनुपालन",
     "kpiLabels": {
       "mttr": "MTTR",
