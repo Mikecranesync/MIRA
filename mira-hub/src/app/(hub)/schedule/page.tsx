@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X } from "lucide-react";
+import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X, Sparkles } from "lucide-react";
 import { useToast } from "@/providers/toast-provider";
 import { Badge } from "@/components/ui/badge";
 
@@ -16,9 +15,13 @@ type PM = {
   recur: string;
   durationH: number;
   status: "scheduled" | "overdue" | "completed" | "inprogress";
+  auto_extracted?: boolean;
+  source_citation?: string | null;
+  criticality?: string;
 };
 
-const PMS: PM[] = [
+// Fallback shown while loading or when no extracted PMs exist
+const FALLBACK_PMS: PM[] = [
   { id: "PM-001", title: "Air Compressor Full PM",    asset: "Air Compressor #1", date: "2026-04-25", tech: "Mike H.",  recur: "Monthly",    durationH: 2, status: "scheduled" },
   { id: "PM-002", title: "Conveyor Belt Lubrication", asset: "Conveyor Belt #3",  date: "2026-04-28", tech: "John S.", recur: "Weekly",     durationH: 1, status: "scheduled" },
   { id: "PM-003", title: "Pump Station A Inspection", asset: "Pump Station A",    date: "2026-04-22", tech: "Sara K.", recur: "Bi-Weekly",  durationH: 3, status: "inprogress" },
@@ -57,14 +60,31 @@ export default function SchedulePage() {
   const [month, setMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [selectedPM, setSelectedPM] = useState<PM | null>(null);
+  const [pms, setPms] = useState<PM[]>(FALLBACK_PMS);
+  const [loading, setLoading] = useState(true);
+  const [extractedCount, setExtractedCount] = useState(0);
   const { toast } = useToast();
+
+  // Fetch real PM schedules from API on mount
+  useEffect(() => {
+    fetch("/api/pm-schedules")
+      .then(r => r.json())
+      .then((data: { count: number; schedules: PM[] }) => {
+        if (data.schedules && data.schedules.length > 0) {
+          setPms(data.schedules);
+          setExtractedCount(data.schedules.filter(p => p.auto_extracted).length);
+        }
+      })
+      .catch(() => {/* keep fallback */})
+      .finally(() => setLoading(false));
+  }, []);
 
   const cells = getCalendarDays(year, month);
   const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
 
   function pmsByDay(day: number) {
     const dateStr = `${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-    return PMS.filter(p => p.date === dateStr);
+    return pms.filter(p => p.date === dateStr);
   }
 
   function prevMonth() {
@@ -76,12 +96,12 @@ export default function SchedulePage() {
     else setMonth(m => m + 1);
   }
 
-  const overdueCount = PMS.filter(p => p.status === "overdue").length;
-  const scheduledCount = PMS.filter(p => p.status === "scheduled").length;
+  const overdueCount = pms.filter(p => p.status === "overdue").length;
+  const scheduledCount = pms.filter(p => p.status === "scheduled").length;
 
-  const sortedPMs = [...PMS].sort((a, b) => {
-    const order = { overdue: 0, inprogress: 1, scheduled: 2, completed: 3 };
-    return order[a.status] - order[b.status] || a.date.localeCompare(b.date);
+  const sortedPMs = [...pms].sort((a, b) => {
+    const order: Record<string, number> = { overdue: 0, inprogress: 1, scheduled: 2, completed: 3 };
+    return (order[a.status] ?? 4) - (order[b.status] ?? 4) || a.date.localeCompare(b.date);
   });
 
   return (
@@ -91,7 +111,17 @@ export default function SchedulePage() {
         <div className="px-4 md:px-6 pt-3 pb-3">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
+                {loading && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full animate-pulse" style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-subtle)" }}>loading…</span>
+                )}
+                {!loading && extractedCount > 0 && (
+                  <span className="text-[10px] flex items-center gap-1 px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(37,99,235,0.08)", color: "var(--brand-blue)" }}>
+                    <Sparkles className="w-2.5 h-2.5" />{extractedCount} AI-extracted
+                  </span>
+                )}
+              </div>
               <div className="flex gap-3 mt-0.5">
                 {overdueCount > 0 && (
                   <span className="text-[11px] font-medium flex items-center gap-1" style={{ color: "var(--status-red)" }}>
@@ -199,7 +229,7 @@ export default function SchedulePage() {
           {/* Day detail panel */}
           {selectedDay && <DayDetail
             selectedDay={selectedDay}
-            pms={PMS.filter(p => p.date === selectedDay)}
+            pms={pms.filter(p => p.date === selectedDay)}
             months={MONTHS}
             onClose={() => setSelectedDay(null)}
             onSelectPM={setSelectedPM}

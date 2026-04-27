@@ -1326,3 +1326,95 @@ async def agent_run_now(agent_name: str, request: Request):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+# ── PM Schedule Extractor — NORTH STAR FLYWHEEL CORE ────────────────────────
+# Auto-PM Pipeline step 4: chunks → structured PM schedules → NeonDB storage
+# POST /api/pm/extract  → run full extraction + store + return schedules
+# GET  /api/pm/schedules → query stored schedules for a model
+
+
+@app.post("/api/pm/extract")
+async def pm_extract(request: Request):
+    """Extract PM schedules from an equipment's indexed manual chunks.
+
+    Body JSON: { "manufacturer": "Yaskawa", "model_number": "GA500",
+                 "tenant_id": "mike", "equipment_id": null }
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON body")
+
+    manufacturer = str(body.get("manufacturer", "")).strip()
+    model_number = str(body.get("model_number", "")).strip()
+    tenant_id = str(body.get("tenant_id", "mike")).strip() or "mike"
+    equipment_id = body.get("equipment_id")
+
+    if not manufacturer or not model_number:
+        raise HTTPException(400, "manufacturer and model_number are required")
+
+    from shared.pm_extractor import (
+        extract_pm_schedules,
+        get_chunks_for_model,
+        store_pm_schedules,
+    )
+
+    chunks = get_chunks_for_model(manufacturer, model_number)
+    if not chunks:
+        return {
+            "manufacturer": manufacturer,
+            "model_number": model_number,
+            "chunks_found": 0,
+            "schedules": [],
+            "message": "No PM-relevant chunks found for this equipment model",
+        }
+
+    schedules = await extract_pm_schedules(chunks, manufacturer, model_number)
+    stored = store_pm_schedules(
+        schedules,
+        manufacturer=manufacturer,
+        model_number=model_number,
+        tenant_id=tenant_id,
+        equipment_id=equipment_id,
+    )
+
+    logger.info(
+        "PM_EXTRACT manufacturer=%s model=%s chunks=%d schedules=%d stored=%d",
+        manufacturer,
+        model_number,
+        len(chunks),
+        len(schedules),
+        stored,
+    )
+
+    return {
+        "manufacturer": manufacturer,
+        "model_number": model_number,
+        "chunks_found": len(chunks),
+        "schedules_extracted": len(schedules),
+        "schedules_stored": stored,
+        "schedules": schedules,
+    }
+
+
+@app.get("/api/pm/schedules")
+async def pm_schedules_list(
+    tenant_id: str = "mike",
+    manufacturer: str = "",
+    model_number: str = "",
+    equipment_id: str = "",
+):
+    """Return stored PM schedules from NeonDB for a tenant."""
+    from shared.pm_extractor import get_stored_pm_schedules
+
+    schedules = get_stored_pm_schedules(
+        tenant_id=tenant_id,
+        manufacturer=manufacturer or None,
+        model_number=model_number or None,
+        equipment_id=equipment_id or None,
+    )
+    return {
+        "tenant_id": tenant_id,
+        "count": len(schedules),
+        "schedules": schedules,
+    }
+
