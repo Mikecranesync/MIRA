@@ -1,5 +1,10 @@
 # Hot Cache — 2026-04-27 — CHARLIE
 
+## eval-fixer run — 2026-04-27
+- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0103.md`
+- Action: issue-filed (#753)
+- All 57 fixtures failed `cp_pipeline_active` with 0-char responses — pipeline silent across the board, infra/cascade issue, not patchable. State stayed IDLE because no response was ever generated.
+
 ## Session — 2026-04-27 (CHARLIE, PM end-to-end demo)
 
 - **PM Work Order Auto-Generator shipped**: `pm_scheduler.py` + `/api/pm/generate-work-orders` in mira-pipeline. Generates WOs from due `pm_schedules`, mirrors to Atlas CMMS, runs at UTC midnight via asyncio task. Fixed enums: `auto_pm` (sourcetype), `PM` (routetype), `user_id='pm_scheduler'`, equipment_id FK via `_resolve_equipment_id()`.
