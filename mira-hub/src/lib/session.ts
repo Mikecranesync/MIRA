@@ -21,8 +21,17 @@ export class UnauthorizedError extends Error {
 // null in App Router Route Handlers on Next.js 16, causing false 401s for
 // authenticated users.  getToken with the raw cookie store is the same
 // mechanism the middleware already uses reliably.
+//
+// Cookie name: next-auth v4 uses __Secure- prefix on HTTPS. Detect which
+// cookie is actually present rather than relying on NEXTAUTH_URL or req.url
+// (both absent when constructing a fake req from next/headers cookies).
 export async function requireSession(): Promise<SessionContext> {
   const cookieStore = await cookies();
+
+  const SECURE_NAME = "__Secure-next-auth.session-token";
+  const REGULAR_NAME = "next-auth.session-token";
+  const cookieName = cookieStore.get(SECURE_NAME) ? SECURE_NAME : REGULAR_NAME;
+
   const cookieHeader = cookieStore.getAll()
     .map(c => `${c.name}=${c.value}`)
     .join("; ");
@@ -30,6 +39,7 @@ export async function requireSession(): Promise<SessionContext> {
   const token = await getToken({
     req: { headers: { cookie: cookieHeader } } as Parameters<typeof getToken>[0]["req"],
     secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "",
+    cookieName,
   });
 
   if (!token?.uid || !token?.tid) {
