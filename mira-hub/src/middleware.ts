@@ -1,18 +1,49 @@
 import { withAuth, type NextRequestWithAuth } from "next-auth/middleware";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 
-// withAuth's two-arg form runs the inner middleware ONLY when authorized.
-// When AUTH_SECRET is unset in the runtime env, getToken throws and withAuth
-// silently returns NextResponse.next() without invoking the inner function
-// at all (per PR #634's issue body). That means we can't put the basePath
-// root redirect inside withAuth — it has to fire before withAuth gets the
-// chance to fall through.
-const authMiddleware = withAuth({
-  pages: {
-    signIn: "/login",
+// Gate pages: authenticated users with non-approved status land here;
+// skip the status check when already on these pages to avoid redirect loops.
+const GATE_PATHS = ["/pending-approval", "/upgrade", "/magic"];
+
+// withAuth's two-arg form: inner function runs ONLY when authorized (token exists).
+// The outer middleware handles the basePath root redirect before withAuth runs.
+const authMiddleware = withAuth(
+  function onAuthorized(req: NextRequestWithAuth) {
+    const token = req.nextauth?.token;
+    if (!token) return NextResponse.next();
+
+    const pathname = req.nextUrl.pathname;
+    if (GATE_PATHS.some(p => pathname.startsWith(p))) return NextResponse.next();
+
+    const status = String(token.status ?? "trial");
+
+    if (status === "pending") {
+      const url = req.nextUrl.clone();
+      url.pathname = "/pending-approval";
+      return NextResponse.redirect(url);
+    }
+
+    if (status === "expired") {
+      const url = req.nextUrl.clone();
+      url.pathname = "/upgrade";
+      return NextResponse.redirect(url);
+    }
+
+    if (status === "trial" && token.trialExpiresAt) {
+      if (new Date() > new Date(token.trialExpiresAt as string)) {
+        const url = req.nextUrl.clone();
+        url.pathname = "/upgrade";
+        return NextResponse.redirect(url);
+      }
+    }
+
+    return NextResponse.next();
   },
-  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
-});
+  {
+    pages: { signIn: "/login" },
+    secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+  },
+);
 
 export default async function middleware(req: NextRequest, ev: NextFetchEvent) {
   // Basepath root → redirect to /feed. `redirect()` from a Server Component
@@ -30,6 +61,6 @@ export default async function middleware(req: NextRequest, ev: NextFetchEvent) {
 
 export const config = {
   matcher: [
-    "/((?!login|signup|api/auth|api/health|_next/static|_next/image|favicon\\.ico).*)",
+    "/((?!login|signup|magic|api/auth|api/health|_next/static|_next/image|favicon\\.ico).*)",
   ],
 };

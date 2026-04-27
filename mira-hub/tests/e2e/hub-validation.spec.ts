@@ -21,10 +21,12 @@ async function login(page: Page): Promise<void> {
     throw new Error("E2E_HUB_PASSWORD env var is required");
   }
   await page.goto(`${HUB}/login`, { waitUntil: "networkidle" });
-  await page.fill('input[type="email"]', LOGIN_EMAIL);
+  // Expand the collapsible password form (magic link section is shown first)
+  await page.click("text=Sign in with password");
+  await page.locator('input[type="email"]').last().fill(LOGIN_EMAIL);
   await page.fill('input[type="password"]', LOGIN_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL(`${HUB}/feed`, { timeout: 15_000 });
+  await page.getByRole('button', { name: /^Sign in$/ }).click();
+  await page.waitForURL(/\/hub\/feed\/?$/, { timeout: 15_000 });
 }
 
 // ── Shared fixture: logged-in page ───────────────────────────────────────────

@@ -113,7 +113,19 @@ export default function KnowledgePage() {
       const form = new FormData();
       form.append("file", file);
       if (assetTag) form.append("assetTag", assetTag);
-      await fetch(`${API_BASE}/api/uploads/local`, { method: "POST", body: form });
+      const res = await fetch(`${API_BASE}/api/uploads/local`, { method: "POST", body: form });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+        const msg =
+          body.error === "unsupported_mime"
+            ? `Unsupported file type: ${(body.got as string | undefined) || file.type || "unknown"}`
+            : body.error === "exceeds_20mb_limit"
+            ? `File too large (max 20 MB): ${file.name}`
+            : typeof body.error === "string"
+            ? body.error
+            : `Upload failed (${res.status})`;
+        throw new Error(msg);
+      }
     }
     await fetchUploads();
   }
@@ -173,6 +185,8 @@ export default function KnowledgePage() {
             <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
               {loading
                 ? "Loading…"
+                : stats.totalDocs === 0
+                ? t("emptyStateOnboarding")
                 : `${stats.totalDocs} ${t("indexed")} · ${stats.totalChunks.toLocaleString()} ${t("chunks")} ${t("inRAG")}`}
             </p>
           </div>

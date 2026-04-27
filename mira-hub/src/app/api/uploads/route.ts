@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import {
   createUpload,
+  findUploadByExternalFileId,
   listUploads,
-  updateUploadStatus,
+  type Upload,
   type UploadProvider,
 } from "@/lib/uploads";
-import { ensureFreshAccessToken } from "@/lib/token-refresh";
 import {
-  streamFromGoogleDrive,
-  streamFromSignedUrl,
-} from "@/lib/fetch-adapters";
-import {
-  forwardToIngest,
-  forwardToPhotoIngest,
   inferKindFromMime,
   SUPPORTED_MIMES,
 } from "@/lib/mira-ingest-client";
 import { sessionOr401 } from "@/lib/session";
+import { makeUploadLogger } from "@/lib/upload-log";
+import { validateAssetTag } from "@/lib/asset-tag";
+import { runIngestPipeline } from "@/lib/upload-pipeline";
 
 export const dynamic = "force-dynamic";
 
@@ -78,30 +76,119 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const kind = inferKindFromMime(mime);
+  const assetTagCheck = validateAssetTag(body.assetTag);
+  if (!assetTagCheck.ok) {
+    return NextResponse.json({ error: assetTagCheck.reason }, { status: 400 });
+  }
+  const assetTag = assetTagCheck.value;
 
-  const upload = await createUpload({
-    tenantId: ctx.tenantId,
+  const kind = inferKindFromMime(mime);
+  const requestId = req.headers.get("x-request-id") ?? randomUUID();
+
+  // Idempotency: re-picking the same Drive/Dropbox file should return the
+  // existing row, not duplicate the entire fetch → forward → KB pipeline.
+  // body.externalFileId is required for both google + dropbox per the
+  // validation above.
+  if (body.externalFileId) {
+    const existing = await findUploadByExternalFileId(
+      ctx.tenantId,
+      body.provider,
+      body.externalFileId,
+    );
+    if (existing) {
+      return idempotentResponse(existing, requestId);
+    }
+  }
+
+  let upload: Upload;
+  try {
+    upload = await createUpload({
+      tenantId: ctx.tenantId,
+      provider: body.provider,
+      kind,
+      externalFileId: body.externalFileId ?? null,
+      externalDownloadUrl: body.externalDownloadUrl ?? null,
+      filename: body.filename,
+      mimeType: mime,
+      sizeBytes: body.sizeBytes ?? null,
+      externalCreatedAt: body.externalCreatedAt ?? null,
+      initialStatus: "queued",
+      assetTag,
+    });
+  } catch (err) {
+    // Race fallback: another request beat us to the unique index between
+    // the pre-flight findUploadByExternalFileId() and the INSERT.
+    if (isUniqueViolation(err) && body.externalFileId) {
+      const existing = await findUploadByExternalFileId(
+        ctx.tenantId,
+        body.provider,
+        body.externalFileId,
+      );
+      if (existing) return idempotentResponse(existing, requestId);
+    }
+    throw err;
+  }
+
+  const log = makeUploadLogger({ requestId, uploadId: upload.id, tenantId: ctx.tenantId });
+  log.log("queued", {
     provider: body.provider,
     kind,
+    filename: body.filename,
+    mimeType: mime,
+    sizeBytes: body.sizeBytes ?? null,
+  });
+
+  void runIngestPipeline({
+    uploadId: upload.id,
+    tenantId: ctx.tenantId,
+    requestId,
+    provider: body.provider,
     externalFileId: body.externalFileId ?? null,
     externalDownloadUrl: body.externalDownloadUrl ?? null,
     filename: body.filename,
     mimeType: mime,
-    sizeBytes: body.sizeBytes ?? null,
-    externalCreatedAt: body.externalCreatedAt ?? null,
-    initialStatus: "queued",
-    assetTag: body.assetTag ?? null,
+    kind,
+    assetTag,
   });
 
-  // Background ingest. Used to be wrapped in `after()` from "next/server",
-  // but Next.js 16 standalone throws `Error: ENVIRONMENT_FALLBACK` and the
-  // callback never runs — uploads stayed at status="queued" forever. mira-hub
-  // runs as a long-lived standalone server, so a plain fire-and-forget
-  // Promise stays alive until it resolves.
-  void runIngestPipeline(upload.id, body, kind, ctx.tenantId);
+  return NextResponse.json(upload, { status: 201, headers: { "X-Request-Id": requestId } });
+}
 
-  return NextResponse.json(upload, { status: 201 });
+const IN_FLIGHT_STATUSES: ReadonlyArray<string> = ["queued", "fetching", "parsing"];
+
+function isUniqueViolation(err: unknown): boolean {
+  // pg's UniqueViolation has SQLSTATE 23505
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: string }).code === "23505"
+  );
+}
+
+function idempotentResponse(existing: Upload, requestId: string): NextResponse {
+  if (existing.status === "parsed") {
+    return NextResponse.json(
+      { ...existing, alreadyImported: true },
+      { status: 200, headers: { "X-Request-Id": requestId } },
+    );
+  }
+  if (IN_FLIGHT_STATUSES.includes(existing.status)) {
+    return NextResponse.json(
+      { ...existing, alreadyInProgress: true },
+      { status: 200, headers: { "X-Request-Id": requestId } },
+    );
+  }
+  // failed or cancelled — caller should DELETE first to retry
+  return NextResponse.json(
+    {
+      error: "previous_upload_terminal",
+      status: existing.status,
+      hint: "DELETE /hub/api/uploads/:id then re-upload",
+      existing,
+    },
+    { status: 409, headers: { "X-Request-Id": requestId } },
+  );
 }
 
 export async function GET() {
@@ -111,41 +198,3 @@ export async function GET() {
   return NextResponse.json(rows);
 }
 
-async function runIngestPipeline(
-  uploadId: string,
-  payload: CreatePayload,
-  kind: "document" | "photo",
-  tenantId: string,
-): Promise<void> {
-  try {
-    await updateUploadStatus(uploadId, tenantId, "fetching");
-    let fetched;
-    if (payload.provider === "google") {
-      const { accessToken } = await ensureFreshAccessToken("google", tenantId);
-      fetched = await streamFromGoogleDrive(payload.externalFileId!, accessToken);
-    } else {
-      fetched = await streamFromSignedUrl(payload.externalDownloadUrl!);
-    }
-
-    await updateUploadStatus(uploadId, tenantId, "parsing");
-    const mime = payload.mimeType ?? fetched.contentType;
-
-    if (kind === "photo") {
-      const result = await forwardToPhotoIngest(fetched.stream, payload.filename, mime, {
-        assetTag: payload.assetTag ?? null,
-      });
-      await updateUploadStatus(uploadId, tenantId, "parsed", result.description ?? null, {
-        kbFileId: result.photoId != null ? String(result.photoId) : undefined,
-      });
-    } else {
-      const result = await forwardToIngest(fetched.stream, payload.filename, mime);
-      await updateUploadStatus(uploadId, tenantId, "parsed", null, {
-        kbFileId: result.fileId ?? undefined,
-        kbChunkCount: result.chunkCount ?? undefined,
-      });
-    }
-  } catch (err) {
-    console.error(`[uploads/${uploadId}] pipeline failed`, err);
-    await updateUploadStatus(uploadId, tenantId, "failed", (err as Error).message);
-  }
-}

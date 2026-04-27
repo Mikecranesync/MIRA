@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import {
   Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
+  ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
   Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -17,7 +18,48 @@ import { LanguageSelector } from "@/components/ui/language-selector";
 const ICON_MAP: Record<string, React.ElementType> = {
   Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
+  ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
 };
+
+type NavItemProps = {
+  item: { key: string; icon: string; href: string };
+  collapsed: boolean;
+  active: boolean;
+  label: string;
+};
+
+function NavItem({ item, collapsed, active, label }: NavItemProps) {
+  const Icon = ICON_MAP[item.icon] ?? Settings;
+  return (
+    <Link
+      href={item.href}
+      title={collapsed ? label : undefined}
+      className={cn(
+        "flex items-center rounded-lg text-sm font-medium transition-all duration-150",
+        collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5"
+      )}
+      style={{
+        backgroundColor: active ? "var(--sidebar-active)" : "transparent",
+        color: active ? "white" : "#94A3B8",
+      }}
+      onMouseEnter={e => {
+        if (!active) e.currentTarget.style.backgroundColor = "var(--sidebar-hover)";
+        if (!active) (e.currentTarget.querySelector(".nav-label") as HTMLElement | null)?.style.setProperty("color", "white");
+      }}
+      onMouseLeave={e => {
+        if (!active) e.currentTarget.style.backgroundColor = "transparent";
+        if (!active) (e.currentTarget.querySelector(".nav-label") as HTMLElement | null)?.style.setProperty("color", "#94A3B8");
+      }}
+    >
+      <Icon style={{ width: 18, height: 18, flexShrink: 0 }} />
+      {!collapsed && <span className="nav-label text-sm">{label}</span>}
+      {collapsed && active && (
+        <span className="absolute left-0 w-0.5 h-5 rounded-r-full"
+          style={{ backgroundColor: "var(--brand-blue)" }} />
+      )}
+    </Link>
+  );
+}
 
 export function Sidebar({ role = "admin" }: { role?: string }) {
   const pathname = usePathname();
@@ -29,6 +71,8 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
   const visible = NAV_ITEMS.filter((item) =>
     (item.roles as readonly string[]).includes(role)
   );
+  const primary   = visible.filter((item) => item.group === "primary");
+  const secondary = visible.filter((item) => item.group === "secondary");
 
   function navLabel(key: string): string {
     const map: Record<string, string> = {
@@ -42,6 +86,12 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "integrations":  t("integrations"),
       "usage":         t("usage"),
       "team":          t("team"),
+      "workorders":    t("workOrders"),
+      "schedule":      t("schedule"),
+      "requests":      t("requests"),
+      "parts":         t("parts"),
+      "documents":     t("documents"),
+      "reports":       t("reports"),
       "admin/users":   t("admin"),
       "admin/roles":   t("admin"),
     };
@@ -96,58 +146,39 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
 
       {/* Nav items */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-        {visible.map((item) => {
-          const Icon = ICON_MAP[item.icon] ?? Settings;
-          const active = pathname === item.href || pathname.startsWith(item.href + "/");
-          const label = navLabel(item.key);
+        {primary.map((item) => (
+          <NavItem key={item.key} item={item} collapsed={collapsed}
+            active={pathname === item.href || pathname.startsWith(item.href + "/")}
+            label={navLabel(item.key)} />
+        ))}
 
-          return (
-            <Link
-              key={item.key}
-              href={item.href}
-              title={collapsed ? label : undefined}
-              className={cn(
-                "flex items-center rounded-lg text-sm font-medium transition-all duration-150 group",
-                collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5"
-              )}
-              style={{
-                backgroundColor: active ? "var(--sidebar-active)" : "transparent",
-                color: active ? "white" : "#94A3B8",
-              }}
-              onMouseEnter={e => {
-                if (!active) e.currentTarget.style.backgroundColor = "var(--sidebar-hover)";
-                if (!active) (e.currentTarget.querySelector(".nav-label") as HTMLElement | null)?.style.setProperty("color", "white");
-              }}
-              onMouseLeave={e => {
-                if (!active) e.currentTarget.style.backgroundColor = "transparent";
-                if (!active) (e.currentTarget.querySelector(".nav-label") as HTMLElement | null)?.style.setProperty("color", "#94A3B8");
-              }}
-            >
-              <Icon className="w-4.5 h-4.5 flex-shrink-0" style={{ width: 18, height: 18 }} />
-              {!collapsed && <span className="nav-label text-sm">{label}</span>}
-
-              {collapsed && active && (
-                <span className="absolute left-0 w-0.5 h-5 rounded-r-full"
-                  style={{ backgroundColor: "var(--brand-blue)" }} />
-              )}
-            </Link>
-          );
-        })}
+        {secondary.length > 0 && (
+          <>
+            <div className="mx-1 my-2" style={{ borderTop: "1px solid var(--sidebar-border)" }} />
+            {!collapsed && (
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>
+                More
+              </p>
+            )}
+            {secondary.map((item) => (
+              <NavItem key={item.key} item={item} collapsed={collapsed}
+                active={pathname === item.href || pathname.startsWith(item.href + "/")}
+                label={navLabel(item.key)} />
+            ))}
+          </>
+        )}
       </nav>
 
       {/* User section */}
       <div className="p-3 space-y-1" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
-        {/* Tagline */}
         {!collapsed && (
           <p className="text-[10px] text-center leading-tight pb-1" style={{ color: "#475569" }}>
             Maintenance Intelligence Platform
           </p>
         )}
 
-        {/* Language selector */}
         <LanguageSelector collapsed={collapsed} dropUp />
 
-        {/* Dark mode toggle */}
         <button onClick={toggleTheme}
           className="w-full flex items-center rounded-lg transition-colors px-2 py-1.5"
           style={{ color: "#64748B" }}
@@ -165,7 +196,6 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
           )}
         </button>
 
-        {/* User */}
         {collapsed ? (
           <div className="flex justify-center">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"

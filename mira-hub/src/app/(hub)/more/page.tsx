@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import {
-  AlertTriangle, BookOpen, Radio, Plug, BarChart2,
-  Users, Settings, ChevronRight,
+  MessageSquare, AlertTriangle, BookOpen, Wrench,
+  ClipboardList, CalendarDays, Inbox, Package, FileText,
+  TrendingUp, Radio, Plug, BarChart2, Users, Settings, ChevronRight,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -12,13 +13,21 @@ export default function MorePage() {
   const tNav = useTranslations("nav");
 
   const MORE_ITEMS = [
-    { label: tNav("alerts"),       desc: t("items.alerts"),       Icon: AlertTriangle, href: "/alerts" },
-    { label: tNav("knowledge"),    desc: t("items.knowledge"),    Icon: BookOpen,      href: "/knowledge" },
-    { label: tNav("channels"),     desc: t("items.channels"),     Icon: Radio,         href: "/channels" },
-    { label: tNav("integrations"), desc: t("items.integrations"), Icon: Plug,          href: "/integrations" },
-    { label: tNav("usage"),        desc: t("items.usage"),        Icon: BarChart2,     href: "/usage" },
-    { label: tNav("team"),         desc: t("items.team"),         Icon: Users,         href: "/team" },
-    { label: tNav("admin"),        desc: t("items.admin"),        Icon: Settings,      href: "/admin/users" },
+    { label: tNav("conversations"), desc: t("items.conversations"), Icon: MessageSquare, href: "/conversations" },
+    { label: tNav("alerts"),        desc: t("items.alerts"),        Icon: AlertTriangle, href: "/alerts" },
+    { label: tNav("knowledge"),     desc: t("items.knowledge"),     Icon: BookOpen,      href: "/knowledge" },
+    { label: tNav("assets"),        desc: t("items.assets"),        Icon: Wrench,        href: "/assets" },
+    { label: tNav("workOrders"),    desc: t("items.workorders"),    Icon: ClipboardList, href: "/workorders" },
+    { label: tNav("schedule"),      desc: t("items.schedule"),      Icon: CalendarDays,  href: "/schedule" },
+    { label: tNav("requests"),      desc: t("items.requests"),      Icon: Inbox,         href: "/requests" },
+    { label: tNav("parts"),         desc: t("items.parts"),         Icon: Package,       href: "/parts" },
+    { label: tNav("documents"),     desc: t("items.documents"),     Icon: FileText,      href: "/documents" },
+    { label: tNav("reports"),       desc: t("items.reports"),       Icon: TrendingUp,    href: "/reports" },
+    { label: tNav("channels"),      desc: t("items.channels"),      Icon: Radio,         href: "/channels" },
+    { label: tNav("integrations"),  desc: t("items.integrations"),  Icon: Plug,          href: "/integrations" },
+    { label: tNav("usage"),         desc: t("items.usage"),         Icon: BarChart2,     href: "/usage" },
+    { label: tNav("team"),          desc: t("items.team"),          Icon: Users,         href: "/team" },
+    { label: tNav("admin"),         desc: t("items.admin"),         Icon: Settings,      href: "/admin/users" },
   ];
 
   return (

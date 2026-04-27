@@ -16,6 +16,7 @@ from pathlib import Path
 
 import httpx
 import pdfplumber
+from asset_tag import sanitize_asset_tag
 from crawl_verifier import (
     OUTCOME_SUCCESS,
     classify_historical,
@@ -130,6 +131,28 @@ def _parse_structured_description(raw: str) -> dict:
 
 
 app = FastAPI(title="mira-ingest")
+
+
+@app.middleware("http")
+async def log_request_id(request, call_next):  # type: ignore[no-untyped-def]
+    """Log X-Request-Id on every request so hub uploads correlate end-to-end.
+
+    The hub generates a request id at upload entry and forwards it as
+    X-Request-Id on every fetch to mira-ingest. We log it (alongside method
+    + path) at INFO so a single grep can recover the full pipeline timeline.
+    """
+    request_id = request.headers.get("x-request-id", "")
+    if request_id and request.url.path not in ("/health", "/health/db"):
+        logger.info(
+            "request_received method=%s path=%s request_id=%s",
+            request.method,
+            request.url.path,
+            request_id,
+        )
+    response = await call_next(request)
+    if request_id:
+        response.headers["X-Request-Id"] = request_id
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -484,6 +507,8 @@ async def ingest_photo(
             raise
         except Exception:
             pass  # fail open — never block on DB errors
+
+    asset_tag = sanitize_asset_tag(asset_tag)
 
     raw = await image.read()
     if not raw:

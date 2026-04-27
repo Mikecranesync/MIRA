@@ -7,6 +7,9 @@
 
 ---
 
+## North Star
+Read `NORTH_STAR.md` before starting any feature work. Every PR should reference which part of the flywheel it supports.
+
 ## Coding Principles → `wiki/references/coding-principles.md`
 ## KANBAN Board → `wiki/references/kanban.md`
 

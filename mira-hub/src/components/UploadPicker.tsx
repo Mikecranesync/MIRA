@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import Script from "next/script";
-import { X, Upload as UploadIcon, Search } from "lucide-react";
+import { X, Upload as UploadIcon, Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
 
@@ -74,6 +75,7 @@ interface GooglePickerBuilder {
   build: () => { setVisible: (v: boolean) => void };
 }
 
+// Include both MIME types and extensions — Android file pickers vary in which they respect
 const ACCEPTED_MIME = [
   "application/pdf",
   "image/jpeg",
@@ -81,6 +83,13 @@ const ACCEPTED_MIME = [
   "image/webp",
   "image/heic",
   "image/heif",
+  ".pdf",
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".heic",
+  ".heif",
 ].join(",");
 
 const DROPBOX_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
@@ -113,6 +122,7 @@ export function UploadPicker({
   const [googleAvailable, setGoogleAvailable] = useState(false);
   const [dropboxAvailable, setDropboxAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -337,11 +347,18 @@ export function UploadPicker({
 
           <label
             className="flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl px-4 py-8 cursor-pointer transition-colors hover:bg-[var(--surface-1)]"
-            style={{ borderColor: "var(--border)" }}
+            style={{
+              borderColor: uploading ? "var(--brand-blue)" : "var(--border)",
+              opacity: uploading ? 0.8 : 1,
+            }}
           >
-            <UploadIcon className="w-6 h-6" style={{ color: "var(--foreground-muted)" }} />
+            {uploading ? (
+              <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--brand-blue)" }} />
+            ) : (
+              <UploadIcon className="w-6 h-6" style={{ color: "var(--foreground-muted)" }} />
+            )}
             <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
-              Drop PDFs or photos here — or click to browse
+              {uploading ? "Uploading…" : "Drop PDFs or photos here — or click to browse"}
             </span>
             <span className="text-xs" style={{ color: "var(--foreground-subtle)" }}>
               PDF, JPEG, PNG, WebP, HEIC · Up to 20 MB each
@@ -351,13 +368,24 @@ export function UploadPicker({
               type="file"
               accept={ACCEPTED_MIME}
               multiple
+              disabled={uploading}
               className="sr-only"
               onChange={async (e) => {
                 const list = e.target.files;
                 if (!list || list.length === 0) return;
                 const files = Array.from(list);
-                await onLocalFiles(files, selectedAsset);
-                onClose();
+                setUploading(true);
+                setError(null);
+                try {
+                  await onLocalFiles(files, selectedAsset);
+                  onClose();
+                } catch (err) {
+                  setError((err as Error).message);
+                } finally {
+                  setUploading(false);
+                  // Reset so re-selecting the same file fires onChange again
+                  e.target.value = "";
+                }
               }}
             />
           </label>
@@ -374,22 +402,44 @@ export function UploadPicker({
             <Button
               variant="secondary"
               size="sm"
-              disabled={!googleAvailable || !pickerLoaded}
+              disabled={!googleAvailable || !pickerLoaded || uploading}
               onClick={openGoogle}
-              title={!googleAvailable ? "Connect Google Workspace in Channels first" : undefined}
+              title={!googleAvailable ? "Connect Google Workspace in Channels to enable" : undefined}
             >
-              📁 From Google Drive
+              {googleAvailable && !pickerLoaded ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1 inline" />Loading…</>
+              ) : (
+                "📁 From Google Drive"
+              )}
             </Button>
             <Button
               variant="secondary"
               size="sm"
-              disabled={!dropboxAvailable || !dropboxReady}
+              disabled={!dropboxAvailable || !dropboxReady || uploading}
               onClick={openDropbox}
-              title={!dropboxAvailable ? "Connect Dropbox in Channels first" : undefined}
+              title={!dropboxAvailable ? "Connect Dropbox in Channels to enable" : undefined}
             >
-              📦 From Dropbox
+              {dropboxAvailable && !dropboxReady ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1 inline" />Loading…</>
+              ) : (
+                "📦 From Dropbox"
+              )}
             </Button>
           </div>
+
+          {!googleAvailable && !dropboxAvailable && (
+            <p className="text-[11px] mt-2 text-center" style={{ color: "var(--foreground-subtle)" }}>
+              Connect Google Workspace or Dropbox in{" "}
+              <Link
+                href="/hub/channels"
+                className="font-medium underline-offset-2 hover:underline"
+                style={{ color: "var(--brand-blue)" }}
+              >
+                Channels
+              </Link>{" "}
+              to enable cloud picking.
+            </p>
+          )}
 
           {error && (
             <p className="text-xs mt-3" style={{ color: "#DC2626" }}>

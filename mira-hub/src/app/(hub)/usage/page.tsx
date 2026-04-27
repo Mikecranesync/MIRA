@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { BarChart2, Zap, MessageSquare, Users, TrendingUp, Calendar } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Zap, MessageSquare, Users, TrendingUp, Calendar } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { API_BASE } from "@/lib/config";
 import {
@@ -24,6 +25,11 @@ function initials(name: string) {
 
 export default function UsagePage() {
   const t = useTranslations("usage");
+  const router = useRouter();
+  // mounted guard: recharts ResponsiveContainer accesses DOM APIs (ResizeObserver,
+  // getBoundingClientRect) that don't exist during server pre-render. Rendering
+  // charts before mount causes hydration mismatches and blank boxes on hard reload.
+  const [mounted, setMounted] = useState(false);
   const [data, setData] = useState<{
     thisMonth: { totalActions: number; uniqueTechs: number; activeChannels: number; diagnostics: number; safetyAlerts: number };
     daily: { day: string; count: number }[];
@@ -32,9 +38,17 @@ export default function UsagePage() {
     allTime: { totalWorkOrders: number; totalKbChunks: number };
   } | null>(null);
 
+  useEffect(() => { setMounted(true); }, []);
+
   useEffect(() => {
-    fetch(`${API_BASE}/api/usage`).then(r => r.json()).then(setData).catch(console.error);
-  }, []);
+    fetch(`${API_BASE}/api/usage`)
+      .then(r => {
+        if (r.status === 401) { router.push(`${API_BASE}/login?callbackUrl=${API_BASE}/usage`); return null; }
+        return r.json();
+      })
+      .then(d => { if (d) setData(d); })
+      .catch(console.error);
+  }, [router]);
 
   const month = data?.thisMonth;
   const usedThisMonth = month?.totalActions ?? 0;
@@ -97,7 +111,7 @@ export default function UsagePage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { label: t("kpi.totalActions"),   value: usedThisMonth.toString(),  Icon: Zap,          color: "#2563EB" },
-            { label: t("kpi.conversations"),  value: (data?.allTime.totalWorkOrders ?? 0).toString(), Icon: MessageSquare, color: "#7C3AED" },
+            { label: t("kpi.conversations"),  value: (data?.allTime?.totalWorkOrders ?? 0).toString(), Icon: MessageSquare, color: "#7C3AED" },
             { label: t("kpi.activeTechs"),    value: (month?.uniqueTechs ?? 0).toString(),    Icon: Users,         color: "#16A34A" },
             { label: t("kpi.avgPerDay"),      value: dailyChartData.length ? Math.round(dailyChartData.reduce((s,d) => s+d.actions, 0) / dailyChartData.length).toString() : "0", Icon: TrendingUp, color: "#0891B2" },
           ].map(kpi => (
@@ -117,18 +131,29 @@ export default function UsagePage() {
             <Calendar className="w-4 h-4" style={{ color: "var(--brand-blue)" }} />
             <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{t("dailyActions")}</p>
           </div>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={dailyChartData} barSize={24}>
-              <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--foreground-subtle)" }} axisLine={false} tickLine={false} />
-              <YAxis hide />
-              <Tooltip
-                contentStyle={{ backgroundColor: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                labelStyle={{ color: "var(--foreground)" }}
-                itemStyle={{ color: "var(--brand-blue)" }}
-              />
-              <Bar dataKey="actions" fill="var(--brand-blue)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {/* Guard: recharts ResponsiveContainer uses ResizeObserver/getBoundingClientRect
+              which are browser-only. Rendering before mount causes hydration mismatches
+              and blank charts on hard reload. Show a placeholder until mounted. */}
+          {!mounted ? (
+            <div style={{ height: 160, backgroundColor: "var(--surface-1)" }} className="rounded-lg animate-pulse" />
+          ) : dailyChartData.length === 0 ? (
+            <div className="flex items-center justify-center" style={{ height: 160 }}>
+              <p className="text-xs" style={{ color: "var(--foreground-subtle)" }}>No activity in the last 7 days</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={dailyChartData} barSize={24}>
+                <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--foreground-subtle)" }} axisLine={false} tickLine={false} />
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: "var(--foreground)" }}
+                  itemStyle={{ color: "var(--brand-blue)" }}
+                />
+                <Bar dataKey="actions" fill="var(--brand-blue)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* By type + by channel */}
@@ -139,9 +164,9 @@ export default function UsagePage() {
               <div className="space-y-2 pt-2">
                 {[
                   { name: "Diagnostics",   value: month.diagnostics,    color: "#EAB308" },
-                  { name: "Work Orders",   value: data?.allTime.totalWorkOrders ?? 0, color: "#2563EB" },
+                  { name: "Work Orders",   value: data?.allTime?.totalWorkOrders ?? 0, color: "#2563EB" },
                   { name: "Safety Alerts", value: month.safetyAlerts,   color: "#DC2626" },
-                  { name: "KB Chunks",     value: data?.allTime.totalKbChunks ?? 0,  color: "#0891B2" },
+                  { name: "KB Chunks",     value: data?.allTime?.totalKbChunks ?? 0,  color: "#0891B2" },
                 ].map(item => (
                   <div key={item.name} className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
@@ -159,6 +184,7 @@ export default function UsagePage() {
             <p className="text-sm font-semibold mb-3" style={{ color: "var(--foreground)" }}>{t("byChannel")}</p>
             {byChannelData.length > 0 ? (
               <>
+                {mounted && (
                 <ResponsiveContainer width="100%" height={140}>
                   <PieChart>
                     <Pie data={byChannelData} dataKey="value" cx="50%" cy="50%" innerRadius={40} outerRadius={60}>
@@ -171,6 +197,7 @@ export default function UsagePage() {
                     />
                   </PieChart>
                 </ResponsiveContainer>
+                )}
                 <div className="space-y-1.5 mt-2">
                   {byChannelData.map(item => (
                     <div key={item.name} className="flex items-center gap-2">

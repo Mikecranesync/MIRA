@@ -233,7 +233,9 @@
       "active": "Activo",
       "inactive": "Inactivo",
       "maintenance": "Mantenimiento"
-    }
+    },
+    "noAssetsYet": "Aún no hay activos",
+    "registerFirstAsset": "Registra tu primer activo para comenzar a hacer seguimiento de diagnósticos, órdenes de trabajo e historial."
   },
   "parts": {
     "title": "Refacciones e inventario",
@@ -282,13 +284,27 @@
     "pmCount": "{count} MP",
     "pmCountPlural": "{count} MPs",
     "days": {
-      "sun": "Dom", "mon": "Lun", "tue": "Mar", "wed": "Mié",
-      "thu": "Jue", "fri": "Vie", "sat": "Sáb"
+      "sun": "Dom",
+      "mon": "Lun",
+      "tue": "Mar",
+      "wed": "Mié",
+      "thu": "Jue",
+      "fri": "Vie",
+      "sat": "Sáb"
     },
     "months": {
-      "jan": "Enero", "feb": "Febrero", "mar": "Marzo", "apr": "Abril",
-      "may": "Mayo", "jun": "Junio", "jul": "Julio", "aug": "Agosto",
-      "sep": "Septiembre", "oct": "Octubre", "nov": "Noviembre", "dec": "Diciembre"
+      "jan": "Enero",
+      "feb": "Febrero",
+      "mar": "Marzo",
+      "apr": "Abril",
+      "may": "Mayo",
+      "jun": "Junio",
+      "jul": "Julio",
+      "aug": "Agosto",
+      "sep": "Septiembre",
+      "oct": "Octubre",
+      "nov": "Noviembre",
+      "dec": "Diciembre"
     },
     "statusLabels": {
       "scheduled": "Programado",
@@ -529,17 +545,21 @@
   "more": {
     "title": "Más",
     "items": {
+      "conversations": "Historial de chats con MIRA en todos los canales",
       "alerts": "Alertas activas de seguridad y equipos",
       "knowledge": "Manuales y documentos indexados",
+      "assets": "Registro de equipos y estado en tiempo real",
+      "workorders": "Crear y dar seguimiento a órdenes de mantenimiento",
+      "schedule": "Calendario de MP y tareas próximas",
+      "requests": "Enviar y revisar solicitudes de trabajo",
+      "parts": "Inventario de refacciones y puntos de reorden",
+      "documents": "Manuales, POSs y certificaciones",
+      "reports": "Análisis y KPIs de mantenimiento",
       "channels": "Telegram, WhatsApp, Voz, Email",
       "integrations": "CMMS, webhooks y configuración de API",
       "usage": "Acciones usadas y nivel de facturación",
-      "schedule": "Calendario de MP y tareas próximas",
-      "requests": "Enviar y revisar solicitudes de trabajo",
-      "documents": "Manuales, POSs y certificaciones",
-      "cmms": "Integración Atlas CMMS",
-      "reports": "Análisis y KPIs de mantenimiento",
       "team": "Lista de técnicos y asignaciones",
+      "cmms": "Integración Atlas CMMS",
       "admin": "Usuarios, roles y configuración"
     }
   },
@@ -598,7 +618,8 @@
     "pending": "Pendiente",
     "chunks": "fragmentos",
     "inRAG": "en RAG",
-    "search": "Buscar en la base de conocimiento…"
+    "search": "Buscar en la base de conocimiento…",
+    "emptyStateOnboarding": "Sube tu primer manual para comenzar a obtener respuestas con fuentes citadas de MIRA."
   },
   "channels": {
     "title": "Canales",

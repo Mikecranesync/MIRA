@@ -53,15 +53,24 @@ export const accessControlProvider: AccessControlProvider = {
   },
 };
 
-// Items shipped with a real NeonDB-backed API. The pages with only static
-// mock data (actions, alerts, integrations, team, admin/users) are hidden
-// from the customer nav until their backends ship — URLs still resolve if
-// linked directly. This keeps the post-paywall surface honest.
 export const NAV_ITEMS = [
-  { key: "event-log",      label: "Event Log",      icon: "Activity",        href: "/event-log",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"] },
-  { key: "conversations",  label: "Conversations",  icon: "MessageSquare",   href: "/conversations", roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"] },
-  { key: "knowledge",      label: "Knowledge",      icon: "BookOpen",        href: "/knowledge",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"] },
-  { key: "assets",         label: "Assets",         icon: "Wrench",          href: "/assets",        roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"] },
-  { key: "channels",       label: "Channels",       icon: "Radio",           href: "/channels",      roles: ["manager", "scheduler", "admin", "owner"] },
-  { key: "usage",          label: "Usage",          icon: "BarChart2",       href: "/usage",         roles: ["manager", "admin", "owner"] },
+  // Primary nav — main surfaces, always visible to qualifying roles
+  { key: "event-log",     label: "Event Log",     icon: "Activity",      href: "/event-log",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "conversations", label: "Conversations", icon: "MessageSquare", href: "/conversations", roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "actions",       label: "Actions",       icon: "Zap",           href: "/actions",       roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "alerts",        label: "Alerts",        icon: "AlertTriangle", href: "/alerts",        roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "knowledge",     label: "Knowledge",     icon: "BookOpen",      href: "/knowledge",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "channels",      label: "Channels",      icon: "Radio",         href: "/channels",      roles: ["manager", "scheduler", "admin", "owner"],                           group: "primary" },
+  { key: "integrations",  label: "Integrations",  icon: "Plug",          href: "/integrations",  roles: ["manager", "admin", "owner"],                                        group: "primary" },
+  { key: "usage",         label: "Usage",         icon: "BarChart2",     href: "/usage",         roles: ["manager", "admin", "owner"],                                        group: "primary" },
+  { key: "team",          label: "Team",          icon: "Users",         href: "/team",          roles: ["manager", "admin", "owner"],                                        group: "primary" },
+  // Secondary nav — operations & admin surfaces, shown below divider
+  { key: "workorders",    label: "Work Orders",   icon: "ClipboardList", href: "/workorders",    roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
+  { key: "schedule",      label: "Schedule",      icon: "CalendarDays",  href: "/schedule",      roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
+  { key: "requests",      label: "Requests",      icon: "Inbox",         href: "/requests",      roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
+  { key: "parts",         label: "Parts",         icon: "Package",       href: "/parts",         roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
+  { key: "documents",     label: "Documents",     icon: "FileText",      href: "/documents",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
+  { key: "reports",       label: "Reports",       icon: "TrendingUp",    href: "/reports",       roles: ["manager", "scheduler", "admin", "owner"],                           group: "secondary" },
+  { key: "admin/users",   label: "Admin",         icon: "Settings",      href: "/admin/users",   roles: ["admin", "owner"],                                                   group: "secondary" },
 ] as const;

@@ -1,0 +1,34 @@
+{
+  "navigations": [
+    {
+      "url": "https://factorylm.com/activated",
+      "at": 1777192383941
+    },
+    {
+      "url": "https://factorylm.com/cmms",
+      "at": 1777192384292
+    }
+  ],
+  "dom_loaded_url": "https://factorylm.com/cmms",
+  "dom_loaded_title": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+  "after_3s_url": "https://factorylm.com/cmms",
+  "after_3s_title": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+  "after_3s_h1": "The AI troubleshooter that knows your equipment.",
+  "with_stripe_session": {
+    "navs": [
+      "https://factorylm.com/activated?session_id=cs_test_a1B2c3D4e5F6",
+      "https://factorylm.com/cmms"
+    ],
+    "final_url": "https://factorylm.com/cmms",
+    "title_before_wait": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+    "title_after_wait": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+    "h1": "The AI troubleshooter that knows your equipment.",
+    "body_excerpt": "FactoryLM\nTroubleshooter\nBlog\nFault Codes\nThe AI troubleshooter that knows your equipment.\n\nWorks alongside your existing CMMS — MaintainX, Limble, or UpKeep. No migration. No rip-and-replace.\n\nWORK EMAIL\nCOMPANY / FACILITY NAME\nFIRST NAME\nI AGREE TO THE TERMS OF SERVICE AND PRIVACY POLICY\nJoin the Beta — $97/mo\n\nSite license — unlimited users. Cancel anytime.\n\nHow It Works\n1. Describe the Fault\n\nType a fault code, describe a symptom, or snap a photo of the display. Mira searches your actual equipment manuals — Allen-Bradley, PowerFlex, Automation Direct, hydraulic systems — and returns the diagnostic steps in seconds, even at 2am.\n\n2. Get the Fix, Not a Guess\n\nMira tells you why it's failing, not just when. It cites the exact manual page and section — like consulting an experienced colleague who has already read every manual on the floor. No generic internet answers. No guesswork.\n\n3. Your CMMS Stays in Charge\n\nMira works alongside MaintainX, Limble, or UpKeep. On the $297/month plan, it writes the work order directly into your existing system — fault description, probable cause, and recommended fix. No double-entry.\n\nReduce Unplanned Downtime — Without Replacing What Already Work"
+  },
+  "raw_html_len": 41383,
+  "redirect_patterns": {
+    "/location\\.replace/g": 1,
+    "/location\\.href\\s*=/g": 1
+  },
+  "location_snippet": "footer>\n\n  <script>\n    (function () {\n      const params = new URLSearchParams(location.search);\n      const urlToken = params.get('token');\n\n      // Pull token from URL, fall back to session storage.\n      let token = urlToken || sessionStorage.getItem('flm_token') || '';\n      if (urlToken) {\n        sessionStorage.setItem('flm_token', urlToken);\n      }\n\n      // No token = probably someone hit this page directly. Bounce to /cmms.\n      if (!token) {\n        location.rep"
+}

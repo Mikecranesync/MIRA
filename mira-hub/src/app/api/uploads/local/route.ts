@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { createUpload, updateUploadStatus } from "@/lib/uploads";
 import {
   forwardToIngest,
@@ -7,6 +8,9 @@ import {
   SUPPORTED_MIMES,
 } from "@/lib/mira-ingest-client";
 import { sessionOr401 } from "@/lib/session";
+import { makeUploadLogger } from "@/lib/upload-log";
+import { validateAssetTag } from "@/lib/asset-tag";
+import { sniffMime, isMimeCompatible } from "@/lib/sniff-mime";
 
 export const dynamic = "force-dynamic";
 
@@ -47,12 +51,24 @@ export async function POST(req: NextRequest) {
   }
 
   const assetTagRaw = form.get("assetTag");
-  const assetTag =
-    typeof assetTagRaw === "string" && assetTagRaw.trim().length > 0
-      ? assetTagRaw.trim()
-      : null;
+  const assetTagCheck = validateAssetTag(assetTagRaw);
+  if (!assetTagCheck.ok) {
+    return NextResponse.json({ error: assetTagCheck.reason }, { status: 400 });
+  }
+  const assetTag = assetTagCheck.value;
   const kind = inferKindFromMime(mime);
   const buffer = new Uint8Array(await file.arrayBuffer());
+
+  // Magic-byte sniff: client-supplied File.type and extension are both
+  // controllable. Reject any payload whose first bytes don't match the
+  // declared MIME's general category.
+  const sniffed = sniffMime(buffer.subarray(0, 16));
+  if (!isMimeCompatible(mime, sniffed)) {
+    return NextResponse.json(
+      { error: "content_does_not_match_declared_mime", declared: mime, sniffed },
+      { status: 400 },
+    );
+  }
 
   const upload = await createUpload({
     tenantId: ctx.tenantId,
@@ -64,6 +80,16 @@ export async function POST(req: NextRequest) {
     externalCreatedAt: new Date(file.lastModified),
     initialStatus: "parsing",
     assetTag,
+  });
+
+  const requestId = req.headers.get("x-request-id") ?? randomUUID();
+  const log = makeUploadLogger({ requestId, uploadId: upload.id, tenantId: ctx.tenantId });
+  log.log("parsing", {
+    provider: "local",
+    kind,
+    filename: file.name,
+    mimeType: mime,
+    sizeBytes: file.size,
   });
 
   // Background ingest. Used to be wrapped in `after()` from "next/server",
@@ -84,24 +110,27 @@ export async function POST(req: NextRequest) {
       if (kind === "photo") {
         const result = await forwardToPhotoIngest(stream(), file.name, mime, {
           assetTag,
+          requestId,
         });
         await updateUploadStatus(upload.id, ctx.tenantId, "parsed", result.description ?? null, {
           kbFileId: result.photoId != null ? String(result.photoId) : undefined,
         });
+        log.log("parsed", { photoId: result.photoId, kind });
       } else {
-        const result = await forwardToIngest(stream(), file.name, mime);
+        const result = await forwardToIngest(stream(), file.name, mime, { requestId });
         await updateUploadStatus(upload.id, ctx.tenantId, "parsed", null, {
           kbFileId: result.fileId ?? undefined,
           kbChunkCount: result.chunkCount ?? undefined,
         });
+        log.log("parsed", { kind, kbFileId: result.fileId, kbChunkCount: result.chunkCount });
       }
     } catch (err) {
-      console.error(`[uploads/local/${upload.id}] failed`, err);
+      log.error("failed", err);
       await updateUploadStatus(upload.id, ctx.tenantId, "failed", (err as Error).message).catch(
-        (statusErr) => console.error(`[uploads/local/${upload.id}] also failed to mark failed`, statusErr),
+        (statusErr) => log.error("status_update_failed", statusErr),
       );
     }
   })();
 
-  return NextResponse.json(upload, { status: 201 });
+  return NextResponse.json(upload, { status: 201, headers: { "X-Request-Id": requestId } });
 }
