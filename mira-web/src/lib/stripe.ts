@@ -95,9 +95,16 @@ export async function createDirectCheckoutSession(): Promise<string> {
   const stripe = getStripe();
   const base = BASE_URL();
 
+  // Accounts V2 (new Stripe accounts) rejects customerless Checkout in test mode.
+  // Pre-create an anonymous customer so Stripe collects email+card on its hosted page.
+  const customer = await stripe.customers.create({
+    metadata: { source: "pricing_page_direct" },
+  });
+
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     line_items: [{ price: priceId, quantity: 1 }],
+    customer: customer.id,
     success_url: "https://app.factorylm.com/feed/?checkout=success",
     cancel_url: `${base}/pricing?checkout=cancelled`,
     allow_promotion_codes: true,
