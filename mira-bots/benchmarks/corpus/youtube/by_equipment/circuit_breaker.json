@@ -1,0 +1,23 @@
+[
+  {
+    "video_id": "kyX95sW2FmQ",
+    "video_title": "Motor Starter On-Off Push Button Station Circuit Explained",
+    "channel": "Keith Rucker - VintageMachinery.org",
+    "channel_url": "https://www.youtube.com/@VintageMachinery",
+    "video_url": "https://www.youtube.com/watch?v=kyX95sW2FmQ",
+    "duration_seconds": 1628,
+    "view_count": 191180,
+    "like_count": 0,
+    "chunk_index": 3,
+    "chunk_text": "on the motor size that you're running and uh basically what you got are these little heaters in here on these two here these have heaters that go across two terminals that's this little piece here and this little piece here and these are rated four different size motors and you need to look up in a chart and make sure you have the properly sized heater in here what happens is is when the amperage gets above whatever that threshold is it's going to basically open that circuit up and and cause it to trip very similar to a circuit breaker on this one right here is literally mechanical this thing heats up it gets hot whenever it gets to a certain thermal level uh there's a little switch in there and that thing will pop up and whenever it does that there's two terminals back here that it's going to switch on and off reset it you push it back down and that should reset it now let's talk about these little these terminals down here this is a switch and it is a normally closed switch when i say normally closed that means it's going to have power going through it under normal circumstances and if i put my terminals across here boom boom hear the beep okay if um this thing trips it's going to open that circuit and i'll just show you here we'll just strip one of them the beep went off okay so that's going to protect your uh your motor if uh if you get too big of a load on it it starts pulling too many amps we don't want to burn the motor up we want this thing to trip that's exactly what happens notice that we have a red wire here coming off of one of these terminals going to the coil and that's going to be real important all of these have uh that same thing you got the normally closed switch on this one is right here okay and on the modern one that normally closed switch is right here it actually says nc okay normally closed this one says nc this one's not marked but you can tell it's a normally closed switch the other thing that we have um on all all of these uh that's going to be real important for our control circuits is that there is an auxiliary connector in here on all of these that is connected to the coil and it's going to be normally open okay again that means there's not a circuit it's basically going to be exactly like the terminals that are going through here it's normally open whenever the coil pushes in it will close that and create a circuit across that now let's see on this one here here's our auxiliary and we close the coil okay on this one it's these two terminals right here and let's do the coil and on this one",
+    "word_count": 500,
+    "topic": "troubleshooting",
+    "category": "electrical",
+    "manufacturer": "",
+    "equipment_type": "circuit breaker",
+    "model_number": "",
+    "fault_codes": [],
+    "search_query": "motor starter wiring diagram tutorial",
+    "knowledge_entry": "Expert Keith Rucker - VintageMachinery.org says about circuit breaker: on the motor size that you're running and uh basically what you got are these little heaters in here on these two here these have heaters that go across two terminals that's this little piece here and this little piece here and these are rated four different size motors and you need to look up in a "
+  }
+]

@@ -1,0 +1,98 @@
+[
+  {
+    "video_id": "GhgFdLDdUIY",
+    "video_title": "PLC Ladder Logic Basics For Beginners With A Working Conveyor",
+    "channel": "Shane Welcher SR",
+    "channel_url": "https://www.youtube.com/@ShaneWelcher",
+    "video_url": "https://www.youtube.com/watch?v=GhgFdLDdUIY",
+    "duration_seconds": 395,
+    "view_count": 227229,
+    "like_count": 0,
+    "chunk_index": 0,
+    "chunk_text": "okay so in this very simple ladder logic example what we have is a ladder zero and we have letter one now this will be controlling a photo I uh or actually a conveyor going back and forth via photo out one and photo I2 now we will be controlling this back and forth using the standard XI C's and xios and we'll and this also too will be having a timer off so we'll be explaining the whole scenario exactly the way it should be explained so that you can get the base understanding of you know utilizing these in a real world principle because this is a 3D working model and I will show you this actually working so first we need to understand to uh rung zero so all we always going to start off with rung zero and then we'll have room uh rung one so rung zero we have the certain tags pe1 which is photo I one we have P2 2 which is photo I2 we have convey forward which is conveyor forward we have convey reverse and that can be a reverse and then we have our start forward timer now keep that in mind um what we're these names are all just tag based names right so in control Logics in studio 5000 the system is a tag based system so just keep in mind you can name these whatever you would like to name these in my case I named these a certain things so that they would match up with my OPC for this actual 3D simulator no um the working heart of this actual uh piece of code right here now uh rum uh one right here we have pe1 okay so P1 when P1 is triggered and pe2 is not triggered then convey reverse will seal itself in until pe2 is made and then it will break then when pe2 is made and pe1 is not made it will run the conveyor in forward Direction and seal that in until pe1 is again broken and then that will actually cycle back and forth now the start of this this very first rung up here is what we're doing to basically say okay in a in a off timer or a timer off right what happens is as soon as it's enabled it zeros out and then it holds the done bit until when when the flow uh drops from the actual timer what it does is it basically uh the done bit time when it seems the timer times out the done bit will drop out meaning the done bit right here will stay active until the timer has timed out in our case is which is a quarter of a second so uh real quick I want to show you this running so you can kind of understand the way this works now again we are running a very simple logic here we are running examine ons",
+    "word_count": 500,
+    "topic": "theory",
+    "category": "controls",
+    "manufacturer": "",
+    "equipment_type": "conveyor",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "5000",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ],
+    "search_query": "PLC ladder logic programming tutorial beginners",
+    "knowledge_entry": "Expert Shane Welcher SR says about conveyor: okay so in this very simple ladder logic example what we have is a ladder zero and we have letter one now this will be controlling a photo I uh or actually a conveyor going back and forth via photo out one and photo I2 now we will be controlling this back and forth using the standard XI C's and xios"
+  },
+  {
+    "video_id": "GhgFdLDdUIY",
+    "video_title": "PLC Ladder Logic Basics For Beginners With A Working Conveyor",
+    "channel": "Shane Welcher SR",
+    "channel_url": "https://www.youtube.com/@ShaneWelcher",
+    "video_url": "https://www.youtube.com/watch?v=GhgFdLDdUIY",
+    "duration_seconds": 395,
+    "view_count": 227229,
+    "like_count": 0,
+    "chunk_index": 1,
+    "chunk_text": "has timed out in our case is which is a quarter of a second so uh real quick I want to show you this running so you can kind of understand the way this works now again we are running a very simple logic here we are running examine ons and examine offs to control an OTE an OTE again when it break down to what an OTE is it is like a control mechanism for a bit uh generally speaking again when it comes down to uh something that like we can actually turn and once the tag has been used from OTE we can actually utilize that with an xic or an xio if we choose to in this simple example though we just want to give you some clarity to actually show a con a box going back and forth so what I'm going to do is I'm going to load my driver um and I'll open my driver real quick and let's see I'll pull this over so that I can actually see that and let's see I think it's uh there we go there we go we can see it so my driver is actually not in here right now for some reason so let's actually go ahead and load our driver and make our driver so go in here we'll go into configure driver we have everything there we'll go ahead and add that in we'll add this in real quick our photo eyes into our system so that we have a working system and then what we'll do is we'll exit that real quick and start the driver now as soon as it starts you'll see the logic will start to work so you see that the conveyor is going back and forth and the POC logic is working so my the goal here and again when it comes on to it is to basically simplify this is as easy as possible so you see you have uh conveyor or pe1 which is going to be made right now as soon as pe1 was made it sent it sealed in the conveyor reverse now as pe2 gets made it will drop that out and then and it will come out here and seal in conveyor forward so it's very very simple logic it's very easy to understand but just understand that these are otes and that OTE again can be used with a an actual xic or xio in this case we are sealing it in we are actually utilizing the bit we're controlling which is the conveyor reverse and conveyor forward we're utilizing that for a seal in circuit and we're on we're dropping the sealant dropping that that seal in using the pe1 or pe2 so you can see this going back and forth back and forth and it I think it gives a lot better Clarity to see a 3D working model or a real working model in the real",
+    "word_count": 500,
+    "topic": "theory",
+    "category": "controls",
+    "manufacturer": "",
+    "equipment_type": "conveyor",
+    "model_number": "",
+    "fault_codes": [],
+    "search_query": "PLC ladder logic programming tutorial beginners",
+    "knowledge_entry": "Expert Shane Welcher SR says about conveyor: has timed out in our case is which is a quarter of a second so uh real quick I want to show you this running so you can kind of understand the way this works now again we are running a very simple logic here we are running examine ons and examine offs to control an OTE an OTE again when it break dow"
+  },
+  {
+    "video_id": "Pp6P9r5MN10",
+    "video_title": "PLC Ladder Logic Basics for Beginners Box Sorting Conveyor Using Studio 5000",
+    "channel": "Shane Welcher SR",
+    "channel_url": "https://www.youtube.com/@ShaneWelcher",
+    "video_url": "https://www.youtube.com/watch?v=Pp6P9r5MN10",
+    "duration_seconds": 357,
+    "view_count": 20355,
+    "like_count": 0,
+    "chunk_index": 0,
+    "chunk_text": "all right so we have another uh ladder logic example we're using a 3D simulator so we will be simulating the whole process to give you a step-by-step and easy to understand method to learn now this is using a studio 5000 in version 35 so just keep in mind I am using emulator and this is going to have uh we'll let's briefly talk about around zero and run one again we start out with rung zero this is going to have the start push button the stop push button the emergency stop push button which is right here you can see these do all work um so with that said and then the conveyor so conveyor 3 would be the conveyor and it is uh indicated that it will run in reverse that is the direction of that conveyor it just so happens to be so just keep in mind now we have the start push button when it's pressed the light will come on and then the stop push button as well so you can see the light does cut on when that stop push button is pressed so these do all work at all it is all functioning so uh to talk about again rung zero when the start push button is pressed and the stop push button is not pressed or the emergency stop button is not pressed then the conveyor will then turn on and seal itself in until the stop button push button is pressed or the emergency stop push button is pressed meaning that will turn on the conveyor and seal itself in now rungs one will actually go in and uh have make sure that the conveyor is running then it will say if pe1 which is this PE right over here the fetty white one right so photo I one if it's if it's detected then what it's going to do is it's going to advance The Pusher so all the tall boxes what's going to happen is all the tall boxes will get pushed to the the next conveyor and then all the short boxes will continue through the system so I'll briefly talk about this as this system runs so we're going to start the system up you're gonna see the photo wire turn on and then The Pusher kicks out so this will be another tall box it pushes that that this way now this short box is not going to push because the photo eye does not get made okay so just keep that in mind so this is basically a box sorting system done with a conveyor system and a simple Pusher and again we can start and stop the system just by merely pressing the stop push button as you see the conveyor is no longer running if we want to start it back again we can start it back again it's just that simple with that said again this is just using again",
+    "word_count": 500,
+    "topic": "installation",
+    "category": "controls",
+    "manufacturer": "",
+    "equipment_type": "conveyor",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "5000",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ],
+    "search_query": "PLC ladder logic programming tutorial beginners",
+    "knowledge_entry": "Expert Shane Welcher SR says about conveyor: all right so we have another uh ladder logic example we're using a 3D simulator so we will be simulating the whole process to give you a step-by-step and easy to understand method to learn now this is using a studio 5000 in version 35 so just keep in mind I am using emulator and this is going to hav"
+  },
+  {
+    "video_id": "Pp6P9r5MN10",
+    "video_title": "PLC Ladder Logic Basics for Beginners Box Sorting Conveyor Using Studio 5000",
+    "channel": "Shane Welcher SR",
+    "channel_url": "https://www.youtube.com/@ShaneWelcher",
+    "video_url": "https://www.youtube.com/watch?v=Pp6P9r5MN10",
+    "duration_seconds": 357,
+    "view_count": 20355,
+    "like_count": 0,
+    "chunk_index": 1,
+    "chunk_text": "can start and stop the system just by merely pressing the stop push button as you see the conveyor is no longer running if we want to start it back again we can start it back again it's just that simple with that said again this is just using again the xios and xics and then OTS right Odes being our outputs so just like you see right here if I push a start put push button you see the light come on that is an OTE right here um this is an OTE this is an OT and that's an OTE right so that's outputting some information right so and again you can use a a tag these are all controller tags these are all controller tags and basically uh all the controller tags are like you can control anything from um well the possibilities are basically endless as far as that goes meaning if I'm using conveyor 3 uh underscore reverse right here and I'm controlling that with the OTE I can use that same bit in an xic or xio to actually utilize that to control something else in in the term of in row one that's what we're doing so again so we're verifying what we've controlled up here is actually part of the process of controlling something else in the very next room so as you can see this next one will come in photo I one will come in and then The Pusher will index out and then come back in right so as soon as it pushes out it it returns back in and how it returns back in is this Pusher indicator so there's a proc switch on the end of this Pusher that lets it know that it's actually you know actuated out or you know actuated in right so once um you'll see this right here as soon as it goes out this bit will go high and then unseal that so basically we're using seal in circuits again and then we're unsealing it with a said bit or said function in this case an inductive procs and that's basically how that process works so I I think by actually you know using this and using this 3D simulator you can kind of see the best practices and how things are working now uh with this set too I'm teaching this way because again the industry is in dire need of automation text and the more we can teach and more we can grow and help each other then the better we're all going to be because as the industry moves to the industry 4.0 and gets out of the industry four point or 3.0 basically what we're doing is where all the engineers are going to be more data driven so we're going to need more technicians we're going to need more automation systems tax and and again when that role gets many different names these days but ultimately",
+    "word_count": 500,
+    "topic": "general",
+    "category": "controls",
+    "manufacturer": "",
+    "equipment_type": "conveyor",
+    "model_number": "",
+    "fault_codes": [],
+    "search_query": "PLC ladder logic programming tutorial beginners",
+    "knowledge_entry": "Expert Shane Welcher SR says about conveyor: can start and stop the system just by merely pressing the stop push button as you see the conveyor is no longer running if we want to start it back again we can start it back again it's just that simple with that said again this is just using again the xios and xics and then OTS right Odes being our"
+  }
+]
