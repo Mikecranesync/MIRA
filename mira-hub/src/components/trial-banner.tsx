@@ -41,15 +41,16 @@ export function TrialBanner() {
         </span>
         <Link
           href="/upgrade"
-          className="ml-2 px-2.5 py-0.5 rounded text-xs font-semibold"
-          style={{ backgroundColor: urgent ? "#F59E0B" : "#2563EB", color: "#fff" }}
+          className="ml-2 px-3 rounded text-xs font-semibold inline-flex items-center"
+          style={{ backgroundColor: urgent ? "#F59E0B" : "#2563EB", color: "#fff", minHeight: 44 }}
         >
           Upgrade
         </Link>
       </div>
       <button
         onClick={() => setDismissed(true)}
-        className="text-slate-400 hover:text-white transition-colors ml-4"
+        className="flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+        style={{ minWidth: 44, minHeight: 44, marginLeft: 8 }}
         aria-label="Dismiss"
       >
         <X className="w-3.5 h-3.5" />
