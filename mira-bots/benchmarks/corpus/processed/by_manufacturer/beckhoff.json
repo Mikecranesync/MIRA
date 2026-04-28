@@ -96,37 +96,5 @@
         "description": "Option communications fault"
       }
     ]
-  },
-  {
-    "id": "1mh84fi",
-    "title": "Hyper-V / VBS error when starting TwinCAT",
-    "selftext": "Hi together,\n\nI've seen multiple times the same Hyper-V error in the subreddits. So I thought I'd post the response I've gotten from Beckhoff Support on the topic.\n\n**Error message:**  \n\"Setting TwinCAT in Run Mode inside Hyper-V is not possible\"\n\n**Answer from Beckhoff Support:**\n\nPlease take a look at the TwinCAT system requirements:\n\n[https://infosys.beckhoff.com/english.php?content=../content/1033/tc3\\_overview/6162419083.html&amp;id](https://infosys.beckhoff.com/english.php?content=../content/1033/tc3_overview/6162419083.html&amp;id=)\n\n\\### Hyper-V Information\n\n[https://learn.microsoft.com/en-us/troubleshoot/windows-client/application-management/virtualization-apps-not-work-with-hyper-v](https://learn.microsoft.com/en-us/troubleshoot/windows-client/application-management/virtualization-apps-not-work-with-hyper-v)\n\n\u00a0\n\n\\### Some Components and Features of Windows that Use Hyper-V:\n\n1. \\*\\*Virtualization-Based Security (VBS)\\*\\*:\n\n[https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/oem-vbs](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/oem-vbs)\n\n\\- \\*\\*Core Isolation\\*\\*: Uses Hyper-V to create isolated memory regions to protect critical system processes.\n\n\\- \\*\\*Credential Guard\\*\\*: Uses VBS to isolate and protect credentials.\n\n[https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/](https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/)\n\n\\- \\*\\*Device Guard\\*\\*: Uses VBS and Hyper-V to enforce code integrity policies and isolate processes.\n\n\u00a0\n\n2. \\*\\*Windows Hypervisor Platform\\*\\*:\n\n\\- Provides an API for third-party virtualization software to use Hyper-V as the underlying virtualization technology.\n\n\u00a0\n\n3. \\*\\*Windows Subsystem for Linux (WSL) 2\\*\\*:\n\n\\- The second version of WSL, WSL 2, uses a lightweight virtual machine provided by Hyper-V to run a full Linux kernel on Windows.\n\n[https://learn.microsoft.com/en-us/windows/wsl/about](https://learn.microsoft.com/en-us/windows/wsl/about)\n\n\u00a0\n\n4. \\*\\*Memory Integrity (HVCI)\\*\\*:\n\n\\- \\*\\*Hypervisor Code Integrity (HVCI)\\*\\*: Uses Hyper-V to enforce code integrity policies, ensuring that only trusted code runs in kernel mode.\n\n[https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity?tabs=security](https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity?tabs=security)\n\n\u00a0\n\n\\### Further information\n\n\u00a0\n\nFor 4024 and Windows 10, you can take a look at the \u201cDevice Guard and Credential Guard hardware readiness tool\u201d from Microsoft.\n\n[https://www.microsoft.com/en-us/download/details.aspx?id=53337](https://www.microsoft.com/en-us/download/details.aspx?id=53337)\n\n\u00a0\n\nFor &gt;=4026.14, there is a Powershell script(DisableVirtualizationBasedSecurity.ps1) to disable virtualization-based security located in \u201cC:\\\\Program Files (x86)\\\\Beckhoff\\\\TwinCAT\\\\3.1\\\\System\u201d.\n\n\u00a0\n\nIf you would like to use one of the two options, please contact your IT department.\n\nBeckhoff does not provide any additional instructions on how to deactivate one of these functions!\n\nBeckhoff offers a UserMode Runtime as an alternative to the KernelMode Runtime.\n\n\u00a0\n\n*For &gt;=4026:*\n\n[https://infosys.beckhoff.com/english.php?content=../content/1033/tc170x\\_tc3\\_usermode\\_runtime/11319881355.html](https://infosys.beckhoff.com/english.php?content=../content/1033/tc170x_tc3_usermode_runtime/11319881355.html)\n\n\u00a0\n\n\u00a0\n\n*For 4024:*\n\nPlease take a look at the \"Readme.txt\" in the following folder \"C:\\\\TwinCAT\\\\3.1\\\\Runtimes\"\n\nYou can start the Beta UserMode Runtime as follows:\n\n1. start TwinCAT UserMode Runtime by double-clicking on Start.bat in C:\\\\TwinCAT\\\\3.1\\\\Runtimes\\\\UmRT\\_Default\n\n2. the command window will open and must be left ope\n\n3. in Visual Studio or TcXaeShell, the UserMode Runtime can now be selected as the target syste\n\n\"",
-    "score": 3,
-    "num_comments": 0,
-    "created_utc": 1754297065,
-    "subreddit": "PLC",
-    "top_comment": "",
-    "category": "general",
-    "urgency": "high",
-    "quality_score": 0.5,
-    "quality_pass": false,
-    "quality_reasons": [
-      "no equipment mention"
-    ],
-    "manufacturer": "Beckhoff",
-    "equipment_type": "",
-    "model_number": "",
-    "fault_codes": [
-      {
-        "code": "4024",
-        "manufacturer": "ABB",
-        "description": "Unknown fault code"
-      },
-      {
-        "code": "4026",
-        "manufacturer": "ABB",
-        "description": "Unknown fault code"
-      }
-    ]
   }
 ]

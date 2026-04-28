@@ -1,5 +1,24 @@
 [
   {
+    "id": "zt3f15",
+    "title": "Siemens ARC fault breaker tripping - previous owner recommending to change CAFCI to standard",
+    "selftext": "Hello!\n\nI bought a house with new electrical wiring and I have been living here for about a month. In the last week, a kitchen circuit breaker has tripped at least 5 times. For example, I had the coffee maker and microwave on and it tripped. On a separate occasion, I plugged my vacuum in the living room and the whole house went dark. \n\nI reached out to a recommended electrician and without telling him details, his response was that it sounds like a Siemens panel ARC fault breaker. He doesn't troubleshoot nuisance tripping likely caused by poor installation and that I should get the original installer to follow up on their work. (I didn't tell him what my panel was or who installed it since the previous owner selected the electrician. It's like he knew a secret I didn't.)\n\nI spoke with the previous owner and he said he will have the original electrician come out. He also made a disgruntled comment about the new electric codes and how AFCIs will falsely trip so they will probably swap tripping CAFCI breakers to standard ones. This isn't sitting right with me so I've been researching potential causes. There also seem to be differing opinions on what he is proposing.\n\nAdditional details:\n\n* Previous owner flipped the place and what he's proposing is admittedly not up to code (his words)\n* Panel is Siemens and breakers are CAFCI / 100 AMP\n* I live alone so I'm the only person using electricity here\n* When I flip the breaker back on, the ARC fault light turns on and then disappears after a few seconds\n* I have new appliances (microwave, toaster, coffee maker, Dyson vacuum, etc.). The fridge and stove (also new) are on a different kitchen circuit. \n\n**My questions for the professionals: Is my deep concern about swapping CAFCI to a standard circuit breaker valid? Are Siemens electric panels trash? What can I encourage the electrician to look at to ensure this issue is resolved correctly?**\n\nI apologize if something doesn't sound 100% technically accurate - still learning and any insight is greatly appreciated!",
+    "score": 3,
+    "num_comments": 16,
+    "created_utc": 1671760363,
+    "subreddit": "AskAnElectrician",
+    "top_comment": "",
+    "category": "electrical",
+    "urgency": "high",
+    "quality_score": 0.75,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Siemens",
+    "equipment_type": "circuit breaker",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
     "id": "1rf5sxm",
     "title": "Ayuda comunicaci\u00f3n Fix -PLC",
     "selftext": "Buen d\u00eda quien me dar\u00eda un buen consejo tengo un  equipo que tengo conexi\u00f3n ethernet y este est\u00e1 comunicando un PLC s7 300, y yo lo veo conectado ahora tambi\u00e9n tengo instalado fix32 la versi\u00f3n vieja de Ifix y tambi\u00e9n lo conecte pero no escribe ni me Lee los DB del PLC el device est\u00e1 desconectado ",
@@ -73,7 +92,7 @@
     "id": "1srkqh0",
     "title": "Area length Error when writing",
     "selftext": "I have the following error on a 317F -3 PN/DP Siemens PLC with the SF light Solid Red:  \nArea length Error when writing  \nGlobal DB, bit access, Access Address:            7  \nRequested OB: Programming Error OB (OB121)  \nPriority Class: 1  \nInternal Error, Incoming 1.\n\nWhich address is it referring to when it says Address 7? I cannot find the DB in question. Hoping someone here can shed some light.\n\n[PLC Diagnostic Buffer ](https://preview.redd.it/hwp9zusn0jwg1.png?width=485&amp;format=png&amp;auto=webp&amp;s=f578ee82527a2b5cf0eddbca5dad57d0f29f2f6f)\n\n[DB127](https://preview.redd.it/o78m07u93jwg1.png?width=1659&amp;format=png&amp;auto=webp&amp;s=645d35e6fc12d971391f2aa427d6e97e71d5481f)\n\nWhat I have tried so far.  \nStopping the PLC and Checking the Stacks Tab Shows DB122, DB27 FC27 And FB27. Double clicking FC27 brings me to Network 4. Which I temporarily deleted to check if the fault disappears with no luck. I then blocked calls to all of these but I cannot find the root DB  for the write error. I also tried to download the blocks back with an offline project (backup) thinking it might be a corrupted download but that did not solve anything.   \nI started to block all FC calls in OB1, 1 at a time to check if it was something there. But I cannot find the root cause for this. \n\nAny help would be appreciated !!!!\n\n\n\n[Stacks tab](https://preview.redd.it/s4cskyps0jwg1.png?width=508&amp;format=png&amp;auto=webp&amp;s=e854dae486bb3e9c9855b86d360899314e23be4a)\n\n[Network 4](https://preview.redd.it/mw0y24ec1jwg1.png?width=554&amp;format=png&amp;auto=webp&amp;s=b9ed3fd37b87bde3e4f0998c66d0b68f78df8f56)",
-    "score": 6,
+    "score": 5,
     "num_comments": 21,
     "created_utc": 1776770520,
     "subreddit": "PLC",
@@ -92,7 +111,7 @@
     "id": "1qaxi20",
     "title": "Siemens TIA Portal, anything I must consider to implement the \"Program_Alarm\" function?",
     "selftext": "Since previous post was reported, I'm trying to make a batter one.\n\nI have to implement all the alarms in the installation using the Siemens system function \"Program_Alarm\", due to a client requirement.\n\nAt the end of the day I will have thousands of declared alarms on the CPU.\nBy chief logic not many will be active at a time but I wanted to give the scope.\n\nSince this is the first time I using this kind of alarm implementation anything I must consider?\nAny limit on the number of alarms?\nEncapsulation of functions generating the alarms?\nCycle time? Is it heavy on the CPU?\nHow do I properly implement alarm priority? Are this levels automatically available on the HMI?\n\nSome things I can test out during emulation/simulation, but it's virtual PLC I will have no idea of the real cycle time.\nI will only have real HW during the FAT with the client.\n\nThe CPU being used is a 1518.\n\nIf anyone can provide information according to their experience I would appreciate it \ud83d\ude4f\n",
-    "score": 6,
+    "score": 7,
     "num_comments": 32,
     "created_utc": 1768230879,
     "subreddit": "PLC",
@@ -308,7 +327,7 @@
     "id": "1o5kum6",
     "title": "Can I turn off PLC Errors caused by disconnected Profinet devices? (Siemens S7-1200 TIA)",
     "selftext": "I have a machine where it is totally ok if one of the profinet devices is disconnected.\n\nI cannot deactivate them, becouse the program needs to check the connected devices continuously.\n\nThe PLC error doesn't cause any problems, although it is not too professional to have the red light on while there isn't any problem.\n\nThank you for your help!",
-    "score": 5,
+    "score": 6,
     "num_comments": 13,
     "created_utc": 1760364837,
     "subreddit": "PLC",
@@ -413,6 +432,27 @@
         "description": "Unknown fault code"
       }
     ]
+  },
+  {
+    "id": "1htmygh",
+    "title": "Sinamics S120 F30003 Under volt error",
+    "selftext": "Hello everyone, sorry for the constant ask for advices haha\n\n\nI have a project of filling machines, using Servo motors (Auger process). \n\nI am using\n-CU320-2PN as my control unit\n-SLM, 10KW, supplying two double motor modules with 4 motors running.\n-motors specs are 2.5KW, 600VDC, 7.6Amps (1FK7064-4CF71-1QB2-Z N05)\n\nthe problem is, when motors start moving, the DC link drops below 550V (the constant dc link). if it's only one motor it can go down to 490V. If more it can go to 390-400V.\n\nthe process continues for 4-5 fills, and then voltage drops lower than the lower threshold 380V and F30003 fault appears.\n\nThe incoming supply goes through a line filter, to a line reactor then to the SLM which converts 380VAC to 600VDC.\n\nI don't know how to overcome the undervoltage error. knowing that this exact setup is running, error-free, in an adjacent production line, with a 5th servo motor.\n\nWhat I should I check or troubleshoot to overcome this?\n\nthanks in advance",
+    "score": 1,
+    "num_comments": 30,
+    "created_utc": 1736020933,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "mechanical",
+    "urgency": "high",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "servo",
+    "model_number": "CU320-2PN",
+    "fault_codes": []
   },
   {
     "id": "1o1ftx9",
@@ -523,7 +563,7 @@
     "id": "1lre82b",
     "title": "Machine fault handling",
     "selftext": "Hello everyone,  \nThe topic of fault handling keeps coming up for me and feels like the Wild West among PLC programmers. I have several projects from different machine manufacturers on my desk, and each one handles faults\u2014such as emergency stop, motor protection, runtime monitoring, etc.\u2014in a very different way. Sometimes, it's just a matter of setting flags that are later acknowledged. Other times, complex UDT blocks are created where all time points are logged, and these are then stored in DBs in such a way that later expansion is nearly impossible.\n\nPersonally, I usually work with simple status DBs (current state of the fault) and memory DBs (RS latch with acknowledgment), where the faults are listed and then passed on to the respective HMI. The HMI takes care of the logging for me.\n\nMy question now is: Are there any official guidelines or best practices from BG, VDE, Siemens, etc., that define how such error handling should be implemented at a minimum? Or is everyone left to their own devices as long as nothing happens? Of course, what the customer wants is also important, but surely there must be some kind of minimum standard, right?",
-    "score": 22,
+    "score": 21,
     "num_comments": 9,
     "created_utc": 1751620221,
     "subreddit": "PLC",
@@ -565,101 +605,5 @@
         "description": "Unknown fault code"
       }
     ]
-  },
-  {
-    "id": "1noryfd",
-    "title": "Link between an HMI error signal and the ledder program line. (Omron Sysmac Studio)",
-    "selftext": "I've worked with Siemens and Rock Wellington, but this is my first time working with Omron. I was asked that, when there was an error signal on the HMI, when he clicked on it, would show which line of the ladder program was triggering this failure. Is it possible to do in Sysmac Studio?",
-    "score": 1,
-    "num_comments": 3,
-    "created_utc": 1758658177,
-    "subreddit": "PLC",
-    "top_comment": "",
-    "category": "controls",
-    "urgency": "medium",
-    "quality_score": 0.6,
-    "quality_pass": false,
-    "quality_reasons": [
-      "low score (1)"
-    ],
-    "manufacturer": "Siemens",
-    "equipment_type": "HMI",
-    "model_number": "",
-    "fault_codes": []
-  },
-  {
-    "id": "1lki0kq",
-    "title": "Siemens G120C fault F8502",
-    "selftext": "Hi everyone, I'm having some trouble with a G120C standalone that is used to control an aspiration fan. The problem is that it shows randomly the F8502, in the manuals it has this description \"Monitoring time sign-of-life expired comes when the monitoring time for the sign-of-life counter has expired or the connection to the PROFINET interface was interrupted.\". It doesn't have any PROFINET connection, and the p2030 is already settled to \"0\" (no protocol). \n\nHave you got any idea? Am I fighting against a bug? HELP \ud83d\ude2d",
-    "score": 2,
-    "num_comments": 6,
-    "created_utc": 1750886646,
-    "subreddit": "PLC",
-    "top_comment": "",
-    "category": "controls",
-    "urgency": "medium",
-    "quality_score": 0.6,
-    "quality_pass": false,
-    "quality_reasons": [
-      "low score (2)",
-      "no equipment mention"
-    ],
-    "manufacturer": "Siemens",
-    "equipment_type": "",
-    "model_number": "",
-    "fault_codes": [
-      {
-        "code": "F8502",
-        "manufacturer": "Allen-Bradley",
-        "description": "Unknown fault code"
-      },
-      {
-        "code": "fault F8502",
-        "manufacturer": "Generic",
-        "description": "Unknown fault code"
-      }
-    ]
-  },
-  {
-    "id": "1lqqbhm",
-    "title": "Cannot Simulate PLC Due to \"fbVFD_Analog[FB122] Can't Be Simulated\" Error in TIA Portal",
-    "selftext": "I'm trying to simulate my PLC program using PLCSIM in TIA Portal, but I keep getting an error saying that the block \"fbVFD\\_Analog\\[FB122\\] can't be simulated.\" \n\nTIA Portal suggests going into the block properties and enabling the option under Compilation called \"Can be simulated with SIMATIC S7-PLCSIM.\" However, I\u2019m not able to tick it. \n\nHas anyone come across this issue before? Is there a way to enable simulation for this kind of block, or a recommended workaround to test the rest of the logic without it?\n\n[Under project Properties](https://preview.redd.it/posjh5qm0oaf1.png?width=1025&amp;format=png&amp;auto=webp&amp;s=af6dd822da22c3af3bc73efed03b4fc814d4ae15)\n\n  \n\n\n[Under block properties. Even though the box is not grayed out, I am not bale to tick it. ](https://preview.redd.it/eg4gow5n0oaf1.jpg?width=1048&amp;format=pjpg&amp;auto=webp&amp;s=87634985aceace065b2614da6b3fb028fe518c17)\n\n",
-    "score": 1,
-    "num_comments": 2,
-    "created_utc": 1751551183,
-    "subreddit": "PLC",
-    "top_comment": "",
-    "category": "controls",
-    "urgency": "medium",
-    "quality_score": 0.6,
-    "quality_pass": false,
-    "quality_reasons": [
-      "low score (1)"
-    ],
-    "manufacturer": "Siemens",
-    "equipment_type": "PLC",
-    "model_number": "FB122",
-    "fault_codes": []
-  },
-  {
-    "id": "1kkapbm",
-    "title": "Export data from WinCC tag logging &amp; alarm logging to SQL Server",
-    "selftext": "Hi, I'm learning about sql server in SCADA and I'm trying to export data from tag logging and alarm logging to SQL Server from WinCC Explorer 7.4, but I haven't seen much information about it on internet, so I don't know how I could do it.  \nDoes anyone know about a guide or Siemens documentation where it is explained?  \nThanks.",
-    "score": 0,
-    "num_comments": 4,
-    "created_utc": 1746995788,
-    "subreddit": "PLC",
-    "top_comment": "",
-    "category": "controls",
-    "urgency": "low",
-    "quality_score": 0.6,
-    "quality_pass": false,
-    "quality_reasons": [
-      "low score (0)"
-    ],
-    "manufacturer": "Siemens",
-    "equipment_type": "SCADA",
-    "model_number": "",
-    "fault_codes": []
   }
 ]

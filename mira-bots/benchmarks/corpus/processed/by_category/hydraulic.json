@@ -1,40 +1,19 @@
 [
   {
-    "id": "1sxjbhv",
-    "title": "Hydraulic Door Closer Question",
-    "selftext": "Hello, \n\nI am just looking for some guidance on an issue with a commercial door closer in my building. It seems like when the door is opened fully the swing speed is appropriate but when someone only opens the door slightly (say 45 degrees) and slips through the swing speed is much faster. Latch speed seems unaffected. \n\nDoes this mean that the closer is malfunctioning such that I should have it repaired/replaced or is this just a function of how hydraulic door closers operate? \n\nThanks ",
-    "score": 2,
-    "num_comments": 6,
-    "created_utc": 1777329888,
+    "id": "1iaj7vu",
+    "title": "Challenges Repairing A2 Tool Steel Expansion Die \u2013 Advice on Welding, Materials, and Long-Term Solutions Needed",
+    "selftext": "Not sure how well this fits here, but: I\u2019m repairing a pipe expansion die made from A2 tool steel, hardened to RC58-60, used in a hydraulic pipe expansion press. The die broke during use, and my repair attempts have so far been unsuccessful. Here\u2019s what I\u2019ve tried and observed (all attempts were beveled CJP welds):\n\n1. **First Attempt:**\n   * **Material:**\u00a0308LSi MIG (0.045\u201d) on pulse.\n   * **Parameters:**\u00a040V / 450WFS.\n   * **Heat Treatment:**\u00a0No preheat or post-heat.\n   * **Post-Processing:**\u00a0Ground down with a standard flap disk.\n   * **Result:**\u00a0Held for more units than subsequent attempts but eventually broke again.\n2. **Second Attempt:**\n   * **Material:**\u00a0309L TIG rod (3/32\u201d).\n   * **Heat Treatment:**\u00a0Preheat to 400\u00b0F, maintained interpass at 400\u00b0F, cooled in an oven from 450\u00b0F to ambient.\n   * **Result:**\u00a0Broke again, almost immediately.\n3. **Third Attempt:**\n   * **Material:**\u00a0Matching A2 TIG rod (Crown Alloy AH-10).\n   * **Parameters:**\u00a0[Repaired per weld procedure spec.](https://crownalloys.com/wp-content/uploads/2021/12/TOOL-STEEL-CROWN-AH-10-AH-20-WITH-New-Warning-White-PWP.pdf)\n   * **Result:**\u00a0These repairs failed at the base almost instantly, which was surprising.\n4. **Fourth Attempt:**\n   * **Material:**\u00a0Super Missile Weld (1/8\u201d).\n   * **Heat Treatment:**\u00a0No preheat or post-heat.\n   * **Post-Processing:**\u00a0Hardfaced over remnants of previous alloys, machined the surface.\n   * **Result:**\u00a0It\u2019s holding better than the matching A2 rod but ultimately snapped at the base.\n\n**Important Details to Consider:**\n\n* **Surface Finish:**\u00a0Spec is 16uin, but surfaces are not ground perfectly flush.\n* **Collet Assembly Fitment:**\u00a0The assembly is driven through a hole that may be enlarged (no original ID print to verify).\n* **Hydraulic Spear:**\u00a0The spear that flares the six segments isn\u2019t dimensionally perfect but is very close.\n* **Segment Stretching:**\u00a0Each time the segments snap, they are placed back together, but the die\u2019s overall size increases slightly.\n\n**Questions I Need Help With:**\n\n1. Am I repairing these dies correctly, or is there something fundamentally wrong with my approach?\n2. Could the problem lie in other factors like dimensional inconsistencies or the materials used in other components (e.g., the spear or collet assembly)?\n3. What\u2019s a quick fix to keep production running while the new parts are being fabricated?\n4. When the new parts arrive, what steps should I take to ensure the next setup is flawless?\n5. Is A2 tool steel the right material for these parts, or should I consider a different alloy or heat treatment process to improve performance and durability?\n\nI\u2019m open to any advice on metallurgy, welding processes, alternative materials, or machine alignment. Thanks in advance for any insights! Just to be clear, the spear drives up through the six segments that flare out and drives the whole collet body up where the base of the segments (that are being repaired) catches a thick plate with a hole in it, and this is where the snap occurs. The sensors are to spec. The spear stops where it has been registered to stop historically.\n\nAfterthoughts:\n\n* Thickness of material is 1-1/2\". A2 tool steel isn't structural steel, so it's not in table 5.8 on AWS D1.1, which is why I randomly chose 400F on the fly.\n* What is the preheat on A2 tool steel for repair? Is that AWS D2.4? What table? (https://app.aws.org/forum/topic\\_show.pl?tid=4625)\n* Is H13 or S7 steel better suited?",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1737909659,
     "subreddit": "IndustrialMaintenance",
     "top_comment": "",
     "category": "hydraulic",
-    "urgency": "medium",
+    "urgency": "high",
     "quality_score": 0.35,
     "quality_pass": false,
     "quality_reasons": [
-      "low score (2)",
-      "no equipment mention"
-    ],
-    "manufacturer": "",
-    "equipment_type": "",
-    "model_number": "",
-    "fault_codes": []
-  },
-  {
-    "id": "1sq2kgc",
-    "title": "Hydropower maintenance",
-    "selftext": "Does anybody have advice for getting into hydropower maintenance. I've been trying for a few years at various dams around the PNW. My background, I was in the Navy on a nuclear aircraft carrier as a machinist (machinery repairman), I got out in 2013 and switched careers into hydrology and natural resources for a while until I realized it didn't pay anything. I only had an AAS so unless I wanted more school that was a dead end. But I got back into maintenance. I've worked a factory in Georgia for a short time doing maintenance, a few machine shops doing repair and new parts, a hydraulic repair shop doing everything from wrenching to machining to testing. Now I have been working in an aluminum plant for the past 6 years in the machine shop repairing large stuff like rolls and fans and any other random broken things they bring in. It's a lot of large lathes and mills. We are millwright/machinists doing all the bearings and alignment and all that stuff.\n\nI have gotten my resumes looked at and usually past the screening process but never any calls for interviews. I have now hydropower experience which I feel is my major problem but I don't know how to get it. Does anybody know of useful trainings I could take or certs I could get to bolster my resume and make myself more hirable. I don't really have time to enroll in a physical school with my schedule but online might be an option if it was actually useful. \n\nAny advice would be greatly appreciated.",
-    "score": 3,
-    "num_comments": 2,
-    "created_utc": 1776626919,
-    "subreddit": "IndustrialMaintenance",
-    "top_comment": "",
-    "category": "hydraulic",
-    "urgency": "medium",
-    "quality_score": 0.75,
-    "quality_pass": false,
-    "quality_reasons": [
+      "low score (1)",
       "no equipment mention"
     ],
     "manufacturer": "",
@@ -42,32 +21,11 @@
     "model_number": "",
     "fault_codes": [
       {
-        "code": "2013",
+        "code": "2021",
         "manufacturer": "ABB",
         "description": "Unknown fault code"
       }
     ]
-  },
-  {
-    "id": "1san0pq",
-    "title": "Air compressor oil leak",
-    "selftext": "had a leak in my compressor. it's been fixed but I've got some of the sigma fg-460 in the chasey. \n\ncleaning suggestions?",
-    "score": 1,
-    "num_comments": 4,
-    "created_utc": 1775149106,
-    "subreddit": "IndustrialMaintenance",
-    "top_comment": "",
-    "category": "hydraulic",
-    "urgency": "medium",
-    "quality_score": 0.5,
-    "quality_pass": false,
-    "quality_reasons": [
-      "low score (1)"
-    ],
-    "manufacturer": "",
-    "equipment_type": "compressor",
-    "model_number": "",
-    "fault_codes": []
   },
   {
     "id": "1s7emhr",
@@ -134,23 +92,21 @@
     "fault_codes": []
   },
   {
-    "id": "1rn6be5",
-    "title": "Persistent Weld Porosity and Leakage in Underwater Electronics Enclosure",
-    "selftext": "1. Application &amp; Operating Environment\nPurpose: Sealed enclosure designed to house sensitive electronics.\nOperating Depth: Continuous submersion at 2 to 4 meters (approx. 20 to 40 kPa hydrostatic pressure).\nCurrent Status: Failed pneumatic leak testing; high risk of flooding due to pressure and thermal pumping at operating depth.\n2. Geometry &amp; Assembly\nBody: Constructed from two sheet metal pieces bent and welded together.\nBase: Features welded cable glands on the bottom.\nTop Flange: Laser-cut flange welded to the main body. The screw holes in the flange retain laser-cut kerf striations on their inner walls.\n3. Manufacturing &amp; Welding History\nThe container has undergone multiple repair attempts at the flange joint, resulting in a complex thermal and metallurgical history:\nInitial Pass: Welded on the outside using an unknown process/filler, which subsequently heavily oxidized.\nSecond Pass (Inside): Attempted to seal the joint by welding from the inside using an Argon-shielded process (TIG/MIG).\nThird Pass (Outside Repair): Attempted to fix persistent leaks by welding over the initially oxidized, unknown weld on the outside using an Argon-shielded process.\n4. Testing Performed &amp; Conflicting Results\nPneumatic Bubble Test: Failed. Compressed air testing clearly presents a continuous leak (bubbles) from a specific point where the new Argon weld overlaps the old oxidized weld, in close proximity to a laser-cut screw hole.\nStatic Immersion Test: Passed (conditionally). Submerged at 1 meter for 1.5 hours without electronics running. No liquid water entered, indicating the leak is microscopic and currently relying entirely on water's capillary pressure/surface tension to hold back the 10 kPa of hydrostatic pressure.\n5. The Core Issue\nDespite being welded from both the inside and the outside, air continues to escape. We suspect the following mechanical failures:\nTrapped gases from the oxidized layer blowing through the liquid weld pool during the repair passes (blowhole porosity).\nA lateral leak path traveling between the inner and outer welds.\nThe laser-cut striations inside the screw holes acting as a capillary exhaust path for the air.",
-    "score": 0,
-    "num_comments": 11,
-    "created_utc": 1772877922,
+    "id": "1bii7hf",
+    "title": "Troubleshooting: Pressure increase on its own in sprinkler system",
+    "selftext": "Hi. I'm a ME and I'm trying to solve this issue. Your help is much appreciated. \n\nI have a wet sprinkler system in a plant with a water tank, jockey and diesel pump, expansion tank, pressure relief and control valve. System pressure is around 10 bar. During the day pressure increases up to 20 bar (jockey and diesel both off) and during the night pressure drops very low (jockey has to cut in every 15 min).\n\nI was suspecting air pockets expanding due to hot temperature and I've flushed line to remove air pockets but problem persists. \nAmbient temp: 33 Deg \nPiping system is outdoor and exposed to sunlight whole day. \n\nCan heat really expand water (+ air pocket of any) to that level of pressure? \nWhat can i do against this issue?",
+    "score": 3,
+    "num_comments": 8,
+    "created_utc": 1710848512,
     "subreddit": "MechanicalEngineering",
     "top_comment": "",
     "category": "hydraulic",
-    "urgency": "high",
-    "quality_score": 0.6,
-    "quality_pass": false,
-    "quality_reasons": [
-      "low score (0)"
-    ],
+    "urgency": "medium",
+    "quality_score": 0.75,
+    "quality_pass": true,
+    "quality_reasons": [],
     "manufacturer": "",
-    "equipment_type": "pneumatic",
+    "equipment_type": "pump",
     "model_number": "",
     "fault_codes": []
   }

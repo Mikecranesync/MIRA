@@ -1,5 +1,26 @@
 [
   {
+    "id": "1ihnf8p",
+    "title": "Troubleshooting Hydronic Heating, Primary Loop, Heat Pump",
+    "selftext": "Hope someone on here can help! I've tried heat pump / HVAC forums with no luck. We upgraded our in-floor heating system from an oil boiler to a hydronic (air&gt;water) heat pump, and it is having issues that seem to defy the laws of physics. \n\nThe basic layout is: outdoor 7-ton monoblock heat pump &lt;- 100 ft return primary loop w/ twin pumps -&gt; 500L buffer tank &lt; - main circulating pump - &gt; secondary loop main manifold.  \nHeat is distributed to 6 sub-manifolds / in floor heating zones over 4,500 sqft and 3 stories in the house. \n\n**Issues we can't explain**\n\n1. **Can't get enough flow on the primary loop flow**. needs to be over 20 GPM. With 1 grundfos UPXML pump we were around 14.5 GPM, so we twinned the pumps but only got to 18 GPM. Then we spend $4k upgrading a bunch of pipe from 1-1/4\" steel to 1-1/2\" copper with fewer elbows, but the flow barely changed even with all the friction removed (18.5 on a good day, 18 GPM sometimes). Now the flow has decreased to 16.5 to 17.5 GPM range. wtf??\n2. **System Pressure is very sensitive to temperature.** With the system operating nominally, buffer tank target temperature around 110F, pressure is 18\u201320PSI (using an Axiom mini glycol feeder for pressure read-out). The heat pump will shut off due to lack of flow cooling the system. At 72F the pressure had dropped to &lt;6 psi (?! that's technically a vacuum) and at 90F it was 10\u201312psi. We have air vents all over the place that I burp manually just in case, and no audible or visual signs of bubbles in the upper floor manifolds. The system would need to have a LOT of air to have such wide pressure fluctuations but we can't fit air anywhere. any thoughts?!\n\nSystem is 50/50 propylene glycol / water mix. We are in BC Canada (lows down to -20F, but 0 to 10F is more common for winter). Head loss on the pipe was calculated around 36 ft (18ft from the heat pump, 18ft from from pipe friction / fittings) based on the performance curve for the single pump. The performance curve for twin pumps shows \\~25 GPM at 36 ft head. We've reduced the head loss (# elbows and wider pipe) since then, so it should be 30+ but we're at 18?!\n\nI'm not even sure who's qualified to inspect this for us and figure out our issues. Our technician has decades of hydronic experience and is 100% convinced there's no large trapped air. My only thought is that the heat pump is somehow defective, but the supplier can't think of a failure that would cause our issues.",
+    "score": 1,
+    "num_comments": 4,
+    "created_utc": 1738690821,
+    "subreddit": "MechanicalEngineering",
+    "top_comment": "",
+    "category": "HVAC",
+    "urgency": "high",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Grundfos",
+    "equipment_type": "pump",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
     "id": "1r073u5",
     "title": "Troubleshooting help",
     "selftext": "Okay so I have another PLC besides the one I just posted that froze up on me while at a customers shop. I was using an IFM EC2112 RS 232 cable for a application update.\n\nIt\u2019s a CR0234 PLC\n\nI updated 5 machines while I was there but the third one I did the connection failed when I tried to connect to the PLC and then a white LED came on where normally there is a blinking green light while running the application.\n\nIt keeps returning a 5131 code (baudrate cannot be established)\n\nBased on the research I\u2019ve done so far I am thinking I must have hot plugged it accidentally while moving from machine to machine but I always have everything fully off when I plug in normally an I\u2019ve done quite a few of these.\n\nFrom what I can tell the RS 232 return from the PLC being damaged could cause this behavior but one other thing was brought up that I was curious about.\n\nBasically my question is could a runtime system problem cause this kind of behavior as well?  \n\nAnd if so is it actually possible to use the canbus channel and codesys to try to start from scratch with the PLC?\n\nI realize the easy answer is sending it to IFM for repairs but I\u2019m curious about this stuff anyways so I\u2019d like to at least learn a bit more about what\u2019s going on and how to avoid it in the future.",

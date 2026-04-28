@@ -378,36 +378,119 @@ def filter_by_duration(
 
 
 # ---------------------------------------------------------------------------
-# Transcript download (youtube_transcript_api — no API key needed)
+# VTT parser (mirrors mira-crawler/tasks/youtube.py — kept in sync manually)
+# ---------------------------------------------------------------------------
+
+_TS_RE = re.compile(
+    r"^(?:(\d+):)?(\d{1,2}):(\d{2})\.(\d{3})\s*-->\s*"
+    r"(?:(\d+):)?(\d{1,2}):(\d{2})\.(\d{3})"
+)
+_CUE_ID_RE = re.compile(r"^\d+\s*$")
+_VTT_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _ts_to_seconds(h: str | None, m: str, s: str, ms: str) -> float:
+    hours = int(h) if h else 0
+    return hours * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
+
+
+def _parse_vtt(content: str) -> list[dict]:
+    if not content:
+        return []
+    segments: list[dict] = []
+    lines = content.splitlines()
+    i = 0
+    while i < len(lines) and not lines[i].startswith("WEBVTT"):
+        i += 1
+    i += 1
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line:
+            i += 1
+            continue
+        if line.startswith(("NOTE", "STYLE", "REGION")):
+            i += 1
+            while i < len(lines) and lines[i].strip():
+                i += 1
+            continue
+        if _CUE_ID_RE.match(line):
+            i += 1
+            continue
+        ts_match = _TS_RE.match(line)
+        if ts_match:
+            (h1, m1, s1, ms1, h2, m2, s2, ms2) = ts_match.groups()
+            start = _ts_to_seconds(h1, m1, s1, ms1)
+            end = _ts_to_seconds(h2, m2, s2, ms2)
+            i += 1
+            text_lines: list[str] = []
+            while i < len(lines):
+                tl = lines[i].strip()
+                if not tl:
+                    break
+                if _TS_RE.match(tl):
+                    break
+                if _CUE_ID_RE.match(tl) and i + 1 < len(lines) and _TS_RE.match(lines[i + 1].strip()):
+                    break
+                text_lines.append(tl)
+                i += 1
+            raw_text = " ".join(text_lines)
+            clean = _VTT_TAG_RE.sub("", raw_text).strip()
+            if clean:
+                segments.append({"text": clean, "start": start, "duration": end - start})
+            continue
+        i += 1
+    return segments
+
+
+# ---------------------------------------------------------------------------
+# Transcript download — yt-dlp VTT primary, youtube_transcript_api fallback
 # ---------------------------------------------------------------------------
 
 
 def get_transcript(video_id: str) -> list[dict] | None:
-    """Download transcript using youtube_transcript_api. Returns None on failure."""
-    try:
-        from youtube_transcript_api import YouTubeTranscriptApi
-    except ImportError:
-        logger.error(
-            "youtube_transcript_api not installed: pip install youtube-transcript-api"
-        )
-        return None
+    """Download transcript for video_id. Returns list[{text, start, duration}] or None."""
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
 
+    # Primary: yt-dlp Python API (better anti-bot handling than youtube_transcript_api)
     try:
-        segs = YouTubeTranscriptApi.get_transcript(
-            video_id, languages=["en", "en-US", "en-GB"]
-        )
-        return segs
-    except Exception:
+        import yt_dlp  # type: ignore[import]
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ydl_opts = {
+                "writeautomaticsub": True,
+                "subtitleslangs": ["en"],
+                "subtitlesformat": "vtt",
+                "skip_download": True,
+                "outtmpl": f"{tmpdir}/%(id)s.%(ext)s",
+                "quiet": True,
+                "no_warnings": True,
+            }
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([video_url])
+            except Exception:
+                pass
+
+            vtt_files = list(Path(tmpdir).glob("*.vtt"))
+            if vtt_files:
+                content = vtt_files[0].read_text(encoding="utf-8", errors="replace")
+                segs = _parse_vtt(content)
+                if segs:
+                    return segs
+    except ImportError:
         pass
 
-    # v1.0+ API fallback
+    # Fallback: youtube_transcript_api (v1.0+)
     try:
+        from youtube_transcript_api import YouTubeTranscriptApi
         ytt = YouTubeTranscriptApi()  # type: ignore[call-arg]
         transcript = ytt.fetch(video_id)  # type: ignore[attr-defined]
         return [{"text": s.text, "start": s.start, "duration": s.duration} for s in transcript]
     except Exception as exc:
         logger.debug("No transcript for %s: %s", video_id, exc)
-        return None
+
+    return None
 
 
 # ---------------------------------------------------------------------------
