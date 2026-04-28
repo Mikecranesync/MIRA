@@ -151,7 +151,7 @@ _EDIT_PATTERNS: list[tuple[str, str]] = [
     (r"\barea\s+(?:is|:)\s*(.+?)(?:\s*\.|$)", "area"),
     (r"\bline\s+(?:is|:)\s*(.+?)(?:\s*\.|$)", "line"),
     (r"\b(?:resolution|fix|solution)\s+(?:is|:)\s*(.+?)(?:\s*\.|$)", "resolution"),
-    (r"\b(?:fault|problem|issue)\s+(?:is|:)\s*(.+?)(?:\s*\.|$)", "fault_description"),
+    (r"\b(?:fault(?:\s+description)?|problem|issue|description)\s+(?:is|:)\s*(.+?)(?:\s*\.|$)", "fault_description"),
 ]
 
 
