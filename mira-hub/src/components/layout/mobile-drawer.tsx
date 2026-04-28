@@ -109,8 +109,8 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
           <button
             onClick={onClose}
             aria-label="Close menu"
-            className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
-            style={{ color: "var(--foreground-muted)" }}
+            className="flex items-center justify-center rounded-lg transition-colors"
+            style={{ width: 48, height: 48, color: "var(--foreground-muted)" }}
           >
             <X className="w-5 h-5" />
           </button>
@@ -126,9 +126,10 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
                 href={href}
                 onClick={onClose}
                 className={cn(
-                  "flex items-center gap-3 px-4 py-3 transition-colors",
+                  "flex items-center gap-3 px-4 transition-colors",
                   active ? "bg-[var(--surface-1)]" : "hover:bg-[var(--surface-1)]",
                 )}
+                style={{ minHeight: 48 }}
               >
                 <Icon
                   className="w-5 h-5 flex-shrink-0"

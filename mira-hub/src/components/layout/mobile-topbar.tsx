@@ -12,20 +12,24 @@ export function MobileTopBar() {
 
   return (
     <header
-      className="md:hidden sticky top-0 z-50 flex items-center justify-between px-4 flex-shrink-0"
+      className="md:hidden sticky top-0 z-50 flex items-center justify-between px-3 flex-shrink-0"
       style={{
-        height: 44,
+        height: 56, // was 44 — increased to fit 48px buttons comfortably
         backgroundColor: "var(--sidebar-bg)",
         borderBottom: "1px solid var(--sidebar-border)",
       }}
     >
-      {/* Logo */}
-      <Link href="/feed" className="flex items-center gap-2">
+      {/* Logo — full-height tap target */}
+      <Link
+        href="/feed"
+        className="flex items-center gap-2 self-stretch px-1"
+        style={{ minWidth: 44 }}
+      >
         <div
-          className="w-6 h-6 rounded-md flex items-center justify-center"
+          className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
           style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}
         >
-          <Factory className="w-3.5 h-3.5 text-white" />
+          <Factory className="w-4 h-4 text-white" />
         </div>
         <span className="text-sm font-bold tracking-tight" style={{ color: "#F8FAFC" }}>
           FactoryLM
@@ -33,15 +37,15 @@ export function MobileTopBar() {
       </Link>
 
       {/* Right controls */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center self-stretch">
         {/* Language selector (compact) */}
         <LanguageSelector collapsed />
 
-        {/* Dark mode toggle */}
+        {/* Dark mode toggle — 48×48 touch target */}
         <button
           onClick={toggleTheme}
-          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-          style={{ color: "#94A3B8" }}
+          className="flex items-center justify-center rounded-lg transition-colors"
+          style={{ width: 48, height: 48, color: "#94A3B8", flexShrink: 0 }}
           aria-label={theme === "dark" ? tTheme("light") : tTheme("dark")}
         >
           {theme === "dark"
