@@ -287,6 +287,7 @@ app.use("/_tokens.css", serveStatic({ path: "./public/_tokens.css" }));
 app.use("/_components.css", serveStatic({ path: "./public/_components.css" }));
 app.use("/sun-toggle.js", serveStatic({ path: "./public/sun-toggle.js" }));
 app.use("/posthog-init.js", serveStatic({ path: "./public/posthog-init.js" }));
+app.use("/pwa-install.js", serveStatic({ path: "./public/pwa-install.js" }));
 
 // Dynamic sitemap (replaces static file)
 app.get("/sitemap.xml", (c) => {
