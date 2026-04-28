@@ -115,6 +115,7 @@ import {
 import { m } from "./routes/m.js";
 import { mChooser } from "./routes/m-chooser.js";
 import { mReport, mReportApi } from "./routes/m-report.js";
+import { mRegister, mRegisterApi } from "./routes/m-register.js";
 import { adminPages, adminApi } from "./routes/admin/qr-print.js";
 import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
@@ -183,10 +184,12 @@ app.use("*", async (c, next) => {
 });
 
 // QR scan routes — /m/:asset_tag (auth optional), /m/:asset_tag/choose, /m/:asset_tag/report
-app.route("/m", mChooser);   // GET /m/:asset_tag/choose[?set_pref=...]
-app.route("/m", mReport);    // GET /m/:asset_tag/report
-app.route("/m", m);          // GET /m/:asset_tag (main entry — must register last so subroutes match first)
-app.route("/", mReportApi);  // POST /api/m/report
+app.route("/m", mChooser);     // GET /m/:asset_tag/choose[?set_pref=...]
+app.route("/m", mReport);      // GET /m/:asset_tag/report
+app.route("/m", mRegister);    // GET /m/:asset_tag/register (auto-register form)
+app.route("/m", m);            // GET /m/:asset_tag (main entry — must register last so subroutes match first)
+app.route("/", mReportApi);    // POST /api/m/report
+app.route("/", mRegisterApi);  // POST /api/m/auto-register (#439)
 
 // QR test page — branded asset sheet, no auth required (sales/demo tool)
 app.route("/", qrTest);                 // handles GET /qr-test[?tenant_id=&tenant_name=]
