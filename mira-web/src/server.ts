@@ -4,6 +4,7 @@
  * Hono on Bun. Routes:
  *   GET  /                        → Homepage
  *   GET  /cmms                    → Serve CMMS landing / dashboard page
+ *   GET  /limitations             → Honest "what we don't do yet" page (#677)
  *   GET  /activated               → Post-payment single-purpose upload page
  *   GET  /blog                    → Blog index (articles + fault codes link)
  *   GET  /blog/fault-codes        → Fault code library index
@@ -30,6 +31,7 @@ import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
+import { renderLimitations } from "./views/limitations.js";
 import {
   createMagicLink,
   validateAndConsumeToken,
@@ -304,6 +306,7 @@ app.get("/sitemap.xml", (c) => {
       priority: "0.7",
       freq: "monthly" as const,
     })),
+    { loc: "/limitations", priority: "0.5", freq: "monthly" },
     { loc: "/privacy", priority: "0.3", freq: "yearly" },
     { loc: "/terms", priority: "0.3", freq: "yearly" },
     { loc: "/trust", priority: "0.4", freq: "monthly" },
@@ -374,6 +377,11 @@ app.get("/posthog-init.js", (c) => {
 // CMMS landing — server-rendered (#SO-070): one-input magic-link form
 app.get("/cmms", (c) => {
   return c.html(renderCmms(c.req.url));
+});
+
+// Limitations page (#677 / #SO-005) — honest "what we don't do yet"
+app.get("/limitations", (c) => {
+  return c.html(renderLimitations(c.req.url));
 });
 
 // Sample workspace placeholder (#SO-070 AC4) — Phase-0 destination after sign-in.
