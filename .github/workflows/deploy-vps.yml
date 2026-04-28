@@ -1,8 +1,15 @@
 name: Deploy to VPS
 
 on:
-  push:
+  # Triggered by smoke-test.yml completing on main — only deploys when smoke passes.
+  # This is the normal push-to-main path: push → smoke-test.yml → deploy-vps.yml.
+  workflow_run:
+    workflows: ["Smoke Test"]
+    types: [completed]
     branches: [main]
+
+  # Manual deploy bypass — use for hotfixes when you need to deploy without
+  # waiting for smoke. Still runs health checks post-deploy.
   workflow_dispatch:
     inputs:
       services:
@@ -17,6 +24,11 @@ concurrency:
 jobs:
   deploy:
     name: Deploy MIRA to production VPS
+    # For workflow_run triggers: only deploy when the smoke test passed.
+    # For workflow_dispatch (manual hotfix): always run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 20
