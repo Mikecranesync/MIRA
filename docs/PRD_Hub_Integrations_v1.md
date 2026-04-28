@@ -72,6 +72,76 @@ MIRA connects to all three layers. Techs interact through any comms channel. Dia
 
 ---
 
+## 3.5 Priority 0: CSV Import — The Universal On-Ramp
+
+> **"No API key. No IT department. No integration project. Just upload your spreadsheet."**
+
+Every industrial business can export their CMMS, ERP, or maintenance database to CSV. This is the zero-friction entry point — it works before any OAuth is wired, before any API key is issued, before any integration partner is approved.
+
+### What CSV Import Covers
+
+| Column Category | Field Examples |
+|---|---|
+| Asset identity | Equipment name, asset tag, manufacturer, model, serial number |
+| Location | Site, area, line, machine group |
+| Fault history | Fault description, date, resolution, downtime hours |
+| PM schedules | Task name, interval (days/hours), last completed, next due |
+| Parts inventory | Part number, description, quantity on hand, reorder point |
+| Work orders | WO number, status, priority, assigned tech, open date, close date |
+
+### Smart Column Mapping
+
+Auto-detect common column names and let users confirm or override before import:
+
+```
+Uploaded columns          → MIRA fields
+─────────────────────────────────────────
+"Equipment"               → asset.name (auto-matched, high confidence)
+"Asset #" / "Asset No."   → asset.tag (auto-matched)
+"S/N" / "Serial"          → asset.serial (auto-matched)
+"Last PM" / "PM Date"     → pm_schedule.last_completed (auto-matched)
+"Description"             → [ambiguous — prompt: fault_history or asset.description?]
+"Custom_Field_47"         → [unmatched — skip or assign manually]
+```
+
+Rules:
+- Fuzzy-match column headers (edit distance ≤ 2, case-insensitive)
+- High-confidence matches auto-assign; low-confidence shown in yellow for user confirmation
+- Unmatched columns can be: (a) mapped manually, (b) imported as custom fields, (c) skipped
+- Preview first 10 rows before committing import
+- Dry-run mode: show what would be created/updated without writing
+
+### What Happens After Import
+
+1. Assets land in Atlas CMMS (or the tenant's connected CMMS)
+2. Fault history is chunked and indexed in the MIRA knowledge graph — MIRA immediately knows this asset's failure patterns
+3. PM schedules are loaded into the PM calendar
+4. Parts inventory loads into the parts module
+5. Work orders are imported as historical records (closed) or active tickets (open)
+
+### Import Formats Accepted
+
+- `.csv` (UTF-8 or UTF-16, comma or semicolon delimited)
+- `.xlsx` / `.xls` (first sheet imported, sheet selector coming)
+- `.tsv` (tab-delimited)
+- Column order does not matter — header row required
+
+### Recurring Imports
+
+After the initial import, customers can schedule recurring CSV drops:
+- Manual re-upload (always available)
+- SFTP polling (Enterprise tier) — drop files to a dedicated SFTP path, MIRA polls hourly
+- Email attachment ingestion (Pro tier) — forward the export email to `import@factorylm.com`
+
+### Priority and Location in Hub
+
+This feature lives at **Hub → Import** (new tab, alongside Channels / Integrations). It appears as the first card on the Integrations page for tenants with no connected CMMS, with the headline: *"Start here — no API key needed."*
+
+**Priority:** P0 — ships before any other integration. This is how the first 10 customers onboard before native CMMS connectors are live.  
+**Effort:** 3 days (UI: column mapper component + preview table; backend: Papa Parse / SheetJS → upsert assets + fault_history rows)
+
+---
+
 ## 4. Section 1: Communication Channels
 
 *Bring your team — they stay in the channel they already use.*
@@ -669,3 +739,125 @@ The Integrations page (`/integrations`) needs:
 | Tenants with ≥2 channels connected | 0 | 3 | 10 |
 | Work orders via non-Telegram channel | 0 | 10/week | 50/week |
 | Webhook events fired | 0 (mock) | 100/week | 500/week |
+| CSV imports completed by new tenants | 0 | 5 | 20 |
+| Assets onboarded via CSV | 0 | 200 | 1,000 |
+
+---
+
+## 13. Data Portability Guarantee
+
+> **FactoryLM never holds your data hostage. Every byte you put in can come back out.**
+
+### The Policy
+
+1. **Export anytime, no penalty.** Any tenant on any tier can download a full export of their data at any time — no support ticket required, no offboarding fee, no waiting period.
+
+2. **Open formats.** Exports are delivered as:
+   - CSV (assets, work orders, PM schedules, parts, fault history)
+   - JSON (full structured export including relationships and metadata)
+   - Via API (GET endpoints for all first-party data objects — see API reference)
+
+3. **The only proprietary element is the intelligence.** The knowledge graph reasoning, AI diagnostics, fault pattern models — that's FactoryLM's IP. The *data* that goes into it is yours.
+
+4. **Formats are documented.** Export schemas are versioned and published at `docs/export-schema/`. Any tool that reads CSV or JSON can ingest a FactoryLM export.
+
+5. **You can take your data to a competitor.** The export format is intentionally compatible with all major CMMS import formats (MaintainX, UpKeep, Limble, IBM Maximo). We will document the mapping.
+
+### What Is and Isn't Exported
+
+| Data type | Exported | Format |
+|---|---|---|
+| Assets (name, tag, serial, location) | ✅ | CSV + JSON |
+| Work order history | ✅ | CSV + JSON |
+| PM schedules | ✅ | CSV + JSON |
+| Parts inventory | ✅ | CSV + JSON |
+| Fault history records | ✅ | CSV + JSON |
+| Channel connection tokens | ❌ | Security — re-authenticate after migration |
+| AI-generated knowledge graph | ❌ | FactoryLM IP — not exported |
+| Diagnostic conversation history | ✅ (anonymized) | JSON |
+
+### Export Endpoint (API)
+
+```
+GET /api/v1/export/full          → ZIP archive: all data as CSV + manifest.json
+GET /api/v1/export/assets        → assets.csv
+GET /api/v1/export/work-orders   → work_orders.csv
+GET /api/v1/export/pm-schedules  → pm_schedules.csv
+GET /api/v1/export/parts         → parts.csv
+GET /api/v1/export/fault-history → fault_history.csv
+```
+
+All export endpoints:
+- Require tenant JWT (same as rest of API)
+- Return 202 for large datasets with a `job_id` for async polling
+- Include a `schema_version` header matching the published schema docs
+- Available to all tiers (Starter, Professional, Enterprise)
+
+### Legal Commitment
+
+This guarantee is written into the Terms of Service: *"Customer retains full ownership of all Customer Data. FactoryLM grants no rights to Customer Data beyond what is necessary to operate the service. Customer may export all Customer Data at any time."*
+
+---
+
+## 14. Data Sensitivity Options
+
+Different customers have different risk tolerances. We meet them where they are.
+
+### Tier-by-Tier Controls
+
+| Control | Starter | Professional | Enterprise |
+|---|---|---|---|
+| Knowledge Cooperative participation | ✅ On (anonymous, opt-out available) | Opt-out available | Off by default |
+| Live CMMS API connection | ✅ Available | ✅ Available | ✅ Available |
+| CSV-only mode (no live connection) | ✅ Available | ✅ Available | ✅ Available |
+| On-premises deployment | ❌ | ❌ | ✅ Available |
+| Data residency choice (US / EU / AU) | ❌ | ❌ | ✅ Available |
+| Private knowledge base (no federation) | ❌ | ✅ | ✅ |
+| Audit log export | ❌ | ✅ | ✅ |
+| SOC 2 Type II report | ❌ | On request | ✅ Included |
+
+### CSV-Only Mode
+
+For customers whose IT policy prohibits live API connections to their CMMS:
+
+- Turn off all live CMMS API polling (no API credentials required or stored)
+- MIRA operates from imported CSV data only
+- Manual re-import triggers a sync (scheduled or on-demand)
+- The Hub shows a "CSV mode" badge on the CMMS card instead of a "Connected" badge
+- Full diagnostic capability is preserved — only the real-time sync is disabled
+
+Enabled via Hub → Integrations → CMMS → [provider] → "Use CSV import only".
+
+### Knowledge Cooperative Opt-Out
+
+The Knowledge Cooperative pools anonymized fault patterns across the tenant base to improve MIRA's diagnostic accuracy. Opt-out means:
+- MIRA diagnostics are limited to that tenant's own KB + the public domain OEM corpus
+- No anonymized data from this tenant is included in shared training sets
+- Diagnostic accuracy may be lower on novel faults not in the tenant's own history
+- Opt-out is reversible — re-enabling retroactively includes the tenant's anonymized history
+
+Enabled via Hub → Settings → Privacy → "Opt out of Knowledge Cooperative".
+
+### On-Premises Deployment (Enterprise)
+
+Full MIRA stack deployable to customer infrastructure:
+- Docker Compose or Kubernetes (Helm chart, `mira-ops/helm/`)
+- No data leaves the customer's network
+- Customer manages all updates (or FactoryLM managed via VPN access — customer choice)
+- Air-gapped mode: local LLM inference via Ollama (Groq/Cerebras fallback disabled)
+- Pricing: Enterprise contract, minimum 12-month term
+
+### Data Residency (Enterprise)
+
+For customers with regulatory requirements (GDPR, Australian Privacy Act, etc.):
+- **US (default):** NeonDB us-east-2, Vercel US regions
+- **EU:** NeonDB eu-central-1 (Frankfurt), Vercel EU regions
+- **AU:** NeonDB ap-southeast-2 (Sydney), Vercel AU regions
+- Residency is set at tenant creation and cannot be changed post-onboarding (data migration on request)
+
+### What We Never Do
+
+- We never sell, license, or share customer data with third parties
+- We never train public-facing models on identifiable customer data
+- We never store CMMS credentials in plaintext — tokens are AES-256 encrypted at rest
+- We never retain data after account deletion (30-day grace period, then permanent deletion)
