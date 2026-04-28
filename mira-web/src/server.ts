@@ -84,6 +84,7 @@ import { getMfaState } from "./lib/quota.js";
 import { decryptSecret, verifyTotp, findRecoveryCodeIndex } from "./lib/mfa.js";
 import {
   createCheckoutSession,
+  createDirectCheckoutSession,
   createPortalSession,
   constructWebhookEvent,
 } from "./lib/stripe.js";
@@ -879,6 +880,17 @@ function magicLinkErrorPage(msg: string): string {
 // Stripe — Checkout, Webhook, Billing Portal
 // ---------------------------------------------------------------------------
 
+// Direct checkout — no email required, Stripe collects it. Used by pricing page buttons.
+app.get("/api/checkout/session", async (c) => {
+  try {
+    const url = await createDirectCheckoutSession();
+    return c.redirect(url, 303);
+  } catch (err) {
+    console.error("[checkout/session] Error:", err);
+    return c.redirect("/pricing?checkout=error", 303);
+  }
+});
+
 // Checkout redirect (unauthenticated — called from payment email link)
 app.get("/api/checkout", async (c) => {
   const tid = c.req.query("tid");
@@ -908,6 +920,54 @@ app.get("/api/checkout", async (c) => {
   }
 });
 
+// Direct checkout from pricing page — finds/creates pending tenant then redirects to Stripe.
+// Accepts { email, company? }. Returns { url } for JS redirect or redirects directly.
+app.post("/api/checkout/start", async (c) => {
+  const ip = getClientIp(c.req.raw.headers);
+  const rl = checkRegisterRateLimit(ip);
+  if (!rl.allowed) {
+    c.header("Retry-After", String(rl.retryAfterSec));
+    return c.json({ error: "Too many attempts. Try again shortly." }, 429);
+  }
+
+  let body: { email?: string; company?: string };
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const { email, company } = body;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: "Valid email required" }, 400);
+  }
+
+  try {
+    let tenantId: string;
+    const existing = await findTenantByEmail(email);
+    if (existing) {
+      tenantId = existing.id;
+      if (existing.tier === "active") {
+        return c.json({ url: "/cmms?payment=success" });
+      }
+    } else {
+      tenantId = crypto.randomUUID();
+      await createTenant({
+        id: tenantId,
+        email,
+        company: company || email.split("@")[1] || "unknown",
+        firstName: "",
+        tier: "pending",
+        atlasPassword: "",
+        atlasCompanyId: 0,
+        atlasUserId: 0,
+      });
+    }
+
+    const checkoutUrl = await createCheckoutSession(tenantId, email);
+    return c.json({ url: checkoutUrl });
+  } catch (err) {
+    console.error("[checkout/start] Error:", err);
+    return c.json({ error: "Failed to create checkout session" }, 500);
+  }
+});
+
 // Stripe webhook (unauthenticated — Stripe sends events here)
 app.post("/api/stripe/webhook", async (c) => {
   const signature = c.req.header("stripe-signature");
@@ -933,11 +993,6 @@ app.post("/api/stripe/webhook", async (c) => {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
-      const tenantId = session.metadata?.tenant_id;
-      if (!tenantId) {
-        console.error("[stripe-webhook] No tenant_id in session metadata");
-        break;
-      }
 
       const customerId = typeof session.customer === "string"
         ? session.customer
@@ -945,6 +1000,38 @@ app.post("/api/stripe/webhook", async (c) => {
       const subscriptionId = typeof session.subscription === "string"
         ? session.subscription
         : session.subscription?.id || "";
+
+      let tenantId = session.metadata?.tenant_id;
+
+      // No tenant_id — direct checkout from pricing page. Find or create by email.
+      if (!tenantId) {
+        const email = session.customer_details?.email;
+        if (!email) {
+          console.error("[stripe-webhook] No tenant_id and no email in session");
+          break;
+        }
+        let t = await findTenantByEmail(email);
+        if (!t) {
+          const newId = crypto.randomUUID();
+          await createTenant({
+            id: newId,
+            email,
+            company: email.split("@")[1] || "unknown",
+            firstName: "",
+            tier: "pending",
+            atlasPassword: "",
+            atlasCompanyId: 0,
+            atlasUserId: 0,
+          });
+          t = await findTenantById(newId);
+        }
+        if (!t) {
+          console.error("[stripe-webhook] Could not find/create tenant for", email);
+          break;
+        }
+        tenantId = t.id;
+        console.log("[stripe-webhook] Matched tenant via email:", tenantId, email);
+      }
 
       await updateTenantStripe(tenantId, customerId, subscriptionId);
       await updateTenantTier(tenantId, "active");

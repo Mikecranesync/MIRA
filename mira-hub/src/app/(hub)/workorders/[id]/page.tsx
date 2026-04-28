@@ -195,7 +195,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
               <Bot className="w-4 h-4" />{t("viewMira")}
             </Button>
           </a>
-          <a href={`https://app.factorylm.com/workorders/${wo.id}`} target="_blank" rel="noopener noreferrer">
+          <a href={`https://cmms.factorylm.com/workorders/${wo.id}`} target="_blank" rel="noopener noreferrer">
             <Button variant="outline" className="h-10 gap-1.5 text-sm px-3">
               <ExternalLink className="w-4 h-4" />{t("openCmms")}
             </Button>

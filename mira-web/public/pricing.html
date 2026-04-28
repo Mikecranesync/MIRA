@@ -1,437 +1,401 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pricing — FactoryLM AI Maintenance Platform</title>
-<meta name="description" content="Simple per-facility pricing for industrial maintenance teams. From $20/mo for solo techs to enterprise. No per-seat fees. Start free, no credit card required.">
-<link rel="canonical" href="https://factorylm.com/pricing">
-<meta property="og:title" content="Pricing — FactoryLM AI Maintenance Platform">
-<meta property="og:description" content="Per-facility pricing — not per-seat. Individual $20/mo, Community $499/mo, Professional $649/mo. 7-day free trial.">
-<meta property="og:type" content="website">
-<meta property="og:url" content="https://factorylm.com/pricing">
-<meta property="og:image" content="https://factorylm.com/og-image.png">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Pricing — FactoryLM AI Maintenance Platform">
-<meta name="twitter:description" content="Per-facility pricing — not per-seat. Start free, no credit card required.">
-<link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Inter',sans-serif;background:#F8FAFC;color:#0F172A;-webkit-font-smoothing:antialiased}
-a{text-decoration:none;color:inherit}
-/* NAV */
-nav{background:#fff;border-bottom:1px solid #E2E8F0;position:sticky;top:0;z-index:100}
-.nav-inner{max-width:1100px;margin:0 auto;padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:56px}
-.nav-logo{font-size:18px;font-weight:800;color:#0F172A;letter-spacing:-0.5px}
-.nav-logo span{color:#2563EB}
-.nav-links{display:flex;align-items:center;gap:24px}
-.nav-links a{font-size:14px;font-weight:500;color:#64748B;transition:color .15s}
-.nav-links a:hover{color:#0F172A}
-.nav-links a[aria-current="page"]{color:#0F172A;font-weight:600}
-.nav-cta{background:#2563EB;color:#fff!important;padding:8px 16px;border-radius:8px;font-size:14px;font-weight:600;transition:background .15s}
-.nav-cta:hover{background:#1D4ED8!important}
-@media(max-width:640px){.nav-links a:not(.nav-cta){display:none}}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricing — FactoryLM AI Troubleshooter</title>
+  <meta name="description" content="MIRA pricing: $97/mo unlimited queries with flat site license, $297/mo adds CMMS write-back. 14-day money-back guarantee. Works with MaintainX, Limble, UpKeep.">
+  <link rel="canonical" href="https://factorylm.com/pricing">
+  <meta property="og:title" content="Pricing — FactoryLM AI Troubleshooter">
+  <meta property="og:description" content="MIRA pricing: $97/mo unlimited queries with flat site license, $297/mo adds CMMS write-back. 14-day money-back guarantee.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://factorylm.com/pricing">
+  <meta property="og:image" content="https://factorylm.com/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pricing — FactoryLM AI Troubleshooter">
+  <meta name="twitter:description" content="MIRA pricing: $97/mo unlimited queries with flat site license, $297/mo adds CMMS write-back. 14-day money-back guarantee.">
+  <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0e11;
+      --surface: #13141a;
+      --surface-hi: #1a1b22;
+      --border: rgba(255,255,255,0.07);
+      --border-hi: rgba(255,255,255,0.14);
+      --text: #e8eaf0;
+      --text-dim: rgba(255,255,255,0.55);
+      --text-faint: rgba(255,255,255,0.28);
+      --amber: #f0a000;
+      --amber-dim: rgba(240,160,0,0.12);
+      --teal: #00d4aa;
+      --font: 'Inter', sans-serif;
+      --max-w: 1080px;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(240,160,0,0.06) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .inner { max-width: var(--max-w); margin: 0 auto; padding: 0 40px; }
+    @media (max-width: 768px) { .inner { padding: 0 24px; } }
 
-/* HERO */
-.hero{text-align:center;padding:64px 20px 48px;max-width:680px;margin:0 auto}
-.hero-tag{display:inline-block;background:#EFF6FF;color:#2563EB;font-size:12px;font-weight:600;padding:4px 12px;border-radius:999px;letter-spacing:.4px;margin-bottom:20px;text-transform:uppercase}
-.hero h1{font-size:clamp(28px,5vw,44px);font-weight:800;line-height:1.1;color:#0F172A;letter-spacing:-1px;margin-bottom:14px}
-.hero p{font-size:17px;color:#64748B;font-weight:400;line-height:1.6;margin-bottom:32px}
+    /* Nav */
+    nav {
+      height: 56px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(13,14,17,0.85);
+      backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .nav-inner {
+      max-width: var(--max-w); margin: 0 auto; padding: 0 40px;
+      height: 100%; display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 8px;
+      text-decoration: none; color: var(--text); font-weight: 500; font-size: 15px;
+    }
+    .nav-logo svg { width: 22px; height: 22px; }
+    .nav-links { display: flex; gap: 28px; list-style: none; }
+    .nav-links a { font-size: 14px; color: rgba(255,255,255,0.6); text-decoration: none; }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      font-size: 13px; font-weight: 700; color: #0a0a08;
+      background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px; padding: 7px 14px; text-decoration: none;
+    }
+    @media (max-width: 640px) { .nav-links { display: none; } }
 
-/* TOGGLE */
-.toggle-wrap{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:48px}
-.toggle-label{font-size:14px;font-weight:500;color:#64748B}
-.toggle-label.active{color:#0F172A;font-weight:600}
-.toggle{position:relative;width:52px;height:28px;cursor:pointer}
-.toggle input{opacity:0;width:0;height:0;position:absolute}
-.toggle-track{position:absolute;inset:0;background:#CBD5E1;border-radius:999px;transition:background .2s}
-.toggle input:checked ~ .toggle-track{background:#2563EB}
-.toggle-thumb{position:absolute;top:4px;left:4px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
-.toggle input:checked ~ .toggle-thumb{transform:translateX(24px)}
-.save-badge{background:#DCFCE7;color:#15803D;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;letter-spacing:.3px}
+    /* Hero */
+    .hero { padding: 100px 0 60px; text-align: center; }
+    .hero-eyebrow {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
+      color: var(--text-faint); margin-bottom: 16px; font-weight: 500;
+    }
+    .hero h1 {
+      font-size: clamp(32px, 4.5vw, 48px); font-weight: 400;
+      letter-spacing: -0.03em; line-height: 1.12; margin-bottom: 16px;
+    }
+    .hero h1 em { font-style: normal; color: var(--amber); }
+    .hero p {
+      font-size: 17px; color: var(--text-dim); max-width: 540px;
+      margin: 0 auto; font-weight: 300; line-height: 1.6;
+    }
 
-/* CARDS */
-.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;max-width:1100px;margin:0 auto;padding:0 20px 48px}
-@media(max-width:900px){.cards-grid{grid-template-columns:1fr 1fr}}
-@media(max-width:560px){.cards-grid{grid-template-columns:1fr}}
-.card{background:#fff;border-radius:16px;padding:28px 24px;border:1px solid #E2E8F0;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;flex-direction:column;position:relative;transition:box-shadow .2s}
-.card:hover{box-shadow:0 8px 24px rgba(0,0,0,.1)}
-.card.popular{border:2px solid #2563EB;box-shadow:0 4px 24px rgba(37,99,235,.15)}
-.popular-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:#2563EB;color:#fff;font-size:11px;font-weight:700;padding:4px 14px;border-radius:999px;letter-spacing:.5px;white-space:nowrap;text-transform:uppercase}
-.card-name{font-size:13px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px}
-.card-price{display:flex;align-items:baseline;gap:4px;margin-bottom:4px}
-.card-amount{font-size:36px;font-weight:800;color:#0F172A;letter-spacing:-1px}
-.card-mo{font-size:15px;font-weight:500;color:#94A3B8}
-.card-billing{font-size:12px;color:#94A3B8;margin-bottom:20px;min-height:18px}
-.card-desc{font-size:14px;color:#475569;line-height:1.5;margin-bottom:20px;flex:1}
-.card-cta{display:block;text-align:center;padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;transition:all .15s;cursor:pointer}
-.cta-primary{background:#2563EB;color:#fff}
-.cta-primary:hover{background:#1D4ED8}
-.cta-outline{background:#fff;color:#2563EB;border:1.5px solid #2563EB}
-.cta-outline:hover{background:#EFF6FF}
-.cta-gray{background:#F1F5F9;color:#0F172A;border:1.5px solid #E2E8F0}
-.cta-gray:hover{background:#E2E8F0}
-.card-features{list-style:none;margin-top:20px;padding-top:20px;border-top:1px solid #F1F5F9}
-.card-features li{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#475569;margin-bottom:8px;line-height:1.4}
-.check{width:16px;height:16px;flex-shrink:0;color:#16A34A;margin-top:1px}
+    /* Pricing cards */
+    .pricing-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      gap: 20px; padding: 60px 0 100px;
+      max-width: 720px; margin: 0 auto;
+    }
+    @media (max-width: 760px) { .pricing-grid { grid-template-columns: 1fr; max-width: 420px; } }
 
-/* TRUST STRIP */
-.trust{background:#EFF6FF;border-top:1px solid #DBEAFE;border-bottom:1px solid #DBEAFE;padding:16px 20px;text-align:center}
-.trust-inner{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;max-width:600px;margin:0 auto}
-.trust-item{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#2563EB}
+    .pricing-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 36px 28px;
+      display: flex; flex-direction: column;
+    }
+    .pricing-card.featured {
+      border-color: var(--amber);
+      box-shadow: 0 0 30px rgba(240,160,0,0.08);
+      position: relative;
+    }
+    .pricing-card.featured::before {
+      content: 'Most popular';
+      position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+      background: var(--amber); color: #0a0a08;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 3px 12px; border-radius: 4px;
+    }
 
-/* COMPARE BOX */
-.compare-section{max-width:760px;margin:0 auto;padding:56px 20px}
-.compare-section h2{font-size:24px;font-weight:800;color:#0F172A;letter-spacing:-.5px;margin-bottom:8px;text-align:center}
-.compare-section p{font-size:15px;color:#64748B;text-align:center;margin-bottom:28px}
-.compare-box{background:#fff;border-radius:16px;border:1.5px solid #E2E8F0;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.05)}
-.compare-row{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #F1F5F9}
-.compare-row:last-child{border-bottom:none}
-.compare-cell{padding:18px 20px}
-.compare-row.header .compare-cell{background:#F8FAFC;font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.5px}
-.compare-row.bad .compare-cell:first-child{color:#DC2626}
-.compare-row.good .compare-cell:last-child{color:#16A34A;font-weight:600}
-.compare-cell .amount{font-size:22px;font-weight:800;color:#0F172A;display:block}
-.compare-cell .sub{font-size:12px;color:#94A3B8;margin-top:2px}
-.compare-cell .verdict{font-size:13px;font-weight:600;margin-top:6px}
-.verdict-bad{color:#DC2626}
-.verdict-good{color:#16A34A}
+    .card-tier {
+      font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--amber); font-weight: 600; margin-bottom: 8px;
+    }
+    .card-price {
+      font-size: 42px; font-weight: 600; letter-spacing: -0.03em;
+      line-height: 1; margin-bottom: 4px;
+    }
+    .card-price .unit {
+      font-size: 15px; font-weight: 400; color: var(--text-dim);
+    }
+    .card-desc {
+      font-size: 14px; color: var(--text-dim); margin-bottom: 28px;
+      line-height: 1.5; font-weight: 300;
+    }
 
-/* FEATURE TABLE */
-.table-section{max-width:980px;margin:0 auto;padding:0 20px 64px}
-.section-title{font-size:24px;font-weight:800;color:#0F172A;letter-spacing:-.5px;margin-bottom:6px;text-align:center}
-.section-sub{font-size:15px;color:#64748B;text-align:center;margin-bottom:32px}
-.feat-table{width:100%;border-collapse:collapse;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.05);border:1px solid #E2E8F0}
-.feat-table th{background:#F8FAFC;font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.5px;padding:14px 16px;text-align:center;border-bottom:2px solid #E2E8F0}
-.feat-table th:first-child{text-align:left}
-.feat-table td{padding:12px 16px;font-size:13px;color:#475569;border-bottom:1px solid #F1F5F9;text-align:center;vertical-align:middle}
-.feat-table td:first-child{text-align:left;font-weight:500;color:#0F172A}
-.feat-table tr:last-child td{border-bottom:none}
-.feat-table .cat-row td{background:#F8FAFC;font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.6px;padding:10px 16px}
-.feat-table .cat-row td:first-child{text-align:left}
-.tick{color:#16A34A;font-size:16px}
-.dash{color:#CBD5E1;font-size:16px}
-.partial{font-size:11px;color:#94A3B8;font-weight:500}
-@media(max-width:600px){.feat-table th:not(:first-child):not(:nth-child(3)),.feat-table td:not(:first-child):not(:nth-child(3)){display:none}.table-hint{display:block}}
-.table-hint{display:none;font-size:12px;color:#94A3B8;text-align:center;margin-bottom:12px}
+    .card-features {
+      list-style: none; flex: 1; margin-bottom: 28px;
+    }
+    .card-features li {
+      font-size: 14px; color: var(--text);
+      padding: 7px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; gap: 8px;
+    }
+    .card-features li::before {
+      content: ''; display: block;
+      width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 8l3.5 3.5L13 5' stroke='%2300d4aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center;
+    }
 
-/* FAQ */
-.faq-section{max-width:700px;margin:0 auto;padding:0 20px 64px}
-details{background:#fff;border:1px solid #E2E8F0;border-radius:12px;margin-bottom:10px;overflow:hidden}
-details summary{padding:18px 20px;font-size:15px;font-weight:600;color:#0F172A;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:12px;line-height:1.4}
-details summary::-webkit-details-marker{display:none}
-details summary::after{content:'＋';font-size:18px;color:#94A3B8;flex-shrink:0;transition:transform .2s}
-details[open] summary::after{content:'－'}
-details .faq-body{padding:0 20px 18px;font-size:14px;color:#64748B;line-height:1.7}
+    .card-cta {
+      display: block; text-align: center;
+      padding: 12px 20px; border-radius: 6px;
+      font-size: 14px; font-weight: 600; text-decoration: none;
+      transition: opacity 150ms;
+    }
+    .card-cta:hover { opacity: 0.9; }
+    .card-cta-primary {
+      background: var(--amber); color: #0a0a08;
+    }
+    .card-cta-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border-hi);
+    }
+    .card-footnote {
+      text-align: center; font-size: 12px;
+      color: var(--text-faint); margin-top: 12px;
+      font-weight: 400;
+    }
 
-/* BOTTOM CTA */
-.bottom-cta{background:linear-gradient(135deg,#1D4ED8,#0891B2);text-align:center;padding:64px 20px}
-.bottom-cta h2{font-size:clamp(24px,4vw,36px);font-weight:800;color:#fff;letter-spacing:-.5px;margin-bottom:10px}
-.bottom-cta p{font-size:16px;color:rgba(255,255,255,.8);margin-bottom:32px}
-.bottom-cta-btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
-.btn-white{background:#fff;color:#2563EB;padding:13px 28px;border-radius:10px;font-size:15px;font-weight:700;transition:all .15s}
-.btn-white:hover{background:#F0F9FF}
-.btn-ghost{background:rgba(255,255,255,.15);color:#fff;padding:13px 28px;border-radius:10px;font-size:15px;font-weight:600;border:1.5px solid rgba(255,255,255,.4);transition:all .15s}
-.btn-ghost:hover{background:rgba(255,255,255,.25)}
+    /* Comparison note */
+    .comparison {
+      text-align: center; padding: 0 0 80px;
+      border-top: 1px solid var(--border); padding-top: 60px;
+    }
+    .comparison h2 {
+      font-size: 24px; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 12px;
+    }
+    .comparison p {
+      font-size: 15px; color: var(--text-dim); max-width: 600px;
+      margin: 0 auto 32px; font-weight: 300; line-height: 1.65;
+    }
+    .comp-table {
+      max-width: 640px; margin: 0 auto;
+      border: 1px solid var(--border); border-radius: 8px;
+      overflow: hidden;
+    }
+    .comp-row {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      font-size: 13px;
+    }
+    .comp-row + .comp-row { border-top: 1px solid var(--border); }
+    .comp-row.header { background: var(--surface-hi); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .comp-cell { padding: 10px 16px; }
+    .comp-cell:not(:first-child) { text-align: center; color: var(--text-dim); }
+    .comp-cell.highlight { color: var(--amber); font-weight: 500; }
 
-/* FOOTER */
-footer{background:#0F172A;color:#94A3B8;text-align:center;padding:28px 20px;font-size:13px}
-footer strong{color:#fff}
-footer a{color:#64748B;margin:0 8px;transition:color .15s}
-footer a:hover{color:#94A3B8}
-</style>
+    /* FAQ */
+    .faq { padding: 0 0 80px; }
+    .faq h2 { font-size: 24px; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 24px; text-align: center; }
+    .faq-item { border-bottom: 1px solid var(--border); max-width: 640px; margin: 0 auto; }
+    .faq-q {
+      font-size: 15px; font-weight: 500; padding: 16px 0; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .faq-q::after { content: '+'; font-size: 18px; color: var(--text-faint); }
+    .faq-q.open::after { content: '−'; }
+    .faq-a {
+      font-size: 14px; color: var(--text-dim); line-height: 1.65;
+      padding: 0 0 16px; display: none; font-weight: 300;
+    }
+    .faq-q.open + .faq-a { display: block; }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px 0;
+      font-size: 13px; color: var(--text-faint);
+    }
+    .footer-inner { display: flex; justify-content: space-between; align-items: center; }
+    .footer-links { display: flex; gap: 20px; list-style: none; }
+    .footer-links a { color: var(--text-faint); text-decoration: none; font-size: 13px; }
+    .footer-links a:hover { color: var(--text-dim); }
+  </style>
+  <!-- PostHog analytics (closes #618) — server injects PLG_POSTHOG_KEY; no-op stub if unset -->
+  <script src="/posthog-init.js" defer></script>
 </head>
 <body>
 
-<!-- NAV -->
-<nav>
-  <div class="nav-inner">
-    <a href="/" class="nav-logo">Factory<span>LM</span></a>
-    <div class="nav-links">
-      <a href="/">Product</a>
-      <a href="/pricing" aria-current="page">Pricing</a>
-      <a href="/blog">Docs</a>
-      <a href="https://app.factorylm.com/hub/login" class="nav-cta">Login</a>
+  <nav>
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" rx="5" fill="#f0a000"/><path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        FactoryLM
+      </a>
+      <ul class="nav-links">
+        <li><a href="/#features">Product</a></li>
+        <li><a href="/blog">Blog</a></li>
+        <li><a href="/cmms">Troubleshooter</a></li>
+      </ul>
+      <a href="/cmms" class="nav-cta">Get Started</a>
     </div>
-  </div>
-</nav>
+  </nav>
 
-<!-- HERO -->
-<div class="hero">
-  <div class="hero-tag">Pricing</div>
-  <h1>Simple pricing for every<br>maintenance team</h1>
-  <p>Start free. No credit card required. Upgrade when you're ready.</p>
-</div>
-
-<!-- TOGGLE -->
-<div class="toggle-wrap">
-  <span class="toggle-label active" id="lbl-monthly">Monthly</span>
-  <label class="toggle">
-    <input type="checkbox" id="billing-toggle" onchange="switchBilling(this)">
-    <div class="toggle-track"></div>
-    <div class="toggle-thumb"></div>
-  </label>
-  <span class="toggle-label" id="lbl-annual">Annual</span>
-  <span class="save-badge">Save 20%</span>
-</div>
-
-<!-- PLAN CARDS -->
-<div class="cards-grid">
-
-  <!-- Individual -->
-  <div class="card">
-    <div class="card-name">Individual</div>
-    <div class="card-price">
-      <span class="card-amount" id="p-ind">$20</span>
-      <span class="card-mo">/mo</span>
-    </div>
-    <div class="card-billing" id="b-ind">Billed monthly</div>
-    <div class="card-desc">For solo technicians who want AI-powered diagnostics without the enterprise price tag.</div>
-    <a href="https://app.factorylm.com/hub/login" class="card-cta cta-outline">Start free trial</a>
-    <ul class="card-features">
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>1 user</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>MIRA AI diagnostics</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Work orders &amp; PM scheduling</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Up to 5 manuals (KB)</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Telegram &amp; Slack channels</li>
-    </ul>
-  </div>
-
-  <!-- Community -->
-  <div class="card">
-    <div class="card-name">Community</div>
-    <div class="card-price">
-      <span class="card-amount" id="p-com">$499</span>
-      <span class="card-mo">/mo</span>
-    </div>
-    <div class="card-billing" id="b-com">Billed monthly</div>
-    <div class="card-desc">For small facilities. Unlimited users, shared Knowledge Cooperative access.</div>
-    <a href="https://app.factorylm.com/hub/login" class="card-cta cta-outline">Start free trial</a>
-    <ul class="card-features">
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Unlimited users</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Knowledge Cooperative (shared KB)</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Auto-PM generation</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>QR asset tagging</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Up to 1 facility</li>
-    </ul>
-  </div>
-
-  <!-- Professional -->
-  <div class="card popular">
-    <div class="popular-badge">Most Popular</div>
-    <div class="card-name">Professional</div>
-    <div class="card-price">
-      <span class="card-amount" id="p-pro">$649</span>
-      <span class="card-mo">/mo</span>
-    </div>
-    <div class="card-billing" id="b-pro">Billed monthly</div>
-    <div class="card-desc">For growing operations. Multi-facility, ERP integrations, and priority support.</div>
-    <a href="https://app.factorylm.com/hub/login" class="card-cta cta-primary">Start free trial</a>
-    <ul class="card-features">
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Everything in Community</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Up to 3 facilities</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Ignition / SCADA integration</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Priority email &amp; Slack support</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Custom KB branding</li>
-    </ul>
-  </div>
-
-  <!-- Enterprise -->
-  <div class="card">
-    <div class="card-name">Enterprise</div>
-    <div class="card-price">
-      <span class="card-amount" style="font-size:28px">Custom</span>
-    </div>
-    <div class="card-billing">Volume &amp; contract pricing</div>
-    <div class="card-desc">For large manufacturers with multiple plants, compliance needs, and dedicated success management.</div>
-    <a href="mailto:harperhousebuyers@gmail.com" class="card-cta cta-gray">Talk to sales</a>
-    <ul class="card-features">
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Unlimited facilities</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>SSO / SAML</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Custom SLA &amp; 99.9% uptime</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Dedicated success manager</li>
-      <li><svg class="check" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>Private KB (air-gapped option)</li>
-    </ul>
-  </div>
-
-</div>
-
-<!-- TRUST STRIP -->
-<div class="trust">
-  <div class="trust-inner">
-    <div class="trust-item">
-      <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>
-      No credit card
-    </div>
-    <div class="trust-item">
-      <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>
-      7-day free trial
-    </div>
-    <div class="trust-item">
-      <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>
-      Cancel anytime
-    </div>
-    <div class="trust-item">
-      <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>
-      SOC 2 in progress
-    </div>
-  </div>
-</div>
-
-<!-- PER-FACILITY COMPARISON -->
-<div class="compare-section">
-  <h2>Why per-facility beats per-user</h2>
-  <p>Traditional CMMS software charges per seat. We charge per facility — so you can add every tech, supervisor, and manager without budget anxiety.</p>
-  <div class="compare-box">
-    <div class="compare-row header">
-      <div class="compare-cell">Competitor (per user)</div>
-      <div class="compare-cell">FactoryLM (per facility)</div>
-    </div>
-    <div class="compare-row">
-      <div class="compare-cell">
-        <span class="amount" style="color:#DC2626">$500<span style="font-size:14px;font-weight:500;color:#94A3B8">/mo</span></span>
-        <div class="sub">MaintainX: $20 × 25 techs</div>
-        <div class="verdict verdict-bad">Costs more as your team grows</div>
+  <main>
+    <section class="hero">
+      <div class="inner">
+        <div class="hero-eyebrow">Pricing</div>
+        <h1>One price for your <em>whole team.</em></h1>
+        <p>Flat site license — not per-user. Add technicians without adding cost. Published pricing, no "contact sales."</p>
       </div>
-      <div class="compare-cell">
-        <span class="amount" style="color:#16A34A">$499<span style="font-size:14px;font-weight:500;color:#94A3B8">/mo</span></span>
-        <div class="sub">FactoryLM Community: unlimited users</div>
-        <div class="verdict verdict-good">Same price, whole team included</div>
+    </section>
+
+    <section>
+      <div class="inner">
+        <div class="pricing-grid">
+
+          <!-- $97 — featured -->
+          <div class="pricing-card featured">
+            <div class="card-tier">MIRA Troubleshooter</div>
+            <div class="card-price">$97 <span class="unit">/mo</span></div>
+            <div class="card-desc">Unlimited queries. Site license — your whole team, one price.</div>
+            <ul class="card-features">
+              <li>AI fault diagnosis with cited OEM answers</li>
+              <li>Upload equipment manuals</li>
+              <li>Equipment knowledge store</li>
+              <li>Maintenance history import (CSV)</li>
+              <li>Telegram, Slack, and web chat</li>
+              <li>Photo-to-diagnosis</li>
+            </ul>
+            <a href="/api/checkout/session" class="card-cta card-cta-primary">Start Free Trial</a>
+            <p class="card-footnote">14-day money-back guarantee</p>
+          </div>
+
+          <!-- $297 -->
+          <div class="pricing-card">
+            <div class="card-tier">MIRA Integrated</div>
+            <div class="card-price">$297 <span class="unit">/mo</span></div>
+            <div class="card-desc">Connect MIRA into how your team already works.</div>
+            <ul class="card-features">
+              <li>Everything in Troubleshooter</li>
+              <li>CMMS write-back: MaintainX, Limble, UpKeep</li>
+              <li>Work orders flow to your existing CMMS</li>
+              <li>Bidirectional status sync</li>
+              <li>All 3 adapters bundled (one price)</li>
+              <li>Priority support</li>
+            </ul>
+            <a href="/api/checkout/session" class="card-cta card-cta-ghost">Start Free Trial</a>
+            <p class="card-footnote">14-day money-back guarantee</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Comparison vs per-user CMMS -->
+    <section class="comparison">
+      <div class="inner">
+        <h2>How MIRA compares</h2>
+        <p>Per-user CMMS pricing adds up fast. MIRA's flat site license gets cheaper with every technician you add.</p>
+        <div class="comp-table">
+          <div class="comp-row header">
+            <div class="comp-cell">Team size</div>
+            <div class="comp-cell">MaintainX Premium</div>
+            <div class="comp-cell highlight">MIRA Troubleshooter</div>
+          </div>
+          <div class="comp-row">
+            <div class="comp-cell">5 technicians</div>
+            <div class="comp-cell">$295/mo</div>
+            <div class="comp-cell highlight">$97/mo</div>
+          </div>
+          <div class="comp-row">
+            <div class="comp-cell">10 technicians</div>
+            <div class="comp-cell">$590/mo</div>
+            <div class="comp-cell highlight">$97/mo</div>
+          </div>
+          <div class="comp-row">
+            <div class="comp-cell">15 technicians</div>
+            <div class="comp-cell">$885/mo</div>
+            <div class="comp-cell highlight">$97/mo</div>
+          </div>
+        </div>
+        <p style="margin-top:16px;font-size:12px;color:var(--text-faint);">MaintainX Premium at $59/user/mo (monthly billing). MIRA is a diagnostic AI layer, not a CMMS replacement.</p>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="faq">
+      <div class="inner">
+        <h2>Questions</h2>
+
+        <div class="faq-item">
+          <div class="faq-q">Is there a money-back guarantee?</div>
+          <div class="faq-a">Yes. 14 days from your first payment. Cancel for any reason and get a full refund — no questions asked.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">What does "site license" mean?</div>
+          <div class="faq-a">One price covers your entire team — 5 technicians or 50. No per-user fees, no seat counting. Add people whenever you need to.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Does MIRA replace my CMMS?</div>
+          <div class="faq-a">No. Your CMMS is where work orders live. MIRA is where the troubleshooting happens. On the $297/mo plan, MIRA writes work orders directly into MaintainX, Limble, or UpKeep — your techs never leave the tools they know.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Why bundle all three CMMS adapters?</div>
+          <div class="faq-a">Because per-adapter pricing feels like nickel-and-diming. One price, all three adapters. If you switch CMMSes, MIRA still works.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Can I cancel anytime?</div>
+          <div class="faq-a">Yes. Monthly billing, cancel anytime from your billing portal. No contracts, no annual commitments.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">What if I need help getting set up?</div>
+          <div class="faq-a">All plans include email support. The Integrated plan ($297/mo) includes priority support with faster response times.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="inner">
+      <div class="footer-inner">
+        <a href="/" class="nav-logo" style="font-size:13px;">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18"><rect width="24" height="24" rx="5" fill="#f0a000"/><path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          FactoryLM
+        </a>
+        <ul class="footer-links">
+          <li><a href="/blog">Blog</a></li>
+          <li><a href="/blog/fault-codes">Fault Codes</a></li>
+          <li><a href="/cmms">Troubleshooter</a></li>
+          <li><a href="mailto:contact@factorylm.com">Contact</a></li>
+          <li><a href="/privacy">Privacy</a></li>
+          <li><a href="/terms">Terms</a></li>
+        </ul>
       </div>
     </div>
-    <div class="compare-row" style="background:#F0FDF4">
-      <div class="compare-cell" style="font-size:13px;color:#64748B;grid-column:1/-1;text-align:center;padding:14px 20px">
-        <strong style="color:#16A34A">Save $1/mo in year one. Save more every time you hire.</strong> With FactoryLM, headcount is free.
-      </div>
-    </div>
-  </div>
-</div>
+  </footer>
 
-<!-- FEATURE TABLE -->
-<div class="table-section">
-  <div class="section-title">Everything included</div>
-  <div class="section-sub">Compare what's in each plan</div>
-  <div class="table-hint">Showing Individual vs Professional (scroll right for full table)</div>
-  <table class="feat-table">
-    <thead>
-      <tr>
-        <th style="width:36%">Feature</th>
-        <th>Individual</th>
-        <th>Community</th>
-        <th>Professional</th>
-        <th>Enterprise</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr class="cat-row"><td colspan="5">AI &amp; MIRA</td></tr>
-      <tr><td>MIRA AI diagnostics (chat)</td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>Vision / photo analysis</td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>Knowledge Cooperative (shared KB)</td><td><span class="dash">—</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>Private KB (facility-only)</td><td><span class="partial">5 manuals</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
+  <script>
+    document.querySelectorAll('.faq-q').forEach(function (q) {
+      q.addEventListener('click', function () {
+        q.classList.toggle('open');
+      });
+    });
 
-      <tr class="cat-row"><td colspan="5">Work Orders</td></tr>
-      <tr><td>Work order creation &amp; tracking</td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>Telegram / Slack WO intake</td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>QR asset tagging</td><td><span class="dash">—</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-
-      <tr class="cat-row"><td colspan="5">PM Scheduling</td></tr>
-      <tr><td>PM schedule calendar</td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>Auto-PM from manuals</td><td><span class="dash">—</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>Multi-facility scheduling</td><td><span class="dash">—</span></td><td><span class="dash">—</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-
-      <tr class="cat-row"><td colspan="5">Integrations</td></tr>
-      <tr><td>Ignition / SCADA</td><td><span class="dash">—</span></td><td><span class="dash">—</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>Atlas CMMS sync</td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>Google Drive / Dropbox ingest</td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-
-      <tr class="cat-row"><td colspan="5">Security &amp; Support</td></tr>
-      <tr><td>SOC 2 (in progress)</td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>SSO / SAML</td><td><span class="dash">—</span></td><td><span class="dash">—</span></td><td><span class="dash">—</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>Priority support</td><td><span class="dash">—</span></td><td><span class="dash">—</span></td><td><span class="tick">✓</span></td><td><span class="tick">✓</span></td></tr>
-      <tr><td>Dedicated success manager</td><td><span class="dash">—</span></td><td><span class="dash">—</span></td><td><span class="dash">—</span></td><td><span class="tick">✓</span></td></tr>
-    </tbody>
-  </table>
-</div>
-
-<!-- FAQ -->
-<div class="faq-section">
-  <div style="text-align:center;margin-bottom:32px">
-    <h2 style="font-size:clamp(22px,4vw,32px);font-weight:800;color:#0F172A;letter-spacing:-.5px;margin-bottom:8px">Frequently asked</h2>
-    <p style="font-size:15px;color:#64748B">Quick answers to common questions</p>
-  </div>
-
-  <details>
-    <summary>What counts as a "facility"?</summary>
-    <div class="faq-body">A facility is a single physical site — one plant, one warehouse, one building. Multiple buildings at the same address count as one facility. Separate physical addresses are separate facilities. Community covers one facility; Professional covers up to three.</div>
-  </details>
-
-  <details>
-    <summary>How does the 7-day free trial work?</summary>
-    <div class="faq-body">Sign up with email — no credit card required. You get full Professional-tier access for 7 days. At the end of the trial you choose a plan or your account enters a read-only mode. Nothing is deleted.</div>
-  </details>
-
-  <details>
-    <summary>What is the Knowledge Cooperative?</summary>
-    <div class="faq-body">The Knowledge Cooperative is our shared OEM manual database. When you upload a VFD or compressor manual, MIRA extracts diagnostic knowledge and adds it to a pool shared across all Community and Professional customers — anonymized and aggregated. The more customers contribute, the smarter MIRA gets for everyone. This is FactoryLM's core network-effect moat.</div>
-  </details>
-
-  <details>
-    <summary>Can I switch plans mid-month?</summary>
-    <div class="faq-body">Yes. Upgrades are prorated immediately. Downgrades take effect at the end of your current billing period. Annual plan credits are applied to the new plan price.</div>
-  </details>
-
-  <details>
-    <summary>Is annual billing paid upfront?</summary>
-    <div class="faq-body">Yes — annual plans are billed once per year at the discounted rate (20% off monthly pricing). You can pay by card or ACH. Enterprise customers can pay by invoice.</div>
-  </details>
-
-  <details>
-    <summary>Does FactoryLM connect to my existing CMMS?</summary>
-    <div class="faq-body">FactoryLM includes Atlas CMMS built-in. It also syncs with Fiix, MaintainX, and UpKeep via API on Professional and Enterprise plans. Full ERP connectors (SAP PM, Oracle) are on the Enterprise roadmap.</div>
-  </details>
-</div>
-
-<!-- BOTTOM CTA -->
-<div class="bottom-cta">
-  <h2>Ready to cut diagnostic time in half?</h2>
-  <p>Join maintenance teams already using MIRA to fix equipment faster.</p>
-  <div class="bottom-cta-btns">
-    <a href="https://app.factorylm.com/hub/login" class="btn-white">Start your free trial</a>
-    <a href="mailto:harperhousebuyers@gmail.com" class="btn-ghost">Talk to sales for Enterprise →</a>
-  </div>
-</div>
-
-<!-- FOOTER -->
-<footer>
-  <strong>FactoryLM</strong> · AI-powered industrial maintenance · Lake Wales, FL<br>
-  <span style="margin-top:8px;display:inline-block">
-    <a href="/privacy">Privacy</a>
-    <a href="/terms">Terms</a>
-    <a href="mailto:harperhousebuyers@gmail.com">Contact</a>
-  </span>
-</footer>
-
-<script>
-const prices = {
-  monthly: { ind: '$20', com: '$499', pro: '$649' },
-  annual:  { ind: '$16', com: '$399', pro: '$519' }
-};
-function switchBilling(el) {
-  const isAnnual = el.checked;
-  const p = isAnnual ? prices.annual : prices.monthly;
-  document.getElementById('p-ind').textContent = p.ind;
-  document.getElementById('p-com').textContent = p.com;
-  document.getElementById('p-pro').textContent = p.pro;
-  const billing = isAnnual ? 'Billed annually (save 20%)' : 'Billed monthly';
-  document.getElementById('b-ind').textContent = billing;
-  document.getElementById('b-com').textContent = billing;
-  document.getElementById('b-pro').textContent = billing;
-  document.getElementById('lbl-monthly').classList.toggle('active', !isAnnual);
-  document.getElementById('lbl-annual').classList.toggle('active', isAnnual);
-}
 </script>
 </body>
 </html>

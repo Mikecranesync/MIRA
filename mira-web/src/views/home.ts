@@ -127,7 +127,7 @@ function featureStrip(): string {
     "MIRA detected 480 V on a 240 V branch via the photo you sent at 02:14. Do not energize. Verify with a meter before any next step.",
     [
       { label: "Acknowledge", href: "#" },
-      { label: "Call supervisor", href: "tel:+1" },
+      { label: "Call supervisor", href: "#" },
     ]
   );
   return `<section class="fl-section fl-feature-strip" aria-labelledby="fl-feature-h">
@@ -165,7 +165,8 @@ function navbar(): string {
     <a href="/cmms" data-cta="nav-cmms">CMMS</a>
     <a href="/pricing" data-cta="nav-pricing">Pricing</a>
     <a href="/blog" data-cta="nav-blog">Blog</a>
-    <a href="/limitations" data-cta="nav-limitations">Limitations</a>
+    <!-- TODO: /limitations page not yet built; link disabled until page exists -->
+    <a href="#" data-cta="nav-limitations" aria-disabled="true">Limitations</a>
   </nav>
   <div class="fl-topbar-cta">
     ${btnGhost("Sign in", { href: "/cmms", cta: "nav-signin" })}
@@ -178,7 +179,8 @@ function footer(): string {
   <div class="fl-footer-inner">
     <p class="fl-footer-brand">FactoryLM &middot; Built for industrial maintenance.</p>
     <ul class="fl-footer-links">
-      <li><a href="/limitations" data-cta="footer-limitations">Limitations</a></li>
+      <!-- TODO: /limitations page not yet built; link disabled until page exists -->
+      <li><a href="#" data-cta="footer-limitations" aria-disabled="true">Limitations</a></li>
       <li><a href="/trust" data-cta="footer-trust">Trust</a></li>
       <li><a href="/privacy" data-cta="footer-privacy">Privacy</a></li>
       <li><a href="/terms" data-cta="footer-terms">Terms</a></li>

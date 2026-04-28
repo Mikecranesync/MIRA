@@ -100,7 +100,7 @@ export const BLOG_POSTS: BlogPost[] = [
       {
         type: "callout",
         variant: "info",
-        text: "FactoryLM's Mira AI can diagnose VFD fault codes from any manufacturer in seconds. Just type or paste the fault code and Mira searches your equipment manuals for the exact fix.",
+        text: "FactoryLM's MIRA AI can diagnose VFD fault codes from any manufacturer in seconds. Just type or paste the fault code and MIRA searches your equipment manuals for the exact fix.",
       },
     ],
     relatedPosts: ["vfd-troubleshooting-checklist", "how-to-megger-test-a-motor"],

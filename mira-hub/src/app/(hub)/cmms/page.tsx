@@ -1,22 +1,29 @@
 "use client";
 
-import { useState } from "react";
-import { Database, ExternalLink, CheckCircle2, ClipboardList, Wrench, Calendar, AlertCircle, Link2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Database, ExternalLink, CheckCircle2, ClipboardList, Wrench, Calendar, AlertCircle, Link2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/providers/toast-provider";
 import { useTranslations } from "next-intl";
 
-const DEFAULT_CMMS_URL = "https://app.factorylm.com";
+const DEFAULT_CMMS_URL = "https://cmms.factorylm.com";
 
-const CMMS_SUMMARY = {
+const STATIC_SUMMARY = {
   workOrders: { open: 12, inprogress: 4, overdue: 2, completed: 89 },
   assets: { total: 47, active: 44, inactive: 3 },
   pms: { scheduled: 18, overdue: 2 },
 };
 
 type Config = { url: string; apiKey: string };
+
+interface CMMSStats {
+  workOrders: { open: number; inprogress: number; overdue: number; completed: number };
+  assets: { total: number };
+  pms: { total: number };
+  fetchedAt: string;
+}
 
 export default function CMMSPage() {
   const t = useTranslations("cmms");
@@ -26,19 +33,43 @@ export default function CMMSPage() {
   const [config, setConfig] = useState<Config>({ url: DEFAULT_CMMS_URL, apiKey: "••••••••••••••••" });
   const [form, setForm] = useState<Config>({ url: "", apiKey: "" });
   const [showEdit, setShowEdit] = useState(false);
+  const [liveStats, setLiveStats] = useState<CMMSStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  const summary = liveStats ?? STATIC_SUMMARY;
+
+  async function fetchStats() {
+    setStatsLoading(true);
+    try {
+      const res = await fetch("/api/cmms/stats");
+      if (res.ok) {
+        const data: CMMSStats = await res.json();
+        setLiveStats(data);
+      }
+    } catch {
+      // silently fall back to static data
+    } finally {
+      setStatsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (configured) fetchStats();
+  }, [configured]);
 
   function connect() {
     if (!form.url) { toast("CMMS URL is required", "error"); return; }
     setConfig({ url: form.url, apiKey: form.apiKey });
     setConfigured(true);
     setShowEdit(false);
-    toast("Atlas CMMS connected ✓", "success");
+    toast("FactoryLM Works connected ✓", "success");
   }
 
   function disconnect() {
     setConfigured(false);
     setConfig({ url: "", apiKey: "" });
     setForm({ url: "", apiKey: "" });
+    setLiveStats(null);
     toast("CMMS disconnected", "warning");
   }
 
@@ -76,13 +107,26 @@ export default function CMMSPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Atlas CMMS</p>
+                  <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>FactoryLM Works</p>
                   <Badge variant="green" className="text-[10px] gap-1">
                     <CheckCircle2 className="w-2.5 h-2.5" />{t("connected_badge")}
                   </Badge>
+                  {liveStats && (
+                    <Badge variant="outline" className="text-[10px] gap-1 ml-auto">
+                      Live
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-xs truncate mt-0.5" style={{ color: "var(--foreground-muted)" }}>{config.url}</p>
               </div>
+              <button
+                onClick={fetchStats}
+                disabled={statsLoading}
+                className="flex-shrink-0 p-1.5 rounded-lg transition-colors hover:bg-[var(--surface-1)]"
+                title="Refresh stats"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${statsLoading ? "animate-spin" : ""}`} style={{ color: "var(--foreground-subtle)" }} />
+              </button>
             </div>
 
             {/* Open CMMS CTA */}
@@ -106,10 +150,10 @@ export default function CMMSPage() {
                   </div>
                   <div className="space-y-1.5">
                     {[
-                      { label: t("open"),         val: CMMS_SUMMARY.workOrders.open,        color: "#2563EB" },
-                      { label: t("inProgress"),   val: CMMS_SUMMARY.workOrders.inprogress,  color: "#EAB308" },
-                      { label: t("overdue"),      val: CMMS_SUMMARY.workOrders.overdue,     color: "#DC2626" },
-                      { label: t("completedWOs"), val: CMMS_SUMMARY.workOrders.completed,   color: "#16A34A" },
+                      { label: t("open"),         val: summary.workOrders.open,        color: "#2563EB" },
+                      { label: t("inProgress"),   val: summary.workOrders.inprogress,  color: "#EAB308" },
+                      { label: t("overdue"),      val: summary.workOrders.overdue,     color: "#DC2626" },
+                      { label: t("completedWOs"), val: summary.workOrders.completed,   color: "#16A34A" },
                     ].map(({ label, val, color }) => (
                       <div key={label} className="flex items-center justify-between">
                         <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>{label}</span>
@@ -126,9 +170,9 @@ export default function CMMSPage() {
                   </div>
                   <div className="space-y-1.5">
                     {[
-                      { label: t("totalAssets"),    val: CMMS_SUMMARY.assets.total,    color: "var(--foreground)" },
-                      { label: t("activeAssets"),   val: CMMS_SUMMARY.assets.active,   color: "#16A34A" },
-                      { label: t("inactiveAssets"), val: CMMS_SUMMARY.assets.inactive, color: "#94A3B8" },
+                      { label: t("totalAssets"),    val: liveStats ? liveStats.assets.total : STATIC_SUMMARY.assets.total,    color: "var(--foreground)" },
+                      { label: t("activeAssets"),   val: liveStats ? liveStats.assets.total : STATIC_SUMMARY.assets.active,   color: "#16A34A" },
+                      { label: t("inactiveAssets"), val: liveStats ? 0 : STATIC_SUMMARY.assets.inactive, color: "#94A3B8" },
                     ].map(({ label, val, color }) => (
                       <div key={label} className="flex items-center justify-between">
                         <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>{label}</span>
@@ -145,11 +189,15 @@ export default function CMMSPage() {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>{t("scheduledPMs")}</span>
-                        <span className="text-sm font-bold" style={{ color: "#2563EB" }}>{CMMS_SUMMARY.pms.scheduled}</span>
+                        <span className="text-sm font-bold" style={{ color: "#2563EB" }}>
+                          {liveStats ? liveStats.pms.total : STATIC_SUMMARY.pms.scheduled}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>{t("overduePMs")}</span>
-                        <span className="text-sm font-bold" style={{ color: "#DC2626" }}>{CMMS_SUMMARY.pms.overdue}</span>
+                        <span className="text-sm font-bold" style={{ color: "#DC2626" }}>
+                          {liveStats ? 0 : STATIC_SUMMARY.pms.overdue}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -188,6 +236,14 @@ export default function CMMSPage() {
                   <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>API Key</span>
                   <span className="text-xs font-mono" style={{ color: "var(--foreground-subtle)" }}>••••••••••••</span>
                 </div>
+                {liveStats && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>Last sync</span>
+                    <span className="text-xs" style={{ color: "var(--foreground-subtle)" }}>
+                      {new Date(liveStats.fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" className="flex-1 h-8 text-xs"

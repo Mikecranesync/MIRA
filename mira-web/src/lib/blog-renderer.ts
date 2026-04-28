@@ -361,7 +361,7 @@ ${postCards}
 
 <div class="inner" style="padding-bottom: 48px;">
   <div class="cta-card fade-in">
-    <h3>Get answers faster with Mira AI</h3>
+    <h3>Get answers faster with MIRA AI</h3>
     <p>Type a fault code and get the fix from your equipment manuals in seconds.</p>
     <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
   </div>
