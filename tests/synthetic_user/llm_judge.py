@@ -1,6 +1,6 @@
 """LLM-as-judge evaluation for MIRA synthetic user conversations.
 
-Opt-in module — only runs when --eval-mode is 'llm' or 'both'. Uses Claude
+Opt-in module — only runs when --eval-mode is 'llm' or 'both'. Uses Groq
 API via httpx directly (mirrors InferenceRouter pattern). No Anthropic SDK.
 
 Each conversation is scored on 4 criteria:
@@ -26,8 +26,7 @@ from tests.synthetic_user.evaluator import EvaluatedResult
 
 logger = logging.getLogger("mira-llm-judge")
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_VERSION = "2023-06-01"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -132,27 +131,24 @@ def _format_transcript(ev: EvaluatedResult) -> str:
 
 
 class LLMJudge:
-    """Scores conversations using Claude API as judge.
+    """Scores conversations using Groq API as judge.
 
     Mirrors the httpx pattern from InferenceRouter.
     """
 
     def __init__(self) -> None:
-        self.api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        self.model = os.getenv(
-            "CLAUDE_JUDGE_MODEL",
-            os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"),
-        )
+        self.api_key = os.getenv("GROQ_API_KEY", "")
+        self.model = os.getenv("GROQ_JUDGE_MODEL", "llama-3.3-70b-versatile")
         self.enabled = bool(self.api_key)
         self._semaphore = asyncio.Semaphore(5)
 
         if self.enabled:
             logger.info("LLMJudge enabled (model=%s)", self.model)
         else:
-            logger.info("LLMJudge disabled — ANTHROPIC_API_KEY not set")
+            logger.info("LLMJudge disabled — GROQ_API_KEY not set")
 
     async def judge_conversation(self, ev: EvaluatedResult) -> LLMJudgment:
-        """Score one conversation using Claude as judge."""
+        """Score one conversation using Groq as judge."""
         r = ev.result
         transcript_text = _format_transcript(ev)
 
@@ -181,12 +177,13 @@ class LLMJudge:
         payload = {
             "model": self.model,
             "max_tokens": 1024,
-            "system": system_prompt,
-            "messages": [{"role": "user", "content": user_prompt}],
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
         }
         headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": ANTHROPIC_VERSION,
+            "Authorization": f"Bearer {self.api_key}",
             "content-type": "application/json",
         }
 
@@ -195,7 +192,7 @@ class LLMJudge:
             async with self._semaphore:
                 async with httpx.AsyncClient(timeout=60) as client:
                     resp = await client.post(
-                        ANTHROPIC_API_URL,
+                        GROQ_API_URL,
                         json=payload,
                         headers=headers,
                     )
@@ -226,10 +223,10 @@ class LLMJudge:
 
         latency = int((time.monotonic() - t0) * 1000)
 
-        # Parse Claude response
+        # Parse Groq response (OpenAI-compat format)
         try:
             body = resp.json()
-            content_text = body["content"][0]["text"]
+            content_text = body["choices"][0]["message"]["content"]
             # Strip markdown code fences if present
             content_text = re.sub(r"^```(?:json)?\s*", "", content_text.strip())
             content_text = re.sub(r"\s*```$", "", content_text.strip())
