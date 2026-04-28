@@ -57,15 +57,11 @@ class ChatDispatcher:
         import asyncio
         import base64
 
-        # Scope chat_id per thread when a thread_id is present so separate
-        # threads in the same channel don't share FSM state (matches existing
-        # Slack bot behaviour: slack:{channel}:{thread_ts}).
         if event.external_thread_id:
             chat_id = f"{event.platform}:{event.external_channel_id}:{event.external_thread_id}"
         else:
             chat_id = f"{event.platform}:{event.external_channel_id}"
 
-        # Per-user rate limit — check before any engine work
         if not self._check_rate_limit(chat_id):
             return NormalizedChatResponse(
                 text=(
@@ -75,25 +71,46 @@ class ChatDispatcher:
                 thread_id=event.external_thread_id,
             )
 
-        # Resolve canonical user_id via identity service when available
-        user_id = event.user_id or event.external_user_id
-        if self._identity and event.external_user_id and event.tenant_id:
-            try:
-                mira_user = await asyncio.to_thread(
-                    self._identity.resolve,
-                    event.platform,
-                    event.external_user_id,
-                    event.tenant_id,
-                )
-                user_id = mira_user.id
-                logger.debug(
-                    "IDENTITY resolved platform=%s ext=%s → mira_user=%s",
-                    event.platform,
-                    event.external_user_id,
-                    user_id,
-                )
-            except Exception as exc:
-                logger.warning("Identity resolution failed: %s — using external_user_id", exc)
+        # Strict gate: identity_links row required, no env-var fallback, no auto-create.
+        if self._identity is None:
+            logger.error("DISPATCH_NO_IDENTITY platform=%s — failing closed", event.platform)
+            return NormalizedChatResponse(
+                text=(
+                    "MIRA is not configured for multi-tenant access yet. "
+                    "If you believe this is a mistake, ask your admin."
+                ),
+                thread_id=event.external_thread_id,
+            )
+
+        try:
+            mira_user = await asyncio.to_thread(
+                self._identity.lookup_only, event.platform, event.external_user_id
+            )
+        except Exception as exc:
+            logger.error(
+                "IDENTITY_LOOKUP_FAILED platform=%s ext=%s err=%s",
+                event.platform,
+                event.external_user_id,
+                exc,
+            )
+            return NormalizedChatResponse(
+                text="MIRA is temporarily unavailable. Please retry shortly.",
+                thread_id=event.external_thread_id,
+            )
+
+        if mira_user is None:
+            logger.info(
+                "DISPATCH_BLOCKED platform=%s ext=%s reason=stranger",
+                event.platform,
+                event.external_user_id,
+            )
+            return NormalizedChatResponse(
+                text=(
+                    "Hi — I'm MIRA, your team's maintenance assistant. "
+                    "I'm invite-only. Ask your admin to send you an enrollment link."
+                ),
+                thread_id=event.external_thread_id,
+            )
 
         # Extract pre-downloaded image bytes (set by adapter before dispatch)
         photo_b64 = None
@@ -102,27 +119,26 @@ class ChatDispatcher:
                 photo_b64 = base64.b64encode(att.data).decode()
                 break
 
-        # Call the engine (existing Supervisor.process)
         result = await self.engine.process(
             chat_id=chat_id,
             message=event.text,
             photo_b64=photo_b64,
+            tenant_id=mira_user.tenant_id,
+            mira_user_id=mira_user.id,
         )
 
-        # Convert engine output to NormalizedChatResponse
-        # The engine currently returns a formatted string
-        # Parse it into blocks where possible
         response = NormalizedChatResponse(
             text=result if isinstance(result, str) else str(result),
             thread_id=event.external_thread_id,
         )
 
         logger.info(
-            "DISPATCH platform=%s user=%s chat=%s text_len=%d",
+            "DISPATCH platform=%s user=%s mira_user=%s tenant=%s chat=%s text_len=%d",
             event.platform,
             event.external_user_id,
+            mira_user.id,
+            mira_user.tenant_id,
             event.external_channel_id,
             len(response.text),
         )
-
         return response
