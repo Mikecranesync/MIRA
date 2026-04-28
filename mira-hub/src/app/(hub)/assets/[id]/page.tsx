@@ -8,9 +8,9 @@ import {
   CheckCircle2, AlertTriangle, AlertCircle, Clock,
   QrCode, MapPin, Cpu, Calendar, ChevronRight, ChevronDown, ChevronUp,
 } from "lucide-react";
+import { AssetChat } from "@/components/AssetChat";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 /* ─── Mock data ─────────────────────────────────────────────────────── */
 const ASSETS: Record<string, {
@@ -146,7 +146,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
 
           {/* Tabs */}
           <div className="flex gap-0 overflow-x-auto scrollbar-none -mb-px">
-            {["overview", "activity", "workorders", "documents", "parts"].map((tab) => (
+            {["overview", "ask", "activity", "workorders", "documents", "parts"].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -160,7 +160,12 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
                  tab === "overview"   ? t("tabs.details") :
                  tab === "activity"   ? t("tabs.activity") :
                  tab === "documents"  ? t("tabs.documents") :
-                 tab === "parts"      ? t("tabs.parts") : tab}
+                 tab === "parts"      ? t("tabs.parts") :
+                 tab === "ask"        ? (
+                   <span className="flex items-center gap-1">
+                     <Bot className="w-3 h-3" /> Ask MIRA
+                   </span>
+                 ) : tab}
               </button>
             ))}
           </div>
@@ -168,30 +173,37 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
       </div>
 
       {/* Tab content */}
-      <div className="px-4 md:px-6 py-5 max-w-3xl">
-        {activeTab === "overview" && <OverviewTab asset={asset} />}
-        {activeTab === "activity" && <ActivityTab />}
-        {activeTab === "workorders" && <WorkOrdersTab />}
-        {activeTab === "documents" && <DocumentsTab />}
-        {activeTab === "parts" && <PartsTab />}
-      </div>
+      {activeTab === "ask" ? (
+        <div className="flex flex-col" style={{ height: "calc(100vh - 160px)" }}>
+          <AssetChat assetId={id} assetName={asset.name} assetTag={asset.tag} />
+        </div>
+      ) : (
+        <div className="px-4 md:px-6 py-5 max-w-3xl">
+          {activeTab === "overview" && <OverviewTab asset={asset} onAskMira={() => setActiveTab("ask")} />}
+          {activeTab === "activity" && <ActivityTab />}
+          {activeTab === "workorders" && <WorkOrdersTab />}
+          {activeTab === "documents" && <DocumentsTab />}
+          {activeTab === "parts" && <PartsTab />}
+        </div>
+      )}
     </div>
   );
 }
 
 /* ─── Overview Tab ──────────────────────────────────────────────────── */
-function OverviewTab({ asset }: { asset: typeof ASSETS["1"] }) {
+function OverviewTab({ asset, onAskMira }: { asset: typeof ASSETS["1"]; onAskMira: () => void }) {
   const t = useTranslations("assets");
   return (
     <div className="space-y-4">
       {/* Chat CTA */}
-      <a href="https://t.me/FactoryLMDiagnose_bot" target="_blank" rel="noopener noreferrer">
-        <Button className="w-full h-12 text-sm font-semibold gap-2"
-          style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
-          <Bot className="w-5 h-5" />
-          {t("chatMira")}
-        </Button>
-      </a>
+      <Button
+        onClick={onAskMira}
+        className="w-full h-12 text-sm font-semibold gap-2"
+        style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)", color: "#fff" }}
+      >
+        <Bot className="w-5 h-5" />
+        {t("chatMira")}
+      </Button>
 
       {/* Info grid */}
       <div className="grid grid-cols-2 gap-3">
