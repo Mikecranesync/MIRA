@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { extractAndStore } from "@/lib/knowledge-graph/extractor";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,7 @@ async function streamFromProvider(
   messages: ChatMessage[],
   controller: ReadableStreamDefaultController<Uint8Array>,
   enc: TextEncoder,
+  responseBuffer: string[],
 ): Promise<boolean> {
   if (!provider.key) return false;
 
@@ -125,6 +127,7 @@ async function streamFromProvider(
         };
         const delta = parsed.choices?.[0]?.delta?.content;
         if (delta) {
+          responseBuffer.push(delta);
           controller.enqueue(enc.encode(`data: ${JSON.stringify({ content: delta })}\n\n`));
         }
         if (parsed.choices?.[0]?.finish_reason === "stop") {
@@ -257,12 +260,15 @@ export async function POST(
   const enc = new TextEncoder();
   const providers = getProviders();
 
+  const conversationId = crypto.randomUUID();
+  const responseBuffer: string[] = [];
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let served = false;
       for (const provider of providers) {
         try {
-          served = await streamFromProvider(provider, fullMessages, controller, enc);
+          served = await streamFromProvider(provider, fullMessages, controller, enc, responseBuffer);
           if (served) break;
         } catch {
           // cascade
@@ -276,6 +282,14 @@ export async function POST(
       }
 
       controller.close();
+
+      // Fire-and-forget KG extraction — never blocks the chat response
+      const fullResponse = responseBuffer.join("");
+      const userText = messages.map((m) => m.content).join(" ");
+      if (fullResponse && process.env.NEON_DATABASE_URL) {
+        extractAndStore(ctx.tenantId, id, `${userText} ${fullResponse}`, conversationId)
+          .catch(() => { /* non-fatal */ });
+      }
     },
   });
 
