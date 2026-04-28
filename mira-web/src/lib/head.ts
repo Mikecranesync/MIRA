@@ -11,6 +11,10 @@ export interface HeadOpts {
 const DEFAULT_OG_IMAGE = "https://factorylm.com/og-default.png";
 const SITE_NAME = "FactoryLM";
 
+// Set GOOGLE_SITE_VERIFICATION in Doppler (factorylm/prd) after verifying in
+// Google Search Console. The meta tag is omitted when the env var is unset.
+const GOOGLE_VERIFY = (typeof process !== "undefined" ? process.env.GOOGLE_SITE_VERIFICATION : undefined) ?? "";
+
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
@@ -27,9 +31,13 @@ export function head(opts: HeadOpts, reqUrl?: string): string {
     ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd)}</script>`
     : "";
 
+  const gscTag = GOOGLE_VERIFY
+    ? `\n  <meta name="google-site-verification" content="${GOOGLE_VERIFY}">`
+    : "";
+
   return `<meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${opts.title}</title>
+  <title>${opts.title}</title>${gscTag}
   <meta name="description" content="${desc}">
   <link rel="canonical" href="${canonical}">
   <meta property="og:type" content="website">
