@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --testTimeout 30000 '**/*.integration.test.ts'"
   },
   "dependencies": {
     "@node-saml/node-saml": "^5.0.0",
