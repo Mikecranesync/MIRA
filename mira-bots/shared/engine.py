@@ -46,6 +46,7 @@ from .guardrails import (
 )
 from .inference.router import InferenceRouter
 from .integrations.atlas_cmms import AtlasCMMSClient
+from .integrations.hub_neon import create_hub_work_order
 from .integrations.pm_suggestions import (
     PMSuggestion,
     is_pm_acceptance,
@@ -1213,7 +1214,11 @@ class Supervisor:
         }
 
     async def _post_cmms_work_order(self, wo: UNSWorkOrder) -> str:
-        """Call AtlasCMMSClient to create a work order. Returns confirmation string."""
+        """Create work order in Atlas CMMS and Hub NeonDB. Returns confirmation string."""
+        atlas_wo_id: str | None = None
+        hub_wo_number: str | None = None
+
+        # --- Atlas CMMS (via mira-mcp) ---
         client = AtlasCMMSClient(base_url=self.mcp_base_url, api_key=self.mcp_api_key)
         result = await client.create_work_order(
             title=wo.title,
@@ -1224,8 +1229,31 @@ class Supervisor:
         )
         if "error" in result:
             raise RuntimeError(result["error"])
-        wo_id = result.get("id", "unknown")
-        return f"Work order #{wo_id} created for {wo.asset or 'equipment'} — UNS: {wo.uns_topic}"
+        atlas_wo_id = str(result.get("id", "unknown"))
+
+        # --- Hub NeonDB (fire-and-forget; failure doesn't block the reply) ---
+        tenant_id = os.getenv("MIRA_TENANT_ID", wo.chat_id or "")
+        if tenant_id:
+            hub_result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: create_hub_work_order(
+                    tenant_id=tenant_id,
+                    user_id=wo.chat_id or "mira-bot",
+                    title=wo.title,
+                    description=wo.to_atlas_description(),
+                    priority=wo.priority,
+                    asset_name=wo.asset,
+                    wo_number=f"MIRA-{atlas_wo_id}",
+                    source="telegram_text",
+                ),
+            )
+            if "error" not in hub_result:
+                hub_wo_number = hub_result.get("work_order_number", "")
+            else:
+                logger.warning("Hub NeonDB WO write skipped: %s", hub_result["error"])
+
+        label = hub_wo_number or f"#{atlas_wo_id}"
+        return f"Work order {label} created for {wo.asset or 'equipment'} ✓"
 
     _CMMS_NO = frozenset({"no", "nope", "n", "skip", "cancel", "abort", "never mind", "nevermind"})
 
@@ -2058,11 +2086,52 @@ class Supervisor:
         tl_flush()
         return self._make_result(reply, "none", trace_id, "IDLE")
 
+    @staticmethod
+    def _parse_asset_fault_from_message(message: str) -> tuple[str, str]:
+        """Extract (asset, fault_description) from a cold WO creation message.
+
+        Handles common patterns:
+        - "create a work order for Pump 7 — leaking seal on discharge side"
+        - "log a WO for GS10 VFD on Line 1: overheating on startup"
+        - "I need a work order for cooling tower motor, vibrating badly"
+        """
+        msg = message.strip()
+        for sep in [" — ", " – ", " - ", ": ", ", "]:
+            if sep not in msg:
+                continue
+            idx = msg.index(sep)
+            pre, fault = msg[:idx], msg[idx + len(sep):].strip()
+            m = re.search(r"\bfor\s+(.{3,}?)$", pre, re.IGNORECASE)
+            if m:
+                asset = m.group(1).strip()
+                if not re.match(r"^a?\s*work\s+order", asset, re.IGNORECASE):
+                    return asset[:80], fault[:500]
+        m = re.search(
+            r"\bfor\s+((?!a?\s*work\s+order).{3,80}?)(?:\s*[—–\-:,].*)?$",
+            msg,
+            re.IGNORECASE,
+        )
+        if m:
+            return m.group(1).strip()[:80], ""
+        return "", ""
+
     async def _handle_wo_request(
         self, chat_id: str, message: str, state: dict, trace_id: str
     ) -> dict:
-        """Router detected 'log_work_order' intent — build WO draft from current context."""
+        """Router detected 'log_work_order' intent — build WO draft from context + message."""
+        # Parse asset + fault from the message itself (cold "create WO for X — Y" pattern).
+        parsed_asset, parsed_fault = self._parse_asset_fault_from_message(message)
+
         wo = build_uns_wo_from_state(state)
+
+        # Overlay parsed values so a cold "create WO for Pump 7 — leaking seal" message
+        # produces a fully pre-filled draft without requiring prior Q1→DIAGNOSIS flow.
+        if parsed_asset:
+            wo.asset = parsed_asset
+            wo.title = f"[MIRA] {parsed_asset[:60]} — corrective action"
+        if parsed_fault and not wo.fault_description:
+            wo.fault_description = parsed_fault
+
         wo.chat_id = chat_id
         wo.fsm_state_at_creation = state.get("state", "IDLE")
         wo_dict = wo.to_dict()
