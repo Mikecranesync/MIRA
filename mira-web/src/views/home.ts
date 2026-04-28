@@ -90,6 +90,17 @@ function hero(): string {
       ${btnPrimary("Start Free — magic link", { href: "/cmms", cta: "hero-primary" })}
       ${btnGhost("See pricing →", { href: "/pricing", cta: "hero-secondary" })}
     </div>
+    <div class="fl-hero-screenshot" aria-hidden="true">
+      <img
+        src="/images/app-screenshot-desktop.png"
+        alt="MIRA work orders screen showing auto-generated maintenance tasks"
+        class="fl-hero-screenshot-img"
+        width="1280"
+        height="800"
+        loading="lazy"
+        decoding="async"
+      >
+    </div>
   </div>
 </section>`;
 }
@@ -324,6 +335,22 @@ const PAGE_STYLES = `
 .fl-state-row {
   display: flex; flex-wrap: wrap; gap: var(--fl-sp-3);
   justify-content: center;
+}
+
+.fl-hero-screenshot {
+  margin-top: var(--fl-sp-10);
+  border-radius: var(--fl-radius-lg);
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.10);
+  border: 1px solid var(--fl-rule-200);
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.fl-hero-screenshot-img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .fl-pricing-teaser { text-align: center; }
