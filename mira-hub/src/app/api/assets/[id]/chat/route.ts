@@ -3,6 +3,7 @@ import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { extractAndStore } from "@/lib/knowledge-graph/extractor";
 import { buildGraphContext } from "@/lib/knowledge-graph/context-builder";
+import { scanBoth, handleSafetyAlert, safetyAlertSseChunk } from "@/lib/agents/safety-alert";
 
 export const dynamic = "force-dynamic";
 
@@ -290,11 +291,18 @@ export async function POST(
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
       }
 
+      // Safety alert scan — runs after full response is assembled, before close
+      const fullResponse = responseBuffer.join("");
+      const userText = messages.map((m) => m.content).join(" ");
+      const safetyAlert = scanBoth(userText, fullResponse, id);
+      if (safetyAlert) {
+        controller.enqueue(enc.encode(safetyAlertSseChunk(safetyAlert)));
+        handleSafetyAlert(safetyAlert, ctx.tenantId).catch(() => {});
+      }
+
       controller.close();
 
       // Fire-and-forget KG extraction — never blocks the chat response
-      const fullResponse = responseBuffer.join("");
-      const userText = messages.map((m) => m.content).join(" ");
       if (fullResponse && process.env.NEON_DATABASE_URL) {
         extractAndStore(ctx.tenantId, id, `${userText} ${fullResponse}`, conversationId)
           .catch(() => { /* non-fatal */ });
