@@ -1,14 +1,19 @@
 {
   "name": "mira-hub",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --testTimeout 30000 '**/*.integration.test.ts'",
+    "db:check-order": "node db/check-migration-order.mjs"
   },
   "dependencies": {
+    "@node-saml/node-saml": "^5.0.0",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -27,28 +32,45 @@
     "@refinedev/nextjs-router": "^7.0.5",
     "@refinedev/simple-rest": "^6.0.1",
     "@types/pg": "^8.20.0",
+    "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dexie": "^4.0.11",
+    "fft-js": "^0.0.12",
+    "jose": "^5.10.0",
+    "libsodium-wrappers": "^0.7.15",
     "lucide-react": "^1.8.0",
     "next": "16.2.4",
     "next-auth": "^4.24.14",
     "next-intl": "^4.9.1",
+    "openid-client": "^6.6.0",
+    "pdfkit": "^0.15.2",
     "pg": "^8.20.0",
+    "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
-    "tailwind-merge": "^3.5.0"
+    "rrule": "^2.8.1",
+    "tailwind-merge": "^3.5.0",
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
+    "@types/bcrypt": "^5.0.2",
+    "@types/libsodium-wrappers": "^0.7.14",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.13.9",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/xml2js": "^0.4.14",
+    "@vitest/expect": "^3.2.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.0"
   }
 }

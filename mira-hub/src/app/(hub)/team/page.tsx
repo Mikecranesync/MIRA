@@ -1,9 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Users, CheckCircle2, Clock, XCircle, Phone, Wrench, ClipboardList } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useTranslations } from "next-intl";
+import { API_BASE } from "@/lib/config";
+
+type HubTeamMember = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  joinedAt: string;
+};
 
 type ShiftStatus = "on-shift" | "on-call" | "off-shift";
 
@@ -109,6 +119,14 @@ export default function TeamPage() {
 
   const [shiftFilter, setShiftFilter] = useState("all");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [hubUsers, setHubUsers] = useState<HubTeamMember[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/team`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setHubUsers)
+      .catch(() => {});
+  }, []);
 
   const visible = shiftFilter === "all" ? TEAM : TEAM.filter(m => m.shiftStatus === shiftFilter);
   const onShiftCount = TEAM.filter(m => m.shiftStatus === "on-shift").length;
@@ -147,6 +165,37 @@ export default function TeamPage() {
           </div>
         </div>
       </div>
+
+      {/* Hub registered users */}
+      {hubUsers.length > 0 && (
+        <div className="px-4 md:px-6 pt-4 pb-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--foreground-subtle)" }}>
+            Registered ({hubUsers.length})
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {hubUsers.map(u => {
+              const initials = (u.name || u.email).split(/\s+/).slice(0, 2).map((w: string) => w[0]).join("").toUpperCase();
+              const colors = ["#2563EB","#0891B2","#7C3AED","#059669","#D97706","#DC2626","#0D9488","#9333EA"];
+              const color = colors[u.id.charCodeAt(0) % colors.length];
+              return (
+                <div key={u.id} className="card flex items-center gap-3 p-3">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                    style={{ backgroundColor: color }}>
+                    {initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>{u.name || u.email}</p>
+                    <p className="text-[11px] truncate" style={{ color: "var(--foreground-muted)" }}>{u.role} · {u.status}</p>
+                  </div>
+                  {u.status === "admin" && (
+                    <Badge variant="green" className="text-[10px] flex-shrink-0">Admin</Badge>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Team grid / list */}
       <div className="px-4 md:px-6 py-4">

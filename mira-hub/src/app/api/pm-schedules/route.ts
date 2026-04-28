@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import pool from "@/lib/db";
 import { sessionOr401 } from "@/lib/session";
+import { withTenantContext } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -109,20 +109,22 @@ export async function GET(req: NextRequest) {
   const where = filters.join(" AND ");
 
   try {
-    const { rows } = await pool.query(
-      `SELECT
-        id, tenant_id, manufacturer, model_number, equipment_id,
-        task, interval_value, interval_unit, interval_type,
-        parts_needed, tools_needed, estimated_duration_minutes,
-        safety_requirements, criticality, source_citation, confidence,
-        next_due_at, last_completed_at, auto_extracted, created_at
-      FROM pm_schedules
-      WHERE ${where}
-      ORDER BY
-        CASE criticality WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
-        next_due_at ASC NULLS LAST
-      LIMIT 200`,
-      params,
+    const rows = await withTenantContext(ctx.tenantId, (c) =>
+      c.query(
+        `SELECT
+          id, tenant_id, manufacturer, model_number, equipment_id,
+          task, interval_value, interval_unit, interval_type,
+          parts_needed, tools_needed, estimated_duration_minutes,
+          safety_requirements, criticality, source_citation, confidence,
+          next_due_at, last_completed_at, auto_extracted, created_at
+        FROM pm_schedules
+        WHERE ${where}
+        ORDER BY
+          CASE criticality WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+          next_due_at ASC NULLS LAST
+        LIMIT 200`,
+        params,
+      ).then((r) => r.rows),
     );
 
     return NextResponse.json({
@@ -130,7 +132,6 @@ export async function GET(req: NextRequest) {
       schedules: rows.map(rowToPM),
     });
   } catch (err) {
-    // If table doesn't exist yet, return empty rather than 500
     const msg = String(err);
     if (msg.includes("pm_schedules") && msg.includes("does not exist")) {
       return NextResponse.json({ count: 0, schedules: [] });

@@ -16,6 +16,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "FactoryLM Hub",
   description: "AI-powered industrial maintenance platform",
+  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

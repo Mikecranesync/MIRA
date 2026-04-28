@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import pool from "@/lib/db";
 import { sessionOr401 } from "@/lib/session";
+import { withTenantContext } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -84,25 +84,27 @@ export async function GET(
   const { id } = await params;
 
   try {
-    const { rows } = await pool.query(
-      `SELECT
-        id, work_order_number, source, created_by_agent,
-        manufacturer, model_number, equipment_id,
-        title, description,
-        suggested_actions, safety_warnings,
-        status, priority, route_taken,
-        tenant_id, created_at, updated_at
-      FROM work_orders
-      WHERE id = $1 AND tenant_id = $2
-      LIMIT 1`,
-      [id, ctx.tenantId],
+    const row = await withTenantContext(ctx.tenantId, (c) =>
+      c.query(
+        `SELECT
+          id, work_order_number, source, created_by_agent,
+          manufacturer, model_number, equipment_id,
+          title, description,
+          suggested_actions, safety_warnings,
+          status, priority, route_taken,
+          tenant_id, created_at, updated_at
+        FROM work_orders
+        WHERE id = $1 AND tenant_id = $2
+        LIMIT 1`,
+        [id, ctx.tenantId],
+      ).then((r) => r.rows[0] ?? null),
     );
 
-    if (rows.length === 0) {
+    if (!row) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ work_order: rowToWO(rows[0]) });
+    return NextResponse.json({ work_order: rowToWO(row) });
   } catch (err) {
     console.error("[api/work-orders/[id] GET]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });

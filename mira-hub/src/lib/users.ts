@@ -1,4 +1,5 @@
 import pool from "@/lib/db";
+import { ensureDataSchema } from "@/lib/data-schema";
 
 export type UserStatus = "pending" | "trial" | "approved" | "expired" | "admin";
 
@@ -13,6 +14,7 @@ export interface HubUser {
   status: UserStatus;
   trialExpiresAt: Date | null;
   plan: string | null;
+  preferences: Record<string, unknown>;
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -61,12 +63,23 @@ export function ensureSchema(): Promise<void> {
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'trial'`);
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ`);
     await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS plan TEXT`);
-    // Promote admin and set trial expiry for existing trial users
-    await pool.query(`UPDATE hub_users SET status = 'admin' WHERE email_lower = 'mike@factorylm.com' AND status != 'admin'`);
+    await pool.query(`ALTER TABLE hub_users ADD COLUMN IF NOT EXISTS preferences JSONB NOT NULL DEFAULT '{}'`);
+    // hub_tenants — add slug + settings for Phase 2 multi-tenancy
+    await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS slug TEXT`);
+    await pool.query(`ALTER TABLE hub_tenants ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_hub_tenants_slug ON hub_tenants (slug) WHERE slug IS NOT NULL`);
+    // Promote admin (configurable via ADMIN_EMAIL env, fallback to mike@factorylm.com)
+    const adminEmail = process.env.ADMIN_EMAIL ?? "mike@factorylm.com";
+    await pool.query(
+      `UPDATE hub_users SET status = 'admin' WHERE email_lower = LOWER($1) AND status != 'admin'`,
+      [adminEmail],
+    );
     await pool.query(`
       UPDATE hub_users SET trial_expires_at = created_at + INTERVAL '7 days'
       WHERE status = 'trial' AND trial_expires_at IS NULL
     `);
+    // Phase 2: idempotent migrations for pipeline-managed tables
+    await ensureDataSchema();
   })();
   return schemaReady;
 }
@@ -83,10 +96,11 @@ function rowToUser(r: Record<string, unknown>): HubUser {
     status: (r.status as UserStatus) ?? "trial",
     trialExpiresAt: r.trial_expires_at ? new Date(r.trial_expires_at as string) : null,
     plan: (r.plan as string) ?? null,
+    preferences: (r.preferences as Record<string, unknown>) ?? {},
   };
 }
 
-const USER_COLS = "id, email, password_hash, google_sub, tenant_id, name, role, status, trial_expires_at, plan";
+const USER_COLS = "id, email, password_hash, google_sub, tenant_id, name, role, status, trial_expires_at, plan, preferences";
 
 export async function findUserByEmail(email: string): Promise<HubUser | null> {
   await ensureSchema();
@@ -236,4 +250,30 @@ export async function ensureUserAndTenant(
   } finally {
     client.release();
   }
+}
+
+// ── User preferences ───────────────────────────────────────────────────────────
+
+export async function getUserPreferences(userId: string): Promise<Record<string, unknown>> {
+  await ensureSchema();
+  const { rows } = await pool.query(
+    `SELECT preferences FROM hub_users WHERE id = $1 LIMIT 1`,
+    [userId],
+  );
+  return (rows[0]?.preferences as Record<string, unknown>) ?? {};
+}
+
+export async function setUserPreferences(
+  userId: string,
+  patch: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  await ensureSchema();
+  const { rows } = await pool.query(
+    `UPDATE hub_users
+     SET preferences = preferences || $1::jsonb, updated_at = NOW()
+     WHERE id = $2
+     RETURNING preferences`,
+    [JSON.stringify(patch), userId],
+  );
+  return (rows[0]?.preferences as Record<string, unknown>) ?? {};
 }

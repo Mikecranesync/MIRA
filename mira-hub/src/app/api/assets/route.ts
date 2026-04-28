@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import pool from "@/lib/db";
 import { sessionOr401 } from "@/lib/session";
+import { withTenantContext } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -33,17 +33,19 @@ export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   try {
-    const { rows } = await pool.query(
-      `SELECT
-        id, equipment_number, manufacturer, model_number, serial_number,
-        equipment_type, location, department, criticality,
-        work_order_count, total_downtime_hours,
-        last_maintenance_date, last_work_order_at,
-        last_reported_fault, description, created_at
-      FROM cmms_equipment
-      WHERE tenant_id = $1
-      ORDER BY last_work_order_at DESC NULLS LAST, created_at DESC`,
-      [ctx.tenantId],
+    const rows = await withTenantContext(ctx.tenantId, (c) =>
+      c.query(
+        `SELECT
+          id, equipment_number, manufacturer, model_number, serial_number,
+          equipment_type, location, department, criticality,
+          work_order_count, total_downtime_hours,
+          last_maintenance_date, last_work_order_at,
+          last_reported_fault, description, created_at
+        FROM cmms_equipment
+        WHERE tenant_id = $1
+        ORDER BY last_work_order_at DESC NULLS LAST, created_at DESC`,
+        [ctx.tenantId],
+      ).then((r) => r.rows),
     );
     return NextResponse.json(rows.map(rowToAsset));
   } catch (err) {
@@ -70,28 +72,30 @@ export async function POST(req: Request) {
       ? (criticality as string).toLowerCase()
       : "medium";
 
-    const { rows } = await pool.query(
-      `INSERT INTO cmms_equipment
-         (tenant_id, equipment_number, manufacturer, model_number, serial_number,
-          location, criticality, installation_date, description)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::criticalitylevel, $8, $9)
-       RETURNING
-         id, equipment_number, manufacturer, model_number, serial_number,
-         equipment_type, location, criticality, description, created_at`,
-      [
-        ctx.tenantId,
-        tag?.trim() || null,
-        manufacturer.trim(),
-        model?.trim() || null,
-        serialNumber?.trim() || null,
-        location?.trim() || null,
-        safeLevel,
-        installDate || null,
-        name?.trim() || null,
-      ],
+    const row = await withTenantContext(ctx.tenantId, (c) =>
+      c.query(
+        `INSERT INTO cmms_equipment
+           (tenant_id, equipment_number, manufacturer, model_number, serial_number,
+            location, criticality, installation_date, description)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::criticalitylevel, $8, $9)
+         RETURNING
+           id, equipment_number, manufacturer, model_number, serial_number,
+           equipment_type, location, criticality, description, created_at`,
+        [
+          ctx.tenantId,
+          tag?.trim() || null,
+          manufacturer.trim(),
+          model?.trim() || null,
+          serialNumber?.trim() || null,
+          location?.trim() || null,
+          safeLevel,
+          installDate || null,
+          name?.trim() || null,
+        ],
+      ).then((r) => r.rows[0]),
     );
 
-    return NextResponse.json(rowToAsset(rows[0]), { status: 201 });
+    return NextResponse.json(rowToAsset(row), { status: 201 });
   } catch (err) {
     console.error("[api/assets POST]", err);
     return NextResponse.json({ error: "Failed to create asset" }, { status: 500 });

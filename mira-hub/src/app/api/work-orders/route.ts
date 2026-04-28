@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import pool from "@/lib/db";
 import { sessionOr401 } from "@/lib/session";
+import { withTenantContext } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -90,22 +90,24 @@ export async function GET(req: NextRequest) {
   const where = filters.join(" AND ");
 
   try {
-    const { rows } = await pool.query(
-      `SELECT
-        id, work_order_number, source, created_by_agent,
-        manufacturer, model_number, equipment_id,
-        title, description,
-        suggested_actions, safety_warnings,
-        status, priority, route_taken,
-        tenant_id, created_at, updated_at
-      FROM work_orders
-      WHERE ${where}
-      ORDER BY
-        CASE status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
-        CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
-        created_at DESC
-      LIMIT 200`,
-      params,
+    const rows = await withTenantContext(ctx.tenantId, (c) =>
+      c.query(
+        `SELECT
+          id, work_order_number, source, created_by_agent,
+          manufacturer, model_number, equipment_id,
+          title, description,
+          suggested_actions, safety_warnings,
+          status, priority, route_taken,
+          tenant_id, created_at, updated_at
+        FROM work_orders
+        WHERE ${where}
+        ORDER BY
+          CASE status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+          CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+          created_at DESC
+        LIMIT 200`,
+        params,
+      ).then((r) => r.rows),
     );
 
     return NextResponse.json({
