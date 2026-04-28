@@ -16,7 +16,8 @@ logger = logging.getLogger("mira-gsd")
 
 INTENTS = [
     "diagnose_equipment",  # User is describing a fault, asking for troubleshooting help
-    "find_documentation",  # User wants a manual, datasheet, wiring diagram, installation guide
+    "find_documentation",  # User wants to FETCH a manual, datasheet, or wiring diagram
+    "answer_question",  # Procedural how-to question — answer from knowledge, no doc fetch needed
     "log_work_order",  # User wants to create/log a work order in the CMMS
     "check_equipment_history",  # User asking what happened with this asset before
     "switch_asset",  # User wants to talk about a different machine
@@ -55,7 +56,8 @@ CRITICAL RULES:
 2. continue_current should be the default when the user is mid-conversation and answering a question
 3. If the diagnostic FSM is active (history shows MIRA asking diagnostic questions), prefer continue_current unless the user CLEARLY changed topic
 4. Don't over-route to clarify_intent — make a decision, even if confidence is moderate
-5. find_documentation covers: manual requests, "how to install", "wiring steps", "what are the specs", setup guides"""
+5. find_documentation covers: manual requests, datasheet lookups, wiring diagrams — the user explicitly wants to FETCH a document ("send me the manual", "do you have the datasheet", "show me the wiring diagram")
+6. answer_question covers: procedural how-to questions the LLM can answer from knowledge — "how do I connect via Ethernet?", "what are the steps to configure the IP?", "give me quick steps to set parameter X" — user wants STEP-BY-STEP INSTRUCTIONS, not a document download"""
 
 
 async def route_intent(

@@ -578,6 +578,7 @@ class Supervisor:
                 _router_intent = {
                     "safety": "safety_concern",
                     "documentation": "find_documentation",
+                    "instructional": "answer_question",
                     "greeting": "greeting_or_chitchat",
                     "help": "greeting_or_chitchat",
                     "industrial": "continue_current",
@@ -616,6 +617,13 @@ class Supervisor:
             if _router_intent == "greeting_or_chitchat" and state["state"] == "IDLE":
                 return self._greeting_response(state, chat_id, trace_id)
 
+            # Procedural how-to questions: answer from knowledge, skip doc crawl.
+            # Keyword "instructional" also routes here via the fallback mapping above.
+            if _router_intent == "answer_question" or _keyword_intent == "instructional":
+                return await self._handle_instructional_question(
+                    chat_id, message, state, trace_id
+                )
+
             # find_documentation: let the existing specificity-gate block handle it below
             if _router_intent == "find_documentation":
                 intent = "documentation"
@@ -649,6 +657,15 @@ class Supervisor:
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
             if not self._is_doc_specific(mfr, combined):
+                # If nameplate was already scanned, asset_identified is "Vendor, Model".
+                # Skip gathering — we already know enough to crawl.
+                asset_id = state.get("asset_identified", "")
+                if "," in asset_id:
+                    fallback_mfr = mfr or asset_id.split(",", 1)[0].strip()
+                    return await self._do_documentation_lookup(
+                        chat_id, message, state, trace_id, resolved_tenant,
+                        vendor_override=fallback_mfr,
+                    )
                 return await self._enter_manual_lookup_gathering(
                     chat_id, message, state, trace_id, mfr
                 )
@@ -1828,6 +1845,35 @@ class Supervisor:
             return None  # fall through
 
         if has_escape_phrase:
+            if "skip" in msg_lower:
+                # "skip" = proceed with whatever we have, including nameplate context.
+                # Seed collected from asset_identified if it wasn't manually provided.
+                asset_id = state.get("asset_identified", "")
+                if "," in asset_id:
+                    parts = asset_id.split(",", 1)
+                    if not collected.get("vendor"):
+                        collected["vendor"] = parts[0].strip()
+                    if not collected.get("model"):
+                        collected["model"] = parts[1].strip()
+                ctx.pop("manual_lookup_gathering", None)
+                state["state"] = prior_state
+                state["context"] = ctx
+                logger.info(
+                    "MANUAL_LOOKUP_GATHERING_SKIP chat_id=%s vendor=%r model=%r",
+                    chat_id,
+                    collected.get("vendor", ""),
+                    collected.get("model", ""),
+                )
+                return await self._do_documentation_lookup(
+                    chat_id,
+                    message,
+                    state,
+                    trace_id,
+                    resolved_tenant,
+                    vendor_override=collected.get("vendor", ""),
+                    model_override=collected.get("model", ""),
+                    low_confidence=not (collected.get("vendor") and collected.get("model")),
+                )
             ctx.pop("manual_lookup_gathering", None)
             state["state"] = prior_state
             state["context"] = ctx
@@ -2226,9 +2272,65 @@ class Supervisor:
         combined = f"{message} {state.get('asset_identified', '')}".strip()
         mfr = vendor_name_from_text(combined) or ""
         if not self._is_doc_specific(mfr, combined):
-            return await self._enter_manual_lookup_gathering(chat_id, message, state, trace_id, mfr)
+            asset_id = state.get("asset_identified", "")
+            if "," in asset_id:
+                fallback_mfr = mfr or asset_id.split(",", 1)[0].strip()
+                return await self._do_documentation_lookup(
+                    chat_id, message, state, trace_id, resolved_tenant,
+                    vendor_override=fallback_mfr,
+                )
+            return await self._enter_manual_lookup_gathering(
+                chat_id, message, state, trace_id, mfr
+            )
         return await self._do_documentation_lookup(
             chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
+        )
+
+    async def _handle_instructional_question(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+    ) -> dict:
+        """Answer a procedural how-to question directly via the LLM.
+
+        Bypasses the doc-crawl path and the Q1/Q2/Q3 diagnosis FSM. Injects
+        the known asset context so the answer is equipment-specific when available.
+        """
+        asset = state.get("asset_identified", "")
+        ctx = state.get("context") or {}
+        history = ctx.get("history", [])
+
+        system = (
+            "You are MIRA, an industrial maintenance assistant. "
+            "Answer the technician's procedural question with clear, numbered steps. "
+            "Be concise and practical — they are on the shop floor. "
+            "If the exact procedure varies by model, note what to check on the specific unit."
+        )
+        messages: list[dict] = [{"role": "system", "content": system}]
+        messages.extend(history[-6:])
+        user_content = f"Equipment: {asset}\n\n{message}" if asset else message
+        messages.append({"role": "user", "content": user_content})
+
+        raw, _usage = await self.router.complete(messages, max_tokens=600, session_id=chat_id)
+        reply = (
+            raw.strip()
+            if raw
+            else "I need more context about this specific equipment to answer that accurately. What's the make and model?"
+        )
+
+        history.append({"role": "user", "content": message})
+        history.append({"role": "assistant", "content": reply})
+        if len(history) > HISTORY_LIMIT:
+            history = history[-HISTORY_LIMIT:]
+        ctx["history"] = history
+        state["context"] = ctx
+
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(
+            reply, self._infer_confidence(reply), trace_id, state.get("state", "IDLE")
         )
 
     async def _call_llm_direct(self, message: str, system: str = "") -> str:
