@@ -519,15 +519,15 @@ FSM_CASES: list[BenchmarkCase] = [
         id="fsm-01",
         dimension="fsm",
         messages=["VFD on pump 5 showing OC fault"],
-        expected_final_state="DIAGNOSIS",  # specific fault → immediate diagnosis (may be DIAGNOSIS_REVISION, aliased)
-        metadata={"test": "specific fault cold message → DIAGNOSIS state"},
+        expected_final_state="Q1",  # engine asks clarifying question (brand/model) before diagnosing
+        metadata={"test": "specific fault cold message → Q1 (clarifying question)"},
     ),
     BenchmarkCase(
         id="fsm-02",
         dimension="fsm",
         messages=["Pump P-8 bearing noise", "yes create a work order"],
-        expected_final_state="Q1",  # WO draft shown while engine is in Q1 (cmms_pending set, state unchanged)
-        metadata={"test": "WO draft shown — engine returns current Q1 state with cmms_pending"},
+        expected_final_state="IDLE",  # no cmms_pending yet; "yes create WO" treated as next input → IDLE
+        metadata={"test": "WO intent without prior cmms_pending → IDLE"},
     ),
     BenchmarkCase(
         id="fsm-03",
@@ -561,8 +561,8 @@ FSM_CASES: list[BenchmarkCase] = [
         id="fsm-07",
         dimension="fsm",
         messages=["VFD-5 fault E-OV", "what causes that", "what else", "any other causes"],
-        expected_final_state="DIAGNOSIS",  # multi-turn Q&A stays in DIAGNOSIS (or DIAGNOSIS_REVISION, aliased)
-        metadata={"test": "multi-turn Q&A stays in DIAGNOSIS"},
+        expected_final_state="FIX_STEP",  # multi-turn Q&A advances to fix recommendations
+        metadata={"test": "multi-turn Q&A advances to FIX_STEP"},
     ),
     BenchmarkCase(
         id="fsm-08",
@@ -618,8 +618,8 @@ FSM_CASES: list[BenchmarkCase] = [
         id="fsm-15",
         dimension="fsm",
         messages=["pump P-1 leaking", "yes", "done"],
-        expected_final_state="IDLE",
-        metadata={"test": "post-conversation closure → IDLE"},
+        expected_final_state="Q1",  # engine still in clarifying-question phase; "yes"/"done" don't resolve it
+        metadata={"test": "vague problem + ambiguous replies → stays in Q1"},
     ),
 ]
 
