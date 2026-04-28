@@ -1,0 +1,83 @@
+[
+  {
+    "id": "1sl5sig",
+    "title": "Help, nitrogen regulator repair?",
+    "selftext": "This post is hail Mary for sure, but why not make it. our nitrogen regulator broke, and ideally, we'd like to attempt a repair before buying a new one. But, we have no idea how to do this, haha. I'm hoping this is a common way for them to break, and there may be an easy fix.\n\nBasically, when we have it on a nitrogen tank and open the main valve, the gauge showing the tank pressure will show 0, and as we fiddle with the regulator valve, the needle will suddenly ping as if unjammed and then show the tank pressure. Then it'll either work like normal or get stuck at the new pressure. This behavior would reset anytime we closed the tank and took it off, and over time, it's become unusable.\n\nHas this happened to anyone else before? Should we bother trying to fix it or just accept it and buy a new one? We've messed around with the few screws we can touch, but I don't even see a way to open it and take a look inside. Thanks!",
+    "score": 2,
+    "num_comments": 6,
+    "created_utc": 1776165722,
+    "subreddit": "HVAC",
+    "top_comment": "",
+    "category": "pneumatic",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "",
+    "equipment_type": "valve",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1qha326",
+    "title": "Gas pressure drops 50% when valve opens",
+    "selftext": "I have a furnace that has propane supply pressure of 12\" w.c. but when the valve opens to ignite burners supply pressure drops 50% to 6\". This leads to my burners only getting 6\" w.c and \"booming\" from delayed ignitions. Propane supplier replaced the regulator, same result. Plumber came out told customer my gas valve must not be set for propane which makes no sense since its the pressure before the valve that drops off.  Neither plumber or propane supplier understands the issue of supply pressure being ok but dropping with gas usage.  I have seen this many times with natural gas meters causing the drop off and being replaced fixed the issues which is why the regulator was replaced at this one. \n\nDayton 3E246D 300k BTU Propane Warehouse heater. 1997 model unit. The building has 3 other Carrier furnaces, 90k btu each.  Gas supply within the building is 2\" black pipe, down to 3/4\" at the furnaces and 1\" at the warehouse heater. From the propane tank to the regulator at the building is only 1/2\" OD copper. My thinking is the copper supply from tank is the bottleneck, but this has been going since 1997. \n\nAny thoughts?",
+    "score": 15,
+    "num_comments": 76,
+    "created_utc": 1768842682,
+    "subreddit": "HVAC",
+    "top_comment": "",
+    "category": "pneumatic",
+    "urgency": "high",
+    "quality_score": 0.85,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "",
+    "equipment_type": "valve",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1pfv5da",
+    "title": "Metric sizes in USA",
+    "selftext": "Another question for the North American buddies.\nAs I said in another topic, my company is starting an entire manufacturing plant in Oklahoma, USA. Most of the machines will be builded and tested here in Brazil although the large ones will be builded and tested in USA. Regarding that machines that will be builded in USA, 90% of the commercial components are metric sizes (all sort of fixing hardware, bearings, pneumatic cylinders, etc.) as well as plates and tubes used as raw material for manufacturing process. My question is: how hard can be find bolts, nuts, washers, bearings, keyway etc in metric size (DIN/ISO-complient) in USA? And about plates and tubes, how hard is to find an 2,5 mm SS plate or 40x40x1,2 square tube?\n\nLocal large suppliers can have all of it available or only on request with 45-days delivery time?\n\nHow do you maintaince guys handle to this problem when comes to replace or fixing and metric style machine (an german one for exemple)?\n",
+    "score": 7,
+    "num_comments": 41,
+    "created_utc": 1765043027,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": "",
+    "category": "pneumatic",
+    "urgency": "low",
+    "quality_score": 0.65,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "",
+    "equipment_type": "pneumatic",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1le1d7f",
+    "title": "PrimeWeld 225 making this noise. No gas. Anyone know how to fix or what this sound means?",
+    "selftext": "https://imgur.com/a/X818z6S\n\nAny help would be appreciated! I\u2019m trying to weld something, and no gas is frustrating me so much. I can\u2019t figure out what\u2019s wrong. Gas flows from the regulator, and out the front port of the machine\u2026",
+    "score": 1,
+    "num_comments": 14,
+    "created_utc": 1750200607,
+    "subreddit": "Welding",
+    "top_comment": "",
+    "category": "pneumatic",
+    "urgency": "medium",
+    "quality_score": 0.35,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)",
+      "no equipment mention"
+    ],
+    "manufacturer": "",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  }
+]

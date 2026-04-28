@@ -1,0 +1,157 @@
+[
+  {
+    "id": "1sxjbhv",
+    "title": "Hydraulic Door Closer Question",
+    "selftext": "Hello, \n\nI am just looking for some guidance on an issue with a commercial door closer in my building. It seems like when the door is opened fully the swing speed is appropriate but when someone only opens the door slightly (say 45 degrees) and slips through the swing speed is much faster. Latch speed seems unaffected. \n\nDoes this mean that the closer is malfunctioning such that I should have it repaired/replaced or is this just a function of how hydraulic door closers operate? \n\nThanks ",
+    "score": 2,
+    "num_comments": 6,
+    "created_utc": 1777329888,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": "",
+    "category": "hydraulic",
+    "urgency": "medium",
+    "quality_score": 0.35,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)",
+      "no equipment mention"
+    ],
+    "manufacturer": "",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1sq2kgc",
+    "title": "Hydropower maintenance",
+    "selftext": "Does anybody have advice for getting into hydropower maintenance. I've been trying for a few years at various dams around the PNW. My background, I was in the Navy on a nuclear aircraft carrier as a machinist (machinery repairman), I got out in 2013 and switched careers into hydrology and natural resources for a while until I realized it didn't pay anything. I only had an AAS so unless I wanted more school that was a dead end. But I got back into maintenance. I've worked a factory in Georgia for a short time doing maintenance, a few machine shops doing repair and new parts, a hydraulic repair shop doing everything from wrenching to machining to testing. Now I have been working in an aluminum plant for the past 6 years in the machine shop repairing large stuff like rolls and fans and any other random broken things they bring in. It's a lot of large lathes and mills. We are millwright/machinists doing all the bearings and alignment and all that stuff.\n\nI have gotten my resumes looked at and usually past the screening process but never any calls for interviews. I have now hydropower experience which I feel is my major problem but I don't know how to get it. Does anybody know of useful trainings I could take or certs I could get to bolster my resume and make myself more hirable. I don't really have time to enroll in a physical school with my schedule but online might be an option if it was actually useful. \n\nAny advice would be greatly appreciated.",
+    "score": 3,
+    "num_comments": 2,
+    "created_utc": 1776626919,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": "",
+    "category": "hydraulic",
+    "urgency": "medium",
+    "quality_score": 0.75,
+    "quality_pass": false,
+    "quality_reasons": [
+      "no equipment mention"
+    ],
+    "manufacturer": "",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "2013",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1san0pq",
+    "title": "Air compressor oil leak",
+    "selftext": "had a leak in my compressor. it's been fixed but I've got some of the sigma fg-460 in the chasey. \n\ncleaning suggestions?",
+    "score": 1,
+    "num_comments": 4,
+    "created_utc": 1775149106,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": "",
+    "category": "hydraulic",
+    "urgency": "medium",
+    "quality_score": 0.5,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "",
+    "equipment_type": "compressor",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1s7emhr",
+    "title": "Hydraulic repair/rebuild Educational Material",
+    "selftext": "hello,\n\nI am currently looking into learning how to remake hydraulic rods, glands, and barrels. does anyone have any educational material they'd recommend to help learn about the process?",
+    "score": 3,
+    "num_comments": 2,
+    "created_utc": 1774838381,
+    "subreddit": "Machinists",
+    "top_comment": "",
+    "category": "hydraulic",
+    "urgency": "low",
+    "quality_score": 0.4,
+    "quality_pass": false,
+    "quality_reasons": [
+      "no equipment mention"
+    ],
+    "manufacturer": "",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1r95p3f",
+    "title": "Dressing/repairing threads vs cutting new",
+    "selftext": "I\u2019m not a machinist, just an equipment mechanic that\u2019s curious.  I sent a hydraulic cylinder off to a machinist for repair because the external threads on the gland and the internal threads on the barrel where it screws in were damaged.  Easiest way to describe it is it looked like the peaks on the threads had been flattened.  The type of damage where if it was just external threads damaged I probably could have gotten it sorted with a thread file and some patience.\n\nI\u2019m wondering what the typical process would be to fix this.  Do you put the pieces in the lathe and follow the original threads (unsure if that\u2019s possible to do) or do you cut them out til flat, weld it up and machine new threads entirely ",
+    "score": 2,
+    "num_comments": 5,
+    "created_utc": 1771522678,
+    "subreddit": "Machinists",
+    "top_comment": "",
+    "category": "hydraulic",
+    "urgency": "low",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "",
+    "equipment_type": "hydraulic",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1sd635u",
+    "title": "WEF Error with Elite Software!!",
+    "selftext": "I installed the Elite Software for Hydraulic Calculation, The Program Called Fire and when I clicked to open it the wef file error appears, in YouTube videos the links for downloading  the wef programs its not working anymore, so help how to fix this problem?",
+    "score": 1,
+    "num_comments": 0,
+    "created_utc": 1775401902,
+    "subreddit": "MechanicalEngineering",
+    "top_comment": "",
+    "category": "hydraulic",
+    "urgency": "high",
+    "quality_score": 0.35,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)",
+      "no equipment mention"
+    ],
+    "manufacturer": "",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1rn6be5",
+    "title": "Persistent Weld Porosity and Leakage in Underwater Electronics Enclosure",
+    "selftext": "1. Application &amp; Operating Environment\nPurpose: Sealed enclosure designed to house sensitive electronics.\nOperating Depth: Continuous submersion at 2 to 4 meters (approx. 20 to 40 kPa hydrostatic pressure).\nCurrent Status: Failed pneumatic leak testing; high risk of flooding due to pressure and thermal pumping at operating depth.\n2. Geometry &amp; Assembly\nBody: Constructed from two sheet metal pieces bent and welded together.\nBase: Features welded cable glands on the bottom.\nTop Flange: Laser-cut flange welded to the main body. The screw holes in the flange retain laser-cut kerf striations on their inner walls.\n3. Manufacturing &amp; Welding History\nThe container has undergone multiple repair attempts at the flange joint, resulting in a complex thermal and metallurgical history:\nInitial Pass: Welded on the outside using an unknown process/filler, which subsequently heavily oxidized.\nSecond Pass (Inside): Attempted to seal the joint by welding from the inside using an Argon-shielded process (TIG/MIG).\nThird Pass (Outside Repair): Attempted to fix persistent leaks by welding over the initially oxidized, unknown weld on the outside using an Argon-shielded process.\n4. Testing Performed &amp; Conflicting Results\nPneumatic Bubble Test: Failed. Compressed air testing clearly presents a continuous leak (bubbles) from a specific point where the new Argon weld overlaps the old oxidized weld, in close proximity to a laser-cut screw hole.\nStatic Immersion Test: Passed (conditionally). Submerged at 1 meter for 1.5 hours without electronics running. No liquid water entered, indicating the leak is microscopic and currently relying entirely on water's capillary pressure/surface tension to hold back the 10 kPa of hydrostatic pressure.\n5. The Core Issue\nDespite being welded from both the inside and the outside, air continues to escape. We suspect the following mechanical failures:\nTrapped gases from the oxidized layer blowing through the liquid weld pool during the repair passes (blowhole porosity).\nA lateral leak path traveling between the inner and outer welds.\nThe laser-cut striations inside the screw holes acting as a capillary exhaust path for the air.",
+    "score": 0,
+    "num_comments": 11,
+    "created_utc": 1772877922,
+    "subreddit": "MechanicalEngineering",
+    "top_comment": "",
+    "category": "hydraulic",
+    "urgency": "high",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (0)"
+    ],
+    "manufacturer": "",
+    "equipment_type": "pneumatic",
+    "model_number": "",
+    "fault_codes": []
+  }
+]

@@ -1,0 +1,143 @@
+[
+  {
+    "id": "1sf59ay",
+    "title": "Company bought by Private Equity",
+    "selftext": "I have been working for a slightly bigger and growing mom and pop shop doing HVAC diagnostic work for almost a decade in the greater Seattle area. Today we found out we have been bought out by private equity. We had a meeting about it and the company is called \u201cThe Fix It Group\u201d.\n\nThe meeting seemed good and they were talking about being a support group and more of an investment firm to help our company grow. They seemed more marketing focused.\n\nHas anyone on this group apart of a company who has worked with \u201cThe Fix It Group\u201d or have anyone have experience with being bought out by private equity and what it meant/happened to your company afterwards.\n\nQuick Edit: One other thing of note is that we are completely rebranding our company but also switching our equipment sales to carrier. We were primarily Mitsubishi and Trane. I\u2019ve been specifically a diagnostic technician who was not pressured into sales but being the lead diagnostic technician I see my role changing significantly. ",
+    "score": 49,
+    "num_comments": 114,
+    "created_utc": 1775588321,
+    "subreddit": "HVAC",
+    "top_comment": "",
+    "category": "HVAC",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "no equipment mention"
+    ],
+    "manufacturer": "Mitsubishi",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1ssezev",
+    "title": "Mazatrol 640m \"error 32\" help",
+    "selftext": "Hey everyone, I\u2019m running into a wall with a Mazatrol 640M control and a Mitsubishi MDS-C1-V2-3520 dual-axis drive.\n\nThe Problem:\n\nThe CNC screen is throwing Error 32: SERVO PARAMETER MALFUNCTION (0, &amp;0002).\n\nLooking at the actual drive in the cabinet, the LED display is toggling between F2 37 and F3 37.\n\nWhat I\u2019ve tried so far:\n\nDisconnected the motor power cables (U, V, W) from the drive to check for a motor short. The error persists even with the motor disconnected.\n\nThe encoder cable is still connected.\n\nVerified that the drive is NOT showing an actual Alarm 32 on its internal LED; it\u2019s specifically showing 37 (Initial Parameter Error) on both axes.\n\nThe Situation:\n\nFrom what I can tell, Alarm 37 means the drive is rejecting the parameters sent by the CNC at startup. This usually points to corrupted parameters (maybe a dead battery?) or a communication issue on the bus.\n\nQuestions:\n\nDoes the (0, &amp;0002) diagnostic code on a 640M point to a specific parameter or a hardware failure on the MDS-C1 control card?\n\nWhat is the quickest way to re-upload the SV (Servo) parameters from the C:\\\\NCBACKUP folder on these Windows-based Mazaks?\n\nCould a faulty CN1A/CN1B bus cable cause a \"37\" parameter error even if other drives in the daisy chain seem okay?\n\nHas anyone seen an MDS-C1 drive fail internally in a way that it triggers a \"Parameter Malfunction\" instead of a standard \"Overcurrent\" or \"IPM\" alarm?\n\nAny advice on the specific Mazak maintenance tools or the reload sequence for the 640M would be hugely appreciated. Thanks!",
+    "score": 1,
+    "num_comments": 3,
+    "created_utc": 1776844979,
+    "subreddit": "Machinists",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "low",
+    "quality_score": 0.85,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Mitsubishi",
+    "equipment_type": "motor",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "3520",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "bus",
+        "manufacturer": "Yaskawa",
+        "description": "Option communications fault"
+      }
+    ]
+  },
+  {
+    "id": "1r7klfz",
+    "title": "Help me repair Mazak Quick Turn 8SP",
+    "selftext": "Hi everyone,\n\nI\u2019m looking for help bringing a used Mazak QuickTurn 8SP back to life.\n\nAbout 10+ years ago my father bought a used QuickTurn 8SP. Around a year ago we finally powered it on to see what condition it was in and what needed fixing.\n\nAt first the CNC had lost all parameters. We found a technician who helped us restore the parameter set and we replaced the batteries. After restoring the parameters, we discovered that one Mitsubishi unit was faulty MR-S2-80B-E01 (servo drive/servo amplifier).\n\nWe sent that unit to a repair company, got it repaired, and installed it back into the machine. After that we were able to:\n\nmove the X and Z axes\n\nreference/home the X and Z axes\n\nclamp and unclamp the main spindle\n\nHowever, we still cannot run any program to properly test the machine (we mainly want to test the spindle engine). We\u2019ve tried to find local help, but either people can\u2019t assist or they don\u2019t have time.\n\nThe main issue I currently suspect is parameter protection / parameters not being saved:\n\nSome parameters cannot be edited at all (the control won\u2019t let me change/write them even with the service mode).\n\nSome parameters can be changed, but after power OFF/ON they revert to the previous value.\n\nI was told that in order to change certain parameters, other \u201cenabling\u201d parameters or settings must be set first (unlocking writes, interlocks, etc.), but I don\u2019t know which ones or what the correct values should be.\n\nQuestions:\n\nWhat should I check to unlock parameter editing/writing, and what could cause parameters to revert after a power cycle?\n\nIn the manual, some parameter fields are shown as blank or marked with \u201c\\*)\u201d. What am I supposed to enter in those fields (leave blank, 0, or something else)?\n\nWe don\u2019t have the budget for an official Mazak service visit right now (quotes are too high), so any guidance on where to look, what to check, or what information to provide would be greatly appreciated.\n\nI\u2019ve attached a short video showing the parameters I can\u2019t edit, the ones that revert after power cycling, and some photos that might help with diagnosis (please ignore the fact that I power it on from the fuses in the video the breaker tripped due to an undersized/incorrect breaker rating/curve, so I temporarily used the fuses just to continue troubleshooting).\n\nWe are located in Poland Greater Poland voivodeship so if u know anyone that might help us irl let me know\n\nIf you tell me what details you need, I can provide: control model/version, parameter numbers/screens, alarms, I/O status, etc.\n\nThank you.\n\nhttps://preview.redd.it/qlskun53p4kg1.jpg?width=1536&amp;format=pjpg&amp;auto=webp&amp;s=8f27f07fced3b07342869463d2f7908fb7830403\n\nhttps://preview.redd.it/mfz9rn53p4kg1.jpg?width=921&amp;format=pjpg&amp;auto=webp&amp;s=a6f91dd8ca9ac3a27f285b8ae9868411e1785c4c\n\nhttps://preview.redd.it/guimeq53p4kg1.jpg?width=1536&amp;format=pjpg&amp;auto=webp&amp;s=c6cc0969b8b5e9c1a80dba1b1f85236075d514f9\n\nhttps://preview.redd.it/q65oeo53p4kg1.jpg?width=2048&amp;format=pjpg&amp;auto=webp&amp;s=17e06668b5dfc722193edd479232991e740cb8b7\n\nhttps://preview.redd.it/bc6xio53p4kg1.jpg?width=1536&amp;format=pjpg&amp;auto=webp&amp;s=10aa4345ffbe63242b2e0184bc39e3e49e6aae45\n\nhttps://preview.redd.it/ld7v3p53p4kg1.jpg?width=1536&amp;format=pjpg&amp;auto=webp&amp;s=bb8b352e3c00e9960d8a9c45ed2b604e3facc95c\n\nhttps://preview.redd.it/0mjk4p53p4kg1.jpg?width=2048&amp;format=pjpg&amp;auto=webp&amp;s=0d9a7265904eb5bf1467cae7e6f7cd644a4e80e3\n\nhttps://preview.redd.it/zxk6us53p4kg1.jpg?width=2048&amp;format=pjpg&amp;auto=webp&amp;s=e26c2a162ebcbd82ec658c9336217d0276874bbb\n\nhttps://preview.redd.it/cmhqnp53p4kg1.jpg?width=1536&amp;format=pjpg&amp;auto=webp&amp;s=533f4a020f8d80f21bef95e9ad7e60c85a95249a\n\nhttps://preview.redd.it/hi66lr53p4kg1.jpg?width=2048&amp;format=pjpg&amp;auto=webp&amp;s=b0ac78adc842309123e064b6aa6f8a0dd890d285\n\nhttps://preview.redd.it/aiu9wp53p4kg1.png?width=563&amp;format=png&amp;auto=webp&amp;s=fcde2f28afedc576927d24caf45541af887fea03\n\nhttps://preview.redd.it/46ijzq53p4kg1.png?width=704&amp;format=png&amp;auto=webp&amp;s=8c644b6d6eebbeaecf50a853bcac213b171bd9ce\n\nhttps://preview.redd.it/4azzxr53p4kg1.png?width=569&amp;format=png&amp;auto=webp&amp;s=23b253665faf3ffea73f63399309608cbf451cf2\n\nhttps://reddit.com/link/1r7klfz/video/10xnpa04p4kg1/player\n\n",
+    "score": 1,
+    "num_comments": 0,
+    "created_utc": 1771366474,
+    "subreddit": "Machinists",
+    "top_comment": "",
+    "category": "electrical",
+    "urgency": "high",
+    "quality_score": 0.85,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Mitsubishi",
+    "equipment_type": "servo",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "E01",
+        "manufacturer": "Danfoss",
+        "description": "10V supply low"
+      }
+    ]
+  },
+  {
+    "id": "1sjz53i",
+    "title": "Mitsubishi PLC connection error",
+    "selftext": "I have a Q03UDVCPU Mitsubishi PLC, im trying to connect via USB, I already installed USB drivers, but it keeps showing me this error message. The PLC switch is in run mode , does somebody knows how to solve this? (I attach evidence)\n\nhttps://preview.redd.it/zysokwflkvug1.png?width=502&amp;format=png&amp;auto=webp&amp;s=f1ebf5116e9ea96953e24f4b5109eb8a46b1eff5\n\nhttps://preview.redd.it/oo8ovxwokvug1.png?width=1920&amp;format=png&amp;auto=webp&amp;s=af58a1d2b90e050f13fdb6512727b2c11938afca\n\nhttps://preview.redd.it/9vj01jlpkvug1.png?width=1920&amp;format=png&amp;auto=webp&amp;s=23b07377e5a426ef5f127abb7cf500383ab6c03a\n\nhttps://preview.redd.it/p8442a4qkvug1.png?width=1920&amp;format=png&amp;auto=webp&amp;s=bfcbb128e0b21db15fc110515f7d9e957a3aae11\n\nhttps://preview.redd.it/luczsezblvug1.jpg?width=1600&amp;format=pjpg&amp;auto=webp&amp;s=7f3813f1d7b1c250f804e4ee68ba9189ce8cb79b\n\n",
+    "score": 3,
+    "num_comments": 3,
+    "created_utc": 1776050296,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.75,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Mitsubishi",
+    "equipment_type": "PLC",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1s6yp26",
+    "title": "PLC Troubleshooting - Mitsubishi Melsec FX24MR, FX2-32MR",
+    "selftext": "Hey Yall,\n\nI am trying to get some industrial textile machines up and running, but I think I am experiencing a PLC error. \n\nThe machines sat unpowered, possibly with dead batteries for a couple of years, and I am worried the programming may be lost, corrupted, or have an error.\n\nI have four machines, all are a little bit different, but generally the layout is the same.\n\nAn HMI is used to define a manufacturing \"recipe\" - the PLC controls a VFD and pneumatic cylinders.\n\nWhen powered on, the HMI gives me a user interface I would expect, but thats where my progress stops. \n\nAll four PLC controllers have blinking PROG-E leds.\n\nIs anyone here able to direct me towards a service that might be able to help me diagnose or troubleshoot this issue?",
+    "score": 2,
+    "num_comments": 5,
+    "created_utc": 1774799473,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "electrical",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "Mitsubishi",
+    "equipment_type": "VFD",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1qvmya9",
+    "title": "GX Works 3 Error question",
+    "selftext": "In the quest having to learn mitsubishi plc, i am making something.\n\nSo, i have this WORD \"adder\" that i just add/inc to\nhttps://imgur.com/a/WxlCKoU\n\nBut when i compile it i get this error/warning:\n\n      No.\tResult\tData Name\tCategory\tContent\tError Code\n    1\tWarning\tProgPou\tProgram Conversion\tThe settable range of type set to the type of device or label of 'adder' is different. Setting value may have been a value without intention.\t0x110E29E0\n    \n\nSo, is it the Dx definition wrong? what?\n\nBefore i had the \"INC\" function instead of the ADD, got the same error with both.\n\nAlso other variables has the same error message..\n\nAnyone care to explain whats wrong in the code with this?",
+    "score": 0,
+    "num_comments": 7,
+    "created_utc": 1770207222,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (0)"
+    ],
+    "manufacturer": "Mitsubishi",
+    "equipment_type": "PLC",
+    "model_number": "",
+    "fault_codes": []
+  }
+]

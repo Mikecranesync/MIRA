@@ -1,0 +1,665 @@
+[
+  {
+    "id": "1rf5sxm",
+    "title": "Ayuda comunicaci\u00f3n Fix -PLC",
+    "selftext": "Buen d\u00eda quien me dar\u00eda un buen consejo tengo un  equipo que tengo conexi\u00f3n ethernet y este est\u00e1 comunicando un PLC s7 300, y yo lo veo conectado ahora tambi\u00e9n tengo instalado fix32 la versi\u00f3n vieja de Ifix y tambi\u00e9n lo conecte pero no escribe ni me Lee los DB del PLC el device est\u00e1 desconectado ",
+    "score": 0,
+    "num_comments": 1,
+    "created_utc": 1772098408,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (0)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "s7 300",
+    "fault_codes": []
+  },
+  {
+    "id": "1owadkv",
+    "title": "Siemens fault F30021",
+    "selftext": "Hi all, I could use some advice on what to look for for his problem. I have a pm240-2 with a cu250s controller and am getting the fault mentioned above along with the alarm a7400. For context, this controls one motor in a 14-motor machine, all motors have the same power units and controllers. Uses profibus.\n\nI have megged the motor and wiring and checked the motor and wiring for shorts to ground and all came up fine. I swapped the power unit and the fault and alarm still show up as soon as I try to run the motor. I am not sure what else to check.",
+    "score": 7,
+    "num_comments": 9,
+    "created_utc": 1763061945,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 1.0,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Siemens",
+    "equipment_type": "motor",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "fault F30021",
+        "manufacturer": "Generic",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "alarm a7400",
+        "manufacturer": "Generic",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1stksm7",
+    "title": "My manager is sending me to diagnose a plc fault, i have zero experience",
+    "selftext": "Hello everyone. I just started working at this huge manufacturing group of companies and currently I am the only \u201cAutomation Engineer\u201d in the group. Mind you this is my first actual job and i just graduated mechatronic engineering. I have little experience dealing with tia portal and simple ladder diagrams with little to no room for error because most of what i trained on was training stations provided by the uni. \n\nI get a call today from my manager that am going solo to one of the plants to diagnose a \u201cplc fault\u201d. No mention of plc brand or model but i am assuming its a simens s7-300 as I had seen most of the control panels in my current plant use them. Mind you I started literally three days ago, had no Engineer even contact me. All my contact was with electricians that had no idea about programming or PLC software or diagnostics.\n\nSo this is a cry for help lol. How do i crash course fault detection and plc diagnostics. I am familiar with the lingo and if i want to rate myself out of ten in the automation field i would do 3. \n\nPlease advise and sorry for bad English ",
+    "score": 140,
+    "num_comments": 111,
+    "created_utc": 1776955425,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "low",
+    "quality_score": 0.85,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "s7-300",
+    "fault_codes": []
+  },
+  {
+    "id": "1srkqh0",
+    "title": "Area length Error when writing",
+    "selftext": "I have the following error on a 317F -3 PN/DP Siemens PLC with the SF light Solid Red:  \nArea length Error when writing  \nGlobal DB, bit access, Access Address:            7  \nRequested OB: Programming Error OB (OB121)  \nPriority Class: 1  \nInternal Error, Incoming 1.\n\nWhich address is it referring to when it says Address 7? I cannot find the DB in question. Hoping someone here can shed some light.\n\n[PLC Diagnostic Buffer ](https://preview.redd.it/hwp9zusn0jwg1.png?width=485&amp;format=png&amp;auto=webp&amp;s=f578ee82527a2b5cf0eddbca5dad57d0f29f2f6f)\n\n[DB127](https://preview.redd.it/o78m07u93jwg1.png?width=1659&amp;format=png&amp;auto=webp&amp;s=645d35e6fc12d971391f2aa427d6e97e71d5481f)\n\nWhat I have tried so far.  \nStopping the PLC and Checking the Stacks Tab Shows DB122, DB27 FC27 And FB27. Double clicking FC27 brings me to Network 4. Which I temporarily deleted to check if the fault disappears with no luck. I then blocked calls to all of these but I cannot find the root DB  for the write error. I also tried to download the blocks back with an offline project (backup) thinking it might be a corrupted download but that did not solve anything.   \nI started to block all FC calls in OB1, 1 at a time to check if it was something there. But I cannot find the root cause for this. \n\nAny help would be appreciated !!!!\n\n\n\n[Stacks tab](https://preview.redd.it/s4cskyps0jwg1.png?width=508&amp;format=png&amp;auto=webp&amp;s=e854dae486bb3e9c9855b86d360899314e23be4a)\n\n[Network 4](https://preview.redd.it/mw0y24ec1jwg1.png?width=554&amp;format=png&amp;auto=webp&amp;s=b9ed3fd37b87bde3e4f0998c66d0b68f78df8f56)",
+    "score": 6,
+    "num_comments": 21,
+    "created_utc": 1776770520,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.75,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "OB121",
+    "fault_codes": []
+  },
+  {
+    "id": "1qaxi20",
+    "title": "Siemens TIA Portal, anything I must consider to implement the \"Program_Alarm\" function?",
+    "selftext": "Since previous post was reported, I'm trying to make a batter one.\n\nI have to implement all the alarms in the installation using the Siemens system function \"Program_Alarm\", due to a client requirement.\n\nAt the end of the day I will have thousands of declared alarms on the CPU.\nBy chief logic not many will be active at a time but I wanted to give the scope.\n\nSince this is the first time I using this kind of alarm implementation anything I must consider?\nAny limit on the number of alarms?\nEncapsulation of functions generating the alarms?\nCycle time? Is it heavy on the CPU?\nHow do I properly implement alarm priority? Are this levels automatically available on the HMI?\n\nSome things I can test out during emulation/simulation, but it's virtual PLC I will have no idea of the real cycle time.\nI will only have real HW during the FAT with the client.\n\nThe CPU being used is a 1518.\n\nIf anyone can provide information according to their experience I would appreciate it \ud83d\ude4f\n",
+    "score": 6,
+    "num_comments": 32,
+    "created_utc": 1768230879,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "low",
+    "quality_score": 0.75,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1qh0ecc",
+    "title": "TIA Portal \u2013 Red error icons &amp; IO Device Failure: Differing device type",
+    "selftext": "Hello everyone,\n\nI am facing an issue in\u00a0**TIA Portal**\u00a0with\u00a0**S7-1200 CPU 1214C DC/DC/DC**.\n\nIn the\u00a0**Project Tree**, I see\u00a0**red error icons**\u00a0on:\n\n* Connect Gateway\n* PLC\\_1 (CPU 1214C DC/DC/DC)\n* Distributed I/O (PROFINET IO-System)When going online, I get an\u00a0IO Device Failure\u00a0with the message:\n\n&gt;\n\nDetails:\n\n* PLC:\u00a0**S7-1200 CPU 1214C DC/DC/DC**\n* Distributed I/O connected via\u00a0**PROFINET**\n* Hardware is reachable, but IO device shows error\n* Error appears only in\u00a0**hardware configuration / IO system - Diagnostic Buffer**\n\nWhat I have already checked:\n\n* PLC is powered ON\n* PROFINET cable is connected\n* IP address is set\n* Device appears in network view\u00a0Questions:\n\n1. What exactly causes the\u00a0**\u201cDiffering device type\u201d**\u00a0error?\n2. Does this happen if the\u00a0**configured IO device type does not match the actual hardware**?\n3. Can this be caused by\u00a0**wrong GSD file version**\u00a0or\u00a0**wrong device order number**?\n4. What is the correct way to resolve this without rebuilding the whole project?\n\nAny guidance or troubleshooting steps would be appreciated.\n\nThanks in advance.\n\n  \n",
+    "score": 1,
+    "num_comments": 19,
+    "created_utc": 1768817514,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "low",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "CPU 1214C",
+    "fault_codes": []
+  },
+  {
+    "id": "1sy0wi4",
+    "title": "Tia Portal X509CertificateException error while downloading to PLC",
+    "selftext": "Hi,\n\nI\u2019m back with another issue.\n\nI\u2019m using TIA Portal V20, and this time I\u2019m trying to download the logic to an S7-1200 (1214C, 6ES7 214-1AG40-0XB0, FW 4.7).\n\nI get the following error:  \n**\u201cThe compilation of the hardware configuration failed (00EC)\u201d**, and then TIA Portal crashes.\n\nIn the log, I found this exception:  \n`Siemens.Simatic.HwConfiguration.BusinessLogic.X509Certificate.X509CertificateException`\n\nAfter some research online, it seems the issue might be related to certificates. I tried removing the PLC\u2019s certificate, and the compilation completed (with errors), but those errors were related to the missing certificate and at least TIA Portal didn\u2019t crash.\n\nHowever, I\u2019m unable to recreate the certificate.\n\nDoes anyone have any ideas?  \n|  \nThank you in advanced.",
+    "score": 1,
+    "num_comments": 0,
+    "created_utc": 1777381566,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "high",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "S7-1200",
+    "fault_codes": []
+  },
+  {
+    "id": "1s7k33k",
+    "title": "Siemens S7-1500 \u2192 AWS IoT MQTT (LMQTT_Client 04.00.05) \u2013 Error 8601 / TSEND_C 80C5",
+    "selftext": "Hey everyone,\n\nI\u2019m currently working on a project where a customer wants to send data from a **Siemens S7-1500 (CPU 1518F-4 PN/DP)** to an MQTT broker on **AWS IoT**.\n\nI\u2019m using the Siemens **LMQTT\\_Client block (v04.00.05)** and configured the PLC according to the Siemens documentation:  \n[https://support.industry.siemens.com/cs/ww/en/view/109772284](https://support.industry.siemens.com/cs/ww/en/view/109772284)\n\nThe AWS side is managed by the customer\u2019s IT. They provided:\n\n* endpoint (broker URL)\n* client certificates\n* private key\n* root CA\n\n**Problem:**\n\nWhen the PLC tries to connect, the **LMQTT\\_Client** block throws:\n\n* **Error 8601** \u2192 *Error while trying to connect to MQTT broker with TCON*\n\nDigging deeper, the called **TSEND\\_C** block shows:\n\n* **Error 80C5** \u2192 *The connection partner refuses to establish the connection, has terminated the connection or actively ended it. LSAP of the remote connection partner is not released.*\n\n***What I've ckecked:***\n\n* PLC configuration matches Siemens guide\n* Certificates are loaded and assigned\n* Correct AWS endpoint and port (8883)\n\n  \nHas anyone else experienced this issue when connecting a S7-1500 to AWS IoT via MQTT using LMQTT?  \nAny hints would be really helpful. Thanks!",
+    "score": 3,
+    "num_comments": 3,
+    "created_utc": 1774856665,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 1.0,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "CPU 1518F-4",
+    "fault_codes": [
+      {
+        "code": "8601",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "8883",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1rfaclk",
+    "title": "Delta HMI (DOPSoft) with Siemens S7-PLCSIM via NetToPLCSIM \u2013 Read Error",
+    "selftext": "Hi everyone!\n\nI'm trying to simulate a Delta HMI communicating with a Siemens PLC, but I'm running into a read error and I'm not sure where the issue is.\n\nHere's my setup:\n\n* PLC: **S7-1214C**\n* Software: **TIA Portal V14**\n* Simulation: **S7-PLCSIM**\n* Bridge: **NetToPLCSIM**\n* HMI: **Delta DOP-107WV**\n* HMI Simulation: **DOPSoft simulator**\n\nThe goal is to simulate the HMI communicating with the PLC without using physical hardware.\n\nHas anyone successfully done this integration before?  \nRight now, the HMI is showing a **read error**, and it doesn't seem to be communicating with the PLC.\n\nIf you've tried this setup or something similar, I\u2019d really appreciate any tips, configuration advice, or things I should check.\n\nThanks in advance!",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1772113016,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "DOP-107WV",
+    "fault_codes": []
+  },
+  {
+    "id": "1r3pops",
+    "title": "please i need help; siemens drive fault: 31120",
+    "selftext": "Our system randomly generates error 31120.\n\n\n\nWe have verified that the voltage supplied to the controller, driver, temperature converter, and sense module is normal.\n\n\n\nHowever, error 31120 occurs completely at random.\n\n\n\nAll the components listed below have been swapped and tested, and no issues were found.\n\n\n\nWe have absolutely no idea what the problem could be.\n\n\n\nPlease help.\n\n\n\n(We are using:\n\nCONTROLLER: CU320-2PN\n\n\n\nMOTOR DRIVER: S120\n\n\n\nResolver-equipped motor: MCA21X17-RS0BOB5A250 (LENZE)\n\n\n\nSMC10\n\n\n\nPT-KTY converter: CONV-DIN-KTY84- Pt1000 Converter (REISSMANN)\n\n\n\nps: Could harmonics or noise be the cause?\n\n",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1770990693,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "mechanical",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "motor",
+    "model_number": "CU320-2PN",
+    "fault_codes": []
+  },
+  {
+    "id": "1rydr2c",
+    "title": "Kinetix 5700 Faulting",
+    "selftext": "I am having an issue with my first AB project when I try turn everything on. I am a mechanical engineer with not too much electrical experience. \n\nEquipment used:\n\nDc power bus-2198-p070\n\nDual axis inverter- 2198-d020\n\nPlc- 5069-L310ERM\n\nSiemens Contactors- 3RT2025-2BB40\n\n24V 20A power supply\n\nWhen I turn everything on, the control voltage is good and there is 24v going to the contactor enable on the power bus. Once it gets to the \u201cconfiguring\u201d stage, there is a small voltage drop on the 24v side and the bus, drive, and plc output turn off then back on. This cycle repeats. At no point here were the contactor coils closed yet allowing 480v to pass through. \n\nI am not sure where this is going wrong but it seems like there is a short here. If I turn the enable power off and close the contactor coil, the power bus goes to \u201crunning\u201d. \n\nIs there a certain power up sequence I should be following like the contactor needs to pass 480 a certain timeframe after the enable?\n\nI can happily supply more info if needed!",
+    "score": 3,
+    "num_comments": 1,
+    "created_utc": 1773957420,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "electrical",
+    "urgency": "medium",
+    "quality_score": 1.0,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "5700",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "2198",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "5069",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "bus",
+        "manufacturer": "Yaskawa",
+        "description": "Option communications fault"
+      }
+    ]
+  },
+  {
+    "id": "1r73env",
+    "title": "Sinamics G120X Basic Setup Error in TIA Portal",
+    "selftext": "Hi all,\n\nI'm trying to set up a G120X drive in TIA Portal V19 using Sinamics Basic Setup V19.0.120.24, but when I get to the end of the process the following error pops up and I can't make any sense of it. Has anyone experienced something like this?\n\n`10:24:25 Error Method OpenOrRetrieveLibary: Library not found-`\u00a0  \n`at`\u00a0  \n`StartDriveParameterEditor.OpennessExtensions.OpenOrRetrieveLibary(TiaPortal tiaPortal, String libBaseName, String libBasePath)`  \n`at`\u00a0  \n`StartDriveParameterEditor.TiaOpennessOperator.ImportAllBlocks(String cfgFile)`\u00a0  \n`at`\u00a0  \n`StartDriveParameterEditor.TiaOpennessOperator.HandleOpennesssRequests()`\n\nThanks!\n\nEDIT: Solved, the Library folder was missing from C:\\\\Users\\\\User\\\\AppData\\\\Roaming\\\\Siemens\\\\Sinamics G120X Basic Setup\\\\\n\nYouTube tutorial omitted that step but found a pdf that was much more informative.",
+    "score": 1,
+    "num_comments": 1,
+    "created_utc": 1771327296,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.35,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1qx0pod",
+    "title": "why Siemens S7400 sensor fault(AI), overrange and underrange, the reading has to go to '0'% or '0' barg/degC? #PLC",
+    "selftext": "this happen when analog input reading was simulated overrange and underrange.",
+    "score": 0,
+    "num_comments": 2,
+    "created_utc": 1770332665,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.5,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (0)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1o5kum6",
+    "title": "Can I turn off PLC Errors caused by disconnected Profinet devices? (Siemens S7-1200 TIA)",
+    "selftext": "I have a machine where it is totally ok if one of the profinet devices is disconnected.\n\nI cannot deactivate them, becouse the program needs to check the connected devices continuously.\n\nThe PLC error doesn't cause any problems, although it is not too professional to have the red light on while there isn't any problem.\n\nThank you for your help!",
+    "score": 5,
+    "num_comments": 13,
+    "created_utc": 1760364837,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.75,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "S7-1200",
+    "fault_codes": []
+  },
+  {
+    "id": "1q4o4yr",
+    "title": "Troubleshooting with an Siemens MP377",
+    "selftext": "Hello everyone,\n\nI encountered a troubleshooting issue with an HMI MP377 from Siemens. I used it with WinccFlex 2007 with a small/big project (small and big amount of variables/screens).\n\nI tested the HMI on a bench with both of the projects and an Ethernet link with a SIMIT simulation, everything worked perfectly as planned.\n\nBut when i tested it with a PROFIBUS link with an S7-400 CPU all went very slow. When i clicked on a button to open a pop-up, it opened it with a delay of 10 to 15 seconds on both of the projects. All the values are changing right on time but making a change from the HMI is slow.\n\nSwitching between screens make it a little bit faster for a couple of seconds, but after 5 to 10 seconds, it occurs again.\n\nVariables are configured \"cyclic continuously\" with a cycle configured between 1 to 5 seconds.\n\nI was wondering if the PROFIBUS link between the HMI and the PLC could probably cause this troubleshooting and, if so, changing the link for an Ethernet link could solve the problem ?\n\nThanks,\n\nTwings",
+    "score": 2,
+    "num_comments": 1,
+    "created_utc": 1767625791,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "low",
+    "quality_score": 0.85,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "MP377",
+    "fault_codes": [
+      {
+        "code": "2007",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1okuf9p",
+    "title": "Keyence IX-055/H-2000 Error",
+    "selftext": "Hi, I need help or any advice. I have a customer with the following issue:\n\n* The device was manufactured in 2022 and worked fine for the first 2\u20133 years. It uses two IX-055 sensor heads that move 30 cm up and down every \\~25 seconds. Both have only one program, so the program never changes.\n* About a year ago, one of the Keyence units (IX-055 / H-2000 / DL-PN1) went into an error state \u2014 the ERR indicator lit up on the main unit H-2000. The cable between the head and the main unit was replaced, and the problem disappeared.\n* Now, however, the same head has started showing the same issue again (sporadically, about every 5\u201310 cycles). The cable, head, main unit, and Profinet communication unit (DL-PN1) have all been replaced. From the PLC (Siemens CPU) perspective, both units run the same program, and the other one has never shown this problem. I\u2019m running out of ideas about what else to check or try.\n\nWhen the head is not being triggered (just powered on and moving up and down), it doesn\u2019t go into error. The error only occurs when it is triggered.\n\nHas anyone encountered something like this before? For example, could this error be caused by triggering the sensor when the laser is off, or triggering it during a BUSY state, or something similar?\n\nThank you",
+    "score": 2,
+    "num_comments": 5,
+    "created_utc": 1761916836,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "high",
+    "quality_score": 0.85,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "IX-055",
+    "fault_codes": [
+      {
+        "code": "2000",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "2022",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1p2y9pn",
+    "title": "Hardware Error TIA PORTAL V20",
+    "selftext": "https://preview.redd.it/j645rqis0m2g1.png?width=2048&amp;format=png&amp;auto=webp&amp;s=4eb5d405c0d7156e047227fdba949abd11e2a036\n\nEstoy intentando compilar mi proyecto de Tia Portal V20, al momento de querer compilar y subir mi codigo al plc.   \nEstoy trabajando con un s7 1511 1pn. Venia funcionando bien, hasta el dia de ayer que quise subir el codigo y empezo a crashear debido al error de hardware. Probe diferentes metodos, aislando unicamente el PLC, quitando el HMI, cambiando el codigo. Y siempre pasa lo mismo.  \nCambie de PC con otro TIA PORTAL y lo mismo. \n\nNecesitaria saber como solucionar dicho error, o que causa lo suele generar. \n\nhttps://preview.redd.it/jljm39tv0m2g1.png?width=2678&amp;format=png&amp;auto=webp&amp;s=ae0e73f34fb96639cf2114df84d4517d6318b5e8\n\n",
+    "score": 0,
+    "num_comments": 3,
+    "created_utc": 1763730805,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.85,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (0)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "s7 1511",
+    "fault_codes": [
+      {
+        "code": "2048",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "2678",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1o1ftx9",
+    "title": "Customize alarm tune in siemens hmi ?",
+    "selftext": "Is it possible get customised audio as alarm in siemens hmi ? ",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1759942012,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.5,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "HMI",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1kzcwa3",
+    "title": "How to Configure Distributed IO Errors to Selectively Trigger PLC Fault in S7-1500",
+    "selftext": "I\u2019m working with a Siemens S7-1500 PLC system that includes 4 distributed IO stations. I want to configure the system such that:\n\n* If there is an error on **two specific distributed IOs**, it should trigger a **PLC fault** (stop the PLC or generate a critical fault).\n* If there is an error on the **other two IO stations**, the PLC should **continue running** without treating the error as critical.\n\nWhat is the correct way to configure this behavior in TIA Portal? Any guidance or examples would be appreciated.",
+    "score": 2,
+    "num_comments": 16,
+    "created_utc": 1748632756,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "high",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "S7-1500",
+    "fault_codes": []
+  },
+  {
+    "id": "1ls9bgs",
+    "title": "area length error in fb 641",
+    "selftext": "Hi everyone, in an rs485 communication with Plc s7 1200 I have this error: area length error in fb 641. Do you have any ideas on how to resolve it?\nI would like to point out that everything was working before the customer turned the electrical panel off and on again.",
+    "score": 1,
+    "num_comments": 13,
+    "created_utc": 1751720353,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "electrical",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "s7 1200",
+    "fault_codes": []
+  },
+  {
+    "id": "1odqa0s",
+    "title": "Fail Safe Alarms for Siemens Comfort Panel",
+    "selftext": "I have fail safe signals in my PLC and I would like to pass them to the HMI directly (without going through inverting them etc.) is there a way in the config to take \u20180\u2019 as your alarm trigger? \n\n",
+    "score": 1,
+    "num_comments": 3,
+    "created_utc": 1761182306,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.5,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1oksjgo",
+    "title": "Doubt with Hmi Alarms",
+    "selftext": "Hi im using s7 1500 Plc and Tp700 comfort Hmi. I used usb device for storing Hmi  alarm history. But its not showing anything in my alarm table when i chose alarm log in general properties. Its working only when i chose alarm buffer in general properties. Can anybody please help me with this?",
+    "score": 2,
+    "num_comments": 2,
+    "created_utc": 1761911785,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "s7 1500",
+    "fault_codes": []
+  },
+  {
+    "id": "1lre82b",
+    "title": "Machine fault handling",
+    "selftext": "Hello everyone,  \nThe topic of fault handling keeps coming up for me and feels like the Wild West among PLC programmers. I have several projects from different machine manufacturers on my desk, and each one handles faults\u2014such as emergency stop, motor protection, runtime monitoring, etc.\u2014in a very different way. Sometimes, it's just a matter of setting flags that are later acknowledged. Other times, complex UDT blocks are created where all time points are logged, and these are then stored in DBs in such a way that later expansion is nearly impossible.\n\nPersonally, I usually work with simple status DBs (current state of the fault) and memory DBs (RS latch with acknowledgment), where the faults are listed and then passed on to the respective HMI. The HMI takes care of the logging for me.\n\nMy question now is: Are there any official guidelines or best practices from BG, VDE, Siemens, etc., that define how such error handling should be implemented at a minimum? Or is everyone left to their own devices as long as nothing happens? Of course, what the customer wants is also important, but surely there must be some kind of minimum standard, right?",
+    "score": 22,
+    "num_comments": 9,
+    "created_utc": 1751620221,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "high",
+    "quality_score": 0.85,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1oqs1ky",
+    "title": "Troubleshooting with CREVIS and TIA Portal",
+    "selftext": "Hello! \nI need some help with troubleshooting my current set up since I've gotten stuck. \nIm trying to connect a CREVIS NA-9122 module with my Siemens simatic S7- 1516-3 PN/DP in TIA portal V19. \nBut I keep getting the same error message \n\"IO Device Failure - Configuration fault ( different Configuration data). \n\nI've been troubleshooting but can't find the issue. \n\nAny help? ",
+    "score": 1,
+    "num_comments": 0,
+    "created_utc": 1762515255,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "",
+    "model_number": "NA-9122",
+    "fault_codes": [
+      {
+        "code": "9122",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1noryfd",
+    "title": "Link between an HMI error signal and the ledder program line. (Omron Sysmac Studio)",
+    "selftext": "I've worked with Siemens and Rock Wellington, but this is my first time working with Omron. I was asked that, when there was an error signal on the HMI, when he clicked on it, would show which line of the ladder program was triggering this failure. Is it possible to do in Sysmac Studio?",
+    "score": 1,
+    "num_comments": 3,
+    "created_utc": 1758658177,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "HMI",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1lki0kq",
+    "title": "Siemens G120C fault F8502",
+    "selftext": "Hi everyone, I'm having some trouble with a G120C standalone that is used to control an aspiration fan. The problem is that it shows randomly the F8502, in the manuals it has this description \"Monitoring time sign-of-life expired comes when the monitoring time for the sign-of-life counter has expired or the connection to the PROFINET interface was interrupted.\". It doesn't have any PROFINET connection, and the p2030 is already settled to \"0\" (no protocol). \n\nHave you got any idea? Am I fighting against a bug? HELP \ud83d\ude2d",
+    "score": 2,
+    "num_comments": 6,
+    "created_utc": 1750886646,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "F8502",
+        "manufacturer": "Allen-Bradley",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "fault F8502",
+        "manufacturer": "Generic",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1lqqbhm",
+    "title": "Cannot Simulate PLC Due to \"fbVFD_Analog[FB122] Can't Be Simulated\" Error in TIA Portal",
+    "selftext": "I'm trying to simulate my PLC program using PLCSIM in TIA Portal, but I keep getting an error saying that the block \"fbVFD\\_Analog\\[FB122\\] can't be simulated.\" \n\nTIA Portal suggests going into the block properties and enabling the option under Compilation called \"Can be simulated with SIMATIC S7-PLCSIM.\" However, I\u2019m not able to tick it. \n\nHas anyone come across this issue before? Is there a way to enable simulation for this kind of block, or a recommended workaround to test the rest of the logic without it?\n\n[Under project Properties](https://preview.redd.it/posjh5qm0oaf1.png?width=1025&amp;format=png&amp;auto=webp&amp;s=af6dd822da22c3af3bc73efed03b4fc814d4ae15)\n\n  \n\n\n[Under block properties. Even though the box is not grayed out, I am not bale to tick it. ](https://preview.redd.it/eg4gow5n0oaf1.jpg?width=1048&amp;format=pjpg&amp;auto=webp&amp;s=87634985aceace065b2614da6b3fb028fe518c17)\n\n",
+    "score": 1,
+    "num_comments": 2,
+    "created_utc": 1751551183,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "PLC",
+    "model_number": "FB122",
+    "fault_codes": []
+  },
+  {
+    "id": "1kkapbm",
+    "title": "Export data from WinCC tag logging &amp; alarm logging to SQL Server",
+    "selftext": "Hi, I'm learning about sql server in SCADA and I'm trying to export data from tag logging and alarm logging to SQL Server from WinCC Explorer 7.4, but I haven't seen much information about it on internet, so I don't know how I could do it.  \nDoes anyone know about a guide or Siemens documentation where it is explained?  \nThanks.",
+    "score": 0,
+    "num_comments": 4,
+    "created_utc": 1746995788,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "low",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (0)"
+    ],
+    "manufacturer": "Siemens",
+    "equipment_type": "SCADA",
+    "model_number": "",
+    "fault_codes": []
+  }
+]

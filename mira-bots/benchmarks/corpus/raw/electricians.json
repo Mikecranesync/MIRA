@@ -1,0 +1,1022 @@
+[
+  {
+    "id": "1p6ktal",
+    "title": "Bossman apparently doesn't think conduit runs for fire alarm and telecom need to follow all the rules for EMT",
+    "selftext": "He says that because FA and telecom are \"low voltage trades\", that the conduit we install for them doesn't fall under the NEC, we aren't required to install it to the same codes (I don't think he really cares that Articles 760 (Fire Alarm Systems) and 800 (Communications) exist in the NEC). While those systems don't usually fall specifically under the purview of the electrical contractor during construction, I would think that, seeing as we are installing their pathways, one should just install them to the same standards and code requirements they would any pathway we install for our wires. \n\nIs this common? I'm kinda baffled where this idea comes from. How do you even talk sense into someone like this? ",
+    "score": 110,
+    "num_comments": 93,
+    "created_utc": 1764096547,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1nbpiyn",
+    "title": "What's the most dangerous troubleshoot you've gone and repaired?",
+    "selftext": "Couple years ago we got a call from a lady saying she got shocked from her chainlink fence. I get sent out to take a look, assuming it was probably a static shock or something similar. I get out there, and sure enough there is 120v to her fence. \n\nI then trace the fence, where it comes in contact with her gutter downspout, and her entire gutter system is energized. I start flipping breakers to see which one is causing it, and it ends up being the 50a hottub. After some questions, I found out they had the roof replaced a couple weeks back, so I start poking around. After an hour or so I find a piece of metal roof flashing that had been roughly cut to make a hole for the 6/3 NMB to pass through, and it had gone through the insulation to the conductor. \n\nAfter I repaired that everything was good, but the worst part of the whole thing was that the hottub was in the backyard, at the edge of the roofline.  The gutters were well within arms reach. All around not a great situation, and a very unlucky series of events.",
+    "score": 249,
+    "num_comments": 58,
+    "created_utc": 1757342410,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1okdqf5",
+    "title": "Is $75 diagnostic (1-1.5 hours) + $75/hr + 10% markup on materials fair fairly priced for residential installs/repairs?",
+    "selftext": "Currently for my business, I\u2019m the only employee lol; I get about 2-3 jobs a week. Each usually takes about 2-3 hours. Usually around $200-$250 per job (without materials included), with materials I include, I do an up charge of 10%.\n\nIs this good price? I\u2019ve had quite a few clients offer $100-150 for just a quote, but I always just do $75.\n\nHow would I scale this per employee to where I\u2019d still make somewhat of a profit? Ik I gotta wait till I get flooded with work, but once I hit a point where I get offered 8-9 jobs a week, I think then I\u2019d be good to get my first employee, just don\u2019t know a fair scaling because I really don\u2019t wanna charge $450 for a $200 job.\n\nJust curious ",
+    "score": 30,
+    "num_comments": 95,
+    "created_utc": 1761863395,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1sawagr",
+    "title": "Take a big paycut to move to fire alarm tech?",
+    "selftext": "I'm a little torn right now and wanted some outside opinions.\n\nI recently got my jman card and am making $42 doing commercial new construction. I don't mind it but it's not something I want to be doing for the rest of my life. Get decent benefits from my company but no PTO, vehicle or tools. A posting came up for a junior fire alarm tech that I applied for and after speaking to their recruiter it looks like I'd start back around $28 with potential raises every 6 or so months and it would take about 4-5 years to make it back up to the $40 range. However, Id get a company truck, 3 weeks starting PTO and be provided tools. Everything says it's a no brainer but the thought of losing $2000 a month just after I started making it is giving me second thoughts. Im a single dad with a mortgage and other debts Im trying to pay off so getting my jman pay boost was really helpful in that regard and not having that extra wiggle room is kinda what's weighing on my mind right now.\n\nJust need some sage advice from people.\n\n  \nEDIT: Forgot to mention, I only spoke to the recruiter because their hiring manager was on vacation for the past 2 weeks, if Im interested I have until Monday to get back to them and they'd forward all my stuff to the local team and go from there.",
+    "score": 12,
+    "num_comments": 51,
+    "created_utc": 1775169980,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1pe8kol",
+    "title": "It\u2019s terrifying how many electricians think ground faults travel to earth",
+    "selftext": "I find it really surprising how many electricians don\u2019t know the difference between ground and bond, and how many confidently declare that ground faults travel through the bonds and then discharge to earth.\n\nThis is false. No current ever flows from a ground fault to earth, it flows from the bonded equipment through the bonding system, back to the XO point of the source transformer and then back down the hot to trip the breaker.\n\nThe only time any fault is actually discharged to earth is with lightning protection systems where the lightning arrestor or related equipment has a direct connection to earth.\n\nThe ground wire going from ground rods/plates is only used as a reference point to ground, which is 0v. Without this ground wire you would have voltage fluctuations on your neutral, and it\u2019s used to ensure everything connected to ground has the same equipotential to prevent voltage drift.\n\nThe bonding system is what carries ground fault current, not the ground wire.\n\nEdit: something I just learned is that the US doesn\u2019t have a bonding conductor, you call it the equipment grounding conductor. I think that\u2019s part of the confusion in the replies because I\u2019m Canadian and I thought the terminology on this was the same.",
+    "score": 0,
+    "num_comments": 67,
+    "created_utc": 1764874811,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rs5xx4",
+    "title": "What jobs allow me to learn troubleshooting? Jman and I don't know the first thing about troubleshooting.",
+    "selftext": "Little embarrassing, but my entire apprenticeship I didn't once have to tag along with my jman to troubleshoot 1 thing. Never was an opportunity to do so. Ive moved from commercial to industrial and it's even more embarrassing because now I'm around electricians that really know their shit. This company is basically just running a shit ton of conduit and armored 350s+ most of the time. I got my ticket 2 months ago and I really want to improve my knowledge, but it's impossible without hands on experience and now that I'm a journeyman, it makes me feel inferior when I'm around the others and they're trying to come up with a reason why something isn't working and I can't provide any input.",
+    "score": 42,
+    "num_comments": 34,
+    "created_utc": 1773355682,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rmrqzr",
+    "title": "Apprentice struggling with speed, how much does time in the field actually fix it",
+    "selftext": "Second year apprentice here. I show up every day, listen to my journeyman, ask questions when I dont understand something, and try to do the work right. But I feel like Im still way too slow at basic tasks. Running pipe takes me forever, rough ins go slower than they should, and I know the guys Im working with notice. I get the whole you need experience speech but Im starting to wonder if some people just naturally get it faster and Im one of the ones who wont. How much of this is just time in the trade versus something else. Did anyone else feel like they were dragging ass for the first few years and then one day it just clicked. Or should I be doing more outside of work to catch up, like practicing bends or studying prints at home. I dont want to be the guy who never gets up to speed. Just looking for honest takes from people who have been through it.",
+    "score": 7,
+    "num_comments": 41,
+    "created_utc": 1772834846,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1suqdyk",
+    "title": "Honest pricing? 13k for fixing unpermitted work?",
+    "selftext": "Just had a relative/friend tell me about the pain in the a\\*\\* he went through to give a quote out to a property manager.. only for them to say the owner went a \u201cdifferent route\u201d\n\nI know roughly some costs for electrical/plumbing, so it doesn\u2019t seem too crazy..?\n\nEspecially for west Seattle area.\n\nHe quoted $14,000 with everything included. \n\nSaid it\u2019s about 5-6 days of work and scheduling and whatnot.\n\nApparently some time ago a 15 unit apartment had their panels changed, some remodeling done, and then an inspector noticed a new panel in one of the units and he checked for a permit but there was never any permit pulled.\n\nSo he requested the owner to get a licensed contractor to get a permit to bring everything up to code, and the inspector would check EVERY single outlet, switch, and light in the whole building, and after each inspection then they can be put back.\n\nEvery panel would also need 3 or 4 new AFCI breakers, and every device, like switch/outlet, to have grounding to their boxes since none of them have it rn, and they\u2019re all metal.\n\nMy friend said he checked 1 vacant unit, all the switches, outlets, lights, the panel, the crawlspace, found some other little issues, etc, but the rest of the units have people living in them. \n\nIt doesn\u2019t seem too crazy of a price to me. I mean..going through 15 apartments to check every single thing and possibly find more issues that will have to be fixed\u2026 seems like a lot of headache.",
+    "score": 17,
+    "num_comments": 20,
+    "created_utc": 1777060621,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1sfxtkw",
+    "title": "Power loss alarm options",
+    "selftext": "I\u2019m an electrician working for this older couple who have a vacant cottage in their back yard that\u2019s fed with a 100 amp sub panel. The main tripped and they lost power and everything in their fridge spoiled.  I need ideas for some sort of alarm that would notify of a power failure.\n\nThey are old and not interested in alerts sent to their phones and an audible alarm won\u2019t do them any good. I\u2019m thinking something along the lines of a battery back up device that would flash and would last long enough that they could see it from the window. Maybe even a long lasting emergency exit light would be good? Any thoughts?",
+    "score": 9,
+    "num_comments": 24,
+    "created_utc": 1775665708,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1p6zs4e",
+    "title": "How to fix broken off conduit flush with concrete base?",
+    "selftext": "The demo guys decided to cut our 2in conduits that were raised a few feet above the concrete pad. They cut them flush with the concrete base.\n\nHow do you possibly repair this?",
+    "score": 28,
+    "num_comments": 36,
+    "created_utc": 1764135733,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rvoy51",
+    "title": "Troubleshoot or half day price.",
+    "selftext": "I have a question for the EC out there. If you are running service or a job say 2 guys could be 4-6 hours, do you charge the whole day? Can\u2019t send them to another gig. T and M is fine for billing however they need 8 hours? \n\nI have found giving the option to organize the shop is beneficial. \n\nHow do you guys deal with ohhh should have taken 5-6 but your awesome workers do it in 2? \n\nFor the curious and feedback would be great. ",
+    "score": 24,
+    "num_comments": 17,
+    "created_utc": 1773701144,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1snfmu0",
+    "title": "Arc fault breakers with smart lighting",
+    "selftext": "So today I ran into something that I\u2019ve never seen before. Replaced arc fault breaker with new combination afci (Qo). Two dedicated 14-2 runs both labeled \u201cbedroom #2\u201d. So I had one replaced and I turned it back on. Then went to install the other and I got hit. Tested the voltage and had 120 hot to grnd and 120 neutral to ground. 0 between hot and neutral. When I turned the first breaker I installed off the voltage of the wires for the second breaker went to 0. I installed them both and turned them on with loads and they didn\u2019t trip. I am a little confused on this because of my understanding of how arc fault breakers work. I did realize the home had a Lutron smart lighting system. A co worker of mine said that could\u2019ve been what was causing it, but I wanted to get a more detailed explanation.",
+    "score": 0,
+    "num_comments": 12,
+    "created_utc": 1776371776,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1sg6jvb",
+    "title": "Electrician to fire alarm",
+    "selftext": "Curious if anyone has made a transition from a regular commercial/residential electrician over to a fire alarm tech.\n\nIn Michigan they recently started pinning fire alarm on electricians on most jobs I\u2019ve been on in the last two years.\n\nI recently relocated to Washington and they have a separate 06 fire alarm license but an 01 journeyman is licensed to do all specialty work (06 fire alarm is considered a specialty electrical license).  I have my  01 and I\u2019m considering taking a position with a fire alarm company.\n\nIf anyone has experience with this some insight would be great.",
+    "score": 1,
+    "num_comments": 8,
+    "created_utc": 1775684671,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1njxqaa",
+    "title": "What are you guys charging for troubleshooting service calls?",
+    "selftext": "I\u2019m getting tired of the race to the bottom nature of the industry. You can always find some jackapo to do it for dirt cheap. Located in SoCal, southern Orange County. Most of the houses we work on are multi-million dollar houses. And in a perfect world we wouldn\u2019t do any small service calls but sometimes you need to keep the crews busy in between larger projects. And it\u2019s a way to acquire new customers. \n\nHowever, Yelp customers are the worst. Don\u2019t get me started on what a scam yelp is, unfortunately the bastards have cornered the market. People  are often flabbergasted if you give them a $200-$250 estimate to fix their issue. I know not everyone is your customer, but lately it\u2019s been seemingly the majority. And in our area a handyman will charge $95 an hour. Also how do you educate customers on the costs associated with rolling out a van, insurance, gas, tools, etc without sounding like a complaining prick, like I am right now? Not to mention the years in training and schooling to become a journeyman let alone a c10.\n\nThen when you start opening up devices it looks like Mickey Mouse did the electrical after a 12 pack and 1/2 gram of crack. You get so many generations of just make it work on top of each other.\n\nSorry for the rant, just venting. So what are you guys charging for troubleshooting. Say X price for the first hour then Y for the following hours, Or are you charging a fixed rate.\n",
+    "score": 19,
+    "num_comments": 34,
+    "created_utc": 1758166098,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1s87qhr",
+    "title": "DC to AC Inverter Troubleshooting",
+    "selftext": "Just received a brand new 24vdc to 120vac 5000w inverter to install into a piece of company equipment. \n\nInstalled it, wired up the DC, turned it on without load on the 120v side.  Went straight into fault, with no codes. \n\nProper input, no obvious cause for the fault.  Opened it up,  no signs of damage and all fuses good. \n\nPut it onto test bench,  and issue remained\n\n\\*\\*\\*DO NOT REPEAT THIS STEP\\*\\*\\*\n\nI reverse polarity for under a second, because of WHY NOT .... and when I set it back to Correct Polarity and it worked. The fault cleared, it measured 120vac on the output. Hooked up a power drill on all the outlets and no faults. \n\nDo Inverters get FLASHED like a Generator? Because I'm stumped, why it's now working. I've left it on the test bench,  with night shift, to see if it fails\n\nTIA",
+    "score": 3,
+    "num_comments": 5,
+    "created_utc": 1774915359,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1so79om",
+    "title": "Low Frequency smoke alarms",
+    "selftext": "Hey guys, we have an upcoming project that is requiring 120V single station interconnectable Smoke/CO alarms with a low frequency sounder. The only model I can really find that meets this criteria are these Place PL1AS devices:\n\n[https://www.homedepot.com/p/PLACE-Any-Space-Smart-Smoke-and-Carbon-Monoxide-Detector-and-Alarm-Hardwired-with-Battery-Backup-PL1AS-PL1AS/332486169?source=shoppingads&amp;locale=en-US&amp;fp=ggl&amp;srsltid=AfmBOopT5nwr0FinQFpAxB2cnBzGCt9RnsyyB1uyBifAM3FE7zvdS2-W-n8](https://www.homedepot.com/p/PLACE-Any-Space-Smart-Smoke-and-Carbon-Monoxide-Detector-and-Alarm-Hardwired-with-Battery-Backup-PL1AS-PL1AS/332486169?source=shoppingads&amp;locale=en-US&amp;fp=ggl&amp;srsltid=AfmBOopT5nwr0FinQFpAxB2cnBzGCt9RnsyyB1uyBifAM3FE7zvdS2-W-n8)\n\n  \nDo you guys know of any other devices that will meet this criteria? Thanks in advance.",
+    "score": 0,
+    "num_comments": 2,
+    "created_utc": 1776446099,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1pt5bqp",
+    "title": "Underground fault locator",
+    "selftext": "Hey fellas,\n\nAnybody have recommendations on underground fault locators? Something that works with aluminum and copper, hopefully something that you have used personally. \n\nThanks",
+    "score": 1,
+    "num_comments": 15,
+    "created_utc": 1766424265,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rykrz7",
+    "title": "Dryer has PF Error &amp; Furnace Fan Kicks On",
+    "selftext": "Has anyone come across this issue?\n\nThe customer states that occasionally the electric dryer has a power failure error, the dryer turns off and immediately after their furnace fan kicks on.\n\nI can\u2019t get it to replicate the issue while I\u2019m on site, checked all connections at the receptacle, the cord whip, and in the panel. The dryer is new (under 1 year old) but it\u2019s on an old 3 wire setup. The furnace is in the attic above the laundry room but the thermostat for it is o. The other side of the house in the opposite direction from the panel and the dryer feeders.\n\nStumped on this one..\n\nEdit: I am an Electrician, just looking to see if any fellow electricians have run into a similar issue. ",
+    "score": 1,
+    "num_comments": 3,
+    "created_utc": 1773975278,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1qpe0fy",
+    "title": "Stack relay error on grizzl-e ultimate",
+    "selftext": "I installed a 48A grizzl-e ultimate for a client and it immediately began flashing a red light 3 times. I determined that this is a stuck relay fault, and the company agreed so they sent us a new one. \n\nThe new one charged my vehicle fine for about 20 minutes while I was on site, but as soon as the client tried their vehicle, it flashed red 3 times again. I have a hard time believing both units truly have a stuck relay, especially since it charged mine just fine.\n\nWe noticed it occurs mainly when the client has a schedule set either on the vehicle or in the evse (not both).\n\nUnderstandably, the client is pissed. We are going to return this one and get him a different brand, but before we do, I wanted to see if anyone else has had this issue, if they've solved it and what chargers are proven compatible with the mini cooper SE. Could this be an issue with their vehicle?",
+    "score": 3,
+    "num_comments": 6,
+    "created_utc": 1769613204,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1mpxknf",
+    "title": "Fixing Tool",
+    "selftext": "Had a tight work space and accidentally went phase to ground cutting wire with Kleins. It was my foreman\u2019s and his father gave them to him 30 years ago, so there\u2019s tremendous sentimental value in them.\n\nTo give an idea of the damage - the cutting part that got welded from the flash, it looks like it tried to cut through steel in one spot.\n\nWondering if a machining or tool shop would be able to repair them. I don\u2019t care how much money it costs, just want to know if it\u2019s worth my time. Thank you.",
+    "score": 3,
+    "num_comments": 26,
+    "created_utc": 1755169754,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1m131ze",
+    "title": "Kidde fire alarms suck?",
+    "selftext": "Just got a text from a customer about their fire alarms nuisance tripping. I've always used Kidde but this happens pretty often. I really can't think of a product I install that fails more often. They give me as many problems as arc fault breakers it seems.\n\nIs there a better brand? This seems to happen way too often \n\nWHY DO THEY ALWAYS SEEM TO GO OFF AT NIGHT??",
+    "score": 10,
+    "num_comments": 27,
+    "created_utc": 1752638982,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1p8h36f",
+    "title": "Electrical errors in season five",
+    "selftext": "okay i can\u2019t be the only electrician that noticed the amount of MISTAKES in stranger things season five. I know it just came out but i need my other sparkies to help me out on this one because all the money that went to this season.. and they couldn\u2019t even get basic power surges correctly and how a PANEL MELTS when it\u2019s ACTIVELY BURNING!! \nanywho sorry for the rant hope everyone is having a good holiday &lt;3 \n\n",
+    "score": 0,
+    "num_comments": 12,
+    "created_utc": 1764289361,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1m2slk0",
+    "title": "Give me your hot takes. I\u2019m not talking about \u201ckids don\u2019t want to work these days\u201d I want to start a riot in the comment section lol",
+    "selftext": "I\u2019ll go first.  \n\nGround rods are basically snake oil. If your service neutral is solid, rods are just there to make inspectors feel important",
+    "score": 482,
+    "num_comments": 785,
+    "created_utc": 1752811872,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1oppmyu",
+    "title": "120 Fire alarm bell power source dedicated circuit ? California.",
+    "selftext": "Contractor requested we have 120v power source at our manufacturing facility for new fire sprinkler alarms replacing current hydraulic ones. We do in house electrical and controls and I am trying to find out if this needs to be the only load on a dedicated breaker on a dedicated circuit or if I can tap into to a constant power source near by (outlets). Any help or code references to answer this question is welcome. Thanks ",
+    "score": 1,
+    "num_comments": 13,
+    "created_utc": 1762403871,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1pi4bu4",
+    "title": "Collection of Electrical Troubleshooting Stories?",
+    "selftext": "Good Morning All! Journeyman Electrician here in Missouri. Most of my experience is in industrial, lots of new install and retrofitting systems, extensive controls work, but less on the troubleshooting side of things, especially in a Resi scenario. I always appreciate troubleshooting stories and what the solution is to the problem, be it Resi, Commercial, or Industrial. Was wondering if there was some type of collection of these stories, almost like getting to go troubleshooting with a master and him telling you all of his troubleshooting stories. As a person who is not as experienced in this area, I feel like this would be a valuable resource. A Book? Blog? Subreddit? Something I can read on my free time?",
+    "score": 7,
+    "num_comments": 6,
+    "created_utc": 1765276949,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1roz3gi",
+    "title": "A few things I wish more electricians knew about WiFi",
+    "selftext": "For anyone doing rewires or refurbs in larger properties, here are a few things I wish more electricians knew about WiFi.\n\n* Most big houses have terrible WiFi not because of the router, but because there's no cabling to the right places. A couple of ethernet cables taken to the right spots during first fix makes a massive difference, and it costs almost nothing extra when you're already in the walls. \n* The rooms that matter most are usually: main bedroom, home office if there is one, and wherever the TV is. We can then use those cables to install WiFi access points (essentially the transmitters for WiFi signals) wired back to wherever the router lives. \n* Clients rarely ask for this upfront (as they might not realise their refurb plans such as adding steels or former external walls becoming internal walls will affect signal), but they almost always wish they had it afterwards and then running cables is 10x harder. \n* In the scheme of a refurb or large new build, getting this right at the outset is a small cost, and ensures that all their devices and smart home kit works exactly as they expect. \n\nI'm a network engineer and have been providing help and advice here since way back in the COVID days - if you've ever had a client complain about WiFi after a job, or you're not sure what to suggest when it comes up, drop a comment or message me.  \n  \nHappy to give free advice, no strings\u00a0\ud83d\udedc",
+    "score": 414,
+    "num_comments": 208,
+    "created_utc": 1773059957,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1lfaw0r",
+    "title": "Electrician or fire alarm tech?",
+    "selftext": "Hello, has anyone ever transitioned into fire alarm from being an electrician? Where I live there is a lot of times when work slows down a lot in the electrical field and it's hard to find a company that can keep you busy throughout the whole year. And I recently talked to a fire alarm tech that gave me some information on how much he earned and how it is in the field.\n\nHe said that they make about $2 to $3 dollars more than electricians right now and that the work isn't as hard labor as the electrical trade. He said it's hard for them to find guys to get into the field and that they are over saturated with work. That they rarely slow down.\n\nJust want to hear opinions and if anyone has some information on the differences of the two careers. I know electricians can make a lot more when they start their own company and there is a lot of opportunity to get into different types of electrical fields like residential and commercial. But I am getting tired of how slow it tends to get every year and most companies find it hard to keep us busy.",
+    "score": 5,
+    "num_comments": 24,
+    "created_utc": 1750339858,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1okfx1f",
+    "title": "Unbonded Receptacle Repair Argument - Residential CEC 2024 Code Check",
+    "selftext": "Hello first year Canadian BC commercial apprentice here,\n\nI am having an argument with an electrician that repaired a burnt unbonded 2 prong receptacle in the house I am renting.  They are saying it is ok to replace the 2 prong with an unbonded 3 prong receptacle as it needed to be repaired and is not a new install. No GFCI needed.\n\nThey have also back stabbed the receptacle without a pigtail making the 'neutral'/Identified Conductor pass through the receptacle to feed the remaining receptacles on the circuit.\n\nAm I correct in saying CEC 2024 **4-030(4)** and **26-702(2)** apply here and this is not to code and would need to be fixed? No permit was pulled so no inspection. I work union so the Journeyman on my site do not have much experience with residential and nor do I so any help would be great.\n\nhttps://preview.redd.it/u7umfkkr8cyf1.png?width=840&amp;format=png&amp;auto=webp&amp;s=6bd69de06807b5087c0c6ea56e5ee1946978d03a\n\nhttps://preview.redd.it/wvngykkr8cyf1.png?width=861&amp;format=png&amp;auto=webp&amp;s=23e9993b928f39fa3581c7c699d7ead940551cfd\n\nI have looked at other posts which do seem to agree with my stance, but non specificly state CEC code rules.  Thank you!",
+    "score": 2,
+    "num_comments": 10,
+    "created_utc": 1761869009,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1msv1ce",
+    "title": "Service Guys: do you carry portable adjustable power supplies with you for troubleshooting?",
+    "selftext": "I\u2019m working on a Mighty Mule Dual Gate 502 driveway gate that\u2019s several hundred feet from the nearest power source. I\u2019m not an electronics specialist, so I usually focus on fixing or supplying power to systems, not repairing electronics or appliances. However, I like to give troubleshooting a shot sometimes.\nThe gate is designed to receive 120V, which a plug-in transformer converts to 12V for the PCB. The PCB then sends signals to the rest of the system, including charging a 12V SLA battery. From the manual, it seems the battery powers the gate arms, but it\u2019s not entirely clear.\nThe customer, who moved in 6 months ago, doesn\u2019t know if the gate works. The house was previously raided due to illegal pot growing and power theft, and the gate was busted down with parts left scattered. I\u2019m unsure if the system is functional at all.\nI\u2019m wondering if I can test the gate arms directly to see if they extend and retract, as replacing them isn\u2019t cheap. I was thinking an adjustable power supply to send 12V to the arms might help with troubleshooting, but I\u2019m not sure if that\u2019s a practical approach. I know I can test it properly by bringing 120 to the transformer but if the PCB doesn\u2019t work, I won\u2019t know if the arms are also fried. \nDoes this make sense? Would an external power source (besides something like a Milwaukee battery power adapter) be useful for testing this kind of system? Any advice or suggestions for troubleshooting this gate setup would be greatly appreciated!\n",
+    "score": 3,
+    "num_comments": 17,
+    "created_utc": 1755447228,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1m44fsk",
+    "title": "Opinions on troubleshooting tools",
+    "selftext": "Looking for opinions on types of trouble shooting tools as well as recommendations on brands and/or models.\n\nThe company I work for does mostly residential as well as what I would consider \"light commercial\".\n\nCurrently we're working with just the basics:\namp clap/multimeter\nnon contact voltage tester\nPlug tester\nCircuit finder (not super happy with the performance of the Klein model I use)\n\nCurrently looking to add a toner,and a megger.\n\nWhat am I missing and what are your recommendations.",
+    "score": 1,
+    "num_comments": 20,
+    "created_utc": 1752952467,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1p17f20",
+    "title": "I\u2019m trying to fix a problem in the trade but not sure if it\u2019s even worth it",
+    "selftext": "Hey guys.  \nQuick question for people working in construction or repairs.\n\nLately I\u2019ve been putting time into understanding a problem that\u2019s been driving me crazy for years. I\u2019m tired of driving all over the place just to look at jobs that end up being nothing, or something completely different than what the client described.\n\nI started digging into it a bit more and I\u2019m trying to see if there\u2019s an easier way to sort out requests before jumping in the van. Nothing fancy. I\u2019m just experimenting and talking to people to understand how they handle it.\n\nMy question is basically this: is this something that actually bothers you enough that you\u2019d want a better way to deal with it? Or is it one of those things everybody complains about but nobody really tries to fix?\n\nWould love to hear what others think, especially people who deal with this daily.\n\nThanks.",
+    "score": 0,
+    "num_comments": 7,
+    "created_utc": 1763558203,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1ny61yu",
+    "title": "Fire alarm courses",
+    "selftext": "Anybody taken a fire alarm course they\u2019d recommend?? I got my electrical ticket in 2023 but I want to sharpen my FA knowledge. Located in Canada. Would prefer something online if possible. ",
+    "score": 3,
+    "num_comments": 10,
+    "created_utc": 1759613224,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1m1ckuw",
+    "title": "Fixing devices on Aluminum branch circuits",
+    "selftext": "I\u2019m a JW and live in a neighborhood built in the early 70\u2019s, all the houses on my block were wired with aluminum #10 branch circuits. Never had to deal with this professionally, and wondering if anybody knows the best and/or proper way to fix this without rewiring the entire house? \n\nThe home inspector said all the boxes needed Cu pigtails spliced to the Al before terminated to the devices, which seems a legit to prevent loosening of the wire on the terminals over time. I know they make the listed purple wire nuts for this but they\u2019re $5 a pop so would be hundreds to do the whole house just in wire nuts. If I were an electrical contractor, I would probably fix it this way because that would be up to code. Wondering if I could do a cheaper option on my own house like using wagos or regular wire nut with a little antioxidant in it? Are there any other options or ideas out there? Let me know what y\u2019all think.\n",
+    "score": 1,
+    "num_comments": 17,
+    "created_utc": 1752672440,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1mctx6v",
+    "title": "Fire Alarm Conduit",
+    "selftext": "So, I am running a commercial job and in the office area they wanted cable tray for fire and data. We have our normal stub ups from the box\u2019s above ceiling and the wire free airs from the tray to the stub ups.   \n\nEverything was fine until recently a 3rd party QA is now stating that all the stub ups need to hit the tray and be bonded to the tray.   (Per code he says) \n\nI\u2019ve been digging through the code book and can\u2019t find anything that says it needs to be.  \n\n250.86 leads to 250.112(I) \n\nAny clarification or help would be great. ",
+    "score": 3,
+    "num_comments": 15,
+    "created_utc": 1753839886,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1l5lceo",
+    "title": "Pellet Grills and Arc Fault breakers",
+    "selftext": "I wired a new custom home and am now dealing with tripping outside receptacles when the homeowner is using their pellet grill. I originally installed Homeline PDF breakers, I went back and installed an Arc Fault breaker and  GFCI\u2019s outside. Customer still has the issue. Any help would be appreciated. Are there any pellet grills out there that will run on arc fault breaker? ",
+    "score": 2,
+    "num_comments": 19,
+    "created_utc": 1749304349,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1lfpxn4",
+    "title": "Troubleshoot advise",
+    "selftext": "I\u2019ve been an apprentice electrician for 7 whole months and have only work in new construction or remodel for commercial. I recently got my first request to help from a close friend of mine, a receptacle on his backyard recently stopped working. I went to check it out thinking it was burnt out, faulty wiring or something but everything seemed fine other than the receptacle isn\u2019t getting power. Every switch in the breaker is on and nothing is off. He proceeded to mention he has a little rat problem and we came to the conclusion maybe a rat bit into the wire? However, this is a little out my knowledge since I\u2019ve only worked in commercial and never done trouble shooting before. \n\nIm here to see if anyone can share some experience or knowledge to help me fix my friends receptacle? ",
+    "score": 0,
+    "num_comments": 17,
+    "created_utc": 1750377623,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1m2zexn",
+    "title": "Smoke detectors and false alarms",
+    "selftext": "Custom build we finished two years ago. Customer was having issues last year with false alarms so we replaced all of the smoke detectors and CO detectors in the house. Everything was fine for eight months, yesterday another false alarm. Customer found the bad smoke detector that was causing the alarm. After removing it, it still would not shut off so he smashed it with a hammer. Anyone else have issues like this with new smoke detectors?\n\nEdit: these are kiddie/fire X 10 year lithium hardwired",
+    "score": 9,
+    "num_comments": 12,
+    "created_utc": 1752836836,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1nqiiv8",
+    "title": "Troubleshooting GFI Recep off 208v feed",
+    "selftext": "Hi I am at my wits end here and looking for advice. \n\nI am installing a GFI recep off a 208 feed w/ a neutral. When I read voltage pre-install I have 124v hot leg to ground, 17v neutral to ground 110 hot to neutral. Once I install a GFI all of a sudden voltage changes 124v H to G. 115v N to G and 20v H to N. \n\nWhen I take the GFI off and swap w/ normal recep I have 124 H to G, 17v N to G, and 103v H to N\n\nThis is a side job for a boss\u2019s resi/ commercial side company. He is in Europe for a vacation, but I talked to several coworkers from our traffic signal/Highway lighting company and other supervisors and no one really has an answer for whats going on other than the assumption there\u2019s an open neutral somewhere in the circuit (due to the 17v N to G prior to gfi) \n\nMy main questions are if anyone has come across a similar situation and have they had a neutral become 120v after hooking a gfi? \n\nI tried swapping gfi\u2019s in case it was a bad one but the same issue occurred. \n\nAny help or ideas are greatly appreciated. Thanks! ",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1758834078,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1nvd402",
+    "title": "Fault finding",
+    "selftext": "I am a level 2 apprentice about to be assessed doing a fault find in an outhouse with 3 circuits. A radial with handful of socket, a heater circuit and a  lighting circuit with 4 down lights and a strip light in storage room next door. \n\nBasically I need to create a fault and be assessed finding and fixing it properly. I know the basics to fault finding but there\u2019s one way to go about and then the assessors way. I was just wondering what is a good fault to make and the procedures to fix it. Cheers ",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1759336462,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1mzr0i1",
+    "title": "\ud83d\udd0c Quick Troubleshooting Tip: Plug-in Receptacle Testers Save Time",
+    "selftext": "One of the fastest tools I use for troubleshooting is the plug-in receptacle tester. It instantly shows if you\u2019ve got an open ground, reversed polarity, or miswired connection.\n\nIt\u2019s a simple tool, but it\u2019s saved me hours on service calls.\n\n\ud83d\udc49 Question for the community: Do you guys trust plug-in testers for first checks, or do you always go straight to a multimeter?",
+    "score": 0,
+    "num_comments": 8,
+    "created_utc": 1756129763,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1mrh9xf",
+    "title": "Online Fire Alarm courses?",
+    "selftext": "Hi all,\n\nI\u2019m trying to find something interesting to take for my continuing education class. I\u2019ve never done anything low voltage or fire alarm related so I thought that would be interesting. I\u2019m in CA and I\u2019ve used WECA in the past for schooling which is fine but it seems like the only stuff they offer for that is self paced/ no instructor which I get is cool if you\u2019re trying to just blow through a bunch of slides and send the state your certification but I actually want to learn something and I know I do better with an instructor so I can ask questions.\n\nCompany pays for my schooling so money isn\u2019t an issue. Any suggestions? I just want to branch out and learn something new. Thanks!",
+    "score": 1,
+    "num_comments": 8,
+    "created_utc": 1755308930,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1mmxk2s",
+    "title": "What meter to buy for troubleshooting?",
+    "selftext": "Hey guys I'm looking to buy a new meter. I'm using a fluke 337 right now, but I need something with a capacitance reading as I've been doing maintenance on capacitor load banks, and low impedence would be very helpful, that got me good once. Not sure if there is a perfect meter for me, but I would like\n-capacitance\n-low impedance would be nice\n- ability to read 4-20ma\n- accurate resistance reading for measuring and comparing coils etc.\n- I need clamp on amp reading for sure but I can always use my 337 for that.\nDoesn't need to be fluke im looking for good value.\nFluke 117 looks decent but no 4-20\nFluke 18b+ looks decent but now low Z\n\n\nAnyone use a cheaper meter with these functions? ",
+    "score": 4,
+    "num_comments": 6,
+    "created_utc": 1754868780,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1lx06oh",
+    "title": "Encoder alarm",
+    "selftext": "When the inverter tells you that the machine doesn't start due to an encoder problem, in your opinion what type of test should be done to understand if it is a problem with the cable or with the encoder?\n",
+    "score": 3,
+    "num_comments": 7,
+    "created_utc": 1752217011,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1lrka7d",
+    "title": "Question about ground fault current",
+    "selftext": "Hey y'all, everyone knows that when you have a ground fault the current is trying to get back to the source, but it's not always clear what that means.  Hypothetically, if I had a ground fault on a doorbell transformer, the secondary is ungrounded so the source is not the transformer.  Does that mean the current is trying to get back to the panel through the grounding electrode?  Or back to the utility transformer?  The power plant itself?  Maybe all of the above?  Help me understand this.",
+    "score": 1,
+    "num_comments": 7,
+    "created_utc": 1751639774,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1n81skj",
+    "title": "Pros/Cons of going from low voltage/fire alarm to commercial/high voltage?",
+    "selftext": "As the title reads, currently a 1st year low voltage/fire data guy that originally wanted to get into commercial electrical. I somewhat enjoy low volt but find it a little too \"techy\" if that makes sense..(not my cup of tea). I'm learning a lot of the basics of the trade but find more days then most to be pretty boring..\n\nIs the switch worth it? I'm always hearing commercial electricians are laid off more often than low volt guys so also looking to hear any insight/personal experience on that as well.  \n",
+    "score": 0,
+    "num_comments": 2,
+    "created_utc": 1756963914,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1m1lg9p",
+    "title": "Troubleshooting DC8 ceiling fan remote receiver",
+    "selftext": "I have a 6 speed ceiling fan/LED light combination unit that is about 3 yrs old.  Its controlled by a DC1 remote and a DC8 receiver; they come up easily on a google search.  The receiver has 5 output wires.  Blue and white to light.  Grey, red and purple to fan motor.  The light is operational.  It turns on and off through the remote, but the LED flickers and the receiver makes a whirring sound. The fan does not work.  With a multimeter I can detect a remote responsive circuit between the blue and white output wires.  I do not detect a switch-able circuit through any combination of the red, purple or grey fan output wires.  I could order a new receiver for about $80, but it would be nice to know if there are additional diagnostic trouble shooting steps to verify a receiver problem  before dropping the money.  \n\n1. For the fan circuit (I'm assuming it's DC?) which wire is the neutral return?  Is it the grey one?  I can't find that on a schematic.\n\n2. Is there a simple way to bypass the receiver to test the fan motor directly?  ",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1752692727,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rxn0j4",
+    "title": "Did I screw up by going to the hospital after a shock?",
+    "selftext": "I was helping to install a furnace, and I was put in charge of wiring the furnace switch. I shut the breaker off, tested for voltage, and started working on it. A couple of minutes later, I get shocked, cause it turns out the customer turned the breaker on while I was working on it. I felt a brief pinching sensation in the left side of my chest a few seconds after the shock, and a few other brief pains through the work day, so after work, I went to the hospital to get checked, and they had me sign a WSIB form, which I didn't expect would happen for just a shock when no tangible injury was found after the ECG and whatnot.\n\nIs my company gonna get in trouble with WSIB now because the breaker wasn't locked and tagged? Did I just turn this into a huge disaster for myself? How does this stuff usually go down?",
+    "score": 249,
+    "num_comments": 162,
+    "created_utc": 1773883970,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1lknsev",
+    "title": "Need Help Troubleshooting Tugger Issues",
+    "selftext": "So I'm on a wire-pulling crew, and for a lot of our one-line pulls we are using a Cannon 12k tugger [https://itoolco.com/product/cannon-12k-wire-puller/](https://itoolco.com/product/cannon-12k-wire-puller/)\n\nThe issue we've been having recently is that the \"cup\" (the metal part that sits inside the opening of the conduit) won't sit square on the conduit. This becomes a problem when the head comes through as the cup is angled and the edge of the cup gouges the wire.\n\nWe've tried every which way to set up the tugger and change the angle to get the cup to sit square, but it really just seems that the cup is too loose, which allows it to tilt inside the conduit. Have any of you had a similar problem with these types of tuggers? Is there any work around?",
+    "score": 0,
+    "num_comments": 5,
+    "created_utc": 1750902225,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1ksirk7",
+    "title": "Resi troubleshoot",
+    "selftext": "Hey y\u2019all. \n\nCommercial guy here, found myself at a residential service call the other day. \n\n5 receptacles and 2 lights with 3 way switches mysteriously not working. All the breakers at the panel are supplying 120V. Put my cct tracer on and they\u2019re definitely all connected to each other.\n\nAny suggestions??",
+    "score": 0,
+    "num_comments": 4,
+    "created_utc": 1747890677,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1lkhs26",
+    "title": "Need some help troubleshooting",
+    "selftext": "Good evening bros,\n\nApprentice here looking for some help. I\u2019m troubleshooting some lighting circuits that just has me stumped at this damn point. Imma be as clear as possible on steps taken and what I\u2019m\nWorking on so maybe you can help spot potential problems in my process. This is temp lighting \n\nEquipment: Tempoary skid 277/480 panel feeding lighting circuits that have issues. \nThe lights are the typical jelly jar looking universal 120 lights\n\n\nThe setup: the three circuits run out the panel through a trough into a 1900 box(all 3 in box) A 10/6 MC connects to the 1900 and runs up to the 2nd floor which drops into a 4x4 on the wall(the pulls were short which is why this box is where it is). From this splice point a 10/6 MC runs out into the data hall where another 4x4 is on a column. This column has the 3 branches for the lighting. All on 20 amp breakers \n\nCircuit 1 has 30 lights, circuit 2 has 44 lights circuit 3 has 24 lights but this post is mainly for circuit 1 and 2. 12/2 Romex between lights and two home run boxes\n\nHere we go:\nUpon checking that panel,1900, two 4x4s and the light boxes(visually other teammates spliced lights )were closed and spliced we proceeded to flip the breakers in the panel. \n\nCircuit 1: lights came fully except 1 all the way in the back, but the lights that came after it in the circuit were on. \nBreaker Held despite light\n\nCircuit 2 : lights came fully on. After about maybe 1min breaker tripped.\nBreaker held for 1 min\n\nCircuit 3: Instant trip. Hell tripped so fast didn\u2019t even make it past trip position really \nBreaker no hold.\n\nTroubleshooting:\n\nCircuit 1:\n The light was opened. The splices were good. Light was changed out. Upon turning on circuit 1 the circuit tripped in about 1 min. The breaker no longer held. Upon testing the amp drawn it was 40amps! Immediately shut off. \n\nCircuit 2(Main problem focused on this day)\n\nFirst I proceed to check the amp draw on it using a clamp meter( not fluke..I know I\u2019m only at 3rd year pay) on circuit 2 since that one held but tripped so overload. The circuit had 40 amps on it.Immediately turned back off. We proceeded to do the math on what we should be seeing if we cut the circuit in half amp wise. We were expecting about 7.25 to 8 amps roughly.\n\nUpon breaking at the 22nd light the amp draw was indeed 7.25 to 8 amps. Using law of proportionality we estimated to see about 12-13 amps if we broke the circuit at 33 lights. The amp draw was a little over 15 amps. At this point we figured something was amiss in that 11.\n\nWhat was found is a loose connection in one light. And both ends of the light being tied on in another light in that 11. Retake amp draw we are down to 13-14 amps. We proceed to just check the last 11 lights manually. No issues found.\n\nWe load up the circuit with all 44 lights after performing standard ground isolated continuity tests(because xo   In temp transformer) at first 4x4 complete negative on ground/hot ground/noodle hot/noodle. \n\nThese tests were performed for all three circuits for shits and giggles and they all came back Negative!\n\nI feel like I\u2019m missing some steps here I should take tomorrow \n\n\n\n\n",
+    "score": 2,
+    "num_comments": 1,
+    "created_utc": 1750886089,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1lcub55",
+    "title": "Just got laid off\u2026",
+    "selftext": "I\u2019m absolutely crushed. In Minnesota. This was my first year of apprenticeship, about 3 months in, and got called into the shop for 9am today\u2014felt a bit off for a start time\u2014to be handed a termination slip. Had to turn in my tool bag that I\u2019ve been so proud of, and walk out with my head held in shame. \n\nNon-union, got this job on such a lucky shot of just cold calling every single damn shop in my area. Came from the kitchen industry trying to completely change my life direction. \n\nI\u2019ve been over the moon, so damn excited every single day, learning so much and just so thrilled with every aspect of this field and the work itself. I\u2019m just absolutely crushed. \n\nBoss was kind about it. Felt bad. Advised me to maybe try the union route. I know nothing about how that works. \n\nI\u2019m of course also in a bad spot financially now. No real fixing that because of delays with payroll even if I got a job *today*.  \n\nNeeded to vent, get advice, idk just need to post to my brothers/sisters here that I am temporarily severed from our field :(. No way in hell am I getting stopped by this but god, what a damn road bump. I\u2019ve been so confident and so proud from how I made this job happen and just, it\u2019s all been torn away. I\u2019m so destroyed rn. ",
+    "score": 470,
+    "num_comments": 228,
+    "created_utc": 1750084202,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1kahqtp",
+    "title": "Currently suspended from work",
+    "selftext": "So 8 months ago company hired another jman. He has a crew of 4 guys including himself. 3 months ago our crew finished a job early so we got sent out to help them. Few hours in one of my guys noticed there was an issue in the drawings that the suspended lights and recessed lights weren\u2019t switched. I let him know and he responded with\n\u201cHey man I don\u2019t come to your site and start calling shots \u201c\nSo i tell  him hey you\u2019re right my bad. So last week we get sent out again to help finish some conduit runs because lift rentals are eating the budget. When i was there i noticed the Fire Panel was removed from electrical room and wires were all removed. So i mentioned to him oh we doing the fire alarm as well and he said no.  I just said oh ok. Yesterday i get called in to office by the manager and is questioning me about why didn\u2019t i say something about the fire panel being ripped out.i told my manager im not running this job. So im suspended for \u201cgoing against company interests\u201d. I guess that was an old fire panel and replacements aren\u2019t available so now we are teaming with a fire alarm contractor to resubmit to the city for a fire alarm upgrade. I still don\u2019t see how that\u2019s my fault.",
+    "score": 737,
+    "num_comments": 163,
+    "created_utc": 1745909870,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1kzlxn7",
+    "title": "Fluke T150vde error 4 cal2",
+    "selftext": "After battery replacement my Fluke T150vde show me Er4 and CA2 codes. Any ideas?\n\nAdditional battery replacement didn't help",
+    "score": 1,
+    "num_comments": 1,
+    "created_utc": 1748657253,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1pyamcq",
+    "title": "What actually works for staying warm on cold job sites",
+    "selftext": "Lately I\u2019ve been struggling a bit with staying warm on cold job sites without adding bulk. \n\nEarly mornings, unfinished buildings, standing around troubleshooting or pulling wire in one spot for a while\u2026 that\u2019s usually when the cold really hits. Heavy jackets keep you warm, but they also get in the way when you\u2019re bending, reaching into panels, or working overhead. At the same time, just piling on layers doesn\u2019t always help once you\u2019re not moving much. I\u2019ve noticed more people trying different lightweight ways to stay warm at work, and I\u2019m curious if any of them actually make sense on the job. Specifically stuff you can wear under normal work clothes without it becoming annoying or restrictive. \n\nFor those who\u2019ve tried things like that on site, did it actually help during a workday, or did it end up feeling gimmicky after a few shifts?",
+    "score": 115,
+    "num_comments": 268,
+    "created_utc": 1766976940,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1knmbdy",
+    "title": "AFCI troubleshooting",
+    "selftext": "Has anyone ever tried using a handheld digital oscilloscope to troubleshoot AFCI tripping circuits?",
+    "score": 0,
+    "num_comments": 1,
+    "created_utc": 1747350945,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1kgjbq5",
+    "title": "Alarm installers?",
+    "selftext": "Anyone one here doing resi alarm installs that can DM me so I can ask a few questions. I'm totally out of my element.",
+    "score": 0,
+    "num_comments": 1,
+    "created_utc": 1746575012,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1sr9w4l",
+    "title": "Could I be fired?",
+    "selftext": "Level 1 apprentice, used wrong wiring for a condo unit and had to remove it all and add in the correct one. Also made a light off center and have to fix it. What are the consequences? It\u2019s my second week. Tough go so far I feel like I\u2019m not a sparkie\n\nUpdate: just wanted to thank everyone for the positive responses. It worked out as everyone mentioned and the company and journeyman realized it was a mistake. No problem and we move forward. I think I need to ask more questions as I have no idea what I\u2019m doing and I\u2019m learning from an apprentice so it\u2019s difficult. ",
+    "score": 109,
+    "num_comments": 128,
+    "created_utc": 1776736053,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1nwn2cp",
+    "title": "45, laid off. Talk me out of becoming an electrician now.",
+    "selftext": "Laid off from an industry I have no interest in returning to. I love troubleshooting, solving problems, making shit work and damn if rewiring parts of my own house hasn\u2019t been fun (other than the tetanus shot). I have no interest in running cables in server farms or working on a new high-rise project. Tons of respect for the folks doing that work, I just know it\u2019s not for me. Very interested in residential retrofitting and service upgrades. Batteries, generators, chargers are all super interesting and cool. I gotta do something for the next 20 years (at least) and I think I\u2019d enjoy it. I\u2019m not too proud to sweep and carry conduit, but being the new guy starting out at my age will likely have its drawbacks. Should I stock up on ibuprofen and jump in?",
+    "score": 174,
+    "num_comments": 215,
+    "created_utc": 1759457777,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rirf2n",
+    "title": "How do you handle the new guy when he messes up but tries to hide it?",
+    "selftext": "Got a first year apprentice whos a decent kid but he's got this habit of trying to cover his mistakes instead of owning them. Yesterday I sent him to rough in a few boxes in a new build. Come back later and theyre all crooked as hell but he'd already patched the drywall around them so you couldnt really fix it without cutting everything open. When I asked him about it he just said they looked straight to him.\n\nI remember being the green guy and screwing up. Its part of the deal. But I also remember my journeyman telling me the only sin is hiding shit because then it becomes my problem later and I look bad too. Tried explaining that to him calmly but I dont think it landed.\n\nHow do you guys break through to the ones who think covering it up is better than just saying hey I need help with this. I dont want to ride him all day but I also cant have him thinking this is how we do things. Open to ideas because the usual busting his balls approach isnt working.",
+    "score": 212,
+    "num_comments": 103,
+    "created_utc": 1772454240,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1r6xcl0",
+    "title": "Honest thoughts on the \u201cjust be an electrician\u201d advice",
+    "selftext": "When I was younger, everyone told me the same thing: just be an electrician. They talked about the pay, job security, and how it was \u201cAI proof.\u201d On paper, it all sounded solid.\n\nWhat nobody really talked about was how mentally and physically draining this job is long term. It\u2019s not just hard work, it\u2019s constant problem solving under pressure, fixing other people\u2019s mistakes, and doing it all while your body slowly takes the hit.\n\nMost guys I know don\u2019t burn out because they can\u2019t handle the work. They burn out because every day feels like fighting the schedule, the prints, the GC, and the conditions all at once. You can make good money and still be exhausted in a way sleep and a beer don\u2019t really fix.\n\nNot saying it\u2019s a bad trade. Just saying the \u201cjust be an electrician\u201d advice leaves out a lot of reality. Curious how many of you still feel good about it long term versus just grinding it out because you\u2019re already deep in.",
+    "score": 163,
+    "num_comments": 101,
+    "created_utc": 1771305562,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1so86y1",
+    "title": "Boss wants to switch us to commission based pay. Should I run?",
+    "selftext": "I have been doing residential service work for about four years now. Hourly plus occasional spiffs for selling big jobs like panel upgrades or rewires. It was fine. Now the owner is talking about moving everyone to a commission only model. No base hourly. Just a percentage of whatever we sell and complete. He says it will motivate us to find more work and reward the guys who hustle. A few of the older guys are excited about it. But I am not a salesman. I am an electrician. I fix stuff. I do not want to push panel swaps on old ladies who just need a new outlet. I also worry about slow weeks when there is just not much to sell. How do you even quote service calls on commission without feeling like a scam artist. Has anyone here worked commission only in residential and actually liked it? Or is this a giant red flag that I should start updating my resume. I don't want to be a predator. I just want to do good work and get paid fairly.",
+    "score": 125,
+    "num_comments": 84,
+    "created_utc": 1776448092,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rwnfad",
+    "title": "Anyone else\u2019s jman make them hate their job?",
+    "selftext": "I\u2019m a first year apprentice and the jman I\u2019ve been working with for the past year has been in the field for 12+ years. Anytime I ask a question about something I\u2019ve learned but I\u2019m still not sure of, he explains it to me like I\u2019m a child. He acts like he knows everything when I\u2019ve seen him fuck up and throw temper tantrums when he does and I point it out. He\u2019ll act like a child whenever something goes wrong and I just stand there and watch it happen. Whenever I try to do or ask something after he has his episode, he acts all shitty towards me like it was my fault. It\u2019s almost every day. Putting up with it is tiring but the company I\u2019m with sees me as the only one willing to work with him since everyone else hates him. Sorry for the long rant, I just honestly don\u2019t know what to do at this point. ",
+    "score": 116,
+    "num_comments": 101,
+    "created_utc": 1773790482,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1sbxsos",
+    "title": "Seen on another sub but the question works well here. What's the strangest gremlin you've ever chased trouble shooting?",
+    "selftext": "For me it was the magnetized building. Customer complains there is hair on the walls. Plus or minus 65k square feet of multi use commercial space, gym, tanning beds (euro voltage beds in the US) I-line panels, buck boost transformers galore for the beds. End result,  bad bond at the transformer. The building steel was magnetized down to the sheet rock screws , all the filings from construction were getting picked up and living in the walls. The fix was scraping the paint, new bonding bushing and bobs your uncle. \n\nI understand im leaving a bunch of shit out, but the ask is what was your ghost in the machine? ",
+    "score": 145,
+    "num_comments": 74,
+    "created_utc": 1775271312,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1s7abbw",
+    "title": "How soon in your career is to soon to go into maintenance?",
+    "selftext": "I have an interview later this week for a hospital maintenance job, it would be a few dollars an hour more +benefits an retirement \n\nI am an apprentice that has done commercial service work for the last 2 years and resi service the year before. I feel that I am a strong troubleshooter but am worried that I might not be learning as much in a maintenance gig as working for a contractor. Do you think there is to early of a point in your career to go in to maintenance?",
+    "score": 82,
+    "num_comments": 90,
+    "created_utc": 1774826540,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1mradyb",
+    "title": "Props to you Resi guys",
+    "selftext": "I just spent 90 minutes troubleshooting a living room ckt for a lady. She lost power to the entire room. So I break out every device. And it\u2019s cloth Romex, all receptacles wired in series, shared neutrals all around, 2\u201d of wire in each box, the list goes on. \n\nEnded up being a receptacle on an adjoining wall, not even in the same room. I\u2019ve only been doing this 5 years and mostly commercial stuff, so that being said. \n\nProps to you guys that had/have to do this all the time. I\u2019m glad we\u2019ve gotten away from \u201cthe way we used to do it\u201d because it\u2019s a hot mess trying to troubleshoot lol\n\nEdit: All of you are correct, the receptacles weren\u2019t wired in series. My mistake. They were just not pigtailed. Thank you for catching that. \n\nAlso, gotta go back next week for a ceiling light in an old washroom turned closet that never goes off. \nThe previous owner had put motion sensor bulbs in to keep it from running 24/7. ",
+    "score": 347,
+    "num_comments": 94,
+    "created_utc": 1755292010,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1n94vjq",
+    "title": "I always end up ordering more Unistrut than the job needs, It might be an addiction.",
+    "selftext": "**The Dogma of Unistrut**\n\n1. In the beginning there was chaos, and then came the channel.  \n*All was wobbly until the sacred C profile was stamped from cold steel and galvanized with holy zinc.*  \n \n2. Slots shall be on 2 inch centers.  \n   *For as the gods decreed, so it must remain. Any lesser spacing is heresy and leads only to stripped threads.*  \n\n3. Thou shalt honor the spring nut.  \n   *For it is the sacrament that binds all things. Without it, there is only rattling.*  \n\n4. The Channel accepts all.  \n   *Pipe, wire, conduit, ductwork, dreams. All may be fastened to the Strut provided they submit to the holy bolt torque.*  \n\n5. Bend not the Strut.  \n   *For the Strut is straight and infinite. To kink it is to blaspheme. Those who cut it on the wrong side of the slot shall wander in the scrap bin forever.*  \n\n6. Galvanized, powder coated, stainless. The Trinity.  \n   *Choose thy finish according to the environment lest corrosion eat thy work as moths devour cloth.*  \n\n7. Where two or three lengths of Strut are gathered together, there is Structure.  \n   *Let the assembly be modular and endlessly reconfigurable, for permanence is for concrete, not Strut.*  \n\n8. All who rely on wood screws shall be cast into doubt.  \n   *The faithful know only three eighth inch through bolts bring salvation.*  \n\n9. Measure once, slot twice.  \n   *The Strut provides forgiveness for its slots allow correction of mortal error.*  \n\n10. The righteous inherit adjustability.  \n  *For today\u2019s ladder rack is tomorrow\u2019s chicken coop, and the Strut abides forever.*",
+    "score": 356,
+    "num_comments": 84,
+    "created_utc": 1757077842,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1nhnq29",
+    "title": "Was i disrespectful for not wanting to waste one and a half hours to drive to a worksite were my worker forget one of his tools ?",
+    "selftext": "\n\nI work as an electrician apprentice in a big firm about 100 workers with 50 electricians.\n\nWe were on a job today installing some power outlets in a valley rather far away. One of the tools is used after you installed the outlet to check if everything is OK. Its rather expensive. Sorry English isn't my first language.\n\nAfter we returned to the firm it was about 30 min before regular end of shift. However we didn't take our 30 min break so it really was end of shift  and we had nothing more to do. Shifts are 9 hours.\n\nThen my worker noticed he had forgotten the tool at the site. The thing is, he explicitly said to me that I should just focus on finishing up and that he will load the car. After I entered the car I asked him if we have everything to which he answered yes. \n\nNow I told him that I don't want to drive back and we'll be back tomorrow anyways. The site gets locked up too.  Also he doesn't need me to get a tool and it wasn't my fault and I dont need to do more overtime. I already did 10 hours overtime last week. If it was my job to pack the car I wouldn't have said a peep. I'd have apologised.\n\nTo which he got angry and said that he will tell the higher ups if I don't comply. So I went with him and we found it. It was tucked away behind multiple boards. We didn't speak a word the entire drive. He knew where it was and I didn't do anything. Just sit in the car and walk behind him.\n\nThis is a genuine question, not just complaining. I know I am only an apprentice, but I work hard and do my job properly. I know apprentices  dont matter , should just shut up and do whatever they are told to do. Was I disrespectful? ",
+    "score": 198,
+    "num_comments": 106,
+    "created_utc": 1757947294,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1snsr1r",
+    "title": "Rigid under slab vs emt overhead",
+    "selftext": "I just got plans for the next job I\u2019m running and it\u2019s a 2-story, 100,000 sq ft. healthcare facility. I\u2019m toying with the idea of running all critical and life safety receptacle circuits under slab in 3/4\u201d rigid vs overhead in emt.\n\nI checked with my PM and the base cost difference on a 100\u2019 run of 3/4\u201d rigid vs emt is $320.  So I\u2019m looking for opinions on whether or not you save 3 man hours doing that run under slab va overhead?  Keep\n\nIn mind there will be a ton of conduits already running through the ceiling to feed these same type circuits on the second floor.",
+    "score": 22,
+    "num_comments": 74,
+    "created_utc": 1776406978,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1pnl3uc",
+    "title": "Tesla charger, burning up breakers?",
+    "selftext": "I put a charger in for neighbor, hardwired, all copper, it\u2019s in barn, not a weatherproof panel but it\u2019s out of the elements (existing panel). 48amp charger on a 60 amp breaker, all legit, by the book.\n\nI\u2019ve checked all the connections, no burn marks, no melted plastic, busbar is good, all connections are tight nothing out of the ordinary. Today I ran load test while it was charging, it all seems to be good. I checked the breaker and the main breaker feeding this panel.\n\nBut\u2026 in 1.5 years this will be my third breaker. Always starts the same, works fine for 5-6 months then it trips. Fine for a week then it trips\u2026 then a day, then twice a day then it won\u2019t reset at all.\n\nIt\u2019s square d home line. After running through all these items, I can only assume the elements of being in a barn are making the breaker fail? I don\u2019t know. 1 time over the past 1.5 years the car noted a ground fault issue but it\u2019s not been consistent.\n\nAny ideas? ",
+    "score": 46,
+    "num_comments": 117,
+    "created_utc": 1765837841,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1l9mgr4",
+    "title": "What kind of watch do you wear to work?",
+    "selftext": "Disclaimer cause I know a lot of guys are really into watches, I am NOT a big watch guy.\n\nI usually wear a crappy old Fitbit to work because it's not huge, it tracks steps and I can program alarms into it for breaks and other things.\n\n I've been happy with it for 4+ years but all the abuse it suffers on the job has finally caught up with it, and I need a replacement. \n\nSo I want to know if y'all had any recommendations on watches that can handle being on the job every day.\n\nThanks",
+    "score": 58,
+    "num_comments": 204,
+    "created_utc": 1749734850,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1skub47",
+    "title": "Is He an Electrician?",
+    "selftext": "I work at a facility as a maintenance electrician. Today a department head from another department called in an outside electrician to troubleshoot a problem. I\u2019m intentionally not including many details because I don\u2019t want to create a bias. There is a lot of repair work on this property of very dubious quality, so I\u2019m pretty cautious. So I approached the other electrician and introduced myself as the house electrician. He told me he was an electrician, so I asked him what article in the code book covered grounding and bonding. He did not know the answer, he said he \u201chasn\u2019t studied that code stuff in a long time.\u201d\n\nFrom this information, was I talking to an electrician?",
+    "score": 0,
+    "num_comments": 76,
+    "created_utc": 1776129681,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1mwq23z",
+    "title": "\ud83d\udc49 What\u2019s the Smallest Mistake That Still Failed Inspection?",
+    "selftext": "Sometimes it\u2019s not the big wiring errors that fail inspection, but the smallest details.\n\nFrom your experience:\n\t\u2022\tWhat\u2019s the most \u201cminor\u201d thing you\u2019ve seen cause a failed inspection?\n\t\u2022\tDid it make sense in hindsight, or did it feel nit-picky?\n\t\u2022\tHave inspectors in your area gotten stricter over the past few years?\n\nAlways interesting to hear what gets flagged the most in different regions.\n",
+    "score": 37,
+    "num_comments": 159,
+    "created_utc": 1755817211,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rttdj4",
+    "title": "How long do you actually take on a standard service change",
+    "selftext": "Saw the post about the 200 amp service and got me thinking. I see guys online claiming they knock out a full service change in a few hours solo. Around here with the local utility requirements and having to often fix previous handyman work in the panel it usually takes me and one other guy a full day easy. Mast, meter can, new panel, bonds, and making everything safe and code compliant. Just curious what the real world average is for everyone. Not trying to start a dick measuring contest, just want to know if I'm working too slow or if the internet is just full of lies again. Also how much does the time of year and digging conditions factor into your estimates.",
+    "score": 45,
+    "num_comments": 66,
+    "created_utc": 1773518694,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1qewo3d",
+    "title": "Useless Apprentice to Knowledgeable Journeyman",
+    "selftext": "Does anyone have the experience of being the useless apprentice and becoming a very good journeyman? Or working with a useless apprentice who turned out to be a really good journeyman? \n\nI recently made the jump from a small residential shop to a small industrial shop that offered more hours and a few dollars more. I know I didn't even hit 2,000 working hours throughout the 16 months I was with the residential company. Apprentices weren't to be sent on service calls so a lot of days there would be no work or I'd be doing yard work around the shop or stripping scrap wire. \n\nI'm still very green to say the least. I'm also extremely anxious about making mistakes/looking stupid especially when my journeyman has eyes on me. The other day I knew the journeyman was watching me put a strut clip on some pipe that was being run horizontal, I was standing above the clip and he had to tell me to screw the nut the other way. I already made similar mistakes with him watching just from the pressure of not looking stupid a bunch of times. \n\nHave you experienced an apprentice going from screwing things the wrong way to becoming a journeyman who knew his stuff? I enjoy electrical work, don't mind being out in the elements so far, and I show up everyday on time and stay off my phone. I want to get good at this job, I'm a hands on learner. I just hope they give me enough of a leash to get enough hands on experience to be useful. ",
+    "score": 65,
+    "num_comments": 79,
+    "created_utc": 1768607675,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1s9lpwe",
+    "title": "Need advice, non-union jman",
+    "selftext": "I am a journeyman electrician elgible for masters in June. I just got promoted to foreman, getting paid $35/hr, laying out tilt walls for most likely the next year straight on a huge job.\n\nPouring over prints, marking up tilt wall sheets, and then having to go out and lead others and have tools on installing our boxes. I feel at a loss because now I feel like I'm doing 2 people's jobs for that pay.\n\nAny advice is appreciated.\n\nFor reference I am in TX, non union, went the IEC route",
+    "score": 11,
+    "num_comments": 66,
+    "created_utc": 1775052715,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rho98w",
+    "title": "Do you know how to bend Conduit as a Residential Electrician\u2026",
+    "selftext": "And if so, what city do you work in? I find that a lot of new construction Electrical guys don\u2019t know how to bend conduit. For those you that are pretty good, where did y\u2019all learn to bend, who taught you etc. Not everybody has opportunity to take courses or a class.  But those of you learning how to bend on your own, what\u2019s your resource? Youtube? Commercial Electricians welcomed in the chat :) \n\nHard to find a good video these days \n\nhttps://youtu.be/A3eXalnAfTw?si=CYqVU6YNQ4cSZhBq",
+    "score": 47,
+    "num_comments": 67,
+    "created_utc": 1772340741,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rlxiwy",
+    "title": "220V single phase in US: help with tripping Italian pasta extruder",
+    "selftext": "Boss said to wire up a 240 outlet for it. Customer went to use this machine and works fine on the lower speeds it's only on the high speed with pasta in it that it trips the breaker.\n\nComing back today for a troubleshoot we noticed the nameplate says it needs 220V SINGLE PHASE is there some sort of buck and boost transformer or something we can use?\n\n Trying to show up tomorrow with a bomber solution for the jman \ud83d\ude0e",
+    "score": 21,
+    "num_comments": 70,
+    "created_utc": 1772753539,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1qgrz8u",
+    "title": "MandatoryUnpaid safety meeting",
+    "selftext": "So I\u2019m going into 6 months working for this current company that I\u2019m at now and I\u2019ve been informed by my coworkers that we have a mandatory safety meeting coming up on a Saturday soon (we work Monday through Friday) and that we won\u2019t be paid for it. This is to accrue the hours we need to renew our licenses supposedly. Can my employer legally mandate a meeting outside normal business hours and not pay us for it? ",
+    "score": 34,
+    "num_comments": 80,
+    "created_utc": 1768790158,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1qbusgg",
+    "title": "I\u2019m bored of printing toys. What useful stuff/tools do you guys actually need?",
+    "selftext": "Hey everyone,\n\nI\u2019ve got a pretty solid 3D printer at home (Bambu P1S) that can handle strong materials like ABS/ASA that won't melt in a hot van.\n\nI'm tired of printing useless trinkets and want to make something actually useful for people who work with their hands.\n\nIs there a specific clip, holder, or tool organizer that you wish you had? Maybe something that breaks all the time or just doesn't exist?\n\nJust looking for ideas to mess around with in CAD. Let me know if you have any annoyances I could try to fix.",
+    "score": 21,
+    "num_comments": 81,
+    "created_utc": 1768319263,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rq35m1",
+    "title": "Master Not Giving Credit for Hours Worked.",
+    "selftext": "Hi everyone. I have a pretty unique situation and I would love any advice anyone has to give. \n\nI have been an NH apprentice since 2019, I started out working part time for a master who owned the company (one man crew). \n\nI was 1099ed, I didn't understand that this was illegal until I decided to leave.\n\nI left that guy 2 years ago and now I need him to sign off on the first half of my hours and his response is that he wants me to pay him $500. \n\nI have almost every check he gave me, so I plan to use those to prove hours if it comes down to that.\n\nThere is also some backstory here that needs to be mentioned. During covid he gave me a broken van (needed transmission). I fixed it and sold it when the prices of vans were through the roof. This pissed him off greatly. He also only paid for one year of my schooling (out of 4).\n\nI also had him sign off on some paperwork when I left, however I missed one of the most important sheets and he is saying to use the paperwork he already signed... Not going to work...\n\nI think he feels like he doesn't owe me anything, but I earned these hours.\n\nLeaving that guy was the best decision I ever made",
+    "score": 36,
+    "num_comments": 56,
+    "created_utc": 1773163358,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1q3hqet",
+    "title": "Broken Jman",
+    "selftext": "Hello everyone. I\u2019m a Jman, had a good run with my career path! Unfortunately, as many know all too well, not all of us can keep at it forever. Got diagnosed many years ago with carpal tunnel. Worked for as long as I could until the pain became unbearable. Went to doctors, added severe vibration syndrome to the diagnosis and I\u2019ve been advised to change my career. I\u2019m looking at engineering (ya I know, have a laugh)\n\nHad anyone else done this? ",
+    "score": 77,
+    "num_comments": 64,
+    "created_utc": 1767505053,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1q9y4wk",
+    "title": "what part of the job do you actually enjoy the most",
+    "selftext": "testing, fault finding, rewires, certs, or something else",
+    "score": 16,
+    "num_comments": 77,
+    "created_utc": 1768134410,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1qp8xfd",
+    "title": "Wrist pain",
+    "selftext": "I just started as an electrical apprentice about a month ago and since like the first week I\u2019ve had bad wrist pain. I think it\u2019s from straining my wrist from squeezing my dikes with like 110% effort to cut MC. Now it hurts to grab anything. Has anyone experienced this or know what my issue may be and or how to fix it? I\u2019ve been taking ibuprofen for the pain abut that\u2019s not really solving the issue\n\nTL:DR Wrist pain please help\n\nEdit: Thanks everyone for taking the time to post your advice! My wrist appreciates it :)",
+    "score": 16,
+    "num_comments": 72,
+    "created_utc": 1769599996,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1prmbn3",
+    "title": "What\u2019s your thoughts on being the punch list guy?",
+    "selftext": "Do you view it as good or bad? I\u2019ve been about 4-5 jobs in a row now where I get kept as the punchlist guy. Initially I viewed as a good thing (I still do, I guess) thinking maybe I was being viewed competent and smart enough to get the left overs and troubleshooting done quick and efficiently. On the other hand, I wonder if I\u2019m just not doing a good enough job on the other end during installation. I feel like I\u2019m psyching myself out and just wondering what everyone else thinks about it",
+    "score": 94,
+    "num_comments": 63,
+    "created_utc": 1766258343,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1razk9g",
+    "title": "Utility rejecting based on meter height",
+    "selftext": "I am a recent Journeyman. I have worked on meters but never installed a fresh meter stack for a new build in WA state. My boss said that we are putting them at 3' to center of the glass. I install it but I sort of drifted on the measurement and by the time I caught it I figured it wasn't a big deal because I thought the purpose was just to be center of the room (9 ft ceiling, 3' to bottom glass and 6' to top glass sounds center). By the end of the day when it is all installed, I learn that the 3' to bottom and 6' to top measurement is due to the utility's requirement. I ended up a somewhere between 35 1/2\" and  35 3/4\" depending on what part of the concrete you measure from (it's a 50 meter room, we have about 12 more of these to do). My boss is halfway wanting to redo it over the 1/2\" because he is afraid the utility (PSE) will reject it.\n\n  \nI am definitely at fault here, I was told 3', I was a half inch off, that's not a journey level installation. But before we waste time torquing everything up I just wanted advice on the likelihood of a meterstack being rejected by the utility over a 1/2\". Has anyone had this experience. The closest I've heard of is installing a 6 stack when utility only allows for a 5 stack.\n\n\n\n ",
+    "score": 39,
+    "num_comments": 57,
+    "created_utc": 1771700788,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1qpdjwr",
+    "title": "Replacing Service &amp; Panel by yourself",
+    "selftext": "I keep seeing fellow electricians bragging about installing service entrances and upgrading breaker panels by themselves. \n\nI mostly worked commercial maintenance  and have replaced a few small fuse boxes by myself. Is it actually possible to install a service mast by yourself or some tutorial I\u2019m unfamiliar with? \n\nI mostly do smaller repairs and avoid calls that require 2 people or more. ",
+    "score": 2,
+    "num_comments": 74,
+    "created_utc": 1769612183,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1o7ih64",
+    "title": "Some clients are hilarious",
+    "selftext": "Had a guy call me to do a walk through. A guy wired up his shop turning it into a small kitchen and bedroom area. It was all already boarded except the ceiling and wanted me to do the lights and a few other odds and ends around the place. \n\nHe was adamant that I get a permit and sign off on the work the other guy did, wanted to pay me 40 an hour cash because that's what the last guy charged, and when I said I'd have to call for an inspection, freaked out and didn't want any inspectors coming by. So... All the red flags. I said I'd think about it, got out of there and texted him later that I would pass. He screamed at me and said that I didn't know how much work I just lost...hahahahaha sure bud. \n\nCrazy how some people's brains just don't work. ",
+    "score": 323,
+    "num_comments": 39,
+    "created_utc": 1760551676,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1ryg333",
+    "title": "A short story about a long night",
+    "selftext": "Small lumber mill, I'm the only electrician on this shift. Operator calls and says a log conveyor belt faulted, 15 min before end of day. VFD says Over Current fault. Hopefully it's a mechanical problem so I can pass it off to the millwrights and clock out on time (he he).   \nLook around for any obvious problems, but I don't see any. Open the disconnect and check motor phases and meg the circuit. Everything looks good. Maybe bad bearing somewhere, or the gearbox took a shit? So I uncouple the motor (15HP 3ph 480V) from the gearbox and spin each by hand. Both turn easy and feel fine. So I run the motor with no load attached to test it... immediate over current fault... damn.   \nAt this point it's the electrician's problem, so everyone else goes home and I'm left to figure this out myself. So with the motor still disconnected, I spin it by hand with the megger attached to verify it's definitely, for sure, absolutely not a problem with the motor itself. Looks good, must be a wiring issue then. There's a few feet of SOOW cord going to the motor that looks suspicious. So I change that out and wire up the motor again. Same problem, immediate over current fault.  \nMaybe there is a tiny knick in the wire insulation somewhere in the conduit that isn't showing with my meter but only develops when current is applied? I start at the disconnect switch and test the line side of the switch...looks good. Load side of the switch (with the motor wired up)...dead short to ground. Weird that it megged fine a few minutes ago, but maybe it's an intermittent problem.  \nOk, we already checked the motor, and that is for sure, definitely good, right? And the SO cord is brand new, so it MUST be somewhere inside that old busted up conduit where there is already a wirenut splice in one of the tees. It's only 60 or 70 feet, so I'll just have to pull in new 10AWG THHN up to the disconnect switch and call it a day.  \nAfter a couple hours of going up and down in a manlift, climbing around machinery, going back and forth to untangle wire spools, dropping tools and a lot of cursing, the new wires are installed and terminated. It tests good from the disconnect, so I'm happy with my work. I'll be a little late for dinner, but no big deal. I'll just go test it and make sure I got rotation correct... shit... still over current fault. Nothing left to change but the motor I guess...\n\nConclusion:  \n  \nSo after a long night, the next day I open up the motor on my workbench to take a look. It seems the rotor fins ever-so-slightly contacted some of the windings. You wouldn't even notice it if you weren't looking for it, the insulating paint is barely scratched. Turns out this motor had the bearings replaced and was installed just a few weeks ago. Maybe they were improperly installed or slightly out of spec or prematurely wore down. Maybe a single rotor fin got imperceptibly bent or warped from heat to barely graze the windings? I don't know.  \nWhatever the case, it resulted in me having a shitty late night and questioning my sanity. A little over a decade working industrial electrical, and this is the first time I have seen a problem like this not be diagnosed with basic troubleshooting. I guess the moral of the story is: your meter only gives you a glimpse of the picture, not the whole thing.\n\n/End rant mode",
+    "score": 129,
+    "num_comments": 33,
+    "created_utc": 1773962929,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rmy5bb",
+    "title": "Insane job requirements",
+    "selftext": "As an electrician who holds two contractor licenses and a Michigan journeyman card I'm finding the job requirements for many electrical positions seem to be excessive for what it is. This is for a service electrician that reads like they want a service electrician and project manager. Starting pay is 22 an hour and seems very low for what they want this person to do. They're dangling overtime as well which I don't count as a perk.\n\nTechnical Skills:\n\nRead and accurately interpret electrical construction drawings, schematics, blueprints, and ladder logic diagrams.\n\nTerminate cables, install, and troubleshoot control wiring.\n\nAccurately bend and install all types of conduit.\n\nPossess knowledge of wire pulls, concrete, masonry, metals, and wood construction methods.\n\nPerform terminations/splicing of high voltage and fiber optic cables.\n\nUse electrical formulas for accurate calculations.\n\nProject Management:\n\nPlan, schedule, and organize tasks efficiently to meet deadlines.\n\nCoordinate activities with assigned crew to meet project objectives.\n\nAssign field employees to project tasks based on individual ability and experience.\n\nMonitor materials, tools, and equipment for accurate ordering or scheduling.",
+    "score": 37,
+    "num_comments": 51,
+    "created_utc": 1772851375,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1qc3v60",
+    "title": "Any effective Approaches for Working With a Difficult Journeyman?",
+    "selftext": "Context: I'm 27 and six months into my apprenticeship after changing careers. The journeyman I work under has been making things really difficult. Almost everything I do gets criticised, and it often feels like he\u2019s trying to provoke a reaction, so I usually just bite my tongue and keep working.\n\nEven when I anticipate tools correctly, he\u2019ll still find fault\u2014like today clicking his fingers and holding his hand out without saying anything, then arguing about how I handed him the tool wrong. Then later that day when we were grabbing tools from the van, he questioned why I was \u201calways right next to him when walking,\u201d even though I was just trying to help bring some tools in. \n\nHe\u2019s apologised a few times and admits he\u2019s being a jerk, but the behaviour always comes back, especially during more physical or tedious jobs. It\u2019s made it hard to enjoy work, but because of my age being older I know how lucky I am to have this apprenticeship as I found it near impossible to get any word back from companies. \n\nSorry, I just needed to vent. Curious is this normally a common issue you faced during your training stage? ",
+    "score": 34,
+    "num_comments": 61,
+    "created_utc": 1768339537,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1sd19mp",
+    "title": "are low-cost tools reliable?",
+    "selftext": "Hi everyone,\n\nI just finalized my electrician training and am in the process of purchasing the necessary tools. While browsing, I came across some budget-friendly options for screwdrivers, scissors, and other tools on sites like Amazon, eBay, Alibaba, and similar platforms. I\u2019m specifically looking for tools suitable for typical installations.\n\nBefore I buy, I wanted to get some advice from experienced electricians: are these cheaper tools actually effective and safe for regular use, or is it better to spend more on professional-grade brands?\n\nAny recommendations for reliable yet reasonably priced screwdrivers, scissors, or tool sets would be greatly appreciated. Safety and durability are my main concerns, but I\u2019d like to keep costs manageable as I\u2019m just starting out.\n\nThanks in advance for your guidance!",
+    "score": 3,
+    "num_comments": 45,
+    "created_utc": 1775388617,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1s06bbg",
+    "title": "Canadian Sparkies",
+    "selftext": "Anyone used the Canada Electricians Calculator app before? I hate using the code book and ChatGPT keeps giving me the wrong answers. \n\nhttps://preview.redd.it/hgu5j982ihqg1.png?width=1320&amp;format=png&amp;auto=webp&amp;s=33112b797307d04da13ae68997afcaa4e7cb063d\n\n",
+    "score": 0,
+    "num_comments": 48,
+    "created_utc": 1774136344,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1keq4vk",
+    "title": "What are some good industries to transition into from being a electrician",
+    "selftext": "I lost interest in commercial and industrial work. I've been looking into PLC roles, but wondering if anyone knows of other industries that could be a good pivot.",
+    "score": 85,
+    "num_comments": 108,
+    "created_utc": 1746381772,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1llabvh",
+    "title": "There are idiots walking among us.",
+    "selftext": "Got a service call from one of my property managers today. When office called to make the appt the tenant repeatedly stated \u201cIM AN ELECTRICIAN AND I KNOW WHATS WRONG\u201d so I knew it was gonna be wild but it exceeded all expectations.\nCall was for a tripping combo breaker so I told him we\u2019d need to check the circuit out so he needed to move the furniture so we could access the devices. He had already changed over to a standard breaker so he told me he \u201calready fixed it\u201d. I open the panel and he had put a 15amp general circuit on a standard 20. It was ungrounded wire with 3 prong recs so I tried to explain to him that we needed to put it back and he was adamant that \u201conly bedrooms need to be on them breakers.\u201d He kept pointing to the logo on his shirt like it was a fucking badge. \nHe also explained to me that his split bus panel was gonna blow up all of his expensive DJ gear and video games and that it\u2019s ridiculous that his living room and 2 bedrooms are on the same circuit. (House built in 1955). \nI just stood there and politely nodded at everything g he was saying while my helper changed the circuit to a standard 15 breaker. \nI RUN A VAN ON RESTAURANT BUILDS BRO. THIS SHIT NEED TO BE MADE RIHHT. \nWe walked out and I called the property manager and told him good luck with this one. ",
+    "score": 278,
+    "num_comments": 51,
+    "created_utc": 1750968708,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1p2wzte",
+    "title": "Lost.",
+    "selftext": "Long time no post. \n\nBeen in the trade for a while. Journeyman. For no reason (live in Florida. Work mostly residential service, remodels, rewires).\n\nI\u2019m starting to get old. I\u2019m struggling in life generally. I got into the trade coming out of alcoholism as a fresh start. I was excited and hopeful I could be a better person and have some stability. After about a year I figured which direction I\u2019d take this professionally and found certain things in the trade as deeply interesting. Hoped I\u2019d get into that area and continue to build something. Build myself I guess in some ways.\n\nStarted in resi new construction. Transitioned to service a couple years later. Went to school, got my card, did a couple small commercial remodel jobs. But mostly house rewires and kitchen/bathroom remodels.\n\nMy pay is stagnant. I\u2019m learning nothing. I\u2019m not expanding myself on any direction. I love theory and troubleshooting but 99% of the issues I come across is a tripped GFI or lost neutral. No theory needed. \n\nI don\u2019t know if I feel trapped or lost. I want to break out of this cycle and move in a different direction. I feel like once you\u2019ve done resi as long as I have, even if you go to a company that does commercial, you\u2019ll be the resi guy whenever a fart fan needs to be changed. I\u2019m tired of tight attics and disgusting crawl spaces. I guess I\u2019m looking for advice on how to break out of the resi mold that\u2019s been set for me and into something I\u2019d like to mold myself into. \n\nAny advice on mental health would be appreciate as well. \n\n(I can\u2019t leave Florida til I make enough money to not be paycheck to paycheck).\n\nTL:DR, I\u2019m getting old and depressed and need a change from resi to something commercial to start in the right direction in order to get out of a rut. Looking for advice on that and mental health if possible.",
+    "score": 14,
+    "num_comments": 72,
+    "created_utc": 1763727080,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1ppdjql",
+    "title": "Feel like I am doing the apprentice working under me a disservice",
+    "selftext": "Long story short im the guy at my company that handles service work and complex troubleshooting.  But I have green  help that has never done this kind of work before and the kid does good especially when we are working on a multi-day job he can do the same thing over and over again but it seems like certain things dont stick and I think its because he got stuck with me day one and never got that repetition to lock down the basics  instead of the random curve balls I deal with. I want to keep teaching him but i think he needs some new construction repetition how would you approach the company owner about that",
+    "score": 68,
+    "num_comments": 50,
+    "created_utc": 1766019433,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1ra0chg",
+    "title": "How do I become a good Foreman?",
+    "selftext": "Hi guys. I have been a Licensed Journeyman Electrician for 4 years now, and I have been in the trade for 11 years. My project manager brought up to my attention that him and the owner of the company want me to be the sole foreman of a commercial project consisting of approximately 10+ people. \n\nWe are a Union Contractor and I have been with this Contractor for 2 years. We are around 40-70 Electricians at our company depending on work available. My question for you guys is how to I go from being a Journeyman to a great foreman. I have never been in charge of more than an apprentice and I have been told by many people that I am very difficult to work with but I am truely a good electrician. I have been told by my project managers that I am very knowledgeable of code, I have expierience in a lot of different areas of the trade (Hospital grade and MRI/X-Ray, Access Control and Security, Fire Alarm, General Power and switchgear, traffic signal, residential, CAT 6, and I have been told I have excellent organizational skills as far as timesheets, blueprints, email, supply house tickets, ect. \n\nSo my downfalls are: \n\n\\-very difficult to work with\n\n\\-little to no expierience with managing workers\n\nHow do I become a good leader without getting \u201claid back/lazy\u201d of being a foreman, how do I manage a group of people to be productive everyday, and any other tips on being a good foreman?\n\nAnd how do I gain the respect of my fellow union electricians even though I did not do their apprenticeship program (i worked non union for 8 years prior to joining)",
+    "score": 28,
+    "num_comments": 43,
+    "created_utc": 1771605658,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1ms1u65",
+    "title": "Near miss. Don\u2019t be afraid to speak up",
+    "selftext": "I\u2019m writing this both to hold myself accountable and to share in the hope that it keeps others safe. \n\nI work with inverters that connect at 34.5kv on the AC side and 1.5kv on the DC side. Yesterday I accompanied an electrical crew while they LOTOed so that I could assist them in reconnecting a transformer. There were errors in their LOTO process in the way they disconnect power, type of meter used, level of arc flash protection, and testing location to verify it was dead. I had questioned their process, but when faced with an electrical foreman that was confidently wrong, his crew, and a process that had been established by their company, I second guessed myself. Fortunately someone less prone to falling into groupthink than me spoke up. \n\nWhile it was, in fact, de-energized, if their error prone process had been allowed to continue, when the inverters get connected to the substation transformer there is a 100% chance they would have caused a fatality because they were locking out and testing in the wrong location. There are no second chances at 34.5kv. \n\nIt\u2019s way too easy to follow the group and go along with something stupid. Trusting your gut and your knowledge and speaking up when something is wrong is hard, especially when you\u2019re outnumbered and the people that should know better are confidently wrong. \n\nThis is a reminder to myself and to everyone in the trade to do better. To speak up. To make sure everyone goes home at the end of the day. ",
+    "score": 289,
+    "num_comments": 37,
+    "created_utc": 1755365407,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1rvqz82",
+    "title": "Should I jump ship to another shop?",
+    "selftext": "Been with this wormy shop since Oct. of last year. It was pretty smooth sailing for a while since I had a jman with me at all times actually teaching me. Fast forward to now, we\u2019re on a big school job that we\u2019ll be on for the foreseeable future and now it\u2019s 1 jman and 5 apprentices (including me). I don\u2019t really learn anymore and most of my day is running mc, or cutting in receps and switches. If not that then fixing the mistakes of other green guys. I teach the other apprentices also. I\u2019m thinking about jumping ship because my learning became pretty stagnant but boss raised me from $18 to $19 (without me asking) and now I\u2019m about to get a take home van as an extra perk so I don\u2019t have to wear down my car anymore. Seems like a pretty sweet deal to me but should I value my learning more than the perks?\n\nTLDR: My shop stopped taking time to teach me and now I\u2019m(first year apprentice) teaching the green guys. Got a raise from $18 to $19 and a company van. Leave for a shop that\u2019ll teach me or stick it out? I\u2019m in NJ btw\n\nBefore anyone says join the IBEW: I killed the interview I had with my local last month and got onto the ranking list.",
+    "score": 9,
+    "num_comments": 39,
+    "created_utc": 1773705902,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1ndsl0c",
+    "title": "Update: Last-Ditch Appeal Stops Dumb New Electric Code From Ruining EV Charging",
+    "selftext": "Yeah, **Motor Trend Magazine** for a NFPA National Electric Code issue?  \nYep.  Read it down the technical nitty gritty, and pull out your code book and AWG feeler gauges:\n\n[https://www.motortrend.com/news/national-electric-code-revision-threatens-ev-charging](https://www.motortrend.com/news/national-electric-code-revision-threatens-ev-charging)\n\n**Update:** *In June 2025, the National Fire Protection Association approved the 2026 National Electric Code with a new requirement to use ground-fault circuit-interrupting breakers on all electric-vehicle charging equipment, including hardwired installations. A GFCI breaker can interfere with the built-in protections of an EV charger, causing the circuit breaker to unnecessarily trip and interrupt charging.*\n\nThis was reversed on second appeal.|\n\n(It took SAE, Honda, Rivian, Chargepoint, Emporia, the California Energy Commission, the EDTA and quite a few more to get the appeal done). ",
+    "score": 248,
+    "num_comments": 37,
+    "created_utc": 1757544196,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1py7zg6",
+    "title": "How the hell do you guys navigate blueprints?",
+    "selftext": "I\u2019m roughly a year and a half in total, I\u2019m on a job site with just me and 3 foreman. I\u2019m lucky enough to be working a 4 man crew with me and 3 foreman\u2019s and I constantly have to ask them questions on where I\u2019m running wire. \n\nI know if he doesn\u2019t know off the top of his head he\u2019s going to look at the print and then in a few seconds can tell me exactly where. It\u2019s 70% of the time not a problem but sometimes it can get really hectic. So I\u2019m trying to get better with understanding but it\u2019s complex. I understand some symbols but I never know which print to look at, and where my feed is and where it stops. I also cant tell what wire gauge it is either. \n\nWhat tips and tricks do you guys have for apprentices getting better with prints? \n\n(This might help, I\u2019m working on a warehouse. We\u2019re redoing the whole building. There\u2019s the fire alarm prints, demo, plumbing, electrical etc the whole 9.)",
+    "score": 28,
+    "num_comments": 52,
+    "created_utc": 1766969763,
+    "subreddit": "electricians",
+    "top_comment": ""
+  },
+  {
+    "id": "1ohyet1",
+    "title": "I need help",
+    "selftext": "I am a female electrician apprentice and im really overwhelmed. I feel this is something I have to do because of today's economy. I will never survive student debt If I were to go to school. I have been blessed with an amazing opportunity to be mentored. Recently I have felt like im not smart or strong enough for this job, im super green, I have not even got to the first book yet. I watch my mentor put panels together and fix expensive equipment and I worry I will make a huge mistake one day. I feel disconnected from my personal life as I dont have as much time to myself as I use to. Im looking for positive opinions and tips. I really dont need to hear negative feedback as I feel i have no choice but to continue. My mentor has already bought me expensive equipment and he expects me to take over his buisness one day. He recently told me that he only charges 70 per hour and that his journeyman wife makes 25 an hour. This made me feel like it wasn't worth it, as I had it in my head that I would be making double this once I rose higher. Is this pay normal? I am also worried that I would struggle to find work since it is a male dominated field. Thank you!!! \n\nEDIT: he is not hesitant to buy me books, I have only just started and am still in the process of receiving the books, sorry if that was unclear :)",
+    "score": 13,
+    "num_comments": 69,
+    "created_utc": 1761619788,
+    "subreddit": "electricians",
+    "top_comment": ""
+  }
+]

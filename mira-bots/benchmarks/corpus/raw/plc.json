@@ -1,0 +1,1552 @@
+[
+  {
+    "id": "1stksm7",
+    "title": "My manager is sending me to diagnose a plc fault, i have zero experience",
+    "selftext": "Hello everyone. I just started working at this huge manufacturing group of companies and currently I am the only \u201cAutomation Engineer\u201d in the group. Mind you this is my first actual job and i just graduated mechatronic engineering. I have little experience dealing with tia portal and simple ladder diagrams with little to no room for error because most of what i trained on was training stations provided by the uni. \n\nI get a call today from my manager that am going solo to one of the plants to diagnose a \u201cplc fault\u201d. No mention of plc brand or model but i am assuming its a simens s7-300 as I had seen most of the control panels in my current plant use them. Mind you I started literally three days ago, had no Engineer even contact me. All my contact was with electricians that had no idea about programming or PLC software or diagnostics.\n\nSo this is a cry for help lol. How do i crash course fault detection and plc diagnostics. I am familiar with the lingo and if i want to rate myself out of ten in the automation field i would do 3. \n\nPlease advise and sorry for bad English ",
+    "score": 140,
+    "num_comments": 111,
+    "created_utc": 1776955425,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1ma6674",
+    "title": "How to politely ask for space to troubleshoot?",
+    "selftext": "I have this new job and I new to the field. I'm used to working at my desk or remotely, even some times near a machine, and having time and space to solve bugs or fix stuff when issues arise.\n\nHere, someone will tag me in a chat group for a \"controls issue.\" I walk over to the line and I am immediately surrounded. In the best case, it's one person, in the worst, it's many people, including managers, asking what I'm doing and why.\n\nTo fix things, I need to understand how they work by running tests, reading the logic, and figuring stuff out.\n\nIf I have someone next to me watching everything I'm doing and asking for constant updates, how can they expect me to fix the problem? They don't give me a block of time to think, and yet they still say, \"I don't mean to rush you, but...\"\n\nSo, how do you deal with this when you're new and take more time than the guys who has been around way longer and knows the code and the line of production way better than you?",
+    "score": 145,
+    "num_comments": 181,
+    "created_utc": 1753568802,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qgrota",
+    "title": "How do you quickly tell if a fault is electrical or mechanical?",
+    "selftext": "I try to use senses first:\n\nListen \u2013 weird noises?  \nLook \u2013 motion issues?  \nSmell \u2013 burnt components?\n\nCurious how you guys separate them fast.",
+    "score": 45,
+    "num_comments": 74,
+    "created_utc": 1768789334,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rwdzn2",
+    "title": "Quickest fault fix?",
+    "selftext": "Today I was added to a call in which the engineer onsite could not get a VSD to run , I looked at the drive and said press the LOC / REM button, toggled the pump on the HMI to run, low and behold the pump starts straight away. The whole situation to 8seconds before it was fixed\u2026. I\u2019m not here to make fun of the guy, we all miss simple faults but I\u2019m curious, what\u2019s your quickest fault fix?",
+    "score": 30,
+    "num_comments": 53,
+    "created_utc": 1773770206,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1poq764",
+    "title": "What do you do for PLC troubleshooting workflow when a running plant suddenly stops?",
+    "selftext": "I've spent enough time around live plants to know one truth: PLCs rarely fail in isolation. These robust industrial computers are built to run assembly lines, robot cells and continuous processes for years, but when something trips, the pressure is immediate and the clock becomes unforgiving.\n\nI'm curious how this community performs error diagnosis in a real production environment.   \n  \nDo you start with PLC logic, or do you always validate field signals and power first?\n\nHow much do you rely on PLC diagnostics, fault buffers and trending versus old fashioned I/O forcing and multimeter controls?\n\nIn legacy systems, how do you balance \"don't touch what works\" with making the logic for the next event explicit?\n\nI am asking from a practical point of view, not a theoretical point of view. Plants, people and processes are messy, and the best solutions usually come from experience rather than manuals. Strong opinions welcome - how things have traditionally been done has value, especially when uptime and safety are at stake.",
+    "score": 61,
+    "num_comments": 67,
+    "created_utc": 1765955393,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rgcqf1",
+    "title": "What multimeter do you suggest for PLC and instrumentation troubleshooting?",
+    "selftext": "I am a chemical engineer and I do a lot of field work at different sites. Recently I\u2019ve gotten more into PLCs and troubleshooting equipment. I told my boss I need a multimeter for troubleshooting, but they are cheap and kind of making me make the case to get one (annoying lol). \n\nWhat is the cheapest or most basic multimeter I could get that would be capable of reading 4-20 mA, generating 4-20 mA, and can also read 0-24 V dc? Bonus if it could generate 0-24 V because we have a few pieces of equipment that use that for signaling but it\u2019s not required as the vast majority use 4-20 mA. I was looking at the FLUKE 773 which is super nice but so expensive. I think my boss was imaging more in the $500-$800 range. \n\nAre there any other features I should look out for that you would recommend? I mostly look at flow meters, TSS/pH analyzers, valve positioners, pressure switches, tank level sensors, etc. and then the PLC I/O cards and check for signal accuracy.",
+    "score": 36,
+    "num_comments": 46,
+    "created_utc": 1772212619,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1snlhij",
+    "title": "Long post about a problem I can't solve. Please help me with ideas to troubleshoot, because I'm stumped.",
+    "selftext": "Hi, maybe this is a very specific question to ask and I apologize if that is the case. I don't want you guys to do my work for me, I'm just stumped, and maybe a fresh mind completely removed from the problem can help me.\n\nI'm trying to make a sorting machine work. Bags get in through a conveyor belt, a Cognex scanner reads (or tries to, but that's a separate issue) a barcode, then the PLC consults a database, then (depending on the DB's response) that bag is labeled with a new barcode. It goes through an empty conveyor, then to another where the sorting actuators are. Physically, it's a U-turn, but I don't think that matters. It's all implemented with a Rockwell ControlLogix 5380, everything is IO-Link and connected via EthernetIP. Also there's a FactoryTalk Optix application.\n\nNow, I did not participate in the making of this machine. I got here maybe a month ago and was just got shoved into trying to make it work. I know that it's not ideal that the reading, consulting and labeling all happens in the same conveyor belt, which is less than 3 meters long, but space constraints happened.\n\nNow to the topic at hand.\n\nThe way it's programmed, there's a structure named \"Bag\" which contains all the data needed for every bag, and maybe more. Strings, integers, some booleans used as flags, DateTime objects to be used for traceability, etc. I don't have it in front of me right now and I don't remember the specific size of it in bytes, but will edit the post whenever I can.\n\nThen, a queue of 10 \"bags\" is created for **every** step of the process, which looks something like this:\n\nBAG IN -&gt; READ_BAGS_QUEUE -&gt; CONSULTED_BAGS_QUEUE -&gt; LABELED_BAGS_QUEUE -&gt; 1ST_TURN_QUEUE -&gt; TRANSITION_BELT_QUEUE -&gt; 2ND_CURVE_QUEUE -&gt; 1st...nth_SORTING_STATION_QUEUE\n\nAt the end it hops from station to station until it reaches the right one, and it's removed from its queue to be moved to the container's queue in which it was sorted.\n\nLogically, this makes all the sense in the world and is very neat. In every part of the process, it looks at the very first bag of its own queue, does what it must, then moves it to the queue of the next part. In practice, though, it is a nightmare to troubleshoot. At least for me, given that it's the first time I deal with queues (I know they are quite common, I'm just not very experienced yet).\n\nThere are only 2 decisions: where to sort, and whether to print a label or not. It mostly works fine, but once in a while it will start to mess it all up, and I can't figure out why. For example:\n\n- Bags that were to be labeled weren't, but were sorted right so the system knew what type of bag they were. At first, we thought it was a problem with the timings of the communication with the printer, so we added a sensor to detect when the label is printed, and if it doesn't it stops the conveyor. For the last two weeks this has worked really well, until today when again a few bags weren't printed and the alarm didn't come through.\n\n- Bags that were labeled were wrongly sorted. Probably more bags are being sorted wrong, but we can only detect those that are with a custom label. This is a traceability nightmare. This is where I am mostly stuck at. The decision to whether kick a bag into the current station or not is simple: it compares two numbers (sort destiny vs station type). It needs to do it this way because it is possible to set up more than one station of the same type, for volume reasons. It first fills up the first station of a given type, and when it's full it switches to the next one of the same type, and then it rotates. That part works well, but I digress. What's even worse, if you check that wrongly sorted bag in to the system, it tells you that it was sorted into $ContainerID$, which matches the right container, but not the one it was actually sorted in! This is nuts, given that it only stores the Container ID *after* it's been kicked in.\n\nI'm out of ideas, mainly because this is not consistent. All morning worked flawlessly, even with a high flux of bags coming in. Then after I left, around 2pm, calls started coming in (with video proof) that it was failing. Sometimes it switches from not working to working with me there but without me changing absolutely anything, just watching.\n\nThe only thing that I can think of why this doesn't work is if there is some kind of offset between the queues and real life. Like, the machine thinks bag 1 is currently in station A, but actually it's already in station B, so it kicks bag 2 in station A when it needed to kick bag 1 in station A. But all triggers to move from one queue to another are physical, well-placed sensors, so this doesn't make much sense. Plus we've got a visualization of the queues and it's 1:1 with the physical position of the bags but it's not that off. Another thing I thought was that maybe moving one object from one queue to another takes too long, and since it's happening all the time, maybe the delay keeps adding up until it can't catch up and goes crazy. But it seems like a long shot.\n\nI don't know what else to try, and I can't test much because they need the machine running, they've got a massive backlog of samples to process. There are days where it works fine and they use it all day.\n\nI'm sorry for the absolutely massive post. I hope someone has the time to read it and maybe throw some tips.",
+    "score": 7,
+    "num_comments": 33,
+    "created_utc": 1776385884,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1o1pdog",
+    "title": "VFD Ground faults like you wouldn't believe - Powerflex 525",
+    "selftext": "Hi legends, I've been an electrician for over 10 years now and I've never experienced what I'm about to share.\n\nI work in a massive recycling plant and we're having an issue with one VFD in particular, it's a 7.5kW PowerFlex525 and it runs a 5.5 kW 415V motor for a glass breaker. \n\nWe have three of these VFD's right beside each other, and they run three identical motors with identical feeds, cable length and gear box size however only one of them keeps popping with the ground fault. Between myself and the contractors that I use, we've replaced about seven in the past 2 to 3 weeks.\n\nNow initially, we didn't realise that this was occurring to the same VSD, so we probably could've saved one to 2 in the beginning, but at the moment between myself, the project manager of the contractors that we use, their number one plc guy and another grunt we can't figure out what is causing it.\n\nLet me run you through what we've done:\n\n\\- initially thought it was a fault with the VSD, because upon testing, cable and motor nothing came back suspicious. \n\n\\- Popped another VFD, after testing further and reading other reddit threads it sounded like 1000 V mega was not good enough to test the motor so we replaced the 5.5 kW motor \n\n\\- popped another, then I read somewhere on the Internet, something about having the motor output being a higher frequency can create some kind of capacitance that could then create a static charge and cook the VFD so we lowered the motor frequency from 75 Hz down to 64 Hz which is now exactly the same as the other motors that don't have ground faults. At this point, I figured the frequency was probably the issue after testing the cable in the motor multiple times to find no ground fault so I went ahead and ordered a two pole 5.5 kW motor. That way we could roughly turn the hertz down to around 35 or so reducing heat and the motor overworking, I suppose.\n\n\\-before the 2 pole motor arrived it popped another VFD, so then the only thing left in the circuit was to change the cable, so we ran a temporary feed. Both feeds were the same cable 2.5mm 3c+e braided flex. \n\n\\- it popped again, so then I called my plc guy in to go through the settings for the VFD that continues popping and compare them to the VFD beside it that run the same motor, same gearbox, same frequency that wasn't popping. Only thing we really found was that the 7.5 kW VFD had the motor set to 7.5 kW instead of 5.5 kW, but I didn't think that would really be such a big issue. \n\n\\- popped another after that, that's when things got really strange, so we had changed everything in the circuit, the motor, the VFD, the cable and continues to pop. it's got the same frequency, the same settings as the VFD beside it so what we did was we switched the VFD that continues to have ground fault's load with the one beside it that doesn't trip. So basically took motor supply from VFD's and switched them. \n\n\\- the same VFD that was having the initial problems popped again now, with a completely different motor, completely different cable. We thought maybe there could be a capacitance that's getting built up from somewhere in the plant that was then leaking to that specific VFD and was damaging it on discharge but that couldn't be the case because the opposite VFD would have popped. \n\n\\- and now I'm at the current day we have switched the supply for the two VFD's because the only other difference apart from the VFD themselves is the circuit breakers that feed them. Currently, I'm waiting to see which one pops. If it's the same one, that's been popping the entire time then it means there has to be something wrong with the VFD in which I have no fucking idea and I would love people's insight. If the opposite VFD pops, then that means it has to be the supply from the circuit breaker, which to me seems very unlikely as everything has tested fine throughout this entire process. \n\nPlease help legends - I'm so far past my theoretical knowledge it's not funny \n\n",
+    "score": 28,
+    "num_comments": 71,
+    "created_utc": 1759962589,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1r8dyxt",
+    "title": "FactoryTalk ME alarms make me want to burn the world",
+    "selftext": "is there an easier way to do these alarms. It basically turns into me doing every alarm in their ATROCIOUS GUI one by one by one. Ive exported the XML to excel which DOES NOT like the headers and destroys the file. Ive tried to go through Notepad++ but unless there are some really good plugins its just as tedious.\n\nif this was like 20 alarms fine but Im doing close to 400 and want to throw my laptop into a dumpster lol\n\nFor some reason even using copy and paste in the messages part of the interface doesnt work and only lets me paste in the message portion under messages and not the trigger part still making me have to go through each line and use the drop down after their added in the \"triggers tab\". Some will paste, others not. its infuriating because there seems to be no rhyme or reason as to why either. its just decides it doesnt like them. \n\n  \nHOLY KRAP is there an easier way! Does Rockwell just hate its consumers?",
+    "score": 13,
+    "num_comments": 43,
+    "created_utc": 1771445743,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1svn0bo",
+    "title": "What do you use to manage and troubleshoot 20+ Stratix switches?",
+    "selftext": "I am currently using the web interface. Is anyone using the command line or other Cisco tools? I feel like the web interface is slow and there has to be a better way.\n\nHow about usernames? One admin account or does every user have their own account and password?",
+    "score": 4,
+    "num_comments": 27,
+    "created_utc": 1777148938,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1murags",
+    "title": "checking code for Emergency fault.. a true story :)",
+    "selftext": "Yesterday, a customer of one of our systems reported a problem. Everything was in emergency stop mode and could not be reset. Unfortunately, no VPN connection was possible, so we helped the customer as best we could. We let them check the inputs, outputs etc., but unfortunately we couldn't solve the problem. In the evening, a repair technician came onsite , but he couldn't find the problem either.\n\nThis morning, i went onsite together with an technician and checked everything. At one point, after checking code online for missing inputs etc.  it became clear where the problem was. When we looked in the cabinet, we had an \u201caha\u201d moment... A wire had come loose. It was bundled with other wires using tight-raps. These were connected to a key switch. And that housing had come loose slightly. Every time the switch was operated, the housing rotated a bit. This put mechanical tension on the other wire. And so it came loose at one point. Really an F-me moment.\n\nLuckly it was only a 1 hour 15 minute drive from office. Just made it home for dinner. Lucky me.\n\n[Oh oh!](https://preview.redd.it/jngiusw3v0kf1.png?width=608&amp;format=png&amp;auto=webp&amp;s=f5ac9d53ae36f08a5eb45b9bdcb8a3e6aa0d25d1)",
+    "score": 91,
+    "num_comments": 54,
+    "created_utc": 1755629344,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1saxp0k",
+    "title": "Built a \"No-BS\" 5-P troubleshooting web app for us. Try breaking my PowerFlex 525 diagnostic tree (No login required)",
+    "selftext": "https://preview.redd.it/4umy95ca6vsg1.jpg?width=3468&amp;format=pjpg&amp;auto=webp&amp;s=44d6ab70cab04dc072d79ec104329a216a4ac99e\n\nHey guys,\n\nI got tired of digging through 300-page Rockwell PDFs at 3 AM while the night shift supervisor breathes down my neck. So, I built a prototype troubleshooting app:\u00a0**Industrial Sparky Pro**.\n\nIt runs entirely in the browser (you can hit \"Add to Homescreen\" and it works offline in the basement).\u00a0**No logins, no paywalls, zero corporate BS.**\n\nRight now, it\u2019s just a proof-of-concept (MVP V1.5). I\u2019ve mapped out a fully interactive \"5-P\" (Power, Program, Panel, Physical) diagnostic tree for two classic scenarios:\n\n1. **AB PowerFlex 525 faults**\u00a0(specifically the dreadful F012 / E-stop loops)\n2. **Limit Switch / Motor missing stops**\n\n**Link:**\u00a0[https://industrial-sparky-pwa.vercel.app/](https://industrial-sparky-pwa.vercel.app/)\n\nI need some real controls guys to field-test this logic. Go in, run the AB PF525 test case, intentionally throw it off track, and tell me where my logic sucks.\n\nIf it leads you to a dead-end, hit \"OTHER / NOT SURE,\" type in what\u00a0*actually*\u00a0went wrong in the anomaly box, and hit submit. It sends an anonymous ping straight to my inbox so I can fix the logic tree.\n\nIs this actually useful for the greenhorns / apprentices on your team? Or is it just another useless digital manual? Don't hold back, roast it. \ud83c\udf7a",
+    "score": 25,
+    "num_comments": 22,
+    "created_utc": 1775173591,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1srkqh0",
+    "title": "Area length Error when writing",
+    "selftext": "I have the following error on a 317F -3 PN/DP Siemens PLC with the SF light Solid Red:  \nArea length Error when writing  \nGlobal DB, bit access, Access Address:            7  \nRequested OB: Programming Error OB (OB121)  \nPriority Class: 1  \nInternal Error, Incoming 1.\n\nWhich address is it referring to when it says Address 7? I cannot find the DB in question. Hoping someone here can shed some light.\n\n[PLC Diagnostic Buffer ](https://preview.redd.it/hwp9zusn0jwg1.png?width=485&amp;format=png&amp;auto=webp&amp;s=f578ee82527a2b5cf0eddbca5dad57d0f29f2f6f)\n\n[DB127](https://preview.redd.it/o78m07u93jwg1.png?width=1659&amp;format=png&amp;auto=webp&amp;s=645d35e6fc12d971391f2aa427d6e97e71d5481f)\n\nWhat I have tried so far.  \nStopping the PLC and Checking the Stacks Tab Shows DB122, DB27 FC27 And FB27. Double clicking FC27 brings me to Network 4. Which I temporarily deleted to check if the fault disappears with no luck. I then blocked calls to all of these but I cannot find the root DB  for the write error. I also tried to download the blocks back with an offline project (backup) thinking it might be a corrupted download but that did not solve anything.   \nI started to block all FC calls in OB1, 1 at a time to check if it was something there. But I cannot find the root cause for this. \n\nAny help would be appreciated !!!!\n\n\n\n[Stacks tab](https://preview.redd.it/s4cskyps0jwg1.png?width=508&amp;format=png&amp;auto=webp&amp;s=e854dae486bb3e9c9855b86d360899314e23be4a)\n\n[Network 4](https://preview.redd.it/mw0y24ec1jwg1.png?width=554&amp;format=png&amp;auto=webp&amp;s=b9ed3fd37b87bde3e4f0998c66d0b68f78df8f56)",
+    "score": 6,
+    "num_comments": 21,
+    "created_utc": 1776770520,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1ozkbcg",
+    "title": "What are the best practices for troubleshooting PLC issues in industrial settings?",
+    "selftext": "As someone who has been working with PLCs for a few years, I've encountered a variety of troubleshooting challenges in industrial environments. I would love to hear about the best practices and techniques others use when diagnosing issues. What tools do you find most effective? Are there specific methodologies or checklists you follow to ensure a thorough investigation? Additionally, how do you balance quick fixes with implementing long-term solutions? Sharing your experiences could really help those of us looking to improve our troubleshooting skills in PLC applications. Let\u2019s discuss!",
+    "score": 24,
+    "num_comments": 47,
+    "created_utc": 1763395819,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1s4cddj",
+    "title": "Handling nuisance alarms in PLC code without overcomplicating the logic",
+    "selftext": "I\u2019m working on a system where a pressure transmitter is giving occasional spikes that trigger a high alarm, but the process itself is stable and the spikes don\u2019t represent a real issue. I\u2019ve used debounce timers before to ignore short pulses, but the spikes here are long enough that a simple timer doesn\u2019t catch them without making the alarm response too slow for actual faults. I\u2019ve been playing with counting the number of triggers within a set time window, but that starts to get messy with multiple alarms across a large plant. I\u2019m trying to keep the code clean and maintainable without turning each alarm into a separate state machine. I\u2019m curious how others handle this kind of nuisance condition. Do you typically handle it in the PLC, or push the logic up to the SCADA or historian side I want to avoid false alarms without adding too much complexity that another tech can\u2019t easily follow when troubleshooting.",
+    "score": 6,
+    "num_comments": 24,
+    "created_utc": 1774542631,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1r5km7y",
+    "title": "PLC fault monitoring",
+    "selftext": "I am struggling with the best way to monitor two redundant PLCs for faults and automatically switch which PLC runs the system if a fault occurs.\n\nI am using produced and consumed and tried using connection status bits but those do not change state with a fault. I am also wondering if the PLC and stops scanning logic how will the produced and consumed tag value update so I can see from the redundant PLC.\n\nEDIT: PLC is Rockwell Compactlogix v33\n\nLooking for any tips or ideas that can assist.",
+    "score": 8,
+    "num_comments": 28,
+    "created_utc": 1771176915,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qaxi20",
+    "title": "Siemens TIA Portal, anything I must consider to implement the \"Program_Alarm\" function?",
+    "selftext": "Since previous post was reported, I'm trying to make a batter one.\n\nI have to implement all the alarms in the installation using the Siemens system function \"Program_Alarm\", due to a client requirement.\n\nAt the end of the day I will have thousands of declared alarms on the CPU.\nBy chief logic not many will be active at a time but I wanted to give the scope.\n\nSince this is the first time I using this kind of alarm implementation anything I must consider?\nAny limit on the number of alarms?\nEncapsulation of functions generating the alarms?\nCycle time? Is it heavy on the CPU?\nHow do I properly implement alarm priority? Are this levels automatically available on the HMI?\n\nSome things I can test out during emulation/simulation, but it's virtual PLC I will have no idea of the real cycle time.\nI will only have real HW during the FAT with the client.\n\nThe CPU being used is a 1518.\n\nIf anyone can provide information according to their experience I would appreciate it \ud83d\ude4f\n",
+    "score": 6,
+    "num_comments": 32,
+    "created_utc": 1768230879,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1sxbrfz",
+    "title": "Interview troubleshooting scenario",
+    "selftext": "Were you ever asked to give a troubleshooting scenario, during an interview. What answer did you give ?",
+    "score": 13,
+    "num_comments": 12,
+    "created_utc": 1777313484,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qzvryx",
+    "title": "How thorough are your I/O and alarm checks during PLC FATs?",
+    "selftext": "During PLC FATs, testing all I/O is the goal, but how far do you actually go in practice?  \n  \nDo you try to test every I/O point live (real sensors, actuators, field signals), or do you end up simulating/forcing some of them? Same question for alarms.  \n  \nMost FAT procedures say \u201ctest everything,\u201d but between time pressure, missing hardware, and partially developed systems, that\u2019s not always realistic. Those gaps tend to show up later during commissioning.  \n  \nHow do you document or justify what was physically tested vs. simulated? Where do you draw the line, and what\u2019s bitten you in the past?",
+    "score": 13,
+    "num_comments": 25,
+    "created_utc": 1770614926,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1sodwf0",
+    "title": "How do you actually use the PLC read/write logs for troubleshooting?",
+    "selftext": "I see people mention using Wireshark or asset logging to track what IPs are reading or writing to a PLC. But once you have that data, what do you actually do with it? I ran into a mystery issue last week where a tag kept getting overwritten and I had no idea where it came from. Got me thinking about whether people actively monitor this stuff or just use it after something breaks. Curious how you all handle it on the floor.",
+    "score": 1,
+    "num_comments": 14,
+    "created_utc": 1776460601,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1sf5hgi",
+    "title": "Need help fixing my PLC (first time using it) i been trying to learn as i go, my safety light isn't working and i have to push my temp start and shutdown button to completely shut it down",
+    "selftext": "[PLC PROGRAM ](https://drive.google.com/file/d/1UgKHnhbxKTINsbUu634o4qlQJj-mmXJU/view?usp=drive_link)\n\n[problem and tags](https://drive.google.com/file/d/1NQOVWBHXmAalb28rSS8n9xHb4c-rQaZI/view?usp=drive_link)\n\nIf ya'll can walk me through why it isn't working as well and any changes anyone recommends, these are some inputs/outputs i been trying to follow\n\nhttps://preview.redd.it/m7bfu1akfttg1.png?width=772&amp;format=png&amp;auto=webp&amp;s=24099f50d4bc75320d804f103487de98cfc60a98\n\nTHANK YOU for any help and guidance anyone could provide me",
+    "score": 0,
+    "num_comments": 16,
+    "created_utc": 1775588793,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1kjla9u",
+    "title": "Troubleshoot Motor",
+    "selftext": "Not a PLC question.\n\n150 horsepower compressor with Danfoss VFD.  10 years ago, the drive started having a fault nobody remembers, so the drive was bypassed and shut off, compressor was running in Star-Delta configuration since then.  (5 years before I got here)\n\n3 months ago, motor overload starts kicking intermittently.  3 weeks ago, started kicking too often, running on backup compressor.  Boss calls in compressor company.  I'm pretty busy and all the terminals and normal things were right and looked good.\n\nCompressor company comes, blows up star delta starter contactor set, of course have no idea how or why.  They left, haven't heard from them since.  Supposedly trying to find new contactors.\n\nI hook up old Danfoss VFD, it starts to run then faults out on earth fault.  I don't know the status of the VFD, other than it was bypassed years ago.  \n\nI don't have a 150 HP drive, but I did connect a 125 horse ABB ACS 800 to see what I could do (testing).  It does output 202 Amps.  In delta configuration, it runs up to speed and then stalls out, no RPM with 202 amps out.  Reconfigured wiring to star, it gets to around 300 RPM and goes no further, it's pegged at 202 Amps.\n\nBoss wants me to connect it directly to the mains.  I want no part of that.  Original problem is overload tripping, no sign of loose connections.  Danfoss drive says earth problem, shows no problem when the motor is disconnected.  ABB drive stalls, puts out a lot of amps with little results.\n\nI'm not sure whether it's the motor or compressor, but I think this problem is more than a bad overload.  I understand the want for it to be the cheapest part.\n\nExperiences or insights?",
+    "score": 7,
+    "num_comments": 66,
+    "created_utc": 1746913740,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rwfmw7",
+    "title": "Help; PLC SLC 5/04 battery error",
+    "selftext": "The machine is turned off because it's hardly used. When we turned it on, it wouldn't start. We checked the PLC and the fault and battery indicators were on. Is there a possibility that the PLC has lost its programming? What should we do in these cases? Has anyone else experienced something similar?\n\nUpdate: I managed to connect, but the programming was lost and I don't have a backup since my predecessors didn't make one. :c\n\nhttps://preview.redd.it/fee8djdhjnpg1.jpg?width=900&amp;format=pjpg&amp;auto=webp&amp;s=78e3141cd829a9aa1b77f9bdad3b59fdab540027",
+    "score": 3,
+    "num_comments": 14,
+    "created_utc": 1773773571,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1sp140b",
+    "title": "repair 984 685e",
+    "selftext": "Hi All,\n\nTrying to repair a Modicon 984 685E which the ready light comes on then the run light comes on then both lights go off, no MB activity so  the OS is still trying to boot.\n\nI have read out both eproms but one of them the bottom half of the read is blank so im thinking it maybe my fault\n\nDoes anyone here have any eprom images, the one that is blank to 4000 hex is labeled 043504951 Rev1.05",
+    "score": 0,
+    "num_comments": 9,
+    "created_utc": 1776527131,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1sh4f5l",
+    "title": "1756-IB16S dry contact fault on boot",
+    "selftext": "Startup with a 1756-ib16s, two of the input channels are wired to dry contact edm devices (two different output circuits). Using appropriate test points and functions fine when the outputs driving it are cycled. The module is set to auto clear faults after 1s (module properties tab). Issue is on power up of the module I get faults on those two channels and the only way to clear the fault is to manually with a screwdriver break the circuit and restore. After this the problem goes away until power is cycled again. The 1756 module is different from the 1734/pointIo modules as they dont have discrepancy times and are always forced to single channel style. I don't have issues with other channels on the card as they are all ossd devices. I initially had the edm circuits fed from constant power and switched to appropriate test points when starting this process. Again, once the circuit is broken it functions fine with the edm responding appropriately. I have the debounce time set to 5ms for on/off delay and that didn't fix anything either. Pulling the wiring arm when it's faulted fixes it, but that's the same as breaking the circuit with the screwdriver. My logic right now is killing all safety outputs if any channel in the network is faulted so I am not able to naturally cycle that output to break/restore the edm contact.\n\nQuestion would be if I need to check for the faulted status on the dry contact inputs, as my CROUT block is expecting that I give it the feedback (ib16s data points) as well as input status (ib16s fault points) so it would definitely stand out that something has been not working when the program gets reviewed...\n\nYes I moved them to another two spare channels on the card and the problem moved too.. ",
+    "score": 2,
+    "num_comments": 9,
+    "created_utc": 1775773645,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1ou0uws",
+    "title": "Is there a way to detect or generate an alarm if a SCADA license key (USB dongle) is removed?",
+    "selftext": "Hi everyone,\n\nIn one of our previous projects, an operator who was on notice period **removed the SCADA license key (USB dongle)** and left the site. There was **no CCTV coverage**, so it\u2019s unclear who was responsible \u2014 this is what the client\u2019s staff reported.\n\nFor future projects, I want to implement a feature that can **generate an alarm or popup on PLC, SCADA, or HMI** if the **license dongle is removed** while the system is running.\n\nHas anyone implemented something like this before, or do any SCADA systems offer such functionality natively? Any suggestions, examples, or resources would be greatly appreciated.\n\nThanks in advance!",
+    "score": 40,
+    "num_comments": 26,
+    "created_utc": 1762837617,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rw6l4q",
+    "title": "A gift from the engineering department to the commissioning team. Spot the error.",
+    "selftext": "I spotted a major show-stopper on this schematic right away, but maybe you guys can find even more?\n\nhttps://preview.redd.it/b60dupfjtlpg1.jpg?width=1920&amp;format=pjpg&amp;auto=webp&amp;s=edbc5d8c003afde996b7a56ca8be321681dc9733\n\n  \n",
+    "score": 11,
+    "num_comments": 11,
+    "created_utc": 1773754228,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rwejcp",
+    "title": "Troubleshooting classes",
+    "selftext": "Afternoon,\n\nI work at a plant on the east coast and the maintenance department just had a wild turnover losing decades of knowledge. The integrator we use is very small and busy. Does anyone know of any class resources specifically for troubleshooting for people with little experience I can recommend to the department? The company is large enough they would certainly pay for an in person training if we were able to find one that could come out. \n\nThanks all and the panels look awesome! ",
+    "score": 0,
+    "num_comments": 11,
+    "created_utc": 1773771312,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1s1znlh",
+    "title": "POTS alarming setup",
+    "selftext": "Boys! Man is it fun when I run into something new - I have a client that has an air-gapped system - we\u2019re doing an upgrade from wonderware to ignition (I\u2019m Gold Certified, this is my n-th ignition upgrade, I\u2019m not worried about it) - they current have a win911 setup going to a modem to a POTS line, and they DEMAND that they have voice call outs, I\u2019ve already tried to push them towards rv50x and SMS alarming. It\u2019s a hard no. \n\nI am a strong proponent of \u201ctest bench everything so you don\u2019t look like an idiot in the field\u201d - I plan on using a grandstream and the Ignition voice module - which I\u2019ve never used either before.\n\nQuestion, finally: does anyone have any experience setting up a POTS line locally for testing? I haven\u2019t done telephony stuff in like 15 years - and without access to a POTS line for testing, I\u2019m really struggling with what the test bench setup would even look like. \n\nI could set up a VoIP PBX\u2026 I think?\n\nMy house doesn\u2019t have a landline, or a VoIP service, and the office only has a relatively complicated (to me, not my area of expertise) commercial VoIP setup.\n\n\\-cheers for any advice ",
+    "score": 0,
+    "num_comments": 10,
+    "created_utc": 1774314267,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qh0ecc",
+    "title": "TIA Portal \u2013 Red error icons &amp; IO Device Failure: Differing device type",
+    "selftext": "Hello everyone,\n\nI am facing an issue in\u00a0**TIA Portal**\u00a0with\u00a0**S7-1200 CPU 1214C DC/DC/DC**.\n\nIn the\u00a0**Project Tree**, I see\u00a0**red error icons**\u00a0on:\n\n* Connect Gateway\n* PLC\\_1 (CPU 1214C DC/DC/DC)\n* Distributed I/O (PROFINET IO-System)When going online, I get an\u00a0IO Device Failure\u00a0with the message:\n\n&gt;\n\nDetails:\n\n* PLC:\u00a0**S7-1200 CPU 1214C DC/DC/DC**\n* Distributed I/O connected via\u00a0**PROFINET**\n* Hardware is reachable, but IO device shows error\n* Error appears only in\u00a0**hardware configuration / IO system - Diagnostic Buffer**\n\nWhat I have already checked:\n\n* PLC is powered ON\n* PROFINET cable is connected\n* IP address is set\n* Device appears in network view\u00a0Questions:\n\n1. What exactly causes the\u00a0**\u201cDiffering device type\u201d**\u00a0error?\n2. Does this happen if the\u00a0**configured IO device type does not match the actual hardware**?\n3. Can this be caused by\u00a0**wrong GSD file version**\u00a0or\u00a0**wrong device order number**?\n4. What is the correct way to resolve this without rebuilding the whole project?\n\nAny guidance or troubleshooting steps would be appreciated.\n\nThanks in advance.\n\n  \n",
+    "score": 1,
+    "num_comments": 19,
+    "created_utc": 1768817514,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rrm7t2",
+    "title": "Strange error - sensor LED turns off for splitseconds",
+    "selftext": "Dear Redditors,\n\nI have a machine that started showing strange issues after about two months of operation. A semiconductor sensor on a pneumatic cylinder occasionally drops out very briefly (roughly every 2-6 hours). When this happens, the LED on the sensor turns off for a moment, which causes the control system to enter an implausible state.\n\nI have already replaced both the sensor and the power supply. After that everything worked fine again for a while, but about three weeks later several similar dropouts suddenly started occurring.\n\nHas anyone experienced something like this before?  \nWhere would you start troubleshooting? If this could be an EMC/EMI issue, how would you typically go about locating the source of the disturbance?\n\nThanks for any advice!",
+    "score": 1,
+    "num_comments": 10,
+    "created_utc": 1773308237,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1srk18n",
+    "title": "ifm CR1074 EtherNet/IP Adapter fails on empty CODESYS project with C0103 retain memory error",
+    "selftext": "Hi, I\u2019m trying to connect an\u00a0**ifm CR1074**\u00a0to a\u00a0**Rockwell CompactLogix L19**\u00a0over EtherNet/IP.\n\nI\u2019ve been working with\u00a0**ifm for about 3 years**, so I\u2019m reasonably familiar with the environment and this does not look like a basic setup mistake.\n\nI tested with:\n\n* **CODESYS 3.5.16**\n* **CODESYS 3.5.18**\n* HMI target version:\u00a0[**3.5.16.50**](http://3.5.16.50)\n\nA completely empty project downloads correctly.  \nBut as soon as I add the\u00a0**EtherNet/IP Ethernet Adapter**, even before adding modules or variables, download fails with:\n\n`C0103: Out of retain memory: Variable 'g_c_lastAcdConflict', 350 bytes...`\n\nI also previously saw the same type of error with\u00a0`retainData`.\n\nI did\u00a0**not**\u00a0create any retain variables manually.  \nSo it seems the problem appears just from adding the EtherNet/IP Adapter itself.\n\nHas anyone seen this on ifm targets?  \nIs this a package/runtime compatibility issue?  \nAny known working version combination?\n\nGoal is just to exchange\u00a0**2 INTs**\u00a0with a CompactLogix L19.",
+    "score": 5,
+    "num_comments": 3,
+    "created_utc": 1776768429,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rv8xx0",
+    "title": "FTView SE Alarms",
+    "selftext": "A few years back, we upgraded from RSView (discrete servers) to FTView (distributed)\n\nEach room/department that had a separate RSView server is now on its own VLAN; with a thin client to manage recipe and let engineering make adjustments.\n\nProblem is the alarms---we are either seeing alarms for the entire plant, all lumped together, or none at all. Local and corporate SCADA guys have tried to get each thin client to just show its associated alarms; but they haven't been 100% successful so far.\n\nOpen to any suggestions",
+    "score": 0,
+    "num_comments": 8,
+    "created_utc": 1773666471,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qxobo5",
+    "title": "Panelview Plus 6 700 DH+ to SLC5/04 errors?",
+    "selftext": "I recently upgraded an old PanelView 700 to a PanelView Plus 6 700 (I know they are also out of date but this one has been sitting on my shelf for 6 years as a spare.) The .PVA was updated to a .MER by the machine manufacturer and they used shortcuts in the communications settings with the syntax \"\\[furnace\\]B15.00\" this all seems fine to me from what I've been able to research so far but setting the shortcut communication path in the Runtime tab to my SLC 5/04 doesn't seem to be completely successful. \n\nWhenever I run the program in the PanelView Plus 6 700 the buttons will function for half a minute and then they stop functioning and I get Read/Write time outs to the SLC 5/04 but the Read data from the SLC 5/04 never shows up on the screen at all. The whole time the comms LED on the PanelView Plus 6 700 is steady green and the LED on the DH+ comms for the SLC5/04 is steady green.\n\nThe machine manufacturer used Teamviewer to remote to my laptop and try to help troubleshoot and they suggested RS Linx Enterprise is the problem. We also couldn't establish a connection to the PanelView Plus 6 700 via ethernet IP protocol using RS Linx Enterprise (FT View Linx) I keep getting an error that the server failed to start or start correctly and I've tried everything I could google to fix that but nothing seems to work for me. I have FTServices 6.60.00 installed with the Jan 2026 patches, FTView 16.00.00 (the .mer file is set to V10.00) \n\nI also verified the Baud rate is 230,400 on both ends and I replaced both resistors with the new resistor for that Baud rate that was in the new packaging. Just looking for help or insight if possible. Thank you.",
+    "score": 1,
+    "num_comments": 13,
+    "created_utc": 1770399665,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1l67z3n",
+    "title": "Removable fixed machine guards",
+    "selftext": "Not direcly PLC related but... have you ever had the need for interlocking a \"fixed\" machinery guard? I mean, a fixed guard by definition is not interlocked  but rely on special tools and LOTO procedure to make the machinery safe and it's used for access of, say, less than once in a week.\n\nHowever we \\*know\\* that maintenance people are suicidal and, even if only once every six month they will put their hand in the big crushing gear wheels of death(tm) without pulling the plug.\n\nSince they are screwed down panels we can't use the usual hinge switches or sliding door mechanism. A push down limit switch would work in the wrong direction (i.e. pushed in the \"safe\" position). A rotary captive switch (like the one used to interlock control panels) would be the a good choice but they'll get expensive fast...\n\nAnyone had a similar issue?",
+    "score": 17,
+    "num_comments": 44,
+    "created_utc": 1749374262,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1st58sz",
+    "title": "What triggers an analog Channel Fault? (Rockwell Studio 5000)",
+    "selftext": "I have an 1756-IF16 module, Controllogix, that I'm trying to configure NAMUR standards on to detect channel faults. I'd like to use the ChFault bit to interlock things like PIDE loops and valve actuators downstream. \n\nWhat have you found the best practice way to do this using the preconfigured tags that are provided when you set up a new analog input module? Adding alarms in the module configuration? Using P\\_AinAdv block and it's multitude of tags? Any help is appreciated.\n\nhttps://preview.redd.it/mzmjsr26kuwg1.png?width=622&amp;format=png&amp;auto=webp&amp;s=9d327974b5c2a9fd8dd71f1376142ca2a655517d\n\n  \n\n\nhttps://preview.redd.it/bbetc7kgjuwg1.png?width=1116&amp;format=png&amp;auto=webp&amp;s=502c0ff26d9c6ca5890479299d4ea7bc7667c5f4\n\n",
+    "score": 1,
+    "num_comments": 2,
+    "created_utc": 1776909481,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1sjz53i",
+    "title": "Mitsubishi PLC connection error",
+    "selftext": "I have a Q03UDVCPU Mitsubishi PLC, im trying to connect via USB, I already installed USB drivers, but it keeps showing me this error message. The PLC switch is in run mode , does somebody knows how to solve this? (I attach evidence)\n\nhttps://preview.redd.it/zysokwflkvug1.png?width=502&amp;format=png&amp;auto=webp&amp;s=f1ebf5116e9ea96953e24f4b5109eb8a46b1eff5\n\nhttps://preview.redd.it/oo8ovxwokvug1.png?width=1920&amp;format=png&amp;auto=webp&amp;s=af58a1d2b90e050f13fdb6512727b2c11938afca\n\nhttps://preview.redd.it/9vj01jlpkvug1.png?width=1920&amp;format=png&amp;auto=webp&amp;s=23b07377e5a426ef5f127abb7cf500383ab6c03a\n\nhttps://preview.redd.it/p8442a4qkvug1.png?width=1920&amp;format=png&amp;auto=webp&amp;s=bfcbb128e0b21db15fc110515f7d9e957a3aae11\n\nhttps://preview.redd.it/luczsezblvug1.jpg?width=1600&amp;format=pjpg&amp;auto=webp&amp;s=7f3813f1d7b1c250f804e4ee68ba9189ce8cb79b\n\n",
+    "score": 3,
+    "num_comments": 3,
+    "created_utc": 1776050296,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1o40jy0",
+    "title": "How difficult is it to learn basic troubleshooting (industrial automation)?",
+    "selftext": "My current role is a manufacturing engineer and I wanted to learn more about PLCs with troubleshooting as a start. Things like verifying if PLCs are talking to equipment correctly, modifying timers, or hooking an alarm to a specific button. So when I am working with our controls person I at least have somewhat of an idea of what I am looking at and can better weigh in my own knowledge of the manufacturing process. Since I would be examining pre-existing code instead of developing it, is this something I can pick up relatively fast? Just so I can have some form of a timeframe on how long it would take to learn. Thanks!",
+    "score": 11,
+    "num_comments": 27,
+    "created_utc": 1760201472,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1s6yp26",
+    "title": "PLC Troubleshooting - Mitsubishi Melsec FX24MR, FX2-32MR",
+    "selftext": "Hey Yall,\n\nI am trying to get some industrial textile machines up and running, but I think I am experiencing a PLC error. \n\nThe machines sat unpowered, possibly with dead batteries for a couple of years, and I am worried the programming may be lost, corrupted, or have an error.\n\nI have four machines, all are a little bit different, but generally the layout is the same.\n\nAn HMI is used to define a manufacturing \"recipe\" - the PLC controls a VFD and pneumatic cylinders.\n\nWhen powered on, the HMI gives me a user interface I would expect, but thats where my progress stops. \n\nAll four PLC controllers have blinking PROG-E leds.\n\nIs anyone here able to direct me towards a service that might be able to help me diagnose or troubleshoot this issue?",
+    "score": 2,
+    "num_comments": 5,
+    "created_utc": 1774799473,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qiy9a7",
+    "title": "Studio 5000 installation error",
+    "selftext": "Hello, I've been trying for the past day or so to get studio5000 v32.05 to correctly install, every attempt I have made at installing it has resulted in the same error, 1603, happening whenever I attempt to install the 1747 module profiles. \n\nHere's what I've attempted so far:\n1. The usual 1603 troubleshooting steps (turning off UAC, turning off anti-virus, running as administrator, etc.)\n2. Deleting and re-downloading literally everything\n3. Making sure I have older versions of .NET installed\n3. Making sure they have full access to my system\n4. Making sure my computer is up to date\n5. Contacting rockwell support (useless)\n\nI have more than enough disk space, and I definitely have the hardware requirements.\n\nI genuinely have no idea where to go from here. Any suggestions would be appreciated.",
+    "score": 3,
+    "num_comments": 14,
+    "created_utc": 1769003074,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1nyxlk2",
+    "title": "My MUL is not giving me results. how can i fix it in TIA Portal?",
+    "selftext": "https://preview.redd.it/a1qcku86hctf1.png?width=923&amp;format=png&amp;auto=webp&amp;s=9db2c8aae461bb69908ce13dbf55ba4acf7a2512\n\n.",
+    "score": 9,
+    "num_comments": 23,
+    "created_utc": 1759692565,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qmnggm",
+    "title": "What strategies do you use to troubleshoot complex PLC communication issues in industrial systems?",
+    "selftext": "I've been facing a recurring challenge with troubleshooting communication issues between multiple PLCs in a distributed control system. Often, the symptoms can be misleading, making it difficult to pinpoint the root cause. I've found that systematically checking each component, such as verifying network settings, ensuring proper grounding, and monitoring signal integrity, helps, but it can be time-consuming. I'm curious to learn about the strategies others use to efficiently diagnose and resolve these types of issues. Do you have any specific tools, methodologies, or experiences that have significantly improved your troubleshooting process? Let's share some insights on how to tackle these complex scenarios effectively.",
+    "score": 5,
+    "num_comments": 12,
+    "created_utc": 1769357953,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1sy0wi4",
+    "title": "Tia Portal X509CertificateException error while downloading to PLC",
+    "selftext": "Hi,\n\nI\u2019m back with another issue.\n\nI\u2019m using TIA Portal V20, and this time I\u2019m trying to download the logic to an S7-1200 (1214C, 6ES7 214-1AG40-0XB0, FW 4.7).\n\nI get the following error:  \n**\u201cThe compilation of the hardware configuration failed (00EC)\u201d**, and then TIA Portal crashes.\n\nIn the log, I found this exception:  \n`Siemens.Simatic.HwConfiguration.BusinessLogic.X509Certificate.X509CertificateException`\n\nAfter some research online, it seems the issue might be related to certificates. I tried removing the PLC\u2019s certificate, and the compilation completed (with errors), but those errors were related to the missing certificate and at least TIA Portal didn\u2019t crash.\n\nHowever, I\u2019m unable to recreate the certificate.\n\nDoes anyone have any ideas?  \n|  \nThank you in advanced.",
+    "score": 1,
+    "num_comments": 0,
+    "created_utc": 1777381566,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1sk156j",
+    "title": "Troubleshooting software",
+    "selftext": "Is there any controls troubleshooting simulators you can find online. Where it has a simulation of a controls system and you can troubleshoot with a multimeter and trace control loops ",
+    "score": 1,
+    "num_comments": 2,
+    "created_utc": 1776056345,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1shgv18",
+    "title": "FTV Alarm and Event Log Viewer Properties",
+    "selftext": "I have a object Alarm and Event Log Viewer , The idea is to log Historical Alarms. Everything works OK. As soon as new alarm is generated in the PLC , To show it up in the Alarm and Event Log Viewer , we have two options \n\n* Change the screen\n* Click on the  refresh in toolbar. \n\nMy Question is , is there any way to populate the Alarms in Alarm and Event Log Viewer Automatically , Instead of changing the screen and Clicking on the refresh button ? ",
+    "score": 1,
+    "num_comments": 2,
+    "created_utc": 1775810590,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rowi8r",
+    "title": "Retreiving alarms from PLC web-server using http.",
+    "selftext": "As an intern tasked with developing a supervision tool for PLC alarms, I am currently building a monitoring stack using Node-RED, InfluxDB, and Grafana to track alarm frequency and duration. Because I am restricted from using OPC UA due to licensing and certificate costs, I have opted to use the PLC\u2019s internal web server as a data source; however, I am struggling to successfully retrieve data via HTTP requests in Node-RED. Since this is my first time working with the HTTP Request node, I am looking for guidance on how to properly authenticate and fetch tag values, or advice on whether there is a more efficient, cost-effective alternative\u2014such as Modbus TCP or a dedicated communication node\u2014that would better suit this architecture.",
+    "score": 3,
+    "num_comments": 6,
+    "created_utc": 1773051932,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rpfh6d",
+    "title": "Logging Bits &amp; Variables for troubleshooting",
+    "selftext": "I'm using an Omron NX102-1200 PLC, but the question applies to all PLC's.\n\nI have a machine that is quite complex but has been in service for a few years now.\n\nEither I have a code issue or something in process is causing a rare condition that I've programed for and stops the machine. Only on a rare occassion does this condition come up, of course only after I've left the facility. I want to determine if this is a code bug, or if something in the process is causing the condition, meaning the code is functioning as intended.\n\n  \nI looked into putting a camera on the machine to get a better visual on the issue.\n\nI'm very familiar with the \"data trace\" function in Omron's software and I've used it successfully to chase down programming issues in the past. But it is my understanding that is can only log \\~10 seconds worth of data. The issue is so intermittent that I just can't stand around and wait for it to happen.\n\nWhat options would I have for logging a whole series of bits and variables so when the problem does happen I can look through the data to try and determine what happened?  \nCan I data log to the SD-card or something like this?",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1773096470,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1s7k33k",
+    "title": "Siemens S7-1500 \u2192 AWS IoT MQTT (LMQTT_Client 04.00.05) \u2013 Error 8601 / TSEND_C 80C5",
+    "selftext": "Hey everyone,\n\nI\u2019m currently working on a project where a customer wants to send data from a **Siemens S7-1500 (CPU 1518F-4 PN/DP)** to an MQTT broker on **AWS IoT**.\n\nI\u2019m using the Siemens **LMQTT\\_Client block (v04.00.05)** and configured the PLC according to the Siemens documentation:  \n[https://support.industry.siemens.com/cs/ww/en/view/109772284](https://support.industry.siemens.com/cs/ww/en/view/109772284)\n\nThe AWS side is managed by the customer\u2019s IT. They provided:\n\n* endpoint (broker URL)\n* client certificates\n* private key\n* root CA\n\n**Problem:**\n\nWhen the PLC tries to connect, the **LMQTT\\_Client** block throws:\n\n* **Error 8601** \u2192 *Error while trying to connect to MQTT broker with TCON*\n\nDigging deeper, the called **TSEND\\_C** block shows:\n\n* **Error 80C5** \u2192 *The connection partner refuses to establish the connection, has terminated the connection or actively ended it. LSAP of the remote connection partner is not released.*\n\n***What I've ckecked:***\n\n* PLC configuration matches Siemens guide\n* Certificates are loaded and assigned\n* Correct AWS endpoint and port (8883)\n\n  \nHas anyone else experienced this issue when connecting a S7-1500 to AWS IoT via MQTT using LMQTT?  \nAny hints would be really helpful. Thanks!",
+    "score": 3,
+    "num_comments": 3,
+    "created_utc": 1774856665,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1r174d1",
+    "title": "FtView Site Edition V15 Alarm and Event Server Issue",
+    "selftext": "Hi all, \n\n  \nhaving a persistent issue with FTView v15 SE where I\u2019ve converted a project from v12, which meant i had to migrate and re create the alarm and event server. \n\nmy Issue is that when running the client it keeps trying to point to the old server, giving me the error \u2018The Distributed Alarm Client failed to connect to the server \\[RNA://\u2026..\\] pointing to a client and event server which doesn\u2018t exist. \n\nive dug through the project to no end trying to find where this is set or referenced, but can\u2019t see anything anywhere. Anyone come across something similar? ",
+    "score": 1,
+    "num_comments": 9,
+    "created_utc": 1770744553,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mmwnl3",
+    "title": "Troubleshooting Vs. Writing Code",
+    "selftext": "What do yall think is more important to learn first as a new tech? Do you think learning to write the programs ultimately guides you into learning how to troubleshoot them and vice versa or is one better than the other to start out?",
+    "score": 14,
+    "num_comments": 31,
+    "created_utc": 1754866325,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1recr7h",
+    "title": "Weintek HMI - Omron CQM1H - 7x Yaskawa V1000 (Modbus RTU) comms error that doesn\u2019t behave consistently Post: I\u2019m troubleshooting a comms issue between a Weintek HMI, an Omron CQM1H-CPU61 PLC, and seven Yaskawa V1000 VFDs on RS-485 (Modbus RTU)",
+    "selftext": "Symptoms are inconsistent, sometimes I get clean reads from a few drives, other times I get timeouts or values that clearly don\u2019t make sense, and it\u2019s not consistently tied to one specific drive. Serial settings match across the network, slave IDs are unique, wiring/termination looks fine, and I\u2019m not seeing obvious noise\nWhat I can\u2019t separate is whether this is actually a physical-layer problem (biasing/termination/shield/grounding), timing/polling behavior (HMI scan rate, short timeouts, missing silent interval), or something wrong in my HMI macros (address base/offset, word order, scaling, request logic). I\u2019m mostly self-taught on the macro side, so I\u2019m not ruling out that the \u201cline issue\u201d is self-inflicted.\n\nHow do you usually validate this kind of stack without buying extra protocol analyzer hardware?",
+    "score": 6,
+    "num_comments": 6,
+    "created_utc": 1772024943,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1men7n1",
+    "title": "Potential danger of \u201cself-resetting\u201d faults?",
+    "selftext": "What is the industry standard for fault resetting? I\u2019m tempted to drop \u201cself resetting\u201d blinkers into my programs to assist production with restarting equipment. \n\nFor example, currently if a jam condition occurs you have to clear the reporting PEs and hit a clear button. \nAnother example, and what sparked this thought, is sometimes VFDs drop comms long enough to fault out for a comm fault. \n\nIn both scenarios re-scanning the fault bit could unlatch these conditions. But I am concerned this could be perceived as unsafe or improper. \n\nI guess I\u2019m overall looking for general practices and advice. What would y\u2019all do?",
+    "score": 28,
+    "num_comments": 28,
+    "created_utc": 1754022992,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1nbnryl",
+    "title": "Struggling with fault-finding on PLC programs I didn\u2019t write \u2013 any advice?",
+    "selftext": "Hey everyone,\n\nI work as an automation engineer and usually write PLC code from scratch and design HMI screens as part of my job. However, I often struggle when it comes to fault-finding on PLC programs that I didn\u2019t write. Even when the code is well-documented, it takes me ages to figure out the logic and trace where an issue might be coming from.\n\nIt\u2019s even tougher when the machine/process is something I\u2019m not very familiar with. I sometimes feel like I spend too much time just trying to orient myself in the program before I can even start troubleshooting.\nFor those of you with more experience:\n- How do you approach fault-finding on unfamiliar PLC programs?\n- Are there specific strategies, workflows, or habits you use to get your bearings quickly?\n- Any tips on balancing understanding the code vs. just diving in to find the fault?\n\nWould really appreciate any advice or lessons learned from people who\u2019ve been in this situation.\n\nThanks in advance!",
+    "score": 21,
+    "num_comments": 25,
+    "created_utc": 1757338166,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1r6cmq4",
+    "title": "ET200S Bus Error",
+    "selftext": "HI, Maybe one of you guys can give me a hint with a problem i had today: I tried to reactivate a machine with a Master PLC S1512C PN and a IO slave ET200S. I did not touch the program, just put in the plug and on the et200s i get the led blinking indicating bus error. I cant for the live of me figure out why. Machine in question was 6months off the grid if that matters. The blinking does not signal any sequence it's permanent at 1Hz. I got kind of paranoid so i tested every single input and output module seperatly, without success, bus error like before. Dont know what else to do, thing is i dont have another com module lying around to test the io pieces seperatly. Any ideas ?\n\nModule in Question: IM151-3 PN (6ES7151-3AA23-0AB0) Firmware V7.0\n\n  \nEdit: Solved, it was a network problem had nothing to do with the et200s",
+    "score": 3,
+    "num_comments": 7,
+    "created_utc": 1771255812,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1lpk8mt",
+    "title": "Any tips on how to troubleshoot complex PLC systems?",
+    "selftext": "Diagrams are good and all, but maybe you have some tricks up you sleeve which could help better understanding and learning",
+    "score": 0,
+    "num_comments": 36,
+    "created_utc": 1751422541,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rfaclk",
+    "title": "Delta HMI (DOPSoft) with Siemens S7-PLCSIM via NetToPLCSIM \u2013 Read Error",
+    "selftext": "Hi everyone!\n\nI'm trying to simulate a Delta HMI communicating with a Siemens PLC, but I'm running into a read error and I'm not sure where the issue is.\n\nHere's my setup:\n\n* PLC: **S7-1214C**\n* Software: **TIA Portal V14**\n* Simulation: **S7-PLCSIM**\n* Bridge: **NetToPLCSIM**\n* HMI: **Delta DOP-107WV**\n* HMI Simulation: **DOPSoft simulator**\n\nThe goal is to simulate the HMI communicating with the PLC without using physical hardware.\n\nHas anyone successfully done this integration before?  \nRight now, the HMI is showing a **read error**, and it doesn't seem to be communicating with the PLC.\n\nIf you've tried this setup or something similar, I\u2019d really appreciate any tips, configuration advice, or things I should check.\n\nThanks in advance!",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1772113016,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1r0ajax",
+    "title": "AB M100 starter faults.",
+    "selftext": "Hi guys, I\u2019ve got 4x AB M100 starters install and randomly they\u2019ve all given internal hardware faults multiple times. The fault can only be reset by doing a power cycle.\n\nHas anyone else come across this issue?",
+    "score": 1,
+    "num_comments": 7,
+    "created_utc": 1770658219,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1s457wt",
+    "title": "B&amp;R Automation error 27524",
+    "selftext": "I keep getting Error : Error 27524 while transferring.: AR install: _GLOBAL/_LOCAL PV unequal\nHelp file doesn't really help me.\n\"Download mode is set on the target by a PVI service in a management list for the download module from PVI or Automation Studio. If variables from the module on the target and in the task to be loaded are different, then an error occurs. \"\n\nBuilding a CF works with no issues.\n\nAny help would be appreciated!",
+    "score": 2,
+    "num_comments": 1,
+    "created_utc": 1774525673,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1r3pops",
+    "title": "please i need help; siemens drive fault: 31120",
+    "selftext": "Our system randomly generates error 31120.\n\n\n\nWe have verified that the voltage supplied to the controller, driver, temperature converter, and sense module is normal.\n\n\n\nHowever, error 31120 occurs completely at random.\n\n\n\nAll the components listed below have been swapped and tested, and no issues were found.\n\n\n\nWe have absolutely no idea what the problem could be.\n\n\n\nPlease help.\n\n\n\n(We are using:\n\nCONTROLLER: CU320-2PN\n\n\n\nMOTOR DRIVER: S120\n\n\n\nResolver-equipped motor: MCA21X17-RS0BOB5A250 (LENZE)\n\n\n\nSMC10\n\n\n\nPT-KTY converter: CONV-DIN-KTY84- Pt1000 Converter (REISSMANN)\n\n\n\nps: Could harmonics or noise be the cause?\n\n",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1770990693,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qvmya9",
+    "title": "GX Works 3 Error question",
+    "selftext": "In the quest having to learn mitsubishi plc, i am making something.\n\nSo, i have this WORD \"adder\" that i just add/inc to\nhttps://imgur.com/a/WxlCKoU\n\nBut when i compile it i get this error/warning:\n\n      No.\tResult\tData Name\tCategory\tContent\tError Code\n    1\tWarning\tProgPou\tProgram Conversion\tThe settable range of type set to the type of device or label of 'adder' is different. Setting value may have been a value without intention.\t0x110E29E0\n    \n\nSo, is it the Dx definition wrong? what?\n\nBefore i had the \"INC\" function instead of the ADD, got the same error with both.\n\nAlso other variables has the same error message..\n\nAnyone care to explain whats wrong in the code with this?",
+    "score": 0,
+    "num_comments": 7,
+    "created_utc": 1770207222,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rydr2c",
+    "title": "Kinetix 5700 Faulting",
+    "selftext": "I am having an issue with my first AB project when I try turn everything on. I am a mechanical engineer with not too much electrical experience. \n\nEquipment used:\n\nDc power bus-2198-p070\n\nDual axis inverter- 2198-d020\n\nPlc- 5069-L310ERM\n\nSiemens Contactors- 3RT2025-2BB40\n\n24V 20A power supply\n\nWhen I turn everything on, the control voltage is good and there is 24v going to the contactor enable on the power bus. Once it gets to the \u201cconfiguring\u201d stage, there is a small voltage drop on the 24v side and the bus, drive, and plc output turn off then back on. This cycle repeats. At no point here were the contactor coils closed yet allowing 480v to pass through. \n\nI am not sure where this is going wrong but it seems like there is a short here. If I turn the enable power off and close the contactor coil, the power bus goes to \u201crunning\u201d. \n\nIs there a certain power up sequence I should be following like the contactor needs to pass 480 a certain timeframe after the enable?\n\nI can happily supply more info if needed!",
+    "score": 3,
+    "num_comments": 1,
+    "created_utc": 1773957420,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rkmaz0",
+    "title": "PLCSIM error",
+    "selftext": "Hi everyone, I\u2019m using TIA Portal with PLCSIM for simulation only (no real PLC connected). After running my project once and then modifying the ladder logic, when I try to download again I get a message saying **\u201cManual synchronization required\u201d** for blocks like **R\\_TRIG, Counter (R1/CTU), and Timer (T1/TON)**. It also shows **Online/Offline different**. I understand that these blocks have internal memory, but I\u2019m not sure which synchronization option is the correct and safe one to choose. Should I always overwrite online values with offline values, or is there a better practice when re-downloading after changes in simulation? I want to avoid counters and timers keeping old values and causing unexpected behavior. Any advice would be appreciated.\n\nhttps://preview.redd.it/45hy3n3fc1ng1.jpg?width=549&amp;format=pjpg&amp;auto=webp&amp;s=36f6640510dd5e76da12d9452b5887981762c759\n\nhttps://preview.redd.it/p24f2s0gc1ng1.jpg?width=397&amp;format=pjpg&amp;auto=webp&amp;s=6dedc8407184c660f9fb02026060f28890727506\n\nhttps://preview.redd.it/8zkc78pgc1ng1.jpg?width=829&amp;format=pjpg&amp;auto=webp&amp;s=9e2c579755b24e367a41b283f95c071dd940a342\n\n",
+    "score": 1,
+    "num_comments": 3,
+    "created_utc": 1772633161,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rp0w62",
+    "title": "Resurrecting a \"dead\" PLC line: Wecon LX3V Error 6706 causing a total I/O bus paralysis",
+    "selftext": "Hey guys, need some brainpower here.\n\nI\u2019m rebuilding a mask production line from scratch. This machine was abandoned and partially disassembled a while ago because of an \"unfixable\" error. Now I\u2019m putting it back together, and I\u2019ve hit the exact same wall that probably killed it in the first place.\n\n**The Setup:** Wecon LX3V PLC -&gt; 16EX (Inputs) -&gt; 16EYT (Outputs) -&gt; 4PG (Positioning module). Drivers: CL57 steppers.\n\nhttps://preview.redd.it/24sqftv9z0og1.png?width=1280&amp;format=png&amp;auto=webp&amp;s=0a07a3a272f6e6694ad6536d17d30572471770eb\n\n**The Nightmare:** I\u2019m getting **Error 6706** on: `TO K0 K131 D358 K1`. This error is literally paralyzing the expansion bus.\n\nhttps://preview.redd.it/a9233s2dz0og1.png?width=961&amp;format=png&amp;auto=webp&amp;s=2d2a50768dec1f9ca560796868ffa44ab6d1b8c7\n\n* **Driver Status:** All stepper drivers show **Solid Green (Ready)**. There are no red fault lights on the drivers themselves, but they never transition to \"Run\" mode because the 4PG module fails to initialize.\n\nhttps://preview.redd.it/efyrp3c301og1.png?width=961&amp;format=png&amp;auto=webp&amp;s=255fd070e677dc6b73cfbf14adcf84d92c67d65a\n\n* **The \"Frozen\" I/O:** My inputs (X45/X46) on the first module don't change in the PLC (stuck at 0), even though the LEDs on the module are blinking. Some outputs (Y42/Y45) are stuck ON and won't turn off.\n* **The Weird Part:** The 4PG (last in the chain) still reads its local DOG sensors. So the bus is alive, but the PLC seems to \"ignore\" the discrete modules (16EX/EYT) because of the 6706 error.\n* **The Link:** I found that the `D358` instruction is triggered by a Servo Alarm bit (`M604`). It feels like the PLC detects a fault, tries to talk to the 4PG, the 4PG rejects it, and the whole I/O image just crashes.\n\n**What I've done:** I\u2019ve swapped the PLC head, the 4PG module, and the cables with known working parts from an identical line. **The problem stayed on this rack.** It\u2019s not the parts; it\u2019s something about how they interact on this specific machine.\n\nHas anyone seen a Special Function Module (like the 4PG) completely freeze the \"dumb\" discrete modules on an FX-style bus? If the line was abandoned because of this, it\u2019s likely something deep\u2014maybe a ground loop, a termination issue, or a specific driver fault that \"poisons\" the entire communication chain?\n\nAny \"out of the box\" ideas? I\u2019m tired of swapping identical parts.\n\nI\u2019m completely stuck on this: I don't understand **why** X45 and X46 (discrete inputs on the first module) are not showing up in the PLC monitor. Is it actually possible for a faulty driver or a special module error (6706) to block the reading of regular digital inputs earlier in the chain?\n\nIf the 4PG module is \"poisoning\" the bus because of a bad driver signal, how do I find which specific driver is the culprit? All of them are showing **Solid Green**, so they look fine externally.\n\nShould I start disconnecting the drivers one by one to see if the X-inputs suddenly come back to life? I\u2019m confused why I can see DOG signals from the special module but can't see basic digital inputs right next to the PLC head.",
+    "score": 3,
+    "num_comments": 2,
+    "created_utc": 1773064624,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1nphurm",
+    "title": "Alarm and Setpoint build from Studio 5000 ACD file",
+    "selftext": "Hi everyone, I have been tasked with as building the alarm and setpoint list at the facility I work for. Documentation revision control has been lacking to say the least and there are multiple inconsistencies between current master docs and the code itself. I have been instructed to use the code as the correct information source and rebuild the alarm and setpoint list from it. Does anyone know of a quick way to extract information from an ACD file format and populate an excel spreadsheet that includes information like tag name, IO address, alarm delays, limits, and deadbands, instrument ranges and so on?",
+    "score": 3,
+    "num_comments": 22,
+    "created_utc": 1758733662,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1lbuw3v",
+    "title": "What electronic knowledge should I know for a career in programming PLCs, building control panels, reading schematics, and troubleshooting machines with PLCs?",
+    "selftext": "I recently graduated with a degree in Industrial Technology - Automated Systems but my classes didn\u2019t dive deep into anything. I had a basic Electrical 101 class and an Advanced 102 class but that teacher was horrible and didn\u2019t do much and was only there for 1 semester. During covid so little hands on stuff at the time and now I\u2019m trying to build a strong foundation before applying for any jobs because I feel I am not prepared to start looking yet. I feel lost because though I graduated, I don\u2019t know what I need to know and what is useless in this field and only learned the \u201cexistence\u201d of topics I see on PLC guru YouTube channels but don\u2019t know what they are talking about at all.",
+    "score": 54,
+    "num_comments": 25,
+    "created_utc": 1749973942,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1r6fqmx",
+    "title": "DLR Ring Loop fault",
+    "selftext": "I have a rack with a 1756-L82E(slot1) and a 1756-EN2TR(slot2). I am setting up a ring loop on a 1756-EN2TR. Loop goes through 4 stratix 5700 switches and one is set as primary supervisor.All switches have the 19/20 ports set up for dlr ring loop. I plugged my pc into supervisor switch.When the loop is complete we get a ring fault and the ip devices become flaky as far as pinging. Once loop is broke, the devices ping as normal. Also, when I plug into slot 1 (cpu). I can ping slot 1, but I can't ping slot 2(not sure if this is related?\n\n  \n\\-Thanks in advance",
+    "score": 2,
+    "num_comments": 3,
+    "created_utc": 1771262541,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rldhbq",
+    "title": "TSX Premium CTY2A \u2013 \u201cMesure Invalid\u201d on encoder CH1 and I/O fault during reference",
+    "selftext": "Hello,  \n  \nI am working on an old machine (around 1997) using a Schneider Modicon TSX Premium PLC.  \n  \nHardware:  \n  \n\n\n* CPU: TSX P5710\n* Power supply: TSX PSY2600\n* Counter module: CTY2A\n* Software: PL7 Pro v4.4\n\nProblem:  \n  \nWhen I try to make the\u00a0**machine reference (homing)**, the axis moves normally until it hits the\u00a0**reference cam**. At that moment the PLC generates an\u00a0**I/O fault**.  \n  \nObservations:  \n  \n\n\n* The\u00a0**counter module CH2 LED starts blinking**.\n* The PLC shows\u00a0**I/O error**.\n* When I connect with PL7 Pro v4.4, I see:\n   * Encoder\u00a0**CH1 status: \u201cMesure Invalid\u201d**\n   * In the diagnostic window:\u00a0**\u201cD\u00e9faut applicatif\u201d**.\n\nAny help or suggestions would be greatly appreciated.  \n  \nThank you.",
+    "score": 1,
+    "num_comments": 1,
+    "created_utc": 1772704013,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1rqbid4",
+    "title": "Alarm View in Wincc Unified",
+    "selftext": "Good evening,\n\nI am currently configuring the Alarm Control for the Logged Alarms (history) view. I have applied a filter to show only my custom Alarm Classes, all of which use the \"Without acknowledgment\" model.\n\nI have correctly configured the background colors for both the \"Incoming\" and \"Incoming/Outgoing\" (Cleared) states within the Alarm Class settings. However, I am facing the following issue: in the alarm history, the same alarm appears twice. The second entry (the \"Outgoing\" event) always shows a white background, as if it were losing the color configuration of my Alarm Class. I also tried using the default \"Alarm\" class, but the result is the same.\n\nI considered performing a software download and unchecking the \"Keep current values of tags and pending alarms in the runtime\" box, but I want to avoid losing the current values of several tags.\n\nDoes anyone have any suggestions on how to fix this or what might be causing the color loss in the history?\n\nThanks for reading!",
+    "score": 1,
+    "num_comments": 0,
+    "created_utc": 1773181259,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qnio5o",
+    "title": "SigmaWin+ Yaskawa servomotor, how to alarm servo when collision occurs",
+    "selftext": "Hello guys, hope you've been well, right now I'm working with yaskawa motor in a Chinnesse machine, and the software we're using to controlled the motors setup etc. is SigmaWin+ Right now I'm trying to figure out how to alarm the servodrive when an crash or collision occurs, I'm thinking using editing parameters but I would like to know if someone here has experience in that could help me.\n\n(the image is just an example how looks the software)\n\nhttps://preview.redd.it/ay1jqfmrmpfg1.png?width=3811&amp;format=png&amp;auto=webp&amp;s=fca3e23490c2e77b928bf2e7811eb3502508bd0b",
+    "score": 1,
+    "num_comments": 3,
+    "created_utc": 1769440372,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1piwne4",
+    "title": "Beckhoff ADS error",
+    "selftext": "I just can't seem to connect to my beckhoff controller. It is connected to my laptop via a dongle. The controller has [192.168.10.1](http://192.168.10.1) as IP and my computer has [192.168.10.69](http://192.168.10.69) as IP. I can reach it using remote desktop, and there is no error message on it. The controller is running 4026.19 and I am using 4026.19 on my computer. When I try to add route, it sees the controller, but it will not connect.\n\nhttps://preview.redd.it/ty4yr6n0xb6g1.png?width=316&amp;format=png&amp;auto=webp&amp;s=fd55c52978fc396582b01ff7b29698694cd68725\n\n",
+    "score": 3,
+    "num_comments": 9,
+    "created_utc": 1765352189,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1lu3974",
+    "title": "Error Messages | How detailed do they need to be, and how do I convince management they need to be more detailed if they want quicker debugging?",
+    "selftext": "Hello all (apologize in advance for a bit of a rant),\n\nI'm in a bit of a situation I'm sure many have found themselves in. An issue comes up when no one from engineering/programming is around (off shift). I then get a passed down message from an operator to a shift lead to a technician where it finally ends up at me. I have a vague understanding of what happened (device didn't work, they cycled power a few times, it started working). I then go back to look at the fault code, and this specific fault code could be the result of 12 different issues causing it (or any combination of the above). \n\nI came from a company that had almost any possible error have its own error code. If Cylinder 26 had it's \"extend\" switch stuck on, it would tell you the cylinder, the switch, and the potential culprits. My current company, where I've since inherited the code from the previous programmer, has multiple error states assigned to the same message. Ex: If devices A, B, C, or D have their fault outputs 1, 2, or 3 turn on, all of these combinations turn on the same error message. In this situation, a total of 12 different situations could cause this message. \n\nI guess my question is, as stated in the title, how detailed should error messages be? I know this is probably a case by case basis, but in general, should each device have an error message for each failure such as \"Device A Faulted - Extend stuck\"? Should each device have a generic fault saying \"Device A Faulted\"? or should we I just leave the error messages as is?\n\nI've brought up adding more error messages before, but it has typically been turned down as there's no \"value added\" by taking the time to implement more fault codes... Which is all fine and dandy while I'm physically at work and can debug the issue in real time. But when it happens at 8pm-3am and I get a word-of-mouth description of it, it makes it a bit of a pain to say the least. \n\nAgain, I apologize if the post reads a bit as a rant. I have brought this issue up before to my manager, usually gets turned down 99/100 asks (to add even a single fault code...), and I'm just looking for any outside guidance and information to bring to a meeting about a reasonable increase to the fault descriptions.",
+    "score": 5,
+    "num_comments": 26,
+    "created_utc": 1751915931,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qt21bn",
+    "title": "Panelview 5500 Clear Alarm History",
+    "selftext": "I have an alarm history that is full (40,000 alarms). How do you clear them? The manual is not very helpful.",
+    "score": 0,
+    "num_comments": 3,
+    "created_utc": 1769961169,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1r73env",
+    "title": "Sinamics G120X Basic Setup Error in TIA Portal",
+    "selftext": "Hi all,\n\nI'm trying to set up a G120X drive in TIA Portal V19 using Sinamics Basic Setup V19.0.120.24, but when I get to the end of the process the following error pops up and I can't make any sense of it. Has anyone experienced something like this?\n\n`10:24:25 Error Method OpenOrRetrieveLibary: Library not found-`\u00a0  \n`at`\u00a0  \n`StartDriveParameterEditor.OpennessExtensions.OpenOrRetrieveLibary(TiaPortal tiaPortal, String libBaseName, String libBasePath)`  \n`at`\u00a0  \n`StartDriveParameterEditor.TiaOpennessOperator.ImportAllBlocks(String cfgFile)`\u00a0  \n`at`\u00a0  \n`StartDriveParameterEditor.TiaOpennessOperator.HandleOpennesssRequests()`\n\nThanks!\n\nEDIT: Solved, the Library folder was missing from C:\\\\Users\\\\User\\\\AppData\\\\Roaming\\\\Siemens\\\\Sinamics G120X Basic Setup\\\\\n\nYouTube tutorial omitted that step but found a pdf that was much more informative.",
+    "score": 1,
+    "num_comments": 1,
+    "created_utc": 1771327296,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qzth5i",
+    "title": "Struggling with UR Robot Faults and Protective Stops",
+    "selftext": "I keep seeing the same issue come up with Universal Robots setups (I am assuming this is also common across other robotic arm brands too), so I wanted to sanity-check with people who work with these day to day.\n\nWhen a UR robot goes into a protective stop / fault that\u2019s intermittent, how do you usually figure out what led up to it?\n\nFor example:\nSomething runs fine for hours or days. Then suddenly faults. Logs are there, but it\u2019s hard to reconstruct the sequence of robot state, IO, forces, program context, etc. right before the stop\n\nIn practice, do you:\nScrape logs manually?\nAdd ad-hoc script logging?\nReproduce by trial-and-error?\nJust wait for it to happen again?\n\nI\u2019m especially curious:\nWhat\u2019s the most annoying fault you\u2019ve had to debug recently?\nHow much time does this kind of issue usually cost you (or your customer)?\nI am just genuinely trying to understand how people deal with this today and whether I\u2019m missing something obvious.",
+    "score": 0,
+    "num_comments": 2,
+    "created_utc": 1770608137,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mves2e",
+    "title": "Powerflex 70 SW Overcurrent fault",
+    "selftext": "My plant has a conveyor that the VFD trips about once an hour with an overcurrent fault. The drive and motor have both been changed out, Ive compared the parameters to the conveyor next to it and the only difference is the accel and decel times are higher on the faulting drive (I think someone adjusted them to try and fix the issue) I\u2019m not sure where to go from here. There\u2019s a line filter before the drive and a contact and line reactor after the drive. The contactor and line reactor are reading out just fine. I was wondering if anyone here has any ideas. ",
+    "score": 1,
+    "num_comments": 21,
+    "created_utc": 1755696406,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qx0pod",
+    "title": "why Siemens S7400 sensor fault(AI), overrange and underrange, the reading has to go to '0'% or '0' barg/degC? #PLC",
+    "selftext": "this happen when analog input reading was simulated overrange and underrange.",
+    "score": 0,
+    "num_comments": 2,
+    "created_utc": 1770332665,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qsw9k1",
+    "title": "Troubleshooting YiPin YP5380MG (80kg HV) Servo with STM32 - PWM Issues",
+    "selftext": "https://preview.redd.it/33u0t8swdvgg1.jpg?width=1920&amp;format=pjpg&amp;auto=webp&amp;s=b233fc38ec714ce48f5746d47a37f4fb967a12d8\n\nHello everyone,\n\nI'm struggling to get my **YiPin YP5380MG (80kg Torque, HV)** servo motor moving using an **STM32**.\n\n**My Timer Configuration (50Hz):**\n\n* **Internal Clock:** 8MHz\n* **Prescaler (PSC):** 7\n* **Auto-Reload Register (ARR):** 19999\n\nInterestingly, these exact parameters work perfectly with my smaller, lower-torque servos. However, the YP5380MG doesn't respond at all.\n\n**Current Setup:**\n\n* I am powering the servo with Power Supply.\n* Common ground is connected.\n\nSince I couldn't find a proper datasheet online, I'm stuck. Does this specific high-torque model require a 5V logic signal instead of the STM32's 3.3V? Or am I missing something in the pulse width timing?\n\nAny help would be appreciated!",
+    "score": 1,
+    "num_comments": 2,
+    "created_utc": 1769945956,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1r0nfxi",
+    "title": "Kinetix 5100 &amp; intermittent E 611 fault",
+    "selftext": "Hello everyone,\n\nCould use some help here. One of our systems is experiencing an E 611 fault consistently. Everything is on the feedback cable is terminated correctly and grounded correctly. Power cable shielding is grounded correctly too.\n\nSystem is a Kinetix 5100 - 2198-E1015-ERS with K51CK-D15M\n\nRunning a MPAI-A4300RM34A with Igus cables connecting the two.\n\nCorrect catalog selection in the knx5100c software and version 4.001.\n\nThe distance between servo drive and actuator is roughly 60m and yes, we know that's not ideal. When the cables are inside conduit, it faults after roughly 10-20 issued commands. When we bench test it on site with only 20M of cables, it will run all day without issues. Everything on this system that's related to the servo drive system has been replaced with no luck.\n\nAny ideas would be greatly appreciated",
+    "score": 1,
+    "num_comments": 1,
+    "created_utc": 1770687766,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1r7er4d",
+    "title": "Error while trying to communicate with a VTL FC302",
+    "selftext": "I have a VTL FC 302 and I tried to connect it to the computer using the USB port, but a USB-related error appears in Windows, not recognizing it in MCT 10 .The USB ports on the PC are working.",
+    "score": 1,
+    "num_comments": 0,
+    "created_utc": 1771353790,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1q205vt",
+    "title": "Free PLC troubleshooting software options",
+    "selftext": "Hey everyone I'm fairly new to my current job and I've been having many faults popping up in multiple PLCs connected to kids interactives. ( push a button and it triggers a pulley system etc.) I've worked with PLCs before with fault detection / troubleshooting built into the unit, but here i have to keep cross referencing the electrical prints then isolate what seems to be the issue to try and make a fix. Overall it's a bit tedious of a process and I was wondering if there were free software out there that could help me solve these problems more efficiently.",
+    "score": 3,
+    "num_comments": 5,
+    "created_utc": 1767364534,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qpe1nb",
+    "title": "ET200SP TC Module: 32767 Error with Type A0 BaseUnit",
+    "selftext": "I have 6ES7134-6JD00-0CA1 (TC BA) modules on Type A0 BaseUnits.\nWhen I select 'Internal Reference Junction', I get 32767 (Overflow) because A0 has no NTC sensor.\n1. Is 'Fixed Reference' my only option to clear the error?\n2. If I use 'Fixed Reference', how can I compensate for Cold Junction error via software?\nA1 BaseUnits are not available right now. Any workarounds?\"",
+    "score": 2,
+    "num_comments": 2,
+    "created_utc": 1769613280,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1peuyu3",
+    "title": "AB 1756-L84ES Module Fault Code16#0117",
+    "selftext": "I am not sure how long this has been occurring, I just recently started a new job at a large warehouse and I discovered this fault this morning. Seems to be a communications fault between PLC\u2019s and from my Google-fu it seems to point at a discrepancy in tag types from one PLC to the next. Has anyone seen this before? I am using the Logix Compare utility to look at two different programs with one being faulted controller and the other being the controller that\u2019s displaying the fault. Any pointers on what to look for? This fault is a new one for me.",
+    "score": 2,
+    "num_comments": 8,
+    "created_utc": 1764941066,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1o5kum6",
+    "title": "Can I turn off PLC Errors caused by disconnected Profinet devices? (Siemens S7-1200 TIA)",
+    "selftext": "I have a machine where it is totally ok if one of the profinet devices is disconnected.\n\nI cannot deactivate them, becouse the program needs to check the connected devices continuously.\n\nThe PLC error doesn't cause any problems, although it is not too professional to have the red light on while there isn't any problem.\n\nThank you for your help!",
+    "score": 5,
+    "num_comments": 13,
+    "created_utc": 1760364837,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1m8etx9",
+    "title": "Anyone has a function block to help with alarm handling?",
+    "selftext": "Creating alarms is such a boring and time-consuming task\u2026\n\nIn my company, we use one or more words where each bit represents an alarm. But is there really no better, faster, more optimized way to handle this?\n\nDoes anyone have a function block or method that can help streamline the process \u2014 something like dynamic alarm assignment and then using an external tool to map everything to the HMI?\n\nWould love to hear how others are doing it!",
+    "score": 2,
+    "num_comments": 22,
+    "created_utc": 1753387662,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1r073u5",
+    "title": "Troubleshooting help",
+    "selftext": "Okay so I have another PLC besides the one I just posted that froze up on me while at a customers shop. I was using an IFM EC2112 RS 232 cable for a application update.\n\nIt\u2019s a CR0234 PLC\n\nI updated 5 machines while I was there but the third one I did the connection failed when I tried to connect to the PLC and then a white LED came on where normally there is a blinking green light while running the application.\n\nIt keeps returning a 5131 code (baudrate cannot be established)\n\nBased on the research I\u2019ve done so far I am thinking I must have hot plugged it accidentally while moving from machine to machine but I always have everything fully off when I plug in normally an I\u2019ve done quite a few of these.\n\nFrom what I can tell the RS 232 return from the PLC being damaged could cause this behavior but one other thing was brought up that I was curious about.\n\nBasically my question is could a runtime system problem cause this kind of behavior as well?  \n\nAnd if so is it actually possible to use the canbus channel and codesys to try to start from scratch with the PLC?\n\nI realize the easy answer is sending it to IFM for repairs but I\u2019m curious about this stuff anyways so I\u2019d like to at least learn a bit more about what\u2019s going on and how to avoid it in the future.",
+    "score": 3,
+    "num_comments": 0,
+    "created_utc": 1770650782,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mscae7",
+    "title": "Allen Bradly Servo Help!: Excessive Velocity Error",
+    "selftext": "Could someone please help me figure out this problem Im having with A Servo Drive.\n\nThe Servos catalog number is \"MPL-B220T-Vxx4\", model type is \"2198-D012-ERS3\" and its connected to Kinetix 5700 Drive. No matter what i do i keep getting a \"Excessive Velocity Error\".\n\nI've replaced both the orange power and green feedback cables\n\nI've replaced the drive and the motor\n\nI've tried all this while having the motor just sitting on a table not attached to any load.\n\ndoes anyone have any idea what could be causing this?",
+    "score": 5,
+    "num_comments": 19,
+    "created_utc": 1755389277,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qtver7",
+    "title": "Help Needed: \"EVU: Connectiontest failed!\" error on Generator Control Panel",
+    "selftext": " \n\nhttps://preview.redd.it/mne9rn5d33hg1.png?width=1018&amp;format=png&amp;auto=webp&amp;s=4bef29ec30f0fed7657d29d6d29fb8f451d965ab\n\nhttps://preview.redd.it/maphd41843hg1.png?width=4284&amp;format=png&amp;auto=webp&amp;s=846387ab7f01c2e79a6f1350a317c19a78a1d45f\n\nHi everyone,\n\nI am currently operating a **MAN biogas generator** equipped with an **Elektro Hagl control panel**. I am facing a persistent **\"EVU: Connectiontest failed!\"** error and I'm stuck because I do not have the **Hagl Master Key** to access deep system settings.\n\nI am not a communications expert, but I have tried the following basic troubleshooting:\n\n1. **Replaced the Power Supply:** Changed the power unit on the control panel side to rule out unstable voltage.\n2. **Physical Connection Check:** Disconnected and reconnected all communication cables to ensure no loose contacts.\n\nDespite these efforts, the error persists. It seems to be a timeout or a lost signal between the main controller and the EVU (Utility/Grid) interface.\n\n**My Questions:**\n\n1. Since I don't have the **Master Key**, is there any \"manual\" way to reset the EVU communication or clear this hang-up?\n2. Are there specific points on the Elektro Hagl board I should measure with a multimeter to verify the signal (CAN-bus or RS485)?\n3. Could this be a hardware failure of the EVU communication module itself, and if so, how can I confirm it without software access?\n4. Are there any known bypasses or common failure points for Elektro Hagl panels in this specific setup?\n\nIt\u2019s been very difficult to troubleshoot this without expertise in industrial comms. Any guidance or a \"step-by-step for non-experts\" would be a lifesaver.\n\nThank you in advance!",
+    "score": 0,
+    "num_comments": 0,
+    "created_utc": 1770039861,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qkwie7",
+    "title": "Emiliana Serbatoi / Emiltouch \u2013 touchscreen not responding, fuel level probe error blocks fueling",
+    "selftext": "Hi everyone,\n\nI\u2019m working with an industrial fuel dispenser from Emiliana Serbatoi,\n\nEmiltouch system, product code: VTG1008TS-ES.\n\nCurrent situation:\n\n\\- The display works correctly (animations and graphics are visible).\n\n\\- The touchscreen does NOT respond to any touch at all.\n\n\\- The screen shows error: \"Error 485 COM\".\n\n\\- There is also an error caused by a broken fuel level probe (tank level sensor).\n\n\\- Because of these errors, fueling is completely blocked.\n\n\\- Normally, the level probe can be disabled in software settings,\n\n  but I cannot access the menu because the touchscreen is not working.\n\nSo I\u2019m stuck in a loop:\n\n\\- Touchscreen not working \u2192 cannot enter settings\n\n\\- Level probe / communication error \u2192 system blocks fueling\n\nMy questions:\n\n1. Is there any hardware or service-level way to temporarily bypass or disable the fuel level probe?\n\n2. Is there a service mode, jumper, DIP switch, key combination, or PC/serial connection\n\n   that allows disabling the level probe without using the touchscreen?\n\n3. Is it possible to force the system to allow fueling even if the tank level\n\n   is not displayed or monitored (temporary workaround)?\n\n4. Has anyone faced a similar situation with Emiltouch or other industrial\n\n   fuel management systems?\n\nI can access internal wiring, I/O, and connectors if needed.\n\nAny advice or direction would be really appreciated.\n\nThanks!",
+    "score": 0,
+    "num_comments": 1,
+    "created_utc": 1769188088,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1q73zmw",
+    "title": "Prosoft PLX31-PND-MBS4 comms fault map",
+    "selftext": "Hi guys,\u00a0\n\nIs there anyone here familiar with Prosoft products? I am using a Prosoft PLX31-PND-MBS4. The architecture is roughly as shown below:\n\nhttps://preview.redd.it/psdqosgaf2cg1.png?width=647&amp;format=png&amp;auto=webp&amp;s=d2d9dceabe3ff5e48e41bc1da8337d30c99bed23\n\nI noticed in the Prosoft manual that the addresses 14510, 14511 and so on can be used to record the status of the modbus slaves, as per the excerpt below.\u00a0\n\n\u00a0\n\nhttps://preview.redd.it/av5sptdcf2cg1.png?width=840&amp;format=png&amp;auto=webp&amp;s=414b001ba81a31aeaba9138a2a0dbb93d6347517\n\nI set up the Prosoft module to map these addresses into the user accessible area (which is set up as 2000 - 2512 in my Prosoft). The map is as shown below:\n\nhttps://preview.redd.it/ew3i7glgf2cg1.png?width=1416&amp;format=png&amp;auto=webp&amp;s=30672a61573e5233825022c6b6ab36e3df7fbf2b\n\nHowever, it looks like this map isn't happening, because the corresponding addresses in the PLC are all showing zeros for me. In the Prosoft, when I use the diagnostics tool, it looks like these mapping commands are not there (see below excerpt from the diagnostics file):\n\nhttps://preview.redd.it/dlrvp41if2cg1.png?width=1119&amp;format=png&amp;auto=webp&amp;s=f499b88457ea9552307b466f0f4bcc61758236da\n\n\u00a0\n\nWhat is going on with this? Also I wanted to check what the mapping actually looks like. The manual says 14510 is Slave #1 Status. Is this MODBUS slave ID 1, or is it slave \"0\"? Some parts of the prosoft seem to use this zero reference, while others seem to not.\u00a0\n\n\u00a0\n\nAny help would be much appreciated.",
+    "score": 1,
+    "num_comments": 2,
+    "created_utc": 1767852092,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1qe1me4",
+    "title": "Lichuan A4 series Drive Fault Err 24",
+    "selftext": "First time working with a servo. What do you do in case of a Excessive Position Deviation error? Anyone worked on the Lichuan drives before?",
+    "score": 2,
+    "num_comments": 1,
+    "created_utc": 1768525043,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1q4o4yr",
+    "title": "Troubleshooting with an Siemens MP377",
+    "selftext": "Hello everyone,\n\nI encountered a troubleshooting issue with an HMI MP377 from Siemens. I used it with WinccFlex 2007 with a small/big project (small and big amount of variables/screens).\n\nI tested the HMI on a bench with both of the projects and an Ethernet link with a SIMIT simulation, everything worked perfectly as planned.\n\nBut when i tested it with a PROFIBUS link with an S7-400 CPU all went very slow. When i clicked on a button to open a pop-up, it opened it with a delay of 10 to 15 seconds on both of the projects. All the values are changing right on time but making a change from the HMI is slow.\n\nSwitching between screens make it a little bit faster for a couple of seconds, but after 5 to 10 seconds, it occurs again.\n\nVariables are configured \"cyclic continuously\" with a cycle configured between 1 to 5 seconds.\n\nI was wondering if the PROFIBUS link between the HMI and the PLC could probably cause this troubleshooting and, if so, changing the link for an Ethernet link could solve the problem ?\n\nThanks,\n\nTwings",
+    "score": 2,
+    "num_comments": 1,
+    "created_utc": 1767625791,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1okmb1i",
+    "title": "M580 conversion block error.",
+    "selftext": "Anyone know why this conversion block is not working ?. Input is scaled analog values that I am getting. I tried to convert that from into to dint, int to word, int to real. But nothing works. And if I try to change the mapping tag to real or any other than int. It shows error. \n\nEdit: as I can't upload images. I'll upload them in comments",
+    "score": 2,
+    "num_comments": 7,
+    "created_utc": 1761888298,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1lnptd8",
+    "title": "Troubleshooting RTD issues on Bently Nevada Orbit 60 System",
+    "selftext": "Hi all, hoping someone could help out here. I\u2019m an electrician on an oil platform currently troubleshooting motor winding RTD issues on an older 4160v motor. When the motor is off, the RTD signals display just fine on our control system. Once we energize the motor, the RTD signals all drop to 0 and stay offline or go in and out of fault constantly. The RTDs are 3-wire 100ohm platinum RTDs. \n\nI\u2019ve tried troubleshooting by unwiring the RTD from the junction box on the motor and wiring in another external RTD to the terminal blocks and had no issue getting temp readings from this external RTD. \n\nResistance is staying consistent enough on the motor winding RTD so I don\u2019t believe the RTD is failing. Measuring AC voltage to ground on the red and white wires show .05-.06VAC with motor off and everything healthy. Once motor is running, I am seeing .15-.16VAC on the wires. With the external RTD wired up and motor running, I am seeing the same .05-.06VAC on the wires that I saw on the motor winding RTD when motor was off. \n\nIt seems like we\u2019re picking up some inductance from the motor when it is running but not sure how to go about properly checking or rectifying this. The RTDs leads have a metal braid over the 3 leads, it doesn\u2019t appear to be insulated from what I can see in the junction box and was not grounded to anything. Tried grounding it to the motor housing but this did not change anything. \n\nI have access to an oscilloscope, process meters, and volt meters for troubleshooting, I\u2019m just not sure what would be the best way to proceed. Would it be possible to add some sort of filter to help with this issue? I see threads online about people adding capacitors in the RTD circuit but not really sure what I\u2019d need or how to wire it up with this Orbit 60 RTD Input Card.",
+    "score": 2,
+    "num_comments": 19,
+    "created_utc": 1751231699,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1oiaetn",
+    "title": "FactoryTalk AssetCentre crashing at startup - Unhandled Exception has occurred in your application. Internal Error: Profile SubSystem unknown.",
+    "selftext": "I recently installed rockwell software on a new Virtual Dev Server, as we are planning on decommissioning our old dev server as we migrate to the newest version of iFix. Everything is working correctly, with the exception of AssetCentre. I'm getting the Splash Error \"Unhandled Exception has occurred in your application. Internal Error: Profile SubSystem unknown\". When I click details, this is the error: \n\n  \nSee the end of this message for details on invoking\n\njust-in-time (JIT) debugging instead of this dialog box.\n\n\u00a0\n\n\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\* Exception Text \\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\n\nSystem.Exception: Internal Error: Profile SubSystem unknown.\n\n\u00a0 at RockwellAutomation.FactoryTalk.Studio.Profile.LoadProfileProperties(Type type, Object obj)\n\n\u00a0 at RockwellAutomation.FactoryTalk.Studio.Application.Frame.RSFrame.OnLoad(EventArgs e)\n\n\u00a0 at System.Windows.Forms.Form.OnCreateControl()\n\n\u00a0 at System.Windows.Forms.Control.CreateControl(Boolean fIgnoreVisible)\n\n\u00a0 at System.Windows.Forms.Control.CreateControl()\n\n\u00a0 at System.Windows.Forms.Control.WmShowWindow(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.Control.WndProc(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.ScrollableControl.WndProc(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.Form.WmShowWindow(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.Form.WndProc(Message&amp; m)\n\n\u00a0 at RockwellAutomation.FactoryTalk.Studio.Application.Forms.DefaultFrame.WndProc(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.Control.ControlNativeWindow.OnMessage(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.Control.ControlNativeWindow.WndProc(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.NativeWindow.Callback(IntPtr hWnd, Int32 msg, IntPtr wparam, IntPtr lparam)\n\n\u00a0\n\n\u00a0\n\n\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\* Loaded Assemblies \\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\n\nmscorlib\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4785.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: [file:///C:/Windows/Microsoft.NET/Framework/v4.0.30319/mscorlib.dll](https://)\n\n\\----------------------------------------\n\nRA.FTAC.Client\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0000.192\n\n\u00a0 \u00a0CodeBase: [file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RA.FTAC.Client.exe](https://)\n\n\\----------------------------------------\n\nRockwellAutomation.FactoryTalk.StudioInterfaces1\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0000.192\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.Fact\u2026\n\n\\----------------------------------------\n\nSystem.Windows.Forms\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4739.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Windows.Forms/v4.0\\_4.0.0.0\\_\\_b77a5c561934e\u2026\n\n\\----------------------------------------\n\nSystem\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4770.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: [file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System/v4.0\\_4.0.0.0\\_\\_b77a5c561934e089/System.dll](https://)\n\n\\----------------------------------------\n\nSystem.Drawing\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4390.0 built by: NET48REL1LAST\\_C\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Drawing/v4.0\\_4.0.0.0\\_\\_b03f5f7f11d50a3a/Sy\u2026\n\n\\----------------------------------------\n\n[RockwellAutomation.FactoryTalk.Studio](http://RockwellAutomation.FactoryTalk.Studio)\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0000.192\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.Fact\u2026\n\n\\----------------------------------------\n\nRockwellAutomation.FTAssetCentre.DirectoryAndSecurityWrapper\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0005.197\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.FTAs\u2026\n\n\\----------------------------------------\n\nSystem.Configuration\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4380.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Configuration/v4.0\\_4.0.0.0\\_\\_b03f5f7f11d50\u2026\n\n\\----------------------------------------\n\nSystem.Core\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4785.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Core/v4.0\\_4.0.0.0\\_\\_b77a5c561934e089/Syste\u2026\n\n\\----------------------------------------\n\nSystem.Xml\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4161.0 built by: NET48REL1\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Xml/v4.0\\_4.0.0.0\\_\\_b77a5c561934e089/System\u2026\n\n\\----------------------------------------\n\nInfragistics4.Win.UltraWinToolbars.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Win.Ultra\u2026\n\n\\----------------------------------------\n\nInfragistics4.Win.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Win.v20.1\u2026\n\n\\----------------------------------------\n\nInfragistics4.Shared.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Shared.v2\u2026\n\n\\----------------------------------------\n\nUIAutomationProvider\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4785.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/UIAutomationProvider/v4.0\\_4.0.0.0\\_\\_31bf3856ad364\u2026\n\n\\----------------------------------------\n\nRockwellAutomation.FactoryTalk.TraceDiagnostics\n\n\u00a0 \u00a0Assembly Version: [5.0.0.5](http://5.0.0.5)\n\n\u00a0 \u00a0Win32 Version: [5.0.0.05](http://5.0.0.05)\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.Fact\u2026\n\n\\----------------------------------------\n\nRA.FT.ExceptionManagement\n\n\u00a0 \u00a0Assembly Version: [3.0.0.5](http://3.0.0.5)\n\n\u00a0 \u00a0Win32 Version: [3.0.0.5](http://3.0.0.5)\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RA.FT.ExceptionManageme\u2026\n\n\\----------------------------------------\n\nMicrosoft.GeneratedCode\n\n\u00a0 \u00a0Assembly Version: [1.0.0.0](http://1.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4161.0 built by: NET48REL1\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Xml/v4.0\\_4.0.0.0\\_\\_b77a5c561934e089/System\u2026\n\n\\----------------------------------------\n\nMicrosoft.GeneratedCode\n\n\u00a0 \u00a0Assembly Version: [1.0.0.0](http://1.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4161.0 built by: NET48REL1\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Xml/v4.0\\_4.0.0.0\\_\\_b77a5c561934e089/System\u2026\n\n\\----------------------------------------\n\nInfragistics4.Win.UltraWinStatusBar.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Win.Ultra\u2026\n\n\\----------------------------------------\n\nInfragistics4.Win.UltraWinTabbedMdi.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Win.Ultra\u2026\n\n\\----------------------------------------\n\nInfragistics4.Win.UltraWinDock.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Win.Ultra\u2026\n\n\\----------------------------------------\n\nRockwellAutomation.FTAssetCentre.ApplicationEventing\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0000.192\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.FTAs\u2026\n\n\\----------------------------------------\n\nRockwellAutomation.FTAssetCentre.DataAndHelpers\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0000.192\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.FTAs\u2026\n\n\\----------------------------------------\n\nRockwellAutomation.FTAssetCentre.LicenseInfo\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0005.197\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.FTAs\u2026\n\n\\----------------------------------------\n\n\u00a0\n\n\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\* JIT Debugging \\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\n\nTo enable just-in-time (JIT) debugging, the .config file for this\n\napplication or computer (machine.config) must have the\n\njitDebugging value set in the system.windows.forms section.\n\nThe application must also be compiled with debugging\n\nenabled.\n\n\u00a0\n\nFor example:\n\n\u00a0\n\n&lt;configuration&gt;\n\n\u00a0 \u00a0&lt;system.windows.forms jitDebugging=\"true\" /&gt;\n\n&lt;/configuration&gt;\n\n\u00a0\n\nWhen JIT debugging is enabled, any unhandled exception\n\nwill be sent to the JIT debugger registered on the computer\n\nrather than be handled by this dialog box.",
+    "score": 2,
+    "num_comments": 7,
+    "created_utc": 1761660622,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1kyyu0j",
+    "title": "allen bradley powerflex f13 ground fault",
+    "selftext": "Hello friends\n\nI have an allen bradley powerflex 755 7.5 kw drive. I get f13 ground fault error on the drive. There is no load connected to the drive. I just energize and I see this error on the drive screen. explosion occurred in the part where the capacitors were in the drive and I repaired them. I replaced the defective components in the drive channels. there is no problem for now when I energize, but I could not fix the ground fault alarm. I also replaced the acs710t components that measure the output currents in the drive, the problem is the same. if you think where the problem may be, I am waiting for your help\n\n",
+    "score": 0,
+    "num_comments": 22,
+    "created_utc": 1748592922,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1om6jkr",
+    "title": "Inovance InoProShop Softmotion Error HWLIMITS",
+    "selftext": "Hello,\n\nI\u2019m new to the **InoProShop** and **CODESYS** platforms.  \nI\u2019m currently using an **Inovance AM600 PLC** to control a **servo drive via EtherCAT**.\n\nWhen I use the **MC\\_MoveRelative** function block to test the servo, I continuously receive the following error:  \n**SMC\\_DI\\_HWLIMITS\\_EXCEEDED**.\n\nAfter searching online, I found that this error usually occurs when the **hardware limit switch** is active. However, in my setup, there is **no external connection** \u2014 only the PLC and the servo driver are connected. I also haven\u2019t changed any **I/O mapping addresses**.\n\nCould you please help me understand the cause of this issue and how to fix it?\n\nThank you very much for your support.\n\nP/s: I'll put the Error and I/O Mapping below.\n\nhttps://preview.redd.it/3l8djwc8dryf1.png?width=1920&amp;format=png&amp;auto=webp&amp;s=085e37d2ebdf4e2cd4f35cc8bb8edd0a9fa7e6a4\n\nhttps://preview.redd.it/eorfevtkcryf1.png?width=1919&amp;format=png&amp;auto=webp&amp;s=9be35daa3fa17a37c20e82b214b51a6b79d35154\n\n",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1762052034,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1nebmx3",
+    "title": "MSG Block Error Code Question",
+    "selftext": "Hey y'all. Trying to connect a S150-3 controller we have on an RO unit to a L81E processor. But have been struggling to get it actually communicating with the PLC. \n\nhttps://preview.redd.it/unetmh77vjof1.png?width=1105&amp;format=png&amp;auto=webp&amp;s=c60707f4d03eb42bbf1c00c1abc93d3cefeb990f\n\nhttps://preview.redd.it/jd069wgdvjof1.png?width=808&amp;format=png&amp;auto=webp&amp;s=556262fe5c6262cbc475df030ab0e6398e452cbd\n\nThank you for the new diagnostic capture, this was exactly what I was looking for. I checked the config.csv and I can see R&amp;D configured their ProtoNode to use Data Table Read commands. Here are the tag names.\n\nhttps://preview.redd.it/g3fv0ibyvjof1.png?width=399&amp;format=png&amp;auto=webp&amp;s=bbe8c722a8230e17c11399532a74fbdb2bea3e9c\n\n\\^\\^The webpage of the communication device sent me to MSA for support. Got a manual from them and was emailing back and forth with one of their support guys. Info above was his response to a diagnostic package from the FPC-ED2 device. I'm trying to contact R&amp;D specialties for support as well, but figured I'd ask here as well. \n\nhttps://preview.redd.it/4v8dsmalyjof1.png?width=713&amp;format=png&amp;auto=webp&amp;s=a9b0f5afe46a620851746bf8590205be4e16f4e4\n\nhttps://preview.redd.it/r1glx9xmyjof1.png?width=692&amp;format=png&amp;auto=webp&amp;s=dc4d0dec2d1ff59ccbf4f502dcd5a31d7d8c4ba4\n\nhttps://preview.redd.it/h432ucynyjof1.png?width=694&amp;format=png&amp;auto=webp&amp;s=0b29724a576c391324dec9abf4995818478902b3\n\nhttps://preview.redd.it/o5oyl0bpyjof1.png?width=691&amp;format=png&amp;auto=webp&amp;s=a46ca45022895cd0ecc6dfb59fb0c8e19711a3d3\n\nI've tried a few different connection paths, have tried the connection with the \"Connected\" box checked and unchecked, but still no luck. Have tried to lookup the error codes. I know the 16#0000\\_0312 when using the 'ControlsNetwork, 1, 3.1.1.112' path indicates a problem with that path. But, when I have switched it over to the 'ControlsNetwork, 2, 3.1.1.112' path, I have not been able to find any documentation for the 16#0000\\_2105 error code. Wanted to see if there were any ideas here. ",
+    "score": 1,
+    "num_comments": 10,
+    "created_utc": 1757604051,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1nco7sm",
+    "title": "\u26a0\ufe0f Need help \u2013 FactoryTalk View ME Runtime error with PlantPAx faceplates",
+    "selftext": "Hi everyone,\n\nI\u2019m working on a project with **FactoryTalk View ME** (not SE) using the **PlantPAx 4.10.06 library**.  \nI have an issue when creating the **runtime (.mer)**:\n\n* The **Displays exist** in my project (ex: P\\_Motor-Faceplate, P\\_ValveC-Faceplate).\n* But during runtime creation, I get an **error** saying the display can\u2019t be found.\n* It\u2019s **not a spacing issue** (already checked).\n* Expression used in the Global Object button is something like:\"(\" + {#102.HMI\\_Lib} + \"-ME) \" + {#102.HMI\\_Type} + \"-Faceplate\" \n* Diagnostics List doesn\u2019t clearly show which part is failing.\n\nHas anyone experienced this with PlantPAx ME faceplates?  \nCould it be related to missing **Parameter Files** or **String Servers** (language files)?  \nAny advice on how to debug this?\n\nThanks in advance \ud83d\ude4f",
+    "score": 1,
+    "num_comments": 11,
+    "created_utc": 1757436669,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1nnwilx",
+    "title": "Receiving Studio 5000 Logix designer fatal error message",
+    "selftext": "Hi, I just installed studio 5000 (v33 and 30) and whenever I open a program, I usually receive this message on my computer after about 30 minutes and when I acknowledge it the whole software closes. Does anyone know how to resolve this\n\nhttps://preview.redd.it/5mzod5ofrrqf1.jpg?width=1845&amp;format=pjpg&amp;auto=webp&amp;s=9371c2adcda8d366fa4321ab8642d4546159da17\n\nhttps://preview.redd.it/qpx4drihrrqf1.jpg?width=2218&amp;format=pjpg&amp;auto=webp&amp;s=d8295d4400d654fc7336dadd8ff0524c251ff7c5\n\n",
+    "score": 5,
+    "num_comments": 9,
+    "created_utc": 1758570376,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1od3jj5",
+    "title": "Troubleshooting Intermittent LDO Sensor Failures on Modbus RS-485 Network with ProSoft ILX34-MBS485 Card",
+    "selftext": "I\u2019m troubleshooting a LDO sensor that fails intermittently on a Modbus RTU RS-485 network in an Allen-Bradley Point I/O setup. Need help figuring out why and what to try next, especially since the cable run is ~1km. Here\u2019s the setup and issue:\n\nSetup:\n\u2022  PLC/I/O: Point I/O with CompactLogix (Studio 5000). 8 x ILX34-MBS485, 3 x 1734-IB8, 1 x 1734-EP24DC (24V DC power), 2 x 1734-OB8\n\u2022  Modbus Card: ProSoft ILX34-MBS485 (RS-485, Modbus master).\n\u2022  Sensor: LDO, Modbus RTU, 2-wire RS-485, set to 19,200 bps (standard 8-N-1, unique slave ID).\n\u2022  Cable: Shielded twisted-pair, ~1km total bus length (close to ILX34\u2019s 1,219m max but not over). 120-ohm resistors at ILX34-MBS terminal. ILX34-MBS Card is also grounded.\n\nIssue:\n\u2022 Sensor works fine for a couple of hours (existing sensor after resetting the ILX card) or 2-3 months (brand new sensor), then stops communicating (data freezes or sensor appears offline in PLC).\n\u2022  Key detail: \u201cFaulty sensor\u201d tests fine when removed and checked in test bench.\n\nQuestions:\n1.  Why is this happening? Could the ~1km distance at 19,200 bps cause signal degradation over time, even under the 1,219m limit? Other possibilities: EMI, Sensor timeouts, or PLC logic errors?\n2.  Troubleshooting steps?\n3.  Is an RS-485 repeater worthwhile? Since I\u2019m near 1km, would a repeater prevent degradation? Where to place it?\n4.  Node distance limits: Per ProSoft specs, RS-485 max is 1,219m at 19,200 bps. What happens if I exceed this (future-proofing question)? Any \u201cstronger\u201d card than ILX34-MBS485 for longer runs or noise immunity?\n\nThanks for any help\u2014this issue is driving me up the wall! Please note I am kind of new to this so be nice:)",
+    "score": 2,
+    "num_comments": 6,
+    "created_utc": 1761125157,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1ol0apr",
+    "title": "Codesys EtherCAT state machine errors",
+    "selftext": "I\u2019m really hoping you guys can save the day!\n\nI\u2019m using a wago compact controller 100 to control 8 A6 servo drives from stepper online\n\nI\u2019ve had to create a custom PDO (16#1600, 16#1A00) I\u2019ve had it working with 7 drives however the only way I can get it to work is by manually controlling the drives Ethercat state machine (they all have the orange triangle) if I init&gt;pre-op&gt;op on every drive sometimes they will go into operation\n\nI feel like it\u2019s a timeout error however adjusting the timeouts etc does not seem to help the issue\n\nNow I\u2019m also getting NO_COM errors which I previously was not \n\nJust hoping if anyone has any advice, there isn\u2019t a lot of results online to aid myself\n\nEDIT\n\nThanks all for your help, turns out the controller was being overloaded, I\u2019ve been able to test it by doubling up on controllers temporarily ",
+    "score": 2,
+    "num_comments": 5,
+    "created_utc": 1761930553,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1okuf9p",
+    "title": "Keyence IX-055/H-2000 Error",
+    "selftext": "Hi, I need help or any advice. I have a customer with the following issue:\n\n* The device was manufactured in 2022 and worked fine for the first 2\u20133 years. It uses two IX-055 sensor heads that move 30 cm up and down every \\~25 seconds. Both have only one program, so the program never changes.\n* About a year ago, one of the Keyence units (IX-055 / H-2000 / DL-PN1) went into an error state \u2014 the ERR indicator lit up on the main unit H-2000. The cable between the head and the main unit was replaced, and the problem disappeared.\n* Now, however, the same head has started showing the same issue again (sporadically, about every 5\u201310 cycles). The cable, head, main unit, and Profinet communication unit (DL-PN1) have all been replaced. From the PLC (Siemens CPU) perspective, both units run the same program, and the other one has never shown this problem. I\u2019m running out of ideas about what else to check or try.\n\nWhen the head is not being triggered (just powered on and moving up and down), it doesn\u2019t go into error. The error only occurs when it is triggered.\n\nHas anyone encountered something like this before? For example, could this error be caused by triggering the sensor when the laser is off, or triggering it during a BUSY state, or something similar?\n\nThank you",
+    "score": 2,
+    "num_comments": 5,
+    "created_utc": 1761916836,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1p2y9pn",
+    "title": "Hardware Error TIA PORTAL V20",
+    "selftext": "https://preview.redd.it/j645rqis0m2g1.png?width=2048&amp;format=png&amp;auto=webp&amp;s=4eb5d405c0d7156e047227fdba949abd11e2a036\n\nEstoy intentando compilar mi proyecto de Tia Portal V20, al momento de querer compilar y subir mi codigo al plc.   \nEstoy trabajando con un s7 1511 1pn. Venia funcionando bien, hasta el dia de ayer que quise subir el codigo y empezo a crashear debido al error de hardware. Probe diferentes metodos, aislando unicamente el PLC, quitando el HMI, cambiando el codigo. Y siempre pasa lo mismo.  \nCambie de PC con otro TIA PORTAL y lo mismo. \n\nNecesitaria saber como solucionar dicho error, o que causa lo suele generar. \n\nhttps://preview.redd.it/jljm39tv0m2g1.png?width=2678&amp;format=png&amp;auto=webp&amp;s=ae0e73f34fb96639cf2114df84d4517d6318b5e8\n\n",
+    "score": 0,
+    "num_comments": 3,
+    "created_utc": 1763730805,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1nvlxq5",
+    "title": "[CCW] Error -1073741819 in ISaGRAF5: Build Failed - Has anyone encountered this error?",
+    "selftext": "    Hi everyone,\n    \n    I'm working with Connected Components Workbench and I've run into an error that I can't seem to resolve. When trying to compile my project, I'm getting the following message:\n    \n    ISaGRAF.ISaGRAF5(52,5): Error : -1073741819: build failed\n    \n    The error appears to be related to ISaGRAF at line 52, column 5, but the error code (-1073741819) doesn't give me much information about what's causing the issue.\n    \n    Has anyone experienced this error before? Any suggestions on what might be causing it or how to fix it?\n    \n    Any help would be greatly appreciated.\n    \n    Thanks in advance.Hi everyone.\n\n    \n    ",
+    "score": 2,
+    "num_comments": 7,
+    "created_utc": 1759356035,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1o1l250",
+    "title": "Force bit alarming (tia portal)",
+    "selftext": "Hello,\n\nAre ons you familiar with generating an alarm if a bit is forces? When I force a bit I see a red F flag in the display. However I'm not able to read this alarming out of the plc so I can generate an alarm to scada or activating a horn to notify. \n\nDoes anyone know if this is even possible?",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1759952855,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1oj1rlj",
+    "title": "Inverter communication error",
+    "selftext": "I am an electrical maintenance worker, I have been doing this job for 2 years. I changed jobs 6 months ago. Let me start by saying that Italian companies don't want to train their workers 100%, so I do the diagnostics without connecting to the PLC. I know it's stupid but they don't trust us, we have a display where we can read the alarms and emergencies.\nEvery now and then I have to deal with a network node problem. In order to solve this problem, do I have to turn off all the panels on the line or is there another alternative? Like entering with the PLC and resetting by updating the program? We have software engineers who solve things remotely, so I'll have to call them every time I get the chance.\nYesterday, for example, I had to turn off the panel, the power line and the auxiliaries which are powered by another junction panel, but I interrupted a cycle of a newly assembled palletiser which was 10 meters away from me. They started it again but when it started the cycle again, a piston in one of the cylinders broke, nothing serious but I could have done something big.\nI accept advice.",
+    "score": 1,
+    "num_comments": 4,
+    "created_utc": 1761736660,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1nbom7v",
+    "title": "TwinCAT: Terminal Signals Error",
+    "selftext": "Hello everyone\n\nI am writing here in hope of finding some help from you Beckhoff experienced folk out there. Here is, what I hope, a sufficient description of my problem. I appreciate you taking the time to read this and more so providing tips and solutions to my problem.\n\n\n\n**Setup: The machine**\n\n  \nWithout giving too much detail on the project, simply put, I am working on a 3-axis additive manufacturing machine. That is XYZ motion axes and one A axis all defined in the CNC. The system consists of a Beckhoff IPC and beckhoff bus of terminals. the Z and A axes use EL7047 stepper drivers connected to Nanotec steppers.\n\n  \n**The Problem: Terminal Signals Error (Klemme meldet fehler)**\n\n  \nWhen running a gcode file (not necessarily the same one when facing this issue), that is an additive process running for multiple hours, a CNC error occurs at random, at some random point during the process that disrupts the CNC. The machine simply stops motion and CNC goes into an error state ruining the entire process and requiring a CNC reset (not activation of configuration) to start again.\n\n  \nThe Error list in TwinCAT shows two errors at this point that seem to happen right after each other:\n\nTerminal signals error ID 70261 (this is a literal transcript of the error and above it is written in German), this is followed by CNC error with ID 70101: Drive shall be moved, but it is not enabled yet.\n\n  \n**Diagnosis: No (very little) Clues**\n\n  \nWe investigate the CNC error log, by looking at the recorded errors from the CNC HLI or by creating a log/dump of CNC errors by running C:\\\\TwinCAT\\\\3.1\\\\Components\\\\Mc\\\\CNC\\\\Diagnostics\\\\dump.bat which is a decoded version of what the Cnc Hli reports.\n\nSo the error seems to happen in the A axis and th error text is, again, Terminal Signals Error. I go to the IO Terminal of the EL7047 that drives the A axis and go to Diag History tab and click to show the message and error hsitory.... and here is the catch... this terminal (and all other Stepper terminals for that matter) report no errors before, at or after the point in time where the CNC stopped giving this 'Terminal Signals error' error message and abruptly terminating the process.\n\n  \nThe LEDs of the Terminal itself show no problem nothing unusual, from inspection this terminal seems to have no issue at all, unless of course I am missing something. But it is not reporting or warning of any issue whatsoever.\n\n**Attempted solutions**\n\n  \nSeen as there are so little info, we first assumed that the Terminal is defective and replaced it with a another brand new EL7047 terminal. At first it seemed to work we ran the process a few times and had no issue, where earlier we used to have a failure rate in every other run of the gcode. Then, disappointingly the issue came back and it is like before.\n\nAnother thing we observed is that activating the TwinCAT configuration seems to 'encourage' the terminal to run into this error as we seem to run into it with the first process run after activating. and at one time we did not activate the configuration for 5 days straight and the machine remained in continuous operation with no issue and no errors. Of course activating the configuration is still needed as this machine is in active development. As of time of writing since last time I activated the configuration we ran the process 3 times the first failed with this error the second finished successfully and the third failed 3 hours into a 5 hour process and currently the 4th attempt is running with all fingers crossed. (I am aware this is not the best way to operate the machine, but we are trying to meet a production quota so we are time constrained when it comes to stopping the machine)\n\n  \nOf course, we then contacted Beckhoff for some help, and so far the only thing they pointed to was the PID parameters of the motor Index 8011 being a possible cause for this error, we have tried running a process after lowering the Kp factor and ran into the same problem, right now we lowered it even more and again.. fingers crossed.\n\n\n\n**Help?**\n\n  \nHas anyone ran into a similar ambiguous problem? Could you please offer some insights?  \nThank you very much if you made it all the way through this long post and for your support.\n\n",
+    "score": 2,
+    "num_comments": 8,
+    "created_utc": 1757340237,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1ok23bd",
+    "title": "ABB 350 Servo issue: F55 alarm after drive installed.",
+    "selftext": "As what I am finding to be usual for my posts, it's always AB that's doing weird things without explanations- That being said, if you AB guys could point me in a direction I'd appreciate it. I'm trying to make sure that the drive is the issue. \n\nI've got an Allen Bradley/Rockwell  350 Kinetix drive being controlled by a Compact L30ERM running RS5000. Drive IP is set, no errors on the drive. Parameters are written from the program, it's set to where the firmware doesn't matter/close enough firmware matching is on. I changed it from 1 to 2 to match the drive and it didn't make a difference.\n\nData I have: Drive is not putting out any sort of servo holding voltage after being powered up, the other drives are putting out 2.2vdc and the one in question has nothing. \n\nThis drive has been migrated with a few identical ones in this system and the other drives fire up and function but the problem moves with this Kinetix 350. Product life-cycle just ended, can't get a new one so I've got a \"rebuilt\" one that I am troubleshooting. \n\n  \nAny thoughts AB guys? Am I missing something? ",
+    "score": 2,
+    "num_comments": 3,
+    "created_utc": 1761836523,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1o1ftx9",
+    "title": "Customize alarm tune in siemens hmi ?",
+    "selftext": "Is it possible get customised audio as alarm in siemens hmi ? ",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1759942012,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mekuoy",
+    "title": "HELP! Looking for affordable but not junk means of monitoring a groundwater well\u2019s flow (4-20 ma output on meter) and having the ability to turn well on/off remotely and set some alarm conditions.",
+    "selftext": "Family I\u2019m trying to help is disabled and doesn\u2019t have a lot of money so trying to help but not a telemetry expert. Would like to send receive signal via radio to their home and allow them to view/control via cell phone or laptop. Possibly an equipment list? THANK YOU!!! ",
+    "score": 2,
+    "num_comments": 11,
+    "created_utc": 1754015645,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1ooaa85",
+    "title": "Have u ever experiment this error?",
+    "selftext": "https://preview.redd.it/8bkshf9je9zf1.png?width=1078&amp;format=png&amp;auto=webp&amp;s=c2720610e18e633bf4b40391b642ed4ffcad91f4\n\nI can't download the project on my phoenix 1152, i tried change plcnext version or change plc and still same error.  \nAnyone has a tips for me?",
+    "score": 2,
+    "num_comments": 2,
+    "created_utc": 1762270424,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mhw3yj",
+    "title": "STEP 7 SAFETY Licence error",
+    "selftext": "As you can see on the next SS i have the step 7 safety licences. i Had another PC Win10 and was working slow, so i bought a new one, then i pass the licences to this new one, i work with a lot of Tia Portals, since step 7 to Tia V19, but only whith these projects i got this error, any suggestion? i try to move licences and put it back, i dont know what its happening\n\nhttps://preview.redd.it/18uu963tt3hf1.png?width=501&amp;format=png&amp;auto=webp&amp;s=64e9516ba0b45689023aebf86c479cba8fa0dd52\n\nhttps://preview.redd.it/tpr0s53tt3hf1.png?width=884&amp;format=png&amp;auto=webp&amp;s=91041f8d02ba99adc5c47540d83909012b6b364b\n\n",
+    "score": 4,
+    "num_comments": 10,
+    "created_utc": 1754357729,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1kzcwa3",
+    "title": "How to Configure Distributed IO Errors to Selectively Trigger PLC Fault in S7-1500",
+    "selftext": "I\u2019m working with a Siemens S7-1500 PLC system that includes 4 distributed IO stations. I want to configure the system such that:\n\n* If there is an error on **two specific distributed IOs**, it should trigger a **PLC fault** (stop the PLC or generate a critical fault).\n* If there is an error on the **other two IO stations**, the PLC should **continue running** without treating the error as critical.\n\nWhat is the correct way to configure this behavior in TIA Portal? Any guidance or examples would be appreciated.",
+    "score": 2,
+    "num_comments": 16,
+    "created_utc": 1748632756,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1ls9bgs",
+    "title": "area length error in fb 641",
+    "selftext": "Hi everyone, in an rs485 communication with Plc s7 1200 I have this error: area length error in fb 641. Do you have any ideas on how to resolve it?\nI would like to point out that everything was working before the customer turned the electrical panel off and on again.",
+    "score": 1,
+    "num_comments": 13,
+    "created_utc": 1751720353,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1odqa0s",
+    "title": "Fail Safe Alarms for Siemens Comfort Panel",
+    "selftext": "I have fail safe signals in my PLC and I would like to pass them to the HMI directly (without going through inverting them etc.) is there a way in the config to take \u20180\u2019 as your alarm trigger? \n\n",
+    "score": 1,
+    "num_comments": 3,
+    "created_utc": 1761182306,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1oksjgo",
+    "title": "Doubt with Hmi Alarms",
+    "selftext": "Hi im using s7 1500 Plc and Tp700 comfort Hmi. I used usb device for storing Hmi  alarm history. But its not showing anything in my alarm table when i chose alarm log in general properties. Its working only when i chose alarm buffer in general properties. Can anybody please help me with this?",
+    "score": 2,
+    "num_comments": 2,
+    "created_utc": 1761911785,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1ooebqw",
+    "title": "Troubleshooting ABB ACS880 EFB Lost Communication Alarm &amp; Modbus RTU Configuration",
+    "selftext": "Good day,\n\n I am facing an \"EFB lost communication\" alarm on an ABB ACS880 drive and suspect a parameter has been changed incorrectly. I am trying to configure the drive to accept start/stop commands from a Kaishan PLC acting as a Modbus RTU master.\n\nHere is the current configuration and connections:\n\n**Hardware Connections:**\n\n* **RS485:**\u00a0XD2D terminals connected with correct polarity and 124 Ohm termination resistance.\n* **Safety:**\u00a0DII1 interlock bridge and XSTO safe bridges are connected (healthy).\n*  **Input:**\u00a0A wire from PLC output Kaishan Y6 is connected to DI1, but the input is undefined in the PLC software.\n\n**Kaishan PLC Settings (Master):**\n\n* **Address:**\u00a01 (local)\n* **Baud Rate:**\u00a09600\n* **Check Bit:**\u00a08\n* **Stop Bit:**\u00a01\n* **Data Bit:**\u00a0Even\n\n**Current ACS880 Parameter Settings:**\n\n|Group/Parameter|Description|Current Value|\n|:-|:-|:-|\n|**58.01**|Protocol enable|Modbus RTU|\n|**58.03**|Node address|1|\n|**58.04**|Baud rate|9600|\n|**58.05**|Parity|8even1 |\n|**58.25**|Control profile|ABB|\n|**19.11**|Ext1/Ext2 selection|Ext 1|\n|**19.12**|Ext1 control mode|Speed|\n|**20.01**|Ext1 command|Embedded field bus|\n|**20.03**|Ext1 in1 source|DI1|\n|**20.12**|Run enable 1 source|DIIL|\n\n\n\nI should disable 20.03? it is somebody here how have other suggestion?\n\nMany tanks .",
+    "score": 2,
+    "num_comments": 1,
+    "created_utc": 1762279300,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1lre82b",
+    "title": "Machine fault handling",
+    "selftext": "Hello everyone,  \nThe topic of fault handling keeps coming up for me and feels like the Wild West among PLC programmers. I have several projects from different machine manufacturers on my desk, and each one handles faults\u2014such as emergency stop, motor protection, runtime monitoring, etc.\u2014in a very different way. Sometimes, it's just a matter of setting flags that are later acknowledged. Other times, complex UDT blocks are created where all time points are logged, and these are then stored in DBs in such a way that later expansion is nearly impossible.\n\nPersonally, I usually work with simple status DBs (current state of the fault) and memory DBs (RS latch with acknowledgment), where the faults are listed and then passed on to the respective HMI. The HMI takes care of the logging for me.\n\nMy question now is: Are there any official guidelines or best practices from BG, VDE, Siemens, etc., that define how such error handling should be implemented at a minimum? Or is everyone left to their own devices as long as nothing happens? Of course, what the customer wants is also important, but surely there must be some kind of minimum standard, right?",
+    "score": 22,
+    "num_comments": 9,
+    "created_utc": 1751620221,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1oqs1ky",
+    "title": "Troubleshooting with CREVIS and TIA Portal",
+    "selftext": "Hello! \nI need some help with troubleshooting my current set up since I've gotten stuck. \nIm trying to connect a CREVIS NA-9122 module with my Siemens simatic S7- 1516-3 PN/DP in TIA portal V19. \nBut I keep getting the same error message \n\"IO Device Failure - Configuration fault ( different Configuration data). \n\nI've been troubleshooting but can't find the issue. \n\nAny help? ",
+    "score": 1,
+    "num_comments": 0,
+    "created_utc": 1762515255,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1on3dge",
+    "title": "ServoDrive INVT DA200A - STO Fault",
+    "selftext": "Hello guys, I need help with an INVT servo drive, model DA200A.\n\nI have some failures related to SafeTorqueOff. Fault codes: 10-a, 10-b and 10-9. All the failures are as if only one STO channel had fallen. My electrical connection is ok, checked and tested more than once. Usually, when you open the STO circuit, I have the status of the \"STO-In\" in drive. However, sometimes, if randomly, these failures happen and I can only reset with a powerup. \n\nHas anyone ever had this problem? \n\nThank you.",
+    "score": 1,
+    "num_comments": 0,
+    "created_utc": 1762146905,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1l91tdv",
+    "title": "AB CompactLogix 5370 Errors",
+    "selftext": "I am not an AB guy, and i inherited this from someone.  I am getting errors on my HMI  and don't know where to begin to fix these errors.  Please look at the attached/linked picture and if someone could give me some direction, it would be greatly appreciated.  questions for clarification will be answered as fast as possible.\n\nhttps://preview.redd.it/zmhevyn8oc6f1.jpg?width=3438&amp;format=pjpg&amp;auto=webp&amp;s=60fd282d06546eb82442ee79e070d6621cefef50\n\nClearing the errors just starts the cycle over.  power cycling does not help",
+    "score": 3,
+    "num_comments": 12,
+    "created_utc": 1749670232,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mvm5zy",
+    "title": "Help me troubleshoot Modbus communication with a Delta VFD",
+    "selftext": "Update : I have tried with the RS485 to USB it\u2019s working now I\u2019m able to run the motor but need to make it work through waveshare device.\n\nHey everyone, I'm at my wit's end trying to get a Modbus connection working with a\u00a0**Delta VFD-B series drive (VFD2A7MS43ANSAA)**\u00a0via a\u00a0**Waveshare RS485-to-TCP bridge**. I'm hoping someone has experience with this specific setup or can offer some fresh insights.\n\nI've successfully used the same Waveshare bridge to communicate with other Modbus RTU devices, specifically a\u00a0**Selec MFM376**\u00a0and an\u00a0**MX300**, by fetching data from their registers. This tells me that the Waveshare bridge's serial and network settings are likely configured correctly, and my base setup using\u00a0`pyserial`\u00a0and my diagnostic tools is sound. The problem I'm facing now seems to be specific to the Delta VFD itself.\n\n**The issue:**\u00a0I can establish a TCP connection to the Waveshare bridge, but I'm getting absolutely no Modbus replies from the VFD. My scripts and diagnostics consistently time out. I've tried both\u00a0**Modbus TCP**\u00a0and\u00a0**Modbus RTU-over-TCP**\u00a0modes.\n\n**What I've tried so far:**\n\n* **Brute-force scanning:**\u00a0I've run scans across every common unit ID (1-247) and checked all possible serial settings (baud rates, parity, stop bits).\n* **Physical Checks:**\u00a0I've double-checked the RS485 wiring, polarity (A/B), and termination resistors on the bus.\n* **Software Diagnostics:**\u00a0I've used diagnostic software to confirm I can see the TCP connection being established, but the Modbus messages are not being acknowledged by the drive.\n* **Manual Configuration:**\u00a0I've meticulously followed the Delta MS300 series manual (page 176 cont ) for the communication settings, specifically the parameters related to the communication protocol, slave address, and serial settings.\n\n**My leading theories (and where I need help):**\n\n* **Waveshare Bridge Mode:**\u00a0Is it possible the bridge needs to be in a specific mode (e.g., TCP Client vs. TCP Server) or configured with a different port to work correctly with this drive's protocol?\n* **Mismatched Serial Settings:**\u00a0While I've tried many combinations, is there a less common setting or a specific data format that the Delta drive requires?\n* **Drive-Specific Parameter:**\u00a0Is there a parameter in the Delta VFD that needs to be explicitly enabled to accept Modbus commands from a remote source, or a default setting that needs to be changed for it to communicate at all? I've checked the standard ones but may have missed something.\n\nI'm feeling like I've hit a wall. Any suggestions from someone who has worked with Delta VFDs and Modbus would be greatly appreciated! Thanks in advance for any help.\n\nhttps://preview.redd.it/7jxx6n22r7kf1.jpg?width=900&amp;format=pjpg&amp;auto=webp&amp;s=7264c787f2ddf38005e16d0d6cdf41b0284c86f7\n\n",
+    "score": 6,
+    "num_comments": 6,
+    "created_utc": 1755712648,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1noryfd",
+    "title": "Link between an HMI error signal and the ledder program line. (Omron Sysmac Studio)",
+    "selftext": "I've worked with Siemens and Rock Wellington, but this is my first time working with Omron. I was asked that, when there was an error signal on the HMI, when he clicked on it, would show which line of the ladder program was triggering this failure. Is it possible to do in Sysmac Studio?",
+    "score": 1,
+    "num_comments": 3,
+    "created_utc": 1758658177,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1ncd7x4",
+    "title": "WinCC Unified V19 \u2013 Alarm Logging to SD card",
+    "selftext": "Hey all,\n\nI\u2019m working with WinCC Unified V19 and setting up **Alarm Logging** to store archives on an SD card.\n\nI have setup the alarm logs:\n\nhttps://preview.redd.it/i6ui69wvk3of1.png?width=1799&amp;format=png&amp;auto=webp&amp;s=ccec76321d64707256520c4dcc518eed00317145\n\nRuntime settings:\n\nhttps://preview.redd.it/14gc6y93l3of1.png?width=823&amp;format=png&amp;auto=webp&amp;s=05b19e7b4944a759d88482f7cfb70073dd7ace9b\n\nAlarms:\n\nhttps://preview.redd.it/0d8f61f8l3of1.png?width=1810&amp;format=png&amp;auto=webp&amp;s=b2406c329c4c4f29f8f1f37766ff083d8840b65a\n\nAlarm control:\n\nhttps://preview.redd.it/keve9a0rl3of1.png?width=929&amp;format=png&amp;auto=webp&amp;s=261cd88c4c1d2c40b7b2ffd24737c05275633238\n\nUnified runs on a unified comfortpanel with a normal SD card for the logging but the logging still wont work. Is there anything I have missed?\n\n  \nFIX:  \nIn the screen below I saw that the SD card was in slot x61 even though its in x51. I changed the storage medium to USB-X61 and it worked.\n\nhttps://preview.redd.it/9pgayg1c1bof1.png?width=1377&amp;format=png&amp;auto=webp&amp;s=781ea668b34f79d4af28ff4be173888f65522b1c\n\n  \n",
+    "score": 2,
+    "num_comments": 4,
+    "created_utc": 1757405925,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1nc607m",
+    "title": "OPC Function 'OPC T Sync Write' error",
+    "selftext": "I have a customer with an old grinding machine. Recently they have been getting this error:\n\n**\"The OPC function 'OPC T Sync Write' has returned an error of -2147467259. {Method '~' of object '~' failed.}\"**\n\n([Screenshot](https://i.imgur.com/HNltqvc.jpeg))\n\nThere is a Lenovo mini PC attached to the back of the touchscreen which I assume is running the HMI software.\n\nIt communicates with a GE 90-30 PLC over serial. ([Picture](https://i.imgur.com/TG0arou.jpeg)).\n\nThey told me this only started happening recently, and very randomly. They claim it requires a power cycle to get it running again. My first guess is a poor connection somewhere in the serial wiring causing intermittent loss of communication when a forklift drives by. I mean just look at the PLC end. Yes, that's pieces of wood propping up the PLC, lol\n\nIs that something that could possibly cause this specific error? Or is it more likely something like reading an unexpected value from a PLC register?\n\nThanks!",
+    "score": 2,
+    "num_comments": 3,
+    "created_utc": 1757381419,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1ncq6gl",
+    "title": "MTP1500 Comfort Panel \u2013 Show alarm on PLC communication loss?",
+    "selftext": "How can I show an alarm on my MTP1500 Comfort Panel if the PLC connection is lost (e.g., cable unplugged or communication failure)?",
+    "score": 1,
+    "num_comments": 4,
+    "created_utc": 1757441008,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mgpc01",
+    "title": "Latching faults in GuardLogix",
+    "selftext": "Please help as I am relatively new to Rockwell controllers being worked with ABB/Siemens in the past. Is there a way to latch inputs that go into fault so they are not cleared on a power recycle if the inputs go back to healthy? Using ladder to program. ",
+    "score": 2,
+    "num_comments": 7,
+    "created_utc": 1754242772,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1oe8sdv",
+    "title": "delta plc error",
+    "selftext": "On a Delta DVP-10PM(DVP10PM00M) motion controller using PMSOFT, the SFRDP instruction (shift data registers, FIFO) the destination register always returns different values from source,, even when the all registers are cleared. Do you know why this happens or how to make SFRDP work correctly?\n\n\n\nfor example while using\n\n SFRDP D0 D50 K5..(value in D1 to D4= 1) the value in\u00a0D50\u00a0will\u00a0be\u00a0401\n\nSFRDP D100 D150 K5..(value in D101 to D105= 100) the value in\u00a0D150\u00a0will\u00a0be 501\n\nSFRDP D200 D250 K5..(value in D201 to D205= 200) the value in\u00a0D150\u00a0will\u00a0be\u00a0601\n\n",
+    "score": 0,
+    "num_comments": 0,
+    "created_utc": 1761238883,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1n8vh4v",
+    "title": "Factorytalk linx network browser devicenamespace.dll faulted",
+    "selftext": "https://preview.redd.it/dne68z2ht9nf1.png?width=744&amp;format=png&amp;auto=webp&amp;s=618fa42d1af9b7693d2186747ef7adbb9e0122ba\n\nTrying to Open factory talk linx network browser but everytime I am getting stuck in just the LOGO and the close automatically, I tried everything change adapter or reinstalling the software, I am running the software in a VmWare virtual machine the last version and the Factorytalk is also last version 6.5. I made a research but the only thing why FTL is not starting is because the time stamp in the next file \"devicenamespace.dll\" Someone with the same issue? \n\nI am running windows 10 22H2 PRO\n\nhttps://preview.redd.it/5aogoftut9nf1.png?width=1445&amp;format=png&amp;auto=webp&amp;s=030d0ce894af2fa117a603de3c9737979eaa3fd2\n\n",
+    "score": 1,
+    "num_comments": 4,
+    "created_utc": 1757045464,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1n0h8cq",
+    "title": "1394 Ab servo controller faulting out",
+    "selftext": "I have a 1394 servo controller, with 3 axis modules connected.  The controller, whether the motors are running or not will fault out.  On the status lights when I reset the controller, there is 0,1,2.  The 1 and 2 lights flash fast which on the fault page is, dual port test #1 failed.   It will not reset or connect online to GML during this fault condition.  Anyone have any experience with repairs for this?  The problem resolution says \u201cReturn the controller to factory for repair\u201d but that\u2019s not an option at the moment.    \n\nWhether the axis modules are connected or not, along with the resolvers, the fault is still the same.  ",
+    "score": 3,
+    "num_comments": 4,
+    "created_utc": 1756200726,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1kyudu5",
+    "title": "HMI / PLC COM Error",
+    "selftext": "I have a piece of equipment with a Schneider Electric HMIS5T interfacing with an Allan Bradley micrologix 1400 PLC via ethernet. \n\nThe HMI threw and alarm \u2018Failed to open connection to PLC. (EIPMicroLogi x01)\u2019 so we replaced the PLC and uploaded the RSS file onto it but the HMI still shows the same alarm. \n\nThe HMI shows all the graphics / settings / missing sensor data. Its responsive and otherwise shows no issues. The BMS for the facility shows all the sensor and equipment data for the unit but is monitor only. \n\nNot sure what I should be looking for as a next step. ",
+    "score": 3,
+    "num_comments": 11,
+    "created_utc": 1748576040,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mln4gb",
+    "title": "wincc v18 error",
+    "selftext": "I'm getting an error while installing wincc v18. If it's an error, it says the program is installed, but I checked all the programs one by one in the control panel, but no program is installed, I did some research, they said it was a SQL server error, I deleted the entire SQL server, still the same problems continue.\n\nhttps://preview.redd.it/yp5m1ftcbzhf1.png?width=908&amp;format=png&amp;auto=webp&amp;s=af914303397d340221e6f72695e8505087e5d768\n\n",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1754738807,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mq652f",
+    "title": "i can't open pictures in valmet dna anymore can anyone help me fix this please",
+    "selftext": "https://preview.redd.it/ur760l5tl0jf1.png?width=506&amp;format=png&amp;auto=webp&amp;s=456eef2e8e47ad45c1bbbd8c7ddab11781d56c81\n\nhello, im new to Valmet dna and currently working on scada development, this issue appeared randomly and i cant open any picture in any directory anymore   \n  \n",
+    "score": 2,
+    "num_comments": 4,
+    "created_utc": 1755190294,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1l0p3c5",
+    "title": "PowerFlex 755 Fault Code 926",
+    "selftext": "Hello fellows, we recently have an issue with some of our PowerFlex755-EENET drives, in wich drive suddenly stops on fault 926. They are new drives thats comes with a new facility installation drives revision is 16.002, old drives are revision 11 and none of them have this problem. PLC is ControlLogix 1756-L85EP and our network runs on Moxa switches.\n\nIt seems to be a network problem, and we already try changin RPI from default to 200, we also see that Rockwell Knowledbase recomends that in the case od this fault on revisions 16 to flash drive to rev 14, which we also try with no luck because ControlFlash throw error \"An error ocurred or you cancelled the flash update\", we try in 3 diferent machines 2 of which are VM of our DCS and 1 physical. We also try DriveExecutive and the .dmk revision file does not shows up.\n\nDoes anybody had a similar problem, hope you can help guys. Thanks a lot to anybody.\n\n  \nEDIT: Flahing revision from Rev 16 to Rev 14 to drives solve the problem, if anyone else is experience this fault code with newer drives this might solve the fault. Thanks for the help (for those that help).",
+    "score": 1,
+    "num_comments": 9,
+    "created_utc": 1748784846,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1nde4uz",
+    "title": "Carga el programa en el cpu pero abre una ventada de error",
+    "selftext": "Hola, soy Arturo, estpy viendo un problema, una inyectora de pl\u00e1stico, fallo porque se apag\u00f3 la pantalla, veo que el cable del extender box y la pantalla est\u00e1 da\u00f1ado, tambien la tarjeta de enlace prifibus, cambiamos la CPU,  cargamos backup de esa maquina al nuevo cpu, se observa que completa la carga, hacemos reset al equipo, va abriendo todo, llega al final, pero cuando queremos cambiar pantallas o tocar la pantalla, muestra una ventana que dice \"the action cannot be completed because the other applications is busy, choose \"Switch to\" to active the basy applications en correct de problem\" \nPorfa alguien que me ayude.",
+    "score": 0,
+    "num_comments": 1,
+    "created_utc": 1757510681,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1m2c5nz",
+    "title": "Codesys Modbus TCP Server: Error Code 0x0002 (invalid address)",
+    "selftext": "I have a Codesys PLC that I\u2019m trying to connect to an HMI using Modbus TCP. The HMI is set up as a client, with the PLC running a Modbus TCP server on its second ethernet port.\n\nI\u2019m having persistent issues where the server throws an exception every time it\u2019s polled, and this behavior occurs both with the HMI client and with a QModMaster client on my PC. The error I continually get is 0x0002, which indicates to me that the server believes that it doesn\u2019t have the address it\u2019s being polled for by the client.\n\nThis issue occurred even when polling just one variable (10001), and I find this confusing. In the general settings for the Modbus TCP Server on my device tree, I\u2019ve listed 10001 as the start address for discrete inputs, and I\u2019ve assigned a variable to the first discrete inputs bit in the I/O mapping screen for the server. I would have thought that this first discrete input bit would map directly to Modbus address 10001, yet that doesn\u2019t seem to be the case. To make matters more confusing, the IO mapping screen lists IEC addresses (e.g., %QX40.3) for each channel, but not Modbus addresses.\n\nDoes anyone have experience troubleshooting this sort of issue when commissioning a Codesys PLC in a Modbus TCP server role?\n\nFor context, the PLC is a P2CDS-622 from AutomationDirect.",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1752769749,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mvpzcr",
+    "title": "[DIAScreen] How to send a fixed value (e.g. 103) to address W40012 with a button (no macro)?",
+    "selftext": "Hi everyone,\n\nI\u2019m working with a Delta HMI in DIAScreen and I need some help.\n\nI want to configure a button so that when I press it, the HMI writes a fixed value (e.g. 103) directly into the address W40012.\nThe idea is to do this as simply as possible, without using a macro or script.\n\nI\u2019ve tried using the State Button and Word Button, but in the Address/Value field I can only point to the address. I haven\u2019t found a way to set the constant value that should be written.\n\nExample of what I\u2019m trying to achieve:\n\n\u201cSend\u201d button \u2192 when pressed, it writes 103 into W40012.\n\nDoes anyone know if there is a specific object (like \u201cWrite Constant Word Button\u201d) or some hidden setting in DIAScreen to do this directly?\n\nThanks!",
+    "score": 0,
+    "num_comments": 2,
+    "created_utc": 1755720925,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1lki0kq",
+    "title": "Siemens G120C fault F8502",
+    "selftext": "Hi everyone, I'm having some trouble with a G120C standalone that is used to control an aspiration fan. The problem is that it shows randomly the F8502, in the manuals it has this description \"Monitoring time sign-of-life expired comes when the monitoring time for the sign-of-life counter has expired or the connection to the PROFINET interface was interrupted.\". It doesn't have any PROFINET connection, and the p2030 is already settled to \"0\" (no protocol). \n\nHave you got any idea? Am I fighting against a bug? HELP \ud83d\ude2d",
+    "score": 2,
+    "num_comments": 6,
+    "created_utc": 1750886646,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mo6wza",
+    "title": "Nidec FM-3 \u201cISR Ovr\u201d error",
+    "selftext": "Hello all.  We are getting this ISR overrrun error on a this drive, and can\u2019t figure out the cause.   The FM-3 module was swapped out when the original failed, program reloaded, and now after say 5 minutes of running we get this interrupt fault.   Is this a Firmware incompatibility?    When loading the program we did get a firmware update notice but no conflicts.   Program is unchanged for many years and running on three other machines.  Has anyone seen this and solved the issue?   Thanks!",
+    "score": 2,
+    "num_comments": 2,
+    "created_utc": 1755000467,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mbe32c",
+    "title": "Cmore Alarming by Text",
+    "selftext": "I found as of June 25th ATT no longer allows email to text (ex: 1-888-8888@text.att.net) that I have a customer who used it for a system. Anyone have ideas on a work around still using the Cmore to notify to a cellphone? Any input is appreciated, thanks. ",
+    "score": 2,
+    "num_comments": 3,
+    "created_utc": 1753703513,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mk7aqx",
+    "title": "Program Upload/Write Error in GX Works2 with Q00U CPU \u2013 Help Needed",
+    "selftext": "PLC Program Upload/Write Error in GX Works2 with Q00U CPU \u2013 Help Needed  \nHi everyone, I'm new to PLC automation and recently tried replacing a faulty Q00U CPU (Q-mode) with the same model using GX Works2. I faced several issues during program upload/write.\n\n\ud83d\udee0 What I Did:  \nTried to upload program from old PLC but upload failed.\n\nThen I separately uploaded Program + Parameters, and Device Memory.\n\nInstalled the new Q00U CPU, and attempted to write the Program + Parameters, and then Device Memory.\n\n\u26a0 Errors Faced:  \nProgram Read Error:\n\n\"Parameter and device memory has been read at the same time... Press the Default button in Device Data Detail settings to adjust the device range.\"\n\nProgram Write Error (Prog + Parameter):\n\n\"Some parameters are not supported by the PLC. Example: Step Relay 1K\u20137K points set. Use compatible CPU or change range.\"\n\nDevice Memory Write Error:\n\n\"Device memory range is out of parameter setting. Use Default button in Device Data Detail settings.\"\n\n\u2705 Temporary Fix:  \nI manually changed the Step Relay range from 1K to 8K, which allowed the Program + Parameter to write. But still get error when writing Device Memory.\n\n\u2753 Question:  \nIf both PLCs are the same model, why are there parameter/device range conflicts?  \nHow can I safely write full device memory without changing original parameter settings?\n\nThanks in advance for your help!\n\n[While Read](https://preview.redd.it/0xjxek610nhf1.jpg?width=1600&amp;format=pjpg&amp;auto=webp&amp;s=661aa7eb265941a347bbc4833ee108466b3291ec)\n\n[While Write Device Memory](https://preview.redd.it/8frubk610nhf1.jpg?width=1599&amp;format=pjpg&amp;auto=webp&amp;s=d02a7995b58797acc4f78a3b49a7b569a5cc843f)\n\n[While Write Prog + Parameters](https://preview.redd.it/s1d2xl610nhf1.jpg?width=1599&amp;format=pjpg&amp;auto=webp&amp;s=b13021bf14060358e7291d10527a244f1096122f)\n\nhttps://preview.redd.it/xct64g910nhf1.jpg?width=1600&amp;format=pjpg&amp;auto=webp&amp;s=1955d70abe8492c6f8beb6fcb4c51282ebdfd947\n\n",
+    "score": 2,
+    "num_comments": 2,
+    "created_utc": 1754589833,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1lkvkjk",
+    "title": "Would having redundancy module 1756-RM2 or 1756-RM2XT be pointless if the cause of an error on the primary controller is the program?",
+    "selftext": "Let's say I set up two identical ControlLogix chassis with redundancy modules on them. The plant is run on the primary controller and the secondary controller is only there as a backup and it is always synchronized with the primary. I know if an error occurred on the primary an automatic switchover happens to the secondary. Would setting up this kind of redundancy PLCs be pointless if the cause of the error on the primary was the program (eg. divide by zero or an overflow on an array tag)? Because the secondary is always synchronized with the primary, even if it switched over the same error would just occur on the secondary right?",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1750929521,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1lzrfso",
+    "title": "Low Voltage Error on VFD / Centrifugal Pump",
+    "selftext": "Hey all.  Been trying to troubleshoot this issue for a few weeks now.  My CIP pump will frequently shut down on me and show me a \"LV\" or \"LU\" error meaning low voltage.  I've poured through the manufacturers manual and they have a flow chart for every error code.  I've worked my way through that and still nothing is working long term.  Leaving it unplugged for a while and plugging it back in will enable it to power back on, however it will still randomly shut down with the low voltage error.\n\n  \nNo pump blockages, every time it's running it is operating as normal.  Apparently this has just started happening recently, there has been no history of this issue for years previously, I believe the pump and VFD are around 9-10 years old.\n\n  \nVFD - Delta VFD015E21A\n\nPump - Centrifugal Pump 220v / 60 hz\n\nIf anyone has any troubleshooting ideas I can try, please let me know!  Don't want to have to order a new VFD which will be $800+\n\n  \nThanks in advance!",
+    "score": 1,
+    "num_comments": 3,
+    "created_utc": 1752511380,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1ktulvj",
+    "title": "How to Inhibit a faulty Axis in the Motion Group to avoid Faulting all Other Axes",
+    "selftext": "I have a machine with 36 axes. Each axis is completely independent of all other axes. We are using Kinetix 5700 drivers. 18 axes run off of one 2190-P208 Kinetix 5700 Bus Power in one enclosure. While the other 18 axes run off another 5700 bus power in another enclosure.\n\nThis is a new machine, still being commissioned. Right now I don't have proper power on half of my drives (keep blowing fuses, don't know why yet), this causes a \"Pre-charge\" for my Axis State, understandable. What I don't like, is I get this state on ALL of my axes.\n\nIf I remove my 18 faulty axes to an unknown group, Then my other 18 axes that have power work just fine.\n\nNow, I know I can just leave those faulty 18 axes off my group until we get the power issues figured out, but, I really don't like the idea of having 1 of 36 axes fault out, and then the other 35 axes go with it because they're all on the same group. (again, their motions are completely independent of each other).\n\nSince AB forces you to put axes in a group, and at the same time doesn't allow you to have more than one group (in what world does this make sense?), and moving axes in and out of your group requires a download, I wanted to know if there was a way to disable/inhibit an axis programmatically, so that my other axes in the same group can keep on working.\n\nThanks for any help.",
+    "score": 8,
+    "num_comments": 6,
+    "created_utc": 1748034419,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1lb14uz",
+    "title": "Getting Symbolic variable errors in kepware and tags show bad (out of service) in quick client.",
+    "selftext": "So I'm connected to Pacsystems PLC with kepware using GE Ethernet and I'm getting symbolic variable errors. I'm not sure where I'm going wrong. \n\n[Pac Systems Machine Edition](https://preview.redd.it/o921zyihxt6f1.png?width=1270&amp;format=png&amp;auto=webp&amp;s=5ecf07eedee088a22ef98e333505b061562f9de0)\n\n[Kepware](https://preview.redd.it/is59qzihxt6f1.png?width=1232&amp;format=png&amp;auto=webp&amp;s=7300f35cbf24be61a213987879f0d255b42175aa)\n\n",
+    "score": 2,
+    "num_comments": 4,
+    "created_utc": 1749879323,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1mh84fi",
+    "title": "Hyper-V / VBS error when starting TwinCAT",
+    "selftext": "Hi together,\n\nI've seen multiple times the same Hyper-V error in the subreddits. So I thought I'd post the response I've gotten from Beckhoff Support on the topic.\n\n**Error message:**  \n\"Setting TwinCAT in Run Mode inside Hyper-V is not possible\"\n\n**Answer from Beckhoff Support:**\n\nPlease take a look at the TwinCAT system requirements:\n\n[https://infosys.beckhoff.com/english.php?content=../content/1033/tc3\\_overview/6162419083.html&amp;id](https://infosys.beckhoff.com/english.php?content=../content/1033/tc3_overview/6162419083.html&amp;id=)\n\n\\### Hyper-V Information\n\n[https://learn.microsoft.com/en-us/troubleshoot/windows-client/application-management/virtualization-apps-not-work-with-hyper-v](https://learn.microsoft.com/en-us/troubleshoot/windows-client/application-management/virtualization-apps-not-work-with-hyper-v)\n\n\u00a0\n\n\\### Some Components and Features of Windows that Use Hyper-V:\n\n1. \\*\\*Virtualization-Based Security (VBS)\\*\\*:\n\n[https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/oem-vbs](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/oem-vbs)\n\n\\- \\*\\*Core Isolation\\*\\*: Uses Hyper-V to create isolated memory regions to protect critical system processes.\n\n\\- \\*\\*Credential Guard\\*\\*: Uses VBS to isolate and protect credentials.\n\n[https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/](https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/)\n\n\\- \\*\\*Device Guard\\*\\*: Uses VBS and Hyper-V to enforce code integrity policies and isolate processes.\n\n\u00a0\n\n2. \\*\\*Windows Hypervisor Platform\\*\\*:\n\n\\- Provides an API for third-party virtualization software to use Hyper-V as the underlying virtualization technology.\n\n\u00a0\n\n3. \\*\\*Windows Subsystem for Linux (WSL) 2\\*\\*:\n\n\\- The second version of WSL, WSL 2, uses a lightweight virtual machine provided by Hyper-V to run a full Linux kernel on Windows.\n\n[https://learn.microsoft.com/en-us/windows/wsl/about](https://learn.microsoft.com/en-us/windows/wsl/about)\n\n\u00a0\n\n4. \\*\\*Memory Integrity (HVCI)\\*\\*:\n\n\\- \\*\\*Hypervisor Code Integrity (HVCI)\\*\\*: Uses Hyper-V to enforce code integrity policies, ensuring that only trusted code runs in kernel mode.\n\n[https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity?tabs=security](https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity?tabs=security)\n\n\u00a0\n\n\\### Further information\n\n\u00a0\n\nFor 4024 and Windows 10, you can take a look at the \u201cDevice Guard and Credential Guard hardware readiness tool\u201d from Microsoft.\n\n[https://www.microsoft.com/en-us/download/details.aspx?id=53337](https://www.microsoft.com/en-us/download/details.aspx?id=53337)\n\n\u00a0\n\nFor &gt;=4026.14, there is a Powershell script(DisableVirtualizationBasedSecurity.ps1) to disable virtualization-based security located in \u201cC:\\\\Program Files (x86)\\\\Beckhoff\\\\TwinCAT\\\\3.1\\\\System\u201d.\n\n\u00a0\n\nIf you would like to use one of the two options, please contact your IT department.\n\nBeckhoff does not provide any additional instructions on how to deactivate one of these functions!\n\nBeckhoff offers a UserMode Runtime as an alternative to the KernelMode Runtime.\n\n\u00a0\n\n*For &gt;=4026:*\n\n[https://infosys.beckhoff.com/english.php?content=../content/1033/tc170x\\_tc3\\_usermode\\_runtime/11319881355.html](https://infosys.beckhoff.com/english.php?content=../content/1033/tc170x_tc3_usermode_runtime/11319881355.html)\n\n\u00a0\n\n\u00a0\n\n*For 4024:*\n\nPlease take a look at the \"Readme.txt\" in the following folder \"C:\\\\TwinCAT\\\\3.1\\\\Runtimes\"\n\nYou can start the Beta UserMode Runtime as follows:\n\n1. start TwinCAT UserMode Runtime by double-clicking on Start.bat in C:\\\\TwinCAT\\\\3.1\\\\Runtimes\\\\UmRT\\_Default\n\n2. the command window will open and must be left ope\n\n3. in Visual Studio or TcXaeShell, the UserMode Runtime can now be selected as the target syste\n\n\"",
+    "score": 3,
+    "num_comments": 0,
+    "created_utc": 1754297065,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1m4raw1",
+    "title": "Schneider Modicon M172 Logic Controler PLC BATTERY LOW alarm",
+    "selftext": "I have a PLC LOW BATTERY alarm on an M172 and I've changed the cr2032 (twice) but the alarm won't clear.  Anyone ever run into this?",
+    "score": 3,
+    "num_comments": 1,
+    "created_utc": 1753024285,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1m1sfny",
+    "title": "error 110470 Configuration Parameter Error Robot ABB",
+    "selftext": "https://preview.redd.it/prpcfbg6pbdf1.jpg?width=1200&amp;format=pjpg&amp;auto=webp&amp;s=b01ff93ffdf85d7616df2b334c3cd7070bab358b\n\n**Someone had This error with a robo IRB 1600 from ABB?**\n\n**How can I solve**",
+    "score": 2,
+    "num_comments": 1,
+    "created_utc": 1752709613,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1lqqbhm",
+    "title": "Cannot Simulate PLC Due to \"fbVFD_Analog[FB122] Can't Be Simulated\" Error in TIA Portal",
+    "selftext": "I'm trying to simulate my PLC program using PLCSIM in TIA Portal, but I keep getting an error saying that the block \"fbVFD\\_Analog\\[FB122\\] can't be simulated.\" \n\nTIA Portal suggests going into the block properties and enabling the option under Compilation called \"Can be simulated with SIMATIC S7-PLCSIM.\" However, I\u2019m not able to tick it. \n\nHas anyone come across this issue before? Is there a way to enable simulation for this kind of block, or a recommended workaround to test the rest of the logic without it?\n\n[Under project Properties](https://preview.redd.it/posjh5qm0oaf1.png?width=1025&amp;format=png&amp;auto=webp&amp;s=af6dd822da22c3af3bc73efed03b4fc814d4ae15)\n\n  \n\n\n[Under block properties. Even though the box is not grayed out, I am not bale to tick it. ](https://preview.redd.it/eg4gow5n0oaf1.jpg?width=1048&amp;format=pjpg&amp;auto=webp&amp;s=87634985aceace065b2614da6b3fb028fe518c17)\n\n",
+    "score": 1,
+    "num_comments": 2,
+    "created_utc": 1751551183,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1l0nea5",
+    "title": "Could you help me to reset this error",
+    "selftext": "https://preview.redd.it/18l56ept3b4f1.png?width=656&amp;format=png&amp;auto=webp&amp;s=d2bd0fad80bdd09b1c9117d8d4d9639b2391f91a\n\nHow to reset his error...",
+    "score": 0,
+    "num_comments": 4,
+    "created_utc": 1748779714,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1k9t4f6",
+    "title": "Failed to write RSlogix 5000 Module Profile - Error: 0x80040154",
+    "selftext": "Hello everyone,  \nI\u2019m having trouble installing Studio 5000 v37, and I\u2019m hoping someone here can help me out. During the installation process, I receive an error message stating: *\"Failed to write RSLogix Module Profile.\"*\n\nThe first time I installed Studio 5000 (v37), everything worked fine. I then installed versions starting from v37 down to v30, and everything worked well until I tried installing v30. After that, Studio 5000 would no longer open, and I encountered an error (unfortunately, I didn\u2019t take a screenshot of the error message).\n\nI followed Rockwell\u2019s recommendation to uninstall everything, including all versions I had installed (from v30 to v37), and deleting leftover files and registry entries, and then attempted to reinstall.\n\nHowever, this time during the installation of v37, the error message about the RSLogix Module Profile popped up.\n\nI\u2019ve uninstalled everything related to Studio 5000 again. I\u2019ve manually deleted leftover files and folders that were still remaining after the uninstall process. After cleaning up, I tried reinstalling the software, but I still get the same error message.\n\nUnfortunately, none of these steps have resolved the issue, and I\u2019m stuck at this point. Has anyone encountered this error before, or does anyone know how to fix this issue? Any help would be much appreciated!\n\nThank you in advance!\n\nhttps://preview.redd.it/n3rnu0795kxe1.png?width=2010&amp;format=png&amp;auto=webp&amp;s=ca1a0e9a5b1a83445daee333fe903c99455e480c\n\n",
+    "score": 2,
+    "num_comments": 6,
+    "created_utc": 1745839388,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1m2rut8",
+    "title": "Pilz 509 pmi error codes 472,&amp; 487 troubleshooting.",
+    "selftext": "Need Service manual or error code troubleshooting.",
+    "score": 1,
+    "num_comments": 0,
+    "created_utc": 1752809542,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1lm1u8t",
+    "title": "Factorytalk ME Alarm Groups",
+    "selftext": "In Factorytalkview ME, you set up your alarm list and the alarm banner popup has an Acknowledge button, silence button, and a couple of others. Has anyone developed a panelview ME application that monitors multiple PLCs where you can isolate alarm acknowledgements by the PLC? So if I have alarms for PLC A and B both active, but I only want to acknowledge or silence alarms from just site A, what would I have to do in the alarm setup and how would I have to configure an acknowledge button to make that work? Could I make separate alarm banners entirely for each PLC (I'd prefer just the one banner)? Trying to figure out what is possible.\n\nThanks in advance",
+    "score": 4,
+    "num_comments": 1,
+    "created_utc": 1751050216,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1kas2m9",
+    "title": "Guardmaster 440C-CR30 safety relay periodically showing faults",
+    "selftext": "I have a customer with a 440C-CR30 that is being monitored by a ControlLogix over EthernetIP (the device is owned by the CLX and is in the IO tree).  Every 2 minutes, based on trending, the major and minor fault bits will go high for about 30 seconds, and then go low.  The safety outputs still work fine during this period and there are no indications on the unit that there is actually a fault.  This causes nuisance alarms on the SCADA that everyone is ignoring at this point.  Rockwell says this is fine but can't explain why it is happening.  I am speculating that these fault bits go high when a self check internal to the 440C is happening, and a timer should be added to the CLX to compensate for this period.\n\nAnyone else have this issue, and is there another solution?",
+    "score": 2,
+    "num_comments": 5,
+    "created_utc": 1745943778,
+    "subreddit": "PLC",
+    "top_comment": ""
+  },
+  {
+    "id": "1kkapbm",
+    "title": "Export data from WinCC tag logging &amp; alarm logging to SQL Server",
+    "selftext": "Hi, I'm learning about sql server in SCADA and I'm trying to export data from tag logging and alarm logging to SQL Server from WinCC Explorer 7.4, but I haven't seen much information about it on internet, so I don't know how I could do it.  \nDoes anyone know about a guide or Siemens documentation where it is explained?  \nThanks.",
+    "score": 0,
+    "num_comments": 4,
+    "created_utc": 1746995788,
+    "subreddit": "PLC",
+    "top_comment": ""
+  }
+]

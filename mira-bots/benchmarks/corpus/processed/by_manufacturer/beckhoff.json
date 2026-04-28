@@ -1,0 +1,132 @@
+[
+  {
+    "id": "1piwne4",
+    "title": "Beckhoff ADS error",
+    "selftext": "I just can't seem to connect to my beckhoff controller. It is connected to my laptop via a dongle. The controller has [192.168.10.1](http://192.168.10.1) as IP and my computer has [192.168.10.69](http://192.168.10.69) as IP. I can reach it using remote desktop, and there is no error message on it. The controller is running 4026.19 and I am using 4026.19 on my computer. When I try to add route, it sees the controller, but it will not connect.\n\nhttps://preview.redd.it/ty4yr6n0xb6g1.png?width=316&amp;format=png&amp;auto=webp&amp;s=fd55c52978fc396582b01ff7b29698694cd68725\n\n",
+    "score": 3,
+    "num_comments": 9,
+    "created_utc": 1765352189,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.65,
+    "quality_pass": false,
+    "quality_reasons": [
+      "no equipment mention"
+    ],
+    "manufacturer": "Beckhoff",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "4026",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1om6jkr",
+    "title": "Inovance InoProShop Softmotion Error HWLIMITS",
+    "selftext": "Hello,\n\nI\u2019m new to the **InoProShop** and **CODESYS** platforms.  \nI\u2019m currently using an **Inovance AM600 PLC** to control a **servo drive via EtherCAT**.\n\nWhen I use the **MC\\_MoveRelative** function block to test the servo, I continuously receive the following error:  \n**SMC\\_DI\\_HWLIMITS\\_EXCEEDED**.\n\nAfter searching online, I found that this error usually occurs when the **hardware limit switch** is active. However, in my setup, there is **no external connection** \u2014 only the PLC and the servo driver are connected. I also haven\u2019t changed any **I/O mapping addresses**.\n\nCould you please help me understand the cause of this issue and how to fix it?\n\nThank you very much for your support.\n\nP/s: I'll put the Error and I/O Mapping below.\n\nhttps://preview.redd.it/3l8djwc8dryf1.png?width=1920&amp;format=png&amp;auto=webp&amp;s=085e37d2ebdf4e2cd4f35cc8bb8edd0a9fa7e6a4\n\nhttps://preview.redd.it/eorfevtkcryf1.png?width=1919&amp;format=png&amp;auto=webp&amp;s=9be35daa3fa17a37c20e82b214b51a6b79d35154\n\n",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1762052034,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Beckhoff",
+    "equipment_type": "servo",
+    "model_number": "AM600",
+    "fault_codes": []
+  },
+  {
+    "id": "1ol0apr",
+    "title": "Codesys EtherCAT state machine errors",
+    "selftext": "I\u2019m really hoping you guys can save the day!\n\nI\u2019m using a wago compact controller 100 to control 8 A6 servo drives from stepper online\n\nI\u2019ve had to create a custom PDO (16#1600, 16#1A00) I\u2019ve had it working with 7 drives however the only way I can get it to work is by manually controlling the drives Ethercat state machine (they all have the orange triangle) if I init&gt;pre-op&gt;op on every drive sometimes they will go into operation\n\nI feel like it\u2019s a timeout error however adjusting the timeouts etc does not seem to help the issue\n\nNow I\u2019m also getting NO_COM errors which I previously was not \n\nJust hoping if anyone has any advice, there isn\u2019t a lot of results online to aid myself\n\nEDIT\n\nThanks all for your help, turns out the controller was being overloaded, I\u2019ve been able to test it by doubling up on controllers temporarily ",
+    "score": 2,
+    "num_comments": 5,
+    "created_utc": 1761930553,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.35,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Beckhoff",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1nbom7v",
+    "title": "TwinCAT: Terminal Signals Error",
+    "selftext": "Hello everyone\n\nI am writing here in hope of finding some help from you Beckhoff experienced folk out there. Here is, what I hope, a sufficient description of my problem. I appreciate you taking the time to read this and more so providing tips and solutions to my problem.\n\n\n\n**Setup: The machine**\n\n  \nWithout giving too much detail on the project, simply put, I am working on a 3-axis additive manufacturing machine. That is XYZ motion axes and one A axis all defined in the CNC. The system consists of a Beckhoff IPC and beckhoff bus of terminals. the Z and A axes use EL7047 stepper drivers connected to Nanotec steppers.\n\n  \n**The Problem: Terminal Signals Error (Klemme meldet fehler)**\n\n  \nWhen running a gcode file (not necessarily the same one when facing this issue), that is an additive process running for multiple hours, a CNC error occurs at random, at some random point during the process that disrupts the CNC. The machine simply stops motion and CNC goes into an error state ruining the entire process and requiring a CNC reset (not activation of configuration) to start again.\n\n  \nThe Error list in TwinCAT shows two errors at this point that seem to happen right after each other:\n\nTerminal signals error ID 70261 (this is a literal transcript of the error and above it is written in German), this is followed by CNC error with ID 70101: Drive shall be moved, but it is not enabled yet.\n\n  \n**Diagnosis: No (very little) Clues**\n\n  \nWe investigate the CNC error log, by looking at the recorded errors from the CNC HLI or by creating a log/dump of CNC errors by running C:\\\\TwinCAT\\\\3.1\\\\Components\\\\Mc\\\\CNC\\\\Diagnostics\\\\dump.bat which is a decoded version of what the Cnc Hli reports.\n\nSo the error seems to happen in the A axis and th error text is, again, Terminal Signals Error. I go to the IO Terminal of the EL7047 that drives the A axis and go to Diag History tab and click to show the message and error hsitory.... and here is the catch... this terminal (and all other Stepper terminals for that matter) report no errors before, at or after the point in time where the CNC stopped giving this 'Terminal Signals error' error message and abruptly terminating the process.\n\n  \nThe LEDs of the Terminal itself show no problem nothing unusual, from inspection this terminal seems to have no issue at all, unless of course I am missing something. But it is not reporting or warning of any issue whatsoever.\n\n**Attempted solutions**\n\n  \nSeen as there are so little info, we first assumed that the Terminal is defective and replaced it with a another brand new EL7047 terminal. At first it seemed to work we ran the process a few times and had no issue, where earlier we used to have a failure rate in every other run of the gcode. Then, disappointingly the issue came back and it is like before.\n\nAnother thing we observed is that activating the TwinCAT configuration seems to 'encourage' the terminal to run into this error as we seem to run into it with the first process run after activating. and at one time we did not activate the configuration for 5 days straight and the machine remained in continuous operation with no issue and no errors. Of course activating the configuration is still needed as this machine is in active development. As of time of writing since last time I activated the configuration we ran the process 3 times the first failed with this error the second finished successfully and the third failed 3 hours into a 5 hour process and currently the 4th attempt is running with all fingers crossed. (I am aware this is not the best way to operate the machine, but we are trying to meet a production quota so we are time constrained when it comes to stopping the machine)\n\n  \nOf course, we then contacted Beckhoff for some help, and so far the only thing they pointed to was the PID parameters of the motor Index 8011 being a possible cause for this error, we have tried running a process after lowering the Kp factor and ran into the same problem, right now we lowered it even more and again.. fingers crossed.\n\n\n\n**Help?**\n\n  \nHas anyone ran into a similar ambiguous problem? Could you please offer some insights?  \nThank you very much if you made it all the way through this long post and for your support.\n\n",
+    "score": 2,
+    "num_comments": 8,
+    "created_utc": 1757340237,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "high",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Beckhoff",
+    "equipment_type": "",
+    "model_number": "EL7047",
+    "fault_codes": [
+      {
+        "code": "bus",
+        "manufacturer": "Yaskawa",
+        "description": "Option communications fault"
+      }
+    ]
+  },
+  {
+    "id": "1mh84fi",
+    "title": "Hyper-V / VBS error when starting TwinCAT",
+    "selftext": "Hi together,\n\nI've seen multiple times the same Hyper-V error in the subreddits. So I thought I'd post the response I've gotten from Beckhoff Support on the topic.\n\n**Error message:**  \n\"Setting TwinCAT in Run Mode inside Hyper-V is not possible\"\n\n**Answer from Beckhoff Support:**\n\nPlease take a look at the TwinCAT system requirements:\n\n[https://infosys.beckhoff.com/english.php?content=../content/1033/tc3\\_overview/6162419083.html&amp;id](https://infosys.beckhoff.com/english.php?content=../content/1033/tc3_overview/6162419083.html&amp;id=)\n\n\\### Hyper-V Information\n\n[https://learn.microsoft.com/en-us/troubleshoot/windows-client/application-management/virtualization-apps-not-work-with-hyper-v](https://learn.microsoft.com/en-us/troubleshoot/windows-client/application-management/virtualization-apps-not-work-with-hyper-v)\n\n\u00a0\n\n\\### Some Components and Features of Windows that Use Hyper-V:\n\n1. \\*\\*Virtualization-Based Security (VBS)\\*\\*:\n\n[https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/oem-vbs](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/oem-vbs)\n\n\\- \\*\\*Core Isolation\\*\\*: Uses Hyper-V to create isolated memory regions to protect critical system processes.\n\n\\- \\*\\*Credential Guard\\*\\*: Uses VBS to isolate and protect credentials.\n\n[https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/](https://learn.microsoft.com/en-us/windows/security/identity-protection/credential-guard/)\n\n\\- \\*\\*Device Guard\\*\\*: Uses VBS and Hyper-V to enforce code integrity policies and isolate processes.\n\n\u00a0\n\n2. \\*\\*Windows Hypervisor Platform\\*\\*:\n\n\\- Provides an API for third-party virtualization software to use Hyper-V as the underlying virtualization technology.\n\n\u00a0\n\n3. \\*\\*Windows Subsystem for Linux (WSL) 2\\*\\*:\n\n\\- The second version of WSL, WSL 2, uses a lightweight virtual machine provided by Hyper-V to run a full Linux kernel on Windows.\n\n[https://learn.microsoft.com/en-us/windows/wsl/about](https://learn.microsoft.com/en-us/windows/wsl/about)\n\n\u00a0\n\n4. \\*\\*Memory Integrity (HVCI)\\*\\*:\n\n\\- \\*\\*Hypervisor Code Integrity (HVCI)\\*\\*: Uses Hyper-V to enforce code integrity policies, ensuring that only trusted code runs in kernel mode.\n\n[https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity?tabs=security](https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity?tabs=security)\n\n\u00a0\n\n\\### Further information\n\n\u00a0\n\nFor 4024 and Windows 10, you can take a look at the \u201cDevice Guard and Credential Guard hardware readiness tool\u201d from Microsoft.\n\n[https://www.microsoft.com/en-us/download/details.aspx?id=53337](https://www.microsoft.com/en-us/download/details.aspx?id=53337)\n\n\u00a0\n\nFor &gt;=4026.14, there is a Powershell script(DisableVirtualizationBasedSecurity.ps1) to disable virtualization-based security located in \u201cC:\\\\Program Files (x86)\\\\Beckhoff\\\\TwinCAT\\\\3.1\\\\System\u201d.\n\n\u00a0\n\nIf you would like to use one of the two options, please contact your IT department.\n\nBeckhoff does not provide any additional instructions on how to deactivate one of these functions!\n\nBeckhoff offers a UserMode Runtime as an alternative to the KernelMode Runtime.\n\n\u00a0\n\n*For &gt;=4026:*\n\n[https://infosys.beckhoff.com/english.php?content=../content/1033/tc170x\\_tc3\\_usermode\\_runtime/11319881355.html](https://infosys.beckhoff.com/english.php?content=../content/1033/tc170x_tc3_usermode_runtime/11319881355.html)\n\n\u00a0\n\n\u00a0\n\n*For 4024:*\n\nPlease take a look at the \"Readme.txt\" in the following folder \"C:\\\\TwinCAT\\\\3.1\\\\Runtimes\"\n\nYou can start the Beta UserMode Runtime as follows:\n\n1. start TwinCAT UserMode Runtime by double-clicking on Start.bat in C:\\\\TwinCAT\\\\3.1\\\\Runtimes\\\\UmRT\\_Default\n\n2. the command window will open and must be left ope\n\n3. in Visual Studio or TcXaeShell, the UserMode Runtime can now be selected as the target syste\n\n\"",
+    "score": 3,
+    "num_comments": 0,
+    "created_utc": 1754297065,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "high",
+    "quality_score": 0.5,
+    "quality_pass": false,
+    "quality_reasons": [
+      "no equipment mention"
+    ],
+    "manufacturer": "Beckhoff",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "4024",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "4026",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  }
+]

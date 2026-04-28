@@ -1,0 +1,74 @@
+[
+  {
+    "id": "1kjla9u",
+    "title": "Troubleshoot Motor",
+    "selftext": "Not a PLC question.\n\n150 horsepower compressor with Danfoss VFD.  10 years ago, the drive started having a fault nobody remembers, so the drive was bypassed and shut off, compressor was running in Star-Delta configuration since then.  (5 years before I got here)\n\n3 months ago, motor overload starts kicking intermittently.  3 weeks ago, started kicking too often, running on backup compressor.  Boss calls in compressor company.  I'm pretty busy and all the terminals and normal things were right and looked good.\n\nCompressor company comes, blows up star delta starter contactor set, of course have no idea how or why.  They left, haven't heard from them since.  Supposedly trying to find new contactors.\n\nI hook up old Danfoss VFD, it starts to run then faults out on earth fault.  I don't know the status of the VFD, other than it was bypassed years ago.  \n\nI don't have a 150 HP drive, but I did connect a 125 horse ABB ACS 800 to see what I could do (testing).  It does output 202 Amps.  In delta configuration, it runs up to speed and then stalls out, no RPM with 202 amps out.  Reconfigured wiring to star, it gets to around 300 RPM and goes no further, it's pegged at 202 Amps.\n\nBoss wants me to connect it directly to the mains.  I want no part of that.  Original problem is overload tripping, no sign of loose connections.  Danfoss drive says earth problem, shows no problem when the motor is disconnected.  ABB drive stalls, puts out a lot of amps with little results.\n\nI'm not sure whether it's the motor or compressor, but I think this problem is more than a bad overload.  I understand the want for it to be the cheapest part.\n\nExperiences or insights?",
+    "score": 7,
+    "num_comments": 66,
+    "created_utc": 1746913740,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "electrical",
+    "urgency": "medium",
+    "quality_score": 0.65,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "ABB",
+    "equipment_type": "VFD",
+    "model_number": "ACS 800",
+    "fault_codes": []
+  },
+  {
+    "id": "1ooebqw",
+    "title": "Troubleshooting ABB ACS880 EFB Lost Communication Alarm &amp; Modbus RTU Configuration",
+    "selftext": "Good day,\n\n I am facing an \"EFB lost communication\" alarm on an ABB ACS880 drive and suspect a parameter has been changed incorrectly. I am trying to configure the drive to accept start/stop commands from a Kaishan PLC acting as a Modbus RTU master.\n\nHere is the current configuration and connections:\n\n**Hardware Connections:**\n\n* **RS485:**\u00a0XD2D terminals connected with correct polarity and 124 Ohm termination resistance.\n* **Safety:**\u00a0DII1 interlock bridge and XSTO safe bridges are connected (healthy).\n*  **Input:**\u00a0A wire from PLC output Kaishan Y6 is connected to DI1, but the input is undefined in the PLC software.\n\n**Kaishan PLC Settings (Master):**\n\n* **Address:**\u00a01 (local)\n* **Baud Rate:**\u00a09600\n* **Check Bit:**\u00a08\n* **Stop Bit:**\u00a01\n* **Data Bit:**\u00a0Even\n\n**Current ACS880 Parameter Settings:**\n\n|Group/Parameter|Description|Current Value|\n|:-|:-|:-|\n|**58.01**|Protocol enable|Modbus RTU|\n|**58.03**|Node address|1|\n|**58.04**|Baud rate|9600|\n|**58.05**|Parity|8even1 |\n|**58.25**|Control profile|ABB|\n|**19.11**|Ext1/Ext2 selection|Ext 1|\n|**19.12**|Ext1 control mode|Speed|\n|**20.01**|Ext1 command|Embedded field bus|\n|**20.03**|Ext1 in1 source|DI1|\n|**20.12**|Run enable 1 source|DIIL|\n\n\n\nI should disable 20.03? it is somebody here how have other suggestion?\n\nMany tanks .",
+    "score": 2,
+    "num_comments": 1,
+    "created_utc": 1762279300,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.85,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "ABB",
+    "equipment_type": "PLC",
+    "model_number": "ACS880",
+    "fault_codes": [
+      {
+        "code": "9600",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "bus",
+        "manufacturer": "Yaskawa",
+        "description": "Option communications fault"
+      }
+    ]
+  },
+  {
+    "id": "1m1sfny",
+    "title": "error 110470 Configuration Parameter Error Robot ABB",
+    "selftext": "https://preview.redd.it/prpcfbg6pbdf1.jpg?width=1200&amp;format=pjpg&amp;auto=webp&amp;s=b01ff93ffdf85d7616df2b334c3cd7070bab358b\n\n**Someone had This error with a robo IRB 1600 from ABB?**\n\n**How can I solve**",
+    "score": 2,
+    "num_comments": 1,
+    "created_utc": 1752709613,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "ABB",
+    "equipment_type": "robot",
+    "model_number": "IRB 1600",
+    "fault_codes": []
+  }
+]
