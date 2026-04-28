@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { extractAndStore } from "@/lib/knowledge-graph/extractor";
+import { buildGraphContext } from "@/lib/knowledge-graph/context-builder";
 
 export const dynamic = "force-dynamic";
 
@@ -248,9 +249,17 @@ export async function POST(
     assetRow = null;
   }
 
-  const systemPrompt = assetRow
+  // KG graph context — fetch in parallel with (already completed) asset DB fetch
+  // Returns "" if KG not populated; never throws (graceful fallback)
+  const graphContext = await buildGraphContext(ctx.tenantId, lastUser.content, id).catch(() => "");
+
+  const baseSystemPrompt = assetRow
     ? buildSystemPrompt(assetRow)
     : `You are MIRA, an AI maintenance assistant for industrial equipment. Answer questions about this asset concisely and accurately. Cite manual sections when referenced.`;
+
+  const systemPrompt = graphContext
+    ? `${baseSystemPrompt}\n\n## Knowledge Graph Context\nThe following relational context was retrieved from the plant knowledge graph. Use it to give more specific, history-aware answers.\n\n${graphContext}`
+    : baseSystemPrompt;
 
   const fullMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
