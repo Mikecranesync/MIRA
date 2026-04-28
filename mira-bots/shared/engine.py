@@ -533,6 +533,15 @@ class Supervisor:
                 if expanded:
                     logger.info("Selection resolved: '%s' → '%s'", message, expanded)
                     message = expanded
+                    # Clear stale options so this selection doesn't persist into
+                    # the next turn and re-resolve against the wrong question.
+                    _ctx_opt = state.get("context") or {}
+                    _sc_opt = _ctx_opt.get("session_context") or {}
+                    _sc_opt.pop("last_options", None)
+                    _sc_opt.pop("last_question", None)
+                    _ctx_opt["session_context"] = _sc_opt
+                    state["context"] = _ctx_opt
+                    self._save_state(chat_id, state)
 
             # Session follow-up detection: now runs on the already-expanded message.
             if detect_session_followup(message, sc, state["state"]):
@@ -1158,7 +1167,10 @@ class Supervisor:
             "okay",
             "y",
             "log",
+            "long",  # common typo for "log"
             "create",
+            "submit",
+            "confirm",
             "do it",
             "log it",
             "create it",
@@ -1269,6 +1281,20 @@ class Supervisor:
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, "RESOLVED")
+
+            # Unrecognised input — re-show the preview rather than silently
+            # treating it as "no" (which would discard the WO draft).
+            ctx["cmms_pending"] = True
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            wo = UNSWorkOrder(**wo_draft)
+            reply = (
+                "Say **yes** to log this work order, **no** to cancel, "
+                "or correct any field (e.g. *asset is Pump A3*).\n\n"
+            ) + format_wo_preview(wo)
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, "RESOLVED")
 
         # Consume the pending state now that we have a definitive yes/no.
         ctx.pop("cmms_wo_draft", None)

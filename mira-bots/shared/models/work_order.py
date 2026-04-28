@@ -18,6 +18,31 @@ logger = logging.getLogger("mira-gsd")
 
 _HIGH_PRIORITY_FAULTS = {"power", "thermal", "hydraulic", "emergency", "fire"}
 
+# Prefixes that identify MIRA meta-messages (WO previews, failure notices) that
+# must not be treated as diagnostic resolution text or fault descriptions.
+_WO_META_PREFIXES = (
+    "📋",
+    "I wasn't able to create",
+    "Work order #",
+    "Understood — no work order",
+    "Updated.",
+    "Got it —",
+    "Log this work order",
+    "To correct any field",
+    "Say **yes** to log",
+    "I need a few more details",
+    "Please confirm",
+)
+
+# Short confirmations / WO-flow responses that should never be captured as the
+# fault description from conversation history.
+_SKIP_MSG_RE = re.compile(
+    r"^(?:yes|no|yeah|yep|yup|ok|okay|hi|hello|hey|sure|thanks|thank\s+you|"
+    r"long|log|do\s+it|go\s+ahead|confirm|submit|skip|cancel|abort|"
+    r"nope|never\s+mind|nevermind|please)\b",
+    re.IGNORECASE,
+)
+
 _UNS_EVENTS_PATH = os.getenv("UNS_EVENTS_PATH", "/opt/mira/data/uns_events.ndjson")
 
 
@@ -201,23 +226,33 @@ def build_uns_wo_from_state(state: dict) -> UNSWorkOrder:
     asset_raw = (state.get("asset_identified") or "").strip()
     fault = (state.get("fault_category") or "corrective").strip()
 
-    # Build fault_description from session_context or the initial user report.
-    # Use only the FIRST user message (the original fault report) — not the full
-    # history, which would concatenate unrelated exchanges into the Fault field.
+    # Build fault_description: prefer session_context summary, otherwise scan history
+    # for the first substantive user message that looks like a fault report — skipping
+    # short acknowledgements and WO-flow responses.
     fault_desc = sc.get("symptom_summary", "")
     if not fault_desc:
         history = ctx.get("history", [])
-        first_user = next((t.get("content", "") for t in history if t.get("role") == "user"), "")
-        fault_desc = first_user[:500]
+        for turn in history:
+            if turn.get("role") == "user":
+                content = (turn.get("content") or "").strip()
+                if (
+                    len(content) > 15
+                    and not _SKIP_MSG_RE.match(content)
+                    and not any(content.startswith(p) for p in _WO_META_PREFIXES)
+                ):
+                    fault_desc = content[:500]
+                    break
 
-    # Resolution from session_context or last assistant turn
+    # Resolution: prefer session_context summary, otherwise last substantive assistant
+    # turn — explicitly skip WO preview / failure notice messages.
     resolution = sc.get("diagnosis_summary", "")
     if not resolution:
         history = ctx.get("history", [])
         asst_turns = [
             t.get("content", "")[:300]
-            for t in reversed(history[-4:])
+            for t in reversed(history[-8:])
             if t.get("role") == "assistant"
+            and not any((t.get("content") or "").strip().startswith(p) for p in _WO_META_PREFIXES)
         ]
         resolution = asst_turns[0] if asst_turns else ""
 
