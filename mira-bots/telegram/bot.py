@@ -13,6 +13,7 @@ from shared import tts
 from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
 from telegram import Update
+from voice_transcription import transcribe_voice
 from telegram.constants import ChatAction
 from telegram.error import Conflict
 from telegram.ext import (
@@ -313,6 +314,75 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error("Dispatch error: %s", e)
         await update.message.reply_text(f"MIRA error: {e}")
+
+
+async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle incoming Telegram voice messages (OGG/Opus).
+
+    Pipeline:
+      1. Download voice file from Telegram
+      2. Transcribe via Groq Whisper (whisper-large-v3-turbo)
+      3. Route transcribed text through the normal GSD engine (same as text)
+      4. If MIRA's reply contains a WO preview, the FSM handles "yes" confirmation
+         through the same handle_message path on the next turn
+
+    Falls back gracefully if GROQ_API_KEY is missing or Whisper fails.
+    """
+    voice = update.message.voice
+    chat_id = str(update.effective_chat.id)
+    user_name = update.effective_user.first_name if update.effective_user else "User"
+
+    logger.info(
+        "Voice message from %s: duration=%ds file_id=%s",
+        user_name,
+        voice.duration if voice else 0,
+        voice.file_id if voice else "?",
+    )
+
+    # Acknowledge receipt while we transcribe
+    await update.message.reply_text("🎤 Transcribing your message…")
+
+    try:
+        tg_file = await context.bot.get_file(voice.file_id)
+        audio_bytes = await tg_file.download_as_bytearray()
+    except Exception as exc:
+        logger.error("Voice download failed: %s", exc)
+        await update.message.reply_text(
+            "Sorry, I couldn't download your voice message. Please try again or type your message."
+        )
+        return
+
+    async with typing_action(context, update.effective_chat.id):
+        transcribed = await transcribe_voice(bytes(audio_bytes))
+
+    if not transcribed:
+        await update.message.reply_text(
+            "I couldn't transcribe your voice message "
+            "(GROQ_API_KEY may not be set, or the audio was unclear).\n"
+            "Please type your message instead."
+        )
+        return
+
+    logger.info("Voice → text from %s: %r", user_name, transcribed[:100])
+
+    # Echo transcription so the tech can see what was captured
+    await update.message.reply_text(f'_🎤 Heard: "{transcribed}"_', parse_mode="Markdown")
+
+    # Route through the exact same path as a text message
+    normalized = await adapter.normalize_incoming(update.to_dict())
+    normalized.text = transcribed
+
+    if any(kw in transcribed.lower() for kw in FAULT_KEYWORDS):
+        await update.message.reply_text("Diagnosing…")
+
+    try:
+        async with typing_action(context, update.effective_chat.id):
+            response = await dispatcher.dispatch(normalized)
+        await adapter.render_outgoing(response, normalized)
+        await _maybe_send_voice(update, context, chat_id, response.text)
+    except Exception as exc:
+        logger.error("Voice dispatch error: %s", exc)
+        await update.message.reply_text(f"MIRA error: {exc}")
 
 
 async def _process_photo_batch(
@@ -617,6 +687,7 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+    app.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(_conflict_error_handler)
     _ver_path = os.path.join(os.path.dirname(__file__), "VERSION")
