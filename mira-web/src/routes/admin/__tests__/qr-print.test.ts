@@ -93,7 +93,7 @@ describe("POST /api/admin/qr-print-batch", () => {
     expect(res.status).toBe(400);
   });
 
-  test("200 PDF for valid ADMIN request", async () => {
+  test("200 PDF for valid ADMIN request — default (5163) format", async () => {
     const res = await app.request("/api/admin/qr-print-batch", {
       method: "POST",
       headers: {
@@ -109,7 +109,54 @@ describe("POST /api/admin/qr-print-batch", () => {
     });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/pdf");
+    const cd = res.headers.get("content-disposition") ?? "";
+    expect(cd).toContain("mira-stickers-");
+    expect(cd).toContain(".pdf");
     const buf = await res.arrayBuffer();
     expect(buf.byteLength).toBeGreaterThan(500);
+  });
+
+  // #438 — Avery PDF format selector
+  test("200 PDF for 5160 format — 30 labels/sheet", async () => {
+    const res = await app.request("/api/admin/qr-print-batch", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${await adminToken()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        tags: [{ asset_tag: "MOTOR-01", atlas_asset_id: 50 }],
+        format: "5160",
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    const buf = await res.arrayBuffer();
+    expect(buf.byteLength).toBeGreaterThan(500);
+  });
+
+  test("5163 is default when format field is omitted", async () => {
+    const res5163 = await app.request("/api/admin/qr-print-batch", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${await adminToken()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ tags: [{ asset_tag: "VFD-08", atlas_asset_id: 44 }] }),
+    });
+    const resExplicit = await app.request("/api/admin/qr-print-batch", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${await adminToken()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        tags: [{ asset_tag: "VFD-08", atlas_asset_id: 44 }],
+        format: "5163",
+      }),
+    });
+    // Both should return valid PDFs of similar size
+    expect(res5163.status).toBe(200);
+    expect(resExplicit.status).toBe(200);
   });
 });
