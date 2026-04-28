@@ -7,7 +7,6 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
 import {
-  getConnection,
   setConnection,
   removeConnection,
   getAllConnections,
@@ -170,11 +169,14 @@ function ChannelsInner() {
     dropbox: { hasOAuth: false },
     confluence: { hasOAuth: false },
   });
-  const [modal, setModal] = useState<"telegram" | "openwebui" | null>(null);
+  const [modal, setModal] = useState<"telegram" | "openwebui" | "maintainx" | null>(null);
   const [telegramToken, setTelegramToken] = useState("");
   const [telegramLoading, setTelegramLoading] = useState(false);
   const [telegramError, setTelegramError] = useState<string | null>(null);
   const [openwebuiUrl, setOpenwebuiUrl] = useState("http://localhost:3000");
+  const [maintainxKey, setMaintainxKey] = useState("");
+  const [maintainxLoading, setMaintainxLoading] = useState(false);
+  const [maintainxError, setMaintainxError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setConnections(getAllConnections());
@@ -253,6 +255,34 @@ function ChannelsInner() {
     refresh();
   }
 
+  async function handleMaintainxConnect() {
+    setMaintainxLoading(true);
+    setMaintainxError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/integrations/nango/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "maintainx", apiKey: maintainxKey.trim() }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (data.ok) {
+        setConnection("maintainx", {
+          connected: true,
+          displayName: "MaintainX",
+        });
+        setModal(null);
+        setMaintainxKey("");
+        refresh();
+      } else {
+        setMaintainxError(data.error ?? "Invalid API key — check MaintainX Settings → API");
+      }
+    } catch {
+      setMaintainxError("Network error — please try again");
+    } finally {
+      setMaintainxLoading(false);
+    }
+  }
+
   const telegramConn = conn("telegram");
   const slackConn = conn("slack");
   const teamsConn = conn("teams");
@@ -261,6 +291,7 @@ function ChannelsInner() {
   const microsoftConn = conn("microsoft");
   const dropboxConn = conn("dropbox");
   const confluenceConn = conn("confluence");
+  const maintainxConn = conn("maintainx");
 
   const connectedCount = Object.values(connections).filter(c => c?.connected).length;
 
@@ -352,7 +383,62 @@ function ChannelsInner() {
           </div>
         </section>
 
-        {/* Section 2: Document & Knowledge Sources */}
+        {/* Section 2: CMMS Connectors */}
+        <section>
+          <h2
+            className="text-xs font-semibold uppercase tracking-wide mb-3"
+            style={{ color: "var(--foreground-subtle)" }}
+          >
+            CMMS Connectors
+          </h2>
+          <div className="space-y-2">
+            <ConnectorCard
+              emoji="🔧" name="MaintainX"
+              description="Sync work orders, assets, and parts — AI-powered diagnostics flow directly into MaintainX"
+              conn={maintainxConn}
+              onConnect={() => {
+                setMaintainxKey(maintainxConn.workspace ?? "");
+                setModal("maintainx");
+              }}
+              onDisconnect={async () => {
+                await fetch(`${API_BASE}/api/integrations/nango/connect?provider=maintainx`, {
+                  method: "DELETE",
+                });
+                disconnect("maintainx");
+              }}
+              connectedLabel="Work orders and assets syncing via Nango"
+            />
+            <ConnectorCard
+              emoji="🗂️" name="Atlas CMMS"
+              description="FactoryLM's built-in CMMS — connected automatically"
+              conn={{ connected: true }}
+              onConnect={() => {}}
+              onDisconnect={() => {}}
+              connectedLabel="Live — work orders sync in real time"
+              infoOnly
+            />
+            <ConnectorCard
+              emoji="📋" name="Limble"
+              description="Sync Limble work orders and assets with MIRA diagnostics"
+              conn={{ connected: false }}
+              onConnect={() => {}}
+              onDisconnect={() => {}}
+              connectedLabel=""
+              comingSoon
+            />
+            <ConnectorCard
+              emoji="🛠️" name="UpKeep"
+              description="Connect UpKeep for automated work order creation from MIRA fault analysis"
+              conn={{ connected: false }}
+              onConnect={() => {}}
+              onDisconnect={() => {}}
+              connectedLabel=""
+              comingSoon
+            />
+          </div>
+        </section>
+
+        {/* Section 3: Document & Knowledge Sources */}
         <section>
           <h2
             className="text-xs font-semibold uppercase tracking-wide mb-3"
@@ -450,6 +536,62 @@ function ChannelsInner() {
             <Button
               size="sm" variant="secondary" className="text-xs h-8 px-3"
               onClick={() => { setModal(null); setTelegramError(null); setTelegramToken(""); }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* MaintainX modal */}
+      {modal === "maintainx" && (
+        <Modal
+          title="Connect MaintainX"
+          onClose={() => { setModal(null); setMaintainxError(null); setMaintainxKey(""); }}
+        >
+          <p className="text-xs mb-3" style={{ color: "var(--foreground-muted)" }}>
+            Generate an API key at{" "}
+            <span className="font-mono font-semibold">
+              Settings → Integrations → API → New Key
+            </span>{" "}
+            (Business plan or above required). Your key is stored encrypted via Nango — MIRA never
+            stores it directly.
+          </p>
+          <input
+            type="password"
+            value={maintainxKey}
+            onChange={e => setMaintainxKey(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && maintainxKey.trim()) handleMaintainxConnect(); }}
+            placeholder="Paste your MaintainX API key"
+            className="w-full text-xs px-3 py-2.5 rounded-lg border outline-none font-mono"
+            style={{
+              backgroundColor: "var(--surface-1)",
+              borderColor: "var(--border)",
+              color: "var(--foreground)",
+            }}
+            autoFocus
+          />
+          {maintainxError && (
+            <p className="text-xs mt-2 flex items-center gap-1.5" style={{ color: "#DC2626" }}>
+              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+              {maintainxError}
+            </p>
+          )}
+          <div className="flex gap-2 mt-4">
+            <Button
+              size="sm"
+              className="flex-1 text-xs h-8 gap-1.5"
+              style={{ backgroundColor: "var(--brand-blue)", color: "white" }}
+              onClick={handleMaintainxConnect}
+              disabled={!maintainxKey.trim() || maintainxLoading}
+            >
+              {maintainxLoading
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Connecting…</>
+                : <><CheckCircle className="w-3.5 h-3.5" />Save & Connect</>}
+            </Button>
+            <Button
+              size="sm" variant="secondary" className="text-xs h-8 px-3"
+              onClick={() => { setModal(null); setMaintainxError(null); setMaintainxKey(""); }}
             >
               Cancel
             </Button>

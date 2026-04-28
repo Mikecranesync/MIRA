@@ -353,6 +353,82 @@ The modal should show: tenant API key (from `MIRA_WIDGET_KEY`), embed `<script>`
 
 ---
 
+---
+
+## Nango — Integration Layer for CMMS and Third-Party APIs
+
+Nango sits **alongside** the ChatAdapter/Dispatcher stack as a dedicated credential vault and auth proxy for CMMS and productivity integrations. It does not handle chat — it handles API credentials.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                   mira-hub (Next.js)                     │
+│                                                          │
+│  ConnectorCard (channels page)                           │
+│       │ API key entered by user                          │
+│       ▼                                                  │
+│  POST /api/integrations/nango/connect                    │
+│       │                                                  │
+│       ▼                                                  │
+│  ┌────────────────────────────────────┐                  │
+│  │  Nango Server (nango-server:3003)  │                  │
+│  │  providers.yaml: MaintainX def    │                  │
+│  │  hub_channel_bindings (nango-db)  │                  │
+│  └────────────────┬───────────────────┘                  │
+│                   │  Proxy (Bearer injected)              │
+│                   ▼                                      │
+│  GET /proxy/workorders → MaintainX API                   │
+│  POST /proxy/workorders → create WO                      │
+└──────────────────────────────────────────────────────────┘
+```
+
+### What Nango Does
+
+| Capability | Free self-hosted | Nango Cloud / Enterprise |
+|---|---|---|
+| Store API keys / OAuth tokens encrypted | ✅ | ✅ |
+| Proxy authenticated requests | ✅ | ✅ |
+| OAuth 2.0 consent flow (for future OAuth connectors) | ✅ | ✅ |
+| Connect UI (credential collection) | ✅ | ✅ |
+| Run sync scripts (scheduled polling) | ❌ | ✅ |
+| Run action scripts (triggered) | ❌ | ✅ |
+
+**Current setup:** Free self-hosted (auth + proxy). The sync/action scripts in `nango-integrations/` are written and ready — they activate automatically if the tenant upgrades to Nango Cloud or Enterprise.
+
+### Nango Files
+
+```
+nango-integrations/
+├── nango.yaml                              # Integration manifest (syncs, actions, models)
+├── providers.yaml                          # Custom provider auth config (mounted into nango-server)
+├── models.ts                               # Shared TypeScript model types
+├── tsconfig.json
+└── maintainx/
+    ├── syncs/
+    │   ├── work-orders.ts                  # Cursor-paginated WO sync (every 30m)
+    │   ├── assets.ts                       # Asset sync (every 1h)
+    │   └── parts.ts                        # Parts/inventory sync (every 2h)
+    └── actions/
+        ├── create-work-order.ts            # POST /workorders
+        └── get-asset.ts                    # GET /assets/{id}
+```
+
+### Hub Wiring
+
+- `mira-hub/src/lib/nango.ts` — server-side client (proxy, connect, delete, status check)
+- `mira-hub/src/app/api/integrations/nango/connect/route.ts` — POST/DELETE/GET connection
+- `mira-hub/src/app/api/integrations/nango/callback/route.ts` — OAuth callback (future)
+- Hub channels page: **CMMS Connectors** section with MaintainX `ConnectorCard`
+
+### Adding a New CMMS Provider
+
+1. Add provider entry to `nango-integrations/providers.yaml` (auth_mode, proxy.base_url, headers)
+2. Create `nango-integrations/{provider}/syncs/` and `actions/` TypeScript files
+3. Add provider model types to `models.ts` and entry to `nango.yaml`
+4. Add `ConnectorCard` to channels page CMMS section
+5. If OAuth2 (not API_KEY): the callback route at `/api/integrations/nango/callback` handles the return automatically
+
+---
+
 ## Glossary
 
 | Term | Definition |
@@ -364,3 +440,6 @@ The modal should show: tenant API key (from `MIRA_WIDGET_KEY`), embed `<script>`
 | **NormalizedChatResponse** | Platform-agnostic outbound response type |
 | **MIRAAdapter** | Legacy ABC in `shared/adapters/base.py` — used only by WhatsApp (being replaced) |
 | **chat_id** | Session key = `{platform}:{channel_id}[:{thread_id}]` — scopes FSM state |
+| **Nango** | Auth proxy + credential vault for CMMS/platform API keys. Self-hosted on `nango-server:3003`. |
+| **Nango Proxy** | Pass-through HTTP proxy that injects stored Bearer tokens — works on free tier |
+| **Nango Sync** | Scheduled TypeScript script that polls a provider and saves records — requires Cloud/Enterprise |
