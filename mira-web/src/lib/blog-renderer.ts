@@ -220,23 +220,67 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
   </div>`
       : "";
 
+  const fixStepsLd = fc.recommendedFix
+    .split("\n")
+    .map((s) => s.replace(/^\d+\.\s*/, "").trim())
+    .filter(Boolean)
+    .map((text, i) => ({
+      "@type": "HowToStep",
+      position: i + 1,
+      name: text.split(".")[0] ?? text,
+      text,
+    }));
+
   const jsonLd = `<script type="application/ld+json">
-  {
+  ${JSON.stringify({
     "@context": "https://schema.org",
-    "@type": "Article",
-    "headline": ${JSON.stringify(fc.title)},
-    "description": ${JSON.stringify(fc.metaDescription)},
-    "url": ${JSON.stringify(canonical)},
-    "datePublished": "${TODAY}",
-    "dateModified": "${TODAY}",
-    "author": { "@type": "Organization", "name": "FactoryLM" },
-    "publisher": {
-      "@type": "Organization",
-      "name": "FactoryLM",
-      "logo": { "@type": "ImageObject", "url": "${BASE_URL}/public/icons/mira-512.png" }
-    },
-    "mainEntityOfPage": { "@type": "WebPage", "@id": ${JSON.stringify(canonical)} }
-  }
+    "@graph": [
+      {
+        "@type": "TroubleshootingGuide",
+        "@id": `${canonical}#guide`,
+        name: fc.title,
+        description: fc.metaDescription,
+        url: canonical,
+        datePublished: TODAY,
+        dateModified: TODAY,
+        author: { "@type": "Organization", name: "FactoryLM", url: BASE_URL },
+        publisher: {
+          "@type": "Organization",
+          name: "FactoryLM",
+          logo: { "@type": "ImageObject", url: `${BASE_URL}/public/icons/mira-512.png` },
+        },
+        about: {
+          "@type": "Product",
+          name: fc.equipment,
+          manufacturer: { "@type": "Organization", name: fc.manufacturer },
+        },
+        step: fixStepsLd,
+        mainEntity: {
+          "@type": "FAQPage",
+          mainEntity: [
+            {
+              "@type": "Question",
+              name: `What does ${fc.faultCode} mean on ${fc.equipment}?`,
+              acceptedAnswer: { "@type": "Answer", text: fc.description },
+            },
+            {
+              "@type": "Question",
+              name: `What causes ${fc.faultCode} on ${fc.equipment}?`,
+              acceptedAnswer: {
+                "@type": "Answer",
+                text: fc.commonCauses.join(" "),
+              },
+            },
+            {
+              "@type": "Question",
+              name: `How do I fix ${fc.faultCode} on ${fc.equipment}?`,
+              acceptedAnswer: { "@type": "Answer", text: fc.recommendedFix },
+            },
+          ],
+        },
+      },
+    ],
+  }, null, 2)}
   </script>`;
 
   return `${htmlHead({ title: `${fc.title} | FactoryLM`, description: fc.metaDescription, canonical, jsonLd })}

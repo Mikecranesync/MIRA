@@ -10,6 +10,8 @@
  *   GET  /blog/fault-codes        → Fault code library index
  *   GET  /blog/:slug              → Individual blog post or fault code article
  *   GET  /sitemap.xml             → Dynamic sitemap
+ *   GET  /llms.txt                → LLM/AI-crawler product summary (GEO foundation)
+ *   GET  /llms-full.txt           → Extended LLM content disclosure
  *   GET  /api/health              → Liveness probe
  *   POST /api/register            → Create pending tenant + start nurture
  *   GET  /api/checkout            → Stripe Checkout redirect ($97/mo)
@@ -415,6 +417,21 @@ app.get("/pricing", async (c) => {
   const file = Bun.file("./public/pricing.html");
   return new Response(await file.text(), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+// GEO foundation (#681) — llmstxt.org standard for AI-crawler content disclosure
+app.get("/llms.txt", async (c) => {
+  const file = Bun.file("./public/llms.txt");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+  });
+});
+
+app.get("/llms-full.txt", async (c) => {
+  const file = Bun.file("./public/llms-full.txt");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=86400" },
   });
 });
 

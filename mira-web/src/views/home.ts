@@ -47,6 +47,34 @@ const ORG_AND_SITE_LD = {
       name: "FactoryLM",
       publisher: { "@id": "https://factorylm.com/#org" },
     },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://factorylm.com/#app",
+      name: "MIRA — Maintenance Intelligence & Resource Assistant",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web, Telegram, Slack",
+      url: "https://factorylm.com/",
+      description: "AI-native workspace for industrial maintenance. Answers fault-code questions with cited sources from 68,000+ OEM documentation chunks. Safety keywords escalate to humans. No per-seat fees.",
+      offers: [
+        {
+          "@type": "Offer",
+          name: "MIRA Troubleshooter",
+          price: "97",
+          priceCurrency: "USD",
+          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "per plant per month" },
+          url: "https://factorylm.com/pricing",
+        },
+        {
+          "@type": "Offer",
+          name: "MIRA Integrated",
+          price: "297",
+          priceCurrency: "USD",
+          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "per plant per month" },
+          url: "https://factorylm.com/pricing",
+        },
+      ],
+      publisher: { "@id": "https://factorylm.com/#org" },
+    },
   ],
 };
 
