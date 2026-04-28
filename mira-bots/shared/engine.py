@@ -967,79 +967,111 @@ class Supervisor:
 
         # ---------------------------------------------------------------------------
         # Diagnosis self-critique quality gate (AutoGen-style nudge loop)
-        # Runs only on DIAGNOSIS state, text-only turns, caps at _CRITIQUE_MAX_ATTEMPTS.
+        # Runs only on DIAGNOSIS state, text-only turns.
+        #
+        # diag_rev_count tracks how many times this fault episode has already sent
+        # the groundedness clarifying question.  It persists across turns (unlike the
+        # old revision_attempts which caused the same question to repeat indefinitely
+        # and then permanently disabled the critique after 2 turns).  The critique
+        # itself runs every DIAGNOSIS turn — the cap is only on how many times we
+        # ask the user for more info, not on how many times we evaluate quality.
         # ---------------------------------------------------------------------------
         if state["state"] == "DIAGNOSIS" and not photo_b64 and not _CRITIQUE_DISABLED:
             ctx_sc = state.get("context") or {}
-            revision_attempts = ctx_sc.get("revision_attempts", 0)
+            diag_rev_count = ctx_sc.get("diag_rev_count", 0)
 
-            if revision_attempts < _CRITIQUE_MAX_ATTEMPTS:
-                scores = await self._self_critique_diagnosis(parsed["reply"], message, chat_id)
-                low_dims = [d for d, s in scores.items() if s < _CRITIQUE_THRESHOLD]
+            scores = await self._self_critique_diagnosis(parsed["reply"], message, chat_id)
+            low_dims = [d for d, s in scores.items() if s < _CRITIQUE_THRESHOLD]
 
-                if low_dims:
-                    revision_attempts += 1
-                    ctx_sc["revision_attempts"] = revision_attempts
+            if low_dims:
+                logger.info(
+                    "SELF_CRITIQUE_TRIGGERED chat_id=%s dims=%s scores=%s diag_rev_count=%d",
+                    chat_id,
+                    low_dims,
+                    {d: scores[d] for d in low_dims},
+                    diag_rev_count,
+                )
+
+                if "groundedness" in low_dims and diag_rev_count == 0:
+                    # First time this fault episode has low groundedness — ask one
+                    # targeted clarifying question and park in DIAGNOSIS_REVISION.
+                    note = scores.get("groundedness_note", "")
+                    clarifying_q = (
+                        "Before I can give you a confident diagnosis, could you "
+                        "share one more detail — what exact fault code, alarm "
+                        "number, or behaviour is the equipment showing right now?\n\n"
+                        "1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n"
+                        "2. Visible symptom (e.g. trips on start, runs slow, won't start)\n"
+                        "3. Sensor reading (e.g. pressure at 120 PSI, temp at 90°C)\n"
+                        "4. Other — describe what you're seeing"
+                    )
+                    if note:
+                        clarifying_q += f"\n\n*(My confidence was limited because: {note})*"
+                    ctx_sc["diag_rev_count"] = diag_rev_count + 1
                     ctx_sc["revision_critique"] = {
                         "dims": low_dims,
-                        "attempts": revision_attempts,
+                        "diag_rev_count": diag_rev_count + 1,
                         "scores": scores,
                     }
                     state["context"] = ctx_sc
-                    logger.info(
-                        "SELF_CRITIQUE_TRIGGERED chat_id=%s dims=%s scores=%s attempt=%d",
-                        chat_id,
-                        low_dims,
-                        {d: scores[d] for d in low_dims},
-                        revision_attempts,
-                    )
+                    state["state"] = "DIAGNOSIS_REVISION"
+                    parsed["reply"] = clarifying_q
+                    # Populate last_options so "1."/"2."/"3."/"4." resolve next turn
+                    sc = ctx_sc.get("session_context", {})
+                    sc["last_options"] = [
+                        "Fault/alarm code displayed",
+                        "Visible symptom",
+                        "Sensor reading",
+                        "Other — describe what you're seeing",
+                    ]
+                    sc["last_question"] = clarifying_q[:200]
+                    ctx_sc["session_context"] = sc
+                    state["context"] = ctx_sc
 
-                    if "groundedness" in low_dims:
-                        # Need more info from the user → ask a targeted clarifying
-                        # question and park in DIAGNOSIS_REVISION.
-                        note = scores.get("groundedness_note", "")
-                        clarifying_q = (
-                            "Before I can give you a confident diagnosis, could you "
-                            "share one more detail — what exact fault code, alarm "
-                            "number, or behaviour is the equipment showing right now? "
-                            "(e.g. fault light colour, code displayed, or what it does "
-                            "when the fault occurs)"
-                        )
-                        if note:
-                            clarifying_q += f"\n\n*(My confidence was limited because: {note})*"
-                        state["state"] = "DIAGNOSIS_REVISION"
-                        parsed["reply"] = clarifying_q
-                    else:
-                        # Helpfulness / instruction gap — regenerate inline without
-                        # asking the user for anything.
-                        critique_hint = "; ".join(f"{d} score={scores[d]}" for d in low_dims)
-                        revised_message = (
-                            f"[Quality note: previous answer had low {critique_hint}. "
-                            f"Regenerate: be more specific, concrete, and actionable. "
-                            f"User question: {message[:200]}]\n\n{message}"
-                        )
-                        try:
-                            raw2, parsed2 = await self._call_with_correction(
-                                revised_message, state, None, tenant_id=resolved_tenant
-                            )
-                            if raw2 is not None and parsed2.get("reply"):
-                                parsed = parsed2
-                                logger.info(
-                                    "SELF_CRITIQUE_REVISED chat_id=%s attempt=%d",
-                                    chat_id,
-                                    revision_attempts,
-                                )
-                        except Exception as exc:
-                            logger.warning(
-                                "SELF_CRITIQUE_REVISION_FAILED chat_id=%s error=%s",
-                                chat_id,
-                                exc,
-                            )
-                else:
-                    # Quality is acceptable — reset revision counter.
-                    ctx_sc.pop("revision_attempts", None)
+                elif "groundedness" in low_dims and diag_rev_count >= 1:
+                    # Already asked once — user's response still has low groundedness.
+                    # Don't repeat the same question.  Accept the LLM response and move on.
+                    logger.info(
+                        "SELF_CRITIQUE_GROUNDEDNESS_ACCEPT chat_id=%s diag_rev_count=%d "
+                        "— proceeding with available info",
+                        chat_id,
+                        diag_rev_count,
+                    )
+                    ctx_sc.pop("diag_rev_count", None)
                     ctx_sc.pop("revision_critique", None)
                     state["context"] = ctx_sc
+
+                else:
+                    # Helpfulness / instruction gap — regenerate inline without
+                    # asking the user for anything.
+                    critique_hint = "; ".join(f"{d} score={scores[d]}" for d in low_dims)
+                    revised_message = (
+                        f"[Quality note: previous answer had low {critique_hint}. "
+                        f"Regenerate: be more specific, concrete, and actionable. "
+                        f"User question: {message[:200]}]\n\n{message}"
+                    )
+                    try:
+                        raw2, parsed2 = await self._call_with_correction(
+                            revised_message, state, None, tenant_id=resolved_tenant
+                        )
+                        if raw2 is not None and parsed2.get("reply"):
+                            parsed = parsed2
+                            logger.info(
+                                "SELF_CRITIQUE_REVISED chat_id=%s diag_rev_count=%d",
+                                chat_id,
+                                diag_rev_count,
+                            )
+                    except Exception as exc:
+                        logger.warning(
+                            "SELF_CRITIQUE_REVISION_FAILED chat_id=%s error=%s",
+                            chat_id,
+                            exc,
+                        )
+            else:
+                # Quality is acceptable — reset groundedness clarify counter.
+                ctx_sc.pop("diag_rev_count", None)
+                ctx_sc.pop("revision_critique", None)
+                state["context"] = ctx_sc
 
         # RESOLVED hook: build UNS-structured WO draft and show preview.
         # Amend parsed["reply"] now so both history and formatted output include it.

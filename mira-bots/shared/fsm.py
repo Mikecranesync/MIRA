@@ -27,6 +27,10 @@ PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
 _Q_STATES = frozenset({"Q1", "Q2", "Q3"})
 _MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
 
+# Per-state loop guard: if the FSM stays in the same state for this many
+# consecutive turns, force-advance to the next STATE_ORDER entry (or RESOLVED).
+_MAX_TURNS_PER_STATE = int(os.getenv("MIRA_MAX_TURNS_PER_STATE", "6"))
+
 # All valid FSM states (used in transition validation)
 VALID_STATES = frozenset(
     STATE_ORDER + ["ASSET_IDENTIFIED", "ELECTRICAL_PRINT", "SAFETY_ALERT", "DIAGNOSIS_REVISION"]
@@ -135,9 +139,10 @@ def advance_state(state: dict, parsed: dict) -> dict:
     if state["state"] in ("RESOLVED", "SAFETY_ALERT"):
         state["final_state"] = state["state"]
 
+    ctx_q = state.get("context") or {}
+
     # Q-trap escape: if FSM has been in Q-states for _MAX_Q_ROUNDS consecutive
     # turns, force a commit to DIAGNOSIS so the technician gets an answer.
-    ctx_q = state.get("context") or {}
     if state["state"] in _Q_STATES:
         ctx_q["q_rounds"] = ctx_q.get("q_rounds", 0) + 1
         if ctx_q["q_rounds"] >= _MAX_Q_ROUNDS:
@@ -151,6 +156,28 @@ def advance_state(state: dict, parsed: dict) -> dict:
             ctx_q["q_rounds"] = 0
     else:
         ctx_q.pop("q_rounds", None)
+
+    # Per-state loop guard: if the FSM stays in the same state for
+    # _MAX_TURNS_PER_STATE consecutive turns, force-advance to break the loop.
+    tracker = ctx_q.get("state_turns", {})
+    if tracker.get("state") == state["state"]:
+        tracker["count"] = tracker.get("count", 1) + 1
+    else:
+        tracker = {"state": state["state"], "count": 1}
+    if tracker["count"] >= _MAX_TURNS_PER_STATE and state["state"] in STATE_ORDER:
+        idx = STATE_ORDER.index(state["state"])
+        forced = STATE_ORDER[idx + 1] if idx + 1 < len(STATE_ORDER) else "RESOLVED"
+        logger.warning(
+            "TURN_LOOP_ESCAPE chat_id=%s state=%s turns=%d → %s",
+            state.get("chat_id", "?"),
+            state["state"],
+            tracker["count"],
+            forced,
+        )
+        state["state"] = forced
+        tracker = {"state": forced, "count": 1}
+    ctx_q["state_turns"] = tracker
+
     state["context"] = ctx_q
 
     if not state.get("fault_category"):
