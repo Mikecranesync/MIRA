@@ -143,7 +143,6 @@ class AtlasCMMS(CMMSAdapter):
             "title": title,
             "description": description,
             "priority": priority,
-            "category": category,
             "status": "OPEN",
         }
         if asset_id is not None:
