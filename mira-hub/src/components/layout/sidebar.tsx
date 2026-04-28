@@ -8,8 +8,9 @@ import {
   Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
-  Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon,
+  Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon, HelpCircle,
 } from "lucide-react";
+import { restartTour } from "@/components/onboarding/tour";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/providers/access-control";
 import { useTheme } from "@/providers/theme-provider";
@@ -34,6 +35,7 @@ function NavItem({ item, collapsed, active, label }: NavItemProps) {
     <Link
       href={item.href}
       title={collapsed ? label : undefined}
+      data-tour={item.key}
       className={cn(
         "flex items-center rounded-lg text-sm font-medium transition-all duration-150",
         collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5"
@@ -186,6 +188,19 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
             Maintenance Intelligence &amp; Resource Assistant
           </p>
         )}
+
+        <button
+          onClick={restartTour}
+          className="w-full flex items-center rounded-lg transition-colors px-2 py-1.5"
+          style={{ color: "#64748B" }}
+          onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--sidebar-hover)")}
+          onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+          title="Restart onboarding tour"
+          aria-label="Restart onboarding tour"
+        >
+          <HelpCircle className="w-4 h-4 flex-shrink-0" />
+          {!collapsed && <span className="ml-3 text-xs">Tour</span>}
+        </button>
 
         <LanguageSelector collapsed={collapsed} dropUp />
 
