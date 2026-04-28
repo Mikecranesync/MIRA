@@ -63,7 +63,7 @@ class AtlasCMMS(CMMSAdapter):
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
                 f"{self.api_url}/auth/signin",
-                json={"email": self.user, "password": self.password},
+                json={"email": self.user, "password": self.password, "type": "CLIENT"},
             )
             resp.raise_for_status()
             data = resp.json()
