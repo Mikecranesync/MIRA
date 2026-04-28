@@ -219,6 +219,38 @@
     }
     .faq-q.open + .faq-a { display: block; }
 
+    /* ── Accessibility ── */
+
+    /* Skip-to-content link: hidden off-screen until focused */
+    .skip-link {
+      position: fixed; top: -100%; left: 0; z-index: 9999;
+      background: var(--amber); color: #0a0a08;
+      font-size: 14px; font-weight: 700;
+      padding: 12px 20px;
+      border-radius: 0 0 6px 0;
+      text-decoration: none;
+      transition: top 0.1s;
+    }
+    .skip-link:focus { top: 0; outline: 3px solid #0a0a08; outline-offset: 2px; }
+
+    /* Global focus-visible ring — visible on keyboard, not on mouse click */
+    :focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 3px;
+      border-radius: 3px;
+    }
+
+    /* Bring sticky-nav elements into view with scroll-margin */
+    #main-content { scroll-margin-top: 64px; }
+    .pricing-card { scroll-margin-top: 72px; }
+
+    /* FAQ keyboard accessibility */
+    .faq-q:focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 2px;
+      border-radius: 3px;
+    }
+
     /* Footer */
     footer {
       border-top: 1px solid var(--border);
@@ -235,6 +267,9 @@
 </head>
 <body>
 
+  <!-- Skip to main content: first Tab stop, satisfies WCAG 2.4.1 -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <nav>
     <div class="nav-inner">
       <a href="/" class="nav-logo">
@@ -250,7 +285,7 @@
     </div>
   </nav>
 
-  <main>
+  <main id="main-content">
     <section class="hero">
       <div class="inner">
         <div class="hero-eyebrow">Pricing</div>
@@ -391,11 +426,19 @@
 
   <script>
     document.querySelectorAll('.faq-q').forEach(function (q) {
-      q.addEventListener('click', function () {
-        q.classList.toggle('open');
+      // Keyboard accessibility: make div focusable + toggle on Enter/Space
+      q.setAttribute('tabindex', '0');
+      q.setAttribute('role', 'button');
+      q.setAttribute('aria-expanded', 'false');
+      function toggle() {
+        var open = q.classList.toggle('open');
+        q.setAttribute('aria-expanded', String(open));
+      }
+      q.addEventListener('click', toggle);
+      q.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
       });
     });
-
-</script>
+  </script>
 </body>
 </html>
