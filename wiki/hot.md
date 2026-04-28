@@ -1,4 +1,9 @@
-# Hot Cache — 2026-04-27 — CHARLIE
+# Hot Cache — 2026-04-28 — CHARLIE
+
+## eval-fixer run — 2026-04-28
+- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0455.md`
+- Action: issue-filed (#803)
+- Same systemic failure as 2026-04-27 (#753): all 57 fixtures returned 0-char responses; `cp_pipeline_active` fails for every fixture, so 0 patchable. Engine is silent — infra/cascade still broken. Last fresh scorecard is the 2026-04-27 04:55 UTC run.
 
 ## eval-fixer run — 2026-04-27
 - Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0103.md`
