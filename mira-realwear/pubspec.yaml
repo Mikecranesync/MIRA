@@ -1,0 +1,40 @@
+name: mira_realwear
+description: MIRA industrial maintenance assistant for RealWear Navigator 500/520.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP + API
+  http: ^1.2.1
+  # Local storage (auth token)
+  shared_preferences: ^2.2.3
+  # QR code scanner for OAuth login
+  mobile_scanner: ^5.1.1
+  # Camera (equipment photo capture)
+  camera: ^0.10.5+9
+  # Audio recording for Groq Whisper
+  record: ^5.1.1
+  # TTS — reads MIRA replies aloud
+  flutter_tts: ^4.0.2
+  # Permissions (camera, microphone)
+  permission_handler: ^11.3.1
+  # State management
+  provider: ^6.1.2
+  # Path utilities for temp files
+  path_provider: ^2.1.3
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
