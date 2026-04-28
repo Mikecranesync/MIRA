@@ -1,1 +1,732 @@
-[]
+[
+  {
+    "id": "12jnu74",
+    "title": "I think the licensed electrician I hired didn't follow code. Should he come back and fix it? Do I even want him to?",
+    "selftext": "Recent homeowner who is pretty clueless on electrical stuff. Few months ago I hired a local licensed electrician to install some new outlets; in two of my bathrooms so I could hook up a bidet and under my sink so I could install a disposal.\n\nI finally got around to buying bidets and when reading through the instructions they make it clear the outlets should be GFCI. I never thought to look but I realized all 3 outlets he installed were not GFCI. I went and bought a [GFCI tester](https://www.kleintools.com/catalog/electrical-testers/gfci-outlet-tester) this morning and confirmed all 3 are not GFCI. Here are pictures:\n\nhttps://imgur.com/a/tJHvc1K\n\n- Bathroom #1. He ran it from an existing outlet in the basement. Pretty sure it's the one I got then picture of. Though i'm slightly confused because it looks like bathroom #1 is being run from a GFCI outlet, but I hit the TEST button on the outlet and it didn't the bidet. Tester didn't do anything either \n\n- Bathroom #2. He ran it from the light switch above.\n\n- Under sink. He ran it to an unused spot on the circuit breaker.\n\n\n\nIf this happened to you, what would you do? Should I call the original electrician and get him to come fix it? I *think* having these no GFCI so close to water is out of code so i'd expect him to do it for free if that's the case. Or should I find someone else because this first guy might not be able to be trusted?",
+    "score": 38,
+    "num_comments": 100,
+    "created_utc": 1681309459,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "yi8o2e",
+    "title": "Electrician did work that's not up to code and won't fix it, what kind of repercussions could they face?",
+    "selftext": "I asked for an external install of some outlets and they just stapled romex to the wall. Told me during the estimate that the job didn't need a permit. I'm hoping I can convince him it's in his best interest to hire someone to do it right.\n\nEdit: pictures of the install\nhttps://www.reddit.com/user/anotherthrowerway5/comments/yijx0i/not_up_to_code/?utm_source=share&amp;utm_medium=android_app&amp;utm_name=androidcss&amp;utm_term=1&amp;utm_content=share_button",
+    "score": 7,
+    "num_comments": 86,
+    "created_utc": 1667214903,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "y3t15v",
+    "title": "Should I be paying electrician to fix their mistake?",
+    "selftext": "I had my house rewired 18 months ago. I\u2019m just now getting to remodeling my kitchen. I told the electricians that I planned to put a microwave range hood over the stove so they could put a dedicated circuit there. They told me it was a dedicated circuit once they were done. Now that I\u2019m remodeling, I figured out that the outlet is way too low. It needs to be moved up 9 inches. I figured I could do that myself, but when looking at the wires in the basement I found that they reused the wire that went to the old range hood that the previous owners have stuck in the drywall (so I can\u2019t pull any slack from the basement to move it) and they put it on the same circuit as the garage. \n\nI guess I\u2019m fine with paying to move the outlet up since I didn\u2019t specify a height. The height they put it doesn\u2019t meet the requirements for how high a microwave needs to be over the stove tho. I feel like I shouldn\u2019t be paying extra bc they have to split a breaker to run a new dedicated line when that\u2019s how it should have been done in the first place. Am I in the wrong about that?",
+    "score": 24,
+    "num_comments": 42,
+    "created_utc": 1665751611,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "13k3zf7",
+    "title": "All attempts to install AFCI result in immediate trips - Need Troubleshooting Advice",
+    "selftext": "GC renovated my home last year, to include heavy-up, new 200A electrical panel, and all new wiring. When the inspector stopped in a month ago, he noted that most of my breakers were standard (TM) breakers when they need to be AFCI to meet code. GC agreed, stating that he just couldn't find AFCIs in stock at the time and planned to eventually swap out. (I'm sure) \n\nGC (who is not a licensed electrician) stopped by this week and all attempts to swap in AFCI breakers into any circuit position failed. The make/model of the breakers were HOM115PCAFI (15A) and HOM120PCAFI (20A). As soon as we tried to actually use a circuit with an AFCI breaker installed it would trip. My panel accepts PON breakers, but the GC also tried testing with a pig-tail neutral AFCI breaker - same result. \n\nWe even performed a test where we set every other breaker in the panel to the OFF position, except one circuit we were trying to evaluate: Whether it was a 15A light circuit or a 20A outlet circuit, the circuit would trip as soon as we tried turning on the light or plugging in a small load like a laptop charger. GC reinstalled the standard breakers, and said he'd speak with his electrician before taking next steps. \n\nToday, GC called to tell me he spoke with the electrician who told him about a newer/better part to order. GC says he'll stop by next week to try those; however, something doesn't seem right. I'm an EE by education/career, and I'm comfortable around electrical panels. Last year, I rewired my own solar system, and recently helped a buddy add a 50A circuit to his panel for an EV charger. I'm wondering if there's some fundamental problem with the wiring in my panel which would cause his Combi AFCI breakers to immediately trip. \n\nBefore the GC returns next week, I plan to troubleshoot myself this weekend. What are some likely causes of the above behavior? \n\nThanks,\n\nKevin",
+    "score": 3,
+    "num_comments": 21,
+    "created_utc": 1684335130,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "137zma9",
+    "title": "Ground fault?",
+    "selftext": "Why would I be getting 54V neutral to ground and 64V hot to ground?",
+    "score": 1,
+    "num_comments": 22,
+    "created_utc": 1683233589,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "qov3kn",
+    "title": "Opinion: Battery Installers Broke Main Panel Bus Bar but Main Panel Doesn't Contain Breakers, Should Installer Repair or Replace the Main Panel?",
+    "selftext": "Hello. This is more of an opinion question than a technical one. We had 2 Tesla powerwalls installed. All of the loads were removed from our main panel and relocated to a new load center. While they were doing this work, they broke one of the bus bars in the main panel. The main panel is chock full of wiring and there is no room for any breakers at this time. \n\nMy thinking on this is that, while it can't hold any breakers currently, who knows what the future will bring. We plan on living in this house for quite some time. On the other hand, the main panel doesn't contain any breakers, and in fact cannot hold any breakers.\n\nThis leads to a couple of questions\n\n1. Is it reasonable to expect the installer to repair or replace the main panel even though it doesn't contain anything currently?\n2. Is it safe to repair a broken off bus bar or is the only real option a full replacement?\n\nThanks in advance for your opinions and info.",
+    "score": 3,
+    "num_comments": 36,
+    "created_utc": 1636311236,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "ofm6hj",
+    "title": "Roughly how many hours would these fixes take?",
+    "selftext": "I'm in contract on a house that turned up a few things the inspector considered safety risks. I want to ask the seller for a credit to fix them, but first wanted to get a rough idea of how many hours of work an electrician would need to spend on them. What would your guess be for the following work?\n\n- Missing bushing from under-sink food disposal's wiring, exposed wires\n- Garage door needs a photoelectric sensor\n- Double tapped circuit breaker in the electric panel\n- Exposed wire splices not contained in a covered junction box\n- Bedrooms need smoke detectors\n\nThanks so much for your help.",
+    "score": 7,
+    "num_comments": 36,
+    "created_utc": 1625674568,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "l1kc1d",
+    "title": "what is the most cost-effective way to fix the circuit breaker tripping issue?",
+    "selftext": "two of my rooms are on the same 20amp circuit-breaker. I am having an issue where it keeps tripping every hour or so as soon as multiple plugs are being used. \n \nI have multiple circuits on my panel which are empty. is there a way to split the wires from one breaker into two breakers?",
+    "score": 4,
+    "num_comments": 37,
+    "created_utc": 1611182003,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "131i2tq",
+    "title": "Fire alarm circuit",
+    "selftext": "I might have made a mistake... I have 3 fire alarms, each powered from a different circuit. I had extra 12-2, so I ran that between them to use one of the conductors as the signal wire. The drywall has been installed, textured and painted.... when I got around to installing the alarms they work indivually but don't signal correctly. Only on alarm will go off. \n\nAm I totally screwed here?",
+    "score": 0,
+    "num_comments": 16,
+    "created_utc": 1682657969,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "dwa1l4",
+    "title": "How bad is our electrical service? Do we need to fix it?",
+    "selftext": "We recently purchased an older condo in a three-condo building that has been through a few renovations over the years. We were told it had 100 amp service per unit and that we'd need to upgrade it in order get central air because the panel is already overloaded and we have an electric stove.\n\nIn the process of giving us a quote for service upgrade and a few other small things the electrician traced our main electrical wiring and said it was not well done and could be a hazard. The main wires come in to the basement and are inside this post-renovation cabinet. He had to remove the back and bottom part to reveal these wires and also a 200 amp breaker. First, that means that each unit can't actually have 100 amps, right?\n\nI'd love it if anybody here could look at these photos and tell me if there are any obvious hazards with the current situation. I know I don't have a photo of 100% of everything so I'm not expected anybody to make a definitive statement, but just hoping to get some thoughts in addition to the opinion of a local electrician. If there are any obvious immediate hazards we might push to have it fixed sooner rather than later.\n\nHere's the cabinet and the wiring inside of it:\n\n[Cabinet containing the wires coming into the building via the basement of our unit](https://preview.redd.it/zxt45q2xrny31.jpg?width=2709&amp;format=pjpg&amp;auto=webp&amp;s=b3eac52ef86508cbf8cea1f4098398b39089d0d4)\n\nInside the cabinet showing the breaker and the wiring:\n\n[Thin wires that splice into thicker wires that could be a disaster per one electrician](https://preview.redd.it/h2q0o5o5sny31.jpg?width=2635&amp;format=pjpg&amp;auto=webp&amp;s=a447cc547988aca65fa8ab527601a0f4b7322c03)\n\n[200 amp breaker that the wires above go into. The bottom pipe feeds under the floor to the utility room.](https://preview.redd.it/ukr4rq27sny31.jpg?width=3009&amp;format=pjpg&amp;auto=webp&amp;s=7ffe89f139dce3839383e10e0654972f70ea28bf)\n\nAll of this leads to the following main breaker (sorry if that's the wrong word) in the utility room. He noted that the right piece that has 175 amp on it is discolored, which he said might mean it is overheating (is that true?):\n\n[Main breaker that receives the wiring from the previous photo and then feeds the individual units.](https://preview.redd.it/v929jmifsny31.jpg?width=3024&amp;format=pjpg&amp;auto=webp&amp;s=41bdd75fb9936022569273a18f76a971a0b2eecc)\n\nAnd here is where it splits to all three condos:\n\n[Box on the right receives the wire-containing pipe from the prior photo, then gives off to each of 3 units and one joint for the common hallway lighting.](https://preview.redd.it/brcw6hojsny31.jpg?width=3024&amp;format=pjpg&amp;auto=webp&amp;s=c1f3584d9891bfed15af822b1c7150bc425ffb05)",
+    "score": 5,
+    "num_comments": 41,
+    "created_utc": 1573740700,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "pe9560",
+    "title": "Troubleshooting GFCI outlet in garage",
+    "selftext": "Hi, new to this sub and hoping I might be able to get some guidance.\n\n**Background**\n\nI have a ~40 year old house (Virginia USA) with mostly original wiring. There is a single outlet in our garage which is on a circuit with 3 outdoor receptacles and 3 bathroom receptacles. It's labeled on the main breaker panel as a \"GFCI\" circuit but there was originally just one GFCI outlet (master bathroom) and the breaker isn't GFCI as far as I can tell. The garage outlet was in rough shape so I opted to replace it, with a GFCI outlet per current code. I was careful to wire it properly (clean terminals and correct line vs load) and it worked fine for charging our EV and other uses. Until....\n\n\n**The Issue**\n\nA few weeks after the new outlet was installed, we were charging our EV and noticed that the GFI tripped. I reset it but it tripped again when I plugged the charger back in. I fiddled with the reset and test buttons as well as flipping the breaker off and on, and the outlet's indicator light would toggle from amber to red. Sometimes I would trip the other GFCI outlet in the circuit, which obviously is on the line side of the garage outlet. Occasionally the garage outlet would turn green, but plugging anything into it tripped the GFI. (I tested my phone charger in case it was load dependent.)\n\nI have an outlet tester so I plugged that in, and it indicated that hot and ground were reversed, which seemed...odd. I pulled the outlet out and inspected the wiring - nothing seemed out of sorts but I tried to clean things up and re-terminate some of the wires onto the outlet for good measure. I also checked continuity across different wires (hot-neutral, hot-ground, ground-neutral) and everything was open so nothing appeared shorted. That didn't fix the issue so I pulled the outlet *back* out and tried disconnecting the load wires from the outlet. The issue persisted so I took some voltage measurements at the outlet terminals with the circuit live. If my memory serves, these are the voltage drops with the outlet unloaded and in the \"amber light\" state:\n\nHot - ground: ~120V\n\nNeutral - ground: ~5V\n\nHot - neutral: ~120V (slightly less than hot-grnd)\n\nIt's possible I am misremembering because I did multiple sets of measurements, including some on the line wires with the outlet disconnected.\n\nI'm not sure what the trouble could be: a faulty outlet? A short somewhere? Some simple mistake of mine?\n\nI can attach pictures if that's helpful. Thanks in advance!\n\n**Update:** thanks to your helpful responses I now know that (a) I unknowingly double-protected the garage outlet by wiring it in series with the other GFCI outlet in the circuit, and (b) the most likely culprit is a faulty garage outlet. Will replace it and provide an update. Thanks to all who provided help!",
+    "score": 8,
+    "num_comments": 29,
+    "created_utc": 1630290439,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "y2gmb6",
+    "title": "Underground cable fault from hell",
+    "selftext": "For over a year on and off i have been trying to figure out why the lamp post at the end of my driveway stopped working. It was working when i moved into the house, but not anymore. \n\nI have tested continuity from the interior junction box to the light fixture. No dice. I have traced its underground path and dug about 8-10 holes looking for a tear in the sheathing. No dice. I bought a fluke ts90 to measure how far the break in the wire is along the run. From the interior junction box, it tells me 108ft. From the light fixture, it tells me 158ft. The entire run is probably about 170ft, so these readings dont make sense to me. \n\nI have also turned its switch on and used a non contact voltage sensor on the wire in each of the holes i dug thinking the wire should be energized from the interior junction box to the break. Every single time it showed no power. Even right up to where the cable enters my basement on the exterior, the sensor showed there was no voltage. \n\nDoes anybody have advice for what else i can try and why there isnt voltage in the cable from the junction box to the break? That part really confuses me. I like fixing things myself and finally figuring this out would give me great satisfaction, but im at my wits end and thought id ask here before finally calling in an electrician\n\nedit: the cable is 14/2 and not in conduit",
+    "score": 2,
+    "num_comments": 19,
+    "created_utc": 1665611374,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "u1rdo5",
+    "title": "PC tripping arc fault",
+    "selftext": "Hi, just got a new apartment and brought my pc here which I had previously not had any issues.  Set it up and when playing graphically intensive games, tripped the arc fault.  Tried multiple surge protectors with no help and just changed my psu from a 600w bronze to a Corsair 850w gold.  Still tripping it.  What the hell is wrong?",
+    "score": 2,
+    "num_comments": 23,
+    "created_utc": 1649741742,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "127qzcc",
+    "title": "Bizarre issue that's been plaguing by computer and gaming consoles for years - I suspect my house is at fault",
+    "selftext": "Pretty much, I moved to my current house back in 2014 and have been plagued with issues relating to computers and gaming consoles, I noticed this issue the day I moved here because I had been using my PC the same day at my old house and had zero issues.\n\nBasically, in short\u2026 If I plug in a gaming computer or any kind of gaming console into my house it will instantly suffer from constant stuttering and huge fps drops permanently, for those that own gaming computers, you\u2019ll know what stuttering and fps drops are and how annoying they are, especially when they make gaming impossible.\n\nConsidering it\u2019s now been almost 10 years, I have had enough time to test different things but ultimately haven\u2019t had any luck finding the cause but I have narrowed it down to it obviously being my house, and here\u2019s why\u2026.\n\n1) Once a computer is plugged in at my house it will permanently stutter in games, even if I take it to another house.\n\n2) My friend even sacrificed one of his own PCs because he didn\u2019t think it was my house causing the issue, he had owned that PC for years and it worked fine, but the moment he plugged it in at mine it stuttered permanently, he took it back to his and it stuttered there too.\n\n3) I purchased another brand new PC and PS5 back in 2021, and again\u2026 they worked fine at another house for days but the moment I plugged them in at mine the issues began instantly.\n\n\nI\u2019m yet to find a single person that has ever experienced this issue or has any idea what\u2019s causing it, but surely this has to be an electrical issue right? I have tested the plug sockets and they\u2019re all wired correctly but maybe the issue is elsewhere? Perhaps the fuse box or the wiring throughout the house? This issue has been driving me insane. I also tried a UPS but that didn\u2019t work.\n\n\nI should add that I build PCs, and have done so for years, I have built them for other people and they\u2019ve always worked fine, especially because I never build them at my house. So I know how computers work and know that it\u2019s 100% not the PC at fault, it\u2019s something external causing it but I just don\u2019t know what that is because I ain\u2019t an electrician.",
+    "score": 1,
+    "num_comments": 14,
+    "created_utc": 1680280366,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "12a04jq",
+    "title": "Ceiling fan troubleshooting.",
+    "selftext": "I purchased a new ceiling fan today, and I quickly realized that I have two hot (red and black) wires coming from my ceiling, along with the neutral (white). My ceiling fan, on the other hand, only has one hot (red) wire and the neutral.\n\nThe \u201cprofessional\u201d at Home Depot suggested just capping off the additional black wire running out of my ceiling, and connecting everything else as instructed. Once getting the fan installed, and turning the breaker back on, the fan runs great but the light does not. While back at Home Depot (for another weekend project), I again asked one of their \u201celectrical experts\u201d what could be the issue. His diagnosis was that the LED light was likely no good. I was skeptical, but once I got home, I disconnected the LED housing from an identical fan in our house and hooked it up to the troubled fan, but again had no light.\n\nAfter testing the voltage from the hot wires from the ceiling, as well as the hot wires at the switch housing, I\u2019m getting 120v from both ends. So there doesn\u2019t seem to be a power issue. \n\nI was under the impression that the black wire controlled the actual fan, while the red wire fed power to the light, but the black wire is capped and the only working function is the fan. So I\u2019m at a bit of a loss at the moment as to why the light isn\u2019t working. \n\nAny suggestions would be very helpful!",
+    "score": 0,
+    "num_comments": 14,
+    "created_utc": 1680473646,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "m51r5z",
+    "title": "Blown in insulation installers hit a wire while drilling. They repaired the wire -- is the repair sufficient?",
+    "selftext": "[Photo of the wire in the wall and the outlet](https://imgur.com/a/tf7E8YH)\n\nWe just had our home\u2019s insulation upgraded. It\u2019s about 100 years old so the outer walls had no insulation. The installers used blown in cellulose insulation. When drilling one of the holes for the blowing hose they hit an electrical wire. Breaker tripped, no biggie. The installers repaired the damaged wire by wrapping it with electrical tape. They didn\u2019t try to hide any of this\u2014 they were very upfront about it and addressed it immediately. \n\nTurns out when the drill caught the wire it pulled it inside the jacket which yanked the outlet it was attached to and cracked/broke it. I had to remove the gang box in order to pull a sufficient length of wire back in. I figured I would investigate the repair if it was visible. That\u2019s the photo you\u2019re seeing\u2014 looking down through the hole for the box.\n\nI have labeled the wires. The neutral seems fine. The hot has been wrapped in electrical tape. Because the outer jacket of the wire was damaged part of the ground wire is exposed in the wall. This wire runs about ten feet to another outlet down the wall. My first instinct would be to attach a new wire to the end and pull out the old wire, thus fishing through a new one to replace it. However, either because of the lath and plaster construction of the wall or it being stuck behind rigid insulation board/gap foam newly installed in the basement, I cannot get the wire to move much.\n\nThoughts? If I can pull through enough hot wire to get it into the gang box am I good? Is the exposed ground/ taped hot enough of an issue that I should call an electrician?",
+    "score": 11,
+    "num_comments": 29,
+    "created_utc": 1615749052,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "137896e",
+    "title": "Need a new 50A outlet for EV charging and grounding repair...educate me please?",
+    "selftext": "I recently got a Tesla and need a 50A outlet to plug my charger into.  If it helps, I'm in Nueces County in South Texas if that helps. I decided to go the outlet route because I'll be moving soon and do not want to hardwire the charger.  Please help me understand what I'll need and what I'll need to ask/talk to the electrician about.  I'll also do my best to answer any questions.\n\nHere's a link to [images](https://imgur.com/a/gCU69kZ) of my breaker panel and a corroded ground conduit to my electric meter.\n\nMy house was built in 1984 and I added a bedroom over the garage in 2015.  I want to understand my options moving forward.  I'm assuming I'll need a permit for the ground conduit repair.  Would that permit be the same as the permit for a service upgrade?\n\nMy questions:\n\n1. Do I need to upgrade service from 200A to 250A? 300A?\n2. Do I need permit needed for repair/replace ground to electric meter?\n3. Do I need sub panel or just a larger main panel?\n\nNew Questions:\n\n4. What do i need to know to NOT get scammed by an electrician.  I certainly do not want to get ripped off by them.\n\n5. Is it an actual problem that the conduit is corroded? does it even need to be replaced?\n\n6. I was planning on removing the \"Heater\" on 21.  It goes to the heated exhaust in my master bathroom.  I don't need that I can free up one pole for the 50A breaker. Don't know how much that would help.  I just know that I've only used the heater a hand full of times.  \n\n&amp;#x200B;\n\n[Images](https://imgur.com/a/gCU69kZ)",
+    "score": 0,
+    "num_comments": 12,
+    "created_utc": 1683169893,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "qm8inb",
+    "title": "Building Wiring Fault - Hot to Neutral 112V, Neutral to Ground ~1V, Hot to Ground ~20V",
+    "selftext": "Hello, so I'm in Guatemala where the electric grid isn't totally reliable and I'm using a UPS to keep my items protected as well as free of unexpected shutdown.\n\nI noticed the \"building wiring fault\" indicator lit up when I plugged in and looked it up seeing that it could be one of three things - flipped hot/neutral; &gt;5V neutral to ground; no ground at all.\n\nI took out a multimeter and measured the voltages across each terminal as stated in the title:\n\nHot to Neutral ~112V\n\nNeutral to Ground ~ 1V\n\nHot to Ground ~ 20V\n\n\nSo seems pretty clear that \"Hot to Ground\" should be comparable to \"Hot to Neutral\", however it's *not nothing*, which seems to indicate it's at least connected somehow - is it safe to assume that the grounding is indeed wired, however, the grounding rod may need to be improved or are there other possibilities that I'm not acknowledging?\n\nAny advice is greatly appreciated :)",
+    "score": 6,
+    "num_comments": 25,
+    "created_utc": 1635985893,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "101hyoh",
+    "title": "Landlord used a weird tool to fix my outlets",
+    "selftext": "We had 4 outlets lose power and had to call our apartment company to fix it. Guy came with a nifty little tool that he plugged in and seemed to fix em all.\n\nHowever, a day later, theyre off again. Knowing landlords etc cut costs wherever they can, I\u2019d like to be better equipped when talking with them again. Is the small tool bad to use? Is this all normal? Are they avoiding a big problem and risking a fire hazard?\n\nWould really appreciate any learned advice.",
+    "score": 1,
+    "num_comments": 16,
+    "created_utc": 1672679990,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "zt3f15",
+    "title": "Siemens ARC fault breaker tripping - previous owner recommending to change CAFCI to standard",
+    "selftext": "Hello!\n\nI bought a house with new electrical wiring and I have been living here for about a month. In the last week, a kitchen circuit breaker has tripped at least 5 times. For example, I had the coffee maker and microwave on and it tripped. On a separate occasion, I plugged my vacuum in the living room and the whole house went dark. \n\nI reached out to a recommended electrician and without telling him details, his response was that it sounds like a Siemens panel ARC fault breaker. He doesn't troubleshoot nuisance tripping likely caused by poor installation and that I should get the original installer to follow up on their work. (I didn't tell him what my panel was or who installed it since the previous owner selected the electrician. It's like he knew a secret I didn't.)\n\nI spoke with the previous owner and he said he will have the original electrician come out. He also made a disgruntled comment about the new electric codes and how AFCIs will falsely trip so they will probably swap tripping CAFCI breakers to standard ones. This isn't sitting right with me so I've been researching potential causes. There also seem to be differing opinions on what he is proposing.\n\nAdditional details:\n\n* Previous owner flipped the place and what he's proposing is admittedly not up to code (his words)\n* Panel is Siemens and breakers are CAFCI / 100 AMP\n* I live alone so I'm the only person using electricity here\n* When I flip the breaker back on, the ARC fault light turns on and then disappears after a few seconds\n* I have new appliances (microwave, toaster, coffee maker, Dyson vacuum, etc.). The fridge and stove (also new) are on a different kitchen circuit. \n\n**My questions for the professionals: Is my deep concern about swapping CAFCI to a standard circuit breaker valid? Are Siemens electric panels trash? What can I encourage the electrician to look at to ensure this issue is resolved correctly?**\n\nI apologize if something doesn't sound 100% technically accurate - still learning and any insight is greatly appreciated!",
+    "score": 3,
+    "num_comments": 16,
+    "created_utc": 1671760363,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "11duwhc",
+    "title": "Writing a story where the characters need to restore power to an old factory. Not an electrician, could I get suggestions for the details of the fix?",
+    "selftext": "I'm writing a sci-fi post-apocalyptic story where a crew of salvagers have trekked out to a flooded, abandoned factory. The factory is in shambles, but they know the power is still running from a previous trip, where one of their teammates were able to get the lights on and air flowing. There was a falling out, and that team member damaged the electrical room before fleeing. The initial expedition fell apart, but now the crew is back, and they need the power back on.\n\nDoes anyone have suggestions for an interesting way he could have shut off the power? The idea is that he planned to return on his own and restore power later, so I'm trying to come up with something that would be hard to detect for a non-expert, but easy to fix if you knew what to look for.\n\nHopefully this question is appropriate for this sub. Thank you for your help!",
+    "score": 1,
+    "num_comments": 13,
+    "created_utc": 1677552789,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "rg5vap",
+    "title": "Who is responsible for burst pipe repair?",
+    "selftext": "My electrician was drilling a whole in a wall so he could feed a cable to the outside of my house. As was doing this he hit a pipe and bust it.\n\nMy question is, who should pay for the repairs?",
+    "score": 15,
+    "num_comments": 20,
+    "created_utc": 1639482715,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "p8cab9",
+    "title": "I was quoted almost $3,000 to fix my AC unit. Is this normal?",
+    "selftext": "It just stopped and when I called to talk to someone, I was told the reason it's so expensive it because of a special freon used. Is this correct or is he trying to screw me.over?",
+    "score": 4,
+    "num_comments": 25,
+    "created_utc": 1629488182,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "138tt6x",
+    "title": "New-ish Arc fault breakers tripping on 2 different panels when not in use",
+    "selftext": "UPDATE: It\u2019s now only the stove breaker tripping, almost every night. Our electrician came out a week ago and swapped the breaker with a new one, same type, in case we just had a faulty one. He didn\u2019t think that would solve it but wanted to eliminate the possibility. All was well for about 4 days, then stove would be dead in the morning. Still only overnight, not while using it. I\u2019ve tried plugging/unplugging various other things with no difference. He said that in our area, we can sign a waiver and file with the city to replace it for a standard breaker, only for stoves. But it\u2019s a PITA process. Would I be screwed when we sell the house in the future if I just did that myself without the waiver? \n\nOriginal:\nWe have been remodeling our house for the past year, which included two new panels (main and sub) and all new breakers. We have arc fault breakers for bedrooms and kitchen circuits, which worked fine for the last few months but are suddenly tripping repeatedly. It started with our induction stove, and this morning it was three of the bedrooms, some of which are on the main panel and some are on the sub-panel. \n\nThe breakers don\u2019t trip when we use the stove or turn on the lights - they trip sometime during the night or during the day when we aren\u2019t using anything. The lights and stove function normally, no erratic behavior, but when we go to turn them on again later, they\u2019re dead and the breakers have tripped. \n\nI see no evidence of water intrusion in either panel. We can call our electrician back, but before paying him to do so, is there anything else we should check or try?\n\nWe haven\u2019t bought any new appliances or electronics, haven\u2019t added new surge protectors, etc. TIA",
+    "score": 1,
+    "num_comments": 11,
+    "created_utc": 1683304061,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "uv95h1",
+    "title": "Ground Fault",
+    "selftext": "Hi, not an electrician. Have a new basement done, and has a dedicated 15A outlet for treadmill. Working fine but one day come down and it\u2019s not turning on. The breaker was tripped. \n\nI reset it, but trips again.\n\nI unplug the treadmill. Reset it and now the breaker is not tripping but has 5 blinking lights, ground fault. \n\nI did install ceiling fans (second floor, they work fine.) the basement and treadmill panel is on a sub penal \u2026 and just in case I turned off the fans and their breakers but it did not seem to fix anything.",
+    "score": 4,
+    "num_comments": 19,
+    "created_utc": 1653219278,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "w9ffpx",
+    "title": "alarm transformer and powering tablets/smart doorbell",
+    "selftext": "my current project:\n\ninstall a 24v doorbell transformer and use existing alarm wiring solid core 4 wire 22AWG copper. to power 2-3 amazon fire tablets and a smart doorbell.\n\nim basically replacing a shitty dumb video doorbell system with Home Assistant running on tablets. the screens will stay on, i havent done any tests to see what kind of wattage the tablets will pull from a wall outlet when trickle charging. i expect the screens to stay on 100% of the time and be maintained at full charge.\n\nI've picked out a 24v 40va transformer, and the mounts have USB converters for the tablets that change 24/48v DC to 5v DC with a USB-C end for the tablets. now with the existing wiring , about 40-50ft max to the furthest tablet, can i wire all these to this transformer as shown in the diagram. rerouting the wires is not possilble. they were all wired to one central location with one of the branches to a the basement for power.\n\nwould the voltage drop be too much? i could wire 2 of the wires in pairs to decrease resistance since i only need 2 wires to power the devices. would that be needed?\n\nis the 40va transformer overkill or not enough? im assuming running a 24v transformer vs a 16v will reduce the voltage drop/resistance and still be within spec of the doorbell. which can take 16/24v\n\ntablets:\n\n[https://www.amazon.com/Fire-HD-10-tablet/dp/B08BX7FV5L](https://www.amazon.com/Fire-HD-10-tablet/dp/B08BX7FV5L)\n\nthe 24/48v to 5 v transformers:\n\n[https://mbmounts.com/pages/24-48v-dc-converter](https://mbmounts.com/pages/24-48v-dc-converter)\n\nthe 120v to 24v transformer:\n\n[https://www.homedepot.com/p/Newhouse-Hardware-Wired-24V-40vA-Doorbell-Transformer-for-Powering-Multiple-Smart-Doorbells-and-Thermostats-40TR/310269229](https://www.homedepot.com/p/Newhouse-Hardware-Wired-24V-40vA-Doorbell-Transformer-for-Powering-Multiple-Smart-Doorbells-and-Thermostats-40TR/310269229)\n\nim going to wire this to a grounded plug.\n\nfor your viewing pleasure, I've attached a shitty Paint diagram!\n\nhttps://preview.redd.it/suxc19w1a4e91.jpg?width=1084&amp;format=pjpg&amp;auto=webp&amp;s=93e741bc1275090da724632e7939dd58d9fc05b3",
+    "score": 0,
+    "num_comments": 18,
+    "created_utc": 1658930153,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "tx0cuf",
+    "title": "Electrical Outlet Repair.",
+    "selftext": "Hey everyone, I\u2019m wondering how much would it cost to repair electrical outlets. They are simply not giving any energy and I don\u2019t want to get charged a lot. They are about 5 outlets I need to be repaired.",
+    "score": 0,
+    "num_comments": 21,
+    "created_utc": 1649180012,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "10jgzi8",
+    "title": "The hunt for a bad outlet, electrical gremlins and smoke alarm sounding",
+    "selftext": "Good morning all,\n\nSorry this is long but I find it interesting.\n\nI'm somewhat handy and decided to run some Cat6 cable this weekend throughout the house.  I had to cross romex through one path and am wondering if my slight tugging while pulling cable caused this issue.  I've had so many weird things happen I wanted to make sure I'm not missing something so looking for your thoughts.\n\nThe day I ran cable, an electric device in the kitchen stopped working.  Weird but it's a cheap device and didn't think it was an outlet or anything of it.  The next day, I add a new outlet in my spare bedroom from a connection in the attic.  To do that, I killed power to the house.  Wired outlet, it works great.\n\nWhen I get downstairs, fridge no longer turns on.  Outlet is dead.  It was working fine last night after I pulled the Cat6 cable.  I check the outlet next to it.  Nothing.  Remembering the device that didn't work in the kitchen, I checked that outlet.  Works and the device works now...  \n\nSo I pull the outlet out behind the fridge to make sure there are no broken wires from pulling the Cat6  past it and it looks good.  I turn the power on to test if there is power coming in or out of the lines thinking there is a broken connection and now the outlet works.  Weird.  So I kill power, put the outlet back in, flip power on again and test again.  No power.  Then I try wiggling the wires and can't get it to come back on.  No contact tester says no power on either the in or outgoing hot lines.  I tried this 4-5 times now and it simply doesn't work.\n\nSo I go grab some lunch and return home to a smoke detector going off in my master.  It's not near any of the work I recently did and there is no smoke.  This has happened before with this unit but the timing man...  So then I start looking at every outlet in the house.  Everything is fine but the bathroom GFIC downstairs (near the fridge) doesn't work.  Lights work, but no power in or out on the GFIC outlet.  I check the bathroom upstairs.  No power in or out on the GFIC outlet.  I checked the master bathroom GFIC and power is finally coming in but not out, nor do the outlet holes measure any voltage on the bottom or top outlet so I'm thinking the unit is dead.  \n\nSo I will replace the GFIC outlet today, but all of the weird circumstances and the timing I just mentioned has me a little spooked.  My panel does not have a separate breaker for bathrooms, so it's possible that the 5 bad outlets are all tied together.  Am I missing something obvious?  Thanks for looking.",
+    "score": 0,
+    "num_comments": 13,
+    "created_utc": 1674492389,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "101n31b",
+    "title": "Troubleshooting Generac Transfer Switch",
+    "selftext": "Hello friends of Reddit. I am trying to troubleshoot a generac transfer switch that I had installed by a licensed electrician. \n\nModel is RXSC200AC\n\n[https://www.generac.com/all-products/transfer-switches/automatic-transfer-switches/rxsc200a3](https://www.generac.com/all-products/transfer-switches/automatic-transfer-switches/rxsc200a3)\n\nIts intended use was to use it with a 6kW gas generator to supply backup power to a few circuits in our home in the event of power outages. I realize that the generac unit is an automatic transfer switch but the plan was to use its manual lever in the event of a power outage with the aforementioned generator.\n\nGenerator Model: Champion 6250W portable inverter generator #100519  \n\n[https://www.championpowerequipment.com/product/100519-6250-watt-open-frame-inverter/](https://www.championpowerequipment.com/product/100519-6250-watt-open-frame-inverter/)\n\nA 75 foot 30 amp extension cord is being used to connect the generator to the wall plug\n\n[https://www.amazon.com/gp/product/B085HHWV16/ref=ppx\\_yo\\_dt\\_b\\_search\\_asin\\_title?ie=UTF8&amp;psc=1](https://www.amazon.com/gp/product/B085HHWV16/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&amp;psc=1)\n\nA 30 amp power inlet box is wall mounted that is wired to the generac transfer switch with 10/3 Romex.\n\n[https://www.amazon.com/gp/product/B08TB9B9YV/ref=ppx\\_yo\\_dt\\_b\\_search\\_asin\\_title?ie=UTF8&amp;th=1](https://www.amazon.com/gp/product/B08TB9B9YV/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&amp;th=1)\n\nI've double checked my connections at the inlet box as well as the lugs on the generac unit. FWIW, there's a green LED on the inlet box that lights up when the generator is on and supplying power to it. Also, when the transfer switch lever is on utility power, power flows though the unit to my distribution panel with no issue. \n\nMy issue is that I get no power to my panel when the transfer switch lever is in the auxiliary (generator power) position.\n\nI can confirm that the generators 110 GFCI outlets supply power just fine when tested. I have no other way to test the 240V 30 amp outlet on it. \n\nI've spent some time with the transfer switch manual and its pretty straightforward with no insight to where my problem could be. \n\nWhen utility power is out. To use my system, I:\n\n1. Switch the manual lever from utility to auxiliary\n2. Turn off all breakers in my distribution panel downstream from the transfer switch\n3. Connect the extension cord to my power inlet box\n4. Start my generator and let it stabilize\n5. Connect the other end of my extension cord to the generator\n6. turn on any breakers in my distribution panel, namely my 20 amp fridge circuit and one other 15 amp light circuit. This is where i get no power and this makes me sad.\n\nInside of transfer switch...\n\nhttps://preview.redd.it/qm5k1wonyo9a1.jpg?width=960&amp;format=pjpg&amp;auto=webp&amp;s=5af7506b407011453c88e4d0590d94a4514c56ce\n\nhttps://preview.redd.it/mcdvvxonyo9a1.jpg?width=1280&amp;format=pjpg&amp;auto=webp&amp;s=426c29ef30361c16dc0b9e63717201c79a45ff09",
+    "score": 1,
+    "num_comments": 13,
+    "created_utc": 1672692149,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "1317y7t",
+    "title": "Loose wiring causing 3 outlets to lose power, what do I look for to repair this problem?",
+    "selftext": "After a bit of troubleshooting I believe I determined that I have some loose wiring somewhere in my garage walls. When the wall has full sun and heats up, or when I run a heavy load on the circuit 3 outlets in a row lose power(all other outlets are still functional) until the sun is down and the garage cools.\n\n* What should I be looking for to find the loose connection?\n* Can one loose outlet cause the next 2 to fail?\n* Would this be the wiring in the outlet electrical box?\n* Is it possible the actual wires are bad in the wall?\n\nI haven't heard back from my electrician and I was hoping this is a simple fix I can do myself but obviously want to be safe about it.\n\nUPDATE: I was able to locate the problem and fix it. In one of the working outlets, whoever wired the garage put 4 wires loosely in each wire nut cramming too much wire in the outlet box. This caused one of the hot wires to come loose and was arcing from the tip.",
+    "score": 1,
+    "num_comments": 10,
+    "created_utc": 1682631135,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "10du4go",
+    "title": "Partial outage (power loss on one phase/lag) is fixed by turning electric oven range most of time",
+    "selftext": "Our house loses power on one of the phases from PGE frequently, and it ends up with a partial outage.\n\nIt is repeatedly happening - we paid an electrician to take a look and he could inspect while the power is down. He said it is a PGE\u2019s issue as there is no power coming to one of the lag (phase) from PGE and the smart meter is either showing empty or invalid numbers (all 8\u2019s).\n\nFinally one from PGE paid a visit, but nothing was done as we had full power when the PGE visited us and PGE would not do anything before they\u2019re seeing a power outage.\n\nWhat\u2019s been very strange is - turning on the electric range oven (I believe it is on 240V) usually fixes the issue (power loss on one phase) and gets us the power back on both lags. \n\nNow, with no more heavy rain, it happens about once a day. (On the worst day, it happened about 10 times.)\n\nSeeking for recommendations. Also wonder if anybody has any insight on how turning on electric range oven usually fixes the issue.",
+    "score": 4,
+    "num_comments": 12,
+    "created_utc": 1673907152,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "qj6ozu",
+    "title": "troubleshooting a well pump",
+    "selftext": "hello everyone, hope someone with more expertise can give my sketch a quick view to see if it all looks ok. I'm trying to bring an old well pump back to life. it's a jet pump with a bladder tank that is operated by a pressure switch. there's a contactor and overload connected to it. I was hoping if someone could verify the wiring is ok so I can focus on another area to troubleshoot. the contactor plunger doesn't depress at all unless manually pushed at which point the pump turns on. I'd really appreciate any input, the sketch was easier to do than taking a lot of photos.\n\nhttps://preview.redd.it/3gzz1bstksw71.jpg?width=432&amp;format=pjpg&amp;auto=webp&amp;s=7dcf3c3086247c0614ac15f367956467e1d4918a\n\nhttps://preview.redd.it/0iu61istksw71.jpg?width=432&amp;format=pjpg&amp;auto=webp&amp;s=9a035a8145766d683c6ce26e3563e8ac8acea6cd\n\nhttps://preview.redd.it/azq7ulstksw71.jpg?width=960&amp;format=pjpg&amp;auto=webp&amp;s=47c2a329d1e108d3d41d69b5d2b94342f77c4036\n\nhttps://preview.redd.it/382fdsstksw71.jpg?width=432&amp;format=pjpg&amp;auto=webp&amp;s=7471458f4c01dda502ab48645083e70a70106cf0\n\n&amp;#x200B;\n\n&amp;#x200B;\n\nhttps://preview.redd.it/svz4h5xclmw71.jpg?width=432&amp;format=pjpg&amp;auto=webp&amp;s=5ccc6bd3ce13f017b553d4d2539924576de906c1",
+    "score": 1,
+    "num_comments": 22,
+    "created_utc": 1635616276,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "10erc40",
+    "title": "Is it a $20 or $2,000 fix?",
+    "selftext": "The high-level alarm in our septic system has been triggering. A quick look at the circuit breaker panel shows the pump breaker has been tripped. Is there any chance that I am lucky enough the breaker itself is going bad? Or, is it more likely I need a new septic pump?",
+    "score": 1,
+    "num_comments": 12,
+    "created_utc": 1673998490,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "zdfhxo",
+    "title": "How does sending a pulse in Christmas lights 'fix' a shunt strip in a bulb?",
+    "selftext": "I was looking into fixing my Christmas lights and saw the [Light Keeper Pro](https://lightkeeperpro.com/home/) tool advertised. \n\n(I'm not actually planning on getting it since I have a voltage tester pen which is essentially enough)\n\nIt says: \n\n&gt;Defective Bulb shunts cause most light set failures. Simply plug your LightKeeper Pro into the light set and pull the trigger. The LightKeeper Pro sends a pulse through the light set, finds the bad bulb, and fixes the shunt\u2014allowing the light set to work properly.\n\nI understand how the Christmas light are typically wired.. (e.g. power straight through to end, with 2 loops of lights so often only half go out) and I know a shut helps complete circuit when the filament is out, but I was wondering the science behind how the 'pulses' can 'fix' a shut strip in a broken bulb.  \n\nI found [this patent](https://patents.google.com/patent/US20070063706), which describes it, but I wanted to make sure I understand how it actually 'works'\n\nMy guess is it just tries to overload the wire again and force a shunt to fully trip when it failed to do so from the broken bulb?  Also that the other bulbs aren't affected because it goes through the normal filament instead of a shunt?   Does it take 'up to 30 presses of the trigger' because it gradually increases the voltage each time to find the threshold?  \n\nWas just looking for some clear explanation on how it might be working and some validation..\n\nThanks.",
+    "score": 1,
+    "num_comments": 13,
+    "created_utc": 1670265814,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "1344llh",
+    "title": "Call an Electrician or Appliance Repair?",
+    "selftext": "Today my electric oven made a loud popping sound while preheating and shut off. Went to check the breaker and it was tripped. I tried resetting it a couple times (which I shouldn't have done, I've now learned) but it just trips immediately. Could a blown fuse or sensor in the stove keep the breaker from turning on? I don't see any visible signs of damage on the stove panel or in the oven, and am not sure how to diagnose at this point. Just trying to figure out if I need to have the stove looked at first or if this is more likely a short in the wiring that would require an Electrician. Thank you.\n\nEdit: I unplugged the oven and the breaker still just immediately switched back to a neutral position. The breaker feels, for lack of a better description, \"gummy\" when going from neutral to off. Also found out that the plug that goes from the appliance to the outlet had a good bit of corrosion, and the outlet is a black box that seems a bit loose on the wall.",
+    "score": 1,
+    "num_comments": 8,
+    "created_utc": 1682892804,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "zvmzg7",
+    "title": "fire alarm madness",
+    "selftext": "My hardwired fire alarm keeps going off. Not just the beep but full on alarm. There is no fire. There is no smoke. It will stop if I fan it, but proceeds to go off when I stop fanning it. Here are a few things: yesterday after I cooked something in the oven I left the oven door open to let the heat into the house. The alarm went off twice when I did that yesterday but stopped after I fanned it a few times. I thought it was just something from me cooking. I do live in Florida, I do not use the house heat, it has been in the '30s the past 2 days. The inside temperature of my house has gotten down to 50\u00b0. I don't know if the temperature can have something to do with it or if that's just coincidence. How do I make this thing stop alarming? Hitting the reset button has not worked. My arm hurts from fanning.",
+    "score": 1,
+    "num_comments": 12,
+    "created_utc": 1672060802,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "12c73z1",
+    "title": "Wire short circuited, was repaired, and is now not getting power",
+    "selftext": "I took a face plate off of a light switch and the hot wire was exposed in a small spot due to it being pressed against the conduit entering the box. The small movement from poking around in the box made the exposed/cut section touch the metal box and the line short circuited, killing the light the switch was attached to. I pulled the line out and the cut was really small and the wire was otherwise not damaged that I could tell. I repaired the small amount of wire that was stripped (just wrapped electrical tape around it) and threw the breaker, but the wire is still not getting power. (Sidenote: the breaker didn't actually trip, the line just popped and the light went out). Everything else on that circuit is working as far as I can tell. I went around and reset the GFCIs just in case, but that didn't help. \n\nDo I need to cut the wire back to before where it short circuited? Why wouldn't it be getting power?",
+    "score": 2,
+    "num_comments": 9,
+    "created_utc": 1680665810,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "13jpk5n",
+    "title": "What places will DIYers probably mess up fixing aluminum/copper wiring?",
+    "selftext": "So there's this house I'm probably going to buy.  Lots of a great things, but one of the iffy things is that about half of the switches, outlets, and lights have aluminum wiring connected up to copper.\n\nNow, about 10 years ago I helped someone use those handy little purple AlumiConn connectors with pogtails to mitigate a lot of aluminum wiring in their house.  With some basic knowledge I thought it was pretty straightforward work; tedious even.\n\nBut now that I'm considering doing it for my own house I care way more about getting it right.  I bet you've seen lots of ways DIYers messed it up this kind of thing.  What should I pay attention to so that I don't burn the place down or give myself grief with an inspector someday?",
+    "score": 0,
+    "num_comments": 8,
+    "created_utc": 1684292718,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "vsq6qe",
+    "title": "Got Major Attic repair done. Need to pass inspection on any electrical work I do myself",
+    "selftext": "I recently got a section of my attic completely reframed which requires an inspection inside and out. As a result, the room is basically stripped to the studs. I want to take this opportunity to replace The outlet boxes and light switches, and replace the old wiring with Romex where possible/practical. \n\nIn order to learn electrical codes, is there a better resource than just diving into NFPA 70?",
+    "score": 3,
+    "num_comments": 15,
+    "created_utc": 1657114501,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "wv266l",
+    "title": "Outlet doesn't work in apartment. Landlord's maintenance says they can't fix it. Raises more concerns to me...",
+    "selftext": "I have an outlet in my living room that doesn't work. Ensured all breakers were good, flipped the two in the area, and checked the outlets with a tester. Pulled the non functioning off the wall and flipped everything on. No power in the box whatsoever. Flipped on every single switch in the place to see if it was randomly connected to a switch, still nothing. There are two sets of conductors in the box, and the outlet is between two others, but the next one over is on a different circuit.\n\nThe maintenance guy couldn't fix it and said I just won't have an outlet while I'm living here. After he left, I got less upset about it not working and more worried why it won't work. The ideas I could come up with is there is an outlet that connects to it and the connection is severed in the wall. The other is there's a homerun with this outlet and the other 3 like it below me that go to a random box. Both options are safety hazards as the first could possibly start a fire and the second could result in so many things if it gets flipped, needs to be turned off in an emergency, and no accessible panels can shut it off.\n\nThere has to be some sort of NEC code that this is violating and I'd like to know what it could be so I can petition my landlord to either fix it or fix it and reduce my rent.\n\nThanks in advance! I tried to include everything but if you need more info I can provide it.\n\nUpdate 08/25:\n\nI have researched a lot more. I have contacted legal assistance with a firm that deals with tenant-landlord relations and will have a meeting in the coming weeks. In researching this, I have found that the outlet not working is actually a violation under the NEC as outlets have to be installed at least 6ft apart on a wall. I haven't sent my formal \"you have x days to respond to this\" yet as I am now going to wait for legal consultation first, but I have prepared myself with the tenant laws and NEC codes this may violate.",
+    "score": 10,
+    "num_comments": 13,
+    "created_utc": 1661195120,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "u9mgoz",
+    "title": "I'd love some help troubleshooting please!",
+    "selftext": "So I turned on my bathroom light to take a shower and while I was showering the breaker the light is on tripped. This breaker also has 6 other lights on it but no outlets that I'm aware of. After the breaker tripped the light started making a some what loud humming noise then tripped the breaker again. Now I flipper the breaker to set it back on and now there is no power going to any of the lights. Any ideas what the issue is? Is it something I could fix myself? Any help would be so greatly appreciated, this is my first house and honestly times are hard so I don't have a huge savings so if there is a way I could fix it that would be the best option. If this isn't the right sub for this feel free to delete it and direct me to a sub that could help.",
+    "score": 2,
+    "num_comments": 16,
+    "created_utc": 1650655304,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "yci4mx",
+    "title": "Arc fault breakers tripping on their own suddenly, rarely.",
+    "selftext": "Hey all. So I\u2019ve been in my house about 8 years. Chicago, so apply code standards which y\u2019all probably know better than me. Was a gut rehab, decently done. All that to say, nothing alarming or out of the ordinary. \n\nWe have 3 15amp breakers for the upstairs bedrooms. When I say rarely, this happens like 5-10 times a year max. But it will happen like twice in one day, then not happen again for six months.l or more. Sometimes I\u2019ll wake up to it, sometimes it happens during the day. It\u2019s honestly been a long time since I remember it happening, but it happened this week and I remembered this sub. \n\nBasically all three arc fault breakers will trip. It\u2019s never just one. There\u2019s not any special demand I can tie it to. I have a PC on 24/7 and my UPC tells me amp draw which maxes out at around 4.3-4.4 for both monitors and a gaming rig plus charging laptop. But what\u2019s odd to me is all three rooms will trip, even if unoccupied. \n\nI\u2019m not familiar with arc fault breakers. Not concerned with the frequency, but curious why this is happening and if it is something to be concerned with. \n\nThanks to whomever can she\u2019s some light.",
+    "score": 1,
+    "num_comments": 12,
+    "created_utc": 1666634680,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "z6ixnz",
+    "title": "Wall Receptacle has one broken outlet, fix or just use an adapter?",
+    "selftext": "This is in an RV. The wall receptacle is this different style than residential. One of the sockets doesn't work, so plan was just to replace it with a residential outlet.. However, where I am the parts are pricey (relatively).   \nAnyways, before I do that, I was wondering if just plugging in a multi outlet adapter to the one working socket would be fine? (Not sure of the exact terms. Basically a power bar but fits right onto the receptacle). The only things getting plugged in will be a kettle, coffee grinder, blender, maybe a phone. And they won't all be getting used at once....   \n\n\nMaybe a dumb question, but is the cheaper/simpler option the sensical one as well?",
+    "score": 1,
+    "num_comments": 11,
+    "created_utc": 1669598787,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "1220rrt",
+    "title": "Outlet proud of wall, gap between outlet cover and wall, any fix?? .",
+    "selftext": "Remodeling our basement, new wall covering is slightly thinner than the last. Most outlets worked out fine, but I have one that sticks out just a bit to far, maybe 1/8th of an inch.\n\nI know there are fixes for the inverse, when it's recessed too far into wall, but my lack of finding any quick fixes are making me think maybe it's a code violation of some sort, which if it is I'll address, but wanted to ask first. Thanks in advance!\n\n[Metal outlet box, has some paint on it making it look plastic.](https://imgur.com/a/ZowRScf)",
+    "score": 2,
+    "num_comments": 8,
+    "created_utc": 1679781705,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "y1evoy",
+    "title": "Need help fixing light strip.",
+    "selftext": "So I have an RGB light strip that got cut  partially and now the rest of the strip after that cut doesn\u2019t work unless you bend it a certain way or place a piece of metal, like a knife in the cut to restore the electrical flow to the rest of the light strip. The cut honestly isn\u2019t that bad, just a small nick the top. Is there some kind of conductive glue/puddy I could fill the cut with in order to make the rest of it work, or will I just be flirting with fire (literally)?",
+    "score": 1,
+    "num_comments": 12,
+    "created_utc": 1665509133,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "12x0wtw",
+    "title": "My friend was at his house when electrician was there fixing an issue in the sunroom in the back. Electrician was fixing outlets and a fan. Friend plugged in and used a blower in the garage. Electrician claimed that he got shocked because of that.",
+    "selftext": "My friend said that he did not reset the GFCI or flip a breaker switch.  How might my friend's action have shocked the electrician?\n\nI couldn't get any other details about the situation, but it certainly made me question how this might have happened.",
+    "score": 2,
+    "num_comments": 6,
+    "created_utc": 1682305705,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "13tdssp",
+    "title": "Repairing wiring to a double wall oven",
+    "selftext": "My GE double wall oven had an error and I pulled it out and replaced the defective part (lower cooling fan).  However, after i re-installed the oven it had a short.  Turns out that the insulation for one of the wires was damaged and shorted to the box.  \n\nThe oven come with the wires inside a 40\" of flexible conduit.  This is the original part:\n\n[https://www.geapplianceparts.com/store/parts/spec/WB18X30601](https://www.geapplianceparts.com/store/parts/spec/WB18X30601)\n\nI am wondering what my options are here?  The oven is 240V, 8.4 KW on a 50 amp circuit (manufacturer recommends 40A).  Do I have to try to source the above part or can I substitute with something like 40 amp 4 wire range cord and cut off the plug to bring it into the electrical box?\n\n[https://www.geapplianceparts.com/store/parts/assembly/JT5500SF5SS?ModelType=ModelType](https://www.geapplianceparts.com/store/parts/assembly/JT5500SF5SS?ModelType=ModelType)",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1685210057,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "tz9129",
+    "title": "Open Ground outlet troubleshooting - seems like I've tried everything to my knowledge!",
+    "selftext": "An outlet in my master bedroom that I had been using for years now to charge my Dyson vacuum all of a sudden stopped working. Tested it and it shows an Open Ground. Opened it up, everything was connected correctly, but swapped it out with a new outlet anyways. Still showed an open ground. Tried another new outlet and same thing. \n\n*EDIT: nothing works when plugged into the outlet. Non contact voltage tester shows the outlet is hot though.*\n\nI tested every other single outlet in the room, then outside the room that might be up the circuit, and then EVERY outlet in the house, and nothing else showed an open ground. Opened up light switches that might have some ground wires running through them and any ground wires in there was pigtailed together and crimped. \n\n*EDIT: Every other outlet with 3 prong tester shows good.*\n\nI cannot for the life of me figure out why the outlet all of a sudden stopped working and shows an open ground. I'm hoping this is some easy dumb fix where my googling has failed me. Any help is appreciated, thank you!\n\n***EDIT: comments said it's probably an open neutral, not open ground, so a-hunting I will go.***",
+    "score": 2,
+    "num_comments": 15,
+    "created_utc": 1649439772,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "12d7gs9",
+    "title": "Apparently I literally cannot change a lightbulb - can I fix my bathroom lights?",
+    "selftext": "  \n\nHello all. \n\nChanging a lightbulb should be level 000 of electrical work, and I'm sure many of you are gong to facepalm with this one, but here goes nothing. I couple of years back I bought an apartment. It came with the light fixtures in the pictures, one in each bathroom, total 4 bulbs. They worked fine and I had not touched them so far. \n\nAt the beginning of this year, one light went off. I took out the glass covers \u2013 they mounted a mix of G4 and G6 bulbs, but the bases were all the same. I wanted some more light and decided to replace all bulbs with new G6 bulbs, 12V, I don\u2019t remember how many watts but likely too many. \n\nThe lights worked for a few days, then all went off. The bulbs still work if mounted elsewhere, but the bathroom light fixtures do not. Also now G4 bulbs don't stay on anymore - it's like the holes loosened.\n\nWhat can I do? What should I check or replace? \n\n&amp;#x200B;\n\nhttps://preview.redd.it/wxinkvlwk6sa1.jpg?width=4032&amp;format=pjpg&amp;auto=webp&amp;s=cb3525ad2dd751b9e588d339ca4fc0cbc07b5d18\n\nhttps://preview.redd.it/2s3ik4mwk6sa1.jpg?width=4032&amp;format=pjpg&amp;auto=webp&amp;s=c8fb0a9a27c4d5bc9acf87d4bc9f15cb5f5c0525\n\nhttps://preview.redd.it/n391jwlwk6sa1.jpg?width=3024&amp;format=pjpg&amp;auto=webp&amp;s=f1631bf47c565bdcbd7ad3f8ca6bf5f1eb23db73\n\nhttps://preview.redd.it/ljlhizlwk6sa1.jpg?width=4032&amp;format=pjpg&amp;auto=webp&amp;s=b2ab6637b33837fb55188995c63ca15a5761fcfe",
+    "score": 0,
+    "num_comments": 7,
+    "created_utc": 1680751078,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "13eswow",
+    "title": "Range hood fixed by \"moving wires around\"?",
+    "selftext": "I am debating whether to replace my whole range hood or maybe someone knowledge can tell me this is a super easy fix.\n\nContext: This is a Sirius Range Hood from around 2006. The Range Hood turns OFF occasionally and does not turn back ON even when turning the breaker OFF and ON. However, if I just turn OFF the breaker, open up the filter and fiddle the wiring a little bit (not disconnecting anything, literally just moving it around) and turn the breaker back ON, it will work again. I even tried to tape the wires in place but that doesnt seem to prevent it from happening again.\n\nWhat is the usual reasoning for this? Is it better I replace the whole thing or does this indicate a super easy fix?\n\nThanks!",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1683824013,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "wp72ol",
+    "title": "Fridge runs 1.5 deg F warmer when plugged into fridge outlet vs. living room outlet. How to fix?",
+    "selftext": "Our old fridge started running warm intermittently, which ruined dairy and was generally unsafe.\n\nWe had a replacement delivered, which seemed to be a lemon.  We ordered a different brand of new fridge, but while we were waiting for it to come, I checked behind the fridge and found a 1978 backstab outlet (evil!).  I replaced the outlet, which got the new fridge mostly working.  I also opened the breaker box and retightened the hot &amp; neutral screws and wire nuts for the fridge circuit.\n\nBecause of these misadventures, I temporarily have two new fridges in the kitchen plugged into different circuits.  After a few experiments, I've determined that **either fridge plugged into the fridge outlet seems to run on average 1.5 deg F warmer than when plugged into the living room outlet.**  Airflow is not an issue - they're both pulled out from the wall.\n\nThe fridge is on a 20A common neutral (also evil!) circuit.  I've got 12-3 NM cable (red-black-white) going out of the breaker panel, but only 12-2 NM (black-white) entering the fridge box.  In other words, *somewhere* in the many outlets in the house, the 12-3 is joined to the 12-2 with a presumably poor wire nut connection.\n\n**Is this a plausible explanation, and any hints on how to find this wire nut connection among the many outlets in the house?**",
+    "score": 0,
+    "num_comments": 12,
+    "created_utc": 1660588277,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "tdhiyg",
+    "title": "Can I run a 12/2 for pump alarm, and low voltage signal for alarm in the same sleeve through concrete wall?",
+    "selftext": "I think I messed up and put a 3/4\u201d piece of conduit as a sleeve through wall for septic pump and alarm thinking they could both go through. \n\nI know low volt lines are supposed to cross at 90, but that\u2019s more for sake of interference. It just crossed my mind that maybe they both can\u2019t go through same hole just cause of code. I want to figure this out so I can drill another hole if need be before electrician shows up.",
+    "score": 1,
+    "num_comments": 15,
+    "created_utc": 1647208332,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "szjvn9",
+    "title": "Quick fix for improper splices?",
+    "selftext": "We are in process of buying a house that has some existing splices (Romex wire) that weren't properly done in a box. Are there any plastic boxes you can buy to put over an existing splice so you don't have to un-splice and redo the splice in a box? We are having an electrician look at the overall wiring but interested if there are quick fixes for these splices. Thanks in advance!\n\nETA: thank you all for your helpful responses and sharing experiences!! I appreciate it and will consider just getting the sellers to fix it all before closing. It's a crazy market and was looking for a way I could not piss them off by asking for too much. But obviously safety is the main priority for me and my family.",
+    "score": 3,
+    "num_comments": 15,
+    "created_utc": 1645629493,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "z7mvam",
+    "title": "nonstop arc fault nuisance tripping, maintenance being a pain, just want some reassurance",
+    "selftext": "a lil tl;dr about a basic problem but it is chafing me and any assurance i can hand out to others is appreciated\n\ni live in an apartment complex with two roommates, the complex was built within the past two years. i share a room, a master bedroom, with one roommate and the other one has her own room which has the breaker in it. a long while ago the breaker for our room only would trip for no reason, a reset would keep it going, but then it finally started happening about once a week for a few months, and since the error given is always just \"arc fault\" and never \"overcurrent\" or \"arc fault to ground\" we figured it was just a lousy breaker we figured it was just nuisance tripping that we'd eventually get fixed. when it started we put in a request with maintenance, who blew us off, saying it was because we have too much running in the master bedroom (two laptops, a ps5, a tv, and sometimes a phone charger. that's it). and to just rearrange what we had set up to fix it (which of course didnt help)\n\nso a couple days ago the master bedroom breaker pops, roomie turns it back on, within minutes it pops again, and then within minutes of that pops a third time. she calls the fire department, they run a check, fire chief is telling us maintenance was looking to get out of work and that that specific breaker should be replaced. they ran a hot spot checker through the whole building to make sure no secret fires were building up. everything is as cool as can be. so now we're stuck waiting for maintenance again so we can tell them the fire department wants them on this, we have records of them saying they should be replacing this, but that no fire was imminent. this was on sunday night.\n\ntoday i attempted to use the bathroom that's connected to the master bedroom and within 20 seconds tops every time i turned on the bathroom light, the breaker tripped. so did the closet light. we got a battery lantern and the tv/ps5/two laptops/sometimes a phone still work, but everything but one laptop is running off a GFCI outlet (a very basic looking one but the light on it has and is still green without it ever going to warning status this entire time) and both are running off of 1875W/15A power strips/surge protectors, one in the GFCI and one in a regular outlet. the strips show no sign of damage or warning or failure on their end either.\n\nshould we just demand they actually get a real electrician out here? im betting yes, at this point. it really does sound like this specific breaker was put in cheap, and searching for answers on this reddit and a few others for \"arc fault only error\" and \"nuisance tripping\" mostly come to the same conclusion we have and that we need to actually get this thing replaced. it's 1am here and we're due for a big snowstorm today and i'd like to be able to tell my roommates it's not going to blow the house up or set anything on fire, but unfortunately worry persists. i would think a lot of other things would be breaking/tripping/going haywire/etc or the whole building would be calling the fire dept more often or things like problems would exist with the internal workings of the apartment complex (the lights in the 24/7 front office area etc all work perfectly fine). we also noticed it loves to trip when i'm showering, so i'm wondering if it's related to the bathroom wiring somehow having to connect through here.\n\nmy roommate in the breaker room said her last place she rented here before this room also had a specific breaker trip a few times, so i'm wondering just how much they cheaped out on this kind of thing. from what i'm reading from y'all too, y'all are not fans of these errors/breakers, so what should i be looking at to replace/ask to have it replaced with?\n\nthank you for your time. i really appreciate y'all letting me vent about this and get some reassurance since it's been a rough, weird weekend and i don't want my roomies so freaked out by this that they insist on living in a hotel until this has been fixed but i've been around some really bad houses before and they haven't. \"nuisance\" indeed.",
+    "score": 1,
+    "num_comments": 9,
+    "created_utc": 1669707072,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "nqto3c",
+    "title": "Need help troubleshooting tripped breaker",
+    "selftext": "I have a tripped breaker in my electrical panel.  It won't reset.  I've already purchased a new breaker and swapped it out, but it still won't reset.  My bathroom overhead lights, laundry room overhead lights, and office overhead lights all are not working on on this circuit.  They're all in a line as well.  I have turned all of those switches off, and tried resetting the breaker, but no results.  I had my daughter go up into the attic and look for evidence of any chewed wires or anything out of the ordinary but she found nothing.  I'm a BIG dude, so I can't go up there myself.  \n\nI'm trying to think of what my next troubleshooting steps could be.\n\nShould I remove all the bulbs from the affected fixtures and try resetting? \n\nShould I disconnect the fixtures themselves and try resetting?\n\nI just got laid off so I'm trying to avoid having to pay an electrician to come out.\n\nThanks in advance.",
+    "score": 2,
+    "num_comments": 11,
+    "created_utc": 1622661080,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "137r4cj",
+    "title": "Can I fix my Electri-Center Pushmatic fuse myself?",
+    "selftext": "My house uses an old Pushmatic brand fuse box. Many years back, I think it was a stormy night, the wind was blowing and all of a sudden some of the lights in my house flickered off and never came back on. The fuse they're assigned to in my Pushmatic doesn't seem to work anymore.\n\nI would call my landlord about this, but I live with my mom. She would have to do it. And for one reason or another she's been afraid of doing this for years. I think her current reason is she's afraid they'll raise the rent after fixing the fuse. \n\nCould we call an electrician instead? Would they have to talk to our landlord?",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1683215022,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "ukjf62",
+    "title": "Ideas to fix mounting of electrical meter box",
+    "selftext": "On original install my outside meter box was secured directly to the conduit pipe, and the pipe was then secured to the house, leaving about 2 inches of space behind the meter box without it being directly se used to the house.  We have lived in the house for 15 years and never had issues.  The electrical company now says that the box needs to be mounted to the house.  Is there a way to avoid installing a whole new meter box?  Can we just run screws from back of box to house, leaving about 2 inches of screw exposed bwtwwwen the two?  Can we put a cut of wood between box and house and then screw through that not leave space only where the screw goes through?  Any resolution or suggestion is appreciated!  I cannot afford the hundreds of dollars to have a whole new one installed.",
+    "score": 0,
+    "num_comments": 13,
+    "created_utc": 1651948419,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "yjemut",
+    "title": "Going to sue, but how do I DIY fix?",
+    "selftext": "TL;DR - Electrician fucked me with this job, now I have no money to get it professionally fixed. So I'm asking for advice to get as much as possible DIY'ed to fix. Unless it's right?\n\nFirst, look at the [images](https://imgur.com/a/gYuSaEx). Let's not get into how this happened, it just did. Yes, a licensed electrician did this. And yes, I probably paid way too little, though they were much off from the other quotes. This one just happened to be available while all the others were not.\n\nSo romex (two cables, for two 20a circuits) was used in PVC conduit. The shed is the opposite corner of the lot to the main panel. So digging around the perimeter of the yard was out of the question (too many older trees would die or fall). The best route was trenched to the corner of house opposite of the main panel and go from there. This is the result.\n\nI now know (from another couple of license electricians) that romex was used, when it should have been THHN for a couple of reasons. I know that metal conduit should have been used. I know that it shouldn't be routed under the house like it was because of the \"breathing\" the exterior walls need. The junction box is wrong above the main panel. And so on.\n\nI'm going to go after the electrician for this. But the results from it are unknown, so I'm just going with the assumption that I will not recoup the money. If I do, great, but I'm working off this assumption right now.\n\nNow the fun part, there isn't enough money now to have a true professional fix this. Means I'm going to need to do as much as possible myself. Here are the questions and advice I need to know:\n\n&amp;#x200B;\n\n1. I need to fix the trench, so digging, I can do that. It'll suck and I have a bad back, but I'm determined. It's 14\" now, so I'll do what I can to get to 18\".\n2. Do I need to replace the romex with THHN wire? Basically asking if it will be ok for this application. Two circuits will run an small AC unit for the shed on one circuit, laptop, lights, etc. on the other. As it's already terminated to the panel.\n3. I would guess the length of the romex to be about 200'-250' in length (two cables). How difficult would it be to pull it all out of the conduit, then re-route it myself up and through the attic and back down through new conduit?\n4. Do I need to use conduit in the attic space? I'm guessing yes for this.\n5. Do I need to replace the PVC conduit in the ground? If yes, what kind of conduit for romex or THHN?\n6. I will climb a ladder to get this done and moved up into the eaves of the house along the roof line to get it from the bottom of the house. Requires a rental for a 28' or 32' ladder from Home Depot, but I'll do it if it makes sense. If I do that, metal or PVC conduit.\n7. On replacing the romex with THHN. For the two circuits (there are already breakers in the box for the two romex cables)\n\nThanks!",
+    "score": 1,
+    "num_comments": 9,
+    "created_utc": 1667322928,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "ojqo2f",
+    "title": "[US] Strange non-working Dryer issue, lots of troubleshooting completed",
+    "selftext": "Hi all, I've got a very strange intermittent problem with our dryer, it would work and then not work, and the service repair people blamed it on our wiring. When we first called them we looked at the outlet and the right-side prong was burnt up, the dryer cable (3-prong) was melted as well. \n\nThe dryer is not working, but when it is plugged into the wall I am getting ~200V on one leg, and ~40V on the other, and I get a shock when touching it. When it is unplugged it reads normally. There is also an air compressor that is connected to this fuse box but it runs normally. I hooked the dryer up to a generator and the dryer *worked* and I measured ~120V on both lines. I replaced the outlet, some of the wiring, and it still didn't work. I even cut the wire to the air compressor and hooked to the dryer to that, same situation with the odd voltages. Could the issue be failing fuses? Or some sort of ground fault\n\n\nedit: it was a bad neutral!",
+    "score": 0,
+    "num_comments": 18,
+    "created_utc": 1626215457,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "r553rk",
+    "title": "Help: Arc fault breakers tripping; flickering lights",
+    "selftext": "Hey there, could use some advice from an electrician! Thanks so much for any help.\n\n**Background:**  \nNearing the end of a full first floor remodel. Whole floor down to the studs. All wiring, lighting, outlets, and switches replaced for entire first floor. New bigger circuit box and new circuits installed as well. All new appliances as well.\n\n**Issues:**\n\n* We had arc fault breakers installed in the required places for our area (appliances, first floor lighting). At first, the washer/dryer one started tripping. Then, other kitchen appliances. Then, the lighting ones. Each got progressively worse over time until the circuit was constantly tripping, and now the last one was just removed after like two months because it started tripping over the weekend. Electrician just says that arc faults are annoying and not to worry about it and we don't need them anyway.\n* Separately, we  just started noticing flickering lights in bulbs in our lamps and pendants. It's inconsistent, and it seems unrelated to whatever we're doing or running in the house. Different bulbs, different lamps, some on dimmers and some not. We have no issues in the second floor of our house at all, which the electrician didn't touch any of the wiring for - although it does wire into the new box, too.\n* Electrician has now said he doesn't know the problem. Suggested we call the power company to look (they're coming out) and make sure nothing is off coming in from the street. Otherwise, he seems like he's at a loss.\n\nWe've lost some faith in the electrician at this point - and didn't feel great that he popped in arc faults for our inspection then popped them out as if that's 100% normal. We will get another opinion, but curious if there are certain things that jump out as a potential issue or places you would start. Specifically, if there is anything that could cause both of these issues or the oddly progressively touchy issues with the arc fault breakers?\n\nThanks so much!",
+    "score": 4,
+    "num_comments": 15,
+    "created_utc": 1638218427,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "13tsfa7",
+    "title": "How to fix an outlet that only sometimes works?",
+    "selftext": "When I check the outlet with a voltage tester, it's showing to work properly. But the electrical device that plugs into the outlet only works some of the time. Sometimes it works for hours or days, and will stop working, and then the cycles repeat. I also tested it with night light. When it is \"not\" working, but during the motion of me physically plugging the nightlight into the outlet, there is a flash of light sometimes. Any suggestions?",
+    "score": 1,
+    "num_comments": 4,
+    "created_utc": 1685252026,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "zjfjxk",
+    "title": "Troubleshooting Flickering Light",
+    "selftext": "&amp;#x200B;\n\n[Flickering light](https://reddit.com/link/zjfjxk/video/xn151aewwc5a1/player)\n\nHi experts,\n\nI'm helping my friend to troubleshoot a light. It's constantly flickering (about every 1.5 \\~ 2 seconds) and very noticeable. Light bulb is LED. Here is what I've done:\n\n1. Connected the line and load directly, light is still flickering. So this should exclude the issue from the switch itself?\n2. Checked the voltage at the switch, line to load is just \\~100V, while line to ground is 110V.\n3. Based on my multi-meter (Klein Tool MM400), the voltage seems only jump back and forth only at around 0.1V (So this means there isn't a huge fluctuation? I'm not sure how good this meter tracks the real time voltage changes).\n\nGoogling around about the flickering light, people mention the most about the light bulb, switch, light fixture, and loose connection. For my situation, what would be the most possible cause? Also would really appreciate any suggestions on the next steps. Thanks in advance!",
+    "score": 0,
+    "num_comments": 8,
+    "created_utc": 1670803357,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "13u3oyb",
+    "title": "Repair Advice?",
+    "selftext": "I was drilling into the wall and accidentally hit the line. It's hard to tell, but it looks like part of the conductor was shaved off by the drill, so I'm considering an inline splice with lever nuts since the wire has virtually no slack. Is this a reasonable approach? What other things should I consider?\n\nPic of the damage, cut out some drywall for a better view:\nhttps://imgur.com/a/hnshs61",
+    "score": 0,
+    "num_comments": 4,
+    "created_utc": 1685289121,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "wv5a1l",
+    "title": "Hardwired Fire Alarms are going off in my house intermittently but there\u2019s no fire.",
+    "selftext": "I\u2019ve considered that it\u2019s detecting Carbon Monoxide, however the alarm says \u201cFire\u201d. Not sure if that matters or exactly who I would call to fix or look at such a thing. Anyone have any ideas / advice?",
+    "score": 2,
+    "num_comments": 10,
+    "created_utc": 1661202579,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "12aup5b",
+    "title": "Troubleshooting outdoor outlet",
+    "selftext": "My house has an outdoor outlet on the patio that doesn\u2019t work but I have no idea why. The voltage meter detects nothing at all in the wires. I\u2019m not sure if there\u2019s possibly a switch somewhere in the house that is preventing it from working or what, but I\u2019ve tried flipping all the switches to no avail. \n\nAny advice on how to troubleshoot this? I also have an outlet just behind this one on the inside of the house so not sure if I could use that somehow.",
+    "score": 1,
+    "num_comments": 5,
+    "created_utc": 1680549612,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "ptlhvs",
+    "title": "Under contract on a 1975 house with aluminum wiring. Need outside opinion on repair vs replace while we negotiate",
+    "selftext": "So we made an offer that was accepted on a house that was found to have aluminum wiring during inspection. The sellers knew this (and believed it to be perfectly safe), but failed to disclose it on the condition report required in the state. We had an electrician out for a follow-up inspection. After consulting with another electrician and inspector, he suggested and quoted us for a rewire where he would fix all the other issues (GFCIs, need new outlets in garage for openers, improper wire routing below joists in basement, some double tapped and improper breakers, etc.). The sellers had a separate electrician out who suggested and quoted a repair using Alumiconn connectors at each receptacle and switch, which is obviously much cheaper and the sellers said they would pay for it and GFCIs. We've read about both of these options (and COPALUM and others) online, and had follow up conversations with each electrician, and we can't decide what the best path forward is. Both electricians know they might get business if we go with their suggestion, so I'm hoping for some unbiased advice here. On the one hand, a rewire would give us peace of mind that we fixed the issue permanently but would cost us more money and risk us losing the house if the sellers don't like our counter offer, plus require drywall repairs. On the other hand, opinions seem to differ on how much of the risk Alumiconn connectors negate, so we might still have some level of risk and not as much peace of mind, but it would be cheaper and a cleaner path to sealing the deal. A follow-up question: if we go the Alumiconn route, what are your thoughts on repairs for light fixtures and appliances, or are outlets and switches sufficient?\n\nWhat would you do if this were your house or a family member's?\n\nSome details on the house if they matter: 3 bed, 2.5 bath, 2400 sq ft ranch with walkout basement (finished portion has a drop ceiling). Currently has a 200 amp panel and some copper wiring to the basement circuits but as far as we can tell, the whole upstairs is aluminum. Built in 1975 but we don't know for sure what year the aluminum wires were produced.",
+    "score": 1,
+    "num_comments": 16,
+    "created_utc": 1632363708,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "110fnxp",
+    "title": "Transfer switch and ARC fault breakers",
+    "selftext": "I am putting in genny transfer switch. Bunch of my breakers are GFCI or arc fault, where the neutrals go into the breakers as well. My Reliance transfer switch just has controls to switch on the hot wire.\n\nDo I just continue to hook the transfer switch into the hot wires and leave the neutrals as is? I realize I then wont have GFCI protection but Im ok with that.\n\n&amp;#x200B;\n\nhttps://preview.redd.it/k068ozusdrha1.jpg?width=3072&amp;format=pjpg&amp;auto=webp&amp;s=1e1b92e7f770ca9a419341fd89b0c87e9033bb63",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1676208300,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "qpbbu9",
+    "title": "Smoke alarm requiring cost?",
+    "selftext": "Hey guys! I have three separate smoke alarms in my place. House inspector says they need to be connected. Any idea what that would cost for an electrician to do this? TIA.",
+    "score": 2,
+    "num_comments": 15,
+    "created_utc": 1636369540,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "xmzmzf",
+    "title": "Solar Install - Plans Don\u2019t Match Install - How To Fix?",
+    "selftext": "I just had my solar installed yesterday and everything looks good. I didn\u2019t get the plans until after the installation and I noticed two decent sized errors. \n\n[Here](https://i.imgur.com/PbfpDoz.jpg) are the plans. \n\n**Error 1** - They have my main service panel listed as 225 amps in the breaker and the bus rated for 225 amps, but the main breaker is 200 amps and I\u2019m unsure of what the bus is rated for. See [here](https://imgur.com/a/0uGx9mf/). \n\n**Error 2** - They have my distribution panel listed as 225 amps in the breaker and the bus rated for 225 amps, but there\u2019s no main breaker in there since it\u2019s controlled by the main service panel (but the bus is rated for 225 amps). See [here](https://imgur.com/a/28K8voI/). \n\nThey did a Load Side Tap (see [here](https://i.imgur.com/AgPXbHf.jpg)) and from what I\u2019ve read, if their plans were accurate everything would work properly\u2026but their plans don\u2019t match my electrical. Furthermore, my feeder cables are rated at 2/0 AWG CU\u2026which I believe affects the load side tap?\n\nCan anyone advise if there\u2019s any additional errors and on the best way to have this fixed? Thanks!",
+    "score": 0,
+    "num_comments": 9,
+    "created_utc": 1664042547,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "10ms3lh",
+    "title": "Open Ground fault on part of a circuit.",
+    "selftext": "4 outlets on a grounded circuit along one wall are showing current in both hot and neutral plugs and plug-in tester is showing Open Ground fault.  All of the connections in the outlets, including the ground wires, look fine.  Other outlets on the same circuit are showing Correct.  Is this a dangerous situation and what would a professional do next to diagnose the problem?",
+    "score": 2,
+    "num_comments": 6,
+    "created_utc": 1674844165,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "12z73ri",
+    "title": "Mystery: Unplugging smoke alarm kills entire circuit",
+    "selftext": "New homeowner here, and I've run into quite a perplexing issue.\n\nOur condo is three floors with a stairwell that runs up through the middle of the condo.  The second floor has the main breaker box and two bedrooms, and the top floor is a master suite and bathroom.  The condo came equipped with hardwired Nest Protect units (the combination smoke/CO2 alarms.\n\nAfter moving in, I went to set up the nests with our google home, so I took them off the ceiling, unplugged the wire, etc. etc. Upon unplugging one of the nests in the second floor hallway, the power on the third floor went out immediately. This included everything on that circuit (lights, outlets, and the upstairs nest).  I plugged it back in, but the power didn't come back on.  I went to the breaker box, where everything was labeled, and but none of the breakers had tripped.  I flipped a few on and off, including both the hallway and bedroom, and eventually some incantation restored the power to the third floor.\n\nToday I had to replace the batteries in the nest, so I unplugged it again, and sure enough, power to the third floor is gone again. Again, no breakers thrown, and plugging the nest back in doesn't immediately restore the power. I've yet to get the third floor power back.\n\nWhat could this be? How can I even begin to diagnose it?  How dangerous is this? I have a voltage pen, and have tested various outlets and wires after messing with the breakers.  I've determined that the smoke alarms are on their own circuit that is separate from the third floor circuit.  Happy to provide pictures if it will help.\n\nEdit: Pictures of the breaker box and the cabling above the nest:\nhttps://imgur.com/a/FacSo6C",
+    "score": 1,
+    "num_comments": 4,
+    "created_utc": 1682485513,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "zp2myg",
+    "title": "Question about safety - Should I cover a circuit board with bare traces (repaired) in Natural Silicone",
+    "selftext": "I have a safety question, this control board for my wood pellet stove had to be repaired as they don't make it now and couldn't source a refurbished one. As you can see they've just soldered the trace as it had popped through the board and was exposed, there was another trace on the other side that had the same problem so they bypassed it with a piece of wire. My concern is this board is inside of a pellet stove and the inside gets absolutely covered in fine wood dust.\n\nhttps://preview.redd.it/s2ykvb7boo6a1.jpg?width=3072&amp;format=pjpg&amp;auto=webp&amp;s=947538753472fb7101f3825e9225f7fdfb3cc02c\n\nhttps://preview.redd.it/ssk13d8boo6a1.jpg?width=4096&amp;format=pjpg&amp;auto=webp&amp;s=28689cfe679c6f0763eb86f5675394ae461b70f2\n\nif these traces previously got hot enough that the top layer of the PCB flaked away I'm worried that it only takes a couple of days for a layer of wood dust to build up in them they might start to burn. So I had a thought of covering them in a natural (non-acid curing) Silicone, I was told to use that a few years ago to cover some electrical connections that were outside to completely seal the connections as they couldn't be put in a watertight box.\n\nBut I don't know with something like this, would it be a bad idea or wouldn't it hurt to be safe?\n\n&amp;#x200B;",
+    "score": 0,
+    "num_comments": 7,
+    "created_utc": 1671381702,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  },
+  {
+    "id": "10lu04v",
+    "title": "Microwave Wiring Comes Out Too Low. Is This Fix Appropriate and Safe?",
+    "selftext": "The main electrical run for the outlet came out just below where it needed to be (where the actual microwave goes). It needs to be in the cabinet above the microwave.\n\nhttps://i.imgur.com/MeubehD.jpg\n\nThe cabinets and drywall were already installed, so they smashed in the drywall by hand, and fed the Romex cable back up higher into the wall to the outlet location in the upper cabinet (above the microwave).\n\nhttps://imgur.com/a/BardIt6/\n\nThey then covered it up with some mud so the wire won\u2019t touch the microwave when it\u2019s mounted. Not sure if the Romex being in the mud is up to code or not?\n\nhttps://i.imgur.com/ReIPv4Z.jpg\n\nEverything has been working properly for a few months\u2026but does that seem like the correct fix for when wiring comes out of the drywall too low and the cabinets were already installed? I wanted something a bit cleaner, but they said pushing in the drywall kept the wire from pinching and they were able to feed it up about 1.5 feet to the outlet without an issue.\n\nThey didn\u2019t cover it with mud until I asked because I didn\u2019t want the wire touching against the back of the microwave.",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1674745870,
+    "subreddit": "AskAnElectrician",
+    "top_comment": ""
+  }
+]

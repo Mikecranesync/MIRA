@@ -1,0 +1,21 @@
+[
+  {
+    "id": "17zuhup",
+    "title": "Pro-tip: install residential security camera systems on your machines for troubleshooting.",
+    "selftext": "Several years ago, one of my ME coworkers came up with the idea to install a standard off-the-shelf security camera system on one of our machines.  We purchased a 4-camera Swann system, some Manfrotto arms with Super Clamps on each end for the cameras, threw the DVR in the panel, and suddenly we could go back in time to visually troubleshoot nearly any fault.\n\nEvery new machine now comes with the DVR pre-installed and one of the first things we do is throw up the cameras; all of ours come with four, but four more can be added if necessary.  We balance the amount of history by enabling/disabling the motion detection...sometimes things are missed, so if we're really focused on a problem, we'll force the cameras to run continuously.  Video can be pulled easily with a USB drive.\n\nWe're an engine assembly plant with both an overhead monorail and a power &amp; free system.  Most machines are torque cells but also FIPG, piston subassembly, seal press, etc.  Some of the things we'll look at:\n\n\\- Overall view of each side of a machine, including area scanners/light curtains; Banner sensor-indication hardware, either the cables or inline, are very helpful.  We also have a redundant multi-color Banner T50 light (that mimics the main stacklight) we can move around to ensure it's in at least one view, highlighting the moment a machine faults.  \n\\- Muting sensors for the area scanners, especially on a new system.  \n\\- The HMI to see how maintenance responds to problems, hopefully to drive re-training or fixing machine problems.  \n\\- Robot pendant...had one keep E-stopping itself.  That mysteriously stopped once it was obvious the dipshit doing the deed was being recorded.  \n\\- Critical quality stations, such as high pressure fuel lines, in case we have a leak.\n\nWe also have some mobile versions mounted on little stands with a monitor, mouse, and keyboard that can be rolled around and plugged in anywhere.  We've caught any number of annoying issues, light curtain/area scanner breakage (including some where people enter machines, including a goddamn bird), the moment a sensor is bumped (such as yours truly last week), you name it.  They've more than paid for themselves.",
+    "score": 78,
+    "num_comments": 70,
+    "created_utc": 1700503038,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "high",
+    "quality_score": 0.85,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Banner",
+    "equipment_type": "HMI",
+    "model_number": "",
+    "fault_codes": []
+  }
+]

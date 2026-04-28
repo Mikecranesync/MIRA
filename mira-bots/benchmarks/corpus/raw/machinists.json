@@ -3,7 +3,7 @@
     "id": "1q8igvo",
     "title": "Owner wants to take part repair time out of my check",
     "selftext": "Looking for advice, I\u2019m in a about 7 person small business acting as the lead machinist, I\u2019ve got 1 guy under me.\n\nMe and him have about 50 tubes that the api threads are messed up on(somebody ran the part with a chipped threader) that now don\u2019t thread together properly, gages work right but it doesn\u2019t hit the root of the thread so we didn\u2019t notice.\n\nNow we have to try and repair them but the boss has threatened to take the time we take doing it out of our paychecks\n\nNow I feel like this is against some kind of law but idk\n\nCan\u2019t move jobs cause this one pays too well for where I\u2019m at(25$/hour) Oklahoma \n\nTLDR: me and a coworker have to fix stuff that boss wants to take from our paychecks and I think it\u2019s not right.\n\nHave yall guys ever had stuff like this happen",
-    "score": 103,
+    "score": 99,
     "num_comments": 116,
     "created_utc": 1767988554,
     "subreddit": "Machinists",
@@ -13,7 +13,7 @@
     "id": "1o864wl",
     "title": "Remember, blame the programmer. It\u2019s always his fault.",
     "selftext": "\u201cYou programmed this with way too much load around the corners. The tool can\u2019t take that.\u201d \n\nNo, there\u2019s not too much load around the corners. Yes, the tool can absolutely take that cut. You didn\u2019t properly tighten the collet nut and the end mill sucked out and exploded. As evidenced by the gradually ramping cut into the fixture and spin marks inside the collet.\n\nI\u2019ve got an operator that *always* finds a way to blame the CAM guy (me). I did the CAM work, designed and made the fixture, set it up and made the first five parts. Handed him the job and told him the rougher was ready to be changed and to go ahead and handle that. Grenades the rougher on the next part. This is not outside of his expected tasks as our operators often handle tool swaps mid run. \n\nJust ranting about my morning. Fixture still works and parts are running. Enjoy your day y\u2019all. ",
-    "score": 289,
+    "score": 287,
     "num_comments": 74,
     "created_utc": 1760621246,
     "subreddit": "Machinists",
@@ -26,6 +26,16 @@
     "score": 0,
     "num_comments": 31,
     "created_utc": 1773478340,
+    "subreddit": "Machinists",
+    "top_comment": ""
+  },
+  {
+    "id": "ro21gu",
+    "title": "Why is it so common for machinists and other similar trades (auto repair, etc) to be expected to own their own tools?",
+    "selftext": "I'm a hobby machinist and have never worked in professional shop, but pretty much every male in my family going back many generations have been life long machinists. It's strange to me that it's just assumed that a machinist will provide their own tools, and take them with them if they leave a shop.\n\nIn an office job, I can't imagine someone showing up to work and the employer being like \"... bro where's your computer?\" or a warehouse worker showing up and being told they need to bring their own pallet jack.\n\nI'm not trying to be condescending or judgy at all, I'm actually curious. What are some thoughts from people actually living it? Does it all boil down to the tragedy of the commons, where the idea of \"not my tools, don't give a fuck\" means all the shop tools are always chewed up and/or broken?",
+    "score": 184,
+    "num_comments": 167,
+    "created_utc": 1640405283,
     "subreddit": "Machinists",
     "top_comment": ""
   },
@@ -103,7 +113,7 @@
     "id": "1q50m66",
     "title": "Partmaker 2011 stops working in 2026 - FIX",
     "selftext": "I couldn't find anything on this yet, but our PartMaker-Mill 2011 at work died the second it hit Jan 2026. Got this error:\n\n`Unable to run Partmaker/Miller due to the following error- PAF Error = 4 line 8191. Please contact your system supplier for a valid PAF`\n\n**The Reason:** The old Delcam licenses seem to expire at the end of 2025. (Solid 15 years?)\n\n**The Fix:** Use the 32-bit **RunAsDate** software or create a .bat file. We created a desktop shortcut that starts Partmaker as sometime in Oct 2025 for 8 sec as the software starts. Works perfectly for us and lets us keep our current time.\n\n**Note:** If it still fails, run **PAFWizard as ADMIN** to make sure it sees your USB dongle. Then try authenticating your paf file. `C:\\Program Files (x86)\\Common Files\\Delcam\\yourfilehere.paf` If your system date is 2026, the PAF test will always fail until you use the date fix and have a paf file that worked at somepoint.\n\nHope this saves someone else the headache!",
-    "score": 8,
+    "score": 7,
     "num_comments": 10,
     "created_utc": 1767652834,
     "subreddit": "Machinists",
@@ -180,6 +190,16 @@
     "top_comment": ""
   },
   {
+    "id": "zwqvlr",
+    "title": "Has anyone actually made a part to fix a broken machine in their machine shop rather than buy one?",
+    "selftext": "Not a machinist, but always wanted to know if this happens regularly/ at all?\n\nEdit: thanks for the replies. I can rest easy knowing that machine shops regularly fix their own machines. I\u2019m even more in awe of what you guys and girls do. Keep making cool stuff!",
+    "score": 55,
+    "num_comments": 75,
+    "created_utc": 1672176825,
+    "subreddit": "Machinists",
+    "top_comment": ""
+  },
+  {
     "id": "1oupmiu",
     "title": "Alarm won\u2019t clear, can\u2019t zero return Z axis? Fanuc 0i-TF control PS5195 alarm",
     "selftext": "Folks, one of the apprentices I\u2019ve got working on a machine that I myself am not super familiar with has run into an issue, we can\u2019t zero out the turret in the Z axis (it\u2019s showing a little capital i next to the Z positioning) and we\u2019ve got an alarm of PS5195, I\u2019ve looked online and can\u2019t seem to find much of anything other than a potential servo off state (no idea how to clear) or potentially tool comp issues, anyone have any ideas? Said that it happened after touching off a tool with an incorrect quadrant # callout.",
@@ -240,6 +260,16 @@
     "top_comment": ""
   },
   {
+    "id": "1ebz4wp",
+    "title": "Lead in chamfer on external thread not called out on drawing, parts non-functional, who is at fault?",
+    "selftext": "Thread is 1/2 - 28 UNEF on drawing with a chamfer pictured but not specified.      \n\n  \nOn the part , all diameters are in spec, and there is a lead in chamfer on the parts but not enough to clean the thread out. Result is part seizes on the first couple of threads.    \n\n\n  \n         \nWho takes the blame? Customer or shop?",
+    "score": 1,
+    "num_comments": 38,
+    "created_utc": 1721924762,
+    "subreddit": "Machinists",
+    "top_comment": ""
+  },
+  {
     "id": "1n8t78b",
     "title": "Sodick VZ500L Wire Break error with No actual Break.",
     "selftext": "I'm a L2 Maintenance Technician with 2 Sodick Wire EDMs under me, a VZ300L and a VZ500L, one is throwing a 0100 error on center hole almost instantly upon trying to start. \n\nAs the title says, the error states a Wire Break but the wire itself isn't breaking and it's almost the moment it try to touch the material to the wire to find the hole. I've done as much physically as I can with removing and cleaned both upper and lower heads but can not get it to go any further than a second search to find center. \n\nHave any of you ran into this and if so what was your fix? Am I missing something blaringly obvious? ",
@@ -273,7 +303,7 @@
     "id": "1m24ogw",
     "title": "Why am I hated for checking parts?",
     "selftext": "So I 20F just started in a shop, was brand new to machining before this, and my role is to check parts and keep everything running (clean out machines, fix errors, get bars etc). I love this job and how much freedom it gives me and the potential to learn more about coding and setting in years to come. \n\nHowever, this one guy Barry, is always an asshole to me and just really demeans me and what I do. Most of the time, his parts are out of tolerance or just not up to scratch anyway and it's my job to break this news to him every time. He's a good 5-10 microns out straight after setting, so it's a him issue, and every time he's always gotta be like 'what did you do!' or 'can't you get off my back' when I'm just doing my job. \n\nHe's a setter and is also the supervisor so it's not like I can tell anyone else that he's doing all this bullshit. There's other setters in my shop and they're great and don't give me so much hassle. And he makes me run all the machines on the floor by myself, while he's chilling on his phone. \n\nHe's kinda putting me off learning and working because of how toxic he is when it comes to anything going wrong that he has set. \n\nDo you guys have the same issues with coworkers at your shops doing this or any advice to deal with him?\n\nEdit: microns, my mistake!",
-    "score": 520,
+    "score": 519,
     "num_comments": 263,
     "created_utc": 1752750489,
     "subreddit": "Machinists",
@@ -293,9 +323,19 @@
     "id": "1rt04kq",
     "title": "Fired after my second day running a lathe for an \u201capparent crash\u201d but I never heard or saw one?",
     "selftext": "I\u2019m a machining student and recently started a new job at a small shop. I had only been running the lathe for about two days.\n\nWhile I was running the job, the machine alarmed a few times due to chip buildup. Each time it happened, another worker came over and helped me clear the chips and reset the machine. The person who was originally training me (the owner\u2019s son) wasn\u2019t even there that day, so I was mostly just following the process as it had been explained to me.\n\nI never heard a loud crash, bang, or tool hitting the part or chuck nothing that seemed like an obvious machine crash.\n\nA few days later I received an email saying the lathe needed repair due to an \u201capparent crash when I was running it\u201d and that parts were turned undersize after the crash, so they were letting me go.\n\nI\u2019m honestly confused because the only issues I experienced were chip buildup alarms, and another worker was helping me clear them.\n\nFor those of you with more experience running lathes:\n\n\u2022\tWould a real crash usually be obvious to the operator?\n\n\u2022\tCould chip buildup/overload alarms cause the machine to go out of position?\n\n\u2022\tDoes it seem strange to blame someone who was on their second day and still in training?\n\nJust trying to understand if I actually did something wrong here or if this situation sounds odd.\n\nEDIT: I really appreciate all the advice everyone here has given me. I\u2019m still a machining student and genuinely want to learn. I\u2019m based on Long Island, NY if anyone knows of shops in the area willing to train someone new who\u2019s motivated to learn, I\u2019d be very grateful for any leads.\n\nUpdate: I wanted to thank everyone who commented on my post the other day and gave advice. I was really upset about losing the job while I was on vacation and wasn\u2019t sure what to do next. I ended up reaching out to some local shops and I\u2019m happy to say I just accepted a new position and start this Friday.\n\nI appreciate everyone who took the time to give guidance and encouragement it honestly helped me a lot when I was stressing out. On to the next chapter.",
-    "score": 180,
+    "score": 183,
     "num_comments": 222,
     "created_utc": 1773436795,
+    "subreddit": "Machinists",
+    "top_comment": ""
+  },
+  {
+    "id": "1gdkyq8",
+    "title": "Video for the \"fixed steady\"",
+    "selftext": "A few of you, nay most of you seem to be having a fit over how dangerous you thought the set up was in my original post; just take a look at this calm serenity and revaluate.\n\nhttps://www.reddit.com/u/Quat-fro/s/DSm80kT6mc\n\nI'd post a direct link but this sub doesn't seem happy about it.",
+    "score": 0,
+    "num_comments": 24,
+    "created_utc": 1730062327,
     "subreddit": "Machinists",
     "top_comment": ""
   },
@@ -310,442 +350,42 @@
     "top_comment": ""
   },
   {
+    "id": "1jkadd3",
+    "title": "What\u2019s the best fix for a wobbly bearing?",
+    "selftext": "I need to buy a stainless steel ball bearing with a 0.5\" inner bore. If anyone can point me to a good site, that would be really helpful. I wanted it to slide smoothly onto a stainless steel shaft, so I had the shaft machined to 0.498\". Turns out that left too much clearance, making the rotating part wobble on the shaft, which isn\u2019t working out.\n\nI could redesign the shaft and get a new one made, but I\u2019d rather find a way to fix what I have to save time and money.\n\nBasically, I need to make the bearing fit more snugly on the shaft. I\u2019ve read that knurling the shaft could help, or maybe using an adhesive like Loctite. Does anyone have any suggestions?",
+    "score": 2,
+    "num_comments": 9,
+    "created_utc": 1742991464,
+    "subreddit": "Machinists",
+    "top_comment": ""
+  },
+  {
+    "id": "1iy1kvs",
+    "title": "Kurt vise repair",
+    "selftext": "Here's the problem: some dumbass didn't set z depth correctly and chewed up the base/ways of the vise. Would it be possible to plug the holes with weld and grind the base back in without ruining the vise? I have ground many things that are bigger than a Kurt vise so that's not my issue. I'm just wondering if there's any height/depth tolerance between the pieces that would be thrown out after grinding. Anything helps, thanks",
+    "score": 0,
+    "num_comments": 11,
+    "created_utc": 1740507078,
+    "subreddit": "Machinists",
+    "top_comment": ""
+  },
+  {
+    "id": "1g1m0up",
+    "title": "Question about how to fix bent Drill press Spindle",
+    "selftext": "Hello guys.\n\nVisitor from r/woodworking with a question regarding a drill press I am fixing. The exposed portion of the spindle is bent to the point of producing runout in the realm of 0.014\".\n\nThe spindle is 1.25\" thick steel (0.25\" wall thickness) with a #2 morse taper, and underneath the quill it is 5/8\" thick steel for the remaining part of the shaft.\n\nWith a dial indicator I have mapped out the damage, and there is no runout at the top of the spindle, and 0.018\" near the base (left side in image).\n\nThe bend is in a single direction, and everything else is really tight.\n\nI have a quote to bend the piece back for $300 for 2 hours of machining at $150/hour using a press. Is this reasonable?\n\nAre there any other suggestions that I should consider? What kind of press would I need to fix this?\n\nAlso, if this is the wrong place, please let me know a better place to ask this question.\n\nUpdate: I fixed it, now runout is 0.0012 at the spindle, much better!\n\n[Bent part circled in purple](https://preview.redd.it/4vcca85gf7ud1.jpg?width=2100&amp;format=pjpg&amp;auto=webp&amp;s=16b9484dbfe3620ef43acacf6ce0decd5f94adea)",
+    "score": 0,
+    "num_comments": 19,
+    "created_utc": 1728686101,
+    "subreddit": "Machinists",
+    "top_comment": ""
+  },
+  {
     "id": "1lelkzb",
     "title": "Timesaver repair, maintenance, adjustment help needed",
     "selftext": "We got a pretty steep quote to have our 37\u201d wide Timesaver 137-1HPM repaired. It cuts about .030\u201d off left to right. We just need that number to be less than .005\u201d for the type of work we do. I know pretty much nothing about this machine but have repaired a lot of different types of equipment. I have searched Reddit, Google, and YouTube before posting here. How tricky is it to get this machine back into adjustment? Can anyone point me towards a detailed readjustment process? Can someone share some scans of their manual of a similar machine showing the adjustment process? Should I just pay to have it repaired by Timesaver? I can\u2019t imagine that adjusting it would be too difficult but again, I know very little about this piece of equipment. Thanks in advance to anyone that can help me out. ",
     "score": 0,
     "num_comments": 2,
     "created_utc": 1750264149,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1kl7pte",
-    "title": "Anyone know how to fix this?",
-    "selftext": "can anyone help. trying to figure out a toolpath issue for my mastecam class, using an area mill operation, and there's still stock that's  being left on the corners and I cant seem to get rid of it. can anyone help me?\n\nhttps://preview.redd.it/tc03ui5euf0f1.png?width=890&amp;format=png&amp;auto=webp&amp;s=cd67be496b7b24a8a122efcaee0973fddb516800\n\n  \n",
-    "score": 0,
-    "num_comments": 4,
-    "created_utc": 1747093648,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1kbom38",
-    "title": "Need a quick fix- coating",
-    "selftext": "A hole was not checked for fitment before being anodized. A stainless steel rod fits into the aluminum component and will cause corrosion if there is no coating. No time to re anodize. I was thinking nail polish? Any other ideas?",
-    "score": 0,
-    "num_comments": 4,
-    "created_utc": 1746040063,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1lf9ryz",
-    "title": "Mitutoyo digital caliper fault",
-    "selftext": "I bought of evilbay a digital caliper used (hoped would be original) user saying it does not power up.\nI looked at it and it seemed the battery metal plate (bottom, negative) had been broken and soldered together.\nI cut a small piece of brass sheet and replaced the broken tab by soldering it on the motherboard.\n\nUpon powering up the display keeps reading various numbers in the zero position. \nIs there any way to reset them?\n\nAnother question: is there bottom battery contact  plate meant to touch the caliper metalwork? I soldered mine so it does not.\nMy model is 500-133U UK made.\nThank you.\nSorin",
-    "score": 0,
-    "num_comments": 0,
-    "created_utc": 1750336739,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1kwn7ie",
-    "title": "Swiss lathe alarm OP267",
-    "selftext": "On our Citizen L20x lathe we periodically are having an issue with the work chute and work on back spindle chuck being interfered. It happens when the back spindle ejects the part but I\u2019m not sure why that would be. Anyone had experience with this situation before?",
-    "score": 0,
-    "num_comments": 1,
-    "created_utc": 1748352338,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1krd9tc",
-    "title": "Job Posting / Conventional Lathe Work / Electric Motor Repair Shop /",
-    "selftext": "Our electric motor repair shop is currently seeking an experienced manual machinist to join our team. We are a well-established, EASA accredited shop located in Northern Indiana with a strong customer base. We pride ourselves on the quality of our work, including the repair of explosion-proof and UL-listed motors.\n\n**The starting pay for this position is $30 per hour, with opportunities for increases based on performance.** We previously had a long-term machinist who recently retired after many years of excellent service. If you are interested in learning more about this opportunity, please reach out.\n\nPlease note: We are willing to help in relocation once hired if needed!",
-    "score": 0,
-    "num_comments": 0,
-    "created_utc": 1747767988,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1nfwfda",
-    "title": "A tragedy of his own making (a must read)",
-    "selftext": "\n\n\nYesterday my company let go of a young man that was 19 years old do to his own actions and his inability to listen. \n\nI work for an aerospace/aviation company that actually treats us really well.  This young man was given the rules and was told not to wear a hoodie on his head due to safety reasons / forklifts. The management told him this once, but he NEVER stopped doing it.  \n\nThen he started to go missing from his assign work areas for long periods of time, 20 to 45 minutes while the CNC machine was running. Which isn't that big of a deal were I work. Our company / management do not believe in riding our ass, they like to keep the environment relaxed. The problem is that he was doing it 3 or more times a day. \n\n\nAt this point management started looking at the cameras and trying to figure out were he was going during all of this down time. \n\n(Weather management figured it out or not they never told anyone)\n\nAt this point management stepped in and gave him an official write-up. He was written up for his hoodie situation and for not being in a general work area. At this point he proceeds to come back to the machine shop with a negative attitude insinuating everyone has it out for him more or less. \n\nAt this point I proceed to pull the young man aside in private to let him know he has a great opportunity working here. I explain to him why it's important to follow the rules and how it's a representation of yourself. I also explained to him that I have worked some really crappy jobs in my life and this is a good environment. (He is 19, he has no wisdom or enough sense to know I'm speaking truth)\n\n\nOver the course of the next 2 weeks the following happens \n\n- he falls asleep multiple times at his workstation \n\n- he falls asleep and gets talk to by management about the issue and yet continue to fall asleep, during this time he has dropped three parts out of his hand that he was supposed to be inspecting causing them to fall on the floor and get damaged. (These parts are worth close to $1,000 a piece FYI) \n\n- let's the machine crash while he was sleeping, he never woke up even though everybody else in the shop heard it. \n\n- when one of the managers came into our work area he had his hood on and was half asleep while the manager was standing behind him saying \" I guess we're not going to let the machines run today.\"  (She was trying to throw him a hint yet he never turned around or acknowledged her)\n\n- continue to remain out of work area only doing it 1 to 2 times a day at this point \n\n- playing on his phone in a work area were phones are not aloud. (Because they don't want pictures taken of our setups nor the work itself)\n\n- killed multiple parts because he would not blow the fixture out before placing another part into it. Even though he was told this multiple times and shown how to do it multiple times.\n\nFor all of this he received one general write-up. Making a total of two write-ups. \nAt this point you would think the young man is done and he had learned his lesson. \n\nYou would be wrong \n\n\nThe next shoe that fell was a big one. We had two order of parts that was sent over to the QC department. QC informed us that the parts were wrong because the hole locations were off by .015.  (normally this is caught on the very first run, which is called your setup run, that's when you fix the error.)\n\nEveryday for 2 weeks we ask that young man if he was checking the parts correctly. We asked him details about the whole locations and the parts in general. We asked him multiple times a day if the holes were coming out correctly and if they were in the right locations. (He could do the work correctly and he has shown us that he understands how to check these whole locations. He's done it multiple times correctly in the beginning)\n\n\nEveryday we were told yes everything is okay and correct by this young man. When QC caught the error he could no longer lie because all of the parts were wrong. You are supposed to do multiple checks a day, if he was doing that he would have caught the error immediately on the very first run. \n\nWhen questioned about this his response was, and I shit you not. \n\n\"I didn't check because I didn't think it was that important\"\n\n\n The guys in the shop did a rough estimate of what we think the damage was on these parts cost wise, we were looking at $120,000 minimum. (and that's what it cost back in 1999)\n\nAt this point management didn't write him up and were trying to rectify the situation. They did an internal investigation got everybody side of the story and ultimately determined that everybody makes mistakes more or less. (Which is true and this is not the costliest mistake we've had. It's just the nature of the kind of work that we do and  the cost of some of theses materials before we even touch them are already in the 10k range. Hell we'll throw away $20,000 or more in material just for defects and think nothing of it.)\n\n(And no I cannot tell you where I work nor what I do) \n\n\nBecause of his lying the manager decided to add some kind of verify check list thing, lol. \n\n(For the record at this point the shop guys and I were done and had began actively speaking to management to get rid of this guy. Everyday he stayed there we became more and more vocal. The line in the sand for us was the lying, we could over look the other. We run a tight group that is based on trust so lying was a big deal)\n\nBut management wanted to give this young man one more chance, my company really doesn't like to fire people. It takes an act of Congress or you running around calling people the N word or grabbing females by the privates to get fired as you can tell from this story. \n\nSo they moved him to the QC department thinking he could fit in better over there. On day one in QC he was caught not inspecting parts correctly and on day two the QC manager caught him sleeping. That was the last straw and they had to let him go. Now here's the sad part, this young man has no idea how good he had it at our shop because this was his first job ever and he went to school to become a machinist. \n\nOur company \n\n- pays for free eye check ups every year, and buys everyone new prescription safety glasses every year \n\n- buys everyone at least one new pair of safety boots every year, but sometimes you can get 3 boots a year like this year. ( I have so many safety glasses and good boots at home it's ridiculous)\n\n- up to 1 hour lunch \n\n-  two 25 minutes breaks, but you can stop anytime you want and walk around they don't care. They encourage it for safety reasons. \n\n- they feed us four time a year very big and  nice meals also they are always giving us pizza parties and breakfast stuff meals \n\n- the cleanest machine shop i have ever been in. I can literally leave work and not wash my hands because it's so clean. I can literally wear a nice pollo shirt to work and keep it clean. \n\n- the temperature is at 65 to 70 all year round. No lie a wear a hoodie to work everyday because they keep it so cool in there. (My last shop didn't even have AC or heat  and was dirty AF)\n\n- great benefits, 401k match, dental, (no one has personal vision coverage because they pay for that out of the company pocket)\n\n- If you need anything or just want something they will buy it. (My buddy got them to get a outlet switch for him because he was tired of standing up to pull the string to turn on the light) Yes they will buy that kind of ridiculous stuff for you. \n\n- nice clean break area with nice vinding machines \n\n- hell we even have a janitor that keeps that place super clean. Smells like cleaner all the time. (My last shop never clean the bathroom or break area)\n\n- no drug testing \n\n- coming in the door with no experience they START at $26 hour. (Yes $26 no experience)\n\n- coming in off the street you start with 40 of sick time and 2 weeks vacation (you can use the 40 hours of sick time like vacation time and they don't care nor need a doctor note. I just save my sick time tell the end of the year and take off the week of Christmas and come back on January 2)\n\n- after 4 years you get 4 weeks of vacation and 40 hours of sick and you can care over 40 hours every year. ( I normally have a total of 6 weeks of vacation once you add it all up. People have also much time at the end of the year because they can't use it all that management comes around and makes people take off lol)\n\n- and they have room to grow and move up in  the company, hell my boss use to be the maintenance guy. \n\n- plenty of over time and no weekend work ever. I can make close to $60 hour on OT just sitting in an AC room laughing and shooting the sh*t with my buddies never getting dirty.\n\n- we work 6am to 230pmm do you understand how great that is. I can get doctor appointments, cut grass, fix things around the house and still sit down at 5pk every day to eat dinner with the wife and still have time at the end of the day to relax. Having this schedule saves alot of PTO because I can get stuff done after work. \n\nWhat I am getting at is that this young man is about to have a rude awakening when he began to start applying to other shops in the area. I have been in the game for 14 years and have been in a few shops. I think we have it pretty good and I know what is out there in the local area job wise. His problem is that he is young and didn't / doesn't know that this was a great job opportunity. \n\n\nSome lessons are learned the hard way \n\n\n\n\n \n",
-    "score": 326,
-    "num_comments": 199,
-    "created_utc": 1757767048,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1mq10k8",
-    "title": "Don\u2019t lie about the basic stuff lol",
-    "selftext": "They just walked a guy out because buddy lied about knowing how to use calipers. Like man I get it. Job asks for 3 years experience and you have 2.5 years under your belt? Fuck it. You can make it work, but don\u2019t say you know something that can be obviously seen lol Buddy was here 3 days. Supposed to check every 10 parts. Ran 250 pieces and dam near most were out of tolerance. It got none to do with me, but I had to chuckle. I\u2019m certain had he been honest IF they would\u2019ve hired him they would\u2019ve been willing to teach him. ",
-    "score": 443,
-    "num_comments": 134,
-    "created_utc": 1755178894,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1sfi3of",
-    "title": "What are some shop \"inside jokes\" or acronyms that would confuse an outsider?",
-    "selftext": "Every trade has its lingo. Sometimes one word tells you if you're talking to another machinist or not.\n\nI'll start:\n\n\"Looks good\" on a drawing with no dimensions highlighted might mean \"I have to assume all these are critical, and this will be expensive.\"\n\n\"Customer will deburr\" often translates to \"this feature is nearly impossible to deburr properly by us.\"\n\n\"Mag\" for magnesium alloy, like AZ31B.\n\nThe eternal struggle: \"One-off\" vs. \"Low-volume production\" \u2013 two completely different cost worlds.\n\nWhat's your favorite shop term or acronym that would sound like gibberish to someone outside? Funny misunderstanding stories are welcome!\n",
-    "score": 82,
-    "num_comments": 114,
-    "created_utc": 1775620228,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1srrhdj",
-    "title": "What do you think of the shop perfectionist?",
-    "selftext": "I work alongside the shop perfectionist.  He is essential, he makes me better at my job but God does he annoy the shit out of me.  Constantly judging my work and telling me how he would fix this or fix that ....  Literally was telling me how he would scrap half my work based on visual discrepancies.  I had two tool paths that met together (radi tool paths) one tool path was a few tenths higher than the other leaving a few tenths step.  I'm being reviewed on speed ..... The more parts I get out the door the happier my boss is. I'm not slowing down to fix a tenths blend.  But ultimately...... He's probably right in fixing it.....   ",
-    "score": 85,
-    "num_comments": 104,
-    "created_utc": 1776786174,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1r3f0kv",
-    "title": "Bossman stressing me out because he bid the job wrong.",
-    "selftext": "Yo! Stop telling me to hurry up. It\u2019ll be done when it\u2019s done. I didn\u2019t program the part and if you want .0005 accuracy it\u2019s not going to be fast. It\u2019s not my fault you\u2019re loosing money on the job. Rant over. ",
-    "score": 241,
-    "num_comments": 82,
-    "created_utc": 1770955142,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1relj6l",
-    "title": "What is the attitude of the manual only machinists in your area?",
-    "selftext": "I am not sure if my experiences are a pattern or if they are just a few people in a bad mood, but many older machinists who only have knowledge of manual machines seem very defensive and sensitive about their job constantly needing validation.\n\nI have had them tell me that if I was a \"real machinist I wouldn't need a $500,000 CNC\",  but I just have a used vertical machining center I paid $15,000 for. Earlier I purchased on their recommendation a brand new manual knee mill for $12,000 and was taking a long time to complete the prototypes because so many had curves and angles. then after getting the VMC for not much more it changed everything for me and was so much easier for these 1 piece prototypes, it changed everything for me.\n\nThe machinists I have met who can do both or only CNC have been more humble and say that it's just what direction their career path took them and are less judgmental.\n\nWhat I have seen as a common trend is that manual only machinists exaggerate often saying that CNC will take hours to setup and program a circular interpolation operation, they really cannot grasp conversational controls like a tool room Prototrak hybrid or Haas TL-1. \n\nI have been told that manuals are quicker unless you are making hundreds of parts to justify the programming time, they get so upset when a lathe part requires rounded corners intersecting with a gradual taper, but this was for me just a few lines of g-code using a canned cycle. Yelling at the engineer to simplify the design to eliminate curves (these features were important to its functionality) but they were no problem for the CNC and added nothing to the cost for other who did the job.\n\nthey think CNC costs hundreds of thousands of dollars then try to tell the owner to purchase a Bridgeport for $30,000 from MSC, I suggested a Prototrak for similar price but then remembered they cannot remember how to even use the jog mode.\n\n  \nOn YouTube the best examples of the personality I am talking about is Josh Topper of \"Topper Machine\" who is so stubborn he will shut down his business instead of learning something new.\n\n  \nI know some people are just assholes, but it seems like they are secretly self-aware of becoming outdated and are defensive about refusing to learn any CNC skills.",
-    "score": 16,
-    "num_comments": 131,
-    "created_utc": 1772044266,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1o0v623",
-    "title": "Getting hate from a lot of my co workers, how do I deal with it?",
-    "selftext": "Hey guys I\u2019m the only guy under 55 programming cnc at my shop all the guys I work with run like how they were taught and I\u2019ve been taking modern tooling and running it what I think is decently fast. Slotting 1/2 inch deep in aluminum with a half inch endmill at almost 200ipm surfacing toolsteels at 250ipm you get the picture all my co workers see this and tell me this isn\u2019t possible and I hear all about how I\u2019m beating up the machine as I cut the cycle times down 80-90% and make my company money. \nThose of you in similar situations how do you deal with this? \nI just shrug my shoulders and say\u201dwell it\u2019s possible your seeing it, I\u2019m not hurting the mill this is what  they are made to do and even if I have caused damage to the spindle doing this, in 3 months of doing this it\u2019s made more than enough to cover a new spindle\u201d they still come over and complain every time I do something like this.\n\nI still believe these guys have things to teach me so I don\u2019t want to make anyone mad at me, at the same point I\u2019m not running fast, everyone else is crawling at a snails pace and it\u2019s not my fault im making them look bad. \nMy boss is star struck and thinks I\u2019m some sort of wizard because I know a bit about tool geometry\u2019s, coatings and for the most part just run everything at manufacturers recommendations when possible.",
-    "score": 179,
-    "num_comments": 129,
-    "created_utc": 1759880700,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1r0jke3",
-    "title": "Carbide scammers in western canada",
-    "selftext": "Just a heads up for machine shops in western Canada and maybe the Pacific northwest US.\n\nSigma Contractors Ltd out of Hamilton have been going around to shops asking for Carbide to \"fix their paving machine\". They've hit two shops in Kelowna and one in Vancouver that I know of and that's with only contacting two shops myself.\n\nThey have two different black trucks, a crew cab Ford and a Ford Explorer with Ontario license plates.\n\nSigma came in last Friday when I was away and talked with one of my machinists. Told him that they had talked to me about using our Carbide \"just for the day\". They of course had never talked to me but my machinists figured it sounded like they might have and gave them our used Carbide. The Carbide hasn't been returned and based on talks with the other shops, it won't be. \n\nSigma left a card with their website, phone and email but no name. Website exists but their phone number doesn't work. I emailed them asking for it back. No response. ",
-    "score": 114,
-    "num_comments": 82,
-    "created_utc": 1770677911,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1sle4dq",
-    "title": "High feed milling and shop questions",
-    "selftext": "I don\u2019t know if I would call my shop old school but there are for sure a bunch of old heads who think a endmill can\u2019t feed faster than 100 ipm. I\u2019ve tried to explain radial chip thinning to a bunch of people at my shop some know exactly what I\u2019m talking about some have never heard of such a thing. I don\u2019t know how to use cam software but I know enough about machining to get me in trouble with the programmer making him re write the whole thing to make it work. That being said my shop is too cheap and too lazy to train me in to program for my own so how do I convince a shop stuck in its ways to change how we program most of our parts. \n\nI\u2019m sick of these hour long runs for a 5 in square with a pocket and some holes. It just seems ridiculous. We recently upgraded drills and I had to teach them we don\u2019t need to peck with most of the smaller sizes just straight through. \n\nIs it just that the old guys want their phone time and don\u2019t wanna fix anything or improve or just clueless. \n\nWhat do I do other than try and make my own parts run as fast as possible ",
-    "score": 9,
-    "num_comments": 67,
-    "created_utc": 1776184997,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1rvuysw",
-    "title": "My employer does not have enough work for me but isn't providing me with any sort of alternative to fill the time.",
-    "selftext": "Manual guy, 9yrs in the trade. Been working at a new-ish place for 7 months now after getting laid off from my previous shop of 7 years. The new place is a motor repair shop with a decent amount of employees and the business seems to be doing okay, but I'm the only machinist. They were trying to get an in-house machinist for YEARS but didn't have any luck until I came along, otherwise the majority of their machine work is sent out to a local shop.\n\nThe job was okay at first for a while, work was pretty steady, I had no trouble doing everything on my own and repairing whatever shafts/end bells/rotors/couplings/etc they sent my way, but it hasn't been going well for months now. Like since December at least.\n\nI've been calling off pretty much at least 1 day every week because of it. Because otherwise, there just simply isn't enough work to get me through a 40hr week. In many cases I will leave early or work a half day only.\n\nI **would happily** do the full 40hrs if management actually allowed me to go find a dark corner to sit in and read a book or something when the work is dead, but that is strictly unacceptable conduct to them during production hours, AND YET, they will NOT give me something else to do. All my supervisor does is shrug his shoulders, and all the owner does is pretty much blame the supervisors beneath him for my current predicament. Again, this has been going on since December now.\n\nIf it sounds like an absurd situation , trust me, it is. Imagine if you begged for work but all your boss could do was shrug his shoulders and tell you to figure something out with no guidance or direction, but won't allow you to just grab a chair and sit down to wait out the slow parts of the day (there is a zero sitting policy there).\n\nI really just want a steady job, my previous employer's business started to go under in 2023 and my last couple years there were miserably slow with lots of cut hours. I just want to work and I can't seem to find a place to work that has work for me.",
-    "score": 41,
-    "num_comments": 67,
-    "created_utc": 1773716309,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1rjxj33",
-    "title": "New Machinists",
-    "selftext": "Hello all I\u2019m a 31 year old male who has started his machinist journey. My goal is  to make this an into a lucrative career. Any machinist with success professionally and financially in the trade have any suggestions learning tools or any advice share \n\nGood day all",
-    "score": 14,
-    "num_comments": 68,
-    "created_utc": 1772563186,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1nk2z2m",
-    "title": "Advice I received from one of the old school machinists",
-    "selftext": "Had a very bad day\u2026 everything I touched turned to shit. We all have those days. I was clearly getting frustrated trying to do things quickly to fix my fuck ups\u2026. One of the old guys (really grumpy guy most of the time)\u2026 came up to me and said \u201cdo you think you\u2019re the only person here that can fuck up a job\u2026 slow down and learn from it\u201d\u2026 good advice.",
-    "score": 292,
-    "num_comments": 55,
-    "created_utc": 1758185063,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1rcdm72",
-    "title": "This job sucks",
-    "selftext": "I'm just starting my second year of my apprenticeship, and I can't say I'm enjoying myself much. Before I started my apprenticeship I was a laborer for a couple of years, I taught myself conversational programming for CNC from a machine manual and so when I became an apprentice I pretty well went straight onto a 3 axis mill to setup, program and run jobs from a drawing. I did have a tradesman working on the machine next to me if I had questions or needed something checked, albeit reluctantly.\n\nIt was okay for a while but we started hiring more tradesmen with questionable experience and they just kept taking up my main guys time asking questions and stuff. So I just kinda started figuring stuff out on my own, but then I'd get in trouble for not doing things the intended way. But then I'd get in trouble for asking because apparently I should be able to figure it out. If I messed up a part I'd get in trouble for rushing, if I took my time and got it right I'd get in trouble for being slow. \n\nAll the while doing the same jobs as everyone else in the milling department, running any 3 axis, doing stuff with 0.1mm, 0.05mm, 0.02mm tolerances whatever. Running 40-50 year old poorly maintained machines riddled with errors with whatever tooling just trying not to get in trouble. All to be told \"go faster\" or whatever. I get it, upper managment sucks and puts pressure on everyone and it all eventually lands on me. \n\nIt just sucks to go to trade school and get all my work done early and signed off, consistently be ahead of the game and the best in the class, just to get back to work and be told I'm not doing well enough. No ones stood at the machine with me and showed me something for ages, I can barely get a hold of the one guy competent enough to actually teach me anything for clarification on something. All this to be paid the least in the entire shop, this sucks. \n\nI figure my experience isn't unique, but I'm curious to hear what you guys expect from a 1st or 2nd year apprentice machinist, maybe I'm just incompetent and need to stop coping. Or maybe this is just the norm of the industry now, or perhaps, there's greener pastures out there. I just wanted to talk about it either way, thanks. ",
-    "score": 46,
-    "num_comments": 62,
-    "created_utc": 1771841357,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1onzm1o",
-    "title": "What jobs will continue to be manual machining indefinitely?",
-    "selftext": "I\u2019m currently in machining/metal fab school working my way through learning CNC and I honestly hardly enjoy it. I love manual machining, It fascinates me that people have been making things accurately for hundreds of years now with these tools. the ability to make things or fix things just using my brain is incredibly satisfying to me. \nAnd I\u2019m wondering what jobs are out there for manual machining that won\u2019t be taken over entirely by CNC for the time being? Or at least a decade lol",
-    "score": 52,
-    "num_comments": 89,
-    "created_utc": 1762235305,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1qf3y4y",
-    "title": "Mechanic vs. Machinist Which one should I choose?",
-    "selftext": "I've recently gotten two job offers, one as a Mechanic 1 position with salary of 25.50/h and another as a CNC Machinist with a salary of 22/h. For the mechanic job I'd be working on repairing truck transmissions and for the machinist job I'd be making low tolerance parts for airplanes. I have a computer engineering degree and 0 experience for either job, both are willing to train me from nothing. I'm not sure which job would be better long term and which skills would be more beneficial in the long run.\n\n  \nEdit: I'm 22 debt free and have some savings so making more money down the line is more important to me than right now.",
-    "score": 22,
-    "num_comments": 72,
-    "created_utc": 1768625351,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1scwhjj",
-    "title": "New to the shop environment (deburrer), looking for advice",
-    "selftext": "Hey guys!\n\nI just got my first position in this kind of environment as a deburrer for an aerospace manufacturer. I am working on my mechanical engineering BS, so technical stuff isn't really that unknown to me. I am however looking for general advice on how to be good and prove myself to be competent. Also, I am 22, so pretty young.\n\nI come from kitchen work (only job type I have ever had in my life and worked all the way up to Jr. Sous Chef) and am just kind of getting nervous about this transition. I haven't even ever worked for a company with HR, let alone insurance benefits, 401k matching, shift differentials, and *100% tuition reimbursement*. It all feels so serious compared to what I am used to and I'm worried I will be out of place or not know how to act. They literally have a book club.\n\nThey really liked me at the interview and sent me the offer letter the day after. The pay is very good for an entry level position, but I guess it makes sense given the stakes of aerospace manufacturing.\n\nAnyways, really looking for advice on deburring or what I should know in general going into it because I'm not sure what is expected of me day 1. I haven't had any professional shop experience (though I did take a semester of manual machining), but I *was* upfront about this but the manager was okay with that.\n\nI'm also hoping there are at least a few people here who also came from the kitchen and might be able to tell me what the transition was like for them. If that's you, pretty please drop some knowledge lol.",
-    "score": 37,
-    "num_comments": 44,
-    "created_utc": 1775370951,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1smodf5",
-    "title": "Is this industry still worth it start out in?",
-    "selftext": "I was hired as an operator at my dream job. As silly as it sounds, I love running CNC and was genuinely excited to go into work.\n\nI've never done anything like this before. I wasn't the quickest, but I didn't break any tools or parts through thousands of cycles and I was operating and maintaining 3 machines at once after a month in. (I don't know if that's good, but it felt like a lot)\n\nApparently while I was doing the short cycle operations, the small company was setting up for automation on other machines. I thought \"Great, now I can get in on this new process as well as knowing the old ones.\"\n\nWrong, fired on the spot. Three months in. Owner said it was because he was \"changing direction\" and he wants an experienced machinist for $20 HR no benefits. I was making 18. Hes a nepo idiot but that's another story.\n\nNow I'm lost. Did I automate my job away? Is this normal in this industry? Where do I go now? Should I go to college first before even attempting to get in?There aren't any more CNC jobs around me but I may move if I don't have to deal with this bs.\n\nI don't know what I want from this post. Just needed to vent. Hopefully someone else can relate.",
-    "score": 13,
-    "num_comments": 43,
-    "created_utc": 1776300291,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1ri6o1y",
-    "title": "Looking for a hard metal resistant to grinding with diamond wheel.",
-    "selftext": "I'm looking for recommendations for a metal suitable for helping me with my work. I'm a glass blower.\n\nI would like a piece of metal that I can use as a guide when grinding glass into shape. Like a template. \n\nCurrently I've been sticking one of the parts I'm trying to replicate onto the glass then grinding up to the edge of the part. The issue is the part is very thin and made of copper so if the grinder touches it at all it grinds right away and then it's no use!\n\nSo I'm looking to have made a copy of the part but hopefully in a metal which won't grind away so easily especially compared to the glass.\n\nIt's a diamond grinding disc I'm using.  \n\nThanks\n\n\nEdit: I think I've maybe not explained myself well!\n\nThe template is mostly a visual guide.\n\nI'm aware that no metal is going to be ungrindable. But I assumed that a harder metal would grind less material off when touching the grinding wheel for the same amount of time and preasure. \n\nThe part would only come into contact with the grinding wheel when I make an error and it would be a very light touch for a split second. \n\nThe copper part didn't grind away much rather just looked a bit rougher finish. I don't expect it to happen much but over time I can imagine the dings adding up and eventually being enough off to cause an issue. \n\n\n2nd edut: oh dear, judging by the downvotes asking questions isn't so welcome in this sub hey? I am so very sorry. ",
-    "score": 23,
-    "num_comments": 52,
-    "created_utc": 1772393670,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1p0r38o",
-    "title": "Should I quit?",
-    "selftext": "So for some context, I work in an aerospace company and we make parts for GE, Rolls-Royce, SpaceX, NASA, Honeywell, etc\u2026 I\u2019ve been with the company for a year and a half and I run five CNC lathe machines by myself 2 okumas, two haas and one smart machine and I also run a Proto trak for a couple hours out of the day after second shift gets there so I\u2019m running thousands of parts a week. Typical jobs have anywhere from one piece to 100 pieces per job and cycle times range anywhere from 30 seconds to one hour various different metals and alloys anything from aluminum all the way up to cobalt chromium and even harder so my question is I got a written warning a couple months ago because I lost orientation on two parts but it wasn\u2019t my fault. The person before me did it and I got the blame because I signed the router and then just this week. I messed up one part I put a 1/2-20 UNF-3A thread on a 1/2-13-UNJF-3A part.simple mistake I typed in the wrong program and I got written up as a final warning. and I am by myself running all five lathes on first shift. We have one guy who runs the mills he\u2019ll float back-and-forth to help me but he\u2019s never really helping me because the mill keeps him so busy but second and third shift on the lathes have 2 to 3 people per shift on the lathes. but all the people on second and third shift that keep crashing the machines and breaking $400 tail stocks never get written up. So I\u2019m definitely quitting my question is just how should I go about it? Should I give them a two week notice or should I just not show up tomorrow, the only thing with the two week notice at my company is ive seen several people give a two week notice and the boss will come up to them and have them grab their things and walk them out a day or two after they give their two week notice and pay them for the remainder of the two week notice I\u2019m not trying to be embarrassed like them I\u2019m thinking about just not even coming in tomorrow and just quitting because I am definitely not being appreciated. I just don\u2019t want to burn any bridges in case one of my future employers calls them for a referral. And also we\u2019ve been on mandatory 50s for almost 3 months and they said until at least the end of the year and yesterday they were talking about going up to mandatory 60s and another thing we have to work Christmas eve and all the people that have been here a while literally put their pto in the day after Christmas last year a year before so now the pto bank is maxed out and now everybody has to work Christmas eve besides the five people that have been here forever and knew to put their pto in early but last year was my first Christmas here so I didnt know to put the pto in early. Thank you for any help.\n\n\nUPDATE: so the parts that I got the final warning write up for werent even scrapped/void they were able to be fixed and i ended up saving them on the Proto trak so I got a final warning write up for parts that werent even scrapped I put in a week of PTO for next week so im off all next week just to relax and reset and get away from that place and then I will be back the following monday on December 1st and im going to talk to the boss above my supervisor that wrote me up on Monday and if he doesnt scrub that write up off im walking out\u2026 thank you for all the replies guys. I appreciate it. Keep them coming.\n",
-    "score": 27,
-    "num_comments": 75,
-    "created_utc": 1763507327,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1ri8qe7",
-    "title": "How to explain failed parts?",
-    "selftext": "Hi everyone,\n\nIm (M25) working as a machinist for a couple of years at my current job.\nLately, I\u2019ve been feeling overwhelmed because the demands are extremely high, and there is zero room for error.\nThe issue is that I\u2019m often required to hit very tight tolerances, but there is frequently no extra material available to 'dial it in' or recover from a small mistake. In my company, there are several departments, but I feel like the pressure on the machining side is misunderstood.\nI also have ADHD, which makes the mental load of 'perfect execution' even heavier. I\u2019ve reached a point where I don't want to ask anything of others because I don't want them to expect perfection from me in return\u2014mostly because I\u2019m tired of feeling like I\u2019m letting people down.\nHow can I professionally explain to my employer that the inherent risk of making a mistake is simply higher in precision machining than in other parts of the company? How do you deal with 'one-off' parts where you only get one shot at it without any spare material?\nAny advice on how to start this conversation without sounding like I\u2019m making excuses?\"\n\nThanks in advance!",
-    "score": 67,
-    "num_comments": 40,
-    "created_utc": 1772398336,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1srtxp0",
-    "title": "Who\u2019s making money at home with a manual knee mill and lathe?",
-    "selftext": "I\u2019m motivated as hell to put a machine or two in my garage. Young guy here who wants to put in extra hours to get ahead. I\u2019m still considering a small cnc (X7, VF2) but concerned I\u2019m going to hate the noise levels of running a big compressor and high speed tools in my attached garage 10-15 hours a week. \n\nThis bring me to my question. Anyone making a little side income with a couple manual machines at home? This is a plan B thought for me should I decide against the CNC route.",
-    "score": 12,
-    "num_comments": 37,
-    "created_utc": 1776791243,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1snjo1s",
-    "title": "Inherited a machine shop",
-    "selftext": "My grandfather passed away recently. He had a machine shop on his property that hasn\u2019t run since 1995, but has a ton of tooling and different chucks/fixtures. Shop has potential, but needs some love to bring it back to life. I have rented my own home out and am now living, fixing and maintaining the property/shop. The shop was full of garbage as it\u2019s been used as storage instead of a machine shop for 30 Years. \n\nSome background: my grandfather was a machinist, my father was a machinist and now I\u2019m a machinist. 27 years old and I\u2019ve been in the trade for 7 years. I\u2019m very passionate about machining and have a lot of pride in what I do since it\u2019s a skill that\u2019s been passed down to me.  I have alot to learn still, but I am a competent machinist. I am G-code certified and have spent most my time in the trade on CNC machines. Specifically Doosan machines with Fanuc controls. I started, and stayed for most my 7 years in the field, in a production shop where we made the same parts everyday and ran the same programs. Cut my teeth there, but didn\u2019t learn like I would have in a job shop. Now I\u2019m working at a power plant and there\u2019s a lot of machine work on manual equipment and CNC\u2019s. Much much much better program too here, never worked anywhere like it. \n\nMy goal is to clean this shop up, tool the shop up completely, and have these machines serviced. I\u2019m in the process of all this right now. \n\nThe equipment includes: \n\nHarrison M350 engine lathe\n\nClausing 1300 engine lathe \n\nBridgeport \n\nBridgeport clone\n\nSeveral Hardinge speed lathes \n\nThe shop also has several band saws for cutting material, a sand blaster, pedestal grinders, ext. All the lathes have several chucks. Collet chucks, 4 jaws (both on a scroll and independent), 3 jaws ext. lots of dividing heads and other parts for the mills as well. I don\u2019t have swing for lathes, or table size for mills off top of my head. \n\nHERES MY QUESTION: I do not want this shop to become just a hobby shop in my backyard. I want this shop to be a place I can turn into\n\na business. I know that starts with tooling up the shop and getting the machines dialed in. I need to have a clear description of what size material I am able to work with given my lathe swing and table sizes for customers. But I\u2019m wanting input from the community what I should classify my shop as and where I should look for work. Should I classify as a job shop? Is my equipment too archaic to function as a prototype shop? Should I exclusively look for odd jobs through local hot rod shops and such, or is it worth it to look to see if I can contract work from other local machine shops? My long term goal with any success would be to also invest in a haas mini mill to get into a CNC here. I have the space for it. Anyway, I appreciate anyone\u2019s time who read into this and would love insight from those in the industry who have been around a lot longer than me. Thank you ",
-    "score": 41,
-    "num_comments": 33,
-    "created_utc": 1776381142,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1sbo5ee",
-    "title": "In-house R&amp;D machining?",
-    "selftext": "For context, I'm a R&amp;D engineer for a metal fabrication job shop type of place. 99% of what we do is assembly of various things using Unistrut. We have some custom processes and machinery/tooling tailored specifically for this.\n\nWe often have one-off machining work that needs to be done to produce custom jigs, fixtures, or tooling based on the work that we pick up. The shops near us seem to be not interested in taking on this type of one-off prototype machining work anymore, recently the quotes we've been getting back are astronomical, \"fuck-you-pricing\" type of bids when we've reached out to have custom tooling machined for our equipment.\n\nI've made several pitches, unsuccessfully, to my boss, asking that we purchase a CNC mill to have in-house capabilities to make our own parts, not only because of the cost but also solving the lead time problem too. I can't seem to get past the sticker shock. They see a 5 figure price tag of a machine and just immediately reject the idea. I had tried to pitch a used 20012-2014-era Haas VF1 or VF2. I have machining experience and would be the one programming and running this mill, we wouldn't hire a new person for this.\n\nDoes anyone have any suggestions or other information I can point to, that would help show the value in insourcing machining capabilities for this type of work? I'm the sole engineer type person here and I feel like I'm being asked to produce the impossible, they want the results but won't pay for either the machines to make the results, nor for a third party to make the parts.\n\n  \nI'm also curious to hear from other machinists that work in larger companies providing in-house work for engineers on another team.",
-    "score": 13,
-    "num_comments": 34,
-    "created_utc": 1775246536,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1q0tqky",
-    "title": "Most frustrating or difficult materials?",
-    "selftext": "What are some of the most head scratching materials y'all work with? What specific difficulties do you find? What seems to work to fix problems, inconsistency, time and insert loss? The PEEK blends we use give me fits most days, so just trying to get some perspective and learn something I haven't been exposed to ",
-    "score": 14,
-    "num_comments": 55,
-    "created_utc": 1767235041,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1rr1bxk",
-    "title": "Should I ask for a raise?",
-    "selftext": "Sorry if this isn\u2019t the right subreddit for this, but I\u2019m a 22 year old machinist working in a relatively small family shop, we have ~10 machines with 2 being mills and rest lathes. I\u2019m one of two guys outside of foreman that can setup on both the mills and the lathes, I can\u2019t write full programs but I can make quick line by line programs and can edit and troubleshoot as well. I\u2019m currently at 20.50 an hour and was just wondering how that looks? I\u2019ve tried to look it up and just can\u2019t get a good consistent answer. \n\nEDIT: I\u2019ve been running the lathes for 2-3 years and the mills for the same time but consistently for 1.5 years\n\nEdit 2: Im located in south Louisiana, forgot to mention",
-    "score": 11,
-    "num_comments": 38,
-    "created_utc": 1773252360,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1onqjoq",
-    "title": "Mental Health",
-    "selftext": "Hi Everyone,\n\nI realize I am probably going to just be told to suck it up and stop being a bitch but I am going to ask the question anyway. \n\nHave any of you had experiences with shops that actually cared about the mental health of its employees? Or am I going to have to spend the rest of my career keeping all of the bullshit I go through completely to myself with no option to reach out for support?\n\nThe reason I ask, is because I am returning to work after around 9 months away, and among other things I already suffered from, I was recently diagnosed with PTSD. I had a panic attack at work last week, and was sent home without pay. This morning I had my employment terminated without cause as I was on probation. Prior to being let go, I had received positive affirmations from my boss. So I know that I wasnt let go due to performance issues.\n\nWith hindsight I realize I probably shouldnt have said anything to anyone, and kept it to myself, especially being on probation still. \n\nAlso I would like to add that the employer was aware of my mental health challenges prior to even hiring me, and reached out asking me to work for them, not the other way around.\n\nEdit to clarify: I am not looking for employers to fix my problems. I am just asking if employers capable of empathy of the lowest degree are out there. ",
-    "score": 37,
-    "num_comments": 58,
-    "created_utc": 1762209772,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1sdxh8k",
-    "title": "Question with pay",
-    "selftext": "Kinda long and all over here, so bear with me\u2026\n\nI have my 2nd review coming up soon. Currently I don\u2019t feel like I\u2019m making enough. For some background, I have 1 year manual experience, then went to a CNC grind shop for 5 years that primarily was toolmaking, now this\u2019ll be my 2nd year in a CNC machine shop. So overall machining I have 8 years experience. I started classes last year for an apprenticeship program, so this is my 2nd year. My current pay is just below $21/hr. For what I\u2019m doing as an individual, I feel I\u2019m underpaid, but I\u2019m not entirely sure if it\u2019s normal wage, or if I should be asking for more. Im not the basic button pusher either\u2026 basically the supervisor on my shift, the only thing missing is the title. Fixing stuff from other shifts, reworking hundreds of parts in orders that nobody else can get (both because they don\u2019t feel like it, or just don\u2019t know how), training others, will to learn, and always looking to learn more, etc, I even know what everybody\u2019s doing on my shift, and can help others\u2026 and I was the only person on my shift who had access to get tooling until I told management we need a 2nd in case I\u2019m not there\u2026.anyways\u2026 with my review coming up, I\u2019m not sure what I should ask for, my first review/raise (70 cents) left a sour taste in my mouth with the excuse of sending me to school, which seeing the bills for each semester, really isn\u2019t much, it\u2019s $400-800 for each course taken, and now that my cars paid off, I can manage that myself\u2026\n\nQuestion is, with my experience and what I do individually, what should I be making\u2026 I\u2019m trying to use sites like Glassdoor, zip recruiter, etc. to find what I should be worth, but it\u2019s ranging me from $18-$30 in my area, so I\u2019m not entirely sure\u2026",
-    "score": 4,
-    "num_comments": 30,
-    "created_utc": 1775478542,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1sazji1",
-    "title": "Cnc milling question",
-    "selftext": "Hello everyone,\n\nI\u2019m 23 years old and have been working at my family\u2019s shop since I was 18. Recently, I\u2019ve started running a mill full-time, and I feel like my programming skills are improving every day.\n\nI have a question about a situation I ran into today. I was machining a part down to size using a fly cutter, going from 3 inches down to 1.1875 inches. I\u2019m running a Takumi V11, which tends to leak quite a bit of way lube, and I usually get a low-lube alarm about once a day.\n\nWhile my program was running, the alarm came on mid-operation. I stopped the machine, refilled the lube, and then restarted the program. However, when I did, my inserts broke. I lifted the tool, changed the inserts without any issues, but now I\u2019ve lost my position in the program.\n\nThe program takes about 40 minutes to run, and I was already 20 minutes in when this happened. My question is: how can I return to the exact position I was at in the program instead of restarting from the beginning and waiting for it to get back there?\n\nAny advice would be greatly appreciated. Thanks!",
-    "score": 3,
-    "num_comments": 29,
-    "created_utc": 1775178561,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1mi6zhq",
-    "title": "How competent are your 'maintenance' guys",
-    "selftext": "Just getting a little frustrated and wondering how common it is for the guys that 'fix' your machines to not know their thumb from their ass...\n\n\nInstalling a brand new chuck adapter plate on the lathe? Better hand scribe the part# on the mounting diameter so we can see what it is. No need to buff that. Who checks run out anyway? Is .008\" bad? That's pretty good right?\n\nOh hey I can't even see that part# because it's mostly covered up by the chuck. Darn. Can't say I didn't try! ",
-    "score": 77,
-    "num_comments": 63,
-    "created_utc": 1754394496,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1sg9vfj",
-    "title": "Mazak or Okuma",
-    "selftext": "Hey guys, we are about to pull the trigger on a new machine, we have narrowed it down to either a   \nMazak I-700 or an Okuma MU-6300V\n\nwe only use Cam software for programs so no benefits from using the conversational, we do a lot of head porting to so will need something that can do simultaneous 5 axis well.   \nI've used Mazak's for years so i know them extremely well but haven't done much on the Okuma. their is also not much in the price between them either the Okuma is a touch cheaper. I'm just not seeing much info out there on the Okuma's and full 5 axis machining  \n\nthe shop I'm at only has haas VF series with trunnion's so this machine will be a massive upgrade.\n\nany help would be great guys thanks ",
-    "score": 11,
-    "num_comments": 26,
-    "created_utc": 1775692990,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1ppohak",
-    "title": "Ode to the Jig That Shouldn\u2019t Exist",
-    "selftext": "Oh mighty jig, you crooked beast, \n\nYou promised precision, or at least! \n\nBut clamps that slip and pins that bend, \n\nMake sanity meet its bitter end. \n\nThe designer said, \u201cIt\u2019s all okay!\u201d \n\n(He drew it drunk, or so they say.) \n\nNow parts misalign in a tragic dance, \n\nOperators glare with a murderous glance. \n\nWe shim, we tweak, we curse, we pray, \n\nYet chaos reigns the shop each day. \n\nSo here\u2019s to jigs that fail with flair\u2014 \n\nA comedy of errors beyond repair!",
-    "score": 149,
-    "num_comments": 27,
-    "created_utc": 1766057082,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1s83k6q",
-    "title": "Would Americans hate me if I try to move on as an Operator?",
-    "selftext": "Hello everyone, I'm a 20yo boy who entered the world of machining at age 14, I was a CNC Lathe competitor at SENAI, a very prestigious Industrial School, for 3 years.\n\nBy 17 I also started developing computer systems to digitize and automate systems in Manufacturing Companies. I've automated processes to the point where engineers no longer need to use EdgeCAM and CATIA, reducing 4 hours to 20 seconds, creating scrapings that could advance 40 days of information and shorten the manufacturing cycle.\n\nI've also developed warehouse and inventory systems. I tried to start a Insert Life Cycle management System but the facility had bigger problems in that time.\n\nI developed Fixing Devices and Tools for both Mills and Lathes\n\nSo I know I have potential, but here in Brazil, no matter how much you do, your salary isn't much better than someone who just graduated from school and went straight into the work in a Shopping, what I'm trying to say is that effort is kinda meaningless here.\n\nAnd my uncle left EMBRAER and was hired by Blue Origin, so I've been considering going to the USA as well.\n\nDo you think it would work out? Could you give me some advice?\n\nThank you very much for your attention.\n\nYes I know USA is not in the best times right now but I always admired Americans because at least you try to stand up for something, which is not true here in Brazil\n\nI'll send emails anyway.",
-    "score": 0,
-    "num_comments": 29,
-    "created_utc": 1774905260,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1rwa329",
-    "title": "I hate whoever made our program at work",
-    "selftext": "We run only one program creating the same product, with variations. Editing this mess to work with new tooling is so frustrating. They\u2019ve set custom errors for things like limits on tool length, taper angle, speeds, and about 15 more that aren\u2019t described well enough to understand with my current knowledge. Like why is it that I can replace an old tool with the new one and new settings with no issues, but when I set up the new tool as its own in the machine it errors out?? I\u2019m definitely in way over my head, I\u2019ve only learned programming through deconstructing each line of the one we currently use, and I\u2019m the only one in the building who is able/willing to even try. And I can\u2019t find manuals in the building or online for figuring out any of the renishaw macros so I\u2019ve hit a wall.  Such an annoying day. \n\nBut I\u2019m learning a lot and have been satisfied with my progress, so not too bad. Okay, rant over. ",
-    "score": 22,
-    "num_comments": 28,
-    "created_utc": 1773762058,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1sr2vqi",
-    "title": "Normal manual lathe taper tolerance?",
-    "selftext": "I often do contract work at a power station and end up in the machine shop more often than not. After battling through some stock parts that are +0 -0.001\" I find I am constantly cutting a taper of 0.0025\" over 4 inches. Material 3\" diameter is 420 stainless and only removing 0.20\" per pass so minimal load on tooling but enough to get the tip to work. No tailstock. Taper has the smaller diameter towards the lathe chuck.\n\nI am competent but not at all a full time machinist so hard to get an idea on acceptability of accuracy. End up machining to get the inch closest to the chuck within tolerance and hand finishing the other 3 inches with a file. Very curious to hear what is an acceptable tolerance for taper? Hoping its the lathes fault and im not just in a funk.\n\nLathe is a Colchester Mastiff 1400\n\nApologies, have edited I usually work in metric so imperial conversions were incorrect. Have amended.",
-    "score": 12,
-    "num_comments": 22,
-    "created_utc": 1776718859,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1rc5iub",
-    "title": "I\u2019m 16 years old need some advice on apprenticeship",
-    "selftext": "I\u2019ll keep it short, I\u2019m 16 doing this early apprenticeship program threw my highschool where I work at a shop for a year then go back to school to finish out highschool one last semester. I am enjoying everything so far, my shop has me doing basic milling on a boring mill but I honestly don\u2019t know if I should go threw with doing this for the rest of my life. Yes ik I will advance into other stuff if I work hard but I have other machinest at my work telling me it\u2019s a dead trade this and that nothing all of you guys haven\u2019t heard so I\u2019m really starting to question If this is my path for the rest of my life. Any input will help, ask any questions Ik I probably missed key details or something. thanks ",
-    "score": 14,
-    "num_comments": 33,
-    "created_utc": 1771814390,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1sxhjrj",
-    "title": "Rage",
-    "selftext": "Heya, hope y\u2019all are having a lovely day, storming bad where I\u2019m at. I\u2019m a college student learning machining, and almost end of the semester, making a mold, and my base plates are done, inserts are done. Feelin good, I go to run it, and it fails, miserably, no room for the plastic to go anywhere in the cavity core/container. Come to find out, core was oversized, completely my fault, and not the only one to do this, still however, I am red hot. I\u2019m really mad, and have to re-polish my insert again, which I hate polishing. Does this feeling ever go away? (Again, I realize I\u2019m a dumbass)",
-    "score": 30,
-    "num_comments": 18,
-    "created_utc": 1777325714,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1m704l0",
-    "title": "I think I found a Unicorn Shop",
-    "selftext": "I'm 30, got my first machining job at 20, trained a year on brown &amp; sharpes single spindle and two citizen 410's. Worked there for 7.5 years until the plant shut down. Was super nervous moving around, hear how other jobs have a hard time getting new opportunities but as a machinist I had interviews and offers pouring in.\n\nTook a new position working ok VBM's/VTL's. Bullards, Youjis, home machine was a 2000mm pheonix with a right angle head. Parts were massive and training was sub-optimal. Got put on shift way before I was where my trainer wanted me to be. I was making the easier stuff but there were much bigger, much more expensive and much more intricate parts to make and I knew I wasn't there yet. Better yet I was bounced around to different machines and just got way overwhelmed and stressed out. Had a couple regular mistakes, offset in the wrong direction, totally my fault kinda things but several other things that were just, I wasn't trained on this process or machine and wasn't told about what things are different. Management did actually understand and offered to put me on 1st for more training. They said they thought they let me down and I appreciated that but was just so fed up I put in my two weeks notice. I just wanted to leave on good terms at that point. \n\nSo I just started a couple months ago at a shop I actually interviewed for the same day as the previous shop, but had to take the other shops offer cause they only have me 24 hours to accept had to take it cause I needed work. \n\nWell I'm working on citizen swiss style machines again, was pretty nervous cause the ones I worked on at my first shop were just running real simple parts. Basically dowel pins with a groove. We use the machines to their full potential here. \n\nI'm definitely picking it up, starting to find a lot of success and I'm just like damn, this really is where I belong. And the benefits and perks here are INSANE. \n\nIt's employee owned so we get stock every year, 4 10s with 2 15 min breaks and a 30 min paid lunch. You can take your breaks whenever, theres no schedule. Super flexible, I don't work the regular hours but it's no problem, they just want to make sure I get my 40 in. Work weekends and get a 25 dollar gas card. 10 point system, 16 minute grace period, perfect attendance for a month and you get .25 of a point back. If you know you'll miss a day and plan it ahead you can fill out a form to make up those hours and get no attendance occurrence. Everyone is chill. The supervisor actually runs his own machines every day. There's a week long shut down for Christmas, two weeks vacation, cheap Healthcare. All the works. They even have a freaking BEER VENDING MACHINE. 50 cents and you can get an actual decent beer. Just gotta clock out and actual have it at the end of the shift. But finish up the day and you can sit down and have a beer with your coworkers. \n\nHaven't found a single thing to complain about and as time goes on it just gets better and better. Not stressed or anything. I'm really glad I took a shot on myself. There's some really great places out there. Super happy I learned a trade instead of getting some fancy degree just to not be able to find a job. ",
-    "score": 225,
-    "num_comments": 37,
-    "created_utc": 1753245796,
-    "subreddit": "Machinists",
-    "top_comment": ""
-  },
-  {
-    "id": "1pwa8h9",
-    "title": "The Customer is Always Right",
-    "selftext": "Customer: Can you make this 150mm ID bearing 151mm? \n\nUs: Wouldn\u2019t it be better if we fixed your shaft, and brought that down to 150mm?\n\nCustomer: No. And we don\u2019t mind if you mess up one of these USD$2500 bearings, we have two more, just in case. \n\nUs: Whatever you want, we can do it. If you are sure. \n\n\n\nhttps://youtube.com/shorts/Gl1m9whXTHU\n",
-    "score": 55,
-    "num_comments": 35,
-    "created_utc": 1766771241,
     "subreddit": "Machinists",
     "top_comment": ""
   }

@@ -3,7 +3,7 @@
     "id": "1o1pdog",
     "title": "VFD Ground faults like you wouldn't believe - Powerflex 525",
     "selftext": "Hi legends, I've been an electrician for over 10 years now and I've never experienced what I'm about to share.\n\nI work in a massive recycling plant and we're having an issue with one VFD in particular, it's a 7.5kW PowerFlex525 and it runs a 5.5 kW 415V motor for a glass breaker. \n\nWe have three of these VFD's right beside each other, and they run three identical motors with identical feeds, cable length and gear box size however only one of them keeps popping with the ground fault. Between myself and the contractors that I use, we've replaced about seven in the past 2 to 3 weeks.\n\nNow initially, we didn't realise that this was occurring to the same VSD, so we probably could've saved one to 2 in the beginning, but at the moment between myself, the project manager of the contractors that we use, their number one plc guy and another grunt we can't figure out what is causing it.\n\nLet me run you through what we've done:\n\n\\- initially thought it was a fault with the VSD, because upon testing, cable and motor nothing came back suspicious. \n\n\\- Popped another VFD, after testing further and reading other reddit threads it sounded like 1000 V mega was not good enough to test the motor so we replaced the 5.5 kW motor \n\n\\- popped another, then I read somewhere on the Internet, something about having the motor output being a higher frequency can create some kind of capacitance that could then create a static charge and cook the VFD so we lowered the motor frequency from 75 Hz down to 64 Hz which is now exactly the same as the other motors that don't have ground faults. At this point, I figured the frequency was probably the issue after testing the cable in the motor multiple times to find no ground fault so I went ahead and ordered a two pole 5.5 kW motor. That way we could roughly turn the hertz down to around 35 or so reducing heat and the motor overworking, I suppose.\n\n\\-before the 2 pole motor arrived it popped another VFD, so then the only thing left in the circuit was to change the cable, so we ran a temporary feed. Both feeds were the same cable 2.5mm 3c+e braided flex. \n\n\\- it popped again, so then I called my plc guy in to go through the settings for the VFD that continues popping and compare them to the VFD beside it that run the same motor, same gearbox, same frequency that wasn't popping. Only thing we really found was that the 7.5 kW VFD had the motor set to 7.5 kW instead of 5.5 kW, but I didn't think that would really be such a big issue. \n\n\\- popped another after that, that's when things got really strange, so we had changed everything in the circuit, the motor, the VFD, the cable and continues to pop. it's got the same frequency, the same settings as the VFD beside it so what we did was we switched the VFD that continues to have ground fault's load with the one beside it that doesn't trip. So basically took motor supply from VFD's and switched them. \n\n\\- the same VFD that was having the initial problems popped again now, with a completely different motor, completely different cable. We thought maybe there could be a capacitance that's getting built up from somewhere in the plant that was then leaking to that specific VFD and was damaging it on discharge but that couldn't be the case because the opposite VFD would have popped. \n\n\\- and now I'm at the current day we have switched the supply for the two VFD's because the only other difference apart from the VFD themselves is the circuit breakers that feed them. Currently, I'm waiting to see which one pops. If it's the same one, that's been popping the entire time then it means there has to be something wrong with the VFD in which I have no fucking idea and I would love people's insight. If the opposite VFD pops, then that means it has to be the supply from the circuit breaker, which to me seems very unlikely as everything has tested fine throughout this entire process. \n\nPlease help legends - I'm so far past my theoretical knowledge it's not funny \n\n",
-    "score": 28,
+    "score": 29,
     "num_comments": 71,
     "created_utc": 1759962589,
     "subreddit": "PLC",
@@ -246,7 +246,7 @@
     "id": "1l91tdv",
     "title": "AB CompactLogix 5370 Errors",
     "selftext": "I am not an AB guy, and i inherited this from someone.  I am getting errors on my HMI  and don't know where to begin to fix these errors.  Please look at the attached/linked picture and if someone could give me some direction, it would be greatly appreciated.  questions for clarification will be answered as fast as possible.\n\nhttps://preview.redd.it/zmhevyn8oc6f1.jpg?width=3438&amp;format=pjpg&amp;auto=webp&amp;s=60fd282d06546eb82442ee79e070d6621cefef50\n\nClearing the errors just starts the cycle over.  power cycling does not help",
-    "score": 3,
+    "score": 5,
     "num_comments": 12,
     "created_utc": 1749670232,
     "subreddit": "PLC",
@@ -271,65 +271,5 @@
         "description": "Unknown fault code"
       }
     ]
-  },
-  {
-    "id": "1kyudu5",
-    "title": "HMI / PLC COM Error",
-    "selftext": "I have a piece of equipment with a Schneider Electric HMIS5T interfacing with an Allan Bradley micrologix 1400 PLC via ethernet. \n\nThe HMI threw and alarm \u2018Failed to open connection to PLC. (EIPMicroLogi x01)\u2019 so we replaced the PLC and uploaded the RSS file onto it but the HMI still shows the same alarm. \n\nThe HMI shows all the graphics / settings / missing sensor data. Its responsive and otherwise shows no issues. The BMS for the facility shows all the sensor and equipment data for the unit but is monitor only. \n\nNot sure what I should be looking for as a next step. ",
-    "score": 3,
-    "num_comments": 11,
-    "created_utc": 1748576040,
-    "subreddit": "PLC",
-    "top_comment": "",
-    "category": "controls",
-    "urgency": "high",
-    "quality_score": 0.65,
-    "quality_pass": true,
-    "quality_reasons": [],
-    "manufacturer": "Allen-Bradley",
-    "equipment_type": "PLC",
-    "model_number": "",
-    "fault_codes": []
-  },
-  {
-    "id": "1lkvkjk",
-    "title": "Would having redundancy module 1756-RM2 or 1756-RM2XT be pointless if the cause of an error on the primary controller is the program?",
-    "selftext": "Let's say I set up two identical ControlLogix chassis with redundancy modules on them. The plant is run on the primary controller and the secondary controller is only there as a backup and it is always synchronized with the primary. I know if an error occurred on the primary an automatic switchover happens to the secondary. Would setting up this kind of redundancy PLCs be pointless if the cause of the error on the primary was the program (eg. divide by zero or an overflow on an array tag)? Because the secondary is always synchronized with the primary, even if it switched over the same error would just occur on the secondary right?",
-    "score": 1,
-    "num_comments": 5,
-    "created_utc": 1750929521,
-    "subreddit": "PLC",
-    "top_comment": "",
-    "category": "general",
-    "urgency": "medium",
-    "quality_score": 0.35,
-    "quality_pass": false,
-    "quality_reasons": [
-      "low score (1)",
-      "no equipment mention"
-    ],
-    "manufacturer": "Allen-Bradley",
-    "equipment_type": "",
-    "model_number": "",
-    "fault_codes": []
-  },
-  {
-    "id": "1lm1u8t",
-    "title": "Factorytalk ME Alarm Groups",
-    "selftext": "In Factorytalkview ME, you set up your alarm list and the alarm banner popup has an Acknowledge button, silence button, and a couple of others. Has anyone developed a panelview ME application that monitors multiple PLCs where you can isolate alarm acknowledgements by the PLC? So if I have alarms for PLC A and B both active, but I only want to acknowledge or silence alarms from just site A, what would I have to do in the alarm setup and how would I have to configure an acknowledge button to make that work? Could I make separate alarm banners entirely for each PLC (I'd prefer just the one banner)? Trying to figure out what is possible.\n\nThanks in advance",
-    "score": 4,
-    "num_comments": 1,
-    "created_utc": 1751050216,
-    "subreddit": "PLC",
-    "top_comment": "",
-    "category": "controls",
-    "urgency": "low",
-    "quality_score": 0.75,
-    "quality_pass": true,
-    "quality_reasons": [],
-    "manufacturer": "Allen-Bradley",
-    "equipment_type": "PLC",
-    "model_number": "",
-    "fault_codes": []
   }
 ]

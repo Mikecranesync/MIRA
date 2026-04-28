@@ -1,26 +1,5 @@
 [
   {
-    "id": "1sf59ay",
-    "title": "Company bought by Private Equity",
-    "selftext": "I have been working for a slightly bigger and growing mom and pop shop doing HVAC diagnostic work for almost a decade in the greater Seattle area. Today we found out we have been bought out by private equity. We had a meeting about it and the company is called \u201cThe Fix It Group\u201d.\n\nThe meeting seemed good and they were talking about being a support group and more of an investment firm to help our company grow. They seemed more marketing focused.\n\nHas anyone on this group apart of a company who has worked with \u201cThe Fix It Group\u201d or have anyone have experience with being bought out by private equity and what it meant/happened to your company afterwards.\n\nQuick Edit: One other thing of note is that we are completely rebranding our company but also switching our equipment sales to carrier. We were primarily Mitsubishi and Trane. I\u2019ve been specifically a diagnostic technician who was not pressured into sales but being the lead diagnostic technician I see my role changing significantly. ",
-    "score": 49,
-    "num_comments": 114,
-    "created_utc": 1775588321,
-    "subreddit": "HVAC",
-    "top_comment": "",
-    "category": "HVAC",
-    "urgency": "medium",
-    "quality_score": 0.6,
-    "quality_pass": false,
-    "quality_reasons": [
-      "no equipment mention"
-    ],
-    "manufacturer": "Mitsubishi",
-    "equipment_type": "",
-    "model_number": "",
-    "fault_codes": []
-  },
-  {
     "id": "1ssezev",
     "title": "Mazatrol 640m \"error 32\" help",
     "selftext": "Hey everyone, I\u2019m running into a wall with a Mazatrol 640M control and a Mitsubishi MDS-C1-V2-3520 dual-axis drive.\n\nThe Problem:\n\nThe CNC screen is throwing Error 32: SERVO PARAMETER MALFUNCTION (0, &amp;0002).\n\nLooking at the actual drive in the cabinet, the LED display is toggling between F2 37 and F3 37.\n\nWhat I\u2019ve tried so far:\n\nDisconnected the motor power cables (U, V, W) from the drive to check for a motor short. The error persists even with the motor disconnected.\n\nThe encoder cable is still connected.\n\nVerified that the drive is NOT showing an actual Alarm 32 on its internal LED; it\u2019s specifically showing 37 (Initial Parameter Error) on both axes.\n\nThe Situation:\n\nFrom what I can tell, Alarm 37 means the drive is rejecting the parameters sent by the CNC at startup. This usually points to corrupted parameters (maybe a dead battery?) or a communication issue on the bus.\n\nQuestions:\n\nDoes the (0, &amp;0002) diagnostic code on a 640M point to a specific parameter or a hardware failure on the MDS-C1 control card?\n\nWhat is the quickest way to re-upload the SV (Servo) parameters from the C:\\\\NCBACKUP folder on these Windows-based Mazaks?\n\nCould a faulty CN1A/CN1B bus cable cause a \"37\" parameter error even if other drives in the daisy chain seem okay?\n\nHas anyone seen an MDS-C1 drive fail internally in a way that it triggers a \"Parameter Malfunction\" instead of a standard \"Overcurrent\" or \"IPM\" alarm?\n\nAny advice on the specific Mazak maintenance tools or the reload sequence for the 640M would be hugely appreciated. Thanks!",

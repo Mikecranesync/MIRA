@@ -98,7 +98,7 @@
     "id": "1srk18n",
     "title": "ifm CR1074 EtherNet/IP Adapter fails on empty CODESYS project with C0103 retain memory error",
     "selftext": "Hi, I\u2019m trying to connect an\u00a0**ifm CR1074**\u00a0to a\u00a0**Rockwell CompactLogix L19**\u00a0over EtherNet/IP.\n\nI\u2019ve been working with\u00a0**ifm for about 3 years**, so I\u2019m reasonably familiar with the environment and this does not look like a basic setup mistake.\n\nI tested with:\n\n* **CODESYS 3.5.16**\n* **CODESYS 3.5.18**\n* HMI target version:\u00a0[**3.5.16.50**](http://3.5.16.50)\n\nA completely empty project downloads correctly.  \nBut as soon as I add the\u00a0**EtherNet/IP Ethernet Adapter**, even before adding modules or variables, download fails with:\n\n`C0103: Out of retain memory: Variable 'g_c_lastAcdConflict', 350 bytes...`\n\nI also previously saw the same type of error with\u00a0`retainData`.\n\nI did\u00a0**not**\u00a0create any retain variables manually.  \nSo it seems the problem appears just from adding the EtherNet/IP Adapter itself.\n\nHas anyone seen this on ifm targets?  \nIs this a package/runtime compatibility issue?  \nAny known working version combination?\n\nGoal is just to exchange\u00a0**2 INTs**\u00a0with a CompactLogix L19.",
-    "score": 5,
+    "score": 4,
     "num_comments": 3,
     "created_utc": 1776768429,
     "subreddit": "PLC",
@@ -206,20 +206,19 @@
     ]
   },
   {
-    "id": "1mgpc01",
-    "title": "Latching faults in GuardLogix",
-    "selftext": "Please help as I am relatively new to Rockwell controllers being worked with ABB/Siemens in the past. Is there a way to latch inputs that go into fault so they are not cleared on a power recycle if the inputs go back to healthy? Using ladder to program. ",
-    "score": 2,
-    "num_comments": 7,
-    "created_utc": 1754242772,
+    "id": "1ij8shp",
+    "title": "Just fix the website",
+    "selftext": "https://preview.redd.it/pykh9p785khe1.png?width=1532&amp;format=png&amp;auto=webp&amp;s=06c4f141f6da26767d42196104651f9ed3a731b0\n\nTypical Rockwell, take the time to put up a warning then just fix the issues.  ",
+    "score": 46,
+    "num_comments": 25,
+    "created_utc": 1738864687,
     "subreddit": "PLC",
     "top_comment": "",
     "category": "general",
     "urgency": "medium",
-    "quality_score": 0.35,
+    "quality_score": 0.6,
     "quality_pass": false,
     "quality_reasons": [
-      "low score (2)",
       "no equipment mention"
     ],
     "manufacturer": "Rockwell",
@@ -228,41 +227,19 @@
     "fault_codes": []
   },
   {
-    "id": "1l0p3c5",
-    "title": "PowerFlex 755 Fault Code 926",
-    "selftext": "Hello fellows, we recently have an issue with some of our PowerFlex755-EENET drives, in wich drive suddenly stops on fault 926. They are new drives thats comes with a new facility installation drives revision is 16.002, old drives are revision 11 and none of them have this problem. PLC is ControlLogix 1756-L85EP and our network runs on Moxa switches.\n\nIt seems to be a network problem, and we already try changin RPI from default to 200, we also see that Rockwell Knowledbase recomends that in the case od this fault on revisions 16 to flash drive to rev 14, which we also try with no luck because ControlFlash throw error \"An error ocurred or you cancelled the flash update\", we try in 3 diferent machines 2 of which are VM of our DCS and 1 physical. We also try DriveExecutive and the .dmk revision file does not shows up.\n\nDoes anybody had a similar problem, hope you can help guys. Thanks a lot to anybody.\n\n  \nEDIT: Flahing revision from Rev 16 to Rev 14 to drives solve the problem, if anyone else is experience this fault code with newer drives this might solve the fault. Thanks for the help (for those that help).",
-    "score": 1,
-    "num_comments": 9,
-    "created_utc": 1748784846,
-    "subreddit": "PLC",
-    "top_comment": "",
-    "category": "controls",
-    "urgency": "medium",
-    "quality_score": 0.6,
-    "quality_pass": false,
-    "quality_reasons": [
-      "low score (1)"
-    ],
-    "manufacturer": "Rockwell",
-    "equipment_type": "PLC",
-    "model_number": "PowerFlex 755",
-    "fault_codes": []
-  },
-  {
-    "id": "1k9t4f6",
-    "title": "Failed to write RSlogix 5000 Module Profile - Error: 0x80040154",
-    "selftext": "Hello everyone,  \nI\u2019m having trouble installing Studio 5000 v37, and I\u2019m hoping someone here can help me out. During the installation process, I receive an error message stating: *\"Failed to write RSLogix Module Profile.\"*\n\nThe first time I installed Studio 5000 (v37), everything worked fine. I then installed versions starting from v37 down to v30, and everything worked well until I tried installing v30. After that, Studio 5000 would no longer open, and I encountered an error (unfortunately, I didn\u2019t take a screenshot of the error message).\n\nI followed Rockwell\u2019s recommendation to uninstall everything, including all versions I had installed (from v30 to v37), and deleting leftover files and registry entries, and then attempted to reinstall.\n\nHowever, this time during the installation of v37, the error message about the RSLogix Module Profile popped up.\n\nI\u2019ve uninstalled everything related to Studio 5000 again. I\u2019ve manually deleted leftover files and folders that were still remaining after the uninstall process. After cleaning up, I tried reinstalling the software, but I still get the same error message.\n\nUnfortunately, none of these steps have resolved the issue, and I\u2019m stuck at this point. Has anyone encountered this error before, or does anyone know how to fix this issue? Any help would be much appreciated!\n\nThank you in advance!\n\nhttps://preview.redd.it/n3rnu0795kxe1.png?width=2010&amp;format=png&amp;auto=webp&amp;s=ca1a0e9a5b1a83445daee333fe903c99455e480c\n\n",
-    "score": 2,
-    "num_comments": 6,
-    "created_utc": 1745839388,
+    "id": "1jkfd28",
+    "title": "PSA: Microsoft is fixing Rockwell Windows 11 24H2 issues",
+    "selftext": "Many know of the issue with 24H2 breaking various Rockwell software.  Microsoft is issuing a new build that is supposed to resolve these issues.  The build is here:\n\n[https://support.microsoft.com/en-us/topic/march-11-2025-kb5053598-os-build-26100-3476-a248e951-daef-43ad-aa10-0b99f551cec2](https://support.microsoft.com/en-us/topic/march-11-2025-kb5053598-os-build-26100-3476-a248e951-daef-43ad-aa10-0b99f551cec2)\n\nRockwell KB with updated details: [https://support.rockwellautomation.com/app/answers/answer\\_view/a\\_id/1153049/loc/en\\_US#\\_\\_highlight](https://support.rockwellautomation.com/app/answers/answer_view/a_id/1153049/loc/en_US#__highlight)\n\nMy understanding is Rockwell will still be issuing updates for those how are stuck on the build that breaks things.\n\n  \nEdit: Here is the supposedly fixed build:\n\n[https://support.microsoft.com/en-us/topic/march-27-2025-kb5053656-os-build-26100-3624-preview-4c35f1c4-1ae6-41ef-a317-3d8ee2e73975](https://support.microsoft.com/en-us/topic/march-27-2025-kb5053656-os-build-26100-3624-preview-4c35f1c4-1ae6-41ef-a317-3d8ee2e73975)",
+    "score": 26,
+    "num_comments": 22,
+    "created_utc": 1743005124,
     "subreddit": "PLC",
     "top_comment": "",
     "category": "general",
-    "urgency": "high",
-    "quality_score": 0.6,
+    "urgency": "medium",
+    "quality_score": 0.85,
     "quality_pass": false,
     "quality_reasons": [
-      "low score (2)",
       "no equipment mention"
     ],
     "manufacturer": "Rockwell",
@@ -270,36 +247,20 @@
     "model_number": "",
     "fault_codes": [
       {
-        "code": "5000",
+        "code": "2025",
         "manufacturer": "ABB",
         "description": "Unknown fault code"
       },
       {
-        "code": "2010",
+        "code": "3476",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "3624",
         "manufacturer": "ABB",
         "description": "Unknown fault code"
       }
     ]
-  },
-  {
-    "id": "1kas2m9",
-    "title": "Guardmaster 440C-CR30 safety relay periodically showing faults",
-    "selftext": "I have a customer with a 440C-CR30 that is being monitored by a ControlLogix over EthernetIP (the device is owned by the CLX and is in the IO tree).  Every 2 minutes, based on trending, the major and minor fault bits will go high for about 30 seconds, and then go low.  The safety outputs still work fine during this period and there are no indications on the unit that there is actually a fault.  This causes nuisance alarms on the SCADA that everyone is ignoring at this point.  Rockwell says this is fine but can't explain why it is happening.  I am speculating that these fault bits go high when a self check internal to the 440C is happening, and a timer should be added to the CLX to compensate for this period.\n\nAnyone else have this issue, and is there another solution?",
-    "score": 2,
-    "num_comments": 5,
-    "created_utc": 1745943778,
-    "subreddit": "PLC",
-    "top_comment": "",
-    "category": "controls",
-    "urgency": "medium",
-    "quality_score": 0.6,
-    "quality_pass": false,
-    "quality_reasons": [
-      "low score (2)"
-    ],
-    "manufacturer": "Rockwell",
-    "equipment_type": "SCADA",
-    "model_number": "",
-    "fault_codes": []
   }
 ]
