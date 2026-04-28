@@ -1,0 +1,20 @@
+id: no-unscoped-tenant-query
+language: Python
+severity: error
+message: "Query on tenant-scoped table may lack tenant_id filter. Verify it uses tenant_id scope or TenantScopedSession."
+rule:
+  any:
+    - pattern: text($_)
+      regex: 'SELECT.*\bmira_users\b'
+    - pattern: text($_)
+      regex: 'SELECT.*\bidentity_links\b'
+    - pattern: text($_)
+      regex: 'SELECT.*\btenant_invites\b'
+    - pattern: text($_)
+      regex: 'SELECT.*\bconversation_state\b'
+    - pattern: text($_)
+      regex: 'SELECT.*\bfeedback_log\b'
+    - pattern: text($_)
+      regex: 'SELECT.*\bapi_usage\b'
+    - pattern: text($_)
+      regex: 'SELECT.*\basset_qr_tags\b'
