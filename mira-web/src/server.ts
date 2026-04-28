@@ -157,6 +157,26 @@ export const app = new Hono();
 // Middleware
 app.use("*", cors());
 
+// Ensure Content-Length is set on all non-streaming text responses.
+// Bun sends HTML/JSON with chunked transfer encoding; nginx cannot synthesize
+// Content-Length for HEAD from a chunked body and returns 0 instead — breaking
+// LinkedIn/Slack preview unfurls and uptime monitors (issue #617).
+// Buffering here sets Content-Length on the GET response; Hono then propagates
+// it to HEAD responses automatically (strips body, keeps header).
+app.use("*", async (c, next) => {
+  await next();
+  const ct = c.res.headers.get("content-type") ?? "";
+  if (
+    !c.res.headers.has("content-length") &&
+    !ct.includes("event-stream") &&
+    (ct.startsWith("text/") || ct.startsWith("application/json") || ct.startsWith("application/xml"))
+  ) {
+    const body = await c.res.arrayBuffer();
+    c.res = new Response(body, { status: c.res.status, headers: c.res.headers });
+    c.res.headers.set("content-length", String(body.byteLength));
+  }
+});
+
 // QR scan routes — /m/:asset_tag (auth optional), /m/:asset_tag/choose, /m/:asset_tag/report
 app.route("/m", mChooser);   // GET /m/:asset_tag/choose[?set_pref=...]
 app.route("/m", mReport);    // GET /m/:asset_tag/report
