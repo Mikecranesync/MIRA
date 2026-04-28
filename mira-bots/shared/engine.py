@@ -285,6 +285,7 @@ class Supervisor:
     ):
         self.db_path = db_path
         self.vision_model = vision_model
+        self.tenant_id = tenant_id or ""
 
         # Service base URLs for nameplate downstream calls and reactive ingest
         self.mcp_base_url = (
@@ -316,6 +317,10 @@ class Supervisor:
         )
         self.print_ = PrintWorker(openwebui_url, api_key)
         self.plc = PLCWorker()
+
+        # Per-call tenant context (overridden by process(tenant_id=...) when provided)
+        self._current_tenant_id: str = self.tenant_id
+        self._current_mira_user_id: str = ""
 
         self._ensure_table()
 
@@ -471,6 +476,8 @@ class Supervisor:
         photo_b64: str = None,
         *,
         platform: str = "telegram",
+        tenant_id: str | None = None,
+        mira_user_id: str | None = None,
     ) -> str:
         """Main entry point. Returns reply string (backward-compatible).
 
@@ -478,6 +485,13 @@ class Supervisor:
         default 30s) and a top-level exception guard so every call returns a
         user-facing string — never raises to the adapter.
         """
+        # Per-call tenant overrides constructor default. Stash on self so workers
+        # can reach the current request's tenant via self._current_tenant_id.
+        # Existing callers that don't pass the kwargs continue to use self.tenant_id
+        # from __init__ (set as the fallback below).
+        self._current_tenant_id = tenant_id or self.tenant_id
+        self._current_mira_user_id = mira_user_id or ""
+
         t0 = time.monotonic()
         try:
             result = await asyncio.wait_for(
