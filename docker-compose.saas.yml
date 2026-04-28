@@ -303,6 +303,69 @@ services:
       retries: 3
       start_period: 10s
 
+  # Nango — credential vault and auth proxy for third-party CMMS/platform integrations
+  # Dashboard: http://nango-server:3003 (internal) — nginx-proxy to /nango on public domain
+  # Free self-hosted: auth + proxy only. Syncs/actions require Nango Cloud or Enterprise.
+  nango-db:
+    image: postgres:16-alpine
+    container_name: nango-db
+    environment:
+      POSTGRES_USER: nango
+      POSTGRES_PASSWORD: ${NANGO_DB_PASSWORD:-nango}
+      POSTGRES_DB: nango
+    volumes:
+      - nango-db-data:/var/lib/postgresql/data
+    networks:
+      - mira-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nango"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nango-server:
+    image: nangohq/nango-server:hosted
+    container_name: nango-server
+    platform: linux/amd64
+    ports:
+      - "127.0.0.1:3003:3003"
+      - "127.0.0.1:3009:3009"
+    environment:
+      - NANGO_ENCRYPTION_KEY=${NANGO_ENCRYPTION_KEY}
+      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY}
+      - NANGO_DB_USER=nango
+      - NANGO_DB_PASSWORD=${NANGO_DB_PASSWORD:-nango}
+      - NANGO_DB_HOST=nango-db
+      - NANGO_DB_PORT=5432
+      - NANGO_DB_NAME=nango
+      - NANGO_DB_SSL=false
+      - RECORDS_DATABASE_URL=postgresql://nango:${NANGO_DB_PASSWORD:-nango}@nango-db:5432/nango
+      - NANGO_SERVER_URL=${NANGO_SERVER_URL:-http://localhost:3003}
+      - NANGO_PUBLIC_CONNECT_URL=${NANGO_PUBLIC_CONNECT_URL:-http://localhost:3009}
+      - SERVER_PORT=3003
+      - FLAG_AUTH_ENABLED=${NANGO_DASHBOARD_AUTH_ENABLED:-false}
+      - NANGO_DASHBOARD_USERNAME=${NANGO_DASHBOARD_USERNAME:-admin}
+      - NANGO_DASHBOARD_PASSWORD=${NANGO_DASHBOARD_PASSWORD:-changeme}
+      - FLAG_SERVE_CONNECT_UI=true
+      - NANGO_CONNECT_UI_PORT=3009
+      - LOG_LEVEL=info
+      - TELEMETRY=false
+    volumes:
+      - ./nango-integrations/providers.yaml:/app/nango/packages/providers/providers.yaml:ro
+    networks:
+      - mira-net
+    depends_on:
+      nango-db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   mira-hub:
     build:
       context: ./mira-hub
@@ -371,6 +434,9 @@ services:
       # Open WebUI delete-file auth for removing parsed files from KB
       - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core-saas:8080}
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      # Nango — credential vault for CMMS and platform integrations
+      - NANGO_SERVER_URL=${NANGO_SERVER_URL:-http://nango-server:3003}
+      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-}
       # LLM cascade for AI Reports (Groq → Cerebras → Gemini)
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
@@ -403,3 +469,4 @@ volumes:
   mira-webui-data:
   mira-chroma:
   mira-docs:
+  nango-db-data:

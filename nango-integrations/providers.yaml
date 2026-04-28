@@ -1,0 +1,26 @@
+# Nango custom providers — mounted into nango-server at runtime
+# See: NANGO_SERVER_URL/oauth/callback for OAuth redirect URIs
+
+maintainx:
+  display_name: MaintainX
+  categories:
+    - ticketing
+    - productivity
+  auth_mode: API_KEY
+  proxy:
+    base_url: https://api.getmaintainx.com/v1
+    headers:
+      authorization: Bearer ${apiKey}
+      content-type: application/json
+      accept: application/json
+    verification:
+      method: GET
+      endpoint: /workorders?limit=1
+  credentials:
+    apiKey:
+      type: string
+      title: API Key
+      description: >
+        Your MaintainX API key. Generate one at:
+        Settings → Integrations → API → New Key (requires Business plan or above).
+  docs: https://api.getmaintainx.com/v1/docs
