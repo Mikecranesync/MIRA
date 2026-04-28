@@ -25,6 +25,18 @@ from telegram.ext import (
     filters,
 )
 
+from admin_commands import (
+    invite_command,
+    invite_status_command,
+    revoke_command,
+    team_command,
+)
+from shared.identity.service import get_identity_service
+from shared.tenant.authorizer import Authorizer
+from start_command import start_command
+from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -51,9 +63,28 @@ engine = Supervisor(
     mcp_base_url=MCP_BASE_URL,
 )
 
+# Multi-tenant infra (NeonDB-backed)
+ADMIN_TELEGRAM_IDS = os.environ.get("ADMIN_TELEGRAM_IDS", "")
+DEFAULT_TENANT_ID = os.environ.get("MIRA_TENANT_ID", "")
+
+_identity_service = get_identity_service()
+_authorizer = Authorizer(admin_telegram_ids=ADMIN_TELEGRAM_IDS)
+
+_neon_url = os.environ.get("NEON_DATABASE_URL", "")
+_admin_db_engine = (
+    create_engine(
+        _neon_url,
+        poolclass=NullPool,
+        connect_args={"sslmode": "require"},
+        pool_pre_ping=True,
+    )
+    if _neon_url
+    else None
+)
+
 # Chat Abstraction Layer — wraps engine in platform-agnostic protocol
 adapter = TelegramChatAdapter(bot_token=TELEGRAM_BOT_TOKEN)
-dispatcher = ChatDispatcher(engine)
+dispatcher = ChatDispatcher(engine, identity_service=_identity_service)
 
 FAULT_KEYWORDS = {
     "fault",
@@ -625,6 +656,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Return static command list."""
     await update.message.reply_text(
         "MIRA Commands:\n"
+        "/invite <email> \u2014 (admin) mint enrollment link\n"
+        "/team \u2014 (admin) list enrolled members\n"
+        "/revoke <telegram_id> \u2014 (admin) remove a member\n"
+        "/invite_status \u2014 (admin) list pending/used invites\n"
         "/equipment [id] \u2014 Live equipment status (instant)\n"
         "/faults \u2014 Active fault list (instant)\n"
         "/status \u2014 AI equipment summary\n"
@@ -678,6 +713,56 @@ async def _conflict_error_handler(update: object, context) -> None:
 
 def main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(_startup).build()
+
+    # Helper to bind admin command kwargs without subclassing PTB's CommandHandler.
+    async def _wrap_invite(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            return
+        await invite_command(
+            update, context,
+            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_team(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            return
+        await team_command(
+            update, context,
+            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_revoke(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            return
+        await revoke_command(
+            update, context,
+            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_invite_status(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            return
+        await invite_status_command(
+            update, context,
+            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_start(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("MIRA isn't fully configured. Ask your admin.")
+            return
+        await start_command(update, context, engine=_admin_db_engine)
+
+    # IMPORTANT: register /start FIRST so it wins over the legacy welcome.
+    app.add_handler(CommandHandler("start", _wrap_start))
+    app.add_handler(CommandHandler("invite", _wrap_invite))
+    app.add_handler(CommandHandler("team", _wrap_team))
+    app.add_handler(CommandHandler("revoke", _wrap_revoke))
+    app.add_handler(CommandHandler("invite_status", _wrap_invite_status))
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))
     app.add_handler(CommandHandler("status", status_command))
@@ -692,7 +777,8 @@ def main():
     app.add_error_handler(_conflict_error_handler)
     _ver_path = os.path.join(os.path.dirname(__file__), "VERSION")
     _ver = open(_ver_path).read().strip() if os.path.exists(_ver_path) else "unknown"
-    logger.info("MIRA Telegram bot starting (polling) version=%s", _ver)
+    logger.info("MIRA Telegram bot starting (polling) version=%s admins=%d",
+                _ver, _authorizer.admin_count())
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
