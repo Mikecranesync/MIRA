@@ -1,0 +1,111 @@
+[
+  {
+    "id": "1pnl3uc",
+    "title": "Tesla charger, burning up breakers?",
+    "selftext": "I put a charger in for neighbor, hardwired, all copper, it\u2019s in barn, not a weatherproof panel but it\u2019s out of the elements (existing panel). 48amp charger on a 60 amp breaker, all legit, by the book.\n\nI\u2019ve checked all the connections, no burn marks, no melted plastic, busbar is good, all connections are tight nothing out of the ordinary. Today I ran load test while it was charging, it all seems to be good. I checked the breaker and the main breaker feeding this panel.\n\nBut\u2026 in 1.5 years this will be my third breaker. Always starts the same, works fine for 5-6 months then it trips. Fine for a week then it trips\u2026 then a day, then twice a day then it won\u2019t reset at all.\n\nIt\u2019s square d home line. After running through all these items, I can only assume the elements of being in a barn are making the breaker fail? I don\u2019t know. 1 time over the past 1.5 years the car noted a ground fault issue but it\u2019s not been consistent.\n\nAny ideas? ",
+    "score": 46,
+    "num_comments": 117,
+    "created_utc": 1765837841,
+    "subreddit": "electricians",
+    "top_comment": "",
+    "category": "electrical",
+    "urgency": "medium",
+    "quality_score": 0.85,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Schneider",
+    "equipment_type": "panel",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1sp140b",
+    "title": "repair 984 685e",
+    "selftext": "Hi All,\n\nTrying to repair a Modicon 984 685E which the ready light comes on then the run light comes on then both lights go off, no MB activity so  the OS is still trying to boot.\n\nI have read out both eproms but one of them the bottom half of the read is blank so im thinking it maybe my fault\n\nDoes anyone here have any eprom images, the one that is blank to 4000 hex is labeled 043504951 Rev1.05",
+    "score": 0,
+    "num_comments": 9,
+    "created_utc": 1776527131,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.5,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (0)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Schneider",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "4000",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1rldhbq",
+    "title": "TSX Premium CTY2A \u2013 \u201cMesure Invalid\u201d on encoder CH1 and I/O fault during reference",
+    "selftext": "Hello,  \n  \nI am working on an old machine (around 1997) using a Schneider Modicon TSX Premium PLC.  \n  \nHardware:  \n  \n\n\n* CPU: TSX P5710\n* Power supply: TSX PSY2600\n* Counter module: CTY2A\n* Software: PL7 Pro v4.4\n\nProblem:  \n  \nWhen I try to make the\u00a0**machine reference (homing)**, the axis moves normally until it hits the\u00a0**reference cam**. At that moment the PLC generates an\u00a0**I/O fault**.  \n  \nObservations:  \n  \n\n\n* The\u00a0**counter module CH2 LED starts blinking**.\n* The PLC shows\u00a0**I/O error**.\n* When I connect with PL7 Pro v4.4, I see:\n   * Encoder\u00a0**CH1 status: \u201cMesure Invalid\u201d**\n   * In the diagnostic window:\u00a0**\u201cD\u00e9faut applicatif\u201d**.\n\nAny help or suggestions would be greatly appreciated.  \n  \nThank you.",
+    "score": 1,
+    "num_comments": 1,
+    "created_utc": 1772704013,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Schneider",
+    "equipment_type": "PLC",
+    "model_number": "PSY2600",
+    "fault_codes": []
+  },
+  {
+    "id": "1okmb1i",
+    "title": "M580 conversion block error.",
+    "selftext": "Anyone know why this conversion block is not working ?. Input is scaled analog values that I am getting. I tried to convert that from into to dint, int to word, int to real. But nothing works. And if I try to change the mapping tag to real or any other than int. It shows error. \n\nEdit: as I can't upload images. I'll upload them in comments",
+    "score": 2,
+    "num_comments": 7,
+    "created_utc": 1761888298,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "high",
+    "quality_score": 0.35,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Schneider",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1m4raw1",
+    "title": "Schneider Modicon M172 Logic Controler PLC BATTERY LOW alarm",
+    "selftext": "I have a PLC LOW BATTERY alarm on an M172 and I've changed the cr2032 (twice) but the alarm won't clear.  Anyone ever run into this?",
+    "score": 3,
+    "num_comments": 1,
+    "created_utc": 1753024285,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.65,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Schneider",
+    "equipment_type": "PLC",
+    "model_number": "",
+    "fault_codes": []
+  }
+]

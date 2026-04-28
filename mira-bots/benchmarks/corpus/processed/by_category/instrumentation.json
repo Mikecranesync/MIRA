@@ -1,0 +1,66 @@
+[
+  {
+    "id": "1mmxk2s",
+    "title": "What meter to buy for troubleshooting?",
+    "selftext": "Hey guys I'm looking to buy a new meter. I'm using a fluke 337 right now, but I need something with a capacitance reading as I've been doing maintenance on capacitor load banks, and low impedence would be very helpful, that got me good once. Not sure if there is a perfect meter for me, but I would like\n-capacitance\n-low impedance would be nice\n- ability to read 4-20ma\n- accurate resistance reading for measuring and comparing coils etc.\n- I need clamp on amp reading for sure but I can always use my 337 for that.\nDoesn't need to be fluke im looking for good value.\nFluke 117 looks decent but no 4-20\nFluke 18b+ looks decent but now low Z\n\n\nAnyone use a cheaper meter with these functions? ",
+    "score": 4,
+    "num_comments": 6,
+    "created_utc": 1754868780,
+    "subreddit": "electricians",
+    "top_comment": "",
+    "category": "instrumentation",
+    "urgency": "medium",
+    "quality_score": 0.5,
+    "quality_pass": false,
+    "quality_reasons": [
+      "no equipment mention"
+    ],
+    "manufacturer": "",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1lnptd8",
+    "title": "Troubleshooting RTD issues on Bently Nevada Orbit 60 System",
+    "selftext": "Hi all, hoping someone could help out here. I\u2019m an electrician on an oil platform currently troubleshooting motor winding RTD issues on an older 4160v motor. When the motor is off, the RTD signals display just fine on our control system. Once we energize the motor, the RTD signals all drop to 0 and stay offline or go in and out of fault constantly. The RTDs are 3-wire 100ohm platinum RTDs. \n\nI\u2019ve tried troubleshooting by unwiring the RTD from the junction box on the motor and wiring in another external RTD to the terminal blocks and had no issue getting temp readings from this external RTD. \n\nResistance is staying consistent enough on the motor winding RTD so I don\u2019t believe the RTD is failing. Measuring AC voltage to ground on the red and white wires show .05-.06VAC with motor off and everything healthy. Once motor is running, I am seeing .15-.16VAC on the wires. With the external RTD wired up and motor running, I am seeing the same .05-.06VAC on the wires that I saw on the motor winding RTD when motor was off. \n\nIt seems like we\u2019re picking up some inductance from the motor when it is running but not sure how to go about properly checking or rectifying this. The RTDs leads have a metal braid over the 3 leads, it doesn\u2019t appear to be insulated from what I can see in the junction box and was not grounded to anything. Tried grounding it to the motor housing but this did not change anything. \n\nI have access to an oscilloscope, process meters, and volt meters for troubleshooting, I\u2019m just not sure what would be the best way to proceed. Would it be possible to add some sort of filter to help with this issue? I see threads online about people adding capacitors in the RTD circuit but not really sure what I\u2019d need or how to wire it up with this Orbit 60 RTD Input Card.",
+    "score": 2,
+    "num_comments": 19,
+    "created_utc": 1751231699,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "instrumentation",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "",
+    "equipment_type": "motor",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1mekuoy",
+    "title": "HELP! Looking for affordable but not junk means of monitoring a groundwater well\u2019s flow (4-20 ma output on meter) and having the ability to turn well on/off remotely and set some alarm conditions.",
+    "selftext": "Family I\u2019m trying to help is disabled and doesn\u2019t have a lot of money so trying to help but not a telemetry expert. Would like to send receive signal via radio to their home and allow them to view/control via cell phone or laptop. Possibly an equipment list? THANK YOU!!! ",
+    "score": 2,
+    "num_comments": 11,
+    "created_utc": 1754015645,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "instrumentation",
+    "urgency": "medium",
+    "quality_score": 0.35,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)",
+      "no equipment mention"
+    ],
+    "manufacturer": "",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  }
+]

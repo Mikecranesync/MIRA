@@ -1,0 +1,1382 @@
+[
+  {
+    "id": "1ocrfm7",
+    "title": "What\u2019s the most half-assed \u201ctemporary fix\u201d you\u2019ve ever seen that ended up lasting for years?",
+    "selftext": "(I\u2019m talking way back, before I worked at this company.)\nI was on a job with a few other electrical contractors. Me and a buddy I\u2019d worked with on a lot of jobs noticed one of the guys from another company had replaced a broken ladder rung with a piece of pipe and taped it in place with electrical tape.\ud83d\ude02\ud83d\ude4f\ud83d\ude4f\ud83d\ude4f\ud83d\ude33 We saw the same dudes a few years later- yes with that same ladder.\n\nOne up me please! I'm making it easy here guys!",
+    "score": 136,
+    "num_comments": 113,
+    "created_utc": 1761086467,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1s9yubh",
+    "title": "How many y'all work at \"fix it\" places versus \"get it running\" places?",
+    "selftext": "Like I know the 2 sound the same, but we all know they very much are not. And I was thinking about this on my way home after work, and post errands.\n\nI renew my application to work at anywhere that smells remotely better then my current job routinely, and this is a must ask question if I ever get a chance at an interview. I work at a \"get it running place\" (and celebrated my 5 year anniversary last month) and am genuinely curious how many \"fix it\" places are out there.",
+    "score": 49,
+    "num_comments": 72,
+    "created_utc": 1775080782,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1s3ge6q",
+    "title": "How many of you fix your own components?",
+    "selftext": "Background \n\nI'm a sales guy in the industrial repair space.  We repair everything from pic's vfds, hmis,  to mechanical, cnc components, robotics, torque tools etc.   \n\nA pretty common response i get from maintenance guys is \"We do it all in-house\"    \n\nI have a hard time believing these guys are repairing circuit boards in drives and plcs in some of these plants.   Mechanical stuff I can see.   But rebuilding cnc spindles?  Gimme a break\n\nAre they politely telling me to piss off? I get it if they are but I'm just curious.   Let me know what your thoughts and experience are.  I'm just a dumb and half way likeable sales monkey.   ",
+    "score": 7,
+    "num_comments": 75,
+    "created_utc": 1774457833,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rp7wty",
+    "title": "What\u2019s the most \u201ctemporary\u201d repair you\u2019ve seen that somehow became permanent?",
+    "selftext": "Someone throws together a quick fix just to keep things running until the proper repair happens\u2026\n\nThen months later it\u2019s still there and nobody questions it anymore.\n\nI\u2019ve definitely seen a few \u201ctemporary\u201d repairs that lasted way longer than anyone planned.\n\nCurious what the longest one you\u2019ve seen is.",
+    "score": 38,
+    "num_comments": 59,
+    "created_utc": 1773079958,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1oh8irk",
+    "title": "What\u2019s the hardest machine you\u2019ve ever had to fix?",
+    "selftext": "I\u2019ve been in maintenance a few years now, and every so often I run into a piece of equipment that just refuses to cooperate no matter what I do. Curious. what\u2019s the toughest machine or system you\u2019ve ever had to troubleshoot, and what ended up being the fix?",
+    "score": 48,
+    "num_comments": 95,
+    "created_utc": 1761551792,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r16sgm",
+    "title": "It's your fault",
+    "selftext": "That time to PM that you've been asking for, it's your fault that you don't get it.\n\nDo you know why? Because you're the motha' fn hero! That's why. You've kludged together that machine so many times that you're the ONLY one who knows why that card is jumpered. Remember that one time you used a piece of copper to make the shaft fit a larger bearing until the parts room orders the right one (that should be in stock but the bean counters said wasn't used very often). \n\nThe reason we don't have time for proper PMs is because we MAKE things work when they shouldn't. If we said, \"it's broken until we get parts.\" we could get more time, along with more involuntary time at home. ",
+    "score": 99,
+    "num_comments": 40,
+    "created_utc": 1770743847,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ru6vdm",
+    "title": "Troubleshooting Win: The \"Ghost\" Phase-to-Phase Short Melting Our Contactors",
+    "selftext": "Wanted to share a massive headache we recently put to bed at our plant, mostly because it highlights why relying solely on CMMS tickets creates a \"break-fix loop.\"\n\nThe Problem:\n\nWe have a chain conveyor system. Every few months, the forward or reverse contactors would literally melt and weld shut.\n\nThe Investigation:\n\nOur techs kept checking the usual suspects:\n\n\u2022 No physical chain jams\n\n\u2022 Motor protection switch (MPCB) working fine\n\n\u2022 Motor megged out perfectly\n\n\u2022 Gearbox was smooth\n\n\u2022 Electrical interlocks were fully intact\n\nBecause the system ran fine for years, the standard \"fix\" was just: slap a new contactor in, close the ticket, and wait for it to happen again a few weeks later.\n\nThe Root Cause:\n\nWe finally stopped turning wrenches and looked at the larger context. Turns out, the RC snubbers on the contactors had weakened and degraded over years of use. When the operator switched quickly from forward to reverse, the electrical interlock just wasn't fast enough anymore. For just a few milliseconds, both contactors would pull in simultaneously.\n\nBoom. Phase-to-phase dead short that instantly melted the contact points.\n\nThe Permanent Fix:\n\nWe retrofitted a physical mechanical interlock between the contactors and swapped out the degraded RC snubbers. Hasn't happened since.\n\nIf we hadn't stopped to look past the symptoms, we'd still be buying new contactors today. \n\nCurious to hear from you guys, what\u2019s the weirdest electrical \"ghost\" issue you\u2019ve had to track down in your facility?",
+    "score": 102,
+    "num_comments": 30,
+    "created_utc": 1773556269,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sxsmrv",
+    "title": "the 50 percent rule for replace vs repair is a lie when you actually run the numbers",
+    "selftext": "Everyone says if a repair costs more than 50 percent of replacement, just buy new. Sounds clean on paper but ive seen it bite places hard.\n\n  \nHad a customer last year scrap a perfectly good 75hp motor because the bearing replacement quote came in around 60 percent of new motor cost. They went new, only to wait 14 weeks for the replacement because of the lead times. Meanwhile the old motor would of been back online in 4 days if they rebuilt it.\n\n  \nThe rule of thumb only works if you have unlimited downtime tolerance. Once you factor in production losses while waiting for new equipment, the math flips completely. A 60 percent rebuild that gets you running tomorrow beats a brand new motor sitting in a crate two states away.\n\n  \nAlso depends on the equipment. Standard NEMA frame motors are usually quick to replace. Anything custom-wound, oversized, or with weird voltage configurations and your looking at months. Should be part of any decent CMMS, flag the long lead time spares before you decide replace vs repair.\n\n  \nWhats your facilitys actual tolerance for downtime? Because thats the number that matters more than the percentage.",
+    "score": 42,
+    "num_comments": 29,
+    "created_utc": 1777355485,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1kdqw88",
+    "title": "No fault points attendance system.",
+    "selftext": "Who here works for an employer with one of these? X amount of points and you\u2019re fired. No differentiating calling off because your house burned down or because you were hungover. ",
+    "score": 46,
+    "num_comments": 78,
+    "created_utc": 1746272117,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ssebzn",
+    "title": "compressor was overheating for weeks and the fix was three components upstream",
+    "selftext": "Plant I was helping out had a 75hp rotary screw running hot all summer. They kept adjusting cooling water temp, cleaning the aftercooler, checking refrigerant charge on the dryer. Nothing fixed it for more than a few days.\n\n  \nTurned out the intake filter was partially plugged and nobody had the right differential pressure spec. The one in the manual was for a different element than what was actually installed. Operator checked it weekly, saw the gauge was in the green, kept going.\n\n  \nWhat i learned - intake restriction shows up as heat before it shows up anywhere else. Compressor has to work harder to pull air through a restricted filter, motor runs hotter, oil runs hotter, aftercooler cant keep up. The chain reaction starts at the filter but manifests three components downstream.\n\n  \nThey spent probably 40 hours chasing cooling system issues when the real fix was a 12 minute filter swap. Cost them  in wasted labor plus extra wear on everything from running hot all those weeks.\n\n  \nNow the plant checks intake filters first on any overheating complaint, not last. Anyone else run into one of these where the symptom was way downstream from the actual root cause?",
+    "score": 66,
+    "num_comments": 11,
+    "created_utc": 1776842663,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1svtf22",
+    "title": "Edc tool bag ideas kinda a fix most problems without pushing a cart or box everywhere!",
+    "selftext": "EDC tool bag ideas for industrial maintenance instead of pushing a cart everywhere?\n\nI work industrial maintenance in a plant that makes fiber optic cable. We deal with extruders, payoffs, take-ups, dancers, drives, motors, sensors, pneumatics, heaters, and the usual plant headaches.\n\nI\u2019m trying to build a solid everyday-carry maintenance tool bag that covers most troubleshooting calls without having to push a cart around the plant unless it\u2019s actually needed.\n\nFor the guys doing similar work, what are your must-have tools?\n\nI\u2019m thinking:\n\n\\- Meter and leads\n\n\\- Clamp meter\n\n\\- Insulated screwdrivers\n\n\\- Allen keys / metric and SAE\n\n\\- Small adjustable wrench\n\n\\- Nut drivers\n\n\\- Precision screwdriver set\n\n\\- Knipex-style pliers\n\n\\- Wire strippers / crimpers\n\n\\- Flashlight / headlamp\n\n\\- Tape measure\n\n\\- Label maker or marker\n\n\\- Zip ties, ferrules, terminals, fuses, and small electrical odds and ends\n\nWhat am I missing that saves you the most time on the floor?\n\nAlso curious what bags or pouches you like. I want something organized enough to grab and go, but light enough that I don\u2019t hate carrying it all shift.",
+    "score": 9,
+    "num_comments": 10,
+    "created_utc": 1777165507,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1qrrm6v",
+    "title": "Have you ever trusted an error code too quickly?",
+    "selftext": "Had a controller throw an \u201coutput fault\u201d this week.\n\nReplaced the module.\n\nSame fault.\n\nEnded up being a loose common wire at the terminal block.\n\nThe module was fine.\n\nI\u2019ve learned error codes usually tell you where to start looking \u2014 not what actually failed.\n\nHow often do you see parts replaced when it\u2019s really wiring or power integrity?",
+    "score": 13,
+    "num_comments": 20,
+    "created_utc": 1769831140,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1s5lqy9",
+    "title": "Electronics Troubleshooting and Repair",
+    "selftext": "Been in maintenance for around 3 months now. Started working for an electrical contractor in service and installation for factories for a few years before transitioning to maintenance. Are there any good resources in troubleshooting and repairing electronic components? The plant im working in was built in the 50s and used to produce polaroids. Nowadays its a coating and plating company for many products. Usually if I can verify that a device is not working, we would just a replacement. There are tons of old devices being used like encoders, load cells, summing boards, servos, VFDs, LELs, etc, that have been discontinued. Just want to broaden my skills even further by diagnosing the problem and repairing said device without replacing it.",
+    "score": 10,
+    "num_comments": 11,
+    "created_utc": 1774657931,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1oz7owv",
+    "title": "how to \"fix\" operator error",
+    "selftext": "I have this operator who will call and describe strange behavior from her machine; says it stops working but once she resets everything, it works for a while but when I arrive, the cell is *always* working normally. I stand by for 5-10 minutes, nothing happens. \"it probably won't do it now that you're over here\", and she's right - it doesnt\n\nI try to explain that in order to fix problems like this I need to be able to troubleshoot when it \"stops working\", asked her to stop fixing the machine before I arrive. she insists that she understands and I don't think I can explain it any more plainly than I have but it's ALWAYS working when I am there with her.\n\nI'm at my wits end with this and sometimes I think she thinks it's funny or something. I don't want anybody to get in trouble but I've thinking about asking her supervisor to get involved so that it will either stop or, by an odd chance that there is a real issue, get the damn thing fixed\n\nany advice?",
+    "score": 33,
+    "num_comments": 26,
+    "created_utc": 1763355982,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1st9037",
+    "title": "Old RoboCribs Vending Machines--No Software: fix or flip?",
+    "selftext": "[Robocrib 1000](https://preview.redd.it/atx6zbn1evwg1.png?width=370&amp;format=png&amp;auto=webp&amp;s=2bd9724f4216db38488403726a36bbbe882c33d6)\n\n  \n  \nI picked up a couple Robocrib 1000 industrial vending machines awhile back thinking I could use them in my shop to organize/track tools, but I didn't plan far enough ahead &amp; the units I have are missing the computer/software to run the system.  Autocrib told me they don't support these particular units anymore (i.e. they won't sell/give me the software) &amp; I've had them sitting long enough I need to decide what to do with them.  \n  \nWould you guys spend the time to get these units up and running (if so, point me in a direction to chase)?  Or am I better off parting them out and/or liquidating them to get the floor space back?\n\nIf you need any actual pictures of the units / something in particular, just let me know &amp; I'll grab them tomorrow.  The units themselves look fairly clean / mechanically sound, but it's got no brain to make it work!\n\nThanks!",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1776920090,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1pdbisl",
+    "title": "Why do repair shops focus so much on \u201cturnaround time\u201d? Isn\u2019t the actual repair work the main thing that slows everything down?",
+    "selftext": "I\u2019ve always wondered about this. Any time I hear repair shops talk about performance, they bring up turnaround time like it\u2019s the holy grail metric. But from the outside, it seems like the repair itself would be the longest and most difficult part. Is there something I\u2019m missing? Why is TAT such a big deal compared to the actual hands-on repair work? I\u2019d love to hear how this works behind the scenes.",
+    "score": 30,
+    "num_comments": 19,
+    "created_utc": 1764785036,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1qkzj9u",
+    "title": "Engineers estimated time of repair",
+    "selftext": "I transitioned from an industrial maintenance tech to an engineer a couple weeks ago and am still getting my new bearings.\n\nI was sitting in a meeting today where a lead was talking about a system component and had mentioned how reliable it was. He then bragged about how even on the off chance it does break, it will only take maintenance 10-15 minutes to fix.\n\nI had to turn my camera off bc I was smiling so hard thinking back to the time when I was stuck on a job for 3 hours that had a 20 minute estimation.",
+    "score": 45,
+    "num_comments": 10,
+    "created_utc": 1769194652,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1qoqotx",
+    "title": "SICK Scanners E1 fault",
+    "selftext": "Does anybody have experience figuring out the cause of E1 faults on S30B-3011GB SICK scanners? The scanners will run for about 20 minutes and then fault out. We have 2023 and newer models. Don\u2019t think it is dust on the outside or anything electrical. ",
+    "score": 3,
+    "num_comments": 9,
+    "created_utc": 1769548155,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rjqii8",
+    "title": "Bitcoin Hashboard Repair",
+    "selftext": "I am a young guy in the Upstate of South Carolina, there is not a lot of bitcoin mining around these parts.\n\nI worked for a company for the past 5/6 years solely managing around 16 megawatts of bitcoin mining.\n\nEverything from air cooled whatsminer m20s to the newer bitmain s19 hydro models.\n\nI have done air, immersion and hydro, I manage all the cooling, networking, and repairs.\n\nI am making this posts to hopefully find the right people close enough to South Carolina where I could make a drive or a short flight to do some work.\n\nIf you know anyone that is looking for someone like me please let me know.\n\nI love what I do and I am really good at it.\n\nThis includes VFDs, PLCs, HMIs.",
+    "score": 0,
+    "num_comments": 5,
+    "created_utc": 1772547534,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ohqxnr",
+    "title": "Dealing with errors and frustation as an novice...",
+    "selftext": "I'm a novice in the maintenance field. I worked as a motorcycle mechanic for almost a year, and after that period, I decided to move into industrial maintenance.  \nI found a job on a production line and saw a chance for a horizontal promotion, so I started an associate degree in June. I did a very good job as a machine operator throughout the year, and my boss gave me an opportunity.  \nI'm not exactly part of the maintenance team yet \u2014 I still work on the production line \u2014 but I'm often called to help solve problems when needed.\n\nLast Saturday, I was asked to help install some molding machines on the line, and I ended up forgetting some really basic things, like connecting the indicator light in the panel to the three-phase lines (literally a five-minute job that was right in front of me). Then today, my boss called me out because I wrote some codes wrong on the control papers for parts that needed to be delivered to an important client \u2014 that mistake was totally my fault.\n\nI'm honestly afraid because every time I make a mistake, my boss starts to stare at me or act strange, and I really depend on this job \u2014 it\u2019s hard to find another one without much experience. It\u2019s frustrating, because i know i can do some good work, but then I make some stupid mistake and it feels like I lose all the confidence I\u2019ve built over months.\n\nI know it sounds simple, but the thing is, I can do great work \u2014 yet sometimes I make errors that don\u2019t match the level of responsibility I want to take on.\n\n*(By the way, sorry for the bad English \u2014 I did my best, both here and at work, lol.)*\n\n  \n\n\n\n\n  \n\n\n\n\n  \n",
+    "score": 14,
+    "num_comments": 16,
+    "created_utc": 1761600056,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rga137",
+    "title": "FANUC Lathe Servo Drive Repair",
+    "selftext": "We have a FANUC controlled CNC Lathe model Feeler FT-350(MC) that had its servo drive fail and the drive is now obsolete.  We cannot find a direct replacement from the OEM.\n\n  \nOEM: TECO Electro Devices Co., LTD.\n\nMODEL: TSTB-30C\n\n  \nAnyone know where we can get a newer direct replacement?",
+    "score": 1,
+    "num_comments": 2,
+    "created_utc": 1772206846,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rf5sxm",
+    "title": "Ayuda comunicaci\u00f3n Fix -PLC",
+    "selftext": "Buen d\u00eda quien me dar\u00eda un buen consejo tengo un  equipo que tengo conexi\u00f3n ethernet y este est\u00e1 comunicando un PLC s7 300, y yo lo veo conectado ahora tambi\u00e9n tengo instalado fix32 la versi\u00f3n vieja de Ifix y tambi\u00e9n lo conecte pero no escribe ni me Lee los DB del PLC el device est\u00e1 desconectado ",
+    "score": 0,
+    "num_comments": 1,
+    "created_utc": 1772098408,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1qco543",
+    "title": "Recommendations for electrical data logger for troubleshooting",
+    "selftext": "We have some peasky nuisance trips on some motors and I'm looking for a meter that we can clamp on to a 3P motor to monitor voltage and amperage over a 24hr period. Again looking for a portable (not permanent install) solution. \n\nIt doesn't need any fancy wifi or networking options. \n\nAnd recommendations? ",
+    "score": 2,
+    "num_comments": 4,
+    "created_utc": 1768399583,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1owadkv",
+    "title": "Siemens fault F30021",
+    "selftext": "Hi all, I could use some advice on what to look for for his problem. I have a pm240-2 with a cu250s controller and am getting the fault mentioned above along with the alarm a7400. For context, this controls one motor in a 14-motor machine, all motors have the same power units and controllers. Uses profibus.\n\nI have megged the motor and wiring and checked the motor and wiring for shorts to ground and all came up fine. I swapped the power unit and the fault and alarm still show up as soon as I try to run the motor. I am not sure what else to check.",
+    "score": 7,
+    "num_comments": 9,
+    "created_utc": 1763061945,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1q6slmo",
+    "title": "Sick micro scanner errors. Has anyone run into this?",
+    "selftext": "My micro scanner is faulting out. One of the Chanels is locked. I\u2019ve power cycled. Reloaded the program. Cleaned the lenses. \n\nSeeing fault codes \n\nC1201201\n\nC120000D\n\nAnd \n\nA4420094\n\nIt\u2019s been a long day and this is driving me bananas some one please send help \ud83e\udd72",
+    "score": 2,
+    "num_comments": 2,
+    "created_utc": 1767822196,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ohd98y",
+    "title": "Looking for feedback from maintenance techs on a two-sided electronics repair concept",
+    "selftext": "I work with obsolete industrial electronics (PLCs, VFDs, HMIs, etc.) and I\u2019m testing a concept where remote board-level techs can bid on repair requests. You post a failed part (photo/video + issue); techs reply with a bid and turnaround time.\n\nFor those in maintenance or repair:\n\n* Would this be something you\u2019d actually use?\n* What would make it trustworthy or worth trying?\n* How have traditional repair shops worked out for you?\n\n*(Just looking for input from people who deal with this stuff every day.)*",
+    "score": 4,
+    "num_comments": 9,
+    "created_utc": 1761568688,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1p81nez",
+    "title": "What problems in your industry can be fixed ?",
+    "selftext": "Hi guys, i have a bachelors in mech engineering and a masters in renewable energy engineer for some context, and I am starting a R&amp;D incubator in Dubai. The idea is to solve engineering / industrial problems the west / developed countries are facing by using engineering talents from developing / 3rd world countries we\u2019d provide infrastructure / r&amp;d development funding and patent filing support, the idea is to keep it kinda open, a platform where we post problems and people can then join whatever they\u2019re interested in working with and then we also help them sell the solution to industries and share the fees/licensing profits with the team who solved the issue I have investors who\u2019re willing to back this initiative. It\u2019s kind of like an initiative where we\u2019re using intellect/ education to empower people and provide them with better opportunists \nI am at the stage where I need a couple of pilot projects to solve and build and scale, so that we can get this up and rolling so to all my fellow engineers, tell me of the biggest problems you face in whatever industry you work in or any innovation which you think your industry needs, would be helpful if it has some sort of commercial validation behind it. Could be from any part of the world ",
+    "score": 0,
+    "num_comments": 2,
+    "created_utc": 1764248482,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1mn9jaj",
+    "title": "What is the probability the cables or wires are the cause of the fault in the system when analyse the root cause of the issue ?",
+    "selftext": "If i have an electrical system and i fix a circuit breaker in the system that is suitable for it but if any fault happened like any thing and I have to investigate for the root cause is by any chance that the electrical passages or lines like cables in the conduit is the reason that causes the electrical flow to be interrupted like the cable in the conduit had been cut by any reason or destroyed by any way \u2026i ask that as a maintenance engineer if a fault occurs i check for components or equipment on the electrical passages it self but never investigate the health of cables or conduit around them \n\n\nWhat are the chances that makes me suspect that the cause of the issue is because of the passages of electricity like the cables of conduit as I don\u2019t see them they are under the ground or inside the wall \u2026when should I know these are the reason as it is difficult to investigate them as the passages are away from my sights\n\n\n\nIs the cabes should always be safe as I fix a circuit breaker protects it if any ubnormal conditions happens so it will interrupts instantaneously so the cables will always not the cause of any fault will in the system ",
+    "score": 3,
+    "num_comments": 10,
+    "created_utc": 1754908835,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1oyymfg",
+    "title": "APEM H6727 IP67 joystick modules \u2014 used in Omnex / Raptor / Miller crane remotes, ideal for repair shops. Also ombex remotes.",
+    "selftext": "Hey folks \u2014 I have brand-new (open-box) APEM H6727 joystick modules (IP67-rated) that are used in a lot of Omnex / Raptor / Miller remote-control transmitters.\n\nThese are perfect for repair shops or technicians who refurb crane remotes \u2014 donor parts are hard to come by. I'm offering them at a discount per unit, especially if someone wants multiple.\n\nIf you're a shop or tech who repairs these remotes, send me a DM or reply here. Happy to provide photos, specs, and negotiate.\n\nI also have a bunch of ombex remotes, receivers including r270 r260 r180's t110c's td32000\n\nI know these are hard to find and pretty useful for specific industrial cases!\n\n\nThanks!",
+    "score": 0,
+    "num_comments": 0,
+    "created_utc": 1763330688,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1kwec1q",
+    "title": "industrial machine troubleshooting software",
+    "selftext": "Hi there, I am working on a project and would like to know if there is any troubleshooting software for industrial machines in the food and beverage industry. I have sensor data, PLC, SCADA, and MES. I would love to learn if there is a way for me to connect these systems together to improve our machine uptime. Thanks a lot! ",
+    "score": 5,
+    "num_comments": 11,
+    "created_utc": 1748319635,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1lzreza",
+    "title": "Low Voltage error on VFD / Centrifugal Pump",
+    "selftext": "Hey all.  Been trying to troubleshoot this issue for a few weeks now.  My CIP pump will frequently shut down on me and show me a \"LV\" or \"LU\" error meaning low voltage.  I've poured through the manufacturers manual and they have a flow chart for every error code.  I've worked my way through that and still nothing is working long term.  Leaving it unplugged for a while and plugging it back in will enable it to power back on, however it will still randomly shut down with the low voltage error.\n\n  \nNo pump blockages, every time it's running it is operating as normal.  Apparently this has just started happening recently, there has been no history of this issue for years previously, I believe the pump and VFD are around 9-10 years old.\n\n  \nVFD - Delta VFD015E21A\n\nPump - Centrifugal Pump 220v / 60 hz\n\nIf anyone has any troubleshooting ideas I can try, please let me know!  Don't want to have to order a new VFD which will be $800+\n\n  \nThanks in advance!",
+    "score": 1,
+    "num_comments": 7,
+    "created_utc": 1752511325,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1mkide3",
+    "title": "Looking for a fewmaintenance leaders to sanity-check a tiny tool (voice \u2192 clean work log + \u201cpast fixes\u201d search)",
+    "selftext": "Hey all - I\u2019m a builder working with a few factories on a very small workflow tool for techs. The idea is simple:\n\n* Tech speaks a quick note after a fix \u2192 it auto-structures into a clean log entry.\n* Those notes (plus manuals/work orders) become instantly searchable, so the next person can find \u201cwhat fixed this last time\u201d in seconds.\n* Long term, we want it to suggest likely root causes based on similar past failures.\n\nNot here to sell anything \u2014 just trying to make sure we\u2019re solving a real pain without adding busywork. If you\u2019re a maintenance manager/supervisor or senior tech and open to a\u00a0**15-minute call**, I\u2019d love to learn:\n\n1. How do you capture troubleshooting notes today?\n2. Where does it break down (missed notes, bad search, tribal knowledge)?\n3. What would make a tool like this a \u201cyes\u201d or a \u201cno\u201d for your crew?\n\nHappy to show a quick demo.  \nDM me or drop \u201cinterested\u201d and I\u2019ll reach out. Mods: if this isn\u2019t allowed, feel free to remove and I\u2019ll move it to the proper thread.",
+    "score": 0,
+    "num_comments": 4,
+    "created_utc": 1754617211,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ncoaqn",
+    "title": "Walking excavator repair",
+    "selftext": "A case of gearbox bore failure on a large walking excavator.  \nI handled it with welding overlay and line boring, restoring alignment and extending service life.  \nHere\u2019s the documented repair process: [https://youtu.be/fO90th3sTW0](https://youtu.be/fO90th3sTW0)",
+    "score": 5,
+    "num_comments": 0,
+    "created_utc": 1757436848,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1lejxkx",
+    "title": "OMRON R88d error 21 code",
+    "selftext": "Has anybody ever had an error 21 on an R88d controller for a single servo motor straight out of the box? I have triple checked the wiring and have came up with no issues. ",
+    "score": 2,
+    "num_comments": 2,
+    "created_utc": 1750260248,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1qgrn4v",
+    "title": "What\u2019s the dumbest mistake you made as a new maintenance tech?",
+    "selftext": "I\u2019ll go first.  \nI hit reset before checking anything.  \nCleared alarms. Lost all context.  \nTurned a 10-minute fix into 2 hours.\n\nLearned my lesson the hard way:  \n\u2192 Observe first  \n\u2192 Check alarms  \n\u2192 THEN touch things\n\nWhat was your rookie mistake?",
+    "score": 83,
+    "num_comments": 141,
+    "created_utc": 1768789206,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1lms135",
+    "title": "Got busted by safety over arc flash",
+    "selftext": "A conveyor motor wasn't working and I had the electrical cabinet (480V) open to check the contactor and overload. The safety man walks up and asks what I'm doing. I explain that I'm troubleshooting the motor issue. He says the cabinet should be locked out. I said that it's not possible to see what's going on with the power off. My supervisor arrives and it's decided that I need arc flash protection. We don't have arc flash protection anywhere in the facility. I've seen arc flash videos and they look horrible. We are in cabinets all the time, so putting on the gear is going to be more downtime. I'll follow the rules , and getting blasted by molten metal and plastic would not be good. \n\nLater in the day, a machine was doing erratic things, and we needed to get into the PLC. I told production to suck it up until my gear arrives. \n\nAt the end of shift yesterday, a robotic crane starting having motion faults on the servo drive. After hours, the engineers disregarded safety and opened the cabinet live. There's 3 of us, the 2 controls engineers and me, the technician. That's going to be at least 2 sets of gear needed in the future, if not 3. Also, one of my engineers is a short dude, and one of our technicians is about 6' 7\" and around 350 lbs. That's more gear for sure. We have equipment outside and inside the cleanroom, so that will probably require two sets of whatever we needed before because wearing gear from the warehouse inside the cleanroom isn't going to fly. We also will need to organize and store the gear somewhere for easy access.\n\nAre you guys using arc flash gear? Does it make getting into cabinets a major production? They have our cabinets rated at certain levels of arc flash risk. Do you wear the PPE for the highest rated cabinet on the lower ones? Or, is that a separate set of PPE? I think they rated my 480V conveyor cabinet an 8 and the inside 480V automated cell cabinets a 7. Both have motor contactors but the warehouse conveyor cabinet has more load. The automated cells have less contactors and have servo drives. \n\nThe maintenance department briefly talked about arc flash protection about 3 years ago, but nothing was done. The cabinets got rated with stickers, so somebody was expecting this PPE to happen. \n\nEducate me please. Thanks!\n",
+    "score": 147,
+    "num_comments": 213,
+    "created_utc": 1751130822,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1qcj2or",
+    "title": "My Neutral Rant After Two Weeks In The German Industrial Machine World",
+    "selftext": "Being an American industrial guy, I am well aware of how our work culture is far from perfect. But at the end of the day, we get shit done and do the impossible when it feels impossible. Get the line up. I have done approvals in Spain, Italy, China, Canada, USA, Taiwan, and a few others. This is the first time I have been to Germany for industrial work, doing an FAT on a machine. Im not sure if I hate them or am jealous of them. As a worker, it seems so great.\n\n\n\nStart 7am, but first break is also at 7am until 730.\n\nThen you work until 9:20ish, then you take a break until 10.\n\n12-1 is lunch, full cafeteria where they cook for you.\n\n6 different options of beer to have on lunch,\u00a0\n\nJust return your empty bottle to the rack.\u00a0\n\nAfter lunch, you work until 2, then break until 2:30.\n\nYou work 2:30 to 3, then start to wind down.\n\n4PM you go home.\n\nFridays are optional with overtime.\u00a0\n\n\n\nNow I don\u2019t think this is every factory, but the two I\u2019ve been at are the same.\u00a0\n\nI don\u2019t\u00a0 know if I am the crazy one here, but working about 4hr of an 8hr day seems wild.\u00a0\n\nAs an employee, that must be fucking sickkkkkkk. So much time to live.\n\n\n\nOk but as a customer, this is fucking annoying.\u00a0\n\nWe are told the machine is ready, 3 days in they still haven\u2019t started it.\n\nEvery day crawls as they put on 2-3 bolts before they wind down for the next break.\n\nIf a line is down, when it\u2019s fixed it\u2019s fixed.\u00a0\n\nI\u2019ve had to threaten companies who went past lead times, tell them I\u2019ll cancel, pay less blah blah.\n\nThey usually fix the problem asap to get paid.\n\nThese people have absolutely no rush or care in the world.\n\nLike if I sign these papers while here, they will get 2mil the next day.\n\nI told them, if this machine can\u2019t be approved this week that I will cancel the whole project.\n\nThey just asked how the best way to refund our downpayment was.\u00a0\n\nAnd I respect that level of not giving a fuck, so I quickly backed down like a bitch.\n\n\n\nAnyways, two days left to approve it and now they finally put more than one guy on the machine to finish it.\n\nHad to go to the OBI (German Home Depot) to buy some mf tools for my guys I brought to work on it ourselves.\n\nThere\u2019s no Mexicans or metalheads that drink monsters all day.\n\nVery much \u201cWe are all engineers and work at engineers pace\u201d mfs.\u00a0\n\n\n\nThey designed and built their entire new factory in 6 months\n\nWhile somehow having taken 3 years to design/build my machine.\n\nBut, Our machine is truly amazing, a work of art almost.\u00a0\n\nAll in all I'm ready to leave. food sucks, beer good, church looks like a hornets nest.\n\nRented a BYD and it's almost the best thing I've ever driven. \n\nAlso, the first floor not being the first floor always fucks me up on the elevator when I get out and I\u2019m not in the lobby.\u00a0  \n\n\n**How have your guys experience with the germans been? Or any German industrial guys here?**\n\n\n\n\n\n",
+    "score": 117,
+    "num_comments": 107,
+    "created_utc": 1768383409,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1slvxyh",
+    "title": "Your work orders are the reason parts take forever",
+    "selftext": "Had a guy call me last week furious his parts were wrong. Pulled up his work order and it said replace valve. That's it. No size, no pressure class, no material, nothing about what runs through it.\n\n  \nThis happens constantly. Maintenance writes fix pump on a ticket, storeroom pulls whatever looks close enough, purchasing orders from the last vendor in the system, and three days later somebody's making a second trip because nothing fits.\n\n  \nTakes maybe 90 extra seconds to write down the asset tag, the specific failed component with size and material, and what media runs through the line. That alone saves everybody downstream hours of phone calls and guessing.\n\n  \nThe guys who write decent work orders get their stuff right the first time. The ones who write fix pump end up on the phone with me answering 15 questions that should have been on the ticket.\n\n  \nAnyone else deal with this constantly or is it just the accounts I work with?",
+    "score": 73,
+    "num_comments": 43,
+    "created_utc": 1776227770,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1srlxg7",
+    "title": "Be honest, is Maintenance worth it?",
+    "selftext": "I see there are a ton of openings all throughout my area for Maintenance Tech with starting pay of around $30 - $35 an hour (Chicagoland area). \n\nI'm currently in my 30's now and want to make more money while wanting to ensure any future education doesn't get replace by AI/Automation. What better way then to fix the machines? I'm currently thinking of going back to school for a 2 year Automation and Engineering AAS. Which would only cost me around 15k after 2 years. \n\nCouple questions:\n\n1) Do you enjoy your day to day job?  \n2) How much growth do you have with it or are you forever stuck in the trenches of fixing things?  \n3) What is the best sector for this type of job?   \n\n\n",
+    "score": 14,
+    "num_comments": 48,
+    "created_utc": 1776773809,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1serb3f",
+    "title": "Thermal camera saved us from a meltdown we didnt see coming",
+    "selftext": "Had one of those weeks where everything seemed fine until someone pulled out a thermal camera on a routine walkdown. Motor bearing on a big exhaust fan was running 40 degrees hotter than the other end - completely invisible to the naked eye and no vibration alarms yet. Pulled the motor offline for a planned weekend bearing swap instead of an emergency shutdown on a Tuesday night.\n\n  \nThe thing that gets me is how many plants still treat thermal imaging as a nice to have. You can pick up a decent handheld for under two grand now. Even the phone attachments catch the obvious stuff - hot connections, unbalanced loads, steam traps that are blowing through.\n\n  \nThe real trick is establishing baselines though. A single thermal image means nothing without something to compare it to. We started photographing every motor and electrical panel quarterly and now the trends basically tell you when something is about to go sideways.\n\n  \nAnyone else using thermal imaging regularly or is your plant still in the wait until it breaks camp?",
+    "score": 161,
+    "num_comments": 26,
+    "created_utc": 1775554942,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sr3ra4",
+    "title": "Machine manufacturing as a Service post went viral. Thoughts?",
+    "selftext": "This last weekend, there was a post that went viral from Zane (founder of Nox Metals in Detroit). The coordination layer between AI/Software and the people who can actually have the knowledge to work on machines is a massive challenge. What are your guy's thoughts? What is possible? What seems impossible? \n\nhttps://preview.redd.it/4hrn5l60zewg1.png?width=660&amp;format=png&amp;auto=webp&amp;s=9534aca0d18ad452e5105026f186a3d927ce4b06",
+    "score": 4,
+    "num_comments": 46,
+    "created_utc": 1776720763,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1kl5zeo",
+    "title": "What\u2019s up with all the \u201cmulti craft\u201d maintenance jobs and low paying jobs in our field ???",
+    "selftext": "Quick rant but I\u2019ve been job hunting in my area(southeast VA) hard the last couple months to get out of a toxic work environment and shitty shift and it seems like every \u201cMechanic\u201d or \u201cMaintenance Tech\u201d job I interview for seems to want me to have some sort electrical troubleshooting experience or PLC programming experience . I\u2019m not an electrician by any means. I\u2019m just a \u201cwrench swinger\u201d and most of my days consist of making adjustments on machines, doing changeovers, replacing worn and failed parts, working on conveyor systems, doing PMs and troubleshooting the mechanical side stuff. We have actual electricians and automation techs at my place of work that handle all the stuff behind the cabinets, mechanics aren\u2019t even allowed to open up a cabinet at my job actually. They want you to have all this extra electrical experience then offer $30hr or less for pay which is insane, I\u2019m currently at $34 hour now and I don\u2019t wanna take a pay cut to go somewhere else and do twice the work.  Anyone else ran into this problem when job hunting ? I reckon a fella just needs to take some courses on electrical theory and PLC programming. I\u2019m an operator turned mechanic so I never went to school for industrial maintenance. \n\nEdit: on a given shift just me and one other guy are responsible for about 20+ different machines case packers, carton formers ,carton closers,  foil auto wrappers , cellophane wrappers , tape machines and all the conveyors in that area. I\u2019m not just a \u201cknuckle dragging tech\u201d. Lol the calls are almost non stop the whole 8 hour shift, throw a changeover or major breakdown in and sometimes I won\u2019t even get a break the whole shift. ",
+    "score": 69,
+    "num_comments": 126,
+    "created_utc": 1747088888,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1s8fv0c",
+    "title": "Any advice ? How much it took you to become a good maintenance technician or maintenance engineer ?",
+    "selftext": "Hi guys, I am very disappointed and confused. I have been working for six months in my first job in the industry. I work in a factory that manufactures beverages and water bottles.\n\nThe factory has four production lines two of them are similar, while the other two are different from each other.\n\nI started as a maintenance technician, and there are only two people in my shift responsible for maintaining the production lines.\n\nOn my first day, I didn\u2019t even know the names of the tools used regularly. Throughout my life, I have been passionate about electrical engineering, especially electronics. I studied electromechanical engineering at university, but I have never been a fan of mechanical maintenance. I like the theory, but in practice it was something new for me. During my first four months, I worked with an engineer who was responsible for training me. \n\nMost of the time, he never explained what he was doing. He mainly used me to hand him tools. Sometimes, he even blamed me for asking questions. At the beginning, I didn\u2019t understand what we were doing, and I felt uneducated and unsupported. I wasn\u2019t given the opportunity to actually perform tasks myself. When I finally did something, I was slow because it was new to me. He even told me that I should give up this career and go into teaching because, in his opinion, I was physically weak and didn\u2019t have strong observational skills. Despite that, I ignored these comments and focused on my job. He also told me that if the boss found me incompetent, I would be fired sooner or later. This put me under a lot of pressure, and for about three months I seriously considered quitting. We were working six days a week, sometimes with extra hours, which made it even harder.  \n\nAfter four months, I spoke with the technical director and asked to be transferred to another team. I explained that the engineer I was working with was not capable of training a technician and that I was not progressing because of him. He refused and said that he knew I had no prior work experience, but the company was looking for someone disciplined and serious about learning. He told me this was an opportunity for me to prove myself. This conversation actually relieved me\u2014I realized I just needed to do my best, and the results would depend on the company. I also asked if I could focus more on electrical and automation work, but he refused. I thought it would be better to specialize in that area.      Another major issue is the people I work with. Many of the maintenance engineers, operators, and supervisors are arrogant and believe they know everything simply because they have been there for years. They often treat me as if I am incompetent. I even suspect that one of them complained to management about why I was hired with a \u201cgood\u201d salary (for context, I earn only $50 more than an operator). \n\nOne time, a machine stopped working due to an issue I didn\u2019t understand. I asked the operator what was happening so I could inform the engineer I was working with, who was busy on another line. The operator reacted arrogantly and said, \u201cIf I couldn\u2019t fix it, you definitely can\u2019t.\u201d So there are two main problems: the people and the machines. From the beginning, I committed to helping others, even if it meant just handing them tools quickly to minimize downtime. However, I hate being in a position where others handle my responsibilities instead of me. I enjoy working with my own hands and learning through practice. I have always been punctual and dedicated, even on my worst days. However, I\u2019ve started speaking less with my colleagues because I was wasting too much time and energy arguing and explaining myself.  \n\nNow, I focus on doing what I believe is right. If someone disagrees without giving a valid reason, I continue with my approach. Most of them just want to prove they are right rather than solve the problem. I see them only as colleagues, not as friends outside of work. \n\nThey often say I am slow to understand and execute tasks. The truth is, I need to understand what I\u2019m doing before acting\u2014that\u2019s how I work best.                In university, I was in the top 10% of my class. I even achieved the highest mark in a semester that my class had ever recorded. Many students came to me for help, especially in electrical and electronics subjects. I have always been humble and aware that there is always more to learn.  \n\nNow, after six months, I still struggle to adapt to this environment. I can handle routine tasks, but when something new happens, I need time to understand it. \n\nWhen I make mistakes, people laugh, get angry, or argue. My mindset is simple: when there is a problem, we should fix it as quickly as possible. When others make mistakes, I try to help instead of criticizing them even the engineer makes mistakes, and I help him without mocking or arguing .",
+    "score": 21,
+    "num_comments": 46,
+    "created_utc": 1774939198,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1o1sy0l",
+    "title": "Where do you buy motors from and why?",
+    "selftext": "I work at a motor supply and repair company and am trying to understand why people buy motors from a particular place. Do you guys shop around when purchasing your motors or do you only use one company? What is the main reason for using the vendor you currently do business with? If I was trying to obtain your business why are some things you\u2019d want to hear to give me a shot? \n\nReally appreciate any feedback. I think this is probably the best group to ask (let me know of any other similar groups if you don\u2019t mind). \n\nFYI I am not a sleazy salesman trying to garner work on Reddit. I am just trying to improve my effectiveness in the workplace. It\u2019s tough competing against companies like Motion and Galco in terms of replacements motors. \n\nThank you! ",
+    "score": 11,
+    "num_comments": 90,
+    "created_utc": 1759972436,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1stqulz",
+    "title": "Moving into management",
+    "selftext": "I\u2019ve been a heavy industrial electrician for 13 years and I have a bachelors in electrical engineering tech. I love working and I\u2019m a great troubleshooter but I\u2019ve got some pretty bad arthritis in my left shoulder and lower back and I\u2019m only 39. I\u2019ve been throwing around the idea of getting into management the only problem is I\u2019m in a union facility so once I go management I can\u2019t go back. I used to be a manager at an Arby\u2019s before I got into electrical so it\u2019s not like I have no experience (not the same I know) and I lead a lot on jobs cause I have the most time and experience. \n\nI don\u2019t know what\u2019s right to do, but I also don\u2019t know if my body can do another 20-25 years of motors and wire pulls and such. Would love to hear some other experiences and knowledge on the subject. ",
+    "score": 4,
+    "num_comments": 36,
+    "created_utc": 1776968279,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sedoqt",
+    "title": "30y/o with a interview for Industrial Maintenance in two weeks",
+    "selftext": "Hello people, I am going into this with little mechanical knowledge. My background is in Semi Driving, I have basically been driving trucks since I turned 21 and needed money to pay off my art school degree. (yes I regret it, but I did get my loans paid off in full and I am currently debt free.)\n\nMy big question is, will my age be a factor in getting it or not?\n\nMy next question is, I have zero mechanical experience. I know how to look for problems in a semi's engine and to figure out what's wrong with it but not to fix the thing. Do people usually have experience in the field before applying to these?\n\nMy big goal is to get out of the truck, luckily I'm doing a local job and no longer over the road but I want to do anything else hah. I applied for the apprenticeship because I was applying to anything and everything, ended up getting asked to do the aptitude test and the college entrance test (Accuplacer here). they said my scores were great for the accuplacer but I didn't hear anything back about the aptitude test.\n\nLast thing, do you know of any YouTube channels/videos that would be helpful to watch to help prepare for the interview and/or job field?\n\nThanks guys!\n\nEdit: This is for an Apprenticeship,  I should have put that in the title",
+    "score": 7,
+    "num_comments": 37,
+    "created_utc": 1775514388,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1s3i2j3",
+    "title": "Struggling finding a job",
+    "selftext": "I graduated about a year and half ago with a Mechatronics degree, gotta a job as a meter technician. But ready to find a maintenance tech type job. I\u2019ve applied for at least 10+ jobs in the past month  and havnt even heard back from a single one. I don\u2019t know what to do, I just want an interview \ud83d\ude2d.\n\nHow did you all get yalls first maintenance job?",
+    "score": 8,
+    "num_comments": 37,
+    "created_utc": 1774461358,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r9qjdm",
+    "title": "New company . 3 weeks in and I hate it",
+    "selftext": "Im a journeyman industrial tech. Uncertified electro mechanical. I just left a company with a very well structured  maintenance dept for more money and to build confidence in myself as a tech without the security blanket of senior techs at my last job and its 4  10's where as my last company was 5 8's and mandatory every other Saturday and on a rotating on call shift for sundays . Im now 3 weeks into a new company and I think i hate it. Its a \"keep the line running\" and do all real repairs at the end of my shift which can keep me there much longer than I want to be. I took the offer from an old boss I had that I really liked. Im the only maintenance guy on the night shift . After 3 weeks I have barley even touch the lousy excuse of a toolbox they have . They made me learn every position in the factory ( total of 5 including supervisor role) for the last 3 weeks. Next week im told I will be doing the supervisor job of recording numbers while he's on disability but still in the factory working his normal shift. Im tired of it I dont care to take down all the numbers and do the math to make sure were ru.iing within tolerance. They are making me feel like I will always be an operator first and maintenance second. My last job I was solely maintenance. No one bothered  me and I just went about my day fixing stuff and doing pm's in the meantime. The pay checks are nice and I love that I have my weekends back . But the shift im on just complains all day about day shift and how much they hate the boss ( that I really liked)  which is half ass valid based on the fact day shift cant clean up after themselves andy boss just considers night shift the problemeven tho we outrun day shift 2 to 1 every night and they have twice as many workers. I've already lost all motivation to work hard there ( I usually have very good work ethics). Idk what to do. I feel like 3 weeks is too early to make a good judgement call but I in no way want to preform the supervisors duty while he just sits there and cops an attitude with all.my questions. 90% of my day is doing nothing but sitting in my chair and being on my phone and watching the 2 lines run. I almost feel dumb for wanting to leave such an easy job but I love fixing stuff and getting into knee deep troubleshooting / repairs . How long should I stick it out . BTW im 30 carded. Left an extrusion plant for an insulation plant ",
+    "score": 21,
+    "num_comments": 40,
+    "created_utc": 1771578594,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rt3w20",
+    "title": "Being a good maintenance technician",
+    "selftext": "What are the skills or knowledge that you need to master in order to be a good troubleshooter (electrical and mechanical ) ?!  ",
+    "score": 12,
+    "num_comments": 37,
+    "created_utc": 1773445786,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sm3h6t",
+    "title": "(Rant) Why are logistics so whiny???",
+    "selftext": "I'm an electrician where I work, and at one point I was voluntold to be \"the guy\" for managing all of the truck docks across all of shipping and receiving. This is on top of all my other work I do across the factory.\n\nSomething that truly baffles me is that every SINGLE time a dock goes down, it becomes a red alert top priority! I could understand if we had a truck stuck or something, or even if it was causing a bottleneck in the factory, but each time they are only using about half (at best) of all the docks available, so it's not like they don't have backups! Usually, there's literally an empty available dock right next to the bad one!\n\nRecently, after a dock was repaired, they somehow got a loud enough voice to escalate a residual issue all the way to the top top head of all of engineering, email chains now involving 50+ people. The issue? The restraint lock button had to be pressed twice, instead of once. That was it. Dock is still fully functional, and this minor bug that caused an extra 3-5 seconds of delay was apparently unacceptable.\n\nNow, don't get me wrong, the engineering guy is super nice, and I've actually always enjoyed working with him when given the chance. That said, something as minor as this is a complete waste of his time when you consider everything he is managing, and by no means should he be called in to assist with such a minor inconvenience.\n\nThis is by far the first incident, nor do I expect it to be the last. It just truly blows me away just how whiny logistics can be, and I just can't wrap my head around why it becomes an emergency every single time something happens. When you have hundreds of docks and are not even close to using then all, why does it even MATTER if one happens to be down for a bit???\n\nRant over lol. How about you guys, any of you have similar experiences, or any insight on how logistics became such an entitled and whiny bunch? This isn't my first factory I've worked at over the years, and even other places I had a similar (though not as severe) experience when dealing with these departments.",
+    "score": 37,
+    "num_comments": 26,
+    "created_utc": 1776252969,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ss3lz2",
+    "title": "\"Training\" in maintenance",
+    "selftext": "So I've worked in this shop for 12 years. I'm 30. I'm moving from being the C02 Laser Programmer/Operator to Building Maintenance. I'm replacing the current maintenance guy who is in his 60's and is retiring in 2028, so now I've been \"shadowing\" him the past month.\n\nI have worked alongside this guy for at least 6 years now, and he's a great guy with a lot of knowledge. But now that I'm working with him directly, I'm going fucking insane.\n\nNow I'm no genuis, but I will try everything in my power to figure something out before I ask for help or assistance. I do all my home/auto repairs myself, grew up racing motocross(still do), so I have common mechanical sense. I'm not the fastest guy, but I almost always find a solution and figure shit out.\n\nThe guy I'm shadowing will almost never let me wrench. It honestly turns my gut when I'm in the middle of something, and he's gotta jump in and do it his way. He never communicates either, it's always \"I'll do it now, watch me so you know how to next time\". He literally was explaining the difference between a crescent wrench and a pipe wrench to me the other morning, as well as how to apply thread sealant tape. I get that he doesn't know where I'm at with things, but goddamn it's exhausting.\n\nI can piss and moan about the shit he does, but that's getting me anywhere. I thought training in maintenance would be more along the lines of servicing the equipment I'm unfamiliar with, like the Laser, Press Brakes, Oil Boiler, shit like that. \n\nI'm basically to the point of no return with this new move. I don't know how to tell this dude to let me work more. We've already discussed how he needs to step back and let me get my hands dirty, but he seems to have forgotten that already. I like the guy, and I can't be an asshole to him. How do I approach this? Sorry for the novel.",
+    "score": 9,
+    "num_comments": 28,
+    "created_utc": 1776812073,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sgfhh9",
+    "title": "Wondering if I'm my own worst enemy",
+    "selftext": "Been sole in-house tech dealing in a variety of 10-15 year old Italian machines for a little over 3 years. All the plant was pretty beat up when I started.\n\nSince then I have basically gone over every machine and repaired/overhauled and dialled it in to the extent that we had a factory tech out last year who could not believe the accuracy we were getting on a 12 year old machine.\n\nIssue is that we now have very few breakdowns and after doing my daily/weekly PM I have a ton of downtime which the boss wants me to fill by being an operator.\n\nI've been an operator in the past but at 53 now I'm not keen on returning to the console.\n\nAnyone else in a similar situation got any insights/ideas on how to expand my responsibilities without excessively adding to my workload?",
+    "score": 39,
+    "num_comments": 26,
+    "created_utc": 1775708608,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r017bu",
+    "title": "Downtime and how to handle it",
+    "selftext": "I'm a electrical maintenance tech and I don't understand what to do with my time. Most of our stuff is made very cheaply and overseas aka you need a transformer to run the machine because it's made in China or Taiwan, spares are a nightmare because they use different voltages and we don't keep any. So it's very hard to fix machines on the day.\n\nI have a list of jobs and most if not all are waiting on parts or can't get to whilst running. I end up just waiting to get the parts, at the start there was lots of work to do but after hitting 6 months the jobs are getting more parts related than labour.\n\nI'm getting questioned for sitting outside and 'why aren't you working' it's like cunt is your machine running, be thankful. I don't know what to do with my time, I can't just go looking for jobs, I ask every month to the supervisors if they need anything and just do little jobs for them.\n\nI find in maintenance if I'm not doing something and it's all running that's good, but my boss won't back me up and I'm being told I'm taking too long breaks. I asked my boss are you happy with my work and going from a 3 page list to 1 and he has no problems. Some places are so big you can just change light bulbs all day but it's a very small factory aka 1 electrician. I don't wanna keep getting warnings for not doing anything but like what am I supposed to do? Pm lists are non existent for electrical because they've had so few electricians and electrical background people. If my works fine and I get jobs done whats the problem?\n\nJust my little rant, I find this is only applicable to dayshift and why I hated working it but yeah any advice?",
+    "score": 45,
+    "num_comments": 36,
+    "created_utc": 1770634505,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sa0ucl",
+    "title": "Automotive tech or robotics tech",
+    "selftext": "lo im just stress about what career path to take. Im worried about the pay of automotive techs and how the job out look would be? I went to a technical college and try to go for diesel tech but couldn't attend because I didnt have my own tools. so I saved up for my own tools and learn a little bit how to fix my family's cars and now questioning if its a good path to take. robotics is a hot field. the pay of a maintenance is pretty good and reliable . I saved up for my own tools and now questing if become a auto tech is worth it?? anyone in the field or anyone got some advice???",
+    "score": 3,
+    "num_comments": 32,
+    "created_utc": 1775085717,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1roydy1",
+    "title": "How to manage maintenance as a solo car wash owner with zero machinery experience?",
+    "selftext": "Last year, I switched from a software engineering background to buying a self-service and automatic car wash. Before this, my experience with tools was from minor house repairs. I knew going in that it would be difficult, but I really underestimated the learning curve, especially since most of the equipment is 20 years old. Unfortunately, the operation is too small to afford a PM company.\n\nJust yesterday, an electric motor on one of the water pumps in the automatic bay broke down. It was mounted out of sight on top of the wash, so I didn't even know it existed. As a result, the pump hadn't had an oil change in a year.\n\nThere is a massive variety of equipment, and something breaks almost every week. I try to keep spare parts on hand, but I'm struggling to track what needs PM, what the intervals are, and how to actually fix things when they go down. Honestly, I am just starting to get overwhelmed.\n\nMy main question, as a one-man operator and maintainer, how should I approach this?\n\u200b\n\nIs there an app, software, or tracking method you recommend for managing PM intervals and keeping tabs on different equipment?\n\u200b\n\nAre there specific YouTube channels, websites, forums, or online classes that teach this?\n\u200b\n\nHow do you organize your maintenance routines so hidden equipment doesn't slip through the cracks?",
+    "score": 3,
+    "num_comments": 37,
+    "created_utc": 1773057874,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rp1b7q",
+    "title": "For those of you in a production environment\u2026",
+    "selftext": "Is production management able to dictate additional repairs not related to the actual issue? For example, we had an air fitting that was loose and the leaking air was causing paint to run on the product on the line before it could be dried. We found the issue right off the bat and replaced the fitting. Production also wanted us to replace a nozzle on the end of another line because \u201cthat may be part of the problem\u201d. Ummm no. The cause was the air fitting and the effect was the run in the paint. The nozzle has nothing to do with that. We even proved in a test run that the issue was resolved with the fitting replacement. Nope, change that nozzle because we are certain. The line ended up being down for about 15 minutes total and our shop was billed for every second even though we proved the issue was fixed with the fitting. \n\nI guess being paid to troubleshoot and determine proper fixes isn\u2019t part of our job anymore if production management can just say \u201cI don\u2019t care we, we want you to do this and by the way, downtime is on you\u201d.",
+    "score": 19,
+    "num_comments": 33,
+    "created_utc": 1773065611,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1svsw42",
+    "title": "This normal behavior?",
+    "selftext": "I work at a factory\n\nWe got production supervisors that actually tell our maintence supervisor to not let certain people work on something or get them off his machine and bring somebody else all because he doesn't want to see anyone do any trouble shooting.\n\nWhat makes matters worse, our maintence supervisor actualyl has fired people because of said production supervisor quote on quote 'i don't like the way this guy looks' while he's doing a splendid job\n\nThey also don't train us on any of the eqipement and refuse to give any tools to success such as plc access. So we are literally forced to examine every square inch and every sensor and every sound. While being steadily berated by our own boss for not understanding the machines steps by heart, he doesn't even provide us a ladder logic print out, so we have zero idea of what its looking for in the plc steps\n\nThe plant manager and production suprivisor then proceed to berate you and you call you eery dirty name under the sun because you 'qyote on quote didn't know'. MEanwhile they didn't even you give you a chance to do the job they pay you to do. You show up to teh call, they throw a massive fit that your boss didn't arrive and are extermeely happy whnen your boss does so he can bark useless orders that don't even pertain to fixing the machine and he magically fixes it later on and proceeds to make sure he wasn't in your line of sight while he was and then won't say what he did if something you guinelely didn't know.\n\nBeen here for 5 yeasr, i know the ins and outs of almost everything now, and they still do it.\n\nI prefer night shift so i don't have to deal with these terrible people. I'm pretty sure this is why me and a couple other people they are writing in our 6 month reviews \"will enver get promoted\", simply because they don't like us for no other reason than that we may be slightly autistic.\n\nThat's just dayshift, on night shift, for every single call, the plant manager finds out about it from the production foreman (its literally procedure here to wake up the plant manager for every single problem, even if one of the thousand floor scales got a fancy scratch on it, he has to be woken up), he then proceeds to call your supervisor, who then proceeds to call you (at 3 am) while you are litereally walking/running in route to the call. Who then proceeds to either berate you for not being there yet or tells you he's coming in to fix it himself and to not touch it. At which point, you already know whats wrong with it, but you don't understand this nonsense\n\nWhats even weireder, they changed this policy to this last year because the plant manager has to report an oral report of every single problem to the ceo, cfo, board of directors, and the other plant managers all on a teams meating.\n\nI've been looking for another job for years, but nothing near me, I'm thinking at this point i need to sell my house and just move. (literally can't do that as i bought my house right before they changed to this stupid policy. last year, i got no equitity and it would cost me wayyy to much to sell)\n\nThe funny thing is, they will hire literal engineers to do our tech job (i got a 2 year degree for htis) while they get their greencard and proceed to immedeaily quit when they recieve it, but those guys are guarenteed to quit get all the tools to suceed such as a personal computer paid by the company, a personal software license to all the plc types we have, actual good hours, and even treated properly by production supervisor because they actually got the tools to suceed. Oh, did i mention they got training too. (we only get 1 every 3 years, they hire them from their native corporate country to bring them here to get a greencard then they quit, our company is literally just trying to hire their friends and bring them here to the states)",
+    "score": 20,
+    "num_comments": 23,
+    "created_utc": 1777164052,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ljikhf",
+    "title": "What\u2019s the weirdest maintenance request you\u2019ve ever had?",
+    "selftext": "We\u2019ve all seen some *questionable* work orders come across the desk \u2014 from \u201clight bulb making a weird noise\u201d to \u201ctoilet won\u2019t flush but nobody\u2019s used it yet.\u201d\n\nWhether it came from a confused coworker, a panicked department head, or a mystery note on a whiteboard\u2026 I want to hear it.\n\nWhat\u2019s the strangest or funniest maintenance request you've dealt with? Bonus points if you had to *actually fix it*.",
+    "score": 21,
+    "num_comments": 86,
+    "created_utc": 1750788884,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ofmt3x",
+    "title": "Shop haters",
+    "selftext": "Why do other maintenance men hate a good tech? It seems that a lot of maintenance guys would rather you be shitty and rude than effective at fixing things, kind to operators, and cordial with management. They hate someone personable and good at the job. Why?",
+    "score": 43,
+    "num_comments": 51,
+    "created_utc": 1761382748,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rcerar",
+    "title": "What\u2019s the Best Industrial Maintenance Software for Preventive Maintenance?",
+    "selftext": "Looking for some advice on industrial maintenance software. Managing preventive schedules on spreadsheets is starting to get messy, and we're seeing more unexpected breakdowns than I\u2019d like.\n\nI need something that handles automated triggers and keeps a clean history of asset repairs. I\u2019ve been looking at [MPulse Software](https://mpulsesoftware.com) as one possibility. It\u2019s an option that focuses on tracking equipment life cycles and scheduling tasks based on meter readings or specific calendar dates. \n\nIt seems to be built for teams that need to organize a lot of different assets in one place, but I\u2019m still weighing if it fits our specific workflow.\n\nHas anyone transitioned from paper or Excel to a dedicated system recently? \n\nI\u2019m curious about the actual setup time and if your technicians found the switch easy or frustrating.",
+    "score": 0,
+    "num_comments": 35,
+    "created_utc": 1771845356,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sxetcm",
+    "title": "I sleep and I get free experience points and a paycheck and I don't care lol",
+    "selftext": "Don't get me wrong I do the work but I get done very quick and often get very little calls after my assignments. Most of the nightshift im sleeping lol. The work isn't even that hard to do either. \n\nTbh I feel like a world of warcraft classic player getting boosted to max lvl 60 and getting paid gold for it. Like im getting UBI and a free solid mechanical background.\n\nI get the whole day to myself and I can study on my own to get higher paying work in the future so that if the employers try to catch me in my lies, i can quickly push back with the knowledgei gathered myself. \n\nEven though the work I do is basic, my job description includes refrigeration, plumbing, and electrical/mechanical troubleshooting. Most of the time it's electrical and easy troubleshooting on top of that.  I literally put in my resume that I \"assisted in operating two absorption chillers\" even though the chillers are not working and not being used anymore lol\n\nDo i care? Fuck no. I am lying like a real motherfucker and Im not sorry for it. As a Gen Z who been held back, rejected, looked down on, and disenfranchised from having \"no work experience\" for fucking YEARS in multiple different industries before going into maintenance. Im %100 done and im going into a villain arch against the EMPLOYERS. Lie, manipulate, and trick them so i can get the good paying jobs. I will be a huge compulsive lier to employers. Im channeling the fucking darkside within me. im living out of spite like im planning on a huge heist on how to steal a high paying job through lies and manipulation.\n\nTL;DR Job is easy to me, I sleep throughout the nightshift, I get paid good, it gives me a free mechanical background, feel like im getting UBI, and I will lie my way into getting higher paying work. I lie with no regrets or remorse. Fuck morals. Villain arch starts.",
+    "score": 0,
+    "num_comments": 21,
+    "created_utc": 1777319904,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r6m3rd",
+    "title": "What are the most important topics that a new maintenance mechanic should know?",
+    "selftext": "I've been working as a laborer at a mold injection factory for a few weeks and they offered to give me training as a maintenance mechanic. I have absolutely 0 experience with machines and any mechanical systems and I don't want to look like an absolute moron when I start training next week so I wanted to know what are some important topics I should at least read up on beforehand.",
+    "score": 13,
+    "num_comments": 33,
+    "created_utc": 1771276336,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r0r20u",
+    "title": "Why isn\u2019t maintenance more tightly integrated with real-time machine telemetry?",
+    "selftext": "In most automation environments I\u2019ve worked in, we collect massive amounts of telemetry, PLC data, motor currents, error logs, vibration, etc.\n\nBut maintenance planning is still mostly calendar-based or reactive.\n\nCurious how others see this:\n\n* Are teams actually using live machine data to adjust PM schedules?\n* Is the barrier technical, cultural, or tooling-related?\n* Do reliability engineers have access to the right data streams?\n* Where does the breakdown usually happen, PLC layer, data infrastructure, or CMMS?\n\nI\u2019m working on some experiments around telemetry + automated PM planning and would love to sanity check assumptions.",
+    "score": 12,
+    "num_comments": 34,
+    "created_utc": 1770697574,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rco3j5",
+    "title": "Took a Reliability job and regret it",
+    "selftext": "I was a maintenance tech for along time at one company. Things kept going downhill there and I got frustrated and went looking for other jobs. Found this reliability role and it seemed like a nice move up in my career so I applied and I got it. \n\nThe first few months were great, I was mostly with the techs seeing how they done work and PMs. But now I\u2019ve been given the real job duties, which to me seems more like I spend the majority of my time doing maintenance planner work and reliability things on the side.  I think I\u2019ve come to realize that I don\u2019t like being stuck at the computer all day and now I\u2019m regretting taking this job. \n\nIs this just me or should a reliability role not be a planner role? Is this how it is at most places? I think I\u2019m going to have to find another job because I miss being on the tools and troubleshooting and I didn\u2019t want to be a planner. ",
+    "score": 63,
+    "num_comments": 22,
+    "created_utc": 1771868355,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1m8od3y",
+    "title": "How does your facility train new hires and preserve critical maintenance knowledge?",
+    "selftext": "I'm finding it increasingly difficult to keep up with changes in our plant \u2014 equipment upgrades, obsolescence, control system tweaks, and even lessons learned from past downtime events often go undocumented. Most of the knowledge here is passed down verbally, and when someone retires or leaves, a lot of that info walks out the door.\n\nI'm curious how other industrial maintenance teams or facilities handle this. Specifically:\n\nHow do you train new hires beyond basic safety and orientation?\n\nDo you have a system or standard way of documenting troubleshooting steps, downtime causes, or lessons learned?\n\nIs there any tech or platform you use to capture and share tribal knowledge?\n\nDo you assign mentors, use SOPs, or run job shadowing programs?\n\n\nLooking to hear what\u2019s worked (or hasn\u2019t) for others. Even small improvements or habits would be helpful to learn from. ",
+    "score": 28,
+    "num_comments": 67,
+    "created_utc": 1753413092,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ryz8g8",
+    "title": "Grounding issue?",
+    "selftext": "I went to do a PM on our prefeeder/driver section of a Bobst 8.20 flexo today. In touching literally any part of the machine I\u2019m getting shocked. So I\u2019m assuming a ground is bad/going bad somewhere. Speaking to the machine supervisor it\u2019s been going on for a while. I\u2019m usually on the other side of the plant so I rarely go to the machine. It\u2019s a consistent light shock. But that machine has well over 100 things to check/look over test. Any advice on how to maybe isolate? You\u2019re getting shocked any time you touch metal. So whatever it is it\u2019s sending current through the entire prefeeder/driver. They of course didn\u2019t want to stay down to fix it after PM time so it\u2019s becoming a weekend project. ",
+    "score": 8,
+    "num_comments": 24,
+    "created_utc": 1774020241,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1qar9k4",
+    "title": "Where does maintenance decision-making break down in large plants?",
+    "selftext": "For those working in cement, steel, food &amp; beverage, or similar continuous-process industries:\n\nWhere do you see the biggest gaps between condition monitoring and actual maintenance decisions?\n\nExamples could be when to stop a line, defer a repair, or plan a shutdown.\n\nI\u2019m especially interested in real cases where having better decision support would have prevented downtime or failures.",
+    "score": 9,
+    "num_comments": 37,
+    "created_utc": 1768213068,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1nvglhw",
+    "title": "In the middle of a commissioning of a brand new installation...",
+    "selftext": "And suddenly a brand new, &lt;10h runtime, pump fails. Me as the automation engineer gets blamed for putting in the wrong parameters in the drive. I say \"foreign object\". They open the pump, and guess what, a screw driver. Thanks maintenance!",
+    "score": 117,
+    "num_comments": 36,
+    "created_utc": 1759343982,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ljlro6",
+    "title": "Maintenance techs\u2014what would your ideal job look like? (Want your feedback!)",
+    "selftext": "Hey everyone \u2014 I\u2019m exploring a new concept and would love to get your honest take, not to pitch anything.\n\nRecent reports show that **60% of manufacturers** are struggling badly to find maintenance techs. That\u2019s:\n\n* 1.5\u00d7 more than machine operators\n* 3\u00d7 more than production, quality, or CDL drivers\n* 10\u00d7 more than roles like sales, marketing, or supply chain\n\nWith demand so strong, I want to know what *you* care about most in your daily work. Could you *rank* the following (1 = most important) based on your experience?\n\n* \ud83d\udcb0 **Pay**: Hourly, project rates, premium for certain certifications\n* \ud83d\udd52 **Flexibility**: Shifts, schedule, time off\n* \ud83d\udee0\ufe0f **Work type**: Preventive, repairs, installations\n* \ud83d\udd27 **Equipment**: Conveyors, mixers, ovens, packaging lines\n* \ud83d\ude97 **Commute or Location**: Travel distance, multiple sites, remote work\n* \ud83e\uddf0 **Work Conditions**: Team size, tool access, safety, cleanliness\n\nFeel free to drop your top 3\u20134 factors or rank all. Even a short comment helps\u2014this is just a no-strings discussion to better understand what *actually matters* to techs.\n\nThanks in advance \u2014 I\u2019m here to learn from your hands-on experience!  \n\u2014 Danny\n\n  \nPs- based on what we learn here, we may do a few Candidate Discovery Interviews, too, for a $25 gift card to your favorite coffee shop or restaurant, too! It's about time Maintenance Techs get careers they deserve!",
+    "score": 8,
+    "num_comments": 77,
+    "created_utc": 1750796231,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1kl3c5h",
+    "title": "How does your facility handle large scale failures?",
+    "selftext": "I feel like this is probably normal but then again maybe it\u2019s not. Today we found one of our screw conveyors broke. The screw conveyor is attached to the bottom of a 15ft tall by 25ft wide bin. The bin is suspended around 15ft to 20ft in the air. Obviously, maintenance is going to be the ones making the repair and not a contractor company. I personally have no clue how we\u2019re going to do any of this job but it\u2019s definitely not going to be anything short of sketchy. Wish I could take pictures of this but I would probably catch a lot of shit if it was found down the road.\n\nThe main question is, if something like this fails in your facility, is there just an unimaginable amount of overtime ahead of you? Are you mandated to work until the job is done and all of your normal maintenance PM\u2019s are done? I\u2019m personally looking at at least 3 days of repairs on this conveyor. That puts me at Friday morning MAYBE. Then I\u2019m expected to get all my PM\u2019s done. So truly, we\u2019re looking as soon as Sunday afternoon if I work 12 hour shifts every day until then.\n\nWhat do you guys think?",
+    "score": 25,
+    "num_comments": 80,
+    "created_utc": 1747082346,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1pfv5da",
+    "title": "Metric sizes in USA",
+    "selftext": "Another question for the North American buddies.\nAs I said in another topic, my company is starting an entire manufacturing plant in Oklahoma, USA. Most of the machines will be builded and tested here in Brazil although the large ones will be builded and tested in USA. Regarding that machines that will be builded in USA, 90% of the commercial components are metric sizes (all sort of fixing hardware, bearings, pneumatic cylinders, etc.) as well as plates and tubes used as raw material for manufacturing process. My question is: how hard can be find bolts, nuts, washers, bearings, keyway etc in metric size (DIN/ISO-complient) in USA? And about plates and tubes, how hard is to find an 2,5 mm SS plate or 40x40x1,2 square tube?\n\nLocal large suppliers can have all of it available or only on request with 45-days delivery time?\n\nHow do you maintaince guys handle to this problem when comes to replace or fixing and metric style machine (an german one for exemple)?\n",
+    "score": 7,
+    "num_comments": 41,
+    "created_utc": 1765043027,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rh1hxm",
+    "title": "Controls and plcs",
+    "selftext": "Ive been a tech(electric side)for 5 years. Mostly on the pm crew so my electrical experience is mostly non troubleshooting controls. Mainly what i do is(ex. Running conduit, pulling wire, rewire a motor). I do a lot of mechanical now since im the only electrical tech on my pm crew. I\u2019ve never been exposed to the controls/plc side. What are some good YouTube channels and tips to kinda break through. I wanna be the best tech i can be. I feel very unstable with my career because i don\u2019t know these things.",
+    "score": 12,
+    "num_comments": 26,
+    "created_utc": 1772281961,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ns3y8n",
+    "title": "Need advice to get off rotating crew schedule.",
+    "selftext": "I've been a troubleshooter for 3 years. We do 12hr shifts, days, and nights. Switching from days to nights 4 times a month is not working well for my body or my family. I need to get into a job assignment that is day shift only and preferably easier on my body. I feel trapped. I was a car mechanic for a long time. I have an associates in automotive and a second in electronics/automation. I make good money, but family is suffering for it. Suggestions?",
+    "score": 20,
+    "num_comments": 53,
+    "created_utc": 1759001166,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1qrjmdc",
+    "title": "Moving a giant CNC machine in-house. Any pro tips?",
+    "selftext": "We need to move a big CNC mill across our shop in Ontario. Maintenance guys are great at fixing it, but moving it is a different story. The boss wants a perfect plan with no downtime.\n\nFor those who've done this:\n\nWhat's the one thing everyone forgets in the move plan?Did you have to call the machine's manufacturer to recalibrate it after, or did the rigging crew handle it?Any red flags when talking to moving companies?\n\nI've heard some companies like solid hook inc. and a few more, are good at this stuff, but I'd love some real advice from people who've been in my shoes. What actually matters?\n\nDIY with my excavator not good idea? ",
+    "score": 9,
+    "num_comments": 31,
+    "created_utc": 1769810727,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sdkizo",
+    "title": "Where to learn electrical",
+    "selftext": "Hey guys so recently i became a maintenance technician and its going pretty well. I work in food manufacturing and deal with pumps, motors and conveyors a lot. Ever once in a while an electrical issue will pop up and thats where i am stuck. Mechanically im pretty strong but when it comes to troubleshooting something inside the control panels im stumped(theres is easily over 60+ control panels in the building)\n\nMy question where did yall learn besides school? Ive been watching a lot of youtube but it doesnt answer my real specific questions when i get them.",
+    "score": 5,
+    "num_comments": 18,
+    "created_utc": 1775437223,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ppg714",
+    "title": "Do you carry a first aid kit?",
+    "selftext": "If you do, where &amp; what is in it?\n\nAgain, i saw someone put their hand where it doesn't belong, and they got bruised pretty bad.\n\nWhile i rushed him to the closest first aid cabinet, i also wondered why tf i don't have a belt first aid kit, i mean i have an ifak+ tourniquets in my reserve combat gear so why not at work as well.\n\nI was thinking about a mini kit with some burn/hand injury related item, one guy did lose a finger so maybe even a tourniquet somewhere, being safe is cool and all but you can't fix stupid.\nany thoughts/examples?\n",
+    "score": 26,
+    "num_comments": 34,
+    "created_utc": 1766027182,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1q6rlvp",
+    "title": "Fair wage for 1st year maintenance role .",
+    "selftext": "Im kind of in a unique situation. Last March around review time my manager approached me with an opportunity. He said I was close to topped out in my current manufacturing role (building and testing electrical cabinets ) . He offered me a position of lead/maintenance of our filter department. I took the role not really knowing what salary to expect I asked for 33 an hour plus we get a 4-5 % bonus each year . In this department we make milk filters for dairy farms . I have 6 machines and 4 operators that work slightly different shifts for a goal to run the machines close to 11 hours per day . My main job is to prepare the machines in the mornings , navigate which products to run at certain times , fix the machines when broken . And turn in and bill all complete work . The machines consist of electric motors , a lot of belts and pulleys, encoders , and two industrial sewing heads for each machine . I usually work 4 - 11 hour days then 3-4 hours on Fridays getting things ready . With review time coming again I am wondering if I should ask for a little larger than usual raise . This is my first maintenance role . In 2025 with me as lead of the dept we were able to increase production 15% from 2024 . Not all my doing of course but I like to believe I helped . For context these machines make a filter every 4-5 seconds . Also located in the Midwest . ",
+    "score": 10,
+    "num_comments": 33,
+    "created_utc": 1767819834,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1np75lv",
+    "title": "Don't you never feel bored at work ?",
+    "selftext": "I have been working for 10 years in this field. Mostly in construction sites, maintaining equipment such as cranes, dumper, etc ... \n\nProjects last about 2 years. Then you move to another one, new people, new equipment, etc ... It was pretty fun, but demanding and exhausting.\n\nNow I'm working in a more traditional Industrial Maintenance tech job (1.5 year) and feel bored sometimes (most of the time).\n\nEverything is the same, every day. \n\nOf course we have preventive maintenance but it can be done easily in a couple of hours and doesn't have to be done each day. \n\nYou can eventually find something to fix here and there. But most of the time, I'm here ' just in case ' and wait. \n\nHow do you deal with ' sendentary ' jobs like this ? Is it commun ?\n\n",
+    "score": 45,
+    "num_comments": 45,
+    "created_utc": 1758704253,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sjy021",
+    "title": "Started taking thermal imaging more seriously after seeing it catch an issue during a walkdown",
+    "selftext": "Used to think thermal was kinda a nice-to-have, not really something we needed in the regular PM routine.\n\nThat changed after I saw another crew catch a hot spot on a walkdown. Equipment looked fine on paper no alarms, no weird noise, no obvious vibration but thermal showed one side of a motor running hotter than it should\u2019ve been. Turned out it was an early issue and probably saved them some downtime.\n\nAfter that I started bringing it up more with our guys. Nothing formal, just saying some stuff is worth a second look even when it seems fine. We started throwing a tc001 max on motors and electrical points here and there, mostly the stuff that looked normal but still felt worth checking. The dual-light setup helped too it made it a lot easier to match the hot area to the actual component instead of standing there trying to figure out what exactly you were looking at.\n\nThe first time it really sold me was on a motor setup with zero alarms and nothing obvious going on. Looked normal... until thermal showed one side noticeably hotter than the rest. Not catastrophic, but enough to know it wasn\u2019t nothing. We flagged it, trended it, and got ahead of it before it turned into an unplanned shutdown.\n\nBiggest takeaway for me is heat usually shows up before the rest of the story does. You guys using thermal as part of regular PMs now, or still mostly a troubleshooting tool?",
+    "score": 37,
+    "num_comments": 12,
+    "created_utc": 1776047102,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ovt5sv",
+    "title": "What job title do I fit?",
+    "selftext": "I\u2019m currently working in a manufacturing plant in the maintenance dept where my title is \u201cShift Electrician\u201d. Due to the rotating swing shift my family is suffering from me being gone often during evenings and nights. I\u2019m looking off and on for new opportunities but honestly I don\u2019t know what to search for. \n\nFor us, the Shift Electricians are responsible for everything from replacing lightbulbs to troubleshooting and repairing many PLC/servo/robot controlled machines. Whatever we can\u2019t fix goes up to the controls/electrical engineers. We have a broad range of different types of process control equipment that I have experience with. I enjoy what I do and I\u2019ve grown to be quite good at it, but life seems to be steering me away from this role. \n\nWhat role do you guys suggest I be searching for? I\u2019m not a licensed journeyman, so just \u201celectrician\u201d  or \u201cindustrial electrician\u201d doesn\u2019t seem to fit, and I worked for a different company for a year as an entry level \u201ccontrols engineer\u201d and found that while I wasn\u2019t bad at the job; I don\u2019t like writing controls for entire machines. I purely enjoy troubleshooting existing equipment with maybe a little bit of integration. For reference, I have about 6 years of experience in electrical/controls maintenance, and an associates in industrial automation and machine maintenance. \n\nTips are appreciated, thanks guys. ",
+    "score": 35,
+    "num_comments": 37,
+    "created_utc": 1763012649,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ph0dlg",
+    "title": "Fast moving machines",
+    "selftext": "What tools or techniques have you used to troubleshoot fast moving machines and troubleshoot intermittent problems? Imagine this in a production environment and the machine is suppose to be online and it is not yet scheduled maintenance time or preventive maintenance time. \n\nImagine very fast robots or arms. No one has a high-speed camera.",
+    "score": 22,
+    "num_comments": 35,
+    "created_utc": 1765159650,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1nuz9mp",
+    "title": "Is it my inexperience or is it toxic",
+    "selftext": "Is anyone else's job pretty much \"I don't care I just want it working\" type people.Im the only Fixer in my department shift of 40-50 machines that most di different things. Maybe 30 if you bundle similar machines together. I could be working on something as hard as my newbie brain can but still get chastised like I'm taking my sweet time. Or they ask why something isn't fixed yet when I put a parts requisition in 3 months ago and I have no clue if they've actually ordered it.(I have some stuff I put a req in when I was first a fixer and I doubt it's even been placed as an order)\nEverything in my workplace is falling apart,discontinued,tapped/ziptied together or,no paper trails in the machines made in house and machines that have been tagged out for 3+ years and everyone's just shrugging. But they still want it to be fixed. I've worked here since 2023 but my first maybe little over a year was just as an operator before begging to be a fixer.(Always had the interest,never the opportunity)\nI also have to operate some of these machines while fixing to boost production,train operators when no one else wants to in machines plus any extra task my supervisor wants. \nAm I the problem? Is this just how things are in this industry?Am I just being a baby? The only reason I haven't tried to branch out yet is that they have a bogo scholarship along with a \"we will pay for 2 of your college courses a semester\" thing going on and I want to take advantage for as long as I can take it.",
+    "score": 20,
+    "num_comments": 46,
+    "created_utc": 1759294339,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sva373",
+    "title": "Machining company with no maintance department - where to beginn?",
+    "selftext": "Hi folks, im mechatronics technician apprentee in a small german company that does cnc machining and assembling. We are up to 50 guys currently. We have 7 cnc mills, 5 cnc lathes, 1 cnc lathe + mill and 1 manual lathe. But no maintance department obviously as the company is too small. But, wouldnt it be a game changer in a way? \n\nFor example, we had two spindles die on our mills, two timing belts tear, one button stop working and another machine still broken with 25k \u20ac worth of parts replaced in it. \n\nNow, dont get me wrong, i know i wont be fixing those compley machines on my own as a 20 year old apprentee. But there is surely some things i can do? To make sure i prevent machines breaking in the first place? We use dmg, mazak, gmx gildemeister and datron machines. \n\nI primarly am on datrons, we have 2 of them. I have done some maintance on them myself as previous collegue didnt put much love into them. \n\nIm just a young guy who wants to learn and improve and be capable, have some skills and well, enjoy his work and give those crazy machines some love after all they do for us.\n\nI appreciate help of any kind",
+    "score": 11,
+    "num_comments": 12,
+    "created_utc": 1777117942,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rlx0km",
+    "title": "Quanto realmente custa uma parada n\u00e3o programada na ind\u00fastria?",
+    "selftext": "Esses dias eu estava conversando com um supervisor de manuten\u00e7\u00e3o de uma siderurgica e uma coisa que ele comentou ficou na minha cabe\u00e7a.\n\nEles passam meses tentando otimizar custos de manuten\u00e7\u00e3o, organizar estoque de pe\u00e7as, planejar preventivas e melhorar os processos da \u00e1rea. S\u00f3 que, \u00e0s vezes, uma \u00fanica parada n\u00e3o programada, obviamente, acaba comprometendo todo esse esfor\u00e7o.\n\nE no final, o custo do conserto do equipamento nem \u00e9 o mais caro, e sim todo o impacto dessa parada.\n\nNo caso dele, muita coisa ainda n\u00e3o \u00e9 organizada ou automatizada de fato dentro da manuten\u00e7\u00e3o, ent\u00e3o esses gargalos acabam aparecendo com frequ\u00eancia.\n\nQueria entender melhor como voc\u00eas vem fazendo isso nas suas empresas para tentar encontrar uma melhor alternativa para esses casos.\n\n",
+    "score": 0,
+    "num_comments": 21,
+    "created_utc": 1772752316,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ooqpvg",
+    "title": "Solo maintenance staff",
+    "selftext": "I just got hired as a maintenance technician on a manufacturing factory of aluminum and the thing is I am alone (they didn't mention it on the interview that I'll be working alone), I will be also acting as a supervisor or incharge for all the maintenance of equipments including cnc machines, forklift, air compressor, other small cutting and drilling machines, shearing machine, press break machine and etc. The previous person who handles the maintenance doesn't have previous data/records for the repairs or maintenance of the equipments, as per him the repairs and maintenance are done by third party.\n\nI already listed all the equipments including their details from their plate and made an equipment code to identify them more easier. Planning to put a tag number/equipment code on each equipments and also made a daily checklist for those equipments/machines.\n\nBtw there are 47 equipments/machines.\n\nWhat else can you suggest for me to improve more as a solo maintenance person. Thank you in advance.\n\n\nEdit:\nAdditional info, I can't just get out since I need the visa to stay in the country which is uae and easiest way to have it is by sponsor by company cause own visa is very expensive. Pay is better from the previous job btw",
+    "score": 29,
+    "num_comments": 37,
+    "created_utc": 1762308841,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r88y43",
+    "title": "adding float switch to water pump",
+    "selftext": "Yo, my electrician quit on me halfway through a job last week and I'm mostly into the hydrolic and pneumatic side of our plant. We have a cold water tank that is supplied by the cities water that we then pump through our system into a tempered water tank. Our heat exhanger system hasn't been functional in years and has had a million part ''borrowed'' off of it. While I'm troubleshooting the Heat exhanger, I need to add a float switch directly into the feed pump for the tempered water tank because currently everything is running tied to the exchanger. The feed motor is 460 but the float switch is a 110. Would it really be as simple as just adding a transformer and a contactor? It just seems too easy and I'm not used to things going like that around here. Much love",
+    "score": 8,
+    "num_comments": 20,
+    "created_utc": 1771434854,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1roxvan",
+    "title": "How would you guys answer this question.",
+    "selftext": "How do you troubleshoot a fault when you don't know the cause?",
+    "score": 5,
+    "num_comments": 17,
+    "created_utc": 1773056338,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1s9sxkx",
+    "title": "Tool belt ideas?",
+    "selftext": "Came out of a service truck.  \n\nNow that I\u2019m in a mill I\u2019m looking for ideas for my every day carry stuff or something to load up for small jobs.  \n\nThoughts?",
+    "score": 2,
+    "num_comments": 13,
+    "created_utc": 1775067965,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sxm2fn",
+    "title": "Just landed a job as a apprentice",
+    "selftext": "So basically I landed a job as a apprentice at a pretty nice facility. I will do 6 - 8 weeks worth of class room learning followed by 12 - 15 months of shadowing a senior technician and myself being shadowed by the senior technician before being turned loose on my own and im nervous. I have a lot of production / manufacturing experience but always at a operator level never something like maintenence. I also have very little troubleshooting experience if any at all and im nervous to how that first call will be and if I will be able to figure things out. Long story short is there any advice you experienced guys can offer a new comer like myself? ",
+    "score": 8,
+    "num_comments": 8,
+    "created_utc": 1777336884,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1svhlhd",
+    "title": "Advice for someone new to MRO parts sales",
+    "selftext": "Hello all,\n\nI recently got a job as an MRO parts salesmen. We specialize in power transmission, but we can source pretty much any MRO parts and shop supplies. What is the best way to get my foot in the door at these plants? Motion is our biggest competitor, and we don't have anywhere near the name recognition of them. What would make someone like me stand out in this position? I moved for this job, so I don't have any sort of network established yet. \n\nWhat do you guys look for in a good salesman? Does it come down to price, availability, customer service, ease of doing business, or something else? Thanks.",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1777136495,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1s0ka9y",
+    "title": "Need help calculating some costs of a boiler blowdown.",
+    "selftext": "Not sure if this is the best place to ask, but here we go.\nI'm not a boiler engineer but I have been doing the daily/weekly checks and water treatment on boilers for years. Current place I'm at blows down their boiler till 2nd low level alarm twice per day. \nI'm no expert but always believed this only needs to be done once per week. I've always done an approx 3 seconds blow down daily. \n\n'If' I am correct, how could I calculate the cost saving over 1 year of not doing the excessive blow downs?\n\nThanks in advance.",
+    "score": 9,
+    "num_comments": 13,
+    "created_utc": 1774182286,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ryd81h",
+    "title": "New line. New headache.",
+    "selftext": "Anyone else deal with this when bringing in a new line?\n\nI\u2019m updating our system right now for a new piece of equipment and the BOMs are all in PDF format.\n\nIt\u2019s turning into:\n\n\\- copying everything into Excel  \n\n\\- fixing formatting that breaks constantly  \n\n\\- trying to match parts to referenced drawing pages  \n\nHalf the time the tables don\u2019t even extract cleanly so you end up rebuilding sections manually.\n\nFeels like something that should take an hour turns into half a day.\n\nIs this just part of the job or is there a better way you guys are handling it?",
+    "score": 6,
+    "num_comments": 14,
+    "created_utc": 1773956209,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1pl1rz7",
+    "title": "Do you trust CMMS data?",
+    "selftext": "**Hey everyone! I\u2019m continuing my research into CMMS reporting workflows and wanted to sanity-check a few patterns I\u2019ve been hearing so far:**\n\n1. It\u2019s common for teams to generate regular reports by exporting a CSV from the CMMS \u2192 Excel \u2192 SharePoint (or something similar).\n2. Some teams have tried to automate this internally (scheduled reports, email workflows, etc.), but it often works only temporarily.\n3. The main pressure to produce reports tends to come from finance or ops looking for visibility into maintenance spend and performance.\n4. A major frustration is data quality. Incomplete work orders or missing details mean *bad data in = bad data out*, which leads to follow-ups and an incomplete picture for finance/ops.\n\nI\u2019m keen to hear whether this lines up with other people\u2019s experiences.\n\n**What are the biggest pain points you run into when trying to get something reliable and usable out of CMMS data?**  \n  \nAnd when numbers get questioned, what usually happens next?",
+    "score": 0,
+    "num_comments": 30,
+    "created_utc": 1765570077,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sc4wyq",
+    "title": "Feeling overwhelmed",
+    "selftext": "I could use some advice and support this week was rough. I moved from a small craft brewery I was managing the brew house and laboratory for for a couple years. I started there with no xp and we turned my wealthy bosses hobby into a product on shelves I was the only technically inclined person there so I handled a large portion of the technical aspects with a lot of help from mentors, consultants and contractors. I grew unsatisfied with my financial situation and started looking around. I spent a couple months installing automation equipment before the terrifs ruined that for everyone. Those two jobs were some really really incredible experience and I got to learn Soo much but they were pretty informal and that aspect is starting to bite me in the ass now. One of my friends got hired with a large retail supplier doing automation and industrial maintenance and invited me to come along. The pay was pretty close to what I was hoping for. So I get in I'm getting started training seemed to go well people seemed impressed with my skills. It's only been a month or so and they're starting to send me out on my own things are starting to get dicey and I'm really stressed out. I'm not familiar with any of this equipment and there's not a lot of manuals around so I'm teaching myself on the fly trying my best to do safe good maintenance and repairs. The stuff I have been shown is apparently worthless because my coworkers are fucking off not doing half the SOPs. The SOPs are ok but really vague so I'm spending a lot of time tracing wires hoses tubing etc the best I can with the time I'm allotted. I have SEVERE adhd and it can make aspects of this work really difficult. This week I made a stupid mistake leaving a tool somewhere I shouldn't have it wasn't unsafe just not a great look. Our teams specialist is notified and inspects my pm. I didn't do something that was specified in the SOP because I was literally told not to and stopped by multiple coworkers. Specialist tried to fail me on the pm but I pushed back and explained I was told not to. He says it's my one mulligan but like seriously dude what the fuck I'm giving it my all over here. I have experience with automation not these specific machines and y'all have me out here on my own with almost no training. I feel like I'm drowning right now. I'm not getting the work done in the allotted time I'm fucking with a stupid iPad half the time trying to teach myself reading the few manuals we have and document everything. I've never been taught what the expectations are for a lot of the safety protocols. Management is confused as hell all the time I'm being told conflicting things by different parties and I'm not sure who has authority over who. I'm finding all kinds of broken stuff that's been ignored for God knows how long by people who's entire job it is to fix shit. I'm loosing my mind. Is this normal when you're getting started? Am I a bad fit for this? I was honest in the interviews I told them what I've done but it feels like they are assuming I know a lot more then what I do. ",
+    "score": 5,
+    "num_comments": 11,
+    "created_utc": 1775295325,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1s1jjdh",
+    "title": "(UK) Good industries to start off in?",
+    "selftext": "Hi guys, \n\nCurrently a bridge inspector looking to transition into multi skilled maintenance engineer via an adult-apprenticeship. Very bored of my inspection role. It\u2019s decent money but I want to fix things and problem solve, plus, I hate working away all the time living in hotels most of my life\u2026.\n\nHave an interview at a well established food production/distribution plant as a multi skilled engineer apprentice. \n\nIn terms of skills needed, what industries/plants are best to start off in? I\u2019m assuming in a plant like this, Mechanical, electrical and PLCs skills are required which is what I\u2019m looking for. \n\nDay to day work for people who work in the food and drink plant industries - how do you find it? ",
+    "score": 4,
+    "num_comments": 12,
+    "created_utc": 1774278628,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ove2qp",
+    "title": "electrical engineer from mexico dealing with journeymans",
+    "selftext": "Hello everybody, last time i tried to write about my experience working in the US as a maintenance technician in manufacturing industry. \n\nI start working in a company with 3 people, 2 journeymans electrician and 1 guy that have an associates degree. The journeymans when i start working they were nice, but once they start checking i was better than them fixing machines, and the manager managed to pay me more than them, they  change their behaviour towards me, they barely talk with me and always try to show off that they are better just because they are journeymans.... but journeyman doesn't mean you are able to fix machines, just means you can run conduit and cables and understand a bit about electricity, but cannot fix as easy as me problems related to electric control, neither can't install a few project controls, nor install and program PLC's.\n\nWhy journeyman thinks they can do maintenance industrial jobs? have you had that experience? Someone have the experience working with an inmigrant that have a balcheror's degree doing the same job like you? how you did you felt if that happened? these questions run very often, besides im trying to find job to quit, which could be very soon",
+    "score": 0,
+    "num_comments": 33,
+    "created_utc": 1762974033,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rpghuk",
+    "title": "Becoming a tech",
+    "selftext": "If I\u2019m wanting to look into or become a maintenance technician one day, what are some things I should start learning/studying? Curious on what yall do on a day to day basis.",
+    "score": 1,
+    "num_comments": 13,
+    "created_utc": 1773098877,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sx5uj7",
+    "title": "Noble looking for guidance",
+    "selftext": "Hey guys 38m here and I got my first maintenance job at a metal machine and fabrication facility, before now maintnence and preventative maintnence were by products of my actual job discription. I love my job and I\u2019ve been killing it, it\u2019s only me and the supervisor covering A facility that is made up of 5 different buildings that take up 4 city blocks. My boss is going to retire soon and I would like to take over as supervisor as opposed to them hiring off the streets for someone more experienced. \n\nMy supervisor is only one man so I kind of understand, but it blows my mind that there are no preventative maintenance programs for our machines. I have been working on creating my own logs and programs but I was hoping you guys could show me some examples of how you keep track of the fixes you make and to which machine u are working on, I would like to see examples of checklists for air compressors, filters, forklifts, etc etc that we should try to check daily. \n\nI am hoping that setting up these programs and logs is what it is going to take in order for me to get the supervisor position. I already have eadership experience and I have ran a 10 man crew before as operations manager at a tank and trailer washout facility so I have no doubts that I could be the perfect fit for the job even if I don\u2019t have a lot of history in the field\u2026. So far there hasn\u2019t been something that broke and I couldn\u2019t fix it myself.\n\nAlso, what do you guys carry on you??? As far as tools go?",
+    "score": 4,
+    "num_comments": 6,
+    "created_utc": 1777301179,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sg3eon",
+    "title": "Servo and encoder",
+    "selftext": "Hey guys I have been working on a machine where the servo does not work, I have verified power to the drive is good, servo motor megged out fine and checked the cables for the motor and encoder look good. I have an alarm for overflow of the position that appears as soon as I try to move the servo, I suspect the encoder is the culprit but I don\u2019t have an oscilloscope to verify. From your experience is there something else I should check or is there a way to verify bad encoder without the oscilloscope? Thank you guys in advance",
+    "score": 3,
+    "num_comments": 9,
+    "created_utc": 1775677635,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sx5ls0",
+    "title": "Which job should I take ?",
+    "selftext": "After months of applying finally 2 offers came in. I am an automotive technician working on the administrative side of the car world now. I am about to finish my Certification in robotics and automation in just 2 months and looking into continuing my education into engineering. I started applying for jobs last year with 0 luck. In the past week finally 2 offers cane in but I'm not sure which one sounds better, first one is a local company fixing heavy equipment, excavators, cranes, CNC machines from paint to wiring, is a small local company based of M\u00e9xico, they are offering me a lot of training, a good Monday to Friday 8-5 schedule and after years working on cars the change wouldn't be too drastic but the pay is $16 hr with the possibility of bumping up to $20 before the end of the year. The second option is a big soda company, they are willing to start me as a tech helper with a pay around $25-$30 hr depending on the next interview however the schedule is very heavy with only day off during the week and of course working weekends, nights and holidays when the operators are not working. Being in the automotive industry for almost all of my life that is a schedule I am definitely not used to and I am worried about my work life balance. I would like to hear from people working in the field already if the higher pay is really worth it when I wouldn't have time to myself or my family? ",
+    "score": 4,
+    "num_comments": 6,
+    "created_utc": 1777300654,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sm3t22",
+    "title": "Feeling lost, where to learn about gears, chains, pumps, and more about industrial technology.",
+    "selftext": "Hello, I recently graduated from my local community college and got a degree in automation. I learned mainly about PLCs and low control systems. I started a new job as a maintenance technician at a local plant and was told by my co workers that we rarely work with things on the electrical side because we have a contractor that comes and fixes electrical problems for us. Most of the work we will be doing is on PMs for the machines or mechanical fixes like replacing gears and chains. I have no little knowledge on how things work on the mechanical side and would like to know what resources you guys used to help you learn about these parts. I plan to attended more classes once I am eligible for the tuition reimbursement program but in the mean time I\u2019ll have to study at home. Thank you! ",
+    "score": 11,
+    "num_comments": 7,
+    "created_utc": 1776253883,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sxjbhv",
+    "title": "Hydraulic Door Closer Question",
+    "selftext": "Hello, \n\nI am just looking for some guidance on an issue with a commercial door closer in my building. It seems like when the door is opened fully the swing speed is appropriate but when someone only opens the door slightly (say 45 degrees) and slips through the swing speed is much faster. Latch speed seems unaffected. \n\nDoes this mean that the closer is malfunctioning such that I should have it repaired/replaced or is this just a function of how hydraulic door closers operate? \n\nThanks ",
+    "score": 2,
+    "num_comments": 6,
+    "created_utc": 1777329888,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rroy7o",
+    "title": "Compressor overheating checklist I put together after seeing the same 5 problems over and over",
+    "selftext": "I work on the supply and specs side for industrial equipment and I keep seeing the same air compressor issues come across my desk as returns or warranty claims. Figured I would share the diagnostic pattern since it might save someone a call or a tear-down.\n\n  \nIf your rotary screw or reciprocating compressor is running hot, check these in order:\n\n  \n1. Oil level and condition. Sounds obvious but I see units come back with oil that looks like coffee. If the oil has lost viscosity from heat cycling, it cannot carry heat out of the compression chamber effectively. Change it, do not top it off.\n\n  \n2. Oil cooler fouling. Especially in dusty environments or shops near grinding operations. The cooler fins pack up with debris and airflow drops. A pressure washer from the clean side out fixes it, but most people blast from the dirty side and just push the crud deeper.\n\n  \n3. Thermal valve stuck open or closed. If stuck open, oil bypasses the cooler entirely and just recirculates hot. If stuck closed, you get overcooling at startup but the valve should open as temp rises - if it does not, oil viscosity stays too high and you get different problems. Check it with a temp gun on both sides.\n\n  \n4. Ambient temperature and ventilation. The compressor room needs adequate airflow. I have seen units derated 10-15 percent just because someone closed a ventilation louver for winter and never reopened it. If your discharge temp is within 15F of the high shutdown setpoint on a cool day, you have a ventilation problem.\n\n  \n5. Separator element differential. A clogged separator element creates backpressure that makes the compressor work harder and run hotter. If your delta-P across the separator is above 8-10 PSI, replace it regardless of the calendar schedule.\n\n  \nThe number one pattern I see: someone replaces the oil and filter, the overheating goes away for a month, then comes back. That means the root cause is upstream - usually the cooler or thermal valve, and the fresh oil was just masking it temporarily.\n\n  \nWhat recurring compressor headaches are you all dealing with?",
+    "score": 32,
+    "num_comments": 9,
+    "created_utc": 1773317192,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1qncjtm",
+    "title": "Is electronics/industrial maintenance a good career without a degree?",
+    "selftext": "Hi everyone,\nI\u2019m finishing high school (electronics &amp; automation background) and I\u2019m considering starting a career in industrial maintenance, more on the electronics/controls troubleshooting side.\nAbout me:\n Prefer hands-on work and troubleshooting\n Introverted, like working independently\n Not good at math or theory-heavy stuff\n Not interested in design or advanced programming\nPriorities: solid income, job stability, and some freedom\nI\u2019m trying to decide if going straight into the field (courses + on-the-job experience) makes sense, instead of university.\nMy questions:\nIs industrial electronics/maintenance a solid long-term career without a degree?\nWhat skills should I focus on in the first 1\u20132 years?\nAny common mistakes beginners make that I should avoid?\nI\u2019d really appreciate advice from people already working in the field.\nThanks.",
+    "score": 14,
+    "num_comments": 17,
+    "created_utc": 1769423545,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r6uob6",
+    "title": "favorite off-label tool uses / hacks?",
+    "selftext": "Just curious what non-standard tool uses you folks have come up with to aid in troubleshooting or repairs. I don't mean the \"every tool is a hammer\" stuff, but using tools for tasks they aren't meant for. \n\nExample.  Today one of my systems wouldn't start, every input was faulted. Breaker that supplies 120vac to all of it was tripped.  Reset, it trips again. I broke out a drop light and a pigtail to wire between the breaker and the chunk of terminals that distribute that supply to all the field wiring.  Turn the breaker on, the light is on.  I pulled wires one at a time until it went out to figure out which junction box contained the problem. Once I was in that box, repeat the process until I found the specific wire causing the short. Pull the wire, light goes out. Ohm meter read that particular lead at better than 300K to ground, but with voltage applied it would arc out.  Replace the feed to and from that device, life is good.",
+    "score": 15,
+    "num_comments": 14,
+    "created_utc": 1771297688,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rs5uq9",
+    "title": "Which industry should I aim for ?",
+    "selftext": "Hi everyone,\n\nI\u2019m a former web developer about to start retraining in industrial maintenance through an apprenticeship program.\n\nWhen choosing the company where I\u2019ll do my training, I\u2019d like to find an industry where I can learn as much as possible across different aspects of maintenance (mechanical, electrical, troubleshooting, etc.).\n\nI\u2019m particularly interested in automation and PLCs. Since I already have a programming background, my long-term goal would be to move toward automation, PLC programming, or SCADA.\n\nI\u2019m also interested in troubleshooting control systems, sensors, drives, and industrial electronics if possible.\n\nFor those of you working in the field:\nWhich industries would you recommend if the goal is to learn the most and work with a lot of automation?\n\nI\u2019ve heard things like food processing, automotive, or large manufacturing plants might be good, but I\u2019d love to hear real-world opinions.\n\nThanks!\n",
+    "score": 0,
+    "num_comments": 12,
+    "created_utc": 1773355476,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1srjg5m",
+    "title": "When routine maintenance gets complicated",
+    "selftext": "   \n\nI\u2019ve been in maintenance long enough to know that no job is ever truly routine, not one. You walk into a site expecting a few simple checks, and somehow end up spending hours troubleshooting and fixing something you didn\u2019t even anticipate.\n\nLast week, we had to service some old carbonization stoves. It was supposed to be a pretty simple, straightforward job; check valves, clean ash, make sure everything is running smoothly. But of course, once we opened things up, we noticed wear that wasn\u2019t in the logs, and a few minor leaks that had somehow gone unnoticed for a long while. And suddenly, a one-hour check turned into a full day of fixing things. The crazy part was that for some of the replacement parts they ordered off Alibaba, the specs were off, and there was no other way of sourcing them locally, so we had no other option, we just had to find a way to go around it. And that was a whole other project on its own.\n\nWhat strikes me most is that no matter how many years you\u2019ve been doing this, there\u2019s always a moment that reminds you maintenance isn\u2019t just about following steps, it\u2019s about thinking on your feet and anticipating issues you haven\u2019t seen before. How do you all handle the unexpected in your routine checks?",
+    "score": 0,
+    "num_comments": 6,
+    "created_utc": 1776766548,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1q2vofw",
+    "title": "Do unexpected electric demand spikes occur where you work?",
+    "selftext": "Do unexpected demand peaks or overloaded panels ever increase your energy costs or trigger issues (penalties, alarms, rushed interventions)? ",
+    "score": 0,
+    "num_comments": 22,
+    "created_utc": 1767449849,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ricjm0",
+    "title": "Trying to Break Into Industrial Maintenance From Electrical Background \u2013 Need Real Advice",
+    "selftext": "Hey everyone,\n\nLooking for some honest input from people already working in industrial maintenance.\n\nCurrent background:\n\nI\u2019m currently an LRT Communications Specialist in the rail industry. Before that, I worked in telecom supporting AC/DC rectifier systems, power distribution, RF systems, and troubleshooting with multimeters and schematics. I regularly work around SCADA-integrated systems and field devices.\n\nCertifications / Training:\n\n\t\u2022\tOSHA 10\n\n\t\u2022\tTWIC\n\n\t\u2022\tBasic Electricity certificate\n\n\t\u2022\tAC/DC Motors certificate\n\n\t\u2022\tCurrently working through Industrial Electricity &amp; Electronics series\n\n\t\u2022\tCurrently working through Instrumentation &amp; Controls series\n\nI\u2019m trying to pivot into industrial maintenance with the long-term goal of getting strong in motor controls, VFDs, PLC troubleshooting, and eventually controls.\n\nI\u2019ve already applied to industrial maintenance and entry-level controls roles but haven\u2019t had much traction yet. I\u2019m assuming it\u2019s because I don\u2019t have documented plant experience.\n\nSo I\u2019m trying to figure out the smartest move:\n\n\t\u2022\tShould I focus on getting into any plant maintenance role first, even if it\u2019s not heavily electrical?\n\n\t\u2022\tWould you recommend targeting smaller manufacturing plants instead of larger refineries/mills?\n\n\t\u2022\tHow much PLC knowledge is realistically expected for entry-level maintenance techs?\n\n\t\u2022\tIf you were in my position, what would you prioritize over the next year?\n\nI\u2019m not looking for shortcuts \u2014 just trying to make a smart pivot into the industry.\n\nAppreciate any real-world advice.",
+    "score": 1,
+    "num_comments": 13,
+    "created_utc": 1772407383,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rq9jy2",
+    "title": "In winter, we don't need all the condensers.",
+    "selftext": "Some of you already know where this is going, but I'll tell the story anyway.\n\nOne of our condensers for our glycol system sprung an ammonia leak this winter.  But we don't need all that cooking capacity in winter so we just bypass is for now and we'll fix it \"later\".\n\nToday, unseasonably warm weather has us shitting down half the plant because it never got fixed and we don't have the cooking capacity. \n\nThis just happened so no one is running around throwing blame yet.  Probably on about fifteen minutes.",
+    "score": 15,
+    "num_comments": 10,
+    "created_utc": 1773176905,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sgnvp1",
+    "title": "The thing that wastes more of my time than any actual breakdown is the office asking me what broke",
+    "selftext": "Every single morning..Without fail. \"Hey can you tell us what went down last night and for how long.\" Like brother, I was the one fixing it, I wasn't sitting there with a stopwatch and a clipboard. Check the system. \"Well we don't know how to pull it.\" Cool. Cool cool cool...\n\nSo I end up being the human interface between the historian and whoever forgot their login again. Half my morning gone before I've even had coffee, and meanwhile the thing that actually broke last night is still sitting there waiting for me to finish the root cause on it.\n\nPlant started trialing something called PTI a few weeks back. It's from [Itanta](https://itanta.ai/). Basically you just type the question..\"what stopped on line 3 last night and for how long\"..and it gives you the answer. I was fully prepared to hate it because every \"smart\" tool we've been sold has been garbage that makes more work for us, not less. This one actually kept the office off my back. First time in a while a piece of software made the shift easier instead of harder.\n\nStill breaks. Still a lot of zip ties and prayer out here. But at least now when production wants to know why we missed target, they can go find out themselves instead of cornering me at the coffee machine.\n\nAnyone else's plant finally getting tools that don't suck?",
+    "score": 0,
+    "num_comments": 7,
+    "created_utc": 1775736793,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1okvoap",
+    "title": "Research: Could we predict AND prevent accidents?",
+    "selftext": "I'm researching a safety concept called\"predictive protection\" - stopping accidents before they happen.\n\nThe idea:\n\n1. Predict: Muscle sensors detect when workers are about to move into danger (50-150ms early warning)\n2. Prevent: System could automatically slow nearby equipment or lock out dangerous areas\n\nWhy it's different:\n\n\u00b7 Current safety: Reacts when you're already in danger\n\u00b7 This concept: Predicts danger before you move toward it\n\nBased on proven science:\n\n\u00b7 Muscles activate before movement (research shows 50-150ms window)\n\u00b7 Multi-sensor systems reduce false alarms\n\nImportant:\n\n\u00b7 This is early research\n\u00b7 Automatic actions need careful testing\n\u00b7 Looking for real-world feedback\n\nHas anyone tried combining prediction with automatic safety actions? What problems should I anticipate?",
+    "score": 0,
+    "num_comments": 30,
+    "created_utc": 1761919892,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1oyro9v",
+    "title": "Anyone here ever been employed by at an Amusement/Theme park?",
+    "selftext": "I work in industrial maintenance and this year my family and I have been to Disney, some local amusement parks and a couple some county fairs. Every time I step foot in one of these I can\u2019t help but wonder what their work environment is like, their PM schedules, and their stress level with innocent people riding these rides after repairs have been made.\n\nLong time thread reader, first time posting. I enjoy reading these threads. Loads of talented people in this community and I appreciate any responses.",
+    "score": 50,
+    "num_comments": 20,
+    "created_utc": 1763314298,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r63h6u",
+    "title": "442A job market",
+    "selftext": "Hey guys,\n\nJust wanted to get a feel for the market right now for a 442A industrial electrician.\n\nI\u2019ve got about 8 years experience as a maintenance tech, mostly in industrial environments, heavy on lock out tag out, high voltage isolation, troubleshooting, preventive stuff, the whole deal. I also have a master\u2019s in mechatronics engineering, so I\u2019m pretty comfortable with controls, automation, mechanical systems, etc. I\u2019m not just pulling wires all day.\n\nFor someone with that kind of background, how\u2019s the demand looking these days? Are companies actually hurting for skilled 442A guys, or is it getting saturated? And realistically, what kind of hourly rate should someone expect coming in with solid experience but new to the Canadian market?\n\nTrying to see if the market is as \u201cdesperate\u201d as people say, or if that\u2019s just talk.",
+    "score": 5,
+    "num_comments": 13,
+    "created_utc": 1771227858,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sgn7xb",
+    "title": "Best way to get into Industrial Maintenance/Mechatronics while working full-time?",
+    "selftext": "I\u2019m 20, working full-time as a millwright, and I have a welding certificate. Planning to stay with my company for a year or 2\n\nI\u2019m trying to get into industrial maintenance/mechatronics (PLC, electrical, troubleshooting), but my schedule is tight.\n\nAre there good legitimate online options or night programs. I know it\u2019s hands-on, so I\u2019m mainly trying to build knowledge now and maybe do in-person later.\n\nWhat would you recommend? What certs or programs actually helped you move up?",
+    "score": 9,
+    "num_comments": 5,
+    "created_utc": 1775734955,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r198j2",
+    "title": "The fan isn't working...",
+    "selftext": "Story time:\nWorked at a glass factory (making glass food containers) as a Jack-of-all trades tech many moons ago.  The month is July in the Chicago area.  It's hot out. It's hot in the factory. Making glass jars is a very hot process.\n\nA call came from someone working near the end of a glass lear (imagine glass bottles that are barely able to be touched because of the heat. They slowly convey through an oven and that brings the temp down.) The call, \"The fan ain't working.\"  There is a fan perched near this lear blowing toward this person as a means to help cool them. \n\nI get there and notice the fan IS on and blowing as well as one could expect inside a hot factory, near a constant source of hot bottles, in the middle of a Midwest Summer.  I ask where is the fan that needs repair. The person says back to me, and I quote, \"Are you stupid?! The fan is blowing hot air. Fix it!\" \n\nI walk away, partly laughing my ass off and partly plotting my revenge. I tell the supervisor he needs to fix his worker. He looks at me like I was pulling his leg. Nope. I can't fix stupid. Above my pay grade. \n\nOh yeah, I left there many years ago and never looked back.",
+    "score": 45,
+    "num_comments": 9,
+    "created_utc": 1770749054,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1pjo7p6",
+    "title": "Moving from Maintenance Planner to Maintenance Tech. Any advice for my first hands-on role?",
+    "selftext": "Hey everyone,\n\nI\u2019ve been working in maintenance support roles for about 4 years \u2014 started as a parts clerk, then moved into a Maintenance Planner position. So I\u2019m familiar with the lingo and how things operate (LOTO, PMs, downtime, work orders, parts, basic troubleshooting, etc.), and I work around machines fairly often, but I\u2019ve never been in a true hands-on technician role before.\n\nMy career path feels a little out of the norm \u2014 I know a lot of people go Tech \u2192 Planner \u2192 Lead/Supervisor, but I guess it\u2019s different everywhere. Either way, I\u2019ve always been mechanically inclined and feel like I\u2019ve learned a lot from my previous roles.\n\nI just accepted my first Maintenance Technician I/Specialist position and start in early January. I\u2019m excited, but also a little nervous because this will be my first time actually doing the troubleshooting, repairs, and mechanical work instead of planning it \u2014 and obviously those worlds are pretty different.\n\nFor those of you with experience in the field:\n\nWhat tips would you give someone transitioning from planning/parts into being a full hands-on maintenance tech?\n\nSkills I should focus on early?\n\nRed flags to look out for in training?\n\nMindset advice for the first 30\u201390 days?\n\nCommon mistakes new techs make?\n\nWhat\u2019s realistic for a brand-new tech to know (or not know) starting out?\n\n\nI really enjoy the hands-on side of the work and want to go into this with the right attitude and expectations. I\u2019m ready to learn and absorb everything I can. Any advice from experienced techs would be appreciated.\n\nThanks in advance!",
+    "score": 6,
+    "num_comments": 22,
+    "created_utc": 1765426570,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1qud06g",
+    "title": "Crossing over advice",
+    "selftext": "  Had an electrician  friend give me a good bit of advice today. \n  I am in the beginning stages of my electrical crossing training and have been stressing about doing badly at the troubleshooting exercises. A friend was in the area and we started talking methods and he dropped a gem on me. \n  As a mechanic, I'm used to seeing the problem in 5 minutes and fixing it over the next couple of hours. However as an electrician I will spend a couple hours tracking down a problem and taking 5 minutes to fix. I know it's not a perfect correlation but it helped to put things in a bit of perspective.   Just thought someone else could the same. !",
+    "score": 23,
+    "num_comments": 12,
+    "created_utc": 1770078764,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rv817y",
+    "title": "That one day the belt blew and chaos followed",
+    "selftext": "The other day in the plant, we had one of those mornings that usually start like a normal day. I was walking past one of the conveyor lines when I heard this awful screeching. I checked and found out that one of the PU belts had frayed completely. But it kept running for a few seconds before finally snapping, spraying dust and crumbs everywhere.\n\nFor a minute, it made everyone panic a little, but honestly, the funniest part was watching Joe, one of the new guys, try to hold the belt with his bare hands like it was a rope. We ended up tying it with an old strap that was lying around, just a temporary fix. To think that we had just changed these belts with the new ones we got on Alibaba less than 2 months ago, and now it\u2019s damaged again.\n\nIt\u2019s weird how these little things work. I\u2019ve seen maintenance calls for some huge machines go sideways, sometimes all because of the simplest stuff, a worn belt, a loose clamp, these kind of things really throws a wrench into the day. And suddenly, everyone becomes a DIY engineer trying to keep things moving. In this line of work, it\u2019s always the small stuff that keeps you on your toes.",
+    "score": 0,
+    "num_comments": 9,
+    "created_utc": 1773664042,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r5k1e2",
+    "title": "Industrial automatism maintainamce tech",
+    "selftext": "Do You ever feel like You miss concentra\u021bion \u00een details when You try hours \u00een end Alone finding blocul points at a  machine ? I certainly do and have brain fog and get real mad .\n\nPur machines have 30-40 rotating stations \u00een snyc while we have only mechanical parte design documenta\u021bion. Practically no help \u00een the PLC logic , just imagination or experience, which mine \u00ees 4 months . Can't turn \u00een colleagues as we are always \u00een the Rush of calls from other machines Being stalled and needing urgent repair. \n\n\u00cen reality, the parts almost never are changed when needed , they work 24/7 for 6 days weekly extemely high volumes and all linear feeders are scratched so deep that You miss wrong components sometimes to ok ones( refurbished lots themselfed damaged the old machines). Never seen a feeder going to a lathe or remachined.\n\nI only am curious how do You make IT? Where do You find the patience of doing 10 km \u00een rushes \u00een Any shift and dealing with those without affecting Your mental health over time .",
+    "score": 0,
+    "num_comments": 13,
+    "created_utc": 1771175571,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1poxzqd",
+    "title": "What certifications are worth it?",
+    "selftext": "For you guys that have a lot of years of experience what certifications help get better jobs? \n\nI have 3 years of experience troubleshooting cnc machines, it\u2019s a lot of electrical, mechanical, plumbing and plc, I also have stick welding experience Ima start going to an electrical school that\u2019s close to my job and it\u2019s only 2k and it focuses on industrial electricity and plc so ima have that and it\u2019s 1 year.\n\nBut after that I wanna keep getting more certs but don\u2019t know which ones are worth it, I was thinking cmrt but I can only find online courses",
+    "score": 18,
+    "num_comments": 19,
+    "created_utc": 1765981929,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1skwfo9",
+    "title": "Do I have too big of a skills gap to be a Reliability Engineer",
+    "selftext": "I posted awhile back about how to get into Reliability Engineering and I've had a couple interviews, but I think I'm finding out from these interviews I have some bigger gaps than I thought. \n\nI'm currently a nuclear test engineer and I have experience directing trades to run hydrostatic tests, cleanliness flushes, operational checks, LOTO, procedure improvements. But I also mostly just execute tests, not do deep failure modes or RCA. We do some troubleshooting on valves, test gear but that's it. everything is very regulated in the nuclear world and there's manuals for everything. \n\nBeen trying to get myself CMRP to familiarize myself with the field, but I still think the gap is too large to get into Reliability at this time. I've been struggling in interviews when they ask more advanced technical questions. Are there ways I could get into the field? I am interested also in working in a plant improving efficiency, I've been good at combining my field experience to figure out ways to improve the efficiency of performing test procedures which I think is valuable. Thought about maybe going into process engineering. \n\nTrying to avoid getting sucked into the paper-pusher defense contractor path I can see myself going down if I'm not proactive. Want to get more hands on troubleshooting experience but am not getting it in my current role. What should I do? ",
+    "score": 7,
+    "num_comments": 4,
+    "created_utc": 1776135308,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r1qpt1",
+    "title": "Phase to ground resistance",
+    "selftext": "&amp;#x200B;\n\n2 year industrial electrician here, i was troubleshooting a machine that had the VDF supply fuses blown, VDF was actually short circuited but in that moment, just to go over everything i also measured for any possible phase to ground shorts and had 7 ohms on my multimeter on all 3 phases on the supply. \n\nI thought i had found something but i measured around at other points of the machine's circuit and had the same results. I found that really weird and went to see the next machine on the line that was working (exactly alike). 7 ohms resistance between phase and ground everywhere. Never heard about anything like this, but it is how this machines are suposed to be apparently. \n\nMy question is what is the theory behind this ? i don't understand how it is possible, i know about some transformers having neutral and ground connected on the secondary but phases connected to ground ? Is it some kind of inductance on this machine that is throwing off my multimeter ? \n\njust remembered maybe my work multimeter is faulty but I'm at home right now \ud83e\udd23\n\n",
+    "score": 9,
+    "num_comments": 12,
+    "created_utc": 1770794149,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r59pat",
+    "title": "Me being both an engineer and a technician. I see why both engineers and technicians get frustrated at each other.",
+    "selftext": "Long story short Maintenance and Reliability both have different views of each other and how they do things, but once you have both you can design, build, and fix the perfect system.",
+    "score": 21,
+    "num_comments": 10,
+    "created_utc": 1771144958,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1o637c1",
+    "title": "How to get into maintenance",
+    "selftext": "Hi guys. Im 25M and currently working in a chemical laboratory. I really want to get into maintenance because I love the idea of being able to fix problems, its a very rewarding sensation. But my problem is I dont have any experience and I couldn't find any apprenticeship near me. So I am planning on going to school for a Industrial Maintenance Certification for pre apprenticeship which is supposed to be for apprentices, but since I dont have any employer willing to take me in as an apprentice. I am planning to take this certification and hopefully would help me get my foot in. So I just want to ask for advice if this is something that would work or do you this an associate degree in Industrial Maintenance would be much more beneficial?",
+    "score": 12,
+    "num_comments": 28,
+    "created_utc": 1760407694,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ouuhv9",
+    "title": "What do you do?",
+    "selftext": "For the last 6 years I've been doing garage doors and carpentry. I now work for a company called C and D industrial Maintenance. Been working for them for about a month. We mainly service automatic doors, gates, and warehouse overhead doors, which is my specialty. We also do trash compactors, baylors, dock levelers, and random stuff like industrial fans and pharmacy gates and stuff.  Almost every day I encounter a problem with something I have zero experience and I have too call tech support and use YouTube to try to figure out how to fix it.  What type of work do yall do on a daily basis? I feel like the industrial Maintenance umbrella is vast and encompasses an infinite list of stuff. Do you often encounter new problems and if so how do you figure out how to solve them?",
+    "score": 29,
+    "num_comments": 21,
+    "created_utc": 1762918148,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rxcihx",
+    "title": "Need your advice",
+    "selftext": "Currently undergoing a career change, I'm hesitating between your sector and another. This job seems interesting, but what's it like day-to-day? Would you have preferred to do something else professionally and keep DIY/repairs as a hobby?",
+    "score": 4,
+    "num_comments": 7,
+    "created_utc": 1773859706,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1nc5576",
+    "title": "Pump Blowup",
+    "selftext": " Bossman is claiming that a pump I serviced two months ago blew up due to low oil and it was my fault. This particular pump has a nipple and an oil reservoir bulb where the oil plug would go. Filled the oil to the top of the nipple. Filled the oil reservoir bulb half way. Went back the next day to check and lost a bit of oil (therefore I know there were no air pockets), then I refilled the bulb and it has been steady ever since. Bearings blew today and immediately someone is to blame. Can\u2019t things just brake! Lol. Come to find out they have been running the wrong oil in there as I referred to the manual after this, and was told to put different oil than what it states. Should I just go along with the blame or call them out and say you have been putting the wrong oil in it. I know this is very petty but I try hard every day and have no problem admitting to mistakes. It is frustrating in this business seems like people are always looking for someone to blame rather than just the equipment had it. I guess I am just venting. I will just take the blame and move on. Than after this he says I probably over filled it too!!!",
+    "score": 20,
+    "num_comments": 30,
+    "created_utc": 1757379000,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1pecjbk",
+    "title": "New guys",
+    "selftext": "If you\u2019re new to the trade, take it for what it\u2019s worth because it can be a really rewarding career. Sift through the bullshit and take away helpful information (and there will be bullshit to sift through) if you\u2019re getting rattled during a breakdown, slow down your mind and breathe. pay attention to your hands. Show up to calls, pay attention to your hands, ask questions, pay attention to your fucking hands and just be present. You don\u2019t have to be extra, but you gotta be there. It\u2019s the only way to learn. wear your PPE and get back to your family the way you left\n\nOnce you walk into a plant for the first time, and you see all these moving parts, it can be overwhelming for a lot of people, but if you go in determined to learn, you will do so. And you\u2019ll learn that plant like clockwork. Just don\u2019t get complacent and be safe. Good luck! ",
+    "score": 35,
+    "num_comments": 17,
+    "created_utc": 1764884008,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1ryh0wl",
+    "title": "Am I learning too slow?",
+    "selftext": "So I started working a month ago, it's my first serious job. This is an internship in maintance of I think quiet large factory (I think around 1000 people work here). I still study and I'm 1.5 year from my master degree in automation, here that also said that I will be working as automatic. \nBut to the point, I fell like I still don't know where are all devices, I still have problems to detect which alarms are important, and what exactly all shortcuts means.  \nI think that people who are traing me don't have problem with that and I even found one small improvement that can be maid on one of the machines with one of automatic engineers (small change of placement of one of the sensors is needed) but others from my shifts are a bit harsh and say that I should know where things happens.\nSo my question is, should I focus more on knowledge of a factory infrastructure or a moth is still training time and it's normal to make some mistakes? ( I know places that they said that I will be mostly working on just other places/alarms are still harder for grasp) \nI what do you think is important to learn if I want to transition into automation engineer in a future?",
+    "score": 0,
+    "num_comments": 7,
+    "created_utc": 1773965252,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1rlf2vo",
+    "title": "PSA: Your confined space ventilation CFM is probably wrong (and why that matters)",
+    "selftext": "Hey all, I work on the industrial supply side and see this mistake constantly: using the nameplate CFM rating for confined space ventilation calcs instead of the actual delivered CFM.\n\n  \nHere's the reality: Every 90\u00b0 elbow in your ducting cuts your airflow by \\~15-20%. If you're running 50 feet of flexible duct with three bends to reach the bottom of a tank, you might only be getting 60% of what the blower nameplate says.\n\n  \nThe consequence? Your 20-minute purge time becomes 35 minutes, but nobody's recalculating. Or worse, you're not actually meeting the required air changes per hour for entry.\n\n  \nQuick fix: Measure the actual velocity at the duct outlet with an anemometer. If you don't have one, at least add 50% to your purge time when using ducting with multiple bends.\n\n  \nWhat ventilation mistakes have you seen catch people off guard?",
+    "score": 0,
+    "num_comments": 9,
+    "created_utc": 1772709656,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1krw6y8",
+    "title": "Animosity between shifts?",
+    "selftext": "We have been developing a growing rift between the 2 day and 2 night shifts at our facility. In a nutshell, one day shift logs the majority of actual repairs as it has the most veteran techs\u2014 the other day shift is younger and tends to bandage the majority of breakdowns rather than do actual replacements. Don\u2019t even get me started on the night shifts! Then there\u2019s the shift handovers: used parts, tools, soda bottles left in scissor lifts and flatbed carts which are never put on a charger; half finished repairs; broken machinery turned off until turnover and letting the next shift handle it, etc..Its getting ugly to the point where work tablets are being unplugged, and other deliberate shit. Managers are in their own world and are spineless to do much except have us take pictures of all the bullshit and make empty promises..",
+    "score": 46,
+    "num_comments": 40,
+    "created_utc": 1747829313,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1r022gj",
+    "title": "When does tube removal stop being \u201cmaintenance\u201d and start being damage control?",
+    "selftext": "Most tube failures I\u2019ve seen or sometimes experienced don\u2019t happen during operation they happen during removal or installation. Bent tubes, damaged tube sheets, chains and come-alongs doing more harm than good, and a shutdown that keeps stretching because \u201cwe\u2019ll fix it on reinstall.\u201d At what point do you decide the removal method itself is the problem and not the tube?\n\nhow you all professionals handle tube work during outages without creating more rework downstream.",
+    "score": 0,
+    "num_comments": 12,
+    "created_utc": 1770637470,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1sq2kgc",
+    "title": "Hydropower maintenance",
+    "selftext": "Does anybody have advice for getting into hydropower maintenance. I've been trying for a few years at various dams around the PNW. My background, I was in the Navy on a nuclear aircraft carrier as a machinist (machinery repairman), I got out in 2013 and switched careers into hydrology and natural resources for a while until I realized it didn't pay anything. I only had an AAS so unless I wanted more school that was a dead end. But I got back into maintenance. I've worked a factory in Georgia for a short time doing maintenance, a few machine shops doing repair and new parts, a hydraulic repair shop doing everything from wrenching to machining to testing. Now I have been working in an aluminum plant for the past 6 years in the machine shop repairing large stuff like rolls and fans and any other random broken things they bring in. It's a lot of large lathes and mills. We are millwright/machinists doing all the bearings and alignment and all that stuff.\n\nI have gotten my resumes looked at and usually past the screening process but never any calls for interviews. I have now hydropower experience which I feel is my major problem but I don't know how to get it. Does anybody know of useful trainings I could take or certs I could get to bolster my resume and make myself more hirable. I don't really have time to enroll in a physical school with my schedule but online might be an option if it was actually useful. \n\nAny advice would be greatly appreciated.",
+    "score": 3,
+    "num_comments": 2,
+    "created_utc": 1776626919,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1pogpgm",
+    "title": "CMMS reporting reality check: where do the numbers actually break down?",
+    "selftext": "Hey guys I am back continuing my CMMS research! Thanks for everyone offering their insights last time!\n\nI\u2019ve been digging into how CMMS data actually gets used once it leaves the system \u2014 especially when it ends up in front of ops, finance, or leadership.\n\nBased on a mix of conversations and firsthand experience, here are a few things that *seem* to be true \u2014 but I want to stress this is a **sanity check**, not a conclusion.\n\nPlease tear these apart if they don\u2019t match reality.\n\n**What I\u2019m hearing so far:**\n\n* Most teams *can* get data out of the CMMS \u2014 the friction starts **after** that.\n* Reports aren\u2019t usually \u201cwrong,\u201d but they\u2019re often **arguable** because:\n   * work orders are thin\n   * downtime attribution is messy\n   * context lives in people\u2019s heads, not the system\n* When numbers get questioned, the real work begins:\n   * chasing techs for better notes\n   * reconciling production vs maintenance views\n   * explaining why \u201cdowntime\u201d \u2260 \u201cwrench time\u201d\n* Over time, teams rely less on single reports and more on **patterns**:\n   * repeat failures\n   * consistency across months\n   * whether documentation tells the same story every time\n* A lot of effort in reporting feels less like analytics and more like **defending yourself** when questions come up.\n\nThat\u2019s my working model \u2014 now here\u2019s where I genuinely need help.\n\n# Questions I\u2019d love real examples on:\n\n1. **The last time a report got challenged** \u2014 what actually settled it?\n   * timestamps?\n   * part numbers?\n   * supervisor sign-off?\n   * \u201cwe\u2019ve seen this for 6 months straight\u201d?\n   * or did it *never* really get settled?\n2. When CMMS data isn\u2019t detailed enough, what *actually* happens next?\n   * ship the report anyway?\n   * delay and chase people?\n   * add caveats and hope nobody digs?\n   * quietly fix it in Excel?\n3. How often does reporting pain come from:\n   * the CMMS itself\n   * vs people not entering data\n   * vs incentives/politics between departments?\n4. Have you ever tried automating reports for ops/finance?\n   * What broke first: permissions, email rules, filters, people changing things, or interest fading?\n5. If you had to be honest \u2014 is reporting:\n   * a recurring headache,\n   * an occasional annoyance,\n   * or mostly fine unless something blows up?\n\nNot looking to sell anything or push a tool here \u2014 I\u2019m trying to understand **where the real friction lives** and where I might be projecting my own experience.\n\nAppreciate any war stories, counterexamples, or \u201cyou\u2019re missing the real problem\u201d takes.",
+    "score": 0,
+    "num_comments": 19,
+    "created_utc": 1765926720,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1san0pq",
+    "title": "Air compressor oil leak",
+    "selftext": "had a leak in my compressor. it's been fixed but I've got some of the sigma fg-460 in the chasey. \n\ncleaning suggestions?",
+    "score": 1,
+    "num_comments": 4,
+    "created_utc": 1775149106,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1o8of90",
+    "title": "90 day review today, feeling discouraged. Facing possible termination by the end of November for not learning equipment fast enough. Suggestions?",
+    "selftext": "Just today I had a 90 day review and it was a gut punch. I did come in at a rough time also. Plant director and Plant Manager quit or transferred to another facility, maintenance supervisor who was on FMLA for about 4 months got his position reassigned, 1st shift maintenance guy who's been there for about 13 years was on surgery leave for about two months he came back just in August btw, and the new guy that started on the same day with me quit back in August, just leaving me on as the new guy trying to learn the whole plant with only another maintenance guy and the engineer manager keeping the place afloat. I did mention back in June in during the interview that I had only experience in a food plant and a logistic warehouse, and not a corrugation plant, but they said that'll be no problem and that they'll train me. Since then, I've been struggling to retain information on the machines in the plant and the shutdown procedures. I've mostly just been reading manuals, and writing down notes on what looks important and going out to calls with the other maintenance guys so, I can learn what to look for troubleshooting wise. No tear-downs or any Pm's of any type of sort. I learn faster hands on, even if I struggle with it. I did get a list from my manager on what's required of me on what to learn as of today. Just frustrated with the whole aspect. On Monday I plan on taking more notes and going to bug the operators and the maintenance guys more on the list that was given to me today, now that I got a clearer picture. ",
+    "score": 20,
+    "num_comments": 23,
+    "created_utc": 1760664974,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  },
+  {
+    "id": "1q717kd",
+    "title": "Floor Stud Cutting",
+    "selftext": "We're rebuilding part of my factory, all of the equipment is getting sold/trashed and all of it was mounted to the floor with a variety of stud sizes, from 3/8\" to 1\". \n\nPart of this work is to cut all these studs flush with the concrete, so we can put new studs in for new equipment. \n\nRight now the procedure is just to take a 7\" angle grinder and cut them. Not a huge deal per stud, but I've got about 3,000 studs and more are exposed daily. We're spending quite a bit of time on hands and knees doing this. We'll probably end up with 10,000 studs by the end of it. \n\nIs there a jig for a grinder that mounts to a cart or something? Perhaps a weed trimmer-like contraption with a grinding wheel on it? Both of these sound dangerous if the wheel catches, which is probably why I'm not finding anything with searches. \n\nI'm looking for ideas for 2 solutions: Something I can make and something I can pitch to the boss to buy or rent. Let's assume budget is unlimited for the second one. \n\nThis isn't the first time I've had this thought, I've had to grind out hundreds of feet of weld to fix leaks in big tanks before. I would have killed for some way of not being on my hands and knees for hours on end. \n\nAnyway, thoughts? Suggestions? Experiences? Commiseration? \n\nEdit: best solution turned out to be a Roomba with an angle grinder. Thanks guys!",
+    "score": 5,
+    "num_comments": 15,
+    "created_utc": 1767843693,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": ""
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "1lejxkx",
+    "title": "OMRON R88d error 21 code",
+    "selftext": "Has anybody ever had an error 21 on an R88d controller for a single servo motor straight out of the box? I have triple checked the wiring and have came up with no issues. ",
+    "score": 2,
+    "num_comments": 2,
+    "created_utc": 1750260248,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": "",
+    "category": "mechanical",
+    "urgency": "medium",
+    "quality_score": 0.5,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "Omron",
+    "equipment_type": "servo",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1rpfh6d",
+    "title": "Logging Bits &amp; Variables for troubleshooting",
+    "selftext": "I'm using an Omron NX102-1200 PLC, but the question applies to all PLC's.\n\nI have a machine that is quite complex but has been in service for a few years now.\n\nEither I have a code issue or something in process is causing a rare condition that I've programed for and stops the machine. Only on a rare occassion does this condition come up, of course only after I've left the facility. I want to determine if this is a code bug, or if something in the process is causing the condition, meaning the code is functioning as intended.\n\n  \nI looked into putting a camera on the machine to get a better visual on the issue.\n\nI'm very familiar with the \"data trace\" function in Omron's software and I've used it successfully to chase down programming issues in the past. But it is my understanding that is can only log \\~10 seconds worth of data. The issue is so intermittent that I just can't stand around and wait for it to happen.\n\nWhat options would I have for logging a whole series of bits and variables so when the problem does happen I can look through the data to try and determine what happened?  \nCan I data log to the SD-card or something like this?",
+    "score": 1,
+    "num_comments": 6,
+    "created_utc": 1773096470,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "high",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Omron",
+    "equipment_type": "PLC",
+    "model_number": "NX102-1200",
+    "fault_codes": []
+  }
+]

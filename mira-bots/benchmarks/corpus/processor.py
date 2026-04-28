@@ -59,7 +59,7 @@ def enrich(post: dict) -> dict:
         "quality_reasons": cl.reasons,
         "manufacturer": equip.manufacturer,
         "equipment_type": equip.equipment_type,
-        "model_number": equip.model_number,
+        "model_number": equip.model,
         "fault_codes": [
             {"code": fc.code, "manufacturer": fc.manufacturer, "description": fc.description}
             for fc in codes

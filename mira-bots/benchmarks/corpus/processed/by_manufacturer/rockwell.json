@@ -1,0 +1,305 @@
+[
+  {
+    "id": "1snlhij",
+    "title": "Long post about a problem I can't solve. Please help me with ideas to troubleshoot, because I'm stumped.",
+    "selftext": "Hi, maybe this is a very specific question to ask and I apologize if that is the case. I don't want you guys to do my work for me, I'm just stumped, and maybe a fresh mind completely removed from the problem can help me.\n\nI'm trying to make a sorting machine work. Bags get in through a conveyor belt, a Cognex scanner reads (or tries to, but that's a separate issue) a barcode, then the PLC consults a database, then (depending on the DB's response) that bag is labeled with a new barcode. It goes through an empty conveyor, then to another where the sorting actuators are. Physically, it's a U-turn, but I don't think that matters. It's all implemented with a Rockwell ControlLogix 5380, everything is IO-Link and connected via EthernetIP. Also there's a FactoryTalk Optix application.\n\nNow, I did not participate in the making of this machine. I got here maybe a month ago and was just got shoved into trying to make it work. I know that it's not ideal that the reading, consulting and labeling all happens in the same conveyor belt, which is less than 3 meters long, but space constraints happened.\n\nNow to the topic at hand.\n\nThe way it's programmed, there's a structure named \"Bag\" which contains all the data needed for every bag, and maybe more. Strings, integers, some booleans used as flags, DateTime objects to be used for traceability, etc. I don't have it in front of me right now and I don't remember the specific size of it in bytes, but will edit the post whenever I can.\n\nThen, a queue of 10 \"bags\" is created for **every** step of the process, which looks something like this:\n\nBAG IN -&gt; READ_BAGS_QUEUE -&gt; CONSULTED_BAGS_QUEUE -&gt; LABELED_BAGS_QUEUE -&gt; 1ST_TURN_QUEUE -&gt; TRANSITION_BELT_QUEUE -&gt; 2ND_CURVE_QUEUE -&gt; 1st...nth_SORTING_STATION_QUEUE\n\nAt the end it hops from station to station until it reaches the right one, and it's removed from its queue to be moved to the container's queue in which it was sorted.\n\nLogically, this makes all the sense in the world and is very neat. In every part of the process, it looks at the very first bag of its own queue, does what it must, then moves it to the queue of the next part. In practice, though, it is a nightmare to troubleshoot. At least for me, given that it's the first time I deal with queues (I know they are quite common, I'm just not very experienced yet).\n\nThere are only 2 decisions: where to sort, and whether to print a label or not. It mostly works fine, but once in a while it will start to mess it all up, and I can't figure out why. For example:\n\n- Bags that were to be labeled weren't, but were sorted right so the system knew what type of bag they were. At first, we thought it was a problem with the timings of the communication with the printer, so we added a sensor to detect when the label is printed, and if it doesn't it stops the conveyor. For the last two weeks this has worked really well, until today when again a few bags weren't printed and the alarm didn't come through.\n\n- Bags that were labeled were wrongly sorted. Probably more bags are being sorted wrong, but we can only detect those that are with a custom label. This is a traceability nightmare. This is where I am mostly stuck at. The decision to whether kick a bag into the current station or not is simple: it compares two numbers (sort destiny vs station type). It needs to do it this way because it is possible to set up more than one station of the same type, for volume reasons. It first fills up the first station of a given type, and when it's full it switches to the next one of the same type, and then it rotates. That part works well, but I digress. What's even worse, if you check that wrongly sorted bag in to the system, it tells you that it was sorted into $ContainerID$, which matches the right container, but not the one it was actually sorted in! This is nuts, given that it only stores the Container ID *after* it's been kicked in.\n\nI'm out of ideas, mainly because this is not consistent. All morning worked flawlessly, even with a high flux of bags coming in. Then after I left, around 2pm, calls started coming in (with video proof) that it was failing. Sometimes it switches from not working to working with me there but without me changing absolutely anything, just watching.\n\nThe only thing that I can think of why this doesn't work is if there is some kind of offset between the queues and real life. Like, the machine thinks bag 1 is currently in station A, but actually it's already in station B, so it kicks bag 2 in station A when it needed to kick bag 1 in station A. But all triggers to move from one queue to another are physical, well-placed sensors, so this doesn't make much sense. Plus we've got a visualization of the queues and it's 1:1 with the physical position of the bags but it's not that off. Another thing I thought was that maybe moving one object from one queue to another takes too long, and since it's happening all the time, maybe the delay keeps adding up until it can't catch up and goes crazy. But it seems like a long shot.\n\nI don't know what else to try, and I can't test much because they need the machine running, they've got a massive backlog of samples to process. There are days where it works fine and they use it all day.\n\nI'm sorry for the absolutely massive post. I hope someone has the time to read it and maybe throw some tips.",
+    "score": 7,
+    "num_comments": 33,
+    "created_utc": 1776385884,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 1.0,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Rockwell",
+    "equipment_type": "PLC",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "5380",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1r8dyxt",
+    "title": "FactoryTalk ME alarms make me want to burn the world",
+    "selftext": "is there an easier way to do these alarms. It basically turns into me doing every alarm in their ATROCIOUS GUI one by one by one. Ive exported the XML to excel which DOES NOT like the headers and destroys the file. Ive tried to go through Notepad++ but unless there are some really good plugins its just as tedious.\n\nif this was like 20 alarms fine but Im doing close to 400 and want to throw my laptop into a dumpster lol\n\nFor some reason even using copy and paste in the messages part of the interface doesnt work and only lets me paste in the message portion under messages and not the trigger part still making me have to go through each line and use the drop down after their added in the \"triggers tab\". Some will paste, others not. its infuriating because there seems to be no rhyme or reason as to why either. its just decides it doesnt like them. \n\n  \nHOLY KRAP is there an easier way! Does Rockwell just hate its consumers?",
+    "score": 13,
+    "num_comments": 43,
+    "created_utc": 1771445743,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "high",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "no equipment mention"
+    ],
+    "manufacturer": "Rockwell",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1saxp0k",
+    "title": "Built a \"No-BS\" 5-P troubleshooting web app for us. Try breaking my PowerFlex 525 diagnostic tree (No login required)",
+    "selftext": "https://preview.redd.it/4umy95ca6vsg1.jpg?width=3468&amp;format=pjpg&amp;auto=webp&amp;s=44d6ab70cab04dc072d79ec104329a216a4ac99e\n\nHey guys,\n\nI got tired of digging through 300-page Rockwell PDFs at 3 AM while the night shift supervisor breathes down my neck. So, I built a prototype troubleshooting app:\u00a0**Industrial Sparky Pro**.\n\nIt runs entirely in the browser (you can hit \"Add to Homescreen\" and it works offline in the basement).\u00a0**No logins, no paywalls, zero corporate BS.**\n\nRight now, it\u2019s just a proof-of-concept (MVP V1.5). I\u2019ve mapped out a fully interactive \"5-P\" (Power, Program, Panel, Physical) diagnostic tree for two classic scenarios:\n\n1. **AB PowerFlex 525 faults**\u00a0(specifically the dreadful F012 / E-stop loops)\n2. **Limit Switch / Motor missing stops**\n\n**Link:**\u00a0[https://industrial-sparky-pwa.vercel.app/](https://industrial-sparky-pwa.vercel.app/)\n\nI need some real controls guys to field-test this logic. Go in, run the AB PF525 test case, intentionally throw it off track, and tell me where my logic sucks.\n\nIf it leads you to a dead-end, hit \"OTHER / NOT SURE,\" type in what\u00a0*actually*\u00a0went wrong in the anomaly box, and hit submit. It sends an anonymous ping straight to my inbox so I can fix the logic tree.\n\nIs this actually useful for the greenhorns / apprentices on your team? Or is it just another useless digital manual? Don't hold back, roast it. \ud83c\udf7a",
+    "score": 25,
+    "num_comments": 22,
+    "created_utc": 1775173591,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "mechanical",
+    "urgency": "high",
+    "quality_score": 1.0,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Rockwell",
+    "equipment_type": "motor",
+    "model_number": "PowerFlex 525",
+    "fault_codes": [
+      {
+        "code": "F012",
+        "manufacturer": "Allen-Bradley",
+        "description": "Drive overcurrent"
+      },
+      {
+        "code": "3468",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1r5km7y",
+    "title": "PLC fault monitoring",
+    "selftext": "I am struggling with the best way to monitor two redundant PLCs for faults and automatically switch which PLC runs the system if a fault occurs.\n\nI am using produced and consumed and tried using connection status bits but those do not change state with a fault. I am also wondering if the PLC and stops scanning logic how will the produced and consumed tag value update so I can see from the redundant PLC.\n\nEDIT: PLC is Rockwell Compactlogix v33\n\nLooking for any tips or ideas that can assist.",
+    "score": 8,
+    "num_comments": 28,
+    "created_utc": 1771176915,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "low",
+    "quality_score": 0.75,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Rockwell",
+    "equipment_type": "PLC",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1srk18n",
+    "title": "ifm CR1074 EtherNet/IP Adapter fails on empty CODESYS project with C0103 retain memory error",
+    "selftext": "Hi, I\u2019m trying to connect an\u00a0**ifm CR1074**\u00a0to a\u00a0**Rockwell CompactLogix L19**\u00a0over EtherNet/IP.\n\nI\u2019ve been working with\u00a0**ifm for about 3 years**, so I\u2019m reasonably familiar with the environment and this does not look like a basic setup mistake.\n\nI tested with:\n\n* **CODESYS 3.5.16**\n* **CODESYS 3.5.18**\n* HMI target version:\u00a0[**3.5.16.50**](http://3.5.16.50)\n\nA completely empty project downloads correctly.  \nBut as soon as I add the\u00a0**EtherNet/IP Ethernet Adapter**, even before adding modules or variables, download fails with:\n\n`C0103: Out of retain memory: Variable 'g_c_lastAcdConflict', 350 bytes...`\n\nI also previously saw the same type of error with\u00a0`retainData`.\n\nI did\u00a0**not**\u00a0create any retain variables manually.  \nSo it seems the problem appears just from adding the EtherNet/IP Adapter itself.\n\nHas anyone seen this on ifm targets?  \nIs this a package/runtime compatibility issue?  \nAny known working version combination?\n\nGoal is just to exchange\u00a0**2 INTs**\u00a0with a CompactLogix L19.",
+    "score": 5,
+    "num_comments": 3,
+    "created_utc": 1776768429,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.75,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Rockwell",
+    "equipment_type": "HMI",
+    "model_number": "CR1074",
+    "fault_codes": []
+  },
+  {
+    "id": "1st58sz",
+    "title": "What triggers an analog Channel Fault? (Rockwell Studio 5000)",
+    "selftext": "I have an 1756-IF16 module, Controllogix, that I'm trying to configure NAMUR standards on to detect channel faults. I'd like to use the ChFault bit to interlock things like PIDE loops and valve actuators downstream. \n\nWhat have you found the best practice way to do this using the preconfigured tags that are provided when you set up a new analog input module? Adding alarms in the module configuration? Using P\\_AinAdv block and it's multitude of tags? Any help is appreciated.\n\nhttps://preview.redd.it/mzmjsr26kuwg1.png?width=622&amp;format=png&amp;auto=webp&amp;s=9d327974b5c2a9fd8dd71f1376142ca2a655517d\n\n  \n\n\nhttps://preview.redd.it/bbetc7kgjuwg1.png?width=1116&amp;format=png&amp;auto=webp&amp;s=502c0ff26d9c6ca5890479299d4ea7bc7667c5f4\n\n",
+    "score": 1,
+    "num_comments": 2,
+    "created_utc": 1776909481,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "low",
+    "quality_score": 0.85,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Rockwell",
+    "equipment_type": "valve",
+    "model_number": "1756-IF16",
+    "fault_codes": [
+      {
+        "code": "5000",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1qiy9a7",
+    "title": "Studio 5000 installation error",
+    "selftext": "Hello, I've been trying for the past day or so to get studio5000 v32.05 to correctly install, every attempt I have made at installing it has resulted in the same error, 1603, happening whenever I attempt to install the 1747 module profiles. \n\nHere's what I've attempted so far:\n1. The usual 1603 troubleshooting steps (turning off UAC, turning off anti-virus, running as administrator, etc.)\n2. Deleting and re-downloading literally everything\n3. Making sure I have older versions of .NET installed\n3. Making sure they have full access to my system\n4. Making sure my computer is up to date\n5. Contacting rockwell support (useless)\n\nI have more than enough disk space, and I definitely have the hardware requirements.\n\nI genuinely have no idea where to go from here. Any suggestions would be appreciated.",
+    "score": 3,
+    "num_comments": 14,
+    "created_utc": 1769003074,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.75,
+    "quality_pass": false,
+    "quality_reasons": [
+      "no equipment mention"
+    ],
+    "manufacturer": "Rockwell",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "5000",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1oiaetn",
+    "title": "FactoryTalk AssetCentre crashing at startup - Unhandled Exception has occurred in your application. Internal Error: Profile SubSystem unknown.",
+    "selftext": "I recently installed rockwell software on a new Virtual Dev Server, as we are planning on decommissioning our old dev server as we migrate to the newest version of iFix. Everything is working correctly, with the exception of AssetCentre. I'm getting the Splash Error \"Unhandled Exception has occurred in your application. Internal Error: Profile SubSystem unknown\". When I click details, this is the error: \n\n  \nSee the end of this message for details on invoking\n\njust-in-time (JIT) debugging instead of this dialog box.\n\n\u00a0\n\n\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\* Exception Text \\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\n\nSystem.Exception: Internal Error: Profile SubSystem unknown.\n\n\u00a0 at RockwellAutomation.FactoryTalk.Studio.Profile.LoadProfileProperties(Type type, Object obj)\n\n\u00a0 at RockwellAutomation.FactoryTalk.Studio.Application.Frame.RSFrame.OnLoad(EventArgs e)\n\n\u00a0 at System.Windows.Forms.Form.OnCreateControl()\n\n\u00a0 at System.Windows.Forms.Control.CreateControl(Boolean fIgnoreVisible)\n\n\u00a0 at System.Windows.Forms.Control.CreateControl()\n\n\u00a0 at System.Windows.Forms.Control.WmShowWindow(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.Control.WndProc(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.ScrollableControl.WndProc(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.Form.WmShowWindow(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.Form.WndProc(Message&amp; m)\n\n\u00a0 at RockwellAutomation.FactoryTalk.Studio.Application.Forms.DefaultFrame.WndProc(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.Control.ControlNativeWindow.OnMessage(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.Control.ControlNativeWindow.WndProc(Message&amp; m)\n\n\u00a0 at System.Windows.Forms.NativeWindow.Callback(IntPtr hWnd, Int32 msg, IntPtr wparam, IntPtr lparam)\n\n\u00a0\n\n\u00a0\n\n\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\* Loaded Assemblies \\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\n\nmscorlib\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4785.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: [file:///C:/Windows/Microsoft.NET/Framework/v4.0.30319/mscorlib.dll](https://)\n\n\\----------------------------------------\n\nRA.FTAC.Client\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0000.192\n\n\u00a0 \u00a0CodeBase: [file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RA.FTAC.Client.exe](https://)\n\n\\----------------------------------------\n\nRockwellAutomation.FactoryTalk.StudioInterfaces1\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0000.192\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.Fact\u2026\n\n\\----------------------------------------\n\nSystem.Windows.Forms\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4739.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Windows.Forms/v4.0\\_4.0.0.0\\_\\_b77a5c561934e\u2026\n\n\\----------------------------------------\n\nSystem\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4770.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: [file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System/v4.0\\_4.0.0.0\\_\\_b77a5c561934e089/System.dll](https://)\n\n\\----------------------------------------\n\nSystem.Drawing\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4390.0 built by: NET48REL1LAST\\_C\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Drawing/v4.0\\_4.0.0.0\\_\\_b03f5f7f11d50a3a/Sy\u2026\n\n\\----------------------------------------\n\n[RockwellAutomation.FactoryTalk.Studio](http://RockwellAutomation.FactoryTalk.Studio)\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0000.192\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.Fact\u2026\n\n\\----------------------------------------\n\nRockwellAutomation.FTAssetCentre.DirectoryAndSecurityWrapper\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0005.197\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.FTAs\u2026\n\n\\----------------------------------------\n\nSystem.Configuration\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4380.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Configuration/v4.0\\_4.0.0.0\\_\\_b03f5f7f11d50\u2026\n\n\\----------------------------------------\n\nSystem.Core\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4785.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Core/v4.0\\_4.0.0.0\\_\\_b77a5c561934e089/Syste\u2026\n\n\\----------------------------------------\n\nSystem.Xml\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4161.0 built by: NET48REL1\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Xml/v4.0\\_4.0.0.0\\_\\_b77a5c561934e089/System\u2026\n\n\\----------------------------------------\n\nInfragistics4.Win.UltraWinToolbars.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Win.Ultra\u2026\n\n\\----------------------------------------\n\nInfragistics4.Win.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Win.v20.1\u2026\n\n\\----------------------------------------\n\nInfragistics4.Shared.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Shared.v2\u2026\n\n\\----------------------------------------\n\nUIAutomationProvider\n\n\u00a0 \u00a0Assembly Version: [4.0.0.0](http://4.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4785.0 built by: NET48REL1LAST\\_B\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/UIAutomationProvider/v4.0\\_4.0.0.0\\_\\_31bf3856ad364\u2026\n\n\\----------------------------------------\n\nRockwellAutomation.FactoryTalk.TraceDiagnostics\n\n\u00a0 \u00a0Assembly Version: [5.0.0.5](http://5.0.0.5)\n\n\u00a0 \u00a0Win32 Version: [5.0.0.05](http://5.0.0.05)\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.Fact\u2026\n\n\\----------------------------------------\n\nRA.FT.ExceptionManagement\n\n\u00a0 \u00a0Assembly Version: [3.0.0.5](http://3.0.0.5)\n\n\u00a0 \u00a0Win32 Version: [3.0.0.5](http://3.0.0.5)\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RA.FT.ExceptionManageme\u2026\n\n\\----------------------------------------\n\nMicrosoft.GeneratedCode\n\n\u00a0 \u00a0Assembly Version: [1.0.0.0](http://1.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4161.0 built by: NET48REL1\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Xml/v4.0\\_4.0.0.0\\_\\_b77a5c561934e089/System\u2026\n\n\\----------------------------------------\n\nMicrosoft.GeneratedCode\n\n\u00a0 \u00a0Assembly Version: [1.0.0.0](http://1.0.0.0)\n\n\u00a0 \u00a0Win32 Version: 4.8.4161.0 built by: NET48REL1\n\n\u00a0 \u00a0CodeBase: file:///C:/windows/Microsoft.Net/assembly/GAC\\_MSIL/System.Xml/v4.0\\_4.0.0.0\\_\\_b77a5c561934e089/System\u2026\n\n\\----------------------------------------\n\nInfragistics4.Win.UltraWinStatusBar.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Win.Ultra\u2026\n\n\\----------------------------------------\n\nInfragistics4.Win.UltraWinTabbedMdi.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Win.Ultra\u2026\n\n\\----------------------------------------\n\nInfragistics4.Win.UltraWinDock.v20.1\n\n\u00a0 \u00a0Assembly Version: 20.1.20201.104\n\n\u00a0 \u00a0Win32 Version: 20.1.20201.104\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/Infragistics4.Win.Ultra\u2026\n\n\\----------------------------------------\n\nRockwellAutomation.FTAssetCentre.ApplicationEventing\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0000.192\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.FTAs\u2026\n\n\\----------------------------------------\n\nRockwellAutomation.FTAssetCentre.DataAndHelpers\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0000.192\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.FTAs\u2026\n\n\\----------------------------------------\n\nRockwellAutomation.FTAssetCentre.LicenseInfo\n\n\u00a0 \u00a0Assembly Version: [11.0.0.192](http://11.0.0.192)\n\n\u00a0 \u00a0Win32 Version: 11.00.0005.197\n\n\u00a0 \u00a0CodeBase: file:///C:/Program%20Files%20(x86)/Rockwell%20Software/AssetCentre%20Client/RockwellAutomation.FTAs\u2026\n\n\\----------------------------------------\n\n\u00a0\n\n\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\* JIT Debugging \\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\\*\n\nTo enable just-in-time (JIT) debugging, the .config file for this\n\napplication or computer (machine.config) must have the\n\njitDebugging value set in the system.windows.forms section.\n\nThe application must also be compiled with debugging\n\nenabled.\n\n\u00a0\n\nFor example:\n\n\u00a0\n\n&lt;configuration&gt;\n\n\u00a0 \u00a0&lt;system.windows.forms jitDebugging=\"true\" /&gt;\n\n&lt;/configuration&gt;\n\n\u00a0\n\nWhen JIT debugging is enabled, any unhandled exception\n\nwill be sent to the JIT debugger registered on the computer\n\nrather than be handled by this dialog box.",
+    "score": 2,
+    "num_comments": 7,
+    "created_utc": 1761660622,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Rockwell",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "4785",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "4739",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "Dev",
+        "manufacturer": "Yaskawa",
+        "description": "Speed deviation"
+      }
+    ]
+  },
+  {
+    "id": "1mgpc01",
+    "title": "Latching faults in GuardLogix",
+    "selftext": "Please help as I am relatively new to Rockwell controllers being worked with ABB/Siemens in the past. Is there a way to latch inputs that go into fault so they are not cleared on a power recycle if the inputs go back to healthy? Using ladder to program. ",
+    "score": 2,
+    "num_comments": 7,
+    "created_utc": 1754242772,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.35,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Rockwell",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  },
+  {
+    "id": "1l0p3c5",
+    "title": "PowerFlex 755 Fault Code 926",
+    "selftext": "Hello fellows, we recently have an issue with some of our PowerFlex755-EENET drives, in wich drive suddenly stops on fault 926. They are new drives thats comes with a new facility installation drives revision is 16.002, old drives are revision 11 and none of them have this problem. PLC is ControlLogix 1756-L85EP and our network runs on Moxa switches.\n\nIt seems to be a network problem, and we already try changin RPI from default to 200, we also see that Rockwell Knowledbase recomends that in the case od this fault on revisions 16 to flash drive to rev 14, which we also try with no luck because ControlFlash throw error \"An error ocurred or you cancelled the flash update\", we try in 3 diferent machines 2 of which are VM of our DCS and 1 physical. We also try DriveExecutive and the .dmk revision file does not shows up.\n\nDoes anybody had a similar problem, hope you can help guys. Thanks a lot to anybody.\n\n  \nEDIT: Flahing revision from Rev 16 to Rev 14 to drives solve the problem, if anyone else is experience this fault code with newer drives this might solve the fault. Thanks for the help (for those that help).",
+    "score": 1,
+    "num_comments": 9,
+    "created_utc": 1748784846,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Rockwell",
+    "equipment_type": "PLC",
+    "model_number": "PowerFlex 755",
+    "fault_codes": []
+  },
+  {
+    "id": "1k9t4f6",
+    "title": "Failed to write RSlogix 5000 Module Profile - Error: 0x80040154",
+    "selftext": "Hello everyone,  \nI\u2019m having trouble installing Studio 5000 v37, and I\u2019m hoping someone here can help me out. During the installation process, I receive an error message stating: *\"Failed to write RSLogix Module Profile.\"*\n\nThe first time I installed Studio 5000 (v37), everything worked fine. I then installed versions starting from v37 down to v30, and everything worked well until I tried installing v30. After that, Studio 5000 would no longer open, and I encountered an error (unfortunately, I didn\u2019t take a screenshot of the error message).\n\nI followed Rockwell\u2019s recommendation to uninstall everything, including all versions I had installed (from v30 to v37), and deleting leftover files and registry entries, and then attempted to reinstall.\n\nHowever, this time during the installation of v37, the error message about the RSLogix Module Profile popped up.\n\nI\u2019ve uninstalled everything related to Studio 5000 again. I\u2019ve manually deleted leftover files and folders that were still remaining after the uninstall process. After cleaning up, I tried reinstalling the software, but I still get the same error message.\n\nUnfortunately, none of these steps have resolved the issue, and I\u2019m stuck at this point. Has anyone encountered this error before, or does anyone know how to fix this issue? Any help would be much appreciated!\n\nThank you in advance!\n\nhttps://preview.redd.it/n3rnu0795kxe1.png?width=2010&amp;format=png&amp;auto=webp&amp;s=ca1a0e9a5b1a83445daee333fe903c99455e480c\n\n",
+    "score": 2,
+    "num_comments": 6,
+    "created_utc": 1745839388,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "high",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Rockwell",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "5000",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      },
+      {
+        "code": "2010",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  },
+  {
+    "id": "1kas2m9",
+    "title": "Guardmaster 440C-CR30 safety relay periodically showing faults",
+    "selftext": "I have a customer with a 440C-CR30 that is being monitored by a ControlLogix over EthernetIP (the device is owned by the CLX and is in the IO tree).  Every 2 minutes, based on trending, the major and minor fault bits will go high for about 30 seconds, and then go low.  The safety outputs still work fine during this period and there are no indications on the unit that there is actually a fault.  This causes nuisance alarms on the SCADA that everyone is ignoring at this point.  Rockwell says this is fine but can't explain why it is happening.  I am speculating that these fault bits go high when a self check internal to the 440C is happening, and a timer should be added to the CLX to compensate for this period.\n\nAnyone else have this issue, and is there another solution?",
+    "score": 2,
+    "num_comments": 5,
+    "created_utc": 1745943778,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)"
+    ],
+    "manufacturer": "Rockwell",
+    "equipment_type": "SCADA",
+    "model_number": "",
+    "fault_codes": []
+  }
+]
