@@ -1,0 +1,52 @@
+name: DeepEval Quality Gate
+
+on:
+  pull_request:
+    paths:
+      - 'mira-bots/**'
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Evaluation mode'
+        default: 'offline'
+        type: choice
+        options:
+          - offline
+
+jobs:
+  deepeval:
+    name: DeepEval Benchmark (offline)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install httpx deepeval>=1.0.0
+
+      - name: Run DeepEval suite (offline)
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          cd mira-bots
+          python3 benchmarks/deepeval_suite.py \
+            --mode offline \
+            --output benchmarks/deepeval_results/
+        # offline mode: scores reference responses, no live bot needed
+        # fails the job if overall pass rate < 80% (exit code 1)
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepeval-results-${{ github.run_number }}
+          path: mira-bots/benchmarks/deepeval_results/
+          retention-days: 30
