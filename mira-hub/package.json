@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --testTimeout 30000 '**/*.integration.test.ts'",
-    "db:check-order": "node db/check-migration-order.mjs"
+    "db:check-order": "node db/check-migration-order.mjs",
+    "kg:sync": "bun run scripts/kg-cmms-sync.ts"
   },
   "dependencies": {
     "@node-saml/node-saml": "^5.0.0",
