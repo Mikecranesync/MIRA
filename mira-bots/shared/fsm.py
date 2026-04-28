@@ -66,6 +66,7 @@ _STATE_ALIASES: dict[str, str] = {
     "Q5": "Q3",
     "FIX": "FIX_STEP",
     "REPAIR": "FIX_STEP",
+    "REPAIR_INQUIRY": "FIX_STEP",
     "ACTION": "FIX_STEP",
     "CONFIG_STEP": "FIX_STEP",
     "PARAMETER_SETTINGS": "FIX_STEP",
@@ -75,6 +76,15 @@ _STATE_ALIASES: dict[str, str] = {
     "DONE": "RESOLVED",
     "CLOSED": "RESOLVED",
     "DIAGNOSIS_REVISION": "DIAGNOSIS",
+    # LLM-invented states observed in corpus loop run (2026-04-28)
+    "LISTEN": "Q1",
+    "CONTINUE": "Q2",
+    "INVESTIGATING": "Q2",
+    "IDEA_GENERATION": "DIAGNOSIS",
+    "ASSESS": "Q2",
+    "CLARIFY": "Q1",
+    "GATHER": "Q1",
+    "ESCALATE": "SAFETY_ALERT",
 }
 
 import re  # noqa: E402
