@@ -9,42 +9,77 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "mira-bots"))
 
-from shared.guardrails import _DOCUMENTATION_PHRASES, classify_intent
+from shared.guardrails import (
+    _DOCUMENTATION_PHRASES,
+    _INSTRUCTIONAL_PHRASES,
+    classify_intent,
+)
 
 
 # ---------------------------------------------------------------------------
-# Fix 1: Installation / setup / commissioning phrases → documentation intent
+# Fix 1: Installation / setup / commissioning phrases split into two buckets:
+#   - _DOCUMENTATION_PHRASES: user wants to FETCH a document
+#   - _INSTRUCTIONAL_PHRASES: user wants step-by-step instructions (LLM answer)
 # ---------------------------------------------------------------------------
 
-INSTALL_PHRASES = [
-    "how to install",
-    "installation steps",
+# Phrases that remain in _DOCUMENTATION_PHRASES (document-fetch intent)
+DOC_ONLY_PHRASES = [
     "install this",
     "installing this",
-    "getting ready to install",
-    "first steps to install",
-    "how do i wire",
     "wiring steps",
     "wiring guide",
-    "how to wire",
     "setup guide",
     "set up this",
     "setting up this",
-    "how to set up",
     "commissioning steps",
     "commissioning guide",
-    "how to commission",
     "startup procedure",
     "startup steps",
     "first time setup",
     "initial setup",
+]
+
+# Phrases moved to _INSTRUCTIONAL_PHRASES (procedural how-to intent)
+INSTRUCTIONAL_PHRASES = [
+    "how to install",
+    "installation steps",
+    "getting ready to install",
+    "first steps to install",
+    "how do i wire",
+    "how to wire",
+    "how to set up",
+    "how to commission",
     "getting started with",
 ]
 
 
-@pytest.mark.parametrize("phrase", INSTALL_PHRASES)
-def test_install_phrase_in_tuple(phrase: str) -> None:
+@pytest.mark.parametrize("phrase", DOC_ONLY_PHRASES)
+def test_doc_phrase_in_documentation_tuple(phrase: str) -> None:
     assert phrase in _DOCUMENTATION_PHRASES, f"'{phrase}' missing from _DOCUMENTATION_PHRASES"
+
+
+@pytest.mark.parametrize("phrase", INSTRUCTIONAL_PHRASES)
+def test_instructional_phrase_in_instructional_tuple(phrase: str) -> None:
+    assert phrase in _INSTRUCTIONAL_PHRASES, f"'{phrase}' missing from _INSTRUCTIONAL_PHRASES"
+    assert phrase not in _DOCUMENTATION_PHRASES, (
+        f"'{phrase}' should have been removed from _DOCUMENTATION_PHRASES"
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Can you show me the wiring guide for the MicroLogix 1100?",
+        "What's the startup procedure for this VFD?",
+        "First time setup on the AB 1400",
+        "Commissioning steps for this sensor?",
+    ],
+)
+def test_doc_message_routes_to_documentation(message: str) -> None:
+    result = classify_intent(message)
+    assert result == "documentation", (
+        f"Expected 'documentation' for '{message}', got '{result}'"
+    )
 
 
 @pytest.mark.parametrize(
@@ -52,18 +87,15 @@ def test_install_phrase_in_tuple(phrase: str) -> None:
     [
         "I'm getting ready to install this PLC",
         "What are the installation steps for this drive?",
-        "Can you show me the wiring guide for the MicroLogix 1100?",
         "how do I wire the 24VDC supply?",
-        "What's the startup procedure for this VFD?",
-        "First time setup on the AB 1400",
-        "Commissioning steps for this sensor?",
         "Getting started with the MicroLogix 1400",
+        "how to set up this drive",
     ],
 )
-def test_install_message_routes_to_documentation(message: str) -> None:
+def test_instructional_message_routes_to_instructional(message: str) -> None:
     result = classify_intent(message)
-    assert result == "documentation", (
-        f"Expected 'documentation' for '{message}', got '{result}'"
+    assert result == "instructional", (
+        f"Expected 'instructional' for '{message}', got '{result}'"
     )
 
 
