@@ -102,6 +102,9 @@ def insert_chunk(
                          :content, cast(:embedding AS vector), :source_url, :source_page,
                          cast(:metadata AS jsonb), false, false, :chunk_type,
                          cast(:image_embedding AS vector))
+                    ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
+                    WHERE (metadata->>'chunk_index') IS NOT NULL
+                    DO NOTHING
                 """),
                 {
                     "id": entry_id,

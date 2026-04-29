@@ -125,6 +125,19 @@ class PipelineReport:
 # ---------------------------------------------------------------------------
 
 
+_PDF_MAGIC = b"%PDF"
+_MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024  # 50 MB hard cap
+
+
+def _validate_pdf(path: Path) -> bool:
+    """Return True iff the file starts with PDF magic bytes."""
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) == _PDF_MAGIC
+    except OSError:
+        return False
+
+
 def _download(url: str, dest: Path) -> tuple[bool, int]:
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and dest.stat().st_size > 0:
@@ -142,10 +155,19 @@ def _download(url: str, dest: Path) -> tuple[bool, int]:
                 for chunk in r.iter_bytes(65536):
                     f.write(chunk)
                     written += len(chunk)
+                    if written > _MAX_DOWNLOAD_BYTES:
+                        logger.error("Download aborted: exceeds 50 MB cap (%s)", url)
+                        dest.unlink(missing_ok=True)
+                        return False, 0
+        if not _validate_pdf(dest):
+            logger.error("Downloaded file is not a valid PDF (bad magic bytes): %s", dest.name)
+            dest.unlink(missing_ok=True)
+            return False, 0
         logger.info("Downloaded: %s (%s KB)", dest.name, written // 1024)
         return True, written
     except Exception as exc:
         logger.error("Download failed: %s", exc)
+        dest.unlink(missing_ok=True)
         return False, 0
 
 
@@ -392,7 +414,7 @@ def step_kg(text: str, manufacturer: str, model: str,
                     INSERT INTO kg_relationships
                         (id, tenant_id, source_id, target_id, relationship_type, confidence)
                     VALUES (%s, %s::uuid, %s::uuid, %s::uuid, 'documented_in', 1.0)
-                    ON CONFLICT DO NOTHING
+                    ON CONFLICT (tenant_id, source_id, target_id, relationship_type) DO NOTHING
                     """,
                     (str(uuid.uuid4()), TENANT_ID, equip_id, manual_eid),
                 )
@@ -426,7 +448,7 @@ def step_kg(text: str, manufacturer: str, model: str,
                                 (id, tenant_id, source_id, target_id,
                                  relationship_type, confidence)
                             VALUES (%s, %s::uuid, %s::uuid, %s::uuid, 'has_fault_code', 1.0)
-                            ON CONFLICT DO NOTHING
+                            ON CONFLICT (tenant_id, source_id, target_id, relationship_type) DO NOTHING
                             """,
                             (str(uuid.uuid4()), TENANT_ID, equip_id, fc_id),
                         )
