@@ -1,0 +1,254 @@
+[
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/in/1606-in010_-mu-e.pdf",
+    "manufacturer": "Allen-Bradley",
+    "model": "1606-XLS",
+    "type": "installation_manual",
+    "status": "done",
+    "done_at": "2026-04-29T01:24:45+00:00",
+    "notes": "Proven — 55842 chars, 16 chunks, first end-to-end test"
+  },
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/qs/520-qs001_-en-e.pdf",
+    "manufacturer": "Allen-Bradley",
+    "model": "PowerFlex-525",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/in/1769-in029_-en-p.pdf",
+    "manufacturer": "Allen-Bradley",
+    "model": "CompactLogix-L1",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/in/1766-in001_-en-p.pdf",
+    "manufacturer": "Allen-Bradley",
+    "model": "MicroLogix-1400",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/td/1606-td002_-en-p.pdf",
+    "manufacturer": "Allen-Bradley",
+    "model": "1606-XLS",
+    "type": "technical_data",
+    "status": "pending"
+  },
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/td/100-td013_-en-p.pdf",
+    "manufacturer": "Allen-Bradley",
+    "model": "100-C",
+    "type": "technical_data",
+    "status": "pending"
+  },
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/in/140m-in001_-en-p.pdf",
+    "manufacturer": "Allen-Bradley",
+    "model": "140M",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/td/140m-td002_-en-p.pdf",
+    "manufacturer": "Allen-Bradley",
+    "model": "140M",
+    "type": "technical_data",
+    "status": "pending"
+  },
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/in/700-in004_-en-p.pdf",
+    "manufacturer": "Allen-Bradley",
+    "model": "700-Relay",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/td/700-td552_-en-p.pdf",
+    "manufacturer": "Allen-Bradley",
+    "model": "700-Relay",
+    "type": "technical_data",
+    "status": "pending"
+  },
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/td/1492-td015_-en-p.pdf",
+    "manufacturer": "Allen-Bradley",
+    "model": "1492",
+    "type": "technical_data",
+    "status": "pending"
+  },
+  {
+    "url": "https://cache.industry.siemens.com/dl/files/875/39644875/att_76194/v1/s71200_getting_started_en-US_en-US.pdf",
+    "manufacturer": "Siemens",
+    "model": "S7-1200",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://cache.industry.siemens.com/dl/files/557/60306557/att_111612/v1/manual_contactors_3RT2_en-US.pdf",
+    "manufacturer": "Siemens",
+    "model": "3RT2",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://support.industry.siemens.com/cs/attachments/70983838/LH11_0113_eng.pdf",
+    "manufacturer": "Siemens",
+    "model": "G120",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://support.industry.siemens.com/cs/attachments/52614597/Function_Manual_en-US.pdf",
+    "manufacturer": "Siemens",
+    "model": "G120",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://library.e.abb.com/public/cb9179f6c82f42b2b0f66ae35240c48a/ACS580_QIGS_R1-R9_3AXD50000049129_RevE.pdf",
+    "manufacturer": "ABB",
+    "model": "ACS580",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://library.e.abb.com/public/fb354a52fcf949b987b93de36b01b81f/2GCS213004A0050.pdf",
+    "manufacturer": "ABB",
+    "model": "Dry-Type-Transformer",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://pim.galco.com/Manufacturer/Yaskawa/TechDocument/Installation%20Manual/yasl-driv_ga500_inm.pdf",
+    "manufacturer": "Yaskawa",
+    "model": "GA500",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://files.kempstoncontrols.com/files/4fde2b77c49a75a4116920a4ac20a4dd/2904603.pdf",
+    "manufacturer": "Phoenix-Contact",
+    "model": "QUINT",
+    "type": "technical_data",
+    "status": "pending"
+  },
+  {
+    "url": "https://www.phoenixcontact.com/assets/downloads_ed/global/web_dwl_promotion/52001505_DE_EN_CLIPLINE_complete_terminal_block_system_LoRes.pdf",
+    "manufacturer": "Phoenix-Contact",
+    "model": "CLIPLINE",
+    "type": "technical_data",
+    "status": "pending"
+  },
+  {
+    "url": "https://www.meanwell.com/Upload/PDF/MDR-60/MDR-60-SPEC.pdf",
+    "manufacturer": "Meanwell",
+    "model": "MDR-60",
+    "type": "technical_data",
+    "status": "pending"
+  },
+  {
+    "url": "https://www.meanwell.com/Upload/PDF/MDR%20DIN%20rail.pdf",
+    "manufacturer": "Meanwell",
+    "model": "MDR",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://claddaghelectronics.com/wp-content/uploads/eaton_XTCE_iec_contactors.pdf",
+    "manufacturer": "Eaton",
+    "model": "XTCE",
+    "type": "selection_guide",
+    "status": "pending"
+  },
+  {
+    "url": "https://docs.rs-online.com/2aed/A700000010489618.pdf",
+    "manufacturer": "Square-D",
+    "model": "8536",
+    "type": "technical_data",
+    "status": "pending"
+  },
+  {
+    "url": "https://pdf.lowes.com/productdocuments/0efdc3d6-1b24-4266-89f7-8f38c8b04ef5/49378853.pdf",
+    "manufacturer": "Square-D",
+    "model": "QO",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://assets.kele.com/product-assets/idec/skus/rh1b-uac12v/related/datasheet_102_rh1b-uac12v.pdf",
+    "manufacturer": "IDEC",
+    "model": "RH-Series",
+    "type": "technical_data",
+    "status": "pending"
+  },
+  {
+    "url": "https://www.omron-ap.com/data_pdf/mnu/h3cr-a8_-a8s_inst-0696883-4c.pdf",
+    "manufacturer": "Omron",
+    "model": "H3CR",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://www.panduit.com/content/dam/panduit/en/products/media/4/04/504/2504/100322504.pdf",
+    "manufacturer": "Panduit",
+    "model": "Wire-Duct",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://cdn.automationdirect.com/static/manuals/gs30m/gs30m.pdf",
+    "manufacturer": "AutomationDirect",
+    "model": "GS30",
+    "type": "installation_manual",
+    "status": "pending",
+    "notes": "HVAC VFD — proven downloadable"
+  },
+  {
+    "url": "https://cdn.automationdirect.com/static/manuals/gs30um/gs30um.pdf",
+    "manufacturer": "AutomationDirect",
+    "model": "GS30",
+    "type": "installation_manual",
+    "status": "pending",
+    "notes": "GS30 user manual"
+  },
+  {
+    "url": "https://cdn.automationdirect.com/static/manuals/gs21m/gs21m.pdf",
+    "manufacturer": "AutomationDirect",
+    "model": "GS21",
+    "type": "installation_manual",
+    "status": "pending"
+  },
+  {
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/sg/1497-sg001_-en-p.pdf",
+    "manufacturer": "Rockwell",
+    "model": "1497",
+    "type": "selection_guide",
+    "status": "pending"
+  },
+  {
+    "url": "https://cache.industry.siemens.com/dl/files/864/109765864/att_1021173/v1/SITOP_power_supply_en.pdf",
+    "manufacturer": "Siemens",
+    "model": "SITOP",
+    "type": "technical_data",
+    "status": "pending",
+    "notes": "6.5 MB — will use page-split fallback"
+  },
+  {
+    "url": "https://cms7files.revize.com/johnsontn/document_center/Development%20Services/Codes/Resource%20Docs/2017-NEC-Code-2.pdf",
+    "manufacturer": "NEC",
+    "model": "2017",
+    "type": "reference",
+    "status": "pending",
+    "notes": "NEC 2017 code book — large, will page-split"
+  },
+  {
+    "url": "https://www.eaton.com/content/dam/eaton/products/electrical-circuit-protection/fuses/bussmann-series-catalogs/bus-ele-cat-1007-flc-2018-sec-16-cross-ref-index.pdf",
+    "manufacturer": "Eaton-Bussmann",
+    "model": "Fuse-CrossRef",
+    "type": "technical_data",
+    "status": "pending",
+    "notes": "Eaton CDN — may block from VPS IP; mark failed and skip if 403/timeout"
+  }
+]
