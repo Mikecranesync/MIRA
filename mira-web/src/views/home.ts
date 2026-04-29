@@ -189,7 +189,7 @@ function featureStrip(): string {
 function pricingTeaser(): string {
   return `<section class="fl-section fl-pricing-teaser" aria-labelledby="fl-pricing-h">
   <h2 id="fl-pricing-h" class="fl-section-h">Site license. Not per-seat.</h2>
-  <p class="fl-section-sub">$97/mo per plant. $497/mo with auto-RCA + signed PDF.</p>
+  <p class="fl-section-sub">From $20/mo individual. $499/mo for your whole facility.</p>
   <div class="fl-hero-cta">
     ${btnPrimary("See pricing", { href: "/pricing", cta: "pricing-teaser-primary" })}
     ${btnGhost("Talk to Mike", { href: "mailto:mike@factorylm.com", cta: "pricing-teaser-secondary" })}
