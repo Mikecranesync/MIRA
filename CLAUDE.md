@@ -10,6 +10,7 @@
 ## North Star + Strategy
 - **Technical flywheel:** `NORTH_STAR.md` — read before any feature work; every PR references which flywheel step it supports
 - **Commercial strategy:** `STRATEGY.md` — ICP, pricing tiers, GTM motion, competitive moat
+- **Voice:** `VOICE_GUIDE.md` — read before writing any user-facing text, marketing copy, or UI labels
 
 ## Coding Principles → `wiki/references/coding-principles.md`
 ## KANBAN Board → `wiki/references/kanban.md`
