@@ -693,7 +693,10 @@ def main():
     _ver_path = os.path.join(os.path.dirname(__file__), "VERSION")
     _ver = open(_ver_path).read().strip() if os.path.exists(_ver_path) else "unknown"
     logger.info("MIRA Telegram bot starting (polling) version=%s", _ver)
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # timeout=0 = short-poll (returns immediately, never holds a long-poll lock).
+    # This avoids 409 Conflict when another process on the network holds the long-poll slot.
+    # poll_interval=3 keeps API calls at ~20/min instead of hammering at 0ms.
+    app.run_polling(allowed_updates=Update.ALL_TYPES, timeout=0, poll_interval=3.0)
 
 
 if __name__ == "__main__":
