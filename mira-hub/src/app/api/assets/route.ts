@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { enrichAsset } from "@/lib/agents/asset-intelligence";
 
 export const dynamic = "force-dynamic";
 
@@ -93,6 +94,11 @@ export async function POST(req: Request) {
           name?.trim() || null,
         ],
       ).then((r) => r.rows[0]),
+    );
+
+    // Fire-and-forget enrichment — don't await, never block the 201 response
+    void enrichAsset(ctx.tenantId, String(row.id)).catch((e) =>
+      console.error("[asset enrichment fire-forget]", e),
     );
 
     return NextResponse.json(rowToAsset(row), { status: 201 });

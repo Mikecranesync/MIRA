@@ -4,11 +4,12 @@ import { useState, use, useEffect } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
-  ArrowLeft, Bot, Wrench, FileText, Package, Activity,
+  ArrowLeft, Bot, Brain, Wrench, FileText, Package, Activity,
   CheckCircle2, AlertTriangle, AlertCircle, Clock,
   QrCode, MapPin, Cpu, Calendar, ChevronRight, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { AssetChat } from "@/components/AssetChat";
+import { AssetIntelligencePanel } from "@/components/AssetIntelligencePanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -146,7 +147,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
 
           {/* Tabs */}
           <div className="flex gap-0 overflow-x-auto scrollbar-none -mb-px">
-            {["overview", "ask", "activity", "workorders", "documents", "parts"].map((tab) => (
+            {["overview", "ask", "activity", "workorders", "documents", "parts", "intelligence"].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -161,9 +162,13 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
                  tab === "activity"   ? t("tabs.activity") :
                  tab === "documents"  ? t("tabs.documents") :
                  tab === "parts"      ? t("tabs.parts") :
-                 tab === "ask"        ? (
+                 tab === "ask"         ? (
                    <span className="flex items-center gap-1">
                      <Bot className="w-3 h-3" /> Ask MIRA
+                   </span>
+                 ) : tab === "intelligence" ? (
+                   <span className="flex items-center gap-1">
+                     <Brain className="w-3 h-3" /> Intel
                    </span>
                  ) : tab}
               </button>
@@ -179,11 +184,12 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       ) : (
         <div className="px-4 md:px-6 py-5 max-w-3xl">
-          {activeTab === "overview" && <OverviewTab asset={asset} onAskMira={() => setActiveTab("ask")} />}
-          {activeTab === "activity" && <ActivityTab />}
-          {activeTab === "workorders" && <WorkOrdersTab />}
-          {activeTab === "documents" && <DocumentsTab />}
-          {activeTab === "parts" && <PartsTab />}
+          {activeTab === "overview"      && <OverviewTab asset={asset} onAskMira={() => setActiveTab("ask")} />}
+          {activeTab === "activity"      && <ActivityTab />}
+          {activeTab === "workorders"    && <WorkOrdersTab />}
+          {activeTab === "documents"     && <DocumentsTab />}
+          {activeTab === "parts"         && <PartsTab />}
+          {activeTab === "intelligence"  && <AssetIntelligencePanel assetId={id} />}
         </div>
       )}
     </div>
