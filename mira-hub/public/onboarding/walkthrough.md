@@ -10,7 +10,7 @@
 
 ## Panel 1 — Welcome
 
-![Panel 1: Welcome — Rico opens FactoryLM Hub for the first time](placeholder-panel-1.png)
+![Panel 1: Welcome — Rico opens FactoryLM Hub for the first time](panel-1.png)
 
 **Alt text:** Rico, a floor technician in blue coveralls and glasses, stands at a steel workbench holding a tablet. The FactoryLM Hub login screen glows on the display. A holographic outline of MIRA — rendered as a calm, professional woman in a hard hat — appears beside the screen. Factory floor stretches behind them, dim and industrial.
 
