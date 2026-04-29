@@ -14,7 +14,7 @@ cost_per_panel_usd:
   high: 0.167
 
 # ── Voiceover (OpenAI TTS) ────────────────────────────────────────────────
-tts_model: tts-1-hd
+tts_model: gpt-4o-mini-tts   # upgraded from tts-1-hd; supports instructions= parameter
 tts_voice: onyx              # deep male, reads as "industrial professional"
 cost_per_scene_tts_usd: 0.030
 

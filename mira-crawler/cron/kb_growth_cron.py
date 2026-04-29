@@ -16,6 +16,22 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Reporting + notifications (optional — degrades gracefully)
+_REPO_ROOT = Path(__file__).parent.parent.parent
+try:
+    from mira_crawler.reporting.agent_report import AgentReport
+    from mira_crawler.reporting.telegram_notify import notify as _tg_notify
+    _REPORT_AVAILABLE = True
+except ImportError:
+    try:
+        sys.path.insert(0, str(_REPO_ROOT))
+        from mira_crawler.reporting.agent_report import AgentReport
+        from mira_crawler.reporting.telegram_notify import notify as _tg_notify
+        _REPORT_AVAILABLE = True
+    except ImportError:
+        _REPORT_AVAILABLE = False
+        def _tg_notify(*_: object) -> bool: return False  # type: ignore[misc]
+
 # ─── paths ────────────────────────────────────────────────────────────────────
 _HERE = Path(__file__).parent.resolve()
 _REPO = _HERE.parent.parent
@@ -123,6 +139,62 @@ def main() -> None:
     failed = sum(1 for e in queue if e.get("status") == "failed")
     _log(f"Queue: {done} done, {failed} failed, {remaining} pending")
     _log("KB growth cron done")
+
+    _emit_report(entry, success, done, failed, remaining)
+
+
+def _emit_report(
+    entry: dict,
+    success: bool,
+    done: int,
+    failed: int,
+    remaining: int,
+) -> None:
+    name = f"{entry['manufacturer']} {entry['model']}"
+
+    # Telegram notification
+    try:
+        if success:
+            _tg_notify(
+                "kb_growth",
+                f"✅ Ingested *{name}*\nQueue: {done} done · {failed} failed · {remaining} remaining",
+            )
+        else:
+            err = entry.get("error", "unknown error")[:120]
+            _tg_notify(
+                "kb_growth",
+                f"❌ Failed: *{name}*\n`{err}`\nWill retry next cycle",
+            )
+    except Exception as exc:
+        _log(f"Telegram notify failed (non-fatal): {exc}")
+
+    # HTML/Markdown report
+    if not _REPORT_AVAILABLE:
+        return
+    try:
+        status_level = "ok" if success else "warning"
+        report = (
+            AgentReport("kb-growth-cron")
+            .set_title("KB Growth Cron", name)
+            .set_status(status_level)  # type: ignore[arg-type]
+            .add_metric("Done", done, "PDFs", trend="up")
+            .add_metric("Failed", failed, "PDFs", trend="flat" if failed == 0 else "down")
+            .add_metric("Remaining", remaining, "PDFs")
+        )
+        if success:
+            report.add_alert("ok", f"Ingested: {name}")
+        else:
+            report.add_alert(
+                "warning",
+                f"Failed: {name} — {entry.get('error', '')[:120]}",
+            )
+        if remaining > 0:
+            report.add_action(f"Review {remaining} pending PDFs in manual_queue.json")
+        if failed > 0:
+            report.add_action(f"Investigate {failed} failed PDF(s) and re-queue or remove")
+        report.save(telegram=False)  # Telegram already sent above
+    except Exception as exc:
+        _log(f"Report generation failed (non-fatal): {exc}")
 
 
 if __name__ == "__main__":

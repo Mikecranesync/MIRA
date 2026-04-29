@@ -14,8 +14,9 @@ Usage:
 
 Output: ~/mira/marketing/videos/comic-v1/mira_explainer_v1.mp4
 """
-VERSION = "v1"
 from __future__ import annotations
+
+VERSION = "v1"
 
 import argparse
 import logging
@@ -50,11 +51,30 @@ def build_narration(storyboard: dict) -> tuple[str, str]:
     return joined, style
 
 
-def synth_narration(client: OpenAI, *, model: str, voice: str, text: str, out_path: Path) -> None:
+_INSTRUCTION_MODELS = {"gpt-4o-mini-tts", "gpt-4o-audio-preview"}
+
+
+def synth_narration(
+    client: OpenAI,
+    *,
+    model: str,
+    voice: str,
+    text: str,
+    out_path: Path,
+    instructions: str = "",
+) -> None:
+    """Synthesize full narration track.
+
+    gpt-4o-mini-tts passes style via instructions= (actually shapes delivery).
+    Legacy tts-1-hd ignores instructions — style text was prepended to input,
+    which caused the model to read it aloud. With gpt-4o-mini-tts the style
+    goes in instructions= and the input is narration text only.
+    """
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with client.audio.speech.with_streaming_response.create(
-        model=model, voice=voice, input=text,
-    ) as response:
+    kwargs: dict = dict(model=model, voice=voice, input=text)
+    if instructions and model in _INSTRUCTION_MODELS:
+        kwargs["instructions"] = instructions
+    with client.audio.speech.with_streaming_response.create(**kwargs) as response:
         response.stream_to_file(out_path)
 
 
@@ -84,14 +104,16 @@ def main() -> int:
         if not api_key:
             raise SystemExit("OPENAI_API_KEY not in env — run under `doppler run`.")
         text, style = build_narration(storyboard)
-        full_input = f"{style}\n\n{text}"
-        console.print(f"[bold]Narration:[/bold] {len(full_input)} chars")
+        model = storyboard["audio"]["tts_model"]
+        console.print(f"[bold]Narration:[/bold] {len(text)} chars, model={model}")
         client = OpenAI(api_key=api_key)
         synth_narration(
             client,
-            model=storyboard["audio"]["tts_model"],
+            model=model,
             voice=storyboard["audio"]["tts_voice"],
-            text=full_input, out_path=narration_path,
+            text=text,
+            instructions=style,
+            out_path=narration_path,
         )
         console.print(f"[green]ok[/green] narration → {narration_path}")
 
