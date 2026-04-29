@@ -8,10 +8,11 @@ import sys
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-_REPO = _HERE.parent.parent
-sys.path.insert(0, str(_REPO))
+_CRAWLER_ROOT = _HERE.parent
+_REPO = _CRAWLER_ROOT.parent
+sys.path.insert(0, str(_CRAWLER_ROOT))
 
-from mira_crawler.agents.orchestrator import run_daily_digest  # noqa: E402
+from agents.orchestrator import run_daily_digest  # noqa: E402
 
 if __name__ == "__main__":
     result = run_daily_digest()

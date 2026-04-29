@@ -11,10 +11,11 @@ from datetime import date
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-_REPO = _HERE.parent.parent
-sys.path.insert(0, str(_REPO))
+_CRAWLER_ROOT = _HERE.parent
+_REPO = _CRAWLER_ROOT.parent
+sys.path.insert(0, str(_CRAWLER_ROOT))
 
-from mira_crawler.agents.orchestrator import run_agent  # noqa: E402
+from agents.orchestrator import run_agent  # noqa: E402
 
 # Cache written by the Cowork-mode inbox_triage.py (if run there)
 _CACHE = Path("/opt/mira/agent_state/inbox_cache.json")

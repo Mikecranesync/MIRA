@@ -9,10 +9,11 @@ import sys
 from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
-_REPO = _HERE.parent.parent
-sys.path.insert(0, str(_REPO))
+_CRAWLER_ROOT = _HERE.parent
+_REPO = _CRAWLER_ROOT.parent
+sys.path.insert(0, str(_CRAWLER_ROOT))
 
-from mira_crawler.agents.orchestrator import get_agent_result, run_agent  # noqa: E402
+from agents.orchestrator import get_agent_result, run_agent  # noqa: E402
 
 SAFETY_KEYWORDS = [
     "LOTO", "lockout", "tagout", "arc flash", "confined space",
@@ -54,7 +55,7 @@ def _run() -> dict:
     manual = kb.get("manual", "none")
     loto_found = _scan_recent_chunks(manual)
     # overnight safety events come from morning brief's DB query — reuse if available
-    from mira_crawler.agents.orchestrator import get_agent_result as _get
+    from agents.orchestrator import get_agent_result as _get
     brief = _get("morning_brief") or {}
     incidents = brief.get("safety_events", 0)
 
