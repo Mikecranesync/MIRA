@@ -1,17 +1,33 @@
-"""ManualsLib scraper — extract text from web-reader pages via OCR.
+"""ManualsLib scraper — discovery + direct PDF extraction.
 
-ManualsLib renders pages as images (no embedded text). This scraper:
-  1. Fetches the manual landing page to extract page count and image URL base path.
-  2. Downloads each page image (jpg fallback → png) from static-data2.manualslib.com.
-  3. Runs pytesseract OCR on each image.
-  4. Concatenates text and feeds it through ingest_text_inline().
-  5. Saves raw text + metadata JSON to OUTPUT_DIR for audit / re-ingest.
+ARCHITECTURE NOTE (2026-04-29):
+  ManualsLib's viewer is Vue.js client-side rendered. The static image files
+  served at storage/pdf59/.../_bg.jpg/png are blank white page backgrounds
+  (96% white pixels, 0.1% black — confirmed via pixel analysis). The 80×114px
+  thumbnails are too small for OCR. PDF download requires a JavaScript CAPTCHA.
+  Scraping the viewer itself requires a headless browser (Playwright).
 
-Image URL pattern (discovered from rel="preload" tags):
-  https://static-data2.manualslib.com/storage/pdf59/{id[:3]}/{id[:5]}/{id}/images/{slug}_{page}_bg.{jpg|png}
+  This module therefore serves two purposes:
+    1. Discovery mode — crawl ManualsLib brand/category pages to find what
+       manuals exist for a given manufacturer, then cross-reference with known
+       direct PDF sources (sources.yaml).
+    2. Direct PDF mode — given a publicly accessible PDF URL (manufacturer CDN,
+       government portal, etc.), download it, send to the docling API for
+       text extraction, and feed through ingest_text_inline().
+
+  Use `scrape_pdf_direct()` for the actual extraction pipeline.
+  Use `discover_manuals()` to find what equipment has documentation.
+
+  If you need ManualsLib's viewer text specifically, run a Playwright-based
+  scraper (playwright_crawler.py handles that flow).
 
 Run as a Celery task or standalone:
-  python -m mira_crawler.tasks.manualslib_scraper --url "/manual/2912913/Abb-Acs880.html"
+  python -m mira_crawler.tasks.manualslib_scraper scrape \\
+    --pdf-url https://cdn.automationdirect.com/static/manuals/gs20m/gs20m.pdf \\
+    --manufacturer AutomationDirect --model GS20 --type user_manual
+
+  python -m mira_crawler.tasks.manualslib_scraper discover \\
+    --brand-url https://www.manualslib.com/brand/abb/
 """
 
 from __future__ import annotations
@@ -196,6 +212,125 @@ def _save_metadata(meta_path: Path, data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
+def scrape_pdf_direct(
+    pdf_url: str,
+    *,
+    manufacturer: str = "unknown",
+    model: str = "unknown",
+    manual_type: str = "manual",
+    ingest: bool = True,
+    docling_url: Optional[str] = None,
+) -> dict:
+    """Extract text from a publicly accessible PDF via the docling API.
+
+    This is the recommended extraction path for manufacturer PDFs.
+    ManualsLib's own viewer is Vue.js rendered and cannot be scraped via httpx.
+
+    Args:
+        pdf_url:      Direct HTTPS URL to the PDF (must be publicly accessible).
+        manufacturer: Human-readable manufacturer name.
+        model:        Model identifier.
+        manual_type:  Type label (``"user_manual"``, ``"service_guide"``, etc.).
+        ingest:       If True, feed extracted text through ingest_text_inline().
+        docling_url:  Base URL of the docling-serve API (default: DOCLING_URL env var).
+    """
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    _docling = docling_url or os.getenv("DOCLING_URL", "http://localhost:5001")
+    safe_mfr = re.sub(r"[^\w-]", "_", manufacturer).lower()
+    safe_model = re.sub(r"[^\w-]", "_", model).lower()
+    safe_type = re.sub(r"[^\w-]", "_", manual_type).lower()
+    out_stem = f"{safe_mfr}_{safe_model}_{safe_type}"
+    text_path = OUTPUT_DIR / f"{out_stem}.txt"
+
+    result: dict = {
+        "pdf_url": pdf_url,
+        "manufacturer": manufacturer,
+        "model": model,
+        "manual_type": manual_type,
+        "extracted_chars": 0,
+        "chunks_ingested": 0,
+        "output_file": str(text_path),
+    }
+
+    logger.info("Downloading %s for docling extraction", pdf_url)
+
+    # Download PDF to temp file then upload (docling container may lack outbound access)
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        with httpx.Client(timeout=120, follow_redirects=True) as client:
+            resp = client.get(pdf_url, headers={"User-Agent": _USER_AGENTS[0]})
+            resp.raise_for_status()
+            with open(tmp_path, "wb") as f:
+                f.write(resp.content)
+        logger.info("Downloaded %d bytes", len(resp.content))
+
+        # Submit to docling file endpoint
+        with open(tmp_path, "rb") as pdf_file:
+            with httpx.Client(timeout=300) as client:
+                dr = client.post(
+                    f"{_docling}/v1/convert/file",
+                    files={"files": (f"{safe_model}.pdf", pdf_file, "application/pdf")},
+                    data={"options": json.dumps({
+                        "to_formats": ["md"],
+                        "image_export_mode": "placeholder",
+                        "do_ocr": False,
+                        "do_table_structure": True,
+                    })},
+                )
+                dr.raise_for_status()
+                data = dr.json()
+    finally:
+        try:
+            import os as _os
+            _os.unlink(tmp_path)
+        except Exception:
+            pass
+
+    md = (data.get("document") or {}).get("md_content", "")
+    if not md:
+        result["error"] = "docling returned no md_content"
+        return result
+
+    # Strip base64 image data; keep markdown structure and text
+    clean_lines = []
+    in_b64 = False
+    for line in md.split("\n"):
+        if re.match(r"^!\[.*?\]\(data:image/", line):
+            in_b64 = True
+            clean_lines.append("[IMAGE]")
+            continue
+        if in_b64 and re.match(r"^[A-Za-z0-9+/=]{50,}", line.strip()):
+            continue
+        in_b64 = False
+        clean_lines.append(line)
+    text = "\n".join(clean_lines)
+
+    text_path.write_text(text, encoding="utf-8")
+    result["extracted_chars"] = len(text)
+    logger.info("Extracted %d chars from %s PDF", len(text), model)
+
+    if ingest and text.strip():
+        try:
+            n = ingest_text_inline(
+                text=text,
+                source_url=pdf_url,
+                source_type="equipment_manual",
+                tenant_id=_TENANT_ID,
+                ollama_url=_OLLAMA_URL,
+                embed_model=_EMBED_MODEL,
+            )
+            result["chunks_ingested"] = n
+            logger.info("Ingested %d chunks from %s", n, pdf_url)
+        except Exception as exc:
+            logger.warning("Ingest failed (non-fatal): %s", exc)
+
+    return result
+
+
 def scrape_manual(
     manual_path: str,
     *,
@@ -206,6 +341,11 @@ def scrape_manual(
     max_pages: Optional[int] = None,
 ) -> dict:
     """Scrape a single ManualsLib manual. Returns a result dict with stats.
+
+    NOTE: ManualsLib's viewer is Vue.js rendered. The _bg.jpg/png images
+    served at storage/pdf59/ are blank white page backgrounds. This function
+    is retained for future Playwright-based rendering.
+    Use scrape_pdf_direct() for actual text extraction from manufacturer PDFs.
 
     Args:
         manual_path: Path portion of the manual URL, e.g. ``/manual/2912913/Abb-Acs880.html``
@@ -481,24 +621,45 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)-7s %(name)s — %(message)s",
     )
 
-    parser = argparse.ArgumentParser(description="ManualsLib scraper — OCR-based text extractor")
+    parser = argparse.ArgumentParser(
+        description="ManualsLib discovery + direct PDF extraction pipeline"
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_single = sub.add_parser("scrape", help="Scrape a single manual by path")
-    p_single.add_argument("--url", required=True, help="Manual path, e.g. /manual/2912913/Abb-Acs880.html")
-    p_single.add_argument("--manufacturer", default="unknown")
-    p_single.add_argument("--model", default="unknown")
-    p_single.add_argument("--type", dest="manual_type", default="manual")
-    p_single.add_argument("--max-pages", type=int, default=None, help="Limit pages (for testing)")
-    p_single.add_argument("--no-ingest", action="store_true", help="Skip KB ingest (text file only)")
+    # Primary path: extract from a direct PDF URL via docling
+    p_pdf = sub.add_parser("scrape", help="Extract text from a direct PDF URL via docling")
+    p_pdf.add_argument("--pdf-url", required=True, help="Direct PDF URL (manufacturer CDN, govt portal, etc.)")
+    p_pdf.add_argument("--manufacturer", default="unknown")
+    p_pdf.add_argument("--model", default="unknown")
+    p_pdf.add_argument("--type", dest="manual_type", default="manual")
+    p_pdf.add_argument("--no-ingest", action="store_true", help="Skip KB ingest (text file only)")
 
-    p_disc = sub.add_parser("discover", help="Discover manuals from a brand URL")
+    # Legacy: ManualsLib viewer path (blank images — kept for Playwright future)
+    p_ml = sub.add_parser("scrape-ml", help="[DEPRECATED] ManualsLib viewer path (requires Playwright)")
+    p_ml.add_argument("--url", required=True, help="Manual path, e.g. /manual/2912913/Abb-Acs880.html")
+    p_ml.add_argument("--manufacturer", default="unknown")
+    p_ml.add_argument("--model", default="unknown")
+    p_ml.add_argument("--type", dest="manual_type", default="manual")
+    p_ml.add_argument("--max-pages", type=int, default=None)
+    p_ml.add_argument("--no-ingest", action="store_true")
+
+    p_disc = sub.add_parser("discover", help="Discover manuals from a ManualsLib brand page URL")
     p_disc.add_argument("--brand-url", required=True, help="ManualsLib brand page URL")
     p_disc.add_argument("--scrape", action="store_true", help="Also scrape all discovered manuals")
 
     args = parser.parse_args()
 
     if args.cmd == "scrape":
+        result = scrape_pdf_direct(
+            args.pdf_url,
+            manufacturer=args.manufacturer,
+            model=args.model,
+            manual_type=args.manual_type,
+            ingest=not args.no_ingest,
+        )
+        print(json.dumps(result, indent=2))
+
+    elif args.cmd == "scrape-ml":
         result = scrape_manual(
             args.url,
             manufacturer=args.manufacturer,
