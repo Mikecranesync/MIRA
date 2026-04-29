@@ -255,6 +255,10 @@ def step_extract(pdf_path: Path, report: PipelineReport) -> str:
                     raise
 
         # Estimate page count from headings
+        if not md:
+            report.errors.append(f"Docling: {method} produced 0 chars — all chunks timed out")
+            report.docling_method = f"{method} (empty)"
+            return ""
         report.docling_pages = md.count("\n# ") + md.count("\n## ") or 1
         report.docling_chars = len(md)
         report.docling_method = method

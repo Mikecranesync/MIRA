@@ -13,7 +13,8 @@
     "manufacturer": "Allen-Bradley",
     "model": "PowerFlex-525",
     "type": "installation_manual",
-    "status": "pending"
+    "status": "pending",
+    "notes": "4.5 MB — page-split fallback; retry if docling was under load"
   },
   {
     "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/in/1769-in029_-en-p.pdf",
