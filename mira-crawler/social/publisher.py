@@ -25,17 +25,21 @@ from abc import ABC, abstractmethod
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-# Reporting (optional — degrades gracefully if package unavailable)
+# Reporting + notifications (optional — degrades gracefully)
+_REPO_ROOT = Path(__file__).parent.parent.parent
 try:
     from mira_crawler.reporting.agent_report import AgentReport
+    from mira_crawler.reporting.telegram_notify import notify as _tg_notify
     _REPORT_AVAILABLE = True
 except ImportError:
     try:
-        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        sys.path.insert(0, str(_REPO_ROOT))
         from mira_crawler.reporting.agent_report import AgentReport
+        from mira_crawler.reporting.telegram_notify import notify as _tg_notify
         _REPORT_AVAILABLE = True
     except ImportError:
         _REPORT_AVAILABLE = False
+        def _tg_notify(*_: object) -> bool: return False  # type: ignore[misc]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -294,11 +298,19 @@ def cmd_dry_run(queue: list[dict]) -> None:
         approved = sum(1 for p in queue if p.get("status") == "approved")
         drafts = sum(1 for p in queue if p.get("status") == "draft")
         print(f"\nNothing due today. {approved} approved (future-dated), {drafts} drafts awaiting review.")
+        _tg_notify(
+            "social_publisher",
+            f"📋 Dry run — {approved} posts ready _(awaiting `--publish`)_, {drafts} drafts pending review",
+        )
         return
     print(f"\n{len(due)} post(s) due today:\n")
     backend = DryRunBackend()
     for post in due:
         backend.publish(post)
+    _tg_notify(
+        "social_publisher",
+        f"📋 Dry run — *{len(due)} post(s)* due today, awaiting `--publish` or API key",
+    )
 
 
 def cmd_publish(queue: list[dict], backend: Backend) -> None:
@@ -352,6 +364,32 @@ def cmd_publish(queue: list[dict], backend: Backend) -> None:
 
 
 def _emit_report(due: list[dict], published: int, failed: int, backend_name: str) -> None:
+    # Telegram notification
+    try:
+        if published > 0 and failed == 0:
+            previews = []
+            for p in due[:2]:
+                preview = str(p.get("post_text", ""))[:80].replace("\n", " ")
+                previews.append(f"_{preview}…_")
+            post_lines = "\n".join(previews) if previews else ""
+            _tg_notify(
+                "social_publisher",
+                f"📝 Posted *{published}* post(s) to LinkedIn via {backend_name}\n{post_lines}",
+            )
+        elif failed > 0:
+            _tg_notify(
+                "social_publisher",
+                f"⚠️ {published} published, *{failed} failed* via {backend_name}\nCheck credentials",
+            )
+        elif not due:
+            _tg_notify(
+                "social_publisher",
+                f"📋 No posts due today — {len(due)} in queue",
+            )
+    except Exception as exc:
+        logger.warning("Telegram notify failed (non-fatal): %s", exc)
+
+    # HTML/Markdown report
     if not _REPORT_AVAILABLE:
         return
     try:
@@ -370,7 +408,7 @@ def _emit_report(due: list[dict], published: int, failed: int, backend_name: str
             report.add_alert(lvl, msg)
         if failed > 0:
             report.add_action(f"Re-queue {failed} failed post(s) or check backend credentials")
-        report.save()
+        report.save(telegram=False)  # Telegram already sent above
     except Exception as exc:
         logger.warning("Report generation failed (non-fatal): %s", exc)
 
