@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CEO Dashboard — Weekly Digest</title>
+<style>
+  :root {
+    --bg: #f8fafc; --surface: #fff; --border: #e2e8f0;
+    --text: #0f172a; --muted: #64748b; --brand: #2563eb;
+    --ok: #16a34a; --warn: #d97706; --crit: #dc2626;
+    --ok-bg: #dcfce7; --warn-bg: #fef3c7; --crit-bg: #fee2e2;
+    --radius: 12px; --shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+          background: var(--bg); color: var(--text); line-height: 1.6; }
+  a { color: var(--brand); }
+
+  .page { max-width: 860px; margin: 0 auto; padding: 16px; }
+
+  /* Header */
+  .header { background: var(--brand); color: #fff; border-radius: var(--radius);
+             padding: 24px 28px 20px; margin-bottom: 20px; }
+  .header h1 { font-size: clamp(1.2rem,4vw,1.8rem); font-weight: 700; }
+  .header .meta { opacity: .8; font-size: .85rem; margin-top: 4px; }
+
+  /* Status bar */
+  .status-bar { display: inline-block; font-weight: 700; font-size: .9rem;
+                 padding: 5px 14px; border-radius: 99px; margin-bottom: 12px; }
+  .status-ok   { background: var(--ok-bg);   color: var(--ok); }
+  .status-warn { background: var(--warn-bg); color: var(--warn); }
+  .status-crit { background: var(--crit-bg); color: var(--crit); }
+  .subtitle { color: var(--muted); font-size: .9rem; margin-bottom: 16px; }
+
+  /* Alerts */
+  .alerts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+  .alert { padding: 10px 14px; border-radius: 8px; font-size: .9rem; font-weight: 500; }
+  .alert-ok   { background: var(--ok-bg);   color: var(--ok); }
+  .alert-warning { background: var(--warn-bg); color: var(--warn); }
+  .alert-critical { background: var(--crit-bg); color: var(--crit); }
+
+  /* Metric cards */
+  .metrics-grid { display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px; margin-bottom: 20px; }
+  .metric-card { background: var(--surface); border: 1px solid var(--border);
+                  border-radius: var(--radius); padding: 16px 14px;
+                  box-shadow: var(--shadow); }
+  .metric-name  { font-size: .75rem; color: var(--muted); text-transform: uppercase;
+                   letter-spacing: .05em; margin-bottom: 6px; }
+  .metric-value { font-size: 1.5rem; font-weight: 700; color: var(--text); }
+  .metric-trend { font-size: .85rem; margin-top: 4px; }
+  .trend-up   { color: var(--ok); }
+  .trend-down { color: var(--crit); }
+  .trend-flat { color: var(--muted); }
+  .metric-note { font-size: .7rem; color: var(--muted); display: block; margin-top: 4px; }
+
+  /* Sections */
+  .section { background: var(--surface); border: 1px solid var(--border);
+              border-radius: var(--radius); padding: 20px;
+              box-shadow: var(--shadow); margin-bottom: 16px; }
+  .section h2 { font-size: 1rem; font-weight: 600; color: var(--text);
+                 margin-bottom: 14px; padding-bottom: 8px;
+                 border-bottom: 1px solid var(--border); }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+  th { background: var(--bg); color: var(--muted); font-weight: 600;
+        font-size: .75rem; text-transform: uppercase; letter-spacing: .04em;
+        padding: 8px 10px; text-align: left; white-space: nowrap; }
+  td { padding: 9px 10px; border-top: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: #f1f5f9; }
+
+  /* Charts */
+  .chart-wrap { width: 100%; overflow-x: auto; margin-top: 8px; }
+
+  /* Actions */
+  .actions-section { border-left: 4px solid var(--brand); }
+  .action-list { padding-left: 20px; }
+  .action-list li { padding: 4px 0; font-size: .9rem; }
+  .no-actions { color: var(--ok); font-weight: 600; }
+
+  /* Footer */
+  .footer { text-align: center; font-size: .75rem; color: var(--muted);
+             padding: 24px 0 12px; }
+
+  @media (max-width: 480px) {
+    .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+    .metric-value { font-size: 1.2rem; }
+    .header { padding: 18px 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <h1>CEO Dashboard — Weekly Digest</h1>
+    <div class="meta">April 28, 2026 · weekly-digest</div>
+  </div>
+  <div class="body">
+<div class="status-bar status-warn">🟡 WARNING</div>
+<p class="subtitle">Week of Apr 21 – Apr 28, 2026</p>
+<div class="alerts">
+<div class="alert alert-ok">🟢 KB Growth: 4 PDFs ingested, 1 failure</div>
+<div class="alert alert-ok">🟢 Social: 2 posts published this week</div>
+<div class="alert alert-warning">🟡 Billing: no report found this week</div>
+<div class="alert alert-ok">🟢 Benchmark: 35/39 (89%)</div>
+</div>
+<div class="metrics-grid">
+<div class="metric-card">
+  <div class="metric-name">PDFs Ingested</div>
+  <div class="metric-value">4 this week</div>
+  <div class="metric-trend trend-up">▲</div>
+
+</div>
+<div class="metric-card">
+  <div class="metric-name">Ingest Failures</div>
+  <div class="metric-value">1</div>
+  <div class="metric-trend trend-down">▼</div>
+  <span class="metric-note">PF525 timeout</span>
+</div>
+<div class="metric-card">
+  <div class="metric-name">Queue Remaining</div>
+  <div class="metric-value">30 PDFs</div>
+  <div class="metric-trend "></div>
+
+</div>
+<div class="metric-card">
+  <div class="metric-name">Posts Published</div>
+  <div class="metric-value">2 this week</div>
+  <div class="metric-trend trend-up">▲</div>
+
+</div>
+<div class="metric-card">
+  <div class="metric-name">Benchmark Score</div>
+  <div class="metric-value">35/39 (89%)</div>
+  <div class="metric-trend trend-flat">─</div>
+
+</div>
+</div>
+<div class="section"><h2>KB Ingest Results (this week)</h2>
+<div class="chart-wrap"><svg viewBox="0 0 184 220" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:184px;height:auto"><rect x="8" y="10" width="80" height="160" rx="4" fill="#2563eb" opacity="0.85"/>
+<text x="48" y="6" text-anchor="middle" font-size="11" fill="#374151">4.0%</text>
+<text x="48" y="184" text-anchor="middle" font-size="10" fill="#6b7280">Done</text>
+<rect x="96" y="130" width="80" height="40" rx="4" fill="#2563eb" opacity="0.85"/>
+<text x="136" y="126" text-anchor="middle" font-size="11" fill="#374151">1.0%</text>
+<text x="136" y="184" text-anchor="middle" font-size="10" fill="#6b7280">Failed</text>
+</svg></div>
+</div>
+<div class="section"><h2>Social Publishing Results (this week)</h2>
+<div class="chart-wrap"><svg viewBox="0 0 184 220" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:184px;height:auto"><rect x="8" y="10" width="80" height="160" rx="4" fill="#2563eb" opacity="0.85"/>
+<text x="48" y="6" text-anchor="middle" font-size="11" fill="#374151">2.0%</text>
+<text x="48" y="184" text-anchor="middle" font-size="10" fill="#6b7280">Published</text>
+<rect x="96" y="170" width="80" height="0" rx="4" fill="#2563eb" opacity="0.85"/>
+<text x="136" y="166" text-anchor="middle" font-size="11" fill="#374151">0.0%</text>
+<text x="136" y="184" text-anchor="middle" font-size="10" fill="#6b7280">Failed</text>
+</svg></div>
+</div>
+<div class="section"><h2>Benchmark Cases (latest run)</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>ID</th><th>Status</th><th>Score</th><th>Case</th></tr></thead>
+<tbody>
+<tr><td>G-001</td><td>pass</td><td>0.92</td><td>VFD fault diagnosis — E.LF</td></tr>
+<tr><td>G-002</td><td>pass</td><td>0.88</td><td>PM schedule lookup — conveyor belt</td></tr>
+<tr><td>G-003</td><td>fail</td><td>0.41</td><td>Safety escalation — arc flash proximity</td></tr>
+<tr><td>G-004</td><td>pass</td><td>0.95</td><td>Work order creation from photo</td></tr>
+<tr><td>G-005</td><td>pass</td><td>0.79</td><td>Motor vibration root cause analysis</td></tr>
+</tbody></table></div></div>
+<div class="section"><h2>Billing Health</h2><p>No billing-health report found this week. Run manually: python mira-crawler/tasks/billing_health.py</p></div>
+<div class="section actions-section">
+<h2>Actions for Mike</h2>
+<ol class="action-list">
+<li>Fix 1 failed PDF ingest — PF525 timed out; check docling and re-queue</li>
+<li>Run billing health check: python mira-crawler/tasks/billing_health.py</li>
+</ol>
+</div>
+
+  </div>
+  <div class="footer">Generated 2026-04-28T00:00:00Z by weekly-digest · FactoryLM</div>
+</div>
+</body>
+</html>

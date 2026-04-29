@@ -25,6 +25,18 @@ from abc import ABC, abstractmethod
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+# Reporting (optional — degrades gracefully if package unavailable)
+try:
+    from mira_crawler.reporting.agent_report import AgentReport
+    _REPORT_AVAILABLE = True
+except ImportError:
+    try:
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from mira_crawler.reporting.agent_report import AgentReport
+        _REPORT_AVAILABLE = True
+    except ImportError:
+        _REPORT_AVAILABLE = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -334,6 +346,33 @@ def cmd_publish(queue: list[dict], backend: Backend) -> None:
         save_queue(queue)
 
     logger.info("Done. published=%d failed=%d backend=%s", published, failed, backend.name)
+
+    if backend.name not in ("dry-run",):
+        _emit_report(due, published, failed, backend.name)
+
+
+def _emit_report(due: list[dict], published: int, failed: int, backend_name: str) -> None:
+    if not _REPORT_AVAILABLE:
+        return
+    try:
+        status_level = "ok" if failed == 0 else ("warning" if published > 0 else "critical")
+        report = (
+            AgentReport("social-publisher")
+            .set_title("Social Publisher", f"LinkedIn run via {backend_name}")
+            .set_status(status_level)  # type: ignore[arg-type]
+            .add_metric("Published", published, "posts", trend="up" if published > 0 else "flat")
+            .add_metric("Failed", failed, "posts", trend="flat" if failed == 0 else "down")
+            .add_metric("Total Due", len(due), "posts")
+        )
+        for post in due:
+            lvl = "ok" if post.get("status") == "published" else "warning"
+            msg = f"{post['id']} — {post.get('post_type', '?')} ({post.get('schedule_date', '?')})"
+            report.add_alert(lvl, msg)
+        if failed > 0:
+            report.add_action(f"Re-queue {failed} failed post(s) or check backend credentials")
+        report.save()
+    except Exception as exc:
+        logger.warning("Report generation failed (non-fatal): %s", exc)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
