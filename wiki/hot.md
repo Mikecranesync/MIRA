@@ -1,4 +1,9 @@
-# Hot Cache — 2026-04-28 — CHARLIE
+# Hot Cache — 2026-04-29 — CHARLIE
+
+## eval-fixer run — 2026-04-29
+- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0455.md` (stale, same scorecard as 2026-04-28 — no new run produced)
+- Action: issue-filed (#854)
+- Third day in a row of the same systemic infra failure (#753, #803, now #854). Every fixture returns 0-char responses — `cp_pipeline_active` fails universally, 0 patchable. No upstream eval has produced a fresh scorecard since 2026-04-27 04:55 UTC. Engine/cascade still silent.
 
 ## eval-fixer run — 2026-04-28
 - Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0455.md`
