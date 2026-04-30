@@ -549,6 +549,10 @@
       "usage": "Actions used and billing tier",
       "team": "Crew roster and assignments",
       "admin": "Users, roles, and settings"
+    },
+    "exportData": {
+      "label": "Export All Data",
+      "desc": "Download your work orders, assets, schedules, and knowledge base as a ZIP"
     }
   },
   "eventLog": {

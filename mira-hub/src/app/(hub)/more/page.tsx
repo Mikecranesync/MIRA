@@ -4,7 +4,7 @@ import Link from "next/link";
 import {
   MessageSquare, AlertTriangle, BookOpen, Wrench,
   ClipboardList, CalendarDays, Inbox, Package, FileText,
-  TrendingUp, Radio, Plug, BarChart2, Users, Settings, ChevronRight,
+  TrendingUp, Radio, Plug, BarChart2, Users, Settings, ChevronRight, Download,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -53,6 +53,21 @@ export default function MorePage() {
             <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--foreground-subtle)" }} />
           </Link>
         ))}
+
+        <div className="pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+          <a href="/api/export" download
+            className="card p-4 flex items-center gap-4 hover:bg-[var(--surface-1)] transition-colors block">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: "var(--surface-1)" }}>
+              <Download className="w-5 h-5" style={{ color: "var(--brand-blue)" }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{t("exportData.label")}</p>
+              <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>{t("exportData.desc")}</p>
+            </div>
+            <Download className="w-4 h-4 flex-shrink-0" style={{ color: "var(--foreground-subtle)" }} />
+          </a>
+        </div>
       </div>
     </div>
   );

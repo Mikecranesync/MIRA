@@ -230,6 +230,7 @@ function navbar(): string {
     <a href="/" data-cta="cmms-nav-home">Home</a>
     <a href="/pricing" data-cta="cmms-nav-pricing">Pricing</a>
     <a href="/limitations" data-cta="cmms-nav-limitations">Limitations</a>
+    <a href="/security" data-cta="cmms-nav-security">Security</a>
   </nav>
   <div></div>
 </header>`;

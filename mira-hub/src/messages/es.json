@@ -564,6 +564,10 @@
       "team": "Lista de técnicos y asignaciones",
       "cmms": "Integración Atlas CMMS",
       "admin": "Usuarios, roles y configuración"
+    },
+    "exportData": {
+      "label": "Exportar todos los datos",
+      "desc": "Descarga órdenes de trabajo, activos, horarios y base de conocimiento en ZIP"
     }
   },
   "eventLog": {

@@ -34,6 +34,7 @@ import { cors } from "hono/cors";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
+import { renderSecurity } from "./views/security.js";
 import {
   createMagicLink,
   validateAndConsumeToken,
@@ -313,6 +314,7 @@ app.get("/sitemap.xml", (c) => {
       freq: "monthly" as const,
     })),
     { loc: "/limitations", priority: "0.5", freq: "monthly" },
+    { loc: "/security", priority: "0.5", freq: "monthly" },
     { loc: "/privacy", priority: "0.3", freq: "yearly" },
     { loc: "/terms", priority: "0.3", freq: "yearly" },
     { loc: "/trust", priority: "0.4", freq: "monthly" },
@@ -388,6 +390,11 @@ app.get("/cmms", (c) => {
 // Limitations page (#677 / #SO-005) — honest "what we don't do yet"
 app.get("/limitations", (c) => {
   return c.html(renderLimitations(c.req.url));
+});
+
+// Security page (#893) — infrastructure, data protection, AI safety, compliance roadmap
+app.get("/security", (c) => {
+  return c.html(renderSecurity(c.req.url));
 });
 
 // Sample workspace placeholder (#SO-070 AC4) — Phase-0 destination after sign-in.

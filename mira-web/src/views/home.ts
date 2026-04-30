@@ -205,6 +205,7 @@ function navbar(): string {
     <a href="/pricing" data-cta="nav-pricing">Pricing</a>
     <a href="/blog" data-cta="nav-blog">Blog</a>
     <a href="/limitations" data-cta="nav-limitations">Limitations</a>
+    <a href="/security" data-cta="nav-security">Security</a>
   </nav>
   <div class="fl-topbar-cta">
     ${btnGhost("Sign in", { href: "/cmms", cta: "nav-signin" })}
