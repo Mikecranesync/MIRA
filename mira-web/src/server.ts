@@ -161,7 +161,24 @@ setInterval(() => {
 export const app = new Hono();
 
 // Middleware
-app.use("*", cors());
+//
+// CORS — scope to /api/* only with an explicit origin allowlist. Was
+// `app.use("*", cors())` before P0.3 (2026-04-30), which set
+// Access-Control-Allow-Origin: * on every response including JSON APIs.
+// Marketing/HTML routes don't need CORS at all (browsers default to
+// same-origin); APIs are the surface that matters. PLG_API_ALLOWED_ORIGINS
+// can override in env (comma-separated) — see docs/env-vars.md.
+const API_ALLOWED_ORIGINS = (process.env.PLG_API_ALLOWED_ORIGINS ??
+  "https://factorylm.com,https://www.factorylm.com,https://app.factorylm.com,http://localhost:3000,http://localhost:3200")
+  .split(",").map(s => s.trim()).filter(Boolean);
+
+app.use("/api/*", cors({
+  origin: (origin) => (API_ALLOWED_ORIGINS.includes(origin) ? origin : null),
+  credentials: true,
+  allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+  allowHeaders: ["Content-Type", "Authorization", "X-Hmac-Signature", "X-Hmac-Timestamp"],
+  maxAge: 86400,
+}));
 
 // Ensure Content-Length is set on all non-streaming text responses.
 // Bun sends HTML/JSON with chunked transfer encoding; nginx cannot synthesize
