@@ -23,6 +23,18 @@ function isFresh<T>(cache: CacheEntry<T> | null): cache is CacheEntry<T> {
   return cache !== null && Date.now() - cache.fetchedAt < TTL_MS;
 }
 
+/**
+ * Return true if a NeonDB error is "relation does not exist" (Postgres SQLSTATE 42P01).
+ * The blog_drafts table is provisioned only after the editorial workflow ships;
+ * until then, a missing-table error is expected and not worth logging.
+ */
+function isUndefinedTableError(e: unknown): boolean {
+  if (!e || typeof e !== "object") return false;
+  const msg = String((e as { message?: unknown }).message ?? "");
+  const code = String((e as { code?: unknown }).code ?? "");
+  return code === "42P01" || /relation\s+"?blog_drafts"?\s+does not exist/i.test(msg);
+}
+
 export async function getLiveFaultCodes(): Promise<FaultCode[]> {
   if (isFresh(faultCodeCache)) return faultCodeCache.data;
 
@@ -55,6 +67,12 @@ export async function getLiveFaultCodes(): Promise<FaultCode[]> {
     faultCodeCache = { data: codes, fetchedAt: Date.now() };
     return codes;
   } catch (e) {
+    if (isUndefinedTableError(e)) {
+      // Expected pre-launch — table not created yet. Cache the empty result so
+      // we don't re-query for TTL_MS and re-spam the log.
+      faultCodeCache = { data: [], fetchedAt: Date.now() };
+      return [];
+    }
     console.error("[blog-db] Failed to fetch live fault codes:", e);
     return faultCodeCache?.data ?? [];
   }
@@ -93,6 +111,10 @@ export async function getLiveBlogPosts(): Promise<BlogPost[]> {
     blogPostCache = { data: posts, fetchedAt: Date.now() };
     return posts;
   } catch (e) {
+    if (isUndefinedTableError(e)) {
+      blogPostCache = { data: [], fetchedAt: Date.now() };
+      return [];
+    }
     console.error("[blog-db] Failed to fetch live blog posts:", e);
     return blogPostCache?.data ?? [];
   }
