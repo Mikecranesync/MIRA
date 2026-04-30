@@ -9,7 +9,7 @@ import os
 import httpx
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
-from shared import tts
+from shared import assets, tts
 from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
 from telegram import Update
@@ -621,6 +621,57 @@ async def bad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def asset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Walk the UNS asset hierarchy.
+
+    /asset            -> top 2 levels of the customer's hierarchy
+    /asset <path>     -> children of <path>; if no children, show asset card
+    """
+    tenant_id = os.environ.get("MIRA_TENANT_ID", "")
+    if not tenant_id:
+        await update.message.reply_text("Asset hierarchy not configured (MIRA_TENANT_ID unset).")
+        return
+
+    arg = context.args[0].strip() if context.args else ""
+
+    if not arg:
+        rows = assets.list_top_levels(tenant_id, depth=2)
+        await update.message.reply_text(
+            assets.format_hierarchy_list(rows),
+            parse_mode="Markdown",
+        )
+        return
+
+    if not assets._validate_ltree_path(arg):
+        await update.message.reply_text(
+            "Invalid path. Use letters, digits, underscore, separated by dots \u2014 "
+            "e.g. `enterprise.site_a.line_2`.",
+            parse_mode="Markdown",
+        )
+        return
+
+    children = assets.list_children(tenant_id, arg)
+    if children:
+        await update.message.reply_text(
+            assets.format_hierarchy_list(children, parent_label=arg),
+            parse_mode="Markdown",
+        )
+        return
+
+    asset = assets.get_asset(tenant_id, arg)
+    if asset:
+        await update.message.reply_text(
+            assets.format_asset_card(asset),
+            parse_mode="Markdown",
+        )
+        return
+
+    await update.message.reply_text(
+        f"No assets found under `{arg}`.",
+        parse_mode="Markdown",
+    )
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Return static command list."""
     await update.message.reply_text(
@@ -628,6 +679,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/equipment [id] \u2014 Live equipment status (instant)\n"
         "/faults \u2014 Active fault list (instant)\n"
         "/status \u2014 AI equipment summary\n"
+        "/asset [path] \u2014 Walk the UNS asset hierarchy\n"
         "/voice on|off \u2014 Enable/disable spoken responses\n"
         "/bad [reason] \u2014 Flag this response as unhelpful\n"
         "/reset \u2014 Reset conversation state\n"
@@ -684,6 +736,7 @@ def main():
     app.add_handler(CommandHandler("reset", reset_command))
     app.add_handler(CommandHandler("voice", voice_command))
     app.add_handler(CommandHandler("bad", bad_command))
+    app.add_handler(CommandHandler("asset", asset_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
