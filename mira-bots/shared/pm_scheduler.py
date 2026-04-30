@@ -20,7 +20,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -165,8 +165,13 @@ def _build_suggested_actions(pm: dict[str, Any]) -> list[str]:
     return actions
 
 
-def get_due_pms(tenant_id: str | None = None) -> list[dict[str, Any]]:
-    """Return all pm_schedules that are due (next_due_at <= NOW() or IS NULL)."""
+def get_due_pms(tenant_id: Optional[str] = None) -> list[dict[str, Any]]:
+    """Return all pm_schedules that are due.
+
+    Checks BOTH trigger conditions (#898):
+      - calendar / calendar_or_meter: next_due_at <= NOW() or IS NULL
+      - meter / calendar_or_meter:    meter_current >= meter_threshold
+    """
     from sqlalchemy import text
 
     engine = _get_neon_engine()
@@ -185,9 +190,21 @@ def get_due_pms(tenant_id: str | None = None) -> list[dict[str, Any]]:
                            task, interval_value, interval_unit, interval_type,
                            parts_needed, tools_needed, estimated_duration_minutes,
                            safety_requirements, criticality, source_citation, confidence,
-                           next_due_at
+                           next_due_at,
+                           COALESCE(trigger_type, 'calendar') AS trigger_type,
+                           meter_threshold,
+                           COALESCE(meter_current, 0)          AS meter_current
                     FROM pm_schedules
-                    WHERE (next_due_at IS NULL OR next_due_at <= NOW())
+                    WHERE (
+                        -- Calendar trigger
+                        (COALESCE(trigger_type, 'calendar') IN ('calendar', 'calendar_or_meter')
+                         AND (next_due_at IS NULL OR next_due_at <= NOW()))
+                        OR
+                        -- Meter trigger
+                        (COALESCE(trigger_type, 'calendar') IN ('meter', 'calendar_or_meter')
+                         AND meter_threshold IS NOT NULL
+                         AND COALESCE(meter_current, 0) >= meter_threshold)
+                    )
                     {tenant_filter}
                     ORDER BY criticality DESC, next_due_at ASC NULLS FIRST
                     LIMIT 500
@@ -220,19 +237,36 @@ def get_due_pms(tenant_id: str | None = None) -> list[dict[str, Any]]:
             "source_citation": r[14],
             "confidence": float(r[15]) if r[15] else None,
             "next_due_at": r[16].isoformat() if r[16] else None,
+            "trigger_type": str(r[17]),
+            "meter_threshold": float(r[18]) if r[18] is not None else None,
+            "meter_current": float(r[19]),
         }
         for r in rows
     ]
 
 
-def _advance_next_due(pm_id: str, interval_value: int, interval_unit: str) -> None:
-    """Advance next_due_at by the PM interval from NOW()."""
+def _advance_next_due(
+    pm_id: str,
+    interval_value: int,
+    interval_unit: str,
+    trigger_type: str = "calendar",
+) -> None:
+    """Advance next_due_at by the PM interval from NOW().
+
+    For meter / calendar_or_meter PMs also resets meter_current to 0 and
+    stamps meter_last_reset_at so the next reading cycle starts clean (#898).
+    """
     days = _UNIT_DAYS.get(interval_unit, 0)
     if days <= 0:
         logger.info("_advance_next_due: skipping cycle-based PM %s", pm_id)
         return
 
     total_days = interval_value * days
+    meter_reset_clause = (
+        ", meter_current = 0, meter_last_reset_at = NOW()"
+        if trigger_type in ("meter", "calendar_or_meter")
+        else ""
+    )
     from sqlalchemy import text
 
     engine = _get_neon_engine()
@@ -244,12 +278,16 @@ def _advance_next_due(pm_id: str, interval_value: int, interval_unit: str) -> No
                     UPDATE pm_schedules
                     SET next_due_at = NOW() + INTERVAL '{total_days} days',
                         last_completed_at = NOW()
+                        {meter_reset_clause}
                     WHERE id = :pm_id
                     """
                 ),
                 {"pm_id": pm_id},
             )
-        logger.debug("_advance_next_due: pm_id=%s advanced by %g days", pm_id, total_days)
+        logger.debug(
+            "_advance_next_due: pm_id=%s advanced by %g days trigger_type=%s",
+            pm_id, total_days, trigger_type,
+        )
     except Exception as exc:
         logger.error("_advance_next_due failed for pm_id=%s: %s", pm_id, exc)
     finally:
@@ -380,7 +418,7 @@ async def generate_due_work_orders(tenant_id: str | None = None) -> dict[str, An
             skipped += 1
             continue
 
-        _advance_next_due(pm["id"], pm["interval_value"], pm["interval_unit"])
+        _advance_next_due(pm["id"], pm["interval_value"], pm["interval_unit"], pm.get("trigger_type", "calendar"))
 
         # Fire-and-forget to Atlas — import asyncio here to avoid issues at module load
         import asyncio

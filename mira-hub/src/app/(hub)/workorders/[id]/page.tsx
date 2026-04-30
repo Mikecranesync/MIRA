@@ -84,6 +84,13 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
   const t = useTranslations("workorders");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Completion form state (#897)
+  const [showCompleteForm, setShowCompleteForm] = useState(false);
+  const [compFaultDesc, setCompFaultDesc] = useState("");
+  const [compResolution, setCompResolution] = useState("");
+  const [compSubmitting, setCompSubmitting] = useState(false);
+  const [compMissingFields, setCompMissingFields] = useState<string[]>([]);
+
   useEffect(() => {
     fetch(`/hub/api/work-orders/${id}`)
       .then(r => r.json())
@@ -108,7 +115,42 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
 
   function startWork() { setStatus("inprogress"); setTimerRunning(true); toast(t("started")); }
   function stopTimer() { setTimerRunning(false); toast(t("paused", { time: formatTimer(elapsed) })); }
-  function completeWO() { setTimerRunning(false); setStatus("completed"); toast(t("markedComplete")); }
+
+  function openCompleteForm() {
+    setTimerRunning(false);
+    setCompFaultDesc(wo?.description ?? "");
+    setCompMissingFields([]);
+    setShowCompleteForm(true);
+  }
+
+  async function submitComplete() {
+    if (!wo) return;
+    setCompSubmitting(true);
+    setCompMissingFields([]);
+    try {
+      const res = await fetch(`/hub/api/work-orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "completed",
+          fault_description: compFaultDesc,
+          resolution: compResolution,
+        }),
+      });
+      if (res.ok) {
+        setStatus("completed");
+        setShowCompleteForm(false);
+        toast(t("markedComplete"));
+      } else {
+        const data = (await res.json()) as { missing_fields?: string[] };
+        setCompMissingFields(data.missing_fields ?? []);
+      }
+    } catch {
+      toast("Network error — please try again");
+    } finally {
+      setCompSubmitting(false);
+    }
+  }
 
   function addComment() {
     if (!commentText.trim()) return;
@@ -412,7 +454,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
         {status !== "completed" && (
           <div className="space-y-2">
             {status === "inprogress" && (
-              <Button onClick={completeWO} className="w-full h-11 gap-2 font-semibold"
+              <Button onClick={openCompleteForm} className="w-full h-11 gap-2 font-semibold"
                 style={{ backgroundColor: "#16A34A" }}>
                 <CheckCircle2 className="w-4 h-4" />{t("markComplete")}
               </Button>
@@ -437,6 +479,85 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
           </div>
         )}
       </div>
+
+      {/* Completion form modal (#897) — validates fault_description + resolution before closing */}
+      {showCompleteForm && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <div className="w-full max-w-lg rounded-t-2xl p-5 space-y-4"
+            style={{ backgroundColor: "var(--surface-0)", borderTop: "1px solid var(--border)" }}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                Close work order
+              </h2>
+              <button onClick={() => setShowCompleteForm(false)}
+                className="text-xs" style={{ color: "var(--foreground-muted)" }}>Cancel</button>
+            </div>
+
+            {compMissingFields.length > 0 && (
+              <div className="p-3 rounded-xl border" style={{ borderColor: "#DC2626", backgroundColor: "#FEF2F2" }}>
+                <p className="text-xs font-semibold mb-1" style={{ color: "#DC2626" }}>Required before closing:</p>
+                <ul className="text-xs list-disc list-inside space-y-0.5" style={{ color: "#DC2626" }}>
+                  {compMissingFields.map(f => (
+                    <li key={f}>{f === "fault_description" ? "Fault description" : f === "resolution" ? "Resolution / fix applied" : f}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{
+                color: compMissingFields.includes("fault_description") ? "#DC2626" : "var(--foreground-muted)"
+              }}>
+                Fault description *
+              </label>
+              <textarea
+                value={compFaultDesc}
+                onChange={e => setCompFaultDesc(e.target.value)}
+                rows={3}
+                placeholder="Describe what failed and how it was found"
+                className="w-full text-sm px-3 py-2 rounded-xl border resize-none"
+                style={{
+                  borderColor: compMissingFields.includes("fault_description") ? "#DC2626" : "var(--border)",
+                  backgroundColor: "var(--surface-1)",
+                  color: "var(--foreground)",
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{
+                color: compMissingFields.includes("resolution") ? "#DC2626" : "var(--foreground-muted)"
+              }}>
+                Resolution / fix applied *
+              </label>
+              <textarea
+                value={compResolution}
+                onChange={e => setCompResolution(e.target.value)}
+                rows={3}
+                placeholder="What was done to resolve the issue?"
+                className="w-full text-sm px-3 py-2 rounded-xl border resize-none"
+                style={{
+                  borderColor: compMissingFields.includes("resolution") ? "#DC2626" : "var(--border)",
+                  backgroundColor: "var(--surface-1)",
+                  color: "var(--foreground)",
+                }}
+              />
+            </div>
+
+            <Button
+              onClick={submitComplete}
+              disabled={compSubmitting}
+              className="w-full h-11 gap-2 font-semibold"
+              style={{ backgroundColor: "#16A34A" }}>
+              {compSubmitting
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <CheckCircle2 className="w-4 h-4" />}
+              {compSubmitting ? "Saving…" : "Mark complete"}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
