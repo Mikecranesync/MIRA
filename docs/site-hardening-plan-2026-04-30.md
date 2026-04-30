@@ -231,3 +231,84 @@ If we do nothing else, **P0.1 (remove `?token=` query) and P0.4 (rate limit on i
 - Execution mode: agent-driven where marked Autonomous, Mike-hands for the rest
 - Re-audit cadence: quarterly. Re-run the curl probes + `sshd -T` + `nginx -T` checks; diff against this doc.
 
+---
+
+# Addendum 2026-04-30 — real-user walkthrough + synthetic-user audit
+
+Two new tracks added to the audit after the initial pass:
+
+- **(A) Real-user walkthrough** of factorylm.com + app.factorylm.com via the Claude-in-Chrome MCP (Playwright MCP wasn't loaded; local playwright in mira-web has no browsers installed).
+- **(B) Synthetic-user interaction** — triggered Rico Mendez (the live synthetic technician at `mira-bots/synthetic/rico.py`) end-to-end on the VPS and captured the full transcript.
+
+Artifacts:
+- `outputs/site-hardening-2026-04-30/walkthrough-2026-04-30.md` — site-walk findings + screenshots context
+- `outputs/site-hardening-2026-04-30/rico-shift-2026-04-30T1034.md` — live Rico shift transcript
+
+## What works (positive findings)
+
+- `factorylm.com/` renders cleanly, hero + 3-up-features + CTA all visible above fold (1200px)
+- `Start Free — magic link` CTA → `/cmms` → magic-link form → "✓ Check your inbox" confirmation. **Conversion path is functional end-to-end.**
+- `app.factorylm.com/` correctly 301s unauthenticated requests to the login page; 3 sign-in options render (Google, magic link, password)
+- HSTS + clickjacking + referrer + permissions headers all already present on apex (per the Pre-Addendum audit above)
+- Rico's NeonDB observation pipeline writes successfully — schema is sound, 10 rows persisted
+
+## New issues found (this addendum)
+
+### Public site (apex + hub)
+
+| ID | Finding | Bucket | Effort | Autonomous? |
+|---|---|---|---|---|
+| **WEB-1** | Magic-link signup fires a real Resend email per submit; no per-email-address dedup. Submit the same address 10× in a minute = 10 emails | P1 | 1 h | Yes |
+| **WEB-2** | MIRA replies sometimes contain truncated/unbalanced markdown (`*Lo` mid-italic) — caught in Rico transcript | P1 | 1.5 h | Yes (server-side fix in mira-pipeline reply-trim logic) |
+| WEB-3 | Apex returns `Content-Length: 0` on HEAD (GET works fine) — confuses uptime probes that use HEAD | P2 | 30 min | Yes |
+| WEB-4 | Mobile viewport not validated this pass (Claude-in-Chrome screenshots fixed at 1200px) | P2 | re-test 30 min | Yes (install playwright browsers + re-walk at 390×844) |
+| **HUB-1** | Login page exposes 3 concurrent auth surfaces (Google OAuth + magic link + **password**). Password sign-in is the new attack surface — combined with no rate limit on the credential POST, it's an open brute-force target | **P0** | 1 h (rate-limit only) or remove password auth entirely | Yes for rate-limit; Mike call on whether to keep password auth |
+| HUB-3 | NextAuth `callbackUrl` query param accepts arbitrary path; need to verify the redirect callback whitelists internal-only | P1 | 30 min audit + fix | Yes |
+
+### Synthetic users — `mira-bots/synthetic/rico.py` (PR #879, OPEN, deployed)
+
+Live Rico shift on 2026-04-30 10:34 UTC opened with an **undergrad research question from Reddit** (corpus filter too loose), and Rico's followups were `correct`, `yep`, `yep` to MIRA's specific equipment-model questions. Conversation never reached diagnosis.
+
+| ID | Finding | Bucket | Effort | Autonomous? |
+|---|---|---|---|---|
+| **SYN-1** | Off-topic scenarios from Reddit corpus (undergrad research, not maintenance fault reports) | **P0** | 2 h | Yes (tighten `load_scenarios()` filter — require `[fault_code]` regex match in title OR an `equipment_type` tag, not just keyword presence) |
+| **SYN-2** | `_generate_follow_up()` returns generic fillers when keyword-match misses (which is most cases). Rico never actually answers MIRA's specific questions, so conversation loops without progress | **P0** | 4 h | Yes (replace with an LLM-driven response: a small Groq/Cerebras call asking "Rico is a night-shift tech. MIRA just said X. What does Rico say next?" — keyword fallback only on LLM failure) |
+| SYN-3 | `result.fsm_advanced` is heuristic (final reply >50 chars + no `?` in first 50) — doesn't measure real progress. Marks dead loops as "advanced" in the Telegram report | P1 | 1 h | Yes (read `quality_signals.fsm_state` from the actual MIRA reply if exposed, or assert "DIAGNOSIS" or "RESOLVED" reached) |
+| SYN-4 | No cron entry for Rico — only runs when triggered by hand. **Total observations in 2 days deployed: 10 rows.** The synthetic-stack-heartbeat is barely heartbeating | P1 | 5 min | Mike approval (touches `install_crons.sh`); recommend `0 */4 * * *` (every 4h) |
+| SYN-5 | `rico.py:_tg_send` uses `parse_mode=Markdown` with no fallback. Same bug class as PR #886 fixed for the orchestrator | P1 | 30 min | Yes (port the `_post_telegram` retry pattern from `orchestrator.py`) |
+| SYN-6 | Rico runs against production tenant + production NeonDB + production Resend + real LLM tokens. No `synthetic_test=true` marker. `synthetic_observations` rows mix into any future analytics; `random.random() < 0.4` triggers real Atlas WO creation | **P0** | 3 h | Yes (add `synthetic_user_id` column + filter views; gate Atlas WO create behind `MIRA_SYNTHETIC_DRY_RUN=true` env) |
+| SYN-7 | `mira-hub` has 4 seeded personas (carlos/dana/jordan/pat) + a Playwright spec that exercises them, but no scheduled exercise — they're CI fixtures, not autonomous agents | P2 | 1 h | Yes (cron the `synthetic-day.spec.ts` once daily; alert on regressions) |
+
+### What I'd do first (synthetic-user track only)
+
+If you only had 30 min on the synthetic side: **flip SYN-6 first** (gate Atlas writes behind a dry-run env so Rico stops creating real work orders into Mike's prod CMMS). Then **SYN-2** (replace generic fillers with an LLM-driven response). SYN-1 falls out naturally because tightening the corpus filter takes 30 min once SYN-2 is real.
+
+## Updated P0 list (combined site + synthetic)
+
+| # | Item | Source | Effort | Owner |
+|---|---|---|---|---|
+| P0.1 | JWT accepts `?token=` query → URL leakage | original audit | 2 h | agent |
+| P0.2 | JWT expiry 30d (drop to 7d) | original audit | 30 min | agent |
+| P0.3 | CORS wildcard on `/api/*` | original audit | 30 min | agent |
+| P0.4 | No rate limit on inbox + register | original audit | 1.5 h | agent |
+| P0.5 | SSH password auth effective | original audit | 5 min | Mike |
+| P0.6 | nginx `.bak` files loaded | original audit | 5 min | Mike |
+| **P0.7** | **HUB-1 hub password sign-in has no rate limit** (or remove password auth entirely; magic-link + Google is enough) | addendum WEB | 1 h | agent / Mike call |
+| **P0.8** | **SYN-6 Rico runs against prod with no dry-run gate** — real Atlas WOs, real LLM spend, observations mix into prod analytics | addendum SYN | 3 h | agent |
+| **P0.9** | **SYN-1 + SYN-2 Rico's conversations are off-topic + filler-driven; diagnostic loop never advances** — synthetic-user system isn't actually exercising the product | addendum SYN | 6 h (2+4) | agent |
+
+**Revised P0 total:** ~15 hours of agent work + ~15 min Mike (P0.5 + P0.6 + Mike's call on P0.7 password-auth-or-not).
+
+## Updated recommended order
+
+1. **(20 min, agent)** Stack PR for P0.1 + P0.2 + P0.3 (mira-web middleware, all touch the same area)
+2. **(1 h, agent)** P0.7 hub password sign-in rate-limit (or removal — needs Mike's "keep or kill password auth" decision first)
+3. **(1.5 h, agent)** P0.4 inbox + register rate-limit middleware
+4. **(10 min, Mike)** P0.5 SSH + P0.6 nginx-bak
+5. **(3 h, agent)** P0.8 Rico dry-run gate — stops the real Atlas writes, isolates the observations table
+6. **(6 h, agent)** P0.9 Rico content fix — LLM-driven followups + tightened corpus filter (this is the biggest item; defer to W2 if May 4 is too tight)
+7. P1 sweep per the original plan (CSP on apex, Sentry, Better Stack uptime, fail2ban, JWT rotation runbook, stripe upgrade, backups)
+8. W6: Unit 8 (Atlas hardening) per the 90-day plan
+
+P0.9 is the only item that might not fit before May 4 — it's 6 hours of careful work and could surface more bugs once Rico actually answers questions properly. Consider shipping the dry-run gate (P0.8) before May 4 and deferring the content fix (P0.9) to W2 if needed. Without P0.9, Rico is "stack-up heartbeat" — useful as smoke test, useless as evidence the product actually solves problems.
+
