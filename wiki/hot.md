@@ -1,4 +1,9 @@
-# Hot Cache — 2026-04-30 — CHARLIE
+# Hot Cache — 2026-05-01 — CHARLIE
+
+## eval-fixer run — 2026-05-01
+- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (same stale scorecard as 2026-04-30; no new run produced)
+- Action: issue-filed (#916)
+- Same 13 failures as yesterday's #884, same 3-file cluster spread (engine.py + guardrails.py + active.yaml) → still exceeds single-file autopatch limit. Manual-lookup misroute is still the highest-leverage fix: 4 fixtures get the canned "already have documentation indexed" deflection instead of vendor URL + IDLE. Engine FSM Q1→Q2 progression and MANUAL_LOOKUP entry conditions both off. Cluster persists; needs human review now, not another auto-issue.
 
 ## eval-fixer run — 2026-04-30
 - Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md`
