@@ -7,7 +7,7 @@ describe("#SO-100 renderHome — homepage refactor acceptance", () => {
   test("AC1: hero L1 message — H1 'FactoryLM', H2 workspace tagline, H3 MIRA", () => {
     expect(html).toContain('id="fl-hero-h1"');
     expect(html).toMatch(/<h1[^>]*>FactoryLM<\/h1>/);
-    expect(html).toMatch(/<h2[^>]*>The AI workspace for industrial maintenance\.<\/h2>/);
+    expect(html).toMatch(/<h2[^>]*>Compound-interest knowledge for industrial maintenance\.<\/h2>/);
     expect(html).toMatch(/Meet <strong>MIRA<\/strong>/);
     expect(html).toMatch(/Manuals, sensors, photos, work orders, investigations/);
   });
