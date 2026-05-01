@@ -1,5 +1,12 @@
 # Hot Cache — 2026-04-30 — CHARLIE
 
+## Session — 2026-05-01 (BRAVO, Telegram FSM carry-over fix)
+- Fixed stale Telegram follow-up routing in `mira-bots/shared/engine.py` + `guardrails.py`. Session-followup detection now requires explicit recap language instead of generic doc terms like `manual` / `website`, so doc lookups stop getting trapped in old photo context.
+- Added carry-over cleanup for non-diagnostic pivots: documentation, general questions, instructional questions, asset switches, and new asset-identification photo flows now clear stale `fault_category`, `final_state`, follow-up options, and remembered photo turns as appropriate.
+- Preserved explicit recap behavior: direct references like "where did you get that information" still route through the session follow-up path and can reuse the recent photo.
+- Focused verification passed: `pytest mira-bots/tests/test_guardrails.py mira-bots/tests/test_conversation_continuity.py mira-bots/tests/test_engine.py -q` → 136 passed; `ruff check` clean on touched files.
+- Remaining live issues from earlier Telegram forensics still look operational, not code-level in this branch: duplicate Telegram poller (`409 Conflict`), OCR auth failure (`401 Unauthorized`), and visual-search backend mismatch (`/ingest/search-visual` returning `404` despite route existing in repo).
+
 ## eval-fixer run — 2026-04-30
 - Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md`
 - Action: issue-filed (#884)
