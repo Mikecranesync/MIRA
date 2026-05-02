@@ -2,6 +2,21 @@
 
 > Append-only chronological record. Each entry: `## [YYYY-MM-DD] type | description`
 > Types: `deploy`, `incident`, `config`, `session`, `ingest`, `lint`
+
+## [2026-05-02] session | Charlie — Linear board setup + YouTube transcript skill
+- Linear Cranesync workspace fully configured: 3 projects (MVP Build / Sales & GTM / Ops & Infra), 15 issues (CRA-5–CRA-19), 4 custom statuses (Shaping, Reviewed, Ready to Deploy, Pending Deployed), 3 labels (user-action, agent-action, customer-request)
+- Board cleanup: FactoryLM stale project cancelled; 3 active projects set to In Progress via MCP
+- YouTube transcript researcher skill shipped: `tools/youtube_transcript.py` + `.claude/skills/youtube-transcript.md`
+- Memory snapshot committed to `docs/memory-snapshots/2026-05-02/` + git tag `memory-rollback-2026-05-02`
+- Pending manual: delete "In Review" default status in Linear Settings (API cannot manage workflow states)
+- Machine: Charlie
+
+## [2026-05-02] config | Linear MCP plugin installed + confirmed
+- Linear MCP installed as Claude plugin (not manual mcpServers entry)
+- Config: `~/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/linear/.mcp.json`
+- Transport: HTTP → `https://mcp.linear.app/mcp` (correct new endpoint, not deprecated /sse)
+- Machine: Charlie
+
 ## [2026-04-19] session | Charlie — yaskawa_out_of_kb fix + Q-trap tightening (54/57 stable)
 - **Root cause**: `yaskawa_out_of_kb_04` (persistent 1/57 failure) — LLM stochastically proposes `IDLE` or unregistered `NEEDS_MORE_INFO` state depending on Groq run. FSM state is inherently non-deterministic for out-of-KB scenarios.
 - **Fix 1**: Added `NEEDS_MORE_INFO → Q1` alias in `_STATE_ALIASES` (LLM variant with trailing S).
