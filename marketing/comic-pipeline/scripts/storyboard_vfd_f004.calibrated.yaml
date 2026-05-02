@@ -1,0 +1,408 @@
+title: "MIRA Comic Explainer \u2014 VFD Fault F004"
+version: 2
+video:
+  width: 1920
+  height: 1080
+  fps: 24
+  shot_xfade_duration: 0.6
+  intra_beat_pan_duration: 0.6
+  output_name: mira_explainer_vfd_f004.mp4
+audio:
+  tts_model: tts-1-hd
+  tts_voice: onyx
+  tts_speed: 0.9
+  pause_within_shot: 0.5
+  pause_between_shots: 1.0
+  style_instruction: "Speak in a calm, confident, floor-level industrial professional\
+    \ tone.\nSlow, deliberate pace. Pause naturally between thoughts. This is\ndocumentary,\
+    \ not advertising \u2014 measured, weighty, and patient.\n"
+music:
+  bed_volume_db: -18
+  duck_threshold: 0.05
+  duck_ratio: 6
+  duck_attack_ms: 80
+  duck_release_ms: 400
+  crossfade_seconds: 3.0
+  moods:
+    problem:
+      sines:
+      - freq: 55.0
+        weight: 0.45
+      - freq: 82.4
+        weight: 0.3
+      - freq: 87.3
+        weight: 0.15
+      noise:
+        color: brown
+        weight: 0.1
+    resolution:
+      sines:
+      - freq: 65.4
+        weight: 0.3
+      - freq: 98.0
+        weight: 0.25
+      - freq: 130.8
+        weight: 0.25
+      - freq: 164.8
+        weight: 0.2
+      noise:
+        color: pink
+        weight: 0.05
+  cues:
+  - shot_id: 1
+    mood: problem
+  - shot_id: 4
+    mood: resolution
+shots:
+- id: 1
+  file: vfd_shot_01.png
+  role: "Setup \u2014 F004 on Cell B drive 7"
+  qc:
+    required_strings:
+    - F004
+    - UNDERVOLT
+    - CELL B
+    - DRIVE 7
+    - RICO
+    - STOPPED
+    - '525'
+    forbidden_strings:
+    - Cell 6
+    - LINDERVOLT
+    - F00 4
+    - Drive 8
+    - Drive 6
+    style_anchor: ChatGPT Image Apr 24, 2026 at 02_05_37 PM.png
+    prompt_summary: "Wide establishing \u2014 Cell B with drive 7 stopped, PowerFlex\
+      \ 525 keypad showing F004 UNDERVOLT, Rico in foreground."
+  beats:
+  - text: Cell B. Six in the morning. Drive seven is down again.
+    focal:
+      cx: 0.5
+      cy: 0.5
+      zoom: 1.0
+    target: "wide establish \u2014 Cell B, three drives, drive 7 dark"
+    duration: 4.5
+  - text: PowerFlex five-twenty-five. Fault code F-zero-zero-four.
+    focal:
+      cx: 0.3
+      cy: 0.65
+      zoom: 2.5
+    target: "drive 7 keypad close-up \u2014 F004 display"
+    duration: 5.0
+  - text: Undervoltage trip. The line stops cold.
+    focal:
+      cx: 0.65
+      cy: 0.45
+      zoom: 1.8
+    target: Rico looking at the stopped cell
+    duration: 4.5
+- id: 2
+  file: vfd_shot_02.png
+  role: "Frustration \u2014 manual gives a checklist, all checks pass, fault returns"
+  qc:
+    required_strings:
+    - MANUAL
+    - VOLTAGE
+    - PHASES
+    - BUS
+    - FAULT
+    - '480'
+    - RICO
+    forbidden_strings:
+    - MIKUTES
+    - WEEEKS
+    - VOLATGE
+    - FUALT
+    style_anchor: ChatGPT Image Apr 24, 2026 at 02_11_45 PM.png
+    prompt_summary: "Rico at maintenance bench with PowerFlex 525 manual open; right-side\
+      \ panels show multimeter readings \u2014 voltage fine, all 3 phases present,\
+      \ DC bus healthy. Caption: THE MANUAL ENDS HERE. THE FAULT DOESN'T."
+  beats:
+  - text: He pulls the manual. Section seven point three.
+    focal:
+      cx: 0.25
+      cy: 0.5
+      zoom: 1.6
+    target: open manual, section header visible
+    duration: 4.0
+  - text: Check input voltage. Check phase loss. Verify DC bus.
+    focal:
+      cx: 0.3
+      cy: 0.55
+      zoom: 2.2
+    target: manual page bullet list
+    duration: 5.0
+  - text: He checks all three. Voltage fine. No phase loss. Bus healthy.
+    focal:
+      cx: 0.78
+      cy: 0.5
+      zoom: 2.0
+    target: "right column \u2014 three test panels"
+    duration: 6.0
+  - text: The manual ends here. The fault doesn't.
+    focal:
+      cx: 0.5
+      cy: 0.85
+      zoom: 1.8
+    target: "bottom caption \u2014 manual ends here"
+    duration: 4.5
+- id: 3
+  file: vfd_shot_03.png
+  role: "Pressure \u2014 repeat offender across drives, leadership reacts"
+  qc:
+    required_strings:
+    - WEEKS
+    - MINUTES
+    - SINCE
+    - MARCUS
+    - ELENA
+    - HOLT
+    - MAINTENANCE MANAGER
+    - ENGINEERING MANAGER
+    - DIRECTOR
+    - F004
+    - FAULT
+    - 07:14
+    forbidden_strings:
+    - WEEEKS
+    - MIKUTES
+    - SN CE
+    - "HOLT \u2014 ENGINEERING MANAGER"
+    - "DIRECTOR HOLT \u2014 ENGINEERING"
+    style_anchor: ChatGPT Image Apr 24, 2026 at 02_22_55 PM.png
+    prompt_summary: "Multi-panel pressure scene: top banner CELL B F004 REPEAT FAULT\
+      \ 14\xD7 IN 6 WEEKS 07:14; left wide panel of stopped Cell B; right column FOUR\
+      \ character panels \u2014 Operator (radio), Marcus (Maintenance Manager), Elena\
+      \ (Engineering Manager), Director Holt (grey-haired senior in suit, distinct\
+      \ from Elena)."
+  beats:
+  - text: The operator is on the radio. Third time this week.
+    focal:
+      cx: 0.78
+      cy: 0.2
+      zoom: 2.5
+    target: "operator panel \u2014 radio frustrated"
+    duration: 4.5
+  - text: 'Marcus: Cell B has eaten thirty minutes since Monday.'
+    focal:
+      cx: 0.78
+      cy: 0.4
+      zoom: 2.5
+    target: "Marcus panel \u2014 downtime spreadsheet"
+    duration: 5.0
+  - text: Elena pulls fault history. Same code. Drives seven, eight, and nine.
+    focal:
+      cx: 0.78
+      cy: 0.6
+      zoom: 2.5
+    target: "Elena panel \u2014 fleet history chart"
+    duration: 5.5
+  - text: 'Director Holt: customer''s on the line. We''re missing the morning lot.'
+    focal:
+      cx: 0.78
+      cy: 0.83
+      zoom: 2.5
+    target: "Holt panel \u2014 office monitor"
+    duration: 5.0
+  - text: 'And the manual still says: check input voltage.'
+    focal:
+      cx: 0.2
+      cy: 0.5
+      zoom: 1.8
+    target: "left column \u2014 Cell B foreground"
+    duration: 4.5
+- id: 4
+  file: vfd_shot_04.png
+  role: "Pivot \u2014 MIRA shows the pattern across the fleet"
+  qc:
+    required_strings:
+    - MIRA
+    - F004
+    - UNDERVOLTAGE
+    - Cell B
+    - Drive 7
+    - PATTERN
+    - STOPPED
+    - RICO
+    - stagger
+    - RECOMMENDED
+    - Mondays
+    forbidden_strings:
+    - LINDERVOLTAGE
+    - LINDERVOLT
+    - Cell 6
+    - Drives 7, 0, 3
+    - Drive 0
+    - Drive 3
+    - "CELL B \u2014 RUNNING"
+    - Cell B Running
+    style_anchor: ChatGPT Image Apr 24, 2026 at 11_53_02 AM.png
+    prompt_summary: "Rico holding tablet at maintenance bench; bottom-left panel shows\
+      \ MIRA app screen with F004 UNDERVOLTAGE / Cell B Drive 7 / pattern Mondays\
+      \ 7-7:30 / drives 7, 8, 9 affected / fix: stagger startup; bottom-right is a\
+      \ TIMING DIAGRAM of three vertical bars (simultaneous=red vs staggered=green).\
+      \ Cell B sign overhead is RED STOPPED \u2014 line still down."
+  beats:
+  - text: This time, Rico tries something different. He asks MIRA.
+    focal:
+      cx: 0.5
+      cy: 0.25
+      zoom: 1.5
+    target: "wide top \u2014 Rico with tablet"
+    duration: 4.5
+  - text: Fault F-zero-zero-four. Drive seven. Cell B.
+    focal:
+      cx: 0.3
+      cy: 0.78
+      zoom: 2.5
+    target: "MIRA app \u2014 fault summary header"
+    duration: 4.5
+  - text: MIRA answers in seconds. Fourteen occurrences. All Monday mornings between
+      seven and seven thirty. Drives seven, eight, and nine.
+    focal:
+      cx: 0.3
+      cy: 0.78
+      zoom: 2.5
+    target: "MIRA app \u2014 pattern detail"
+    duration: 8.5
+  - text: 'Suggested cause: simultaneous startup. Fix: stagger drive starts by half
+      a second.'
+    focal:
+      cx: 0.7
+      cy: 0.78
+      zoom: 2.5
+    target: Rico face + inset timing graphic
+    duration: 6.5
+- id: 5
+  file: vfd_shot_05.png
+  role: "Resolution \u2014 staggered start, pattern broken, leadership aligned"
+  qc:
+    required_strings:
+    - factorylm.com
+    - MIRA
+    - RUNNING
+    - CELL B
+    - ELENA
+    - MARCUS
+    - HOLT
+    - DATA
+    - STORY
+    - BUILT FOR THE FLOOR
+    - INCOMPLETE
+    - WAS RIGHT
+    - Pattern broken
+    forbidden_strings:
+    - WANT WAS RIGHT
+    - STOPPED
+    - F004
+    style_anchor: ChatGPT Image Apr 24, 2026 at 12_12_29 PM.png
+    prompt_summary: 'Resolution. Top: Rico at PLC laptop staging startup; Cell B running
+      with green CELL B - RUNNING sign. Bottom: three reaction panels (Marcus, Elena,
+      Holt). MASSIVE bottom CTA caption: MIRA. BUILT FOR THE FLOOR. CONNECTED TO WHAT
+      MATTERS. factorylm.com'
+  beats:
+  - text: Rico stages the startup sequence in the line PLC.
+    focal:
+      cx: 0.25
+      cy: 0.25
+      zoom: 2.0
+    target: Rico at PLC laptop with ladder logic
+    duration: 4.5
+  - text: Monday morning. Drives seven, eight, and nine power up in sequence.
+    focal:
+      cx: 0.75
+      cy: 0.25
+      zoom: 2.0
+    target: Cell B running, all green
+    duration: 5.0
+  - text: No fault.
+    focal:
+      cx: 0.75
+      cy: 0.25
+      zoom: 2.5
+    target: tight on the green run sign
+    duration: 2.5
+  - text: 'Marcus: pattern broken. Eighteen minutes a week back.'
+    focal:
+      cx: 0.165
+      cy: 0.625
+      zoom: 2.5
+    target: Marcus reaction
+    duration: 4.5
+  - text: 'Elena: the manual was right. The story was incomplete.'
+    focal:
+      cx: 0.5
+      cy: 0.625
+      zoom: 2.5
+    target: Elena reaction
+    duration: 4.5
+  - text: 'Holt: this is what happens when your data tells the story.'
+    focal:
+      cx: 0.83
+      cy: 0.625
+      zoom: 2.5
+    target: Holt reaction
+    duration: 4.5
+- id: 6
+  file: vfd_shot_06.png
+  role: "Explainer \u2014 how MIRA solved the underlying issue + aftermath stats +\
+    \ CTA"
+  qc:
+    required_strings:
+    - MIRA
+    - F004
+    - BEFORE
+    - AFTER
+    - PATTERN
+    - STAGGER
+    - factorylm.com
+    - BUILT FOR THE FLOOR
+    forbidden_strings:
+    - UNDERVLL
+    - LINDERVOLT
+    - Cell 6
+    - Drive 0
+    - WANT WAS
+    - WAS RIGTH
+    style_anchor: ChatGPT Image Apr 24, 2026 at 12_12_29 PM.png
+    prompt_summary: "Stat-reveal explainer page. BEFORE/AFTER columns showing F004\
+      \ 14\u21920, downtime 21min\u21926min, weekly uptime +18min. Bottom CTA: MIRA\
+      \ / BUILT FOR THE FLOOR / factorylm.com"
+  beats:
+  - text: Six weeks. Same fault. Same time. Same cell.
+    focal:
+      cx: 0.5
+      cy: 0.2
+      zoom: 1.5
+    target: "top header \u2014 six weeks pattern"
+    duration: 4.5
+  - text: MIRA pulled the history. The manual saw one drive. MIRA saw the pattern.
+    focal:
+      cx: 0.5
+      cy: 0.4
+      zoom: 1.8
+    target: MIRA found the pattern
+    duration: 6.0
+  - text: 'Half a second of patience between starts. Pattern: gone.'
+    focal:
+      cx: 0.5
+      cy: 0.55
+      zoom: 2.0
+    target: "the fix \u2014 stagger startup"
+    duration: 5.0
+  - text: 'F-zero-zero-four trips: fourteen, to zero. Eighteen minutes a week, back
+      where it belongs.'
+    focal:
+      cx: 0.5
+      cy: 0.7
+      zoom: 2.0
+    target: "stat reveal \u2014 14\u21920, 18 min/week"
+    duration: 6.5
+  - text: MIRA. Built for the floor. Connected to what actually matters.
+    focal:
+      cx: 0.5
+      cy: 0.88
+      zoom: 1.5
+    target: bottom CTA strip
+    duration: 5.0
