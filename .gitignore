@@ -5,6 +5,7 @@ mira_copy/outputs/*
 # Session ephemera — PR/issue drafts, one-off probe scripts, worktree parent
 .tmp_*
 .claude/worktrees/
+.worktrees/
 
 # Skill eval workspaces (skill-creator iteration runs; rebuilt locally per session)
 .claude/skills/*-workspace/
