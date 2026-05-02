@@ -3,9 +3,13 @@
 # (Python 3.12, per mira repo standard — uses httpx/ruff, not requests/pylint.)
 
 openai>=1.50.0          # gpt-image-1 + tts-1-hd
+anthropic>=0.40.0       # Claude vision for panel-quality scoring (ADR-0013)
 ffmpeg-python>=0.2.0    # thin wrapper over ffmpeg CLI (subprocess still used)
 pyyaml>=6.0             # always call yaml.safe_load(), never yaml.load()
 rich>=13.7              # progress UI + cost tables
 httpx>=0.27             # mira standard HTTP client (not requests)
 pillow>=11.0            # source image dimension probing
 playwright>=1.40        # v2 verification: real-browser playback check
+google-api-python-client>=2.140  # YouTube Data API v3 upload
+google-auth-oauthlib>=1.2        # OAuth flow for YouTube upload
+google-auth-httplib2>=0.2        # transport for google-api-python-client
