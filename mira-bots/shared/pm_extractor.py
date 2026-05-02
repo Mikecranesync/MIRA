@@ -298,13 +298,16 @@ async def extract_pm_schedules(
     Returns validated list of PM schedule dicts ready for storage.
     """
     if not chunks:
-        logger.info("extract_pm_schedules: no PM-relevant chunks for %s %s", manufacturer, model_number)
+        logger.info(
+            "extract_pm_schedules: no PM-relevant chunks for %s %s", manufacturer, model_number
+        )
         return []
 
     # Import here — path differs between mira-bots context and mira-pipeline (where
     # shared/ is mounted directly into the container root).
     import importlib
     import importlib.util
+
     _spec = importlib.util.find_spec("shared")
     _mod = importlib.import_module("shared.inference.router" if _spec else "inference.router")
     InferenceRouter = _mod.InferenceRouter  # type: ignore[attr-defined]
@@ -421,8 +424,7 @@ def ensure_pm_table() -> None:
             # Indexes for common queries
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_pm_schedules_tenant "
-                    "ON pm_schedules (tenant_id)"
+                    "CREATE INDEX IF NOT EXISTS idx_pm_schedules_tenant ON pm_schedules (tenant_id)"
                 )
             )
             conn.execute(
@@ -488,9 +490,7 @@ def store_pm_schedules(
         with engine.begin() as conn:
             for item in schedules:
                 days_str = _interval_to_next_due(item["interval_value"], item["interval_unit"])
-                next_due_sql = (
-                    f"NOW() + INTERVAL '{days_str}'" if days_str else "NULL"
-                )
+                next_due_sql = f"NOW() + INTERVAL '{days_str}'" if days_str else "NULL"
 
                 conn.execute(
                     text(

@@ -31,7 +31,9 @@ class NormalizedChatEvent:
     """One inbound message from any platform, normalized."""
 
     event_id: str
-    platform: Literal["telegram", "slack", "teams", "gchat", "webui", "email", "whatsapp", "webchat"]
+    platform: Literal[
+        "telegram", "slack", "teams", "gchat", "webui", "email", "whatsapp", "webchat"
+    ]
     tenant_id: str
     user_id: str  # canonical MIRA user ID (after identity resolution)
     external_user_id: str  # platform-specific user ID
