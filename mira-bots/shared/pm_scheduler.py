@@ -131,23 +131,23 @@ def _wo_number() -> str:
 
 def _build_description(pm: dict[str, Any]) -> str:
     lines = [
-        f"Auto-generated PM work order from manual extraction.",
-        f"",
+        "Auto-generated PM work order from manual extraction.",
+        "",
         f"Equipment: {pm['manufacturer']} {pm['model_number']}",
         f"Interval: Every {pm['interval_value']} {pm['interval_unit']}",
     ]
     if pm.get("source_citation"):
         lines.append(f"Manual reference: {pm['source_citation']}")
     if pm.get("parts_needed"):
-        lines.append(f"\nParts needed:")
+        lines.append("\nParts needed:")
         for p in pm["parts_needed"]:
             lines.append(f"  • {p}")
     if pm.get("tools_needed"):
-        lines.append(f"\nTools needed:")
+        lines.append("\nTools needed:")
         for t in pm["tools_needed"]:
             lines.append(f"  • {t}")
     if pm.get("safety_requirements"):
-        lines.append(f"\nSafety requirements:")
+        lines.append("\nSafety requirements:")
         for s in pm["safety_requirements"]:
             lines.append(f"  ⚠ {s}")
     confidence = pm.get("confidence")
