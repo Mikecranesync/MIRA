@@ -174,3 +174,6 @@ wiki/.smart-env/
 **/* 2.txt
 
 .claire/
+
+# Transcript log emitted by plc/ccw/scripts/plc_laptop_harden/apply.ps1
+plc/ccw/scripts/plc_laptop_harden/apply.last-run.log
