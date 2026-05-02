@@ -13,7 +13,6 @@ from shared import tts
 from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
 from telegram import Update
-from voice_transcription import transcribe_voice
 from telegram.constants import ChatAction
 from telegram.error import Conflict
 from telegram.ext import (
@@ -24,6 +23,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from voice_transcription import transcribe_voice
 
 logging.basicConfig(
     level=logging.INFO,
