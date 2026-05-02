@@ -1,5 +1,19 @@
 # Hot Cache — 2026-04-20 — CHARLIE
 
+## Session — 2026-05-01 (ALPHA, Serena MCP config)
+
+- **Serena MCP configured for MIRA**: user-level Codex config now starts Serena with `--project /Users/factorylm/mira` instead of `/Users/factorylm`, avoiding prior home-directory scans that hit macOS permission errors like `.Trash`.
+- **Dashboard popups quieted**: `~/.serena/serena_config.yml` now has `web_dashboard_open_on_launch: false`; dashboard remains available manually if needed.
+- **Project onboarding done**: `.serena/project.yml` now includes Python, TypeScript, Bash, YAML, TOML, and Markdown plus ignored generated/cache paths; Serena memories created for overview, repo structure, commands, style, completion checklist, and current hot state.
+- **Verified**: `mcp__serena__.get_current_config` reports active project `mira`; `check_onboarding_performed` sees 6 memories; symbol overview works on `mira-bots/shared/engine.py`.
+
+## Session — 2026-05-01 (ALPHA, FactoryLM brand message plan)
+
+- **Brand message chosen**: "MIRA is the AI troubleshooting workspace for industrial maintenance." FactoryLM = company/site; MIRA = product; CMMS is a write-back destination, not the product.
+- **Plan written**: `docs/plans/2026-05-01-factorylm-brand-message-unification.md` with page-by-page copy scope, canonical copy, CTA vocabulary, verification checklist, and rollback instructions.
+- **GitHub rollback created**: branch `rollback-factorylm-brand-message-2026-05-01` pushed to `origin` at `2be1b03bc01ddd48474170dd935634adbef22ae3` (current branch was `feat/lsp-claude-code`).
+- **Key issue to fix before deploy**: public copy must reconcile `$497` homepage language vs `$297` pricing/terms, and remove mixed CTA states (`Try free`, `Get Started`, `Start Free Trial`, etc.) if the no-free-tier decision still stands.
+
 ## Session — 2026-04-20 (CHARLIE, QR pipeline ship)
 
 - **v3.6.0 tagged + pushed** — QR asset-tagging pipeline complete: scan → pipeline → asset-aware chat + channel chooser + guest reports.
