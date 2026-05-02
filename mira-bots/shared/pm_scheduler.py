@@ -60,7 +60,11 @@ def _resolve_equipment_id(
         return hint
     from sqlalchemy import text
 
-    new_id = str(uuid.uuid5(_EQUIPMENT_NAMESPACE, f"{tenant_id}:{manufacturer.lower()}:{model_number.lower()}"))
+    new_id = str(
+        uuid.uuid5(
+            _EQUIPMENT_NAMESPACE, f"{tenant_id}:{manufacturer.lower()}:{model_number.lower()}"
+        )
+    )
     engine = _get_neon_engine()
     try:
         with engine.begin() as conn:
@@ -101,7 +105,9 @@ def _resolve_equipment_id(
             )
             logger.info(
                 "_resolve_equipment_id: created cmms_equipment id=%s %s %s",
-                new_id, manufacturer, model_number,
+                new_id,
+                manufacturer,
+                model_number,
             )
         return new_id
     except Exception as exc:
@@ -131,23 +137,23 @@ def _wo_number() -> str:
 
 def _build_description(pm: dict[str, Any]) -> str:
     lines = [
-        f"Auto-generated PM work order from manual extraction.",
-        f"",
+        "Auto-generated PM work order from manual extraction.",
+        "",
         f"Equipment: {pm['manufacturer']} {pm['model_number']}",
         f"Interval: Every {pm['interval_value']} {pm['interval_unit']}",
     ]
     if pm.get("source_citation"):
         lines.append(f"Manual reference: {pm['source_citation']}")
     if pm.get("parts_needed"):
-        lines.append(f"\nParts needed:")
+        lines.append("\nParts needed:")
         for p in pm["parts_needed"]:
             lines.append(f"  • {p}")
     if pm.get("tools_needed"):
-        lines.append(f"\nTools needed:")
+        lines.append("\nTools needed:")
         for t in pm["tools_needed"]:
             lines.append(f"  • {t}")
     if pm.get("safety_requirements"):
-        lines.append(f"\nSafety requirements:")
+        lines.append("\nSafety requirements:")
         for s in pm["safety_requirements"]:
             lines.append(f"  ⚠ {s}")
     confidence = pm.get("confidence")
@@ -405,9 +411,7 @@ async def generate_due_work_orders(tenant_id: str | None = None) -> dict[str, An
     Returns summary dict with counts and created WO IDs.
     """
     due_pms = get_due_pms(tenant_id=tenant_id)
-    logger.info(
-        "generate_due_work_orders: %d due PMs found (tenant=%s)", len(due_pms), tenant_id
-    )
+    logger.info("generate_due_work_orders: %d due PMs found (tenant=%s)", len(due_pms), tenant_id)
 
     created_wos: list[dict[str, str]] = []
     skipped = 0

@@ -41,6 +41,50 @@ const HMAC_SECRET = () => process.env.INBOUND_HMAC_SECRET || "";
 const MAX_PDF_BYTES = 20 * 1024 * 1024; // matches mira-ingest enforcement
 const MAX_TIMESTAMP_SKEW_SECONDS = 300; // ±5 min replay window
 
+// ── Per-IP rate limit (P0.4, 2026-04-30) ─────────────────────────────────────
+// Each request runs HMAC-SHA256 over the raw body; junk traffic burns CPU and
+// floods logs. Token-bucket-ish: sliding 60-second window per IP, max
+// INBOX_LIMIT_PER_MINUTE requests. Apps Script fires once per email so a real
+// customer almost never exceeds 5/min; a flooder gets 429 + Retry-After.
+//
+// In-memory map is fine for n=1 mira-web container. If we scale horizontally
+// this needs to move to Redis (the existing infra_redis_1 container would do).
+
+const INBOX_LIMIT_PER_MINUTE = 10;
+const _inboxRequests = new Map<string, number[]>();
+
+function checkInboxRateLimit(ip: string, now: number = Date.now()): { allowed: boolean; retryAfterSec: number } {
+  const cutoff = now - 60_000;
+  const recent = (_inboxRequests.get(ip) ?? []).filter((t) => t > cutoff);
+  if (recent.length >= INBOX_LIMIT_PER_MINUTE) {
+    const oldest = recent[0]!;
+    return { allowed: false, retryAfterSec: Math.max(1, Math.ceil((oldest + 60_000 - now) / 1000)) };
+  }
+  recent.push(now);
+  _inboxRequests.set(ip, recent);
+  // Opportunistic GC — keeps the map bounded under sustained junk traffic.
+  if (_inboxRequests.size > 5_000) {
+    for (const [k, v] of _inboxRequests) {
+      if (v.every((t) => t <= cutoff)) _inboxRequests.delete(k);
+    }
+  }
+  return { allowed: true, retryAfterSec: 0 };
+}
+
+function getClientIp(headers: Headers, fallback = "unknown"): string {
+  const fwd = headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]!.trim();
+  return headers.get("x-real-ip") || headers.get("cf-connecting-ip") || fallback;
+}
+
+// Exported for tests only.
+export const _testing = {
+  checkInboxRateLimit,
+  getClientIp,
+  reset: () => _inboxRequests.clear(),
+  INBOX_LIMIT_PER_MINUTE,
+};
+
 // Webhook payload shape (Apps Script emits this — Postmark-style for ease)
 interface InboundAttachment {
   Name?: string;
@@ -220,6 +264,16 @@ async function forwardAttachment(
 }
 
 inbox.post("/email", async (c) => {
+  // 0. Per-IP rate limit (P0.4) — gate ahead of HMAC compute so a flood doesn't
+  //    burn CPU verifying signatures on junk traffic.
+  const ip = getClientIp(c.req.raw.headers);
+  const rl = checkInboxRateLimit(ip);
+  if (!rl.allowed) {
+    c.header("Retry-After", String(rl.retryAfterSec));
+    console.warn("[inbox] rate-limited ip=%s retry_after=%ds", ip, rl.retryAfterSec);
+    return c.json({ error: "Too many requests" }, 429);
+  }
+
   // 1. Auth — HMAC-SHA256 over raw body.
   const secret = HMAC_SECRET();
   if (!secret) {
