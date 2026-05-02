@@ -117,7 +117,7 @@
     // Grab existing FAB from DOM (rendered by index.html)
     fab = document.getElementById('mira-fab');
     if (!fab) {
-      fab = el('button', { id: 'mira-fab', 'aria-label': 'Open Mira chat', 'aria-expanded': 'false', 'data-open': 'false' });
+      fab = el('button', { id: 'mira-fab', 'aria-label': 'Open MIRA chat', 'aria-expanded': 'false', 'data-open': 'false' });
       fab.innerHTML = ICONS.mira;
       document.body.appendChild(fab);
     }
@@ -228,7 +228,7 @@
     inputEl = el('input', {
       type: 'text',
       id: 'mira-text-input',
-      placeholder: 'Ask Mira...',
+      placeholder: 'Ask MIRA...',
       'aria-label': 'Message',
       autocomplete: 'off',
       autocorrect: 'off',

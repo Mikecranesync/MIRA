@@ -370,9 +370,9 @@ function renderVideo(feature: Feature): string {
         </div>
         <div class="placeholder-title">Video walkthrough — coming soon</div>
         <div class="placeholder-desc">
-          ${escHtml(feature.videoCaption)}. Join the beta and you'll get the walkthrough in your welcome email within 24 hours.
+          ${escHtml(feature.videoCaption)}. Start with MIRA and you'll get the walkthrough in your welcome email within 24 hours.
         </div>
-        <a href="/cmms" class="placeholder-cta">Join the Beta &rarr;</a>
+        <a href="/cmms" class="placeholder-cta">Start with MIRA &rarr;</a>
       </div>
     </div>`;
 }
@@ -1193,9 +1193,9 @@ export function renderFeaturePage(feature: Feature): string {
       <ul class="nav-links" role="list">
         <li><a href="/#features">Product</a></li>
         <li><a href="/blog">Blog</a></li>
-        <li><a href="/cmms">CMMS Demo</a></li>
+        <li><a href="/cmms">MIRA</a></li>
       </ul>
-      <a href="/cmms" class="nav-cta">Join the Beta</a>
+      <a href="/cmms" class="nav-cta">Start with MIRA</a>
     </div>
   </nav>
 

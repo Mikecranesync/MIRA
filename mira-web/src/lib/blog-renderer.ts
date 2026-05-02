@@ -70,9 +70,9 @@ function nav(): string {
       <li><a href="/#features">Product</a></li>
       <li><a href="/blog">Blog</a></li>
       <li><a href="/blog/fault-codes">Fault Codes</a></li>
-      <li><a href="/cmms">CMMS</a></li>
+      <li><a href="/cmms">MIRA</a></li>
     </ul>
-    <a href="/cmms" class="nav-cta">Try free</a>
+    <a href="/cmms" class="nav-cta">Start with MIRA</a>
   </div>
 </nav>`;
 }
@@ -93,7 +93,7 @@ function siteFooter(): string {
       <ul class="footer-links" role="list">
         <li><a href="/blog">Blog</a></li>
         <li><a href="/blog/fault-codes">Fault Codes</a></li>
-        <li><a href="/cmms">CMMS</a></li>
+        <li><a href="/cmms">MIRA</a></li>
         <li><a href="mailto:contact@factorylm.com">Contact</a></li>
       </ul>
     </div>
@@ -104,7 +104,7 @@ function siteFooter(): string {
 // ── Mira FAB + scroll scripts (matches index.html) ──
 
 function scripts(): string {
-  return `<button id="mira-fab" aria-label="Open Mira chat" aria-expanded="false" data-open="false">
+  return `<button id="mira-fab" aria-label="Open MIRA chat" aria-expanded="false" data-open="false">
   <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M4 18V7l4 6 4-5 4 5 4-6v11" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
@@ -175,9 +175,9 @@ ${nav()}
   ${buildRelatedHtml(related, relatedCodes)}
 
   <div class="cta-card fade-in">
-    <h3>Try Mira — AI that reads your equipment manuals</h3>
-    <p>Type a fault code, describe a symptom, or upload a photo. Get the diagnostic answer in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
+    <h3>Start with MIRA</h3>
+    <p>MIRA gives maintenance teams cited answers from their own manuals, assets, and work history.</p>
+    <a href="/cmms" class="btn-primary">Start with MIRA ${ARROW_SVG}</a>
   </div>
 </article>
 
@@ -272,9 +272,9 @@ ${fixSteps}
   ${relatedHtml}
 
   <div class="cta-card fade-in">
-    <h3>Still stuck? Ask Mira.</h3>
-    <p>Paste your fault code into Mira and get an answer from your actual equipment manuals in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
+    <h3>Still stuck? Ask MIRA.</h3>
+    <p>Paste your fault code into MIRA and get an answer from your actual equipment manuals in seconds.</p>
+    <a href="/cmms" class="btn-primary">Start with MIRA ${ARROW_SVG}</a>
   </div>
 </article>
 
@@ -300,7 +300,6 @@ export function renderBlogIndex(
   const postCards = sorted
     .map(
       (p) => `      <a href="/blog/${p.slug}" class="post-card fade-in">
-        <div class="post-hero">${escHtml(p.heroEmoji)}</div>
         <div class="post-meta">
           <span class="meta-tag">${escHtml(p.category)}</span>
           <span>${escHtml(p.readingTime)}</span>
@@ -361,9 +360,9 @@ ${postCards}
 
 <div class="inner" style="padding-bottom: 48px;">
   <div class="cta-card fade-in">
-    <h3>Get answers faster with Mira AI</h3>
-    <p>Type a fault code and get the fix from your equipment manuals in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
+    <h3>Get answers faster with MIRA</h3>
+    <p>MIRA gives maintenance teams cited answers from their own manuals and asset history.</p>
+    <a href="/cmms" class="btn-primary">Start with MIRA ${ARROW_SVG}</a>
   </div>
 </div>
 
@@ -442,8 +441,8 @@ ${sections}
 
   <div class="cta-card fade-in" style="margin-bottom: 48px;">
     <h3>Can\u2019t find your fault code?</h3>
-    <p>Ask Mira \u2014 AI that reads your equipment manuals and gives you the answer in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
+    <p>Ask MIRA \u2014 the AI troubleshooting workspace that reads your equipment manuals and gives you the answer in seconds.</p>
+    <a href="/cmms" class="btn-primary">Start with MIRA ${ARROW_SVG}</a>
   </div>
 </div>
 
