@@ -74,6 +74,11 @@ function rowToPM(r: Record<string, unknown>) {
     interval_value: r.interval_value,
     interval_unit: r.interval_unit,
     auto_extracted: r.auto_extracted ?? true,
+    // Multi-trigger fields (#898)
+    trigger_type: String(r.trigger_type ?? "calendar"),
+    meter_type: r.meter_type ? String(r.meter_type) : null,
+    meter_threshold: r.meter_threshold != null ? Number(r.meter_threshold) : null,
+    meter_current: r.meter_current != null ? Number(r.meter_current) : 0,
   };
 }
 
@@ -116,7 +121,9 @@ export async function GET(req: NextRequest) {
           task, interval_value, interval_unit, interval_type,
           parts_needed, tools_needed, estimated_duration_minutes,
           safety_requirements, criticality, source_citation, confidence,
-          next_due_at, last_completed_at, auto_extracted, created_at
+          next_due_at, last_completed_at, auto_extracted, created_at,
+          COALESCE(trigger_type, 'calendar') AS trigger_type,
+          meter_type, meter_threshold, COALESCE(meter_current, 0) AS meter_current
         FROM pm_schedules
         WHERE ${where}
         ORDER BY

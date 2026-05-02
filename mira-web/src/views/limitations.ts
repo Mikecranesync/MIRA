@@ -147,6 +147,7 @@ function navbar(): string {
     <a href="/pricing" data-cta="lim-nav-pricing">Pricing</a>
     <a href="/blog" data-cta="lim-nav-blog">Blog</a>
     <a href="/limitations" data-cta="lim-nav-limitations" aria-current="page">Limitations</a>
+    <a href="/security" data-cta="lim-nav-security">Security</a>
   </nav>
   <div class="fl-topbar-cta">
     ${btnGhost("Sign in", { href: "/cmms", cta: "lim-nav-signin" })}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X, Sparkles, Package, Wrench, ShieldAlert, BookOpen } from "lucide-react";
+import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X, Sparkles, Package, Wrench, ShieldAlert, BookOpen, Gauge } from "lucide-react";
 import { useToast } from "@/providers/toast-provider";
 import { Badge } from "@/components/ui/badge";
 import { API_BASE } from "@/lib/config";
@@ -24,6 +24,11 @@ type PM = {
   safety_requirements?: string[];
   manufacturer?: string | null;
   model_number?: string | null;
+  // Multi-trigger fields (#898)
+  trigger_type?: string;
+  meter_type?: string | null;
+  meter_threshold?: number | null;
+  meter_current?: number;
 };
 
 // Fallback shown while loading or when no extracted PMs exist
@@ -437,6 +442,68 @@ function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onC
             </div>
           </div>
         )}
+
+        {/* Trigger settings (#898) */}
+        <div className="rounded-xl p-3 space-y-2" style={{ backgroundColor: "var(--surface-1)" }}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <Gauge className="w-3.5 h-3.5" style={{ color: "var(--foreground-subtle)" }} />
+            <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--foreground-subtle)" }}>Trigger</span>
+          </div>
+          <div className="flex gap-1 flex-wrap">
+            {(["calendar", "meter", "calendar_or_meter"] as const).map((tt) => {
+              const labels = { calendar: "Calendar only", meter: "Meter / Hours", calendar_or_meter: "Whichever comes first" };
+              const active = (pm.trigger_type ?? "calendar") === tt;
+              return (
+                <button key={tt}
+                  onClick={async () => {
+                    await fetch(`/hub/api/pm-schedules/${pm.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ trigger_type: tt }),
+                    });
+                  }}
+                  className="px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors"
+                  style={{
+                    backgroundColor: active ? "var(--brand-blue)" : "var(--surface-0)",
+                    borderColor: active ? "var(--brand-blue)" : "var(--border)",
+                    color: active ? "#fff" : "var(--foreground-muted)",
+                  }}>
+                  {labels[tt]}
+                </button>
+              );
+            })}
+          </div>
+          {(pm.trigger_type === "meter" || pm.trigger_type === "calendar_or_meter") && (
+            <div className="flex items-center gap-3 pt-1">
+              <div className="flex-1">
+                <p className="text-[10px] uppercase tracking-wide mb-0.5" style={{ color: "var(--foreground-subtle)" }}>Current reading</p>
+                <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                  {pm.meter_current ?? 0}
+                  {pm.meter_type ? ` ${pm.meter_type.replace("_", " ")}` : ""}
+                </p>
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] uppercase tracking-wide mb-0.5" style={{ color: "var(--foreground-subtle)" }}>Threshold</p>
+                <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                  {pm.meter_threshold != null ? pm.meter_threshold : "—"}
+                  {pm.meter_type ? ` ${pm.meter_type.replace("_", " ")}` : ""}
+                </p>
+              </div>
+              {pm.meter_threshold != null && (
+                <div className="flex-1">
+                  <p className="text-[10px] uppercase tracking-wide mb-0.5" style={{ color: "var(--foreground-subtle)" }}>Progress</p>
+                  <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--border)" }}>
+                    <div className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(100, ((pm.meter_current ?? 0) / pm.meter_threshold) * 100).toFixed(1)}%`,
+                        backgroundColor: (pm.meter_current ?? 0) >= pm.meter_threshold ? "#DC2626" : "var(--brand-blue)",
+                      }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="flex gap-2">
           <button onClick={onComplete} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"

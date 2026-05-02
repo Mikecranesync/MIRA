@@ -1,4 +1,9 @@
-# Hot Cache — 2026-04-29 — CHARLIE
+# Hot Cache — 2026-04-30 — CHARLIE
+
+## eval-fixer run — 2026-04-30
+- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md`
+- Action: issue-filed (#884)
+- 13 failures, all 13 patchable but spanning 3 files (engine.py + guardrails.py + active.yaml) — exceeds single-file autopatch limit. Four clusters: FSM stuck in MANUAL_LOOKUP_GATHERING (5), manual-lookup branch returns canned "documentation indexed" instead of vendor URL (3), cross-vendor RAG bleed (Yaskawa in Danfoss response, 1), and thin diagnosis content (4). Fresh scorecard is back — pipeline has recovered from the 3-day silent infra outage that produced #753/#803/#854.
 
 ## eval-fixer run — 2026-04-29
 - Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0455.md` (stale, same scorecard as 2026-04-28 — no new run produced)
