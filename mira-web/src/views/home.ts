@@ -83,7 +83,7 @@ function hero(): string {
   <div class="fl-hero-inner">
     <p class="fl-hero-eyebrow">Industrial Maintenance, AI-native</p>
     <h1 id="fl-hero-h1" class="fl-hero-h1">FactoryLM</h1>
-    <h2 class="fl-hero-h2">The AI workspace for industrial maintenance.</h2>
+    <h2 class="fl-hero-h2">Compound-interest knowledge for industrial maintenance.</h2>
     <h3 class="fl-hero-h3">Meet <strong>MIRA</strong> — your agent on the floor.</h3>
     <p class="fl-hero-sub">Manuals, sensors, photos, work orders, investigations — organized into Projects. MIRA answers from cited sources at 2&nbsp;AM, when you scan the QR sticker on a broken machine.</p>
     <div class="fl-hero-cta">
