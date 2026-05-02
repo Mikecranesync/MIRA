@@ -1,4 +1,9 @@
-# Hot Cache — 2026-05-01 — CHARLIE
+# Hot Cache — 2026-05-02 — CHARLIE
+
+## eval-fixer run — 2026-05-02
+- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (same stale scorecard for 4th day; no new run produced)
+- Action: issue-filed (#918)
+- Identical 13-failure pattern as #884/#916/this run — engine.py FSM stuck (5) + guardrails/active.yaml content (8). Cluster spread blocks autopatch. Three open issues now stack on the same root causes; needs human picks the highest-leverage fix (suggest manual-lookup misroute first — 3 fixtures still get the canned "documentation indexed" deflection). Fresh eval scorecard hasn't regenerated since 2026-04-29 06:17 UTC — upstream pipeline may be silent again.
 
 ## eval-fixer run — 2026-05-01
 - Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (same stale scorecard as 2026-04-30; no new run produced)
