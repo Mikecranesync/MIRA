@@ -16,7 +16,11 @@ sys.path.insert(0, str(_CRAWLER_ROOT))
 
 from agents.orchestrator import run_agent  # noqa: E402
 
-ATLAS_URL = os.environ.get("ATLAS_API_URL", "http://localhost:8088")
+# Cron runs on the host, so we need the host port-mapping for cmms-backend.
+# Doppler's ATLAS_API_URL is set to "http://cmms-backend:8080" for in-container
+# callers — that's a Docker DNS name and won't resolve from cron. Prefer
+# ATLAS_API_HOST_URL when set; otherwise default to the published host port.
+ATLAS_URL = os.environ.get("ATLAS_API_HOST_URL", "http://localhost:8082")
 
 
 def _run() -> dict:

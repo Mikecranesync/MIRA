@@ -69,33 +69,54 @@ def get_agent_result(agent_key: str) -> dict[str, Any] | None:
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
 
-def _send_telegram(text: str) -> bool:
-    """Send a plain Markdown message. Falls back gracefully if env vars missing."""
+def _post_telegram(token: str, chat_id: str, text: str, parse_mode: str | None) -> tuple[bool, int | None]:
+    """One-shot Telegram POST. Returns (ok, http_status). status is None on transport failure."""
+    import urllib.error
     import urllib.request
 
+    body: dict[str, Any] = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        body["parse_mode"] = parse_mode
+    payload = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status == 200, resp.status
+    except urllib.error.HTTPError as exc:
+        return False, exc.code
+    except Exception:
+        return False, None
+
+
+def _send_telegram(text: str) -> bool:
+    """
+    Send a Markdown message; on Telegram parse error (HTTP 400) retry without
+    parse_mode so the alert always lands. Markdown formatting is nice-to-have;
+    delivery isn't.
+    """
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "8445149012")
     if not token:
         logger.warning("TELEGRAM_BOT_TOKEN not set — skipping notification")
         return False
 
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = json.dumps({
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown",
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return resp.status == 200
-    except Exception as exc:
-        logger.warning("Telegram send failed: %s", exc)
-        return False
+    ok, status = _post_telegram(token, chat_id, text, parse_mode="Markdown")
+    if ok:
+        return True
+    if status == 400:
+        # Telegram couldn't parse our Markdown (unbalanced *, _, [], etc. in a
+        # value pulled from an agent result). Retry as plain text.
+        logger.info("Telegram 400 with Markdown — retrying as plain text")
+        ok, status = _post_telegram(token, chat_id, text, parse_mode=None)
+        if ok:
+            return True
+    logger.warning("Telegram send failed: HTTP %s", status)
+    return False
 
 
 # ── run_agent wrapper ─────────────────────────────────────────────────────────
@@ -216,25 +237,9 @@ def run_daily_digest() -> dict[str, Any]:
 
         lines.append(f"{status_icon} {t}  `{key}` — {summary}")
 
-    msg = "\n".join(lines)
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "8445149012")
-    if token:
-        import urllib.request
-        payload = json.dumps({
-            "chat_id": chat_id, "text": msg, "parse_mode": "Markdown",
-        }).encode("utf-8")
-        req = urllib.request.Request(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=30):
-                pass
-        except Exception as exc:
-            logger.warning("Daily digest Telegram send failed: %s", exc)
+    # Use the shared sender so the digest gets the same Markdown→plain-text
+    # fallback the per-agent alerts do.
+    _send_telegram("\n".join(lines))
 
     return {"date": date, "done": done, "total": total, "errors": errors}
 
