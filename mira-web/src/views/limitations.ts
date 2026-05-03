@@ -1,5 +1,6 @@
 import { head } from "../lib/head.js";
 import { btnPrimary, btnGhost } from "../lib/components.js";
+import { navbar, footer } from "./_topbar.js";
 
 const PAGE_STYLES = `
 .fl-topbar {
@@ -139,37 +140,6 @@ const PAGE_STYLES = `
 }
 `;
 
-function navbar(): string {
-  return `<header class="fl-topbar" role="banner">
-  <a class="fl-topbar-brand" href="/" aria-label="FactoryLM home">FactoryLM</a>
-  <nav class="fl-topbar-nav" aria-label="Primary">
-    <a href="/cmms" data-cta="lim-nav-cmms">CMMS</a>
-    <a href="/pricing" data-cta="lim-nav-pricing">Pricing</a>
-    <a href="/blog" data-cta="lim-nav-blog">Blog</a>
-    <a href="/limitations" data-cta="lim-nav-limitations" aria-current="page">Limitations</a>
-    <a href="/security" data-cta="lim-nav-security">Security</a>
-  </nav>
-  <div class="fl-topbar-cta">
-    ${btnGhost("Sign in", { href: "/cmms", cta: "lim-nav-signin" })}
-  </div>
-</header>`;
-}
-
-function footer(): string {
-  return `<footer class="fl-footer" role="contentinfo">
-  <div class="fl-footer-inner">
-    <p class="fl-footer-brand">FactoryLM &middot; Built for industrial maintenance.</p>
-    <ul class="fl-footer-links">
-      <li><a href="/limitations" data-cta="lim-footer-limitations">Limitations</a></li>
-      <li><a href="/trust" data-cta="lim-footer-trust">Trust</a></li>
-      <li><a href="/privacy" data-cta="lim-footer-privacy">Privacy</a></li>
-      <li><a href="/terms" data-cta="lim-footer-terms">Terms</a></li>
-    </ul>
-    <button type="button" id="fl-sun-toggle" class="fl-sun-toggle" aria-pressed="false" aria-label="Toggle high-contrast outdoor mode" data-cta="sun-toggle">☀ Sun-readable</button>
-  </div>
-</footer>`;
-}
-
 const LIMITS = [
   {
     lead: "Not a CMMS replacement.",
@@ -259,10 +229,11 @@ export function renderLimitations(reqUrl?: string): string {
     },
     reqUrl,
   )}
+  <link rel="stylesheet" href="/_dark-theme.css">
   <style>${PAGE_STYLES}</style>
 </head>
 <body>
-  ${navbar()}
+  ${navbar({ currentPath: "/limitations", ctaPrefix: "lim" })}
 
   <section class="fl-lim-hero">
     <div class="fl-lim-hero-inner">
@@ -287,7 +258,7 @@ export function renderLimitations(reqUrl?: string): string {
     </p>
   </div>
 
-  ${footer()}
+  ${footer({ ctaPrefix: "lim" })}
   <script src="/sun-toggle.js"></script>
 </body>
 </html>`;
