@@ -1,5 +1,6 @@
 import { head } from "../lib/head.js";
 import { btnPrimary, btnGhost } from "../lib/components.js";
+import { navbar, footer } from "./_topbar.js";
 
 const PAGE_STYLES = `
 .fl-topbar {
@@ -152,37 +153,6 @@ const PAGE_STYLES = `
   .fl-sec-h1 { font-size: var(--fl-type-2xl); }
 }
 `;
-
-function navbar(): string {
-  return `<header class="fl-topbar" role="banner">
-  <a class="fl-topbar-brand" href="/" aria-label="FactoryLM home">FactoryLM</a>
-  <nav class="fl-topbar-nav" aria-label="Primary">
-    <a href="/cmms" data-cta="sec-nav-cmms">CMMS</a>
-    <a href="/pricing" data-cta="sec-nav-pricing">Pricing</a>
-    <a href="/blog" data-cta="sec-nav-blog">Blog</a>
-    <a href="/limitations" data-cta="sec-nav-limitations">Limitations</a>
-    <a href="/security" data-cta="sec-nav-security" aria-current="page">Security</a>
-  </nav>
-  <div class="fl-topbar-cta">
-    ${btnGhost("Sign in", { href: "/cmms", cta: "sec-nav-signin" })}
-  </div>
-</header>`;
-}
-
-function footer(): string {
-  return `<footer class="fl-footer" role="contentinfo">
-  <div class="fl-footer-inner">
-    <p class="fl-footer-brand">FactoryLM &middot; Built for industrial maintenance.</p>
-    <ul class="fl-footer-links">
-      <li><a href="/security" data-cta="sec-footer-security">Security</a></li>
-      <li><a href="/limitations" data-cta="sec-footer-limitations">Limitations</a></li>
-      <li><a href="/privacy" data-cta="sec-footer-privacy">Privacy</a></li>
-      <li><a href="/terms" data-cta="sec-footer-terms">Terms</a></li>
-    </ul>
-    <button type="button" id="fl-sun-toggle" class="fl-sun-toggle" aria-pressed="false" aria-label="Toggle high-contrast outdoor mode" data-cta="sun-toggle">&#9728; Sun-readable</button>
-  </div>
-</footer>`;
-}
 
 interface SecurityItem {
   lead: string;
@@ -341,10 +311,11 @@ export function renderSecurity(reqUrl?: string): string {
     },
     reqUrl,
   )}
+  <link rel="stylesheet" href="/_dark-theme.css">
   <style>${PAGE_STYLES}</style>
 </head>
 <body>
-  ${navbar()}
+  ${navbar({ currentPath: "/security", ctaPrefix: "sec" })}
 
   <section class="fl-sec-hero">
     <div class="fl-sec-hero-inner">
@@ -368,7 +339,7 @@ export function renderSecurity(reqUrl?: string): string {
     </p>
   </div>
 
-  ${footer()}
+  ${footer({ ctaPrefix: "sec" })}
   <script src="/sun-toggle.js"></script>
 </body>
 </html>`;

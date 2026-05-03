@@ -5,6 +5,7 @@ import {
   stateBadge,
   compareBlock,
 } from "../lib/components.js";
+import { navbar, footer } from "./_topbar.js";
 
 const PAGE_STYLES = `
 .fl-topbar {
@@ -223,19 +224,6 @@ const FORM_SCRIPT = `
 })();
 `;
 
-function navbar(): string {
-  return `<header class="fl-topbar" role="banner">
-  <a class="fl-topbar-brand" href="/" aria-label="FactoryLM home">FactoryLM</a>
-  <nav class="fl-topbar-nav" aria-label="Primary">
-    <a href="/" data-cta="cmms-nav-home">Home</a>
-    <a href="/pricing" data-cta="cmms-nav-pricing">Pricing</a>
-    <a href="/limitations" data-cta="cmms-nav-limitations">Limitations</a>
-    <a href="/security" data-cta="cmms-nav-security">Security</a>
-  </nav>
-  <div></div>
-</header>`;
-}
-
 const PLAN_LABELS: Record<string, { eyebrow: string; h1: string; sub: string }> = {
   mira: {
     eyebrow: "MIRA Troubleshooter — $97/mo",
@@ -330,22 +318,6 @@ function compareSection(): string {
 </section>`;
 }
 
-function footer(): string {
-  return `<footer class="fl-footer" role="contentinfo">
-  <div class="fl-footer-inner">
-    <p class="fl-footer-brand">FactoryLM &middot; Built for industrial maintenance.</p>
-    <ul class="fl-footer-links">
-      <!-- TODO: /limitations page not yet built; link disabled until page exists -->
-      <li><a href="/limitations" data-cta="cmms-footer-limitations">Limitations</a></li>
-      <li><a href="/trust" data-cta="cmms-footer-trust">Trust</a></li>
-      <li><a href="/privacy" data-cta="cmms-footer-privacy">Privacy</a></li>
-      <li><a href="/terms" data-cta="cmms-footer-terms">Terms</a></li>
-    </ul>
-    <button type="button" id="fl-sun-toggle" class="fl-sun-toggle" aria-pressed="false" aria-label="Toggle high-contrast outdoor mode" data-cta="cmms-sun-toggle">☀ Sun-readable</button>
-  </div>
-</footer>`;
-}
-
 export function renderCmms(reqUrl?: string): string {
   const plan = reqUrl
     ? (new URL(reqUrl).searchParams.get("plan") ?? undefined)
@@ -370,13 +342,13 @@ export function renderCmms(reqUrl?: string): string {
   <style>${PAGE_STYLES}</style>
 </head>
 <body>
-  ${navbar()}
+  ${navbar({ currentPath: "/cmms", ctaPrefix: "cmms" })}
   <main>
     ${hero(validPlan)}
     ${whatHappensNext()}
     ${compareSection()}
   </main>
-  ${footer()}
+  ${footer({ ctaPrefix: "cmms" })}
   <script>${FORM_SCRIPT}</script>
   <script src="/sun-toggle.js"></script>
 </body>
@@ -408,7 +380,7 @@ export function renderSamplePlaceholder(): string {
 </style>
 </head>
 <body>
-  ${navbar()}
+  ${navbar({ currentPath: "/sample", ctaPrefix: "sample" })}
   <main>
     <div class="fl-sample-card">
       <h1>You're signed in.</h1>
@@ -419,7 +391,7 @@ export function renderSamplePlaceholder(): string {
       </div>
     </div>
   </main>
-  ${footer()}
+  ${footer({ ctaPrefix: "sample" })}
   <script src="/sun-toggle.js"></script>
 </body>
 </html>`;

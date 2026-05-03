@@ -7,6 +7,7 @@ import {
   stateBadge,
   stopCard,
 } from "../lib/components.js";
+import { navbar, footer } from "./_topbar.js";
 
 const OEMS = [
   "Allen-Bradley",
@@ -239,37 +240,6 @@ function pricingTeaser(): string {
 </section>`;
 }
 
-function navbar(): string {
-  return `<header class="fl-topbar" role="banner">
-  <a class="fl-topbar-brand" href="/" aria-label="FactoryLM home">FactoryLM</a>
-  <nav class="fl-topbar-nav" aria-label="Primary">
-    <a href="/cmms" data-cta="nav-cmms">CMMS</a>
-    <a href="/pricing" data-cta="nav-pricing">Pricing</a>
-    <a href="/blog" data-cta="nav-blog">Blog</a>
-    <a href="/limitations" data-cta="nav-limitations">Limitations</a>
-    <a href="/security" data-cta="nav-security">Security</a>
-  </nav>
-  <div class="fl-topbar-cta">
-    ${btnGhost("Sign in", { href: "/cmms", cta: "nav-signin" })}
-  </div>
-</header>`;
-}
-
-function footer(): string {
-  return `<footer class="fl-footer" role="contentinfo">
-  <div class="fl-footer-inner">
-    <p class="fl-footer-brand">FactoryLM &middot; Built for industrial maintenance.</p>
-    <ul class="fl-footer-links">
-      <li><a href="/limitations" data-cta="footer-limitations">Limitations</a></li>
-      <li><a href="/trust" data-cta="footer-trust">Trust</a></li>
-      <li><a href="/privacy" data-cta="footer-privacy">Privacy</a></li>
-      <li><a href="/terms" data-cta="footer-terms">Terms</a></li>
-    </ul>
-    <button type="button" id="fl-sun-toggle" class="fl-sun-toggle" aria-pressed="false" aria-label="Toggle high-contrast outdoor mode" data-cta="sun-toggle">☀ Sun-readable</button>
-  </div>
-</footer>`;
-}
-
 const PAGE_STYLES = `
 /* Page-specific styles for the home view. Dark theme tokens are
    inherited from /_dark-theme.css (linked from <head>) so this block
@@ -477,7 +447,7 @@ export function renderHome(reqUrl?: string): string {
   <style>${PAGE_STYLES}</style>
 </head>
 <body>
-  ${navbar()}
+  ${navbar({ currentPath: "/" })}
   <main>
     ${hero()}
     ${trustBand("68,000+ chunks of OEM documentation indexed", OEMS)}

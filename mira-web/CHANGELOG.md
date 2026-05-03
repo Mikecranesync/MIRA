@@ -7,6 +7,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 to the component (`mira-web/vX.Y.Z`) so they don't collide with the MIRA
 monorepo's top-level tag progression.
 
+## [0.5.0] — 2026-05-03
+
+### Added
+- **Shared topbar partial** at `mira-web/src/views/_topbar.ts` exporting
+  `navbar({ currentPath, ctaPrefix })` and `footer({ ctaPrefix })`. Single
+  source of truth for the four TS-rendered marketing views (home, cmms,
+  limitations, security/sample). Per-page differences are limited to
+  `aria-current="page"` and the `data-cta` analytics prefix.
+- **23-test contract suite** (`src/views/__tests__/topbar.test.ts`)
+  locking down link set, ordering, CTA copy, and per-page
+  `aria-current` placement so the four views cannot drift apart again.
+
+### Changed
+- **`/limitations` and `/security` adopt the dark palette** by linking
+  the v0.4.0 `_dark-theme.css` stylesheet — same single-line opt-in
+  pattern used by `/cmms` and `/sample`. Closes the P1 row in the
+  2026-05-03 style audit.
+- **`/cmms` topbar gains the standard nav and CTA.** Previously
+  `/cmms` had its own four-link nav (Home / Pricing / Limitations /
+  Security) with no CTA; it now matches the home topbar exactly,
+  with `aria-current="page"` on the CMMS link.
+
+### Notes
+- This release fixes 4 of the 6 topbar variants flagged in the
+  2026-05-03 style audit. The remaining two — the M-icon-era topbar
+  shared by the static HTML pages (`pricing.html`, `privacy.html`,
+  `terms.html`, `trust.html`, `legal/dpa.html`) and the blog renderer
+  (`blog-renderer.ts`) — require either converting the static pages
+  to TS views or a build-time string-injection pass. Tracked as
+  Phase 2 in the audit.
+
 ## [0.4.0] — 2026-05-03
 
 ### Added
