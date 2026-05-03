@@ -366,6 +366,7 @@ export function renderCmms(reqUrl?: string): string {
 <html lang="en">
 <head>
   ${headHtml}
+  <link rel="stylesheet" href="/_dark-theme.css">
   <style>${PAGE_STYLES}</style>
 </head>
 <body>
@@ -393,6 +394,7 @@ export function renderSamplePlaceholder(): string {
 <html lang="en">
 <head>
   ${headHtml}
+  <link rel="stylesheet" href="/_dark-theme.css">
   <style>${PAGE_STYLES}
 .fl-sample-card {
   max-width: 640px; margin: var(--fl-sp-10) auto;
