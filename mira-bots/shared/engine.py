@@ -733,6 +733,13 @@ class Supervisor:
                         chat_id, message, state, trace_id, resolved_tenant,
                         vendor_override=fallback_mfr,
                     )
+                if mfr:
+                    kb_covered, _ = kb_has_coverage(mfr, combined, resolved_tenant or "")
+                    if kb_covered:
+                        return await self._do_documentation_lookup(
+                            chat_id, message, state, trace_id, resolved_tenant,
+                            vendor_override=mfr,
+                        )
                 return await self._enter_manual_lookup_gathering(
                     chat_id, message, state, trace_id, mfr
                 )
@@ -2450,11 +2457,10 @@ class Supervisor:
         # Phase 2 — KB pre-check: skip crawl when we already have coverage.
         kb_covered, kb_reason = kb_has_coverage(mfr, combined, resolved_tenant or "")
         if kb_covered:
-            reply = (
-                "I already have documentation indexed for that equipment — just "
-                "ask me about fault codes, specs, or wiring and I'll pull from "
-                "it directly."
-            )
+            reply = f"I have {mfr} documentation indexed." if mfr else "I already have documentation indexed for that equipment."
+            if url:
+                reply += f" Official source: {url}"
+            reply += " Ask about fault codes, specs, or wiring."
             logger.info(
                 "KB_PRE_CHECK_HIT chat_id=%s manufacturer=%r reason=%s",
                 chat_id,
