@@ -92,11 +92,11 @@ function hero(): string {
     </div>
     <div class="fl-hero-screenshot" aria-hidden="true">
       <img
-        src="/images/app-screenshot-desktop.png"
-        alt="MIRA work orders screen showing auto-generated maintenance tasks"
+        src="/images/hero-fault-lookup-cartoon.png"
+        alt="Comic split-panel: a maintenance tech struggles with a cryptic PowerFlex 525 fault code on the left; on the right, the same tech chats with MIRA and gets the manual plus historical fault data instantly"
         class="fl-hero-screenshot-img"
-        width="1280"
-        height="800"
+        width="1792"
+        height="1024"
         loading="lazy"
         decoding="async"
       >
