@@ -271,6 +271,44 @@ function footer(): string {
 }
 
 const PAGE_STYLES = `
+/* ─────────────────────────────────────────────────────────────────
+   Dark theme — scoped to the home page only by living inside the
+   inlined <style> block. Rebinds FactoryLM design tokens so existing
+   selectors (in _components.css too) flip to dark without any
+   per-component refactor. Other marketing pages (/pricing, /cmms,
+   /security, /limitations) keep their light theme.
+   Palette is matched to the embedded cartoon panels so the demos
+   feel native rather than pasted-in.
+   ─────────────────────────────────────────────────────────────────*/
+body {
+  --fl-bg-50:     #09090c;   /* page background — matches cartoon bg */
+  --fl-card-0:    #13141a;   /* cards / surfaces */
+  --fl-rule-200:  rgba(255,255,255,.08);
+  --fl-navy-900:  #ffffff;   /* primary headings / brand */
+  --fl-navy-700:  #e8eaf0;
+  --fl-ink-900:   #e8eaf0;   /* body text */
+  --fl-muted-600: rgba(232,234,240,.55); /* muted text */
+  --fl-orange-600:#f0a000;   /* primary accent — matches cartoon amber */
+  --fl-orange-500:#ffb547;
+  --fl-sky-100:   #0d1320;   /* hero gradient top — deep navy fade */
+  --fl-good:      #00d4aa;   /* lifted from FactoryLM green for dark contrast */
+  --fl-bad:       #ff7a5c;   /* lifted from FactoryLM red for dark contrast */
+  background: var(--fl-bg-50);
+  color: var(--fl-ink-900);
+}
+
+/* Compare columns hard-code light pink / green in _components.css for the
+   light marketing theme. Override with red/teal-tinted dark surfaces so the
+   ChatGPT-vs-MIRA contrast survives on the dark page. */
+.fl-col-bad {
+  background: rgba(255,122,92,0.07);
+  border-color: rgba(255,122,92,0.28);
+}
+.fl-col-good {
+  background: rgba(0,212,170,0.07);
+  border-color: rgba(0,212,170,0.28);
+}
+
 .fl-topbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: var(--fl-sp-4) var(--fl-sp-6);
