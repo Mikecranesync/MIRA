@@ -162,6 +162,10 @@ tools/web-review-runs/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
 marketing/videos/**/*.mp4
 marketing/videos/**/*.mov
 marketing/videos/**/*.webm
+marketing/videos/**/*.mp3
+marketing/videos/**/*.wav
+marketing/videos/**/*.ogg
+marketing/videos/**/*.m4a
 
 # Obsidian per-machine state (track plugin config under .obsidian/, not these)
 wiki/.obsidian/workspace*
