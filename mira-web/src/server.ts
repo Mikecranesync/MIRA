@@ -895,7 +895,7 @@ app.get("/api/magic/login", async (c) => {
     }).catch(() => {});
 
     c.header("Set-Cookie", buildSessionCookie(sessionToken));
-    return c.redirect("/sample", 302);
+    return c.redirect(`/sample?token=${encodeURIComponent(sessionToken)}`, 302);
   } catch (err) {
     console.error("[magic-link/login] Error:", err);
     return c.html(magicLinkErrorPage("Something went wrong"), 500);
