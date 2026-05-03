@@ -205,9 +205,10 @@ LEFT SCENE (under the WITHOUT MIRA caption):
   A classic comic-book THOUGHT BALLOON (cloud-shape with a trail of
   small bubble dots leading down to his head) floats in the upper
   region of his triangle, containing four short lines of bold caps
-  text on four separate lines:
+  text on four separate lines — these reflect the REAL likely causes
+  of F-012 (Hardware OverCurrent) on a PowerFlex 525:
     F-012 AGAIN?!
-    INTAKE? P035? MOTOR? GROUND?
+    BAD BOOST? STALLED LOAD? SHORTED MOTOR?
     WHAT DID JESSE DO LAST TIME?
     HOW LONG TILL THE LINE GOES DOWN?
 
@@ -233,18 +234,23 @@ RIGHT SCENE (under the WITH MIRA caption):
   chat interface in MIRA's style. At the top, in a small user-side
   bubble, is Rico's just-spoken question rendered as the message he
   sent. Below that, MIRA's reply renders as a clean bulleted answer
-  in monospace amber type on a dark phone background, with these
-  exact short lines visible — first MIRA acknowledges it found the
-  right manual and located him, then it shows fault history:
+  in monospace amber type on a dark phone background — first MIRA
+  acknowledges it found the right manual and located him, then it
+  shows the REAL F-012 fault content from the Rockwell PowerFlex
+  525 user manual plus a historical-network breakdown:
       📖 POWERFLEX 525 MANUAL · LINE 3 ✓
-      F-012 — INTAKE OVERLOAD
+      F-012 — HW OVERCURRENT
+      CAUSES: STALLED LOAD · BAD BOOST (A530)
+                  · DC BRAKE V · MOTOR SHORT
       23 PRIOR FIXES · 6 PLANTS
-      17/23 INTAKE CLOG
-      4/23 P035 MOTOR
+      14/23 STALLED LOAD
+      5/23 A530 BOOST MISSET
+      4/23 SHORTED MOTOR
   This is the marketing point: Rico just SAID where he was and what
-  fault he had, and MIRA pulled the right manual + the historical
-  network data instantly. That's the pitch — chat with your manuals
-  and everything gets easier.
+  fault he had, and MIRA pulled the right manual + real Rockwell
+  troubleshooting data + the historical-network breakdown instantly.
+  That's the pitch — chat with your manuals and everything gets
+  easier.
 
   Warm AMBER glow from the phone screen catches his face — the
   helper-light is back on this side.
