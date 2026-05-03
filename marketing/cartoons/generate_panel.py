@@ -169,6 +169,18 @@ margin notes:
     left label. Both caption boxes have the classic Marvel-comics
     rectangular shape with a slight tilt for energy.
 
+NARRATION CAPTION BOX in the lower-left of the canvas — a
+movie-trailer-style "in a world where..." pitch caption. Render this
+as a wide rectangular yellow caption box with thick black border,
+positioned in the lower-left corner, roughly 40% of the canvas width
+and 18% of the canvas height. It overlays the lower portion of the
+WITHOUT MIRA scene (over wet floor / low wall area, NOT covering
+Rico's face or the manual page). Two lines of bold black caps text:
+    IN A WORLD WHERE FAULT CODES JUST SAY "CONSULT FACTORY"...
+    WHEN YOU CAN CHAT WITH YOUR MANUALS, EVERYTHING GETS EASIER.
+This caption is the pitch — narrator voice, classic trailer cadence.
+It must be clearly readable at a glance.
+
 Both scenes show the SAME character — RICO, a maintenance technician,
 mid-30s, dark hair, reading glasses, navy-blue coveralls with a clearly
 embroidered "RICO" name patch on the chest, a multi-tool clipped to
@@ -193,43 +205,49 @@ LEFT SCENE (under the WITHOUT MIRA caption):
   A classic comic-book THOUGHT BALLOON (cloud-shape with a trail of
   small bubble dots leading down to his head) floats in the upper
   region of his triangle, containing four short lines of bold caps
-  text on four separate lines (a touch more confused than v1):
+  text on four separate lines:
     F-012 AGAIN?!
     INTAKE? P035? MOTOR? GROUND?
     WHAT DID JESSE DO LAST TIME?
-    HOW LONG TILL THE LINE GOES COLD?
+    HOW LONG TILL THE LINE GOES DOWN?
 
 RIGHT SCENE (under the WITH MIRA caption):
   Rico's hands are FREE of the paper manual. The closed manual sits
   on top of the open VFD panel door — visibly set down, no longer in
   use, like he tried it and moved on. He holds his phone in BOTH
-  hands at chest height, both eyes on the screen. His expression:
-  calm, getting it, the relief of someone who just got real
+  hands at chest height, both eyes on the screen, mouth slightly
+  open like he's mid-sentence speaking to MIRA. His expression:
+  calm, in conversation, the relief of someone who just got real
   information.
 
+  Above and to the right of his head floats a classic comic-book
+  SPEECH BUBBLE (oval shape with a pointed tail leading to his
+  MOUTH — this is speech, not thought) containing three short lines
+  of bold caps text — Rico talking to MIRA, giving the context MIRA
+  needs to find the right manual:
+      MIRA — F-012 FAULT.
+      POWERFLEX 525, MILK PROCESSING LINE 3.
+      WHAT DOES IT MEAN?
+
   The phone screen is visible at a clear readable angle, showing a
-  chat interface in MIRA's style. At the top of the chat is the user
-  message in a small bubble:
-      "What does F-012 mean to this drive?"
-  Below that, MIRA's reply renders as a clean bulleted answer in
-  monospace amber type on a dark phone background, with these exact
-  short lines visible:
-      F-012 — POWERFLEX 525
+  chat interface in MIRA's style. At the top, in a small user-side
+  bubble, is Rico's just-spoken question rendered as the message he
+  sent. Below that, MIRA's reply renders as a clean bulleted answer
+  in monospace amber type on a dark phone background, with these
+  exact short lines visible — first MIRA acknowledges it found the
+  right manual and located him, then it shows fault history:
+      📖 POWERFLEX 525 MANUAL · LINE 3 ✓
+      F-012 — INTAKE OVERLOAD
       23 PRIOR FIXES · 6 PLANTS
       17/23 INTAKE CLOG
       4/23 P035 MOTOR
-      2/23 LOW BUS VOLTAGE
-  This historical-data reply is the marketing point — MIRA doesn't
-  just guess, it tells him exactly how this fault has been resolved
-  across the entire network of plants.
+  This is the marketing point: Rico just SAID where he was and what
+  fault he had, and MIRA pulled the right manual + the historical
+  network data instantly. That's the pitch — chat with your manuals
+  and everything gets easier.
 
   Warm AMBER glow from the phone screen catches his face — the
   helper-light is back on this side.
-
-  A classic comic-book THOUGHT BALLOON floats in the upper region of
-  his triangle, containing ONE short line of bold caps text — Rico's
-  question that prompted MIRA's reply:
-      WHAT DOES F-012 MEAN TO THIS DRIVE?
 
 Style: painterly industrial comic book, Sean Phillips / Greg Ruth feel,
 gritty graphic-novel paint, visible brushwork. Cool steel-blue and
