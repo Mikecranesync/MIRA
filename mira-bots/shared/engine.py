@@ -730,7 +730,11 @@ class Supervisor:
                 if "," in asset_id:
                     fallback_mfr = mfr or asset_id.split(",", 1)[0].strip()
                     return await self._do_documentation_lookup(
-                        chat_id, message, state, trace_id, resolved_tenant,
+                        chat_id,
+                        message,
+                        state,
+                        trace_id,
+                        resolved_tenant,
                         vendor_override=fallback_mfr,
                     )
                 if mfr:
@@ -2238,7 +2242,7 @@ class Supervisor:
             if sep not in msg:
                 continue
             idx = msg.index(sep)
-            pre, fault = msg[:idx], msg[idx + len(sep):].strip()
+            pre, fault = msg[:idx], msg[idx + len(sep) :].strip()
             m = re.search(r"\bfor\s+(.{3,}?)$", pre, re.IGNORECASE)
             if m:
                 asset = m.group(1).strip()
@@ -2368,12 +2372,14 @@ class Supervisor:
             if "," in asset_id:
                 fallback_mfr = mfr or asset_id.split(",", 1)[0].strip()
                 return await self._do_documentation_lookup(
-                    chat_id, message, state, trace_id, resolved_tenant,
+                    chat_id,
+                    message,
+                    state,
+                    trace_id,
+                    resolved_tenant,
                     vendor_override=fallback_mfr,
                 )
-            return await self._enter_manual_lookup_gathering(
-                chat_id, message, state, trace_id, mfr
-            )
+            return await self._enter_manual_lookup_gathering(chat_id, message, state, trace_id, mfr)
         return await self._do_documentation_lookup(
             chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
         )
