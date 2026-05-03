@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -35,6 +36,48 @@ def _load_prompt_meta() -> dict:
 
 
 logger = logging.getLogger("mira-gsd")
+
+_FAULT_MENTION_RE = re.compile(
+    r"\b(fault|error|alarm|trip|code|warning|showing|display|flashing|reading)\b",
+    re.IGNORECASE,
+)
+
+
+def _build_clarification_request(message: str, asset_identified: str) -> str | None:
+    """Return a targeted clarification question when the KB has no coverage.
+
+    Uses the same fault code extractor as neon_recall so the codes quoted back
+    to the user are exactly what was searched — no false positives from generic
+    English words. Returns None for non-fault queries so the LLM honesty path
+    fires instead.
+    """
+    has_fault_mention = bool(_FAULT_MENTION_RE.search(message))
+    # Use the same extractor the recall path used — what it found is what failed
+    attempted_codes = _neon_recall._extract_fault_codes(message)
+
+    if not has_fault_mention and not attempted_codes:
+        return None
+
+    parts: list[str] = []
+
+    if attempted_codes:
+        quoted = ", ".join(f"**{c}**" for c in attempted_codes[:3])
+        parts.append(f"I searched for {quoted} but couldn't find it in my knowledge base.")
+    else:
+        parts.append("I couldn't find anything matching your description in my knowledge base.")
+
+    parts.append("To look this up I need a bit more info:\n")
+
+    if not asset_identified:
+        parts.append("1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Rockwell)")
+        parts.append("2. **Model number** — shown on the nameplate or display (e.g. GS20, PowerFlex 40)")
+        parts.append("3. **Exact code** — copy it exactly as it appears on the screen")
+    else:
+        parts.append(f"Equipment: {asset_identified}")
+        parts.append("1. **Exact code** — copy it exactly as it appears on the screen")
+        parts.append("2. **What were you doing** when it appeared? (starting up, running, decelerating, idle)")
+
+    return "\n".join(parts)
 
 
 def _trim_history_by_tokens(
@@ -239,9 +282,21 @@ class RAGWorker:
 
             # Quality gate: only use retrieval when top chunk is genuinely relevant
             top_score = max((c.get("similarity", 0) for c in neon_chunks), default=0)
-            if neon_chunks and top_score < 0.70:
-                logger.info("RAG_QUALITY_GATE top_score=%.3f — chunks suppressed", top_score)
+            _triage_conf = (state.get("context") or {}).get("triage_result", {}).get("confidence")
+            _enriched = (state.get("context") or {}).get("triage_enriched", False)
+            if _triage_conf == "medium" or _enriched:
+                _min_sim = 0.55
+            elif _triage_conf == "low":
+                _min_sim = 0.45
+            else:
+                _min_sim = 0.70
+            if neon_chunks and top_score < _min_sim:
+                logger.info(
+                    "RAG_QUALITY_GATE top_score=%.3f min=%.2f triage=%s — suppressed",
+                    top_score, _min_sim, _triage_conf or "none",
+                )
                 chunk_texts = []
+                neon_chunks = []
 
             # Cross-vendor filter: drop chunks whose manufacturer doesn't match the
             # identified vendor.  Chunks with no manufacturer tag are kept (they may be
@@ -321,10 +376,25 @@ class RAGWorker:
                 self._last_no_kb = no_kb
                 if no_kb:
                     logger.info(
-                        "NO_KB_COVERAGE asset=%r — honesty directive injected",
+                        "NO_KB_COVERAGE asset=%r — checking for clarification shortcut",
                         state.get("asset_identified", "unknown"),
                     )
-                messages = self._build_prompt(state, rewritten, photo_b64, no_kb_coverage=no_kb)
+                    triage_data = (state.get("context") or {}).get("triage_result", {})
+                    if triage_data.get("is_answerable_from_general_knowledge"):
+                        messages = self._build_prompt(
+                            state, rewritten, photo_b64, no_kb_coverage="general_knowledge"
+                        )
+                    else:
+                        clarification = _build_clarification_request(
+                            message, state.get("asset_identified", "")
+                        )
+                        if clarification:
+                            return clarification
+                        messages = self._build_prompt(
+                            state, rewritten, photo_b64, no_kb_coverage=True
+                        )
+                else:
+                    messages = self._build_prompt(state, rewritten, photo_b64)
             t0 = time.monotonic()
             raw = await self._call_llm(messages, model=model)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -452,14 +522,15 @@ class RAGWorker:
         message: str,
         photo_b64: str = None,
         neon_chunks: list[dict] = None,
-        no_kb_coverage: bool = False,
+        no_kb_coverage: bool | str = False,
     ) -> list[dict]:
         """Build message list for LLM with GSD system prompt and state context.
 
         Args:
-            no_kb_coverage: True when retrieval was attempted but returned zero results.
-                Injects an explicit honesty directive so the LLM admits it has no
-                documentation rather than hallucinating specifics.
+            no_kb_coverage: True when retrieval ran but returned zero results (injects
+                honesty directive). "general_knowledge" when triage flagged the query as
+                answerable from general engineering knowledge — LLM answers with a prefix
+                instead of refusing.
         """
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
@@ -477,8 +548,19 @@ class RAGWorker:
                 "the technician explicitly switches topic.\n"
             )
 
+        # General knowledge mode: triage says answerable without equipment-specific docs
+        if no_kb_coverage == "general_knowledge":
+            system_content += (
+                "\n\n--- GENERAL KNOWLEDGE MODE ---\n"
+                "No equipment-specific documentation found in the knowledge base.\n"
+                "You MUST prefix your answer with: "
+                '"Based on general industrial knowledge (not from specific documentation for this equipment): "\n'
+                "Then give your best answer. Do NOT refuse to answer.\n"
+                "End by asking ONE specific question that would help find the right documentation.\n"
+                "--- END GENERAL KNOWLEDGE MODE ---\n"
+            )
         # Honesty directive: retrieval ran but found nothing relevant
-        if no_kb_coverage:
+        elif no_kb_coverage:
             asset = state.get("asset_identified", "")
             support_url = vendor_support_url(asset) or vendor_support_url(message)
             url_hint = (
