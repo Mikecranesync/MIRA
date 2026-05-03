@@ -19,7 +19,11 @@ export interface MiraTokenPayload extends JWTPayload {
   atlasRole: "ADMIN" | "USER"; // NEW
 }
 
-const JWT_EXPIRY = "30d";
+// 7 days — long enough that a customer doesn't bounce mid-week, short enough
+// that a stolen JWT has a finite blast radius. Magic-link reissue is one click
+// away (no refresh-token machinery needed). Was 30d before P0.2 — see
+// docs/site-hardening-plan-2026-04-30.md.
+const JWT_EXPIRY = "7d";
 
 function getSecret(): Uint8Array {
   const secret = process.env.PLG_JWT_SECRET;
@@ -61,16 +65,22 @@ export async function verifyToken(
 }
 
 /**
- * Hono middleware — reads JWT from Authorization header, ?token= query param,
- * or `mira_session` cookie (lowest precedence so programmatic integrations
- * aren't affected).
+ * Hono middleware — reads JWT from Authorization header or `mira_session`
+ * cookie. Header wins over cookie.
+ *
+ * The `?token=` query-param fallback was removed in P0.1 (2026-04-30). It
+ * leaked JWTs into nginx access logs, browser history, and Referer headers
+ * to any third-party (analytics, CDN, etc.). The activation/magic-link
+ * landing routes still read `?token=` for their one-click handoff and set
+ * a cookie — that's a different auth surface and not affected by this
+ * change.
+ *
  * Sets c.set("user", payload) on success, returns 401 on failure.
  */
 export async function requireAuth(c: Context, next: Next) {
   const header = c.req.header("Authorization");
-  const query = c.req.query("token");
   const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
-  const raw = header ? header.replace("Bearer ", "") : query ?? cookie;
+  const raw = header ? header.replace("Bearer ", "") : cookie;
 
   if (!raw) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -91,14 +101,14 @@ export async function requireAuth(c: Context, next: Next) {
  * Use requireAuth (not requireActive) for routes any authenticated user needs
  * (e.g., billing portal).
  *
- * Reads JWT from Authorization header, ?token= query, or `mira_session`
- * cookie (lowest precedence).
+ * Reads JWT from Authorization header or `mira_session` cookie. The
+ * `?token=` query-param fallback was removed in P0.1 (2026-04-30) — see
+ * requireAuth for the rationale.
  */
 export async function requireActive(c: Context, next: Next) {
   const header = c.req.header("Authorization");
-  const query = c.req.query("token");
   const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
-  const raw = header ? header.replace("Bearer ", "") : query ?? cookie;
+  const raw = header ? header.replace("Bearer ", "") : cookie;
 
   if (!raw) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -135,9 +145,8 @@ export async function requireActive(c: Context, next: Next) {
  */
 export async function requireAdmin(c: Context, next: Next) {
   const header = c.req.header("Authorization");
-  const query = c.req.query("token");
   const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
-  const raw = header ? header.replace("Bearer ", "") : query ?? cookie;
+  const raw = header ? header.replace("Bearer ", "") : cookie;
 
   if (!raw) return c.json({ error: "Unauthorized" }, 401);
 
