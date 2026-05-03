@@ -84,6 +84,68 @@ diegetic HUD readout: "NETWORK: 1 PLANT · 0 PRIOR INCIDENTS".
 Mood: cinematic, gritty, focused isolation. The first trouble call is
 the slowest because no one has ever solved it before.\
 """,
+    2: """\
+Cedar Creek Dairy, late afternoon. Same dairy processing hall as panel 1.
+
+In the foreground, the same maintenance technician RICO stands facing
+the open variable-frequency-drive panel (PowerFlex 525) mounted on a
+stainless-steel column. Mid-30s, dark hair, reading glasses, navy-blue
+coveralls with a bright embroidered "RICO" name patch clearly visible
+on his chest, a multi-tool clipped to his belt.
+
+He is in 3/4 view, slightly turned toward the camera so both his face
+and his chest patch are visible. In both hands he holds open a thick
+spiral-bound paper user manual. The title at the top of the open spread
+reads in bold caps: "POWERFLEX 525 · FAULT CODE REFERENCE."
+
+The page he's looking at shows a long three-column reference table
+with the headers "CODE | NAME | ACTION". Visible rows include:
+  F-008  Phase Loss          CONSULT FACTORY
+  F-009  Bus Undervoltage    CONSULT FACTORY
+  F-010  Heatsink Overtemp   CONSULT FACTORY
+  F-011  IGBT Fault          CONSULT FACTORY
+  F-012  Overload            CONSULT FACTORY
+  F-013  Ground Fault        CONSULT FACTORY
+The ACTION column repeats "CONSULT FACTORY" almost line after line —
+a wall of useless. His index finger traces the row for F-012.
+
+CRITICALLY: his phone is NOT in the frame. The paper manual is the
+only tool he has.
+
+The VFD's red FAULT indicator LED is flashing in his peripheral vision,
+casting a small warm-red glow on his cheek and the open panel door.
+There is NO warm amber phone-screen light in this scene — only the
+cold steel-blue of overhead industrial fluorescents and the small
+punctuation of the red fault LED. The absence of helper-light is the
+storytelling point.
+
+His expression: focused-but-stuck. Brow tight, jaw set, eyes locked on
+the page, professionally engaged but quietly defeated by the table —
+he has read every relevant row and the manual gives him nothing
+actionable.
+
+Behind Rico, the dairy floor stretches in atmospheric depth — three
+tall cylindrical stainless-steel milk silos visible through a wide
+interior window or doorway, sanitary piping running along the ceiling,
+fluorescent shop lights overhead with visible glow halos and dust motes
+in the beams. Floor is wet polished concrete reflecting the cold light.
+A small "CEDAR CREEK DAIRY" placard or wall label is faintly visible
+on a doorframe.
+
+Crucially: NO ONE ELSE in the frame. Rico is alone with his manual.
+
+Color: dominant cool steel-blue and shadow black, punctuated only by
+the small warm red of the fault LED. Compared to panel 1, this scene
+is intentionally COLDER — no warm amber, no helper glow. Heavy black
+panel border around the whole frame in the comic-book convention.
+
+Bottom-right of the panel, in tiny monospace caps overlaid as a
+diegetic HUD readout: "WITHOUT MIRA · MANUAL ONLY · ETA UNKNOWN".
+
+Mood: lonely, paper-bound, slow. This is the world without MIRA —
+cryptic codes, "consult factory," and a tech alone with a book that
+won't help him.\
+""",
 }
 
 
