@@ -1,6 +1,6 @@
 # FactoryLM
 
-> FactoryLM is the AI workspace for industrial maintenance. MIRA is the agent
+> FactoryLM is compound-interest knowledge for industrial maintenance — every trouble call makes the knowledge base smarter for every plant after. MIRA is the agent
 > that runs on the plant floor. Together they organize manuals, sensors,
 > photos, work orders, and conversations into one Project per asset, crew, or
 > investigation — and answer maintenance questions with cited sources from

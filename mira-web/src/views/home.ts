@@ -83,7 +83,7 @@ function hero(): string {
   <div class="fl-hero-inner">
     <p class="fl-hero-eyebrow">Industrial Maintenance, AI-native</p>
     <h1 id="fl-hero-h1" class="fl-hero-h1">FactoryLM</h1>
-    <h2 class="fl-hero-h2">The AI workspace for industrial maintenance.</h2>
+    <h2 class="fl-hero-h2">Compound-interest knowledge for industrial maintenance.</h2>
     <h3 class="fl-hero-h3">Meet <strong>MIRA</strong> — your agent on the floor.</h3>
     <p class="fl-hero-sub">Manuals, sensors, photos, work orders, investigations — organized into Projects. MIRA answers from cited sources at 2&nbsp;AM, when you scan the QR sticker on a broken machine.</p>
     <div class="fl-hero-cta">
@@ -157,6 +157,48 @@ function compareSection(): string {
     "F005 on this drive (Asset POW-755-A12) means DC bus undervoltage. Last 7 days show 4 trips at the same RPM band, all overnight. Manual §6.2 says to check the bus capacitor bank — your 2024-12-14 PM noted bulging on cap 3.",
     ["Manual §6.2 (PowerFlex 755)", "PM 2024-12-14", "Trips: last 7 d"]
   )}
+</section>`;
+}
+
+function cartoonRow(): string {
+  // Three placeholder divs that feature-cartoons.js mounts SVG demos into.
+  // The script self-installs styles for `.cartoon-demo` and child classes.
+  // Lede copy is intentionally short — the cartoons carry the storytelling.
+  const cells = [
+    {
+      id: "cartoon-fd",
+      heading: "Fault diagnosis",
+      lede: "Type a fault code. Get a cited answer with the page from the manual.",
+      label: "Fault diagnosis demonstration",
+    },
+    {
+      id: "cartoon-cmms",
+      heading: "CMMS integration",
+      lede: "Diagnoses become work orders. Synced to MaintainX, Limble, UpKeep.",
+      label: "CMMS integration demonstration",
+    },
+    {
+      id: "cartoon-vv",
+      heading: "Voice + vision",
+      lede: "Photo of a nameplate. MIRA reads the model and diagnoses from the picture.",
+      label: "Voice and vision demonstration",
+    },
+  ];
+  const cellsHtml = cells
+    .map(
+      (c) => `<div class="fl-cartoon-cell">
+    <h3 class="fl-cartoon-h">${c.heading}</h3>
+    <p class="fl-cartoon-lede">${c.lede}</p>
+    <div id="${c.id}" class="cartoon-demo" role="region" aria-label="${c.label}" tabindex="0"></div>
+  </div>`
+    )
+    .join("\n  ");
+  return `<section class="fl-section fl-cartoons" aria-labelledby="fl-cartoons-h">
+  <h2 id="fl-cartoons-h" class="fl-section-h">What MIRA does on the floor.</h2>
+  <p class="fl-section-sub">Three workflows. One agent.</p>
+  <div class="fl-cartoon-row">
+  ${cellsHtml}
+  </div>
 </section>`;
 }
 
@@ -326,6 +368,32 @@ const PAGE_STYLES = `
 }
 .fl-project-card-body { color: var(--fl-muted-600); line-height: 1.5; }
 
+.fl-cartoon-row {
+  display: grid; gap: var(--fl-sp-6);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 880px) {
+  .fl-cartoon-row { grid-template-columns: repeat(3, 1fr); }
+}
+.fl-cartoon-cell {
+  display: flex; flex-direction: column; gap: var(--fl-sp-2);
+}
+.fl-cartoon-h {
+  font-size: var(--fl-type-lg);
+  color: var(--fl-navy-900);
+  margin: 0;
+}
+.fl-cartoon-lede {
+  color: var(--fl-muted-600);
+  font-size: var(--fl-type-base);
+  line-height: 1.5;
+  margin: 0 0 var(--fl-sp-2);
+}
+@media (min-width: 880px) {
+  /* Keep cartoon top edges aligned even when ledes wrap differently */
+  .fl-cartoon-lede { min-height: 3.5em; }
+}
+
 .fl-feature-grid {
   display: grid; gap: var(--fl-sp-6);
   grid-template-columns: 1fr;
@@ -410,11 +478,13 @@ export function renderHome(reqUrl?: string): string {
     ${trustBand("68,000+ chunks of OEM documentation indexed", OEMS)}
     ${projectCardRow()}
     ${compareSection()}
+    ${cartoonRow()}
     ${featureStrip()}
     ${pricingTeaser()}
   </main>
   ${footer()}
   <script src="/sun-toggle.js"></script>
+  <script src="/feature-cartoons.js" defer></script>
 </body>
 </html>`;
 }
