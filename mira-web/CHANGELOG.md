@@ -7,6 +7,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 to the component (`mira-web/vX.Y.Z`) so they don't collide with the MIRA
 monorepo's top-level tag progression.
 
+## [0.5.1] — 2026-05-03
+
+### Fixed
+- **White viewport edges around dark pages.** `_dark-theme.css` only
+  painted the `<body>` background; the `<html>` element kept its UA
+  default white. When body content was shorter than the viewport, the
+  unpainted html element bled through as a white strip on the right
+  and bottom edges (visible on `/cmms`, `/limitations`, `/security`
+  in the v0.5.0 production screenshots). Fix paints `<html>` with the
+  same `#09090c` and adds `min-height: 100vh; margin: 0` to body so
+  it always fills the viewport.
+- **Sun-readable toggle button did nothing.** `sun-toggle.js` defined
+  `window.flToggleSun` but never attached a click listener to the
+  `#fl-sun-toggle` button — it has been a dead button on every page
+  shipping it. Fix adds an `addEventListener("click", flToggleSun)`
+  in the existing `DOMContentLoaded` handler. Now toggles between the
+  dark cartoon palette and the high-contrast `body.sun` outdoor mode
+  (`#F0F0F0` bg, `#000` text, defined in `_tokens.css`).
+
 ## [0.5.0] — 2026-05-03
 
 ### Added

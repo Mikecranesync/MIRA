@@ -18,5 +18,9 @@
     try { localStorage.setItem(KEY, on ? "1" : "0"); } catch (e) { /* blocked */ }
   };
 
-  document.addEventListener("DOMContentLoaded", applyState);
+  document.addEventListener("DOMContentLoaded", function () {
+    applyState();
+    var btn = document.getElementById("fl-sun-toggle");
+    if (btn) btn.addEventListener("click", window.flToggleSun);
+  });
 })();

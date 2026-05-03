@@ -14,6 +14,9 @@
    render via the cmms view).
    ─────────────────────────────────────────────────────────────────*/
 
+html {
+  background: #09090c;   /* prevents viewport-edge white flash when body is shorter than viewport */
+}
 body {
   --fl-bg-50:     #09090c;   /* page background — matches cartoon bg */
   --fl-card-0:    #13141a;   /* cards / surfaces */
@@ -29,6 +32,8 @@ body {
   --fl-bad:       #ff7a5c;   /* lifted from FactoryLM red for dark contrast */
   background: var(--fl-bg-50);
   color: var(--fl-ink-900);
+  min-height: 100vh;
+  margin: 0;
 }
 
 /* Compare columns hard-code light pink / green in _components.css for the
