@@ -7,20 +7,21 @@ the technician through the fix. Without MIRA, the tech has the manual and
 a wall of useless "CONSULT FACTORY" entries. With MIRA, they get specific
 steps in seconds.
 
-This cartoon goes on the dark-theme landing page (`feat/landing-dark-theme`).
-Reader's eye travels left → right: BEFORE on the left, AFTER on the right —
-the classic before/after format.
+This cartoon goes on the dark-theme landing page (`feat/landing-dark-theme`)
+as a single hero image — Marvel-comics split-panel convention with a thick
+diagonal divider and thought balloons doing the narrative work.
 
 ## Panels
 
-| # | File | Role | Layout slot |
-|---|------|------|-------------|
-| 1 | `panel-1.png` | **AFTER — With MIRA** (already generated) | Right |
-| 2 | `panel-2.png` | **BEFORE — Without MIRA, paper manual** | Left |
+| # | File | Role |
+|---|------|------|
+| 3 | `panel-3.png` | **HERO — combo split-panel WITHOUT/WITH MIRA, diagonal divider, thought balloons** (landing-page deliverable) |
+| 1 | `panel-1.png` | Standalone WITH-MIRA scene (alternate / source material) |
+| 2 | `panel-2.png` | Standalone WITHOUT-MIRA scene (alternate / source material) |
 
-Yes, the file numbers are inverted vs. left-right reading order. Numbers
-follow generation order; the wireup in `feature-cartoons.js` picks
-left/right slots by name, not by number, so it doesn't matter.
+Panel 3 is what drops into the page. Panels 1 and 2 are kept in the repo as
+fallback (in case we ever want the same story told as two adjacent panels
+instead of one combo image) and as iteration evidence.
 
 ## Panel 1 — AFTER: "With MIRA, walked through it" (right slot)
 
@@ -66,6 +67,26 @@ Key visual elements:
 - HUD bottom-right: **"WITHOUT MIRA · MANUAL ONLY · ETA UNKNOWN"**
 - Mood: lonely, paper-bound, slow. Same dairy hall but emotionally
   colder than panel 1.
+
+## Panel 3 — HERO combo split-panel (the landing-page deliverable)
+
+**On disk.** Single 1792x1024 image. Thick black diagonal divider runs
+from upper-left to lower-right, with a thin warm-red accent stroke
+echoing the FAULT LED. Same Rico in 3/4 view on both sides, each turned
+slightly toward the divider so they face each other across it.
+
+- **Left half — "WITHOUT MIRA":** paper manual open to the PowerFlex 525
+  fault-code reference, "CONSULT FACTORY" column repeating down the page,
+  cold steel-blue light only. Thought balloon: chaotic guesses —
+  *"F-012 AGAIN / INTAKE? P035? MOTOR? / HOW LONG TILL THE LINE'S COLD?"*
+- **Right half — "WITH MIRA":** phone in hand, MIRA chat reply visible,
+  warm amber phone-screen glow lighting his face. Thought balloon:
+  definite next-steps — *"F-012 = INTAKE OVERLOAD / CLEAR THE GUARD /
+  FOUR MINUTES"*
+
+The contrast is the point: questions vs. statements, uncertainty vs.
+timed action, cold light vs. warm helper-light. All readable at a glance,
+which is what a landing-page hero has to do.
 
 ## Out of scope (future cartoons, not this one)
 

@@ -146,6 +146,81 @@ Mood: lonely, paper-bound, slow. This is the world without MIRA —
 cryptic codes, "consult factory," and a tech alone with a book that
 won't help him.\
 """,
+    3: """\
+Single comic-book hero panel for an industrial-maintenance landing
+page — Marvel-comics split-panel convention. The canvas is divided
+DIAGONALLY by a thick jagged BLACK divider line running from the
+UPPER-LEFT corner down to the LOWER-RIGHT corner, splitting the frame
+into two triangular scenes. The divider has a thin warm-red accent
+stroke along one edge, echoing a fault-LED glow. The split is
+deliberate and clearly readable as a comic-book before/after device.
+
+Both scenes show the SAME character — RICO, a maintenance technician,
+mid-30s, dark hair, reading glasses, navy-blue coveralls with a clearly
+embroidered "RICO" name patch on the chest, a multi-tool clipped to
+his belt — at the SAME open variable-frequency-drive panel (PowerFlex
+525) in the SAME Cedar Creek Dairy processing hall, with the SAME
+flashing red FAULT LED on the drive. Both Ricos are in 3/4 view, each
+turned slightly toward the diagonal divider so the two figures face
+each other across the split.
+
+LEFT SCENE — labeled along the upper-left edge in tiny monospace caps
+"WITHOUT MIRA":
+  Rico holds open a thick spiral-bound paper user manual in both hands.
+  The visible spread shows in legible type "POWERFLEX 525 · FAULT CODE
+  REFERENCE" at the top and a three-column table with the headers
+  "CODE | NAME | ACTION" and a column of repeated "CONSULT FACTORY"
+  entries running down it. His expression: focused-but-stuck.
+  Lighting on this side is COLD — only steel-blue fluorescents and
+  the small warm-red glow from the FAULT LED. NO warm amber
+  phone-screen light on this side.
+
+  A classic comic-book THOUGHT BALLOON (cloud-shape with a trail of
+  small bubble dots leading down to his head) floats in the upper
+  region of his triangle, containing three short lines of bold caps
+  text on three separate lines:
+    F-012 AGAIN
+    INTAKE? P035? MOTOR?
+    HOW LONG TILL THE LINE'S COLD?
+
+RIGHT SCENE — labeled along the upper-right edge in tiny monospace
+caps "WITH MIRA":
+  Rico has the manual closed (it's tucked under one arm or set on the
+  open panel door). He holds his phone in one hand at chest height.
+  The phone screen is visible at an angle and shows a clean chat
+  interface — at the top a user line "F-012 fault on PowerFlex 525,"
+  then a clear bulleted MIRA reply with three short troubleshooting
+  steps. His expression: focused, getting-it, calm. Warm AMBER glow
+  from the phone screen catches his face — the helper-light is back
+  on this side.
+
+  A classic comic-book THOUGHT BALLOON floats in the upper region of
+  his triangle, containing three short lines of bold caps text on
+  three separate lines:
+    F-012 = INTAKE OVERLOAD
+    CLEAR THE GUARD
+    FOUR MINUTES
+
+Style: painterly industrial comic book, Sean Phillips / Greg Ruth feel,
+gritty graphic-novel paint, visible brushwork. Cool steel-blue and
+shadow-black palette overall, with warm amber localized to the right
+scene ONLY (heroic helper-light) and a small warm-red FAULT LED on
+both sides. Heavy black panel border around the entire combined
+frame. The thick diagonal divider is unmistakable.
+
+Aspect: cinematic landscape, 16:9-ish, suitable as a hero image on a
+website landing page.
+
+Mood: BEFORE/AFTER contrast made physical. Same Rico, same problem,
+same drive. The only difference is what's in his hand and what he
+can think — chaotic guesses on the left, definite next-steps on
+the right.
+
+NOT cute, NOT Pixar, NOT 3D-rendered, NOT superheroes — but DOES
+follow the Marvel-comics split-panel layout convention the way a
+comic page would, with thought balloons rendering each Rico's
+inner monologue.\
+""",
 }
 
 
