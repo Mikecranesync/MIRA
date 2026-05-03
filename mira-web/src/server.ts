@@ -281,6 +281,13 @@ if (process.env.NODE_ENV !== "test" && process.env.MIRA_DISABLE_PURGE_WORKER !==
 // ---------------------------------------------------------------------------
 
 app.use("/public/*", serveStatic({ root: "./" }));
+// Marketing/site imagery served at the conventional /images/* path so the
+// landing page can reference assets the way every other web app does
+// (without a /public/ prefix). Without this route, anything under
+// public/images/ 404s — that's the bug PR #933 flagged for
+// /images/app-screenshot-desktop.png and that the v0.3.0 hero swap
+// also tripped on. Fixed here for v0.3.1.
+app.use("/images/*", serveStatic({ root: "./public" }));
 app.use("/manifest.json", serveStatic({ path: "./public/manifest.json" }));
 app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
 app.use("/robots.txt", serveStatic({ path: "./public/robots.txt" }));
