@@ -1,3 +1,36 @@
+# Hot Cache — 2026-05-03 — CHARLIE
+
+## Session — 2026-05-03 (CHARLIE, Marketing Director audit)
+
+**What was done:**
+- Full marketing audit: MIRA + FactoryLM repos, Linear board (Cranesync), all open PRs
+- **PR #941 merged** — competitor analysis refresh (COMPETITOR_ANALYSIS.md)
+- **PR #927 merged** — gitignore audio/video outputs in marketing/videos
+- **PR #945 opened** — Unit 9a landing page rewrite (feat/mvp-unit-9a-landing) — 1,516-line index.html, three features above fold, $97/mo pricing
+- **PR #946 opened** — LinkedIn 6-part series + warm outreach DM templates (feat/marketing-content-clean)
+- **feature-cartoons.js** — already on main via PR #931, no action needed
+- **PR #790** — promo director playbook v1.0.0 — CI re-triggered (pushed YAML change), pending pass
+
+**New files:**
+- `marketing/content/linkedin-series-2am-vfd-problem.md` — 6 posts, weekly from 2026-05-10
+- `marketing/content/warm-outreach-dm-templates.md` — 6 DM templates + tracking sheet
+
+**Critical path (first paid demo May 4):**
+- Unit 9a: PR #945 open, CI pending, needs Lighthouse ≥90 + Stripe test charge
+- Unit 2 (citations): CRA-11, branch feat/mvp-unit-2-citations — TODO
+- Unit 6 (hybrid retrieval): CRA-15 — TODO
+
+## Next Actions (2026-05-03 priority order)
+
+1. **Merge PR #790** — watch CI on feat/promo-director-playbook; merge when lint green
+2. **Merge PR #946** — markdown-only, CI will skip, can merge now
+3. **Merge PR #945** — needs Lighthouse ≥90 + Stripe test charge
+4. **Start LinkedIn Post 1** — schedule "The 2 AM Call" for Tue 2026-05-10, 7-9 AM Eastern
+5. **HubSpot API key** — add `HUBSPOT_API_KEY` to Doppler `factorylm/prd` to unlock 330-prospect import
+6. **Unit 2 + 6** — needed for first paid demo May 4
+
+---
+
 # Hot Cache — 2026-05-02 — CHARLIE
 
 ## Just Finished
