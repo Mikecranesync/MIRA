@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""
+Generate a single panel of the compound-interest cartoon via gpt-image-2.
+
+Usage:
+    doppler run --project factorylm --config prd -- \
+        python marketing/cartoons/generate_panel.py 1
+
+Panels live in marketing/cartoons/compound-interest/panel-N.png so each one
+can be previewed independently before we wire them into feature-cartoons.js.
+
+Model note: uses OpenAI's gpt-image-2 (released 2026-04-21), which renders
+in-image text — name patches, phone-screen fault codes, signage — letter-
+perfect in a way gpt-image-1 could not. Same OPENAI_API_KEY, same SDK call.
+"""
+from __future__ import annotations
+
+import base64
+import os
+import sys
+from pathlib import Path
+from openai import OpenAI
+
+OUT_DIR = Path(__file__).parent / "compound-interest"
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Master style context — kept consistent across all four panels of this
+# cartoon so the look reads as a series, not a grab bag. Recipe inherited
+# from the Rico onboarding panel (mira-hub/public/onboarding/panel-1.png),
+# which is the visual quality bar.
+MASTER_STYLE = """\
+Industrial comic book art style. Painterly, cinematic, gritty graphic-novel
+panel. Dark steel-blue and amber color palette, high-contrast black panel
+borders. Dramatic chiaroscuro lighting from overhead industrial lamps and
+glowing screens. Textured rendering — visible brushwork, atmospheric haze,
+real depth and weight. Strong character presence — humans drawn with
+specific posture, expression, and grime. Editorial graphic-novel feel —
+think the painted panels of Sean Phillips or Greg Ruth, not infographic
+wireframe. Cinematic landscape 3:2 aspect.
+
+NOT flat schematic. NOT blueprint or wireframe. NOT cute, NOT Pixar,
+NOT 3D-rendered, NOT superheroes. The frame should feel like a still from
+a graphic novel about industrial maintenance.\
+"""
+
+PANEL_PROMPTS: dict[int, str] = {
+    1: """\
+Cedar Creek Dairy, late afternoon. Interior of the dairy processing hall.
+
+In the foreground, slightly off-center, a maintenance technician — call
+him RICO — stands facing an open variable-frequency-drive panel
+(PowerFlex 525) mounted on a stainless-steel column. Mid-30s, dark hair,
+glasses, navy-blue coveralls with a "RICO" name patch on the chest, a
+multi-tool clipped to his belt. Posture focused, professional — not
+panicked. He's holding his phone in one hand at chest height, eyes on
+the screen.
+
+The VFD's red FAULT indicator LED is flashing, casting a small warm-red
+glow on his face and the open panel door. His phone screen (visible at
+an angle to the viewer) shows in monospace amber type: "F-012 fault on
+PowerFlex 525" — the dairy's diagnostic message. Below the fault line,
+smaller and dimmer: "Searching..." with a typing cursor.
+
+Behind Rico, the dairy floor stretches in atmospheric depth — three
+tall cylindrical stainless-steel milk silos visible through a wide
+interior window or doorway, sanitary piping running along the ceiling,
+fluorescent shop lights overhead with visible glow halos and dust motes
+in the beams. Floor is wet polished concrete reflecting the cold light.
+A small "CEDAR CREEK DAIRY" placard or wall label is faintly visible
+on a doorframe.
+
+Crucially: NO ONE ELSE in the frame. Rico is alone. The hall extends
+empty into shadow behind him. This is the lonely-first-call mood —
+he has the problem, and right now he is the only one in the world who
+knows about it.
+
+Color: dominant cool steel-blue and shadow black, punctuated by warm
+amber from the phone screen and the small red of the fault LED. Heavy
+black panel border around the whole frame in the comic-book convention.
+
+Bottom-right of the panel, in tiny monospace caps overlaid as a
+diegetic HUD readout: "NETWORK: 1 PLANT · 0 PRIOR INCIDENTS".
+
+Mood: cinematic, gritty, focused isolation. The first trouble call is
+the slowest because no one has ever solved it before.\
+""",
+}
+
+
+def main() -> None:
+    if len(sys.argv) < 2 or not sys.argv[1].isdigit():
+        sys.exit("usage: generate_panel.py <panel_number>")
+    n = int(sys.argv[1])
+    if n not in PANEL_PROMPTS:
+        sys.exit(f"no prompt defined yet for panel {n}; have: {sorted(PANEL_PROMPTS)}")
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        sys.exit("OPENAI_API_KEY not set — run via 'doppler run -- python ...'")
+
+    client = OpenAI(api_key=api_key)
+
+    prompt = f"{MASTER_STYLE}\n\n{PANEL_PROMPTS[n].strip()}"
+    out_path = OUT_DIR / f"panel-{n}.png"
+
+    print(f"Generating panel {n} -> {out_path}")
+    print(f"Model: gpt-image-2, size: 1792x1024, quality: high")
+
+    response = client.images.generate(
+        model="gpt-image-2",
+        prompt=prompt,
+        size="1792x1024",
+        quality="high",
+        n=1,
+    )
+
+    b64 = response.data[0].b64_json
+    if not b64:
+        sys.exit("gpt-image-2 returned empty b64_json")
+
+    out_path.write_bytes(base64.b64decode(b64))
+    size_kb = out_path.stat().st_size // 1024
+    print(f"OK  ({size_kb} KB)")
+    print(f"Preview: {out_path}")
+
+
+if __name__ == "__main__":
+    main()
