@@ -116,6 +116,8 @@ mReport.get("/:asset_tag/report", async (c) => {
     button:hover { opacity: 0.88; }
     .footer { margin-top: 1.5rem; font-size: 0.78rem; color: #4a4840; text-align: center; }
     #success { display: none; padding: 1rem; background: #1e2e1b; border: 1px solid #2a4a24; border-radius: 8px; color: #7fc97f; margin-top: 1rem; }
+    .cmms-link { display: block; margin-top: 1.25rem; text-align: center; font-size: 0.85rem; color: #4a4840; text-decoration: none; }
+    .cmms-link:hover { color: #b0aca2; }
   </style>
 </head><body>
   <div class="card">
@@ -137,8 +139,16 @@ mReport.get("/:asset_tag/report", async (c) => {
     </form>
     <div id="success">✓ Report submitted. Your plant admin has been notified.</div>
     <div class="footer">No account needed. Your report goes directly to your plant admin.</div>
+    <a id="cmms-btn" class="cmms-link" href="/cmms">Open CMMS →</a>
   </div>
   <script>
+    (function () {
+      var token = sessionStorage.getItem('flm_token');
+      if (token) {
+        var btn = document.getElementById('cmms-btn');
+        if (btn) btn.href = '/api/cmms/login?token=' + encodeURIComponent(token);
+      }
+    })();
     document.getElementById('reportForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.currentTarget);
