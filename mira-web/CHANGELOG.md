@@ -4,8 +4,34 @@ All notable changes to `mira-web` (the FactoryLM PLG acquisition + beta onboardi
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Tags are scoped
-to the component (`mira-web-vX.Y.Z`) so they don't collide with the MIRA
+to the component (`mira-web/vX.Y.Z`) so they don't collide with the MIRA
 monorepo's top-level tag progression.
+
+## [0.3.0] — 2026-05-03
+
+### Changed
+- **Landing-page hero is now the WITHOUT-MIRA / WITH-MIRA fault-lookup
+  cartoon** instead of the placeholder work-orders screenshot. Marvel-style
+  split-panel with thick diagonal divider, real Allen-Bradley PowerFlex 525
+  F-012 = HW OverCurrent fault data, narration caption pitching "in a
+  world where a cryptic fault code costs hours of downtime... when you
+  can chat with your manuals, every tech becomes the 20-year tech." Same
+  hero copy (h1/h2/h3/sub) and CTAs preserved — the cartoon is what the
+  existing "Compound-interest knowledge for industrial maintenance"
+  headline was always pointing at.
+- New asset `mira-web/public/images/hero-fault-lookup-cartoon.png`
+  (1792×1024, 3.2MB), copied from `marketing/cartoons/compound-interest/
+  panel-3.png` so the source-of-truth panel still lives in the cartoon
+  pipeline.
+- `home.ts` hero `<img>` swap: `src` + `alt` + intrinsic dimensions
+  updated; width/height match the actual file so CLS stays clean.
+  `aria-hidden="true"` preserved (image is decorative; surrounding text
+  carries the message for screen readers).
+
+### Fixed
+- **Production 404 on `/images/app-screenshot-desktop.png`** (flagged in
+  PR #933 as a pre-existing issue) is incidentally resolved — the
+  reference is gone.
 
 ## [0.2.1] — 2026-04-11
 
