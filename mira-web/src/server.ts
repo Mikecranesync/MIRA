@@ -290,6 +290,7 @@ app.use("/og-image.png", serveStatic({ path: "./public/og-image.png" }));
 app.use("/_tokens.css", serveStatic({ path: "./public/_tokens.css" }));
 app.use("/_components.css", serveStatic({ path: "./public/_components.css" }));
 app.use("/sun-toggle.js", serveStatic({ path: "./public/sun-toggle.js" }));
+app.use("/feature-cartoons.js", serveStatic({ path: "./public/feature-cartoons.js" }));
 app.use("/posthog-init.js", serveStatic({ path: "./public/posthog-init.js" }));
 app.use("/pwa-install.js", serveStatic({ path: "./public/pwa-install.js" }));
 

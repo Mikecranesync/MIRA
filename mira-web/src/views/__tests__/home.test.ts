@@ -7,7 +7,7 @@ describe("#SO-100 renderHome — homepage refactor acceptance", () => {
   test("AC1: hero L1 message — H1 'FactoryLM', H2 workspace tagline, H3 MIRA", () => {
     expect(html).toContain('id="fl-hero-h1"');
     expect(html).toMatch(/<h1[^>]*>FactoryLM<\/h1>/);
-    expect(html).toMatch(/<h2[^>]*>The AI workspace for industrial maintenance\.<\/h2>/);
+    expect(html).toMatch(/<h2[^>]*>Compound-interest knowledge for industrial maintenance\.<\/h2>/);
     expect(html).toMatch(/Meet <strong>MIRA<\/strong>/);
     expect(html).toMatch(/Manuals, sensors, photos, work orders, investigations/);
   });
@@ -52,6 +52,16 @@ describe("#SO-100 renderHome — homepage refactor acceptance", () => {
     expect(html).toContain("PowerFlex 755");
     const compareCount = (html.match(/class="fl-compare"/g) || []).length;
     expect(compareCount).toBe(1);
+  });
+
+  test("AC4b: cartoon row — three feature demos with mount IDs the script targets", () => {
+    expect(html).toContain('id="fl-cartoons-h"');
+    expect(html).toContain("What MIRA does on the floor.");
+    expect(html).toContain('id="cartoon-fd"');
+    expect(html).toContain('id="cartoon-cmms"');
+    expect(html).toContain('id="cartoon-vv"');
+    expect(html).toContain('class="cartoon-demo"');
+    expect(html).toContain('<script src="/feature-cartoons.js" defer></script>');
   });
 
   test("AC5: feature strip — 4 state badges + stop card", () => {
