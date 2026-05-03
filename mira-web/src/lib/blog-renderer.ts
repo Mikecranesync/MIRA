@@ -57,44 +57,49 @@ function htmlHead(opts: {
 </head>`;
 }
 
-// ── Shared nav (matches index.html structure exactly) ──
+// ── Shared nav + footer ──
+//
+// The blog uses its own CSS world (blog.css) but the topbar markup is now
+// the same standardized 5-link nav + "Sign in" CTA used by the marketing
+// pages. Drops the M-icon, uses the wordmark only — matches the post-v0.5.0
+// site standard. blog.css's `.nav-*` classes still provide the visual style.
 
-function nav(): string {
+interface BlogNavOpts {
+  /** Path of the current page, used for aria-current="page". */
+  currentPath?: string;
+}
+
+function navLink(href: string, label: string, currentPath?: string): string {
+  const current = currentPath === href ? ` aria-current="page"` : "";
+  return `<li><a href="${href}"${current}>${label}</a></li>`;
+}
+
+function nav(opts: BlogNavOpts = {}): string {
   return `<nav id="main-nav" role="navigation" aria-label="Main navigation">
   <div class="nav-inner">
-    <a href="/" class="nav-logo" aria-label="FactoryLM home">
-      ${LOGO_SVG}
-      FactoryLM
-    </a>
+    <a href="/" class="nav-logo" aria-label="FactoryLM home">FactoryLM</a>
     <ul class="nav-links" role="list">
-      <li><a href="/#features">Product</a></li>
-      <li><a href="/blog">Blog</a></li>
-      <li><a href="/blog/fault-codes">Fault Codes</a></li>
-      <li><a href="/cmms">CMMS</a></li>
+      ${navLink("/cmms", "CMMS", opts.currentPath)}
+      ${navLink("/pricing", "Pricing", opts.currentPath)}
+      ${navLink("/blog", "Blog", opts.currentPath)}
+      ${navLink("/limitations", "Limitations", opts.currentPath)}
+      ${navLink("/security", "Security", opts.currentPath)}
     </ul>
-    <a href="/cmms" class="nav-cta">Try free</a>
+    <a href="/cmms" class="nav-cta">Sign in</a>
   </div>
 </nav>`;
 }
-
-// ── Shared footer (matches index.html structure exactly) ──
 
 function siteFooter(): string {
   return `<footer role="contentinfo">
   <div class="inner">
     <div class="footer-inner">
-      <a href="/" class="footer-logo" aria-label="FactoryLM home">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
-          <rect width="24" height="24" rx="5" fill="#f0a000"/>
-          <path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        FactoryLM
-      </a>
+      <a href="/" class="footer-logo" aria-label="FactoryLM home">FactoryLM</a>
       <ul class="footer-links" role="list">
-        <li><a href="/blog">Blog</a></li>
-        <li><a href="/blog/fault-codes">Fault Codes</a></li>
-        <li><a href="/cmms">CMMS</a></li>
-        <li><a href="mailto:contact@factorylm.com">Contact</a></li>
+        <li><a href="/limitations">Limitations</a></li>
+        <li><a href="/trust">Trust</a></li>
+        <li><a href="/privacy">Privacy</a></li>
+        <li><a href="/terms">Terms</a></li>
       </ul>
     </div>
   </div>
@@ -155,7 +160,7 @@ export function renderBlogPost(
 
   return `${htmlHead({ title: `${post.title} | FactoryLM`, description: post.description, canonical, jsonLd })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <article class="article-wrap">
@@ -285,7 +290,7 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
 
   return `${htmlHead({ title: `${fc.title} | FactoryLM`, description: fc.metaDescription, canonical, jsonLd })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <article class="article-wrap">
@@ -374,7 +379,7 @@ export function renderBlogIndex(
     jsonLd,
   })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <div class="blog-hero">
@@ -472,7 +477,7 @@ ${codes
     jsonLd,
   })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <div class="blog-hero">
