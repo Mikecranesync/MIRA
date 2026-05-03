@@ -7,6 +7,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 to the component (`mira-web/vX.Y.Z`) so they don't collide with the MIRA
 monorepo's top-level tag progression.
 
+## [0.5.2] — 2026-05-03
+
+### Fixed
+- **Service worker was masking the v0.5.0 + v0.5.1 deploys.** Returning
+  visitors saw the old topbar, white edges, and dead sun-toggle even
+  after both PRs landed in production because `sw.js` is cache-first
+  for static assets and `CACHE_NAME` had been pinned at `factorylm-v3`
+  since the SW was introduced. Bump to `factorylm-v4` triggers the
+  activate handler's `caches.delete()` for every key !== current name,
+  forcing all CSS/JS to re-fetch on next page load. Also adds
+  `_dark-theme.css` and `_components.css` companions `_dark-theme.css`
+  and `sun-toggle.js` to `PRECACHE_URLS` so future first-load visitors
+  get them up front instead of opportunistically.
+
+  CACHE_NAME bumps need to ship every time a CSS/JS asset under
+  `/public` changes — added a TODO comment in `sw.js` so future
+  edits don't repeat the trap.
+
 ## [0.5.1] — 2026-05-03
 
 ### Fixed
