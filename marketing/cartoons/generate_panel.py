@@ -155,6 +155,20 @@ into two triangular scenes. The divider has a thin warm-red accent
 stroke along one edge, echoing a fault-LED glow. The split is
 deliberate and clearly readable as a comic-book before/after device.
 
+LARGE PROMINENT SCENE LABELS — the most important text in the entire
+image. These must read as bold poster-grade comic captions, NOT tiny
+margin notes:
+  - Upper-left of the LEFT triangle: a big bold yellow caption box
+    with thick black border containing the label "WITHOUT MIRA" in
+    huge bold black sans-serif caps. The caption box is sized large
+    enough to read instantly at hero scale — roughly 12-15% of the
+    canvas height.
+  - Upper-right of the RIGHT triangle: a matching big bold yellow
+    caption box with thick black border containing the label "WITH
+    MIRA" in huge bold black sans-serif caps, same size as the
+    left label. Both caption boxes have the classic Marvel-comics
+    rectangular shape with a slight tilt for energy.
+
 Both scenes show the SAME character — RICO, a maintenance technician,
 mid-30s, dark hair, reading glasses, navy-blue coveralls with a clearly
 embroidered "RICO" name patch on the chest, a multi-tool clipped to
@@ -164,42 +178,58 @@ flashing red FAULT LED on the drive. Both Ricos are in 3/4 view, each
 turned slightly toward the diagonal divider so the two figures face
 each other across the split.
 
-LEFT SCENE — labeled along the upper-left edge in tiny monospace caps
-"WITHOUT MIRA":
+LEFT SCENE (under the WITHOUT MIRA caption):
   Rico holds open a thick spiral-bound paper user manual in both hands.
   The visible spread shows in legible type "POWERFLEX 525 · FAULT CODE
   REFERENCE" at the top and a three-column table with the headers
   "CODE | NAME | ACTION" and a column of repeated "CONSULT FACTORY"
-  entries running down it. His expression: focused-but-stuck.
+  entries running down it. His expression: frustrated, stuck, eyes
+  darting — a touch more visible chaos than before, brow furrowed
+  hard, mouth slightly tense.
   Lighting on this side is COLD — only steel-blue fluorescents and
   the small warm-red glow from the FAULT LED. NO warm amber
   phone-screen light on this side.
 
   A classic comic-book THOUGHT BALLOON (cloud-shape with a trail of
   small bubble dots leading down to his head) floats in the upper
-  region of his triangle, containing three short lines of bold caps
-  text on three separate lines:
-    F-012 AGAIN
-    INTAKE? P035? MOTOR?
-    HOW LONG TILL THE LINE'S COLD?
+  region of his triangle, containing four short lines of bold caps
+  text on four separate lines (a touch more confused than v1):
+    F-012 AGAIN?!
+    INTAKE? P035? MOTOR? GROUND?
+    WHAT DID JESSE DO LAST TIME?
+    HOW LONG TILL THE LINE GOES COLD?
 
-RIGHT SCENE — labeled along the upper-right edge in tiny monospace
-caps "WITH MIRA":
-  Rico has the manual closed (it's tucked under one arm or set on the
-  open panel door). He holds his phone in one hand at chest height.
-  The phone screen is visible at an angle and shows a clean chat
-  interface — at the top a user line "F-012 fault on PowerFlex 525,"
-  then a clear bulleted MIRA reply with three short troubleshooting
-  steps. His expression: focused, getting-it, calm. Warm AMBER glow
-  from the phone screen catches his face — the helper-light is back
-  on this side.
+RIGHT SCENE (under the WITH MIRA caption):
+  Rico's hands are FREE of the paper manual. The closed manual sits
+  on top of the open VFD panel door — visibly set down, no longer in
+  use, like he tried it and moved on. He holds his phone in BOTH
+  hands at chest height, both eyes on the screen. His expression:
+  calm, getting it, the relief of someone who just got real
+  information.
+
+  The phone screen is visible at a clear readable angle, showing a
+  chat interface in MIRA's style. At the top of the chat is the user
+  message in a small bubble:
+      "What does F-012 mean to this drive?"
+  Below that, MIRA's reply renders as a clean bulleted answer in
+  monospace amber type on a dark phone background, with these exact
+  short lines visible:
+      F-012 — POWERFLEX 525
+      23 PRIOR FIXES · 6 PLANTS
+      17/23 INTAKE CLOG
+      4/23 P035 MOTOR
+      2/23 LOW BUS VOLTAGE
+  This historical-data reply is the marketing point — MIRA doesn't
+  just guess, it tells him exactly how this fault has been resolved
+  across the entire network of plants.
+
+  Warm AMBER glow from the phone screen catches his face — the
+  helper-light is back on this side.
 
   A classic comic-book THOUGHT BALLOON floats in the upper region of
-  his triangle, containing three short lines of bold caps text on
-  three separate lines:
-    F-012 = INTAKE OVERLOAD
-    CLEAR THE GUARD
-    FOUR MINUTES
+  his triangle, containing ONE short line of bold caps text — Rico's
+  question that prompted MIRA's reply:
+      WHAT DOES F-012 MEAN TO THIS DRIVE?
 
 Style: painterly industrial comic book, Sean Phillips / Greg Ruth feel,
 gritty graphic-novel paint, visible brushwork. Cool steel-blue and
@@ -213,13 +243,13 @@ website landing page.
 
 Mood: BEFORE/AFTER contrast made physical. Same Rico, same problem,
 same drive. The only difference is what's in his hand and what he
-can think — chaotic guesses on the left, definite next-steps on
-the right.
+can know — chaotic guessing alone on the left, sharp historical
+data from the network on the right.
 
 NOT cute, NOT Pixar, NOT 3D-rendered, NOT superheroes — but DOES
 follow the Marvel-comics split-panel layout convention the way a
-comic page would, with thought balloons rendering each Rico's
-inner monologue.\
+comic page would, with prominent yellow caption boxes naming each
+half and thought balloons rendering each Rico's inner monologue.\
 """,
 }
 
