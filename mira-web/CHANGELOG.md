@@ -7,6 +7,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 to the component (`mira-web/vX.Y.Z`) so they don't collide with the MIRA
 monorepo's top-level tag progression.
 
+## [0.3.1] — 2026-05-03
+
+### Fixed
+- **`/images/*` static route was missing.** v0.3.0 shipped the new hero
+  cartoon at `/images/hero-fault-lookup-cartoon.png`, but Hono's
+  `serveStatic` registrations in `src/server.ts` only covered `/public/*`
+  and a handful of explicit per-file paths — anything under `/images/`
+  404'd. Same root-cause as the pre-existing
+  `/images/app-screenshot-desktop.png` 404 flagged in PR #933. Adds
+  `app.use("/images/*", serveStatic({ root: "./public" }))` so the
+  conventional `/images/foo.png` path works without forcing a `/public/`
+  prefix in markup. (`mira-web/src/server.ts`)
+
 ## [0.3.0] — 2026-05-03
 
 ### Changed
