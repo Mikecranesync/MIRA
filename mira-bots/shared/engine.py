@@ -1222,10 +1222,9 @@ class Supervisor:
 
         # Update session_context with latest question so off-topic replies can recap
         sc = ctx.get("session_context", {})
-        if sc:
-            sc["last_question"] = parsed["reply"][:200]
-            sc["last_options"] = parsed.get("options", [])
-            ctx["session_context"] = sc
+        sc["last_question"] = parsed["reply"][:200]
+        sc["last_options"] = parsed.get("options", [])
+        ctx["session_context"] = sc
 
         # Persist work-order draft so _handle_cmms_pending can use it next turn.
         if _wo_draft is not None:
@@ -1815,10 +1814,9 @@ class Supervisor:
         ctx["history"] = history
 
         sc = ctx.get("session_context", {})
-        if sc:
-            sc["last_question"] = parsed["reply"][:200]
-            sc["last_options"] = parsed.get("options", [])
-            ctx["session_context"] = sc
+        sc["last_question"] = parsed["reply"][:200]
+        sc["last_options"] = parsed.get("options", [])
+        ctx["session_context"] = sc
 
         state["context"] = ctx
         self._save_state(chat_id, state)
@@ -1916,13 +1914,20 @@ class Supervisor:
         if has_diagnosis_signal and not has_escape_phrase:
             # User is describing a fault, not answering our question.  Restore state
             # silently so the normal diagnostic flow handles this turn.
+            # Preserve any vendor/model already collected so the diagnostic FSM has context.
+            if not state.get("asset_identified"):
+                if collected.get("vendor") and collected.get("model"):
+                    state["asset_identified"] = f"{collected['vendor']}, {collected['model']}"
+                elif collected.get("vendor"):
+                    state["asset_identified"] = collected["vendor"]
             ctx.pop("manual_lookup_gathering", None)
             state["state"] = prior_state
             state["context"] = ctx
             self._save_state(chat_id, state)
             logger.info(
-                "MANUAL_LOOKUP_GATHERING_ESCAPED chat_id=%s reason=diagnosis_signal",
+                "MANUAL_LOOKUP_GATHERING_ESCAPED chat_id=%s reason=diagnosis_signal vendor=%r",
                 chat_id,
+                state.get("asset_identified"),
             )
             return None  # fall through
 
@@ -2496,9 +2501,9 @@ class Supervisor:
                 f"information.{low_conf_note}"
             )
         else:
+            vendor_phrase = f" for {mfr}" if mfr else " for that equipment"
             reply = (
-                "I don't have documentation for that equipment in my knowledge "
-                "base yet.\n\n"
+                f"I don't have documentation{vendor_phrase} in my knowledge base yet.\n\n"
                 "Try searching the manufacturer's website for the model number "
                 "and document type.\n\n"
                 f"I've queued a search — ask me again shortly.{low_conf_note}"
