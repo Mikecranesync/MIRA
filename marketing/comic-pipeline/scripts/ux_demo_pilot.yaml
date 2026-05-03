@@ -3,6 +3,7 @@
 # 17-frame UX flow. Each frame gets one narration line; the assembler
 # divides total audio time evenly across frames.
 slug: ux-demo-pilot-2026-04-27
+# last-verified: 2026-05-03
 output_dir: marketing/videos/ux-demo-pilot-2026-04-27
 width: 1920
 height: 1080
