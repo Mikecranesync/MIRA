@@ -7,6 +7,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 to the component (`mira-web/vX.Y.Z`) so they don't collide with the MIRA
 monorepo's top-level tag progression.
 
+## [0.4.0] — 2026-05-03
+
+### Added
+- **Shared dark-theme stylesheet** at `mira-web/public/_dark-theme.css`
+  carrying the FactoryLM design-token overrides (page bg, card surface,
+  ink, amber accent) plus the dark-tinted `.fl-col-bad` /
+  `.fl-col-good` overrides used by the ChatGPT-vs-MIRA compare blocks.
+  Any view that wants to opt into the dark palette now includes a
+  single `<link rel="stylesheet" href="/_dark-theme.css">` in its
+  `<head>` — no per-component refactor needed because existing
+  selectors reference the tokens via `var()`.
+
+### Changed
+- **`/cmms` and `/sample` adopt the dark palette.** This is the P0 fix
+  from the 2026-05-03 style audit (`tools/web-review-runs/
+  2026-05-03-style-audit/AUDIT.md`): `/cmms` is the conversion landing
+  page every "Start Free — magic link" click on home led to, and the
+  light-theme break in the funnel was the most visible inconsistency
+  on the site after v0.3.1 shipped the dark hero. (`views/cmms.ts`)
+- **`home.ts` no longer carries the dark-token block inline.** The
+  duplicated CSS moved to `_dark-theme.css`; `home.ts` keeps only
+  layout/typography styles unique to the home view. (`views/home.ts`)
+- **`/_dark-theme.css` registered as a static route** alongside
+  `_tokens.css` and `_components.css` in `src/server.ts`.
+
+### Notes
+- This intentionally does *not* touch `/limitations`, `/security`,
+  `/pricing`, `/blog`, the legal stack, or `/activated` (which has its
+  own bespoke dark theme via static HTML). Those are tracked in the
+  audit as P1/P2 with separate fixes coming.
+
 ## [0.3.1] — 2026-05-03
 
 ### Fixed
