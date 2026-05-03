@@ -33,6 +33,11 @@ Quick orientation:
 
 ## Recent Eval-Fixer Runs (context for eval debugging)
 
+### eval-fixer run — 2026-05-03
+- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (stale for 5th day; no new run)
+- Action: issue-filed (#932)
+- Same 13-failure pattern persists. Issue groups failures into Cluster A (FSM, 5) and Cluster B (keyword/content, 8) with B1–B4 sub-patterns. B1 (manual-lookup canned "I already have documentation indexed" deflection, 4 fixtures) flagged as highest-leverage fix in `engine.py`. → **CRA-8**
+
 ### eval-fixer run — 2026-05-02
 - Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (stale for 4th day; no new run)
 - Action: issue-filed (#918)
