@@ -163,6 +163,19 @@ mChooser.get("/:asset_tag/choose", async (c) => {
     .btn-openwebui { background: #f0a030; color: #0a0a08; }
     .btn-slack     { background: #4A154B; color: #fff; }
     .btn-guest     { background: #1e1e1b; color: #b0aca2; border: 1px solid #2a2a24; }
+    .cmms-divider {
+      margin: 1.25rem 0 0.75rem;
+      border: 0; border-top: 1px solid #2a2a24;
+    }
+    .cmms-link {
+      display: block; text-align: center;
+      padding: 0.7rem 1rem;
+      font-size: 0.92rem; font-weight: 600;
+      color: #b0aca2; text-decoration: none;
+      border: 1px solid #2a2a24; border-radius: 8px;
+      transition: opacity 0.15s, border-color 0.15s;
+    }
+    .cmms-link:hover { opacity: 0.88; border-color: #f0a030; color: #e4e0d8; }
     .footer { margin-top: 1.5rem; font-size: 0.78rem; color: #4a4840; text-align: center; }
   </style>
 </head><body>
@@ -171,7 +184,17 @@ mChooser.get("/:asset_tag/choose", async (c) => {
     <h1>How would you like to connect?</h1>
     <p>Asset <span class="asset-tag">${escapeHtml(assetTag)}</span> — choose your preferred channel.</p>
     ${buttons}
+    <hr class="cmms-divider">
+    <a id="cmms-btn" class="cmms-link" href="/cmms" data-cta="m-choose-open-cmms">Open CMMS →</a>
     <div class="footer">Your choice is remembered for 30 days on this device.</div>
   </div>
+  <script>
+    (function () {
+      var token = sessionStorage.getItem('flm_token');
+      if (!token) return;
+      var btn = document.getElementById('cmms-btn');
+      if (btn) btn.href = '/api/cmms/login?token=' + encodeURIComponent(token);
+    })();
+  </script>
 </body></html>`);
 });

@@ -41,6 +41,18 @@ describe("GET /m/:asset_tag/report", () => {
     const res = await app.request("/m/BAD TAG/report");
     expect(res.status).toBe(400);
   });
+
+  test("renders Open CMMS button (CRA-20) wired to /cmms by default", async () => {
+    const res = await app.request("/m/PUMP-REPORT/report");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('id="cmms-btn"');
+    expect(html).toContain('href="/cmms"');
+    expect(html).toContain('data-cta="m-report-open-cmms"');
+    expect(html).toContain("Open CMMS");
+    expect(html).toContain("sessionStorage.getItem('flm_token')");
+    expect(html).toContain("/api/cmms/login?token=");
+  });
 });
 
 describe("POST /api/m/report", () => {

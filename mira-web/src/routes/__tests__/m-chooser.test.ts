@@ -56,6 +56,19 @@ describe("GET /m/:asset_tag/choose", () => {
     expect(html).toContain("Asset not found");
   });
 
+  test("renders Open CMMS button (CRA-20) wired to /cmms by default", async () => {
+    const res = await app.request("/m/VFD-CHOOSER/choose");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('id="cmms-btn"');
+    expect(html).toContain('href="/cmms"');
+    expect(html).toContain('data-cta="m-choose-open-cmms"');
+    expect(html).toContain("Open CMMS");
+    // Auth-aware rewrite script
+    expect(html).toContain("sessionStorage.getItem('flm_token')");
+    expect(html).toContain("/api/cmms/login?token=");
+  });
+
   test("sets mira_channel_pref cookie when ?set_pref=telegram is passed", async () => {
     const res = await app.request("/m/VFD-CHOOSER/choose?set_pref=telegram", {
       redirect: "manual",

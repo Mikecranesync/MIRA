@@ -7,6 +7,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 to the component (`mira-web/vX.Y.Z`) so they don't collide with the MIRA
 monorepo's top-level tag progression.
 
+## [0.7.0] — 2026-05-03
+
+### Added
+- **"Open CMMS" button on QR-scan pages (CRA-20).** Field techs scanning a
+  QR sticker now have a path to Atlas CMMS from every page in the scan
+  flow. Adds an `id="cmms-btn"` anchor to:
+  - `/m/:tag/choose` — channel chooser page
+  - `/m/:tag/report` — guest fault-report form
+  - `/m/:tag/register` — auto-register page
+  Button defaults to `/cmms` (sign-in). An inline auth-aware script
+  rewrites the href to `/api/cmms/login?token=…` when
+  `sessionStorage.flm_token` is present, mirroring the existing `/sample`
+  pattern shipped in PR #947. Each button uses a unique `data-cta`
+  marker (`m-choose-open-cmms`, `m-report-open-cmms`,
+  `m-register-open-cmms`) for funnel analytics.
+
 ## [0.6.0] — 2026-05-03
 
 ### Changed

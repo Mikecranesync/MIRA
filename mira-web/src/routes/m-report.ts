@@ -115,6 +115,19 @@ mReport.get("/:asset_tag/report", async (c) => {
     }
     button:hover { opacity: 0.88; }
     .footer { margin-top: 1.5rem; font-size: 0.78rem; color: #4a4840; text-align: center; }
+    .cmms-divider {
+      margin: 1.5rem 0 0.75rem;
+      border: 0; border-top: 1px solid #2a2a24;
+    }
+    .cmms-link {
+      display: block; text-align: center;
+      padding: 0.7rem 1rem;
+      font-size: 0.92rem; font-weight: 600;
+      color: #b0aca2; text-decoration: none;
+      border: 1px solid #2a2a24; border-radius: 8px;
+      transition: opacity 0.15s, border-color 0.15s;
+    }
+    .cmms-link:hover { opacity: 0.88; border-color: #f0a030; color: #e4e0d8; }
     #success { display: none; padding: 1rem; background: #1e2e1b; border: 1px solid #2a4a24; border-radius: 8px; color: #7fc97f; margin-top: 1rem; }
   </style>
 </head><body>
@@ -136,9 +149,18 @@ mReport.get("/:asset_tag/report", async (c) => {
       <button type="submit">Submit Report</button>
     </form>
     <div id="success">✓ Report submitted. Your plant admin has been notified.</div>
+    <hr class="cmms-divider">
+    <a id="cmms-btn" class="cmms-link" href="/cmms" data-cta="m-report-open-cmms">Open CMMS →</a>
     <div class="footer">No account needed. Your report goes directly to your plant admin.</div>
   </div>
   <script>
+    (function () {
+      var token = sessionStorage.getItem('flm_token');
+      if (token) {
+        var btn = document.getElementById('cmms-btn');
+        if (btn) btn.href = '/api/cmms/login?token=' + encodeURIComponent(token);
+      }
+    })();
     document.getElementById('reportForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.currentTarget);

@@ -132,6 +132,16 @@ function buildRegisterPage(
       padding: 0.75rem 1rem; font-size: 0.875rem; margin-bottom: 1rem;
     }
     .why { color: #777; font-size: 0.8rem; margin-top: 1.25rem; line-height: 1.5; }
+    .cmms-link {
+      display: block; text-align: center;
+      margin-top: 1rem;
+      padding: 0.7rem 1rem;
+      font-size: 0.92rem; font-weight: 600;
+      color: #1B365D; text-decoration: none;
+      background: #fff; border: 1px solid #1B365D; border-radius: 8px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .cmms-link:hover { background: #1B365D; color: #fff; }
   </style>
 </head>
 <body>
@@ -160,11 +170,20 @@ function buildRegisterPage(
       <button type="submit" class="btn">${submitLabel}</button>
       ${unauthedNote}
     </form>
+    <a id="cmms-btn" class="cmms-link" href="/cmms" data-cta="m-register-open-cmms">Open CMMS →</a>
   </div>
   <p class="why">
     MIRA uses equipment records to give cited, asset-specific answers — manuals,
     fault history, PM schedules. Register once, ask forever.
   </p>
+  <script>
+    (function () {
+      var token = sessionStorage.getItem('flm_token');
+      if (!token) return;
+      var btn = document.getElementById('cmms-btn');
+      if (btn) btn.href = '/api/cmms/login?token=' + encodeURIComponent(token);
+    })();
+  </script>
 </body>
 </html>`;
 }
