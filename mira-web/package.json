@@ -1,6 +1,6 @@
 {
   "name": "mira-web",
-  "version": "0.2.1",
+  "version": "0.5.2",
   "description": "FactoryLM PLG funnel — CMMS acquisition & onboarding flow",
   "type": "module",
   "scripts": {

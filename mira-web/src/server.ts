@@ -281,6 +281,13 @@ if (process.env.NODE_ENV !== "test" && process.env.MIRA_DISABLE_PURGE_WORKER !==
 // ---------------------------------------------------------------------------
 
 app.use("/public/*", serveStatic({ root: "./" }));
+// Marketing/site imagery served at the conventional /images/* path so the
+// landing page can reference assets the way every other web app does
+// (without a /public/ prefix). Without this route, anything under
+// public/images/ 404s — that's the bug PR #933 flagged for
+// /images/app-screenshot-desktop.png and that the v0.3.0 hero swap
+// also tripped on. Fixed here for v0.3.1.
+app.use("/images/*", serveStatic({ root: "./public" }));
 app.use("/manifest.json", serveStatic({ path: "./public/manifest.json" }));
 app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
 app.use("/robots.txt", serveStatic({ path: "./public/robots.txt" }));
@@ -289,7 +296,9 @@ app.use("/og-image.png", serveStatic({ path: "./public/og-image.png" }));
 // without the /public/ prefix (matches the head() helper's <link> output).
 app.use("/_tokens.css", serveStatic({ path: "./public/_tokens.css" }));
 app.use("/_components.css", serveStatic({ path: "./public/_components.css" }));
+app.use("/_dark-theme.css", serveStatic({ path: "./public/_dark-theme.css" }));
 app.use("/sun-toggle.js", serveStatic({ path: "./public/sun-toggle.js" }));
+app.use("/feature-cartoons.js", serveStatic({ path: "./public/feature-cartoons.js" }));
 app.use("/posthog-init.js", serveStatic({ path: "./public/posthog-init.js" }));
 app.use("/pwa-install.js", serveStatic({ path: "./public/pwa-install.js" }));
 

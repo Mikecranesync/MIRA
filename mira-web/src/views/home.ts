@@ -7,6 +7,7 @@ import {
   stateBadge,
   stopCard,
 } from "../lib/components.js";
+import { navbar, footer } from "./_topbar.js";
 
 const OEMS = [
   "Allen-Bradley",
@@ -83,7 +84,7 @@ function hero(): string {
   <div class="fl-hero-inner">
     <p class="fl-hero-eyebrow">Industrial Maintenance, AI-native</p>
     <h1 id="fl-hero-h1" class="fl-hero-h1">FactoryLM</h1>
-    <h2 class="fl-hero-h2">The AI workspace for industrial maintenance.</h2>
+    <h2 class="fl-hero-h2">Compound-interest knowledge for industrial maintenance.</h2>
     <h3 class="fl-hero-h3">Meet <strong>MIRA</strong> — your agent on the floor.</h3>
     <p class="fl-hero-sub">Manuals, sensors, photos, work orders, investigations — organized into Projects. MIRA answers from cited sources at 2&nbsp;AM, when you scan the QR sticker on a broken machine.</p>
     <div class="fl-hero-cta">
@@ -92,11 +93,11 @@ function hero(): string {
     </div>
     <div class="fl-hero-screenshot" aria-hidden="true">
       <img
-        src="/images/app-screenshot-desktop.png"
-        alt="MIRA work orders screen showing auto-generated maintenance tasks"
+        src="/images/hero-fault-lookup-cartoon.png"
+        alt="Comic split-panel: a maintenance tech struggles with a cryptic PowerFlex 525 fault code on the left; on the right, the same tech chats with MIRA and gets the manual plus historical fault data instantly"
         class="fl-hero-screenshot-img"
-        width="1280"
-        height="800"
+        width="1792"
+        height="1024"
         loading="lazy"
         decoding="async"
       >
@@ -160,6 +161,48 @@ function compareSection(): string {
 </section>`;
 }
 
+function cartoonRow(): string {
+  // Three placeholder divs that feature-cartoons.js mounts SVG demos into.
+  // The script self-installs styles for `.cartoon-demo` and child classes.
+  // Lede copy is intentionally short — the cartoons carry the storytelling.
+  const cells = [
+    {
+      id: "cartoon-fd",
+      heading: "Fault diagnosis",
+      lede: "Type a fault code. Get a cited answer with the page from the manual.",
+      label: "Fault diagnosis demonstration",
+    },
+    {
+      id: "cartoon-cmms",
+      heading: "CMMS integration",
+      lede: "Diagnoses become work orders. Synced to MaintainX, Limble, UpKeep.",
+      label: "CMMS integration demonstration",
+    },
+    {
+      id: "cartoon-vv",
+      heading: "Voice + vision",
+      lede: "Photo of a nameplate. MIRA reads the model and diagnoses from the picture.",
+      label: "Voice and vision demonstration",
+    },
+  ];
+  const cellsHtml = cells
+    .map(
+      (c) => `<div class="fl-cartoon-cell">
+    <h3 class="fl-cartoon-h">${c.heading}</h3>
+    <p class="fl-cartoon-lede">${c.lede}</p>
+    <div id="${c.id}" class="cartoon-demo" role="region" aria-label="${c.label}" tabindex="0"></div>
+  </div>`
+    )
+    .join("\n  ");
+  return `<section class="fl-section fl-cartoons" aria-labelledby="fl-cartoons-h">
+  <h2 id="fl-cartoons-h" class="fl-section-h">What MIRA does on the floor.</h2>
+  <p class="fl-section-sub">Three workflows. One agent.</p>
+  <div class="fl-cartoon-row">
+  ${cellsHtml}
+  </div>
+</section>`;
+}
+
 function featureStrip(): string {
   const stopHtml = stopCard(
     "Voltage above safe range",
@@ -197,38 +240,11 @@ function pricingTeaser(): string {
 </section>`;
 }
 
-function navbar(): string {
-  return `<header class="fl-topbar" role="banner">
-  <a class="fl-topbar-brand" href="/" aria-label="FactoryLM home">FactoryLM</a>
-  <nav class="fl-topbar-nav" aria-label="Primary">
-    <a href="/cmms" data-cta="nav-cmms">CMMS</a>
-    <a href="/pricing" data-cta="nav-pricing">Pricing</a>
-    <a href="/blog" data-cta="nav-blog">Blog</a>
-    <a href="/limitations" data-cta="nav-limitations">Limitations</a>
-    <a href="/security" data-cta="nav-security">Security</a>
-  </nav>
-  <div class="fl-topbar-cta">
-    ${btnGhost("Sign in", { href: "/cmms", cta: "nav-signin" })}
-  </div>
-</header>`;
-}
-
-function footer(): string {
-  return `<footer class="fl-footer" role="contentinfo">
-  <div class="fl-footer-inner">
-    <p class="fl-footer-brand">FactoryLM &middot; Built for industrial maintenance.</p>
-    <ul class="fl-footer-links">
-      <li><a href="/limitations" data-cta="footer-limitations">Limitations</a></li>
-      <li><a href="/trust" data-cta="footer-trust">Trust</a></li>
-      <li><a href="/privacy" data-cta="footer-privacy">Privacy</a></li>
-      <li><a href="/terms" data-cta="footer-terms">Terms</a></li>
-    </ul>
-    <button type="button" id="fl-sun-toggle" class="fl-sun-toggle" aria-pressed="false" aria-label="Toggle high-contrast outdoor mode" data-cta="sun-toggle">☀ Sun-readable</button>
-  </div>
-</footer>`;
-}
-
 const PAGE_STYLES = `
+/* Page-specific styles for the home view. Dark theme tokens are
+   inherited from /_dark-theme.css (linked from <head>) so this block
+   only carries layout and typography rules unique to the home page. */
+
 .fl-topbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: var(--fl-sp-4) var(--fl-sp-6);
@@ -326,6 +342,32 @@ const PAGE_STYLES = `
 }
 .fl-project-card-body { color: var(--fl-muted-600); line-height: 1.5; }
 
+.fl-cartoon-row {
+  display: grid; gap: var(--fl-sp-6);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 880px) {
+  .fl-cartoon-row { grid-template-columns: repeat(3, 1fr); }
+}
+.fl-cartoon-cell {
+  display: flex; flex-direction: column; gap: var(--fl-sp-2);
+}
+.fl-cartoon-h {
+  font-size: var(--fl-type-lg);
+  color: var(--fl-navy-900);
+  margin: 0;
+}
+.fl-cartoon-lede {
+  color: var(--fl-muted-600);
+  font-size: var(--fl-type-base);
+  line-height: 1.5;
+  margin: 0 0 var(--fl-sp-2);
+}
+@media (min-width: 880px) {
+  /* Keep cartoon top edges aligned even when ledes wrap differently */
+  .fl-cartoon-lede { min-height: 3.5em; }
+}
+
 .fl-feature-grid {
   display: grid; gap: var(--fl-sp-6);
   grid-template-columns: 1fr;
@@ -401,20 +443,23 @@ export function renderHome(reqUrl?: string): string {
 <html lang="en">
 <head>
   ${headHtml}
+  <link rel="stylesheet" href="/_dark-theme.css">
   <style>${PAGE_STYLES}</style>
 </head>
 <body>
-  ${navbar()}
+  ${navbar({ currentPath: "/" })}
   <main>
     ${hero()}
     ${trustBand("68,000+ chunks of OEM documentation indexed", OEMS)}
     ${projectCardRow()}
     ${compareSection()}
+    ${cartoonRow()}
     ${featureStrip()}
     ${pricingTeaser()}
   </main>
   ${footer()}
   <script src="/sun-toggle.js"></script>
+  <script src="/feature-cartoons.js" defer></script>
 </body>
 </html>`;
 }
