@@ -70,8 +70,9 @@ describe("#SO-100 renderHome — homepage refactor acceptance", () => {
     expect(html).toMatch(/href="\/pricing"[^>]*data-cta="pricing-teaser-primary"/);
   });
 
-  test("AC7: footer with /limitations, /trust, /privacy, /terms", () => {
-    expect(html).toContain('href="/limitations"');
+  test("AC7: footer with /trust, /privacy, /terms (limitations disabled until page exists)", () => {
+    // /limitations page not yet built — link uses href="#" with aria-disabled until the page exists
+    expect(html).toContain('data-cta="footer-limitations"');
     expect(html).toContain('href="/trust"');
     expect(html).toContain('href="/privacy"');
     expect(html).toContain('href="/terms"');

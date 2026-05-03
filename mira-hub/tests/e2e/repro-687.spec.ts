@@ -2,7 +2,7 @@ import { test } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 
-const HUB = "https://app.factorylm.com/hub";
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
 const CREDS = { email: "playwright@factorylm.com", password: "TestPass123" };
 
 test("repro #687/#717 — /usage hard reload + chart blank", async ({ page }) => {

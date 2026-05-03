@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { BottomTabs } from "@/components/layout/bottom-tabs";
 import { MobileTopBar } from "@/components/layout/mobile-topbar";
 import { TrialBanner } from "@/components/trial-banner";
+import { OnboardingTour } from "@/components/onboarding/tour";
 
 // Force dynamic rendering on all (hub)/* pages so the auth middleware
 // runs on every request. Without this, pages with no data fetching
@@ -33,6 +34,7 @@ export default function HubLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       <BottomTabs />
+      <OnboardingTour />
     </div>
   );
 }

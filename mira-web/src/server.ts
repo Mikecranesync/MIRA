@@ -4,11 +4,14 @@
  * Hono on Bun. Routes:
  *   GET  /                        → Homepage
  *   GET  /cmms                    → Serve CMMS landing / dashboard page
+ *   GET  /limitations             → Honest "what we don't do yet" page (#677)
  *   GET  /activated               → Post-payment single-purpose upload page
  *   GET  /blog                    → Blog index (articles + fault codes link)
  *   GET  /blog/fault-codes        → Fault code library index
  *   GET  /blog/:slug              → Individual blog post or fault code article
  *   GET  /sitemap.xml             → Dynamic sitemap
+ *   GET  /llms.txt                → LLM/AI-crawler product summary (GEO foundation)
+ *   GET  /llms-full.txt           → Extended LLM content disclosure
  *   GET  /api/health              → Liveness probe
  *   POST /api/register            → Create pending tenant + start nurture
  *   GET  /api/checkout            → Stripe Checkout redirect ($97/mo)
@@ -30,6 +33,8 @@ import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
+import { renderLimitations } from "./views/limitations.js";
+import { renderSecurity } from "./views/security.js";
 import {
   createMagicLink,
   validateAndConsumeToken,
@@ -84,6 +89,7 @@ import { getMfaState } from "./lib/quota.js";
 import { decryptSecret, verifyTotp, findRecoveryCodeIndex } from "./lib/mfa.js";
 import {
   createCheckoutSession,
+  createDirectCheckoutSession,
   createPortalSession,
   constructWebhookEvent,
 } from "./lib/stripe.js";
@@ -110,6 +116,7 @@ import {
 import { m } from "./routes/m.js";
 import { mChooser } from "./routes/m-chooser.js";
 import { mReport, mReportApi } from "./routes/m-report.js";
+import { mRegister, mRegisterApi } from "./routes/m-register.js";
 import { adminPages, adminApi } from "./routes/admin/qr-print.js";
 import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
@@ -157,11 +164,33 @@ export const app = new Hono();
 // Middleware
 app.use("*", cors());
 
+// Ensure Content-Length is set on all non-streaming text responses.
+// Bun sends HTML/JSON with chunked transfer encoding; nginx cannot synthesize
+// Content-Length for HEAD from a chunked body and returns 0 instead — breaking
+// LinkedIn/Slack preview unfurls and uptime monitors (issue #617).
+// Buffering here sets Content-Length on the GET response; Hono then propagates
+// it to HEAD responses automatically (strips body, keeps header).
+app.use("*", async (c, next) => {
+  await next();
+  const ct = c.res.headers.get("content-type") ?? "";
+  if (
+    !c.res.headers.has("content-length") &&
+    !ct.includes("event-stream") &&
+    (ct.startsWith("text/") || ct.startsWith("application/json") || ct.startsWith("application/xml"))
+  ) {
+    const body = await c.res.arrayBuffer();
+    c.res = new Response(body, { status: c.res.status, headers: c.res.headers });
+    c.res.headers.set("content-length", String(body.byteLength));
+  }
+});
+
 // QR scan routes — /m/:asset_tag (auth optional), /m/:asset_tag/choose, /m/:asset_tag/report
-app.route("/m", mChooser);   // GET /m/:asset_tag/choose[?set_pref=...]
-app.route("/m", mReport);    // GET /m/:asset_tag/report
-app.route("/m", m);          // GET /m/:asset_tag (main entry — must register last so subroutes match first)
-app.route("/", mReportApi);  // POST /api/m/report
+app.route("/m", mChooser);     // GET /m/:asset_tag/choose[?set_pref=...]
+app.route("/m", mReport);      // GET /m/:asset_tag/report
+app.route("/m", mRegister);    // GET /m/:asset_tag/register (auto-register form)
+app.route("/m", m);            // GET /m/:asset_tag (main entry — must register last so subroutes match first)
+app.route("/", mReportApi);    // POST /api/m/report
+app.route("/", mRegisterApi);  // POST /api/m/auto-register (#439)
 
 // QR test page — branded asset sheet, no auth required (sales/demo tool)
 app.route("/", qrTest);                 // handles GET /qr-test[?tenant_id=&tenant_name=]
@@ -262,6 +291,7 @@ app.use("/_tokens.css", serveStatic({ path: "./public/_tokens.css" }));
 app.use("/_components.css", serveStatic({ path: "./public/_components.css" }));
 app.use("/sun-toggle.js", serveStatic({ path: "./public/sun-toggle.js" }));
 app.use("/posthog-init.js", serveStatic({ path: "./public/posthog-init.js" }));
+app.use("/pwa-install.js", serveStatic({ path: "./public/pwa-install.js" }));
 
 // Dynamic sitemap (replaces static file)
 app.get("/sitemap.xml", (c) => {
@@ -283,6 +313,8 @@ app.get("/sitemap.xml", (c) => {
       priority: "0.7",
       freq: "monthly" as const,
     })),
+    { loc: "/limitations", priority: "0.5", freq: "monthly" },
+    { loc: "/security", priority: "0.5", freq: "monthly" },
     { loc: "/privacy", priority: "0.3", freq: "yearly" },
     { loc: "/terms", priority: "0.3", freq: "yearly" },
     { loc: "/trust", priority: "0.4", freq: "monthly" },
@@ -355,6 +387,16 @@ app.get("/cmms", (c) => {
   return c.html(renderCmms(c.req.url));
 });
 
+// Limitations page (#677 / #SO-005) — honest "what we don't do yet"
+app.get("/limitations", (c) => {
+  return c.html(renderLimitations(c.req.url));
+});
+
+// Security page (#893) — infrastructure, data protection, AI safety, compliance roadmap
+app.get("/security", (c) => {
+  return c.html(renderSecurity(c.req.url));
+});
+
 // Sample workspace placeholder (#SO-070 AC4) — Phase-0 destination after sign-in.
 app.get("/sample", (c) => {
   return c.html(renderSamplePlaceholder());
@@ -386,6 +428,21 @@ app.get("/pricing", async (c) => {
   const file = Bun.file("./public/pricing.html");
   return new Response(await file.text(), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+// GEO foundation (#681) — llmstxt.org standard for AI-crawler content disclosure
+app.get("/llms.txt", async (c) => {
+  const file = Bun.file("./public/llms.txt");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+  });
+});
+
+app.get("/llms-full.txt", async (c) => {
+  const file = Bun.file("./public/llms-full.txt");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=86400" },
   });
 });
 
@@ -675,9 +732,12 @@ app.post("/api/register", async (c) => {
 
 app.post("/api/magic-link", async (c) => {
   let email: string;
+  let plan: string | undefined;
   try {
     const body = await c.req.json();
     email = String(body?.email ?? "").trim().toLowerCase();
+    const rawPlan = String(body?.plan ?? "").trim().toLowerCase();
+    plan = rawPlan && /^[a-z]{1,32}$/.test(rawPlan) ? rawPlan : undefined;
   } catch {
     return c.json({ error: "Invalid request body" }, 400);
   }
@@ -744,6 +804,7 @@ app.post("/api/magic-link", async (c) => {
       tenantId: tenant.id,
       ip,
       userAgent,
+      meta: plan ? { plan } : undefined,
     }).catch(() => {});
 
     sendMagicLinkEmail(email, loginUrl)
@@ -855,6 +916,17 @@ function magicLinkErrorPage(msg: string): string {
 // Stripe — Checkout, Webhook, Billing Portal
 // ---------------------------------------------------------------------------
 
+// Direct checkout — no email required, Stripe collects it. Used by pricing page buttons.
+app.get("/api/checkout/session", async (c) => {
+  try {
+    const url = await createDirectCheckoutSession();
+    return c.redirect(url, 303);
+  } catch (err) {
+    console.error("[checkout/session] Error:", err);
+    return c.redirect("/pricing?checkout=error", 303);
+  }
+});
+
 // Checkout redirect (unauthenticated — called from payment email link)
 app.get("/api/checkout", async (c) => {
   const tid = c.req.query("tid");
@@ -884,6 +956,54 @@ app.get("/api/checkout", async (c) => {
   }
 });
 
+// Direct checkout from pricing page — finds/creates pending tenant then redirects to Stripe.
+// Accepts { email, company? }. Returns { url } for JS redirect or redirects directly.
+app.post("/api/checkout/start", async (c) => {
+  const ip = getClientIp(c.req.raw.headers);
+  const rl = checkRegisterRateLimit(ip);
+  if (!rl.allowed) {
+    c.header("Retry-After", String(rl.retryAfterSec));
+    return c.json({ error: "Too many attempts. Try again shortly." }, 429);
+  }
+
+  let body: { email?: string; company?: string };
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const { email, company } = body;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: "Valid email required" }, 400);
+  }
+
+  try {
+    let tenantId: string;
+    const existing = await findTenantByEmail(email);
+    if (existing) {
+      tenantId = existing.id;
+      if (existing.tier === "active") {
+        return c.json({ url: "/cmms?payment=success" });
+      }
+    } else {
+      tenantId = crypto.randomUUID();
+      await createTenant({
+        id: tenantId,
+        email,
+        company: company || email.split("@")[1] || "unknown",
+        firstName: "",
+        tier: "pending",
+        atlasPassword: "",
+        atlasCompanyId: 0,
+        atlasUserId: 0,
+      });
+    }
+
+    const checkoutUrl = await createCheckoutSession(tenantId, email);
+    return c.json({ url: checkoutUrl });
+  } catch (err) {
+    console.error("[checkout/start] Error:", err);
+    return c.json({ error: "Failed to create checkout session" }, 500);
+  }
+});
+
 // Stripe webhook (unauthenticated — Stripe sends events here)
 app.post("/api/stripe/webhook", async (c) => {
   const signature = c.req.header("stripe-signature");
@@ -909,11 +1029,6 @@ app.post("/api/stripe/webhook", async (c) => {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
-      const tenantId = session.metadata?.tenant_id;
-      if (!tenantId) {
-        console.error("[stripe-webhook] No tenant_id in session metadata");
-        break;
-      }
 
       const customerId = typeof session.customer === "string"
         ? session.customer
@@ -921,6 +1036,38 @@ app.post("/api/stripe/webhook", async (c) => {
       const subscriptionId = typeof session.subscription === "string"
         ? session.subscription
         : session.subscription?.id || "";
+
+      let tenantId = session.metadata?.tenant_id;
+
+      // No tenant_id — direct checkout from pricing page. Find or create by email.
+      if (!tenantId) {
+        const email = session.customer_details?.email;
+        if (!email) {
+          console.error("[stripe-webhook] No tenant_id and no email in session");
+          break;
+        }
+        let t = await findTenantByEmail(email);
+        if (!t) {
+          const newId = crypto.randomUUID();
+          await createTenant({
+            id: newId,
+            email,
+            company: email.split("@")[1] || "unknown",
+            firstName: "",
+            tier: "pending",
+            atlasPassword: "",
+            atlasCompanyId: 0,
+            atlasUserId: 0,
+          });
+          t = await findTenantById(newId);
+        }
+        if (!t) {
+          console.error("[stripe-webhook] Could not find/create tenant for", email);
+          break;
+        }
+        tenantId = t.id;
+        console.log("[stripe-webhook] Matched tenant via email:", tenantId, email);
+      }
 
       await updateTenantStripe(tenantId, customerId, subscriptionId);
       await updateTenantTier(tenantId, "active");

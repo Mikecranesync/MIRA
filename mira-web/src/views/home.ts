@@ -47,6 +47,34 @@ const ORG_AND_SITE_LD = {
       name: "FactoryLM",
       publisher: { "@id": "https://factorylm.com/#org" },
     },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://factorylm.com/#app",
+      name: "MIRA — Maintenance Intelligence & Resource Assistant",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web, Telegram, Slack",
+      url: "https://factorylm.com/",
+      description: "AI-native workspace for industrial maintenance. Answers fault-code questions with cited sources from 68,000+ OEM documentation chunks. Safety keywords escalate to humans. No per-seat fees.",
+      offers: [
+        {
+          "@type": "Offer",
+          name: "MIRA Troubleshooter",
+          price: "97",
+          priceCurrency: "USD",
+          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "per plant per month" },
+          url: "https://factorylm.com/pricing",
+        },
+        {
+          "@type": "Offer",
+          name: "MIRA Integrated",
+          price: "297",
+          priceCurrency: "USD",
+          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "per plant per month" },
+          url: "https://factorylm.com/pricing",
+        },
+      ],
+      publisher: { "@id": "https://factorylm.com/#org" },
+    },
   ],
 };
 
@@ -61,6 +89,17 @@ function hero(): string {
     <div class="fl-hero-cta">
       ${btnPrimary("Start Free — magic link", { href: "/cmms", cta: "hero-primary" })}
       ${btnGhost("See pricing →", { href: "/pricing", cta: "hero-secondary" })}
+    </div>
+    <div class="fl-hero-screenshot" aria-hidden="true">
+      <img
+        src="/images/app-screenshot-desktop.png"
+        alt="MIRA work orders screen showing auto-generated maintenance tasks"
+        class="fl-hero-screenshot-img"
+        width="1280"
+        height="800"
+        loading="lazy"
+        decoding="async"
+      >
     </div>
   </div>
 </section>`;
@@ -127,7 +166,7 @@ function featureStrip(): string {
     "MIRA detected 480 V on a 240 V branch via the photo you sent at 02:14. Do not energize. Verify with a meter before any next step.",
     [
       { label: "Acknowledge", href: "#" },
-      { label: "Call supervisor", href: "tel:+1" },
+      { label: "Call supervisor", href: "#" },
     ]
   );
   return `<section class="fl-section fl-feature-strip" aria-labelledby="fl-feature-h">
@@ -166,6 +205,7 @@ function navbar(): string {
     <a href="/pricing" data-cta="nav-pricing">Pricing</a>
     <a href="/blog" data-cta="nav-blog">Blog</a>
     <a href="/limitations" data-cta="nav-limitations">Limitations</a>
+    <a href="/security" data-cta="nav-security">Security</a>
   </nav>
   <div class="fl-topbar-cta">
     ${btnGhost("Sign in", { href: "/cmms", cta: "nav-signin" })}
@@ -296,6 +336,22 @@ const PAGE_STYLES = `
 .fl-state-row {
   display: flex; flex-wrap: wrap; gap: var(--fl-sp-3);
   justify-content: center;
+}
+
+.fl-hero-screenshot {
+  margin-top: var(--fl-sp-10);
+  border-radius: var(--fl-radius-lg);
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.10);
+  border: 1px solid var(--fl-rule-200);
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.fl-hero-screenshot-img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .fl-pricing-teaser { text-align: center; }

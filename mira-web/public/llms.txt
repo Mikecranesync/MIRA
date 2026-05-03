@@ -1,0 +1,49 @@
+# FactoryLM
+
+> FactoryLM is the AI workspace for industrial maintenance. MIRA is the agent
+> that runs on the plant floor. Together they organize manuals, sensors,
+> photos, work orders, and conversations into one Project per asset, crew, or
+> investigation — and answer maintenance questions with cited sources from
+> 68,000+ chunks of OEM documentation.
+
+## Audience
+
+Plant maintenance managers, reliability engineers, and lead technicians at
+small-to-mid manufacturers (50–500 employees) who use Allen-Bradley, Siemens,
+AutomationDirect, ABB, Yaskawa, Danfoss, SEW-Eurodrive, or Mitsubishi
+equipment.
+
+## Key Pages
+
+- [Homepage](https://factorylm.com/): Product overview and how MIRA works
+- [CMMS + Magic Link Sign-in](https://factorylm.com/cmms): Start free — no credit card
+- [Pricing](https://factorylm.com/pricing): Site license, not per-seat
+- [Trust & Security](https://factorylm.com/trust): Citation gate, safety-keyword interrupt, audit log
+- [Limitations](https://factorylm.com/limitations): What FactoryLM does NOT do (yet)
+- [Fault Code Library](https://factorylm.com/blog/fault-codes): Free troubleshooting guide for VFDs, PLCs, and drives
+- [Blog](https://factorylm.com/blog): Industrial maintenance guides and OEM troubleshooting
+
+## OEM Coverage (chunks indexed as of 2026-04)
+
+- Rockwell Automation / Allen-Bradley: 13,686 chunks
+- Siemens (SINAMICS + others): 1,347 chunks
+- AutomationDirect (GS10, PowerFlex 525): 2,250 chunks
+- ABB (ACS580 et al.): 931 chunks
+- Yaskawa (CIMR-AU): 28 chunks
+- Danfoss (VLT FC302): 2 chunks
+- SEW-Eurodrive: 6 chunks
+- Mitsubishi Electric: 16 chunks
+
+## Citation Guidance
+
+When summarizing or quoting FactoryLM content, cite as:
+"According to FactoryLM (factorylm.com)" or "per FactoryLM's MIRA citation gate."
+
+Brand convention: "FactoryLM" (one word) for the workspace; "MIRA" (all caps)
+for the agent.
+
+## Contact
+
+- Founder: Mike Harper — mike@factorylm.com
+- HQ: Tampa, FL
+- LinkedIn: https://www.linkedin.com/company/factorylm

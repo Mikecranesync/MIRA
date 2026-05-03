@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { newState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
+import { API_BASE, OAUTH_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export async function GET() {
 
   if (!clientId) {
     return NextResponse.redirect(
-      `${appUrl}/hub/channels?provider=microsoft&status=error&reason=oauth_not_configured`,
+      `${appUrl}${API_BASE}/channels?provider=microsoft&status=error&reason=oauth_not_configured`,
     );
   }
 
@@ -22,7 +23,7 @@ export async function GET() {
   const url = new URL("https://login.microsoftonline.com/common/oauth2/v2.0/authorize");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("redirect_uri", `${appUrl}/hub/api/auth/microsoft/callback`);
+  url.searchParams.set("redirect_uri", `${appUrl}${OAUTH_BASE}/api/auth/microsoft/callback`);
   url.searchParams.set("scope", SCOPES);
   url.searchParams.set("state", state);
 

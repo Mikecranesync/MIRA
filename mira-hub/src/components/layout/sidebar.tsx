@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -8,8 +8,9 @@ import {
   Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
-  Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon,
+  Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon, HelpCircle,
 } from "lucide-react";
+import { restartTour } from "@/components/onboarding/tour";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/providers/access-control";
 import { useTheme } from "@/providers/theme-provider";
@@ -34,6 +35,7 @@ function NavItem({ item, collapsed, active, label }: NavItemProps) {
     <Link
       href={item.href}
       title={collapsed ? label : undefined}
+      data-tour={item.key}
       className={cn(
         "flex items-center rounded-lg text-sm font-medium transition-all duration-150",
         collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5"
@@ -61,12 +63,22 @@ function NavItem({ item, collapsed, active, label }: NavItemProps) {
   );
 }
 
+type MeData = { name: string; initials: string; role: string };
+
 export function Sidebar({ role = "admin" }: { role?: string }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const t = useTranslations("nav");
   const tTheme = useTranslations("theme");
+  const [me, setMe] = useState<MeData | null>(null);
+
+  useEffect(() => {
+    fetch("/api/me")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: MeData | null) => d && setMe(d))
+      .catch(() => {});
+  }, []);
 
   const visible = NAV_ITEMS.filter((item) =>
     (item.roles as readonly string[]).includes(role)
@@ -173,9 +185,22 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       <div className="p-3 space-y-1" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
         {!collapsed && (
           <p className="text-[10px] text-center leading-tight pb-1" style={{ color: "#475569" }}>
-            Maintenance Intelligence Platform
+            Maintenance Intelligence &amp; Resource Assistant
           </p>
         )}
+
+        <button
+          onClick={restartTour}
+          className="w-full flex items-center rounded-lg transition-colors px-2 py-1.5"
+          style={{ color: "#64748B" }}
+          onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--sidebar-hover)")}
+          onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+          title="Restart onboarding tour"
+          aria-label="Restart onboarding tour"
+        >
+          <HelpCircle className="w-4 h-4 flex-shrink-0" />
+          {!collapsed && <span className="ml-3 text-xs">Tour</span>}
+        </button>
 
         <LanguageSelector collapsed={collapsed} dropUp />
 
@@ -200,18 +225,18 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
           <div className="flex justify-center">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
               style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)", color: "white" }}>
-              MH
+              {me?.initials ?? "?"}
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
               style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)", color: "white" }}>
-              MH
+              {me?.initials ?? "?"}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate" style={{ color: "var(--sidebar-fg)" }}>Mike Harper</p>
-              <p className="text-[11px] capitalize" style={{ color: "#64748B" }}>{role}</p>
+              <p className="text-xs font-medium truncate" style={{ color: "var(--sidebar-fg)" }}>{me?.name ?? "—"}</p>
+              <p className="text-[11px] capitalize" style={{ color: "#64748B" }}>{me?.role ?? role}</p>
             </div>
             <button
               className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"

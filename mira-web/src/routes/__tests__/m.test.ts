@@ -60,16 +60,22 @@ describe("GET /m/:asset_tag", () => {
     expect(res.status).toBe(400);
   });
 
-  test("200 identical HTML for cross-tenant and nonexistent", async () => {
+  // §12.6 oracle-prevention: both unknown tags get the SAME status (302 to
+  // auto-register). An attacker cannot distinguish cross-tenant from nonexistent
+  // via the scan response — both redirect identically.
+  test("302 redirect to register for cross-tenant and nonexistent (oracle-safe)", async () => {
     const token = await jwt();
     const r1 = await app.request("/m/FAKE-NOEXIST", {
       headers: { Authorization: `Bearer ${token}` },
+      redirect: "manual",
     });
     const r2 = await app.request("/m/VFD-SOMEOTHERTENANT", {
       headers: { Authorization: `Bearer ${token}` },
+      redirect: "manual",
     });
-    expect(r1.status).toBe(200);
-    expect(r2.status).toBe(200);
-    expect(await r1.text()).toBe(await r2.text());
+    expect(r1.status).toBe(302);
+    expect(r2.status).toBe(302);
+    expect(r1.headers.get("Location")).toBe("/m/FAKE-NOEXIST/register");
+    expect(r2.headers.get("Location")).toBe("/m/VFD-SOMEOTHERTENANT/register");
   });
 });

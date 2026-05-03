@@ -10,7 +10,7 @@
 import { test, expect, Page, BrowserContext } from "@playwright/test";
 
 const BASE = process.env.E2E_BASE_URL ?? "https://app.factorylm.com";
-const HUB = `${BASE}/hub`;
+const HUB = process.env.HUB_URL ?? `${BASE}/hub`;
 const LOGIN_EMAIL = process.env.E2E_HUB_EMAIL ?? "mike@factorylm.com";
 const LOGIN_PASSWORD = process.env.E2E_HUB_PASSWORD ?? "";
 

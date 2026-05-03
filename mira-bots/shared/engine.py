@@ -46,6 +46,7 @@ from .guardrails import (
 )
 from .inference.router import InferenceRouter
 from .integrations.atlas_cmms import AtlasCMMSClient
+from .integrations.hub_neon import create_hub_work_order
 from .integrations.pm_suggestions import (
     PMSuggestion,
     is_pm_acceptance,
@@ -533,6 +534,15 @@ class Supervisor:
                 if expanded:
                     logger.info("Selection resolved: '%s' → '%s'", message, expanded)
                     message = expanded
+                    # Clear stale options so this selection doesn't persist into
+                    # the next turn and re-resolve against the wrong question.
+                    _ctx_opt = state.get("context") or {}
+                    _sc_opt = _ctx_opt.get("session_context") or {}
+                    _sc_opt.pop("last_options", None)
+                    _sc_opt.pop("last_question", None)
+                    _ctx_opt["session_context"] = _sc_opt
+                    state["context"] = _ctx_opt
+                    self._save_state(chat_id, state)
 
             # Session follow-up detection: now runs on the already-expanded message.
             if detect_session_followup(message, sc, state["state"]):
@@ -568,6 +578,7 @@ class Supervisor:
                 _router_intent = {
                     "safety": "safety_concern",
                     "documentation": "find_documentation",
+                    "instructional": "answer_question",
                     "greeting": "greeting_or_chitchat",
                     "help": "greeting_or_chitchat",
                     "industrial": "continue_current",
@@ -606,6 +617,11 @@ class Supervisor:
             if _router_intent == "greeting_or_chitchat" and state["state"] == "IDLE":
                 return self._greeting_response(state, chat_id, trace_id)
 
+            # Procedural how-to questions: answer from knowledge, skip doc crawl.
+            # Keyword "instructional" also routes here via the fallback mapping above.
+            if _router_intent == "answer_question" or _keyword_intent == "instructional":
+                return await self._handle_instructional_question(chat_id, message, state, trace_id)
+
             # find_documentation: let the existing specificity-gate block handle it below
             if _router_intent == "find_documentation":
                 intent = "documentation"
@@ -639,6 +655,19 @@ class Supervisor:
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
             if not self._is_doc_specific(mfr, combined):
+                # If nameplate was already scanned, asset_identified is "Vendor, Model".
+                # Skip gathering — we already know enough to crawl.
+                asset_id = state.get("asset_identified", "")
+                if "," in asset_id:
+                    fallback_mfr = mfr or asset_id.split(",", 1)[0].strip()
+                    return await self._do_documentation_lookup(
+                        chat_id,
+                        message,
+                        state,
+                        trace_id,
+                        resolved_tenant,
+                        vendor_override=fallback_mfr,
+                    )
                 return await self._enter_manual_lookup_gathering(
                     chat_id, message, state, trace_id, mfr
                 )
@@ -967,79 +996,111 @@ class Supervisor:
 
         # ---------------------------------------------------------------------------
         # Diagnosis self-critique quality gate (AutoGen-style nudge loop)
-        # Runs only on DIAGNOSIS state, text-only turns, caps at _CRITIQUE_MAX_ATTEMPTS.
+        # Runs only on DIAGNOSIS state, text-only turns.
+        #
+        # diag_rev_count tracks how many times this fault episode has already sent
+        # the groundedness clarifying question.  It persists across turns (unlike the
+        # old revision_attempts which caused the same question to repeat indefinitely
+        # and then permanently disabled the critique after 2 turns).  The critique
+        # itself runs every DIAGNOSIS turn — the cap is only on how many times we
+        # ask the user for more info, not on how many times we evaluate quality.
         # ---------------------------------------------------------------------------
         if state["state"] == "DIAGNOSIS" and not photo_b64 and not _CRITIQUE_DISABLED:
             ctx_sc = state.get("context") or {}
-            revision_attempts = ctx_sc.get("revision_attempts", 0)
+            diag_rev_count = ctx_sc.get("diag_rev_count", 0)
 
-            if revision_attempts < _CRITIQUE_MAX_ATTEMPTS:
-                scores = await self._self_critique_diagnosis(parsed["reply"], message, chat_id)
-                low_dims = [d for d, s in scores.items() if s < _CRITIQUE_THRESHOLD]
+            scores = await self._self_critique_diagnosis(parsed["reply"], message, chat_id)
+            low_dims = [d for d, s in scores.items() if s < _CRITIQUE_THRESHOLD]
 
-                if low_dims:
-                    revision_attempts += 1
-                    ctx_sc["revision_attempts"] = revision_attempts
+            if low_dims:
+                logger.info(
+                    "SELF_CRITIQUE_TRIGGERED chat_id=%s dims=%s scores=%s diag_rev_count=%d",
+                    chat_id,
+                    low_dims,
+                    {d: scores[d] for d in low_dims},
+                    diag_rev_count,
+                )
+
+                if "groundedness" in low_dims and diag_rev_count == 0:
+                    # First time this fault episode has low groundedness — ask one
+                    # targeted clarifying question and park in DIAGNOSIS_REVISION.
+                    note = scores.get("groundedness_note", "")
+                    clarifying_q = (
+                        "Before I can give you a confident diagnosis, could you "
+                        "share one more detail — what exact fault code, alarm "
+                        "number, or behaviour is the equipment showing right now?\n\n"
+                        "1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n"
+                        "2. Visible symptom (e.g. trips on start, runs slow, won't start)\n"
+                        "3. Sensor reading (e.g. pressure at 120 PSI, temp at 90°C)\n"
+                        "4. Other — describe what you're seeing"
+                    )
+                    if note:
+                        clarifying_q += f"\n\n*(My confidence was limited because: {note})*"
+                    ctx_sc["diag_rev_count"] = diag_rev_count + 1
                     ctx_sc["revision_critique"] = {
                         "dims": low_dims,
-                        "attempts": revision_attempts,
+                        "diag_rev_count": diag_rev_count + 1,
                         "scores": scores,
                     }
                     state["context"] = ctx_sc
-                    logger.info(
-                        "SELF_CRITIQUE_TRIGGERED chat_id=%s dims=%s scores=%s attempt=%d",
-                        chat_id,
-                        low_dims,
-                        {d: scores[d] for d in low_dims},
-                        revision_attempts,
-                    )
+                    state["state"] = "DIAGNOSIS_REVISION"
+                    parsed["reply"] = clarifying_q
+                    # Populate last_options so "1."/"2."/"3."/"4." resolve next turn
+                    sc = ctx_sc.get("session_context", {})
+                    sc["last_options"] = [
+                        "Fault/alarm code displayed",
+                        "Visible symptom",
+                        "Sensor reading",
+                        "Other — describe what you're seeing",
+                    ]
+                    sc["last_question"] = clarifying_q[:200]
+                    ctx_sc["session_context"] = sc
+                    state["context"] = ctx_sc
 
-                    if "groundedness" in low_dims:
-                        # Need more info from the user → ask a targeted clarifying
-                        # question and park in DIAGNOSIS_REVISION.
-                        note = scores.get("groundedness_note", "")
-                        clarifying_q = (
-                            "Before I can give you a confident diagnosis, could you "
-                            "share one more detail — what exact fault code, alarm "
-                            "number, or behaviour is the equipment showing right now? "
-                            "(e.g. fault light colour, code displayed, or what it does "
-                            "when the fault occurs)"
-                        )
-                        if note:
-                            clarifying_q += f"\n\n*(My confidence was limited because: {note})*"
-                        state["state"] = "DIAGNOSIS_REVISION"
-                        parsed["reply"] = clarifying_q
-                    else:
-                        # Helpfulness / instruction gap — regenerate inline without
-                        # asking the user for anything.
-                        critique_hint = "; ".join(f"{d} score={scores[d]}" for d in low_dims)
-                        revised_message = (
-                            f"[Quality note: previous answer had low {critique_hint}. "
-                            f"Regenerate: be more specific, concrete, and actionable. "
-                            f"User question: {message[:200]}]\n\n{message}"
-                        )
-                        try:
-                            raw2, parsed2 = await self._call_with_correction(
-                                revised_message, state, None, tenant_id=resolved_tenant
-                            )
-                            if raw2 is not None and parsed2.get("reply"):
-                                parsed = parsed2
-                                logger.info(
-                                    "SELF_CRITIQUE_REVISED chat_id=%s attempt=%d",
-                                    chat_id,
-                                    revision_attempts,
-                                )
-                        except Exception as exc:
-                            logger.warning(
-                                "SELF_CRITIQUE_REVISION_FAILED chat_id=%s error=%s",
-                                chat_id,
-                                exc,
-                            )
-                else:
-                    # Quality is acceptable — reset revision counter.
-                    ctx_sc.pop("revision_attempts", None)
+                elif "groundedness" in low_dims and diag_rev_count >= 1:
+                    # Already asked once — user's response still has low groundedness.
+                    # Don't repeat the same question.  Accept the LLM response and move on.
+                    logger.info(
+                        "SELF_CRITIQUE_GROUNDEDNESS_ACCEPT chat_id=%s diag_rev_count=%d "
+                        "— proceeding with available info",
+                        chat_id,
+                        diag_rev_count,
+                    )
+                    ctx_sc.pop("diag_rev_count", None)
                     ctx_sc.pop("revision_critique", None)
                     state["context"] = ctx_sc
+
+                else:
+                    # Helpfulness / instruction gap — regenerate inline without
+                    # asking the user for anything.
+                    critique_hint = "; ".join(f"{d} score={scores[d]}" for d in low_dims)
+                    revised_message = (
+                        f"[Quality note: previous answer had low {critique_hint}. "
+                        f"Regenerate: be more specific, concrete, and actionable. "
+                        f"User question: {message[:200]}]\n\n{message}"
+                    )
+                    try:
+                        raw2, parsed2 = await self._call_with_correction(
+                            revised_message, state, None, tenant_id=resolved_tenant
+                        )
+                        if raw2 is not None and parsed2.get("reply"):
+                            parsed = parsed2
+                            logger.info(
+                                "SELF_CRITIQUE_REVISED chat_id=%s diag_rev_count=%d",
+                                chat_id,
+                                diag_rev_count,
+                            )
+                    except Exception as exc:
+                        logger.warning(
+                            "SELF_CRITIQUE_REVISION_FAILED chat_id=%s error=%s",
+                            chat_id,
+                            exc,
+                        )
+            else:
+                # Quality is acceptable — reset groundedness clarify counter.
+                ctx_sc.pop("diag_rev_count", None)
+                ctx_sc.pop("revision_critique", None)
+                state["context"] = ctx_sc
 
         # RESOLVED hook: build UNS-structured WO draft and show preview.
         # Amend parsed["reply"] now so both history and formatted output include it.
@@ -1126,7 +1187,10 @@ class Supervisor:
             "okay",
             "y",
             "log",
+            "long",  # common typo for "log"
             "create",
+            "submit",
+            "confirm",
             "do it",
             "log it",
             "create it",
@@ -1169,7 +1233,11 @@ class Supervisor:
         }
 
     async def _post_cmms_work_order(self, wo: UNSWorkOrder) -> str:
-        """Call AtlasCMMSClient to create a work order. Returns confirmation string."""
+        """Create work order in Atlas CMMS and Hub NeonDB. Returns confirmation string."""
+        atlas_wo_id: str | None = None
+        hub_wo_number: str | None = None
+
+        # --- Atlas CMMS (via mira-mcp) ---
         client = AtlasCMMSClient(base_url=self.mcp_base_url, api_key=self.mcp_api_key)
         result = await client.create_work_order(
             title=wo.title,
@@ -1180,8 +1248,31 @@ class Supervisor:
         )
         if "error" in result:
             raise RuntimeError(result["error"])
-        wo_id = result.get("id", "unknown")
-        return f"Work order #{wo_id} created for {wo.asset or 'equipment'} — UNS: {wo.uns_topic}"
+        atlas_wo_id = str(result.get("id", "unknown"))
+
+        # --- Hub NeonDB (fire-and-forget; failure doesn't block the reply) ---
+        tenant_id = os.getenv("MIRA_TENANT_ID", wo.chat_id or "")
+        if tenant_id:
+            hub_result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: create_hub_work_order(
+                    tenant_id=tenant_id,
+                    user_id=wo.chat_id or "mira-bot",
+                    title=wo.title,
+                    description=wo.to_atlas_description(),
+                    priority=wo.priority,
+                    asset_name=wo.asset,
+                    wo_number=f"MIRA-{atlas_wo_id}",
+                    source="telegram_text",
+                ),
+            )
+            if "error" not in hub_result:
+                hub_wo_number = hub_result.get("work_order_number", "")
+            else:
+                logger.warning("Hub NeonDB WO write skipped: %s", hub_result["error"])
+
+        label = hub_wo_number or f"#{atlas_wo_id}"
+        return f"Work order {label} created for {wo.asset or 'equipment'} ✓"
 
     _CMMS_NO = frozenset({"no", "nope", "n", "skip", "cancel", "abort", "never mind", "nevermind"})
 
@@ -1217,7 +1308,7 @@ class Supervisor:
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, "RESOLVED")
 
-            # No yes/no and no recognised edit — treat as asset supply if asset is missing.
+            # No yes/no and no recognised edit — fill missing fields in order.
             if not wo_draft.get("asset") and message.strip():
                 ctx["cmms_wo_draft"] = {**wo_draft, "asset": message.strip()[:80]}
                 state["context"] = ctx
@@ -1227,6 +1318,30 @@ class Supervisor:
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, "RESOLVED")
+
+            if not wo_draft.get("fault_description") and message.strip():
+                ctx["cmms_wo_draft"] = {**wo_draft, "fault_description": message.strip()[:500]}
+                state["context"] = ctx
+                self._save_state(chat_id, state)
+                wo = UNSWorkOrder(**ctx["cmms_wo_draft"])
+                reply = "Got it — fault description noted.\n\n" + format_wo_preview(wo)
+                self._record_exchange(chat_id, state, message, reply)
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "RESOLVED")
+
+            # Unrecognised input — re-show the preview rather than silently
+            # treating it as "no" (which would discard the WO draft).
+            ctx["cmms_pending"] = True
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            wo = UNSWorkOrder(**wo_draft)
+            reply = (
+                "Say **yes** to log this work order, **no** to cancel, "
+                "or correct any field (e.g. *asset is Pump A3*).\n\n"
+            ) + format_wo_preview(wo)
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, "RESOLVED")
 
         # Consume the pending state now that we have a definitive yes/no.
         ctx.pop("cmms_wo_draft", None)
@@ -1732,6 +1847,35 @@ class Supervisor:
             return None  # fall through
 
         if has_escape_phrase:
+            if "skip" in msg_lower:
+                # "skip" = proceed with whatever we have, including nameplate context.
+                # Seed collected from asset_identified if it wasn't manually provided.
+                asset_id = state.get("asset_identified", "")
+                if "," in asset_id:
+                    parts = asset_id.split(",", 1)
+                    if not collected.get("vendor"):
+                        collected["vendor"] = parts[0].strip()
+                    if not collected.get("model"):
+                        collected["model"] = parts[1].strip()
+                ctx.pop("manual_lookup_gathering", None)
+                state["state"] = prior_state
+                state["context"] = ctx
+                logger.info(
+                    "MANUAL_LOOKUP_GATHERING_SKIP chat_id=%s vendor=%r model=%r",
+                    chat_id,
+                    collected.get("vendor", ""),
+                    collected.get("model", ""),
+                )
+                return await self._do_documentation_lookup(
+                    chat_id,
+                    message,
+                    state,
+                    trace_id,
+                    resolved_tenant,
+                    vendor_override=collected.get("vendor", ""),
+                    model_override=collected.get("model", ""),
+                    low_confidence=not (collected.get("vendor") and collected.get("model")),
+                )
             ctx.pop("manual_lookup_gathering", None)
             state["state"] = prior_state
             state["context"] = ctx
@@ -1990,11 +2134,52 @@ class Supervisor:
         tl_flush()
         return self._make_result(reply, "none", trace_id, "IDLE")
 
+    @staticmethod
+    def _parse_asset_fault_from_message(message: str) -> tuple[str, str]:
+        """Extract (asset, fault_description) from a cold WO creation message.
+
+        Handles common patterns:
+        - "create a work order for Pump 7 — leaking seal on discharge side"
+        - "log a WO for GS10 VFD on Line 1: overheating on startup"
+        - "I need a work order for cooling tower motor, vibrating badly"
+        """
+        msg = message.strip()
+        for sep in [" — ", " – ", " - ", ": ", ", "]:
+            if sep not in msg:
+                continue
+            idx = msg.index(sep)
+            pre, fault = msg[:idx], msg[idx + len(sep) :].strip()
+            m = re.search(r"\bfor\s+(.{3,}?)$", pre, re.IGNORECASE)
+            if m:
+                asset = m.group(1).strip()
+                if not re.match(r"^a?\s*work\s+order", asset, re.IGNORECASE):
+                    return asset[:80], fault[:500]
+        m = re.search(
+            r"\bfor\s+((?!a?\s*work\s+order).{3,80}?)(?:\s*[—–\-:,].*)?$",
+            msg,
+            re.IGNORECASE,
+        )
+        if m:
+            return m.group(1).strip()[:80], ""
+        return "", ""
+
     async def _handle_wo_request(
         self, chat_id: str, message: str, state: dict, trace_id: str
     ) -> dict:
-        """Router detected 'log_work_order' intent — build WO draft from current context."""
+        """Router detected 'log_work_order' intent — build WO draft from context + message."""
+        # Parse asset + fault from the message itself (cold "create WO for X — Y" pattern).
+        parsed_asset, parsed_fault = self._parse_asset_fault_from_message(message)
+
         wo = build_uns_wo_from_state(state)
+
+        # Overlay parsed values so a cold "create WO for Pump 7 — leaking seal" message
+        # produces a fully pre-filled draft without requiring prior Q1→DIAGNOSIS flow.
+        if parsed_asset:
+            wo.asset = parsed_asset
+            wo.title = f"[MIRA] {parsed_asset[:60]} — corrective action"
+        if parsed_fault and not wo.fault_description:
+            wo.fault_description = parsed_fault
+
         wo.chat_id = chat_id
         wo.fsm_state_at_creation = state.get("state", "IDLE")
         wo_dict = wo.to_dict()
@@ -2089,9 +2274,67 @@ class Supervisor:
         combined = f"{message} {state.get('asset_identified', '')}".strip()
         mfr = vendor_name_from_text(combined) or ""
         if not self._is_doc_specific(mfr, combined):
+            asset_id = state.get("asset_identified", "")
+            if "," in asset_id:
+                fallback_mfr = mfr or asset_id.split(",", 1)[0].strip()
+                return await self._do_documentation_lookup(
+                    chat_id,
+                    message,
+                    state,
+                    trace_id,
+                    resolved_tenant,
+                    vendor_override=fallback_mfr,
+                )
             return await self._enter_manual_lookup_gathering(chat_id, message, state, trace_id, mfr)
         return await self._do_documentation_lookup(
             chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
+        )
+
+    async def _handle_instructional_question(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+    ) -> dict:
+        """Answer a procedural how-to question directly via the LLM.
+
+        Bypasses the doc-crawl path and the Q1/Q2/Q3 diagnosis FSM. Injects
+        the known asset context so the answer is equipment-specific when available.
+        """
+        asset = state.get("asset_identified", "")
+        ctx = state.get("context") or {}
+        history = ctx.get("history", [])
+
+        system = (
+            "You are MIRA, an industrial maintenance assistant. "
+            "Answer the technician's procedural question with clear, numbered steps. "
+            "Be concise and practical — they are on the shop floor. "
+            "If the exact procedure varies by model, note what to check on the specific unit."
+        )
+        messages: list[dict] = [{"role": "system", "content": system}]
+        messages.extend(history[-6:])
+        user_content = f"Equipment: {asset}\n\n{message}" if asset else message
+        messages.append({"role": "user", "content": user_content})
+
+        raw, _usage = await self.router.complete(messages, max_tokens=600, session_id=chat_id)
+        reply = (
+            raw.strip()
+            if raw
+            else "I need more context about this specific equipment to answer that accurately. What's the make and model?"
+        )
+
+        history.append({"role": "user", "content": message})
+        history.append({"role": "assistant", "content": reply})
+        if len(history) > HISTORY_LIMIT:
+            history = history[-HISTORY_LIMIT:]
+        ctx["history"] = history
+        state["context"] = ctx
+
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(
+            reply, self._infer_confidence(reply), trace_id, state.get("state", "IDLE")
         )
 
     async def _call_llm_direct(self, message: str, system: str = "") -> str:

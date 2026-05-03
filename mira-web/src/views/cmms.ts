@@ -177,6 +177,7 @@ const FORM_SCRIPT = `
   var err = document.getElementById('fl-form-error');
   var success = document.getElementById('fl-form-success');
   var submit = document.getElementById('fl-magic-submit');
+  var planInput = document.getElementById('cmms-plan');
 
   function setError(msg) {
     err.textContent = msg || '';
@@ -196,11 +197,12 @@ const FORM_SCRIPT = `
     submit.disabled = true;
     var original = submit.textContent;
     submit.textContent = 'Sending…';
+    var plan = planInput ? planInput.value : '';
     try {
       var r = await fetch('/api/magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email })
+        body: JSON.stringify({ email: email, plan: plan || undefined })
       });
       if (r.status === 429) {
         setError('You requested a link recently. Check your inbox or try again in a minute.');
@@ -228,19 +230,42 @@ function navbar(): string {
     <a href="/" data-cta="cmms-nav-home">Home</a>
     <a href="/pricing" data-cta="cmms-nav-pricing">Pricing</a>
     <a href="/limitations" data-cta="cmms-nav-limitations">Limitations</a>
+    <a href="/security" data-cta="cmms-nav-security">Security</a>
   </nav>
   <div></div>
 </header>`;
 }
 
-function hero(): string {
+const PLAN_LABELS: Record<string, { eyebrow: string; h1: string; sub: string }> = {
+  mira: {
+    eyebrow: "MIRA Troubleshooter — $97/mo",
+    h1: "One workspace per asset. Cited answers at 2 AM.",
+    sub: "You're signing up for MIRA Troubleshooter. Send yourself a magic link — no password, no demo call, no credit card.",
+  },
+  integrated: {
+    eyebrow: "MIRA Integrated — $297/mo",
+    h1: "MIRA + your CMMS. Work orders flow automatically.",
+    sub: "You're signing up for MIRA Integrated. Send yourself a magic link — no password, no demo call, no credit card.",
+  },
+};
+
+function hero(plan?: string): string {
+  const copy = (plan ? PLAN_LABELS[plan] : undefined) ?? {
+    eyebrow: "FactoryLM CMMS",
+    h1: "One workspace per asset. Cited answers at 2 AM.",
+    sub: "Send yourself a magic link. No password, no demo call, no credit card.",
+  };
+  const planHidden = plan
+    ? `<input type="hidden" id="cmms-plan" name="plan" value="${plan}">`
+    : `<input type="hidden" id="cmms-plan" name="plan" value="">`;
   return `<section class="fl-cmms-hero" aria-labelledby="fl-cmms-h1">
   <div class="fl-cmms-hero-inner">
-    <p class="fl-cmms-eyebrow">FactoryLM CMMS</p>
-    <h1 id="fl-cmms-h1" class="fl-cmms-h1">One workspace per asset. Cited answers at 2 AM.</h1>
-    <p class="fl-cmms-sub">Send yourself a magic link. No password, no demo call, no credit card.</p>
+    <p class="fl-cmms-eyebrow">${copy.eyebrow}</p>
+    <h1 id="fl-cmms-h1" class="fl-cmms-h1">${copy.h1}</h1>
+    <p class="fl-cmms-sub">${copy.sub}</p>
 
     <form id="fl-magic-form" class="fl-magic-form" novalidate>
+      ${planHidden}
       <label for="cmms-email">Work email</label>
       <input
         id="cmms-email"
@@ -310,6 +335,7 @@ function footer(): string {
   <div class="fl-footer-inner">
     <p class="fl-footer-brand">FactoryLM &middot; Built for industrial maintenance.</p>
     <ul class="fl-footer-links">
+      <!-- TODO: /limitations page not yet built; link disabled until page exists -->
       <li><a href="/limitations" data-cta="cmms-footer-limitations">Limitations</a></li>
       <li><a href="/trust" data-cta="cmms-footer-trust">Trust</a></li>
       <li><a href="/privacy" data-cta="cmms-footer-privacy">Privacy</a></li>
@@ -321,6 +347,11 @@ function footer(): string {
 }
 
 export function renderCmms(reqUrl?: string): string {
+  const plan = reqUrl
+    ? (new URL(reqUrl).searchParams.get("plan") ?? undefined)
+    : undefined;
+  const validPlan = plan && PLAN_LABELS[plan] ? plan : undefined;
+
   const headHtml = head(
     {
       title: "FactoryLM CMMS — sign in with a magic link",
@@ -340,7 +371,7 @@ export function renderCmms(reqUrl?: string): string {
 <body>
   ${navbar()}
   <main>
-    ${hero()}
+    ${hero(validPlan)}
     ${whatHappensNext()}
     ${compareSection()}
   </main>

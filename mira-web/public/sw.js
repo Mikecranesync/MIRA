@@ -1,5 +1,5 @@
-const CACHE_NAME = 'factorylm-v2';
-const PRECACHE_URLS = ['/cmms', '/manifest.json', '/public/cmms.css'];
+const CACHE_NAME = 'factorylm-v3';
+const PRECACHE_URLS = ['/', '/cmms', '/pricing', '/manifest.json', '/_tokens.css', '/_components.css'];
 const API_PREFIXES = ['/api/', '/demo/'];
 
 self.addEventListener('install', event => {

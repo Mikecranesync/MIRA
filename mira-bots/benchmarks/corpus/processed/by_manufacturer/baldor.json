@@ -1,0 +1,21 @@
+[
+  {
+    "id": "1cz8m15",
+    "title": "Baldor DC motor troubleshooting story",
+    "selftext": "Got a call from a customer today saying they had a motor that was running at maximum speed whenever the machine was powered up. They couldn't use the start/stop control*, and the potentiometer had no effect on speed. They tried replacing the DC drive and potentiometer, but that made no difference.\n\n*The drive has a inhibit circuit to stop the motor when closed, and the machine used the NC contact of a relay to start/stop the motor.\n\nThis machine is old (1988 old) and has [this Electrol DC drive](https://i.imgur.com/VjbXkiK.jpeg), which is very similar to the common [KB Electronics KBIC](https://i.imgur.com/1PBhOAn.jpeg) style controls. Voltage across A1 and A2 was 130VDC, no matter what. When I disconnected the wires to the motor and rechecked, the potentiometer varied voltage again.\n\nI remembered reading somewhere that if one of the DC output terminals gets grounded, you get full voltage to the motor, so I checked if either motor lead was shorted to ground. Sure enough, one was a dead short to ground. The other measured a few ohms to ground (through the motor winding).\n\nWhen I opened the easiest to access brush cover, everything looked fine. When I popped that brush out and rechecked for a short, one lead was infinite, so I knew the other brush was the cuplrit. It's never the easy one, lol. I had to remove the motor to open the other brush cover. This album contains what I found.\n\nhttps://imgur.com/a/xxbo3Wv\n\nApparently this had been happening for some time, but only intermittently, so no one noticed. Now it had finally wedged itself to make a permanent ground. Replacement motor installed, and it's running again!",
+    "score": 10,
+    "num_comments": 6,
+    "created_utc": 1716512129,
+    "subreddit": "IndustrialMaintenance",
+    "top_comment": "",
+    "category": "mechanical",
+    "urgency": "medium",
+    "quality_score": 0.85,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Baldor",
+    "equipment_type": "motor",
+    "model_number": "",
+    "fault_codes": []
+  }
+]

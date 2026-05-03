@@ -32,6 +32,20 @@ on:
       - '**/*.gif'
 
 jobs:
+  migration-order-check:
+    name: Migration Order Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check migration dependency order
+        working-directory: mira-hub
+        run: node db/check-migration-order.mjs
+
   lint-and-type-check:
     name: Lint & Format
     runs-on: ubuntu-latest

@@ -38,7 +38,7 @@ export function LanguageSelector({ collapsed = false, dropUp = false }: Language
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center rounded-lg transition-colors px-2 py-1.5"
-        style={{ color: "#64748B" }}
+        style={{ color: "#64748B", minHeight: 48 }}
         onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--sidebar-hover)")}
         onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
         title={collapsed ? current.label : undefined}

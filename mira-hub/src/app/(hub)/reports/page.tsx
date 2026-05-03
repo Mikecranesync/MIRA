@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { TrendingDown, TrendingUp, Clock, Wrench, CheckCircle2, AlertTriangle } from "lucide-react";
+import { TrendingDown, TrendingUp, Clock, Wrench, CheckCircle2, AlertTriangle, Sparkles, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useTranslations } from "next-intl";
 
 /* ─── Static mock values (labels resolved inside component) ─────────── */
@@ -51,6 +53,26 @@ const PM_COLORS = ["#16A34A", "#DC2626", "#EAB308"];
 /* ─── Page ──────────────────────────────────────────────────────────── */
 export default function ReportsPage() {
   const t = useTranslations("reports");
+  const [narrative, setNarrative] = useState<string | null>(null);
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  async function generateReport() {
+    setLoading(true);
+    setReportError(null);
+    try {
+      const res = await fetch("/api/reports/generate", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Generation failed");
+      setNarrative(data.narrative);
+      setGeneratedAt(data.generatedAt);
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Generation failed");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
@@ -62,10 +84,44 @@ export default function ReportsPage() {
             <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
             <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>{t("subtitle")}</p>
           </div>
+          <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={generateReport} disabled={loading}>
+            {loading
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />{t("generating")}</>
+              : <><Sparkles className="w-3.5 h-3.5" />{t("generateReport")}</>}
+          </Button>
         </div>
       </div>
 
       <div className="px-4 md:px-6 py-5 space-y-6 max-w-5xl">
+
+        {/* AI Narrative card */}
+        {(narrative || loading || reportError) && (
+          <div className="card p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-4 h-4" style={{ color: "var(--brand-blue)" }} />
+              <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{t("aiReport")}</h3>
+              {generatedAt && !loading && (
+                <span className="text-[10px] ml-auto" style={{ color: "var(--foreground-subtle)" }}>
+                  {new Date(generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+            </div>
+            {loading && (
+              <div className="space-y-2">
+                {[100, 90, 95].map((w, i) => (
+                  <div key={i} className="h-3 rounded animate-pulse" style={{ width: `${w}%`, backgroundColor: "var(--surface-1)" }} />
+                ))}
+              </div>
+            )}
+            {reportError && !loading && (
+              <p className="text-xs" style={{ color: "#DC2626" }}>{reportError}</p>
+            )}
+            {narrative && !loading && (
+              <p className="text-sm leading-relaxed" style={{ color: "var(--foreground-muted)" }}>{narrative}</p>
+            )}
+          </div>
+        )}
+
         {/* KPI Row */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {KPI_DATA.map((kpi) => (

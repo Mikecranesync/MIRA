@@ -6,7 +6,7 @@
 import { test, expect, Page } from "@playwright/test";
 import * as path from "path";
 
-const HUB = "https://app.factorylm.com/hub";
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
 const OUT = path.join("test-results", "visual-qa");
 
 async function login(page: Page) {

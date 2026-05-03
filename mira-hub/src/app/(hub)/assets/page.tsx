@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { API_BASE } from "@/lib/config";
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
 type Asset = {
@@ -141,7 +142,7 @@ function CreateAssetModal({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/hub/api/assets", {
+      const res = await fetch(`${API_BASE}/api/assets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -410,10 +411,10 @@ function AssetsPageInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/hub/api/assets")
+    fetch(`${API_BASE}/api/assets`)
       .then(r => {
         if (r.status === 401) {
-          router.push("/login?callbackUrl=/hub/assets");
+          router.push(`/login?callbackUrl=${API_BASE}/assets`);
           return null;
         }
         return r.json();
@@ -521,30 +522,11 @@ function AssetsPageInner() {
               {visible.map(asset => <AssetTile key={asset.id} asset={asset} />)}
             </div>
             {visible.length === 0 && (
-              assets.length === 0 ? (
-                /* Fresh tenant — no assets exist at all. Don't suggest changing the filter,
-                   show an onboarding CTA to register the first asset. (#721) */
-                <div className="text-center py-16">
-                  <Plus className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
-                  <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>{t("noAssetsYet")}</p>
-                  <p className="text-xs mt-1 max-w-md mx-auto" style={{ color: "var(--foreground-subtle)" }}>{t("registerFirstAsset")}</p>
-                  <button
-                    onClick={() => setShowCreate(true)}
-                    className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: "var(--brand-blue)" }}
-                  >
-                    <Plus className="w-4 h-4" />
-                    New Asset
-                  </button>
-                </div>
-              ) : (
-                /* Tenant has assets but the current filter/search returned nothing — original copy. */
-                <div className="text-center py-16">
-                  <Search className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
-                  <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>{t("noAssets")}</p>
-                  <p className="text-xs mt-1" style={{ color: "var(--foreground-subtle)" }}>{t("tryDifferent")}</p>
-                </div>
-              )
+              <div className="text-center py-16">
+                <Search className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
+                <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>{t("noAssets")}</p>
+                <p className="text-xs mt-1" style={{ color: "var(--foreground-subtle)" }}>{t("tryDifferent")}</p>
+              </div>
             )}
           </>
         )}

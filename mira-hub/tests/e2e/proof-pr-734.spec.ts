@@ -2,6 +2,8 @@ import { test, expect } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
+
 // Proof-of-work spec for PR #734 (manual retry endpoint).
 
 const OUT_DIR = path.resolve(process.cwd(), "test-results/proof-pr-734");
@@ -9,13 +11,13 @@ const OUT_DIR = path.resolve(process.cwd(), "test-results/proof-pr-734");
 test.beforeAll(() => fs.mkdirSync(OUT_DIR, { recursive: true }));
 
 test("hub health endpoint returns 200 after rebuild", async ({ request }) => {
-  const res = await request.get("https://app.factorylm.com/hub/api/health");
+  const res = await request.get(`${HUB}/api/health`);
   expect(res.status()).toBe(200);
 });
 
 test("/hub/api/uploads/<id>/retry (unauth) → 307 → /hub/login", async ({ request }) => {
   const res = await request.post(
-    "https://app.factorylm.com/hub/api/uploads/00000000-0000-0000-0000-000000000000/retry/",
+    `${HUB}/api/uploads/00000000-0000-0000-0000-000000000000/retry/`,
     { maxRedirects: 0, failOnStatusCode: false },
   );
   expect(res.status()).toBe(307);
@@ -28,7 +30,7 @@ test("/hub/upload renders + screenshot proof", async ({ page }) => {
     if (m.type() === "error") consoleErrors.push(m.text());
   });
 
-  await page.goto("https://app.factorylm.com/hub/upload", {
+  await page.goto(`${HUB}/upload`, {
     waitUntil: "networkidle",
     timeout: 20000,
   });

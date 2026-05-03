@@ -5,9 +5,12 @@ import { test, expect } from "@playwright/test";
 // since curl alone has been showing 200 + empty body but not telling us
 // what (if anything) renders. Safe: read-only, no mutations.
 
+// Phase 1: HUB_PATH=/hub  Phase 2: HUB_PATH=
+const HUB_PATH = process.env.HUB_PATH ?? "/hub";
+
 test("diagnose /hub root response and rendering", async ({ page, request }) => {
   console.log("\n=== DIRECT REQUEST (no JS) ===");
-  const res = await request.get("/hub/", { maxRedirects: 0 });
+  const res = await request.get(`${HUB_PATH}/`, { maxRedirects: 0 });
   console.log(`HTTP ${res.status()}`);
   console.log(`Headers:`, JSON.stringify(res.headers(), null, 2));
   const body = await res.text();
@@ -19,7 +22,7 @@ test("diagnose /hub root response and rendering", async ({ page, request }) => {
   }
 
   console.log("\n=== FOLLOWED REDIRECTS ===");
-  const followed = await request.get("/hub/");
+  const followed = await request.get(`${HUB_PATH}/`);
   console.log(`Final URL: ${followed.url()}`);
   console.log(`Final status: ${followed.status()}`);
   console.log(`Final body length: ${(await followed.text()).length}`);
@@ -30,7 +33,7 @@ test("diagnose /hub root response and rendering", async ({ page, request }) => {
   page.on("console", (msg) => consoleLogs.push(`[${msg.type()}] ${msg.text()}`));
   page.on("pageerror", (err) => pageErrors.push(err.message));
 
-  const response = await page.goto("/hub/", { waitUntil: "domcontentloaded", timeout: 15000 });
+  const response = await page.goto(`${HUB_PATH}/`, { waitUntil: "domcontentloaded", timeout: 15000 });
   console.log(`Initial response status: ${response?.status()}`);
   console.log(`Final URL after navigation: ${page.url()}`);
 

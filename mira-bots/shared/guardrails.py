@@ -497,29 +497,48 @@ _DOCUMENTATION_PHRASES = (
     "manual for this",  # fallback broad-match; safe post-v2.4.1 since it requires "for this"
     "datasheet for this",
     "documentation for this",
-    # Installation / setup / commissioning (MicroLogix forensic 2026-04-21)
-    "how to install",
-    "installation steps",
+    # Installation / setup / commissioning — document-fetch variants only.
+    # Procedural how-to variants ("how to install", "how to wire") moved to
+    # _INSTRUCTIONAL_PHRASES so they route to answer_question instead of doc crawl.
     "install this",
     "installing this",
-    "getting ready to install",
-    "first steps to install",
-    "how do i wire",
     "wiring steps",
     "wiring guide",
-    "how to wire",
     "setup guide",
     "set up this",
     "setting up this",
-    "how to set up",
     "commissioning steps",
     "commissioning guide",
-    "how to commission",
     "startup procedure",
     "startup steps",
     "first time setup",
     "initial setup",
+)
+
+# Procedural how-to questions — user wants step-by-step instructions from the LLM,
+# not a document to download. Checked before _DOCUMENTATION_PHRASES so "how to install"
+# routes to answer_question rather than triggering a doc crawl.
+_INSTRUCTIONAL_PHRASES = (
+    "how to install",
+    "installation steps",
+    "getting ready to install",
+    "first steps to install",
+    "how do i wire",
+    "how to wire",
+    "how to set up",
+    "how do i set up",
+    "how to commission",
+    "how to connect",
+    "how do i connect",
+    "how do i configure",
+    "how do i enable",
+    "how to enable",
     "getting started with",
+    "quick steps",
+    "give me steps",
+    "give me the steps",
+    "walk me through",
+    "what are the steps",
 )
 
 # Signals that the technician is under time or job pressure.
@@ -717,12 +736,14 @@ def detect_emotional_state(message: str) -> str:
 def classify_intent(message: str) -> str:
     """Classify message intent.
 
-    Returns: 'greeting' | 'help' | 'industrial' | 'documentation' | 'safety' | 'off_topic'
+    Returns: 'greeting' | 'help' | 'industrial' | 'instructional' | 'documentation' | 'safety' | 'off_topic'
 
-    'documentation' fires when the technician explicitly asks for a manual,
-    datasheet, pinout, or wiring diagram — distinct from a diagnostic question
-    that happens to reference a manual.  It routes to an immediate vendor-URL
-    response + async KB crawl rather than the standard RAG diagnostic path.
+    'instructional' fires for procedural how-to questions ("how do I connect via Ethernet?",
+    "give me quick steps to configure the baud rate") — routes to answer_question so the LLM
+    answers directly rather than triggering a documentation crawl.
+
+    'documentation' fires when the technician explicitly asks to FETCH a manual,
+    datasheet, pinout, or wiring diagram — routes to vendor-URL response + async KB crawl.
 
     Industrial intent is broad — any question about equipment, specifications,
     installation, maintenance, or fault diagnosis. The default for unrecognized
@@ -748,6 +769,11 @@ def classify_intent(message: str) -> str:
 
     if any(pat in msg for pat in HELP_PATTERNS):
         return "help"
+
+    # Procedural how-to questions — checked BEFORE documentation so phrases like
+    # "how to install" route to answer_question (LLM direct) not a doc crawl.
+    if any(phrase in msg for phrase in _INSTRUCTIONAL_PHRASES):
+        return "instructional"
 
     # Documentation retrieval — checked BEFORE industrial so "manual" in
     # INTENT_KEYWORDS doesn't swallow explicit document requests.

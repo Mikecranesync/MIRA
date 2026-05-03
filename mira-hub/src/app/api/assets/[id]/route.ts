@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import pool from "@/lib/db";
 import { sessionOr401 } from "@/lib/session";
+import { withTenantContext } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -40,24 +40,26 @@ export async function GET(
   const { id } = await params;
 
   try {
-    const { rows } = await pool.query(
-      `SELECT
-        id, equipment_number, manufacturer, model_number, serial_number,
-        equipment_type, location, department, criticality,
-        work_order_count, total_downtime_hours,
-        last_maintenance_date, last_work_order_at,
-        last_reported_fault, description, installation_date, created_at
-      FROM cmms_equipment
-      WHERE id = $1 AND tenant_id = $2
-      LIMIT 1`,
-      [id, ctx.tenantId],
+    const row = await withTenantContext(ctx.tenantId, (c) =>
+      c.query(
+        `SELECT
+          id, equipment_number, manufacturer, model_number, serial_number,
+          equipment_type, location, department, criticality,
+          work_order_count, total_downtime_hours,
+          last_maintenance_date, last_work_order_at,
+          last_reported_fault, description, installation_date, created_at
+        FROM cmms_equipment
+        WHERE id = $1 AND tenant_id = $2
+        LIMIT 1`,
+        [id, ctx.tenantId],
+      ).then((r) => r.rows[0] ?? null),
     );
 
-    if (!rows[0]) {
+    if (!row) {
       return NextResponse.json({ error: "Asset not found" }, { status: 404 });
     }
 
-    return NextResponse.json(rowToAsset(rows[0]));
+    return NextResponse.json(rowToAsset(row));
   } catch (err) {
     console.error("[api/assets/[id] GET]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });

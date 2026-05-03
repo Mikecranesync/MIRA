@@ -1,8 +1,15 @@
 name: Deploy to VPS
 
 on:
-  push:
+  # Triggered by smoke-test.yml completing on main — only deploys when smoke passes.
+  # This is the normal push-to-main path: push → smoke-test.yml → deploy-vps.yml.
+  workflow_run:
+    workflows: ["Smoke Test"]
+    types: [completed]
     branches: [main]
+
+  # Manual deploy bypass — use for hotfixes when you need to deploy without
+  # waiting for smoke. Still runs health checks post-deploy.
   workflow_dispatch:
     inputs:
       services:
@@ -17,6 +24,11 @@ concurrency:
 jobs:
   deploy:
     name: Deploy MIRA to production VPS
+    # For workflow_run triggers: only deploy when the smoke test passed.
+    # For workflow_dispatch (manual hotfix): always run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 20
@@ -45,18 +57,22 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
+          # Resolve the rebuild list once so cleanup + build + up all agree.
+          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub}"
+          echo "Rebuild targets: $TARGETS"
+
+          echo "=== Pre-deploy cleanup: remove any stale containers blocking recreate ==="
+          # `docker compose up --force-recreate` only removes containers it considers part
+          # of the project; if a previous deploy left a same-named container that compose
+          # has lost track of, we hit `Error: container name already in use` and the deploy
+          # bails out (exact failure mode of run 25264673954, 2026-05-02).
+          for svc in $TARGETS; do
+            docker rm -f "${svc}-saas" 2>/dev/null || true
+          done
+
           echo "=== Rebuild containers ==="
-          if [ -n "${SERVICES:-}" ]; then
-            echo "Selective rebuild: $SERVICES"
-            DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $SERVICES
-            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate $SERVICES
-          else
-            echo "Full rebuild (mira-pipeline, mira-ingest, mira-mcp, mira-hub)"
-            DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build \
-              mira-pipeline mira-ingest mira-mcp mira-hub
-            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
-              mira-pipeline mira-ingest mira-mcp mira-hub
-          fi
+          DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $TARGETS
+          doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate $TARGETS
 
           echo "=== Health check ==="
           sleep 8

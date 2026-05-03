@@ -7,6 +7,7 @@ import { signIn } from "next-auth/react";
 import { Factory, Loader2, Eye, EyeOff, Mail, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { API_BASE } from "@/lib/config";
 
 function LoginForm() {
   const router = useRouter();
@@ -54,7 +55,7 @@ function LoginForm() {
     setMagicLoading(true);
     setError("");
     try {
-      const res = await fetch("/hub/api/auth/magic-link", {
+      const res = await fetch(`${API_BASE}/api/auth/magic-link`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: magicEmail }),

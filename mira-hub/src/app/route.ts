@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { API_BASE } from "@/lib/config";
 
 // Route Handler at the basePath root. We had a Server Component page.tsx
 // here calling redirect("/feed"), but Next.js 16 standalone + basePath has
@@ -10,5 +11,5 @@ import { NextResponse, type NextRequest } from "next/server";
 // directly, the same primitive every src/app/api/auth/**/*.ts callback uses
 // successfully in production.
 export function GET(req: NextRequest) {
-  return NextResponse.redirect(new URL("/hub/feed/", req.url));
+  return NextResponse.redirect(new URL(`${API_BASE}/feed/`, req.url));
 }

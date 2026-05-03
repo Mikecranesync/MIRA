@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { Factory, Clock, CheckCircle2, Loader2, LogOut } from "lucide-react";
+import { API_BASE } from "@/lib/config";
 
 export default function PendingApprovalPage() {
   const [checking, setChecking] = useState(false);
@@ -11,14 +12,14 @@ export default function PendingApprovalPage() {
   async function checkStatus() {
     setChecking(true);
     try {
-      const res = await fetch("/hub/api/auth/check-approval");
+      const res = await fetch(`${API_BASE}/api/auth/check-approval`);
       if (!res.ok) return;
       const { status } = await res.json() as { status: string };
       if (status === "approved" || status === "admin" || status === "trial") {
         setApproved(true);
         // Force re-login so new JWT contains updated status
         setTimeout(() => {
-          signOut({ callbackUrl: "/login?callbackUrl=/hub/feed" });
+          signOut({ callbackUrl: `/login?callbackUrl=${API_BASE}/feed` });
         }, 1500);
       }
     } finally {

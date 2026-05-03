@@ -1,4 +1,45 @@
-# Hot Cache — 2026-04-22 — CHARLIE
+# Hot Cache — 2026-04-30 — CHARLIE
+
+## eval-fixer run — 2026-04-30
+- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md`
+- Action: issue-filed (#884)
+- 13 failures, all 13 patchable but spanning 3 files (engine.py + guardrails.py + active.yaml) — exceeds single-file autopatch limit. Four clusters: FSM stuck in MANUAL_LOOKUP_GATHERING (5), manual-lookup branch returns canned "documentation indexed" instead of vendor URL (3), cross-vendor RAG bleed (Yaskawa in Danfoss response, 1), and thin diagnosis content (4). Fresh scorecard is back — pipeline has recovered from the 3-day silent infra outage that produced #753/#803/#854.
+
+## eval-fixer run — 2026-04-29
+- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0455.md` (stale, same scorecard as 2026-04-28 — no new run produced)
+- Action: issue-filed (#854)
+- Third day in a row of the same systemic infra failure (#753, #803, now #854). Every fixture returns 0-char responses — `cp_pipeline_active` fails universally, 0 patchable. No upstream eval has produced a fresh scorecard since 2026-04-27 04:55 UTC. Engine/cascade still silent.
+
+## eval-fixer run — 2026-04-28
+- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0455.md`
+- Action: issue-filed (#803)
+- Same systemic failure as 2026-04-27 (#753): all 57 fixtures returned 0-char responses; `cp_pipeline_active` fails for every fixture, so 0 patchable. Engine is silent — infra/cascade still broken. Last fresh scorecard is the 2026-04-27 04:55 UTC run.
+
+## eval-fixer run — 2026-04-27
+- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0103.md`
+- Action: issue-filed (#753)
+- All 57 fixtures failed `cp_pipeline_active` with 0-char responses — pipeline silent across the board, infra/cascade issue, not patchable. State stayed IDLE because no response was ever generated.
+
+## Session — 2026-04-27 (CHARLIE, PM end-to-end demo)
+
+- **PM Work Order Auto-Generator shipped**: `pm_scheduler.py` + `/api/pm/generate-work-orders` in mira-pipeline. Generates WOs from due `pm_schedules`, mirrors to Atlas CMMS, runs at UTC midnight via asyncio task. Fixed enums: `auto_pm` (sourcetype), `PM` (routetype), `user_id='pm_scheduler'`, equipment_id FK via `_resolve_equipment_id()`.
+- **26 PMs extracted** across 8 equipment models (Yaskawa, Rockwell, Allen-Bradley, Danfoss, Siemens). 43 WOs in mike tenant, 3 auto-generated (Auto-PM source).
+- **Hub WO page**: now fetches live from NeonDB via new `/api/work-orders` route. Auto-PM badge (Sparkles), Telegram badge, source citations, parts preview. Fixed basePath URL bug: `fetch("/hub/api/...")` not `fetch("/api/...")`.
+- **Hub Schedule page**: fetches 26 real PMs via `/hub/api/pm-schedules`. "26 AI-extracted" badge. Calendar shows live data.
+- **STRATEGY.md + NORTH_STAR.md** committed to repo root. CLAUDE.md updated with screenshot rule.
+- **Auto-trigger PM extraction**: `_maybe_trigger_pm_extraction()` in mira-ingest fires after `ingest_document_kb` success.
+- **PR #732 merged** (5 UX fixes — #688 #719 #720 #721 #722).
+- **Promo screenshots** (8): schedule + WO pages at desktop+mobile. In `docs/promo-screenshots/`.
+- **NEXTAUTH_SECRET**: hardcoded in `/opt/mira/docker-compose.hub.yml` on VPS (not in Doppler — add it!).
+- **Issue #690** (SPF/DKIM): DNS check shows no SPF/DMARC configured. Action plan in issue comments. Manual DNS work for Mike.
+
+## Next Actions (2026-04-27 priority order)
+
+1. **#690 SPF/DKIM** — Mike adds SPF+DMARC+DKIM CNAMEs to DNS registrar (5 records, manual). Documented in issue.
+2. **NEXTAUTH_SECRET** — add to Doppler `factorylm/prd` so it survives hub rebuilds (current hardcode in docker-compose.hub.yml will be lost on next git pull on VPS).
+3. **WO detail page** — rewrite to fetch real WO from NeonDB (currently hardcoded fallback); add `/api/work-orders/[id]` route.
+4. **PM scheduler midnight run** — confirm it ran overnight (check mira-pipeline-saas logs morning of 2026-04-28).
+5. **Branch cleanup** — `feat/hub-741-login-gate` has all hub work; PR + merge to main.
 
 ## eval-fixer run — 2026-04-23
 - Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-20T1011.md` (stale 3+ days)

@@ -7,8 +7,9 @@
 
 ---
 
-## North Star
-Read `NORTH_STAR.md` before starting any feature work. Every PR should reference which part of the flywheel it supports.
+## North Star + Strategy
+- **Technical flywheel:** `NORTH_STAR.md` — read before any feature work; every PR references which flywheel step it supports
+- **Commercial strategy:** `STRATEGY.md` — ICP, pricing tiers, GTM motion, competitive moat
 
 ## Coding Principles → `wiki/references/coding-principles.md`
 ## KANBAN Board → `wiki/references/kanban.md`
@@ -98,6 +99,18 @@ bash install/smoke_test.sh
 
 ## Where to Resume → `wiki/hot.md`
 ## Offline Testing → `tests/eval/README.md`
+
+---
+
+## Screenshot Rule (Promotional Materials Pipeline)
+
+Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-screenshots/` with a descriptive filename:
+- Format: `YYYY-MM-DD_feature-name_viewport.png` (e.g., `2026-04-26_pm-calendar-auto-scheduled_desktop.png`)
+- Always capture both desktop (1440x900) and mobile (412x915) viewports
+- These feed the automated YouTube video pipeline in `tools/seedance-video-gen.py` and `tools/` video builders
+- This folder is the single source of truth for all promotional visuals
+- Include screenshots of: new features, before/after comparisons, key user flows, real data displays
+- Never delete from this folder — it's an append-only archive
 
 ---
 

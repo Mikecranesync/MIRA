@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import pool from "@/lib/db";
 import { sessionOr401 } from "@/lib/session";
+import { withTenantContext } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -31,26 +31,28 @@ export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   try {
-    const { rows } = await pool.query(
-      `SELECT
-        id, work_order_number, telegram_username, source,
-        equipment_type, manufacturer, model_number, location,
-        title, description, fault_codes, symptoms,
-        safety_warnings, suggested_actions, answer_text,
-        confidence_score, status, priority, route_taken,
-        created_at
-      FROM work_orders
-      WHERE tenant_id = $1
-      ORDER BY created_at DESC
-      LIMIT 50`,
-      [ctx.tenantId],
+    const rows = await withTenantContext(ctx.tenantId, (c) =>
+      c.query(
+        `SELECT
+          id, work_order_number, telegram_username, source,
+          equipment_type, manufacturer, model_number, location,
+          title, description, fault_codes, symptoms,
+          safety_warnings, suggested_actions, answer_text,
+          confidence_score, status, priority, route_taken,
+          created_at
+        FROM work_orders
+        WHERE tenant_id = $1
+        ORDER BY created_at DESC
+        LIMIT 50`,
+        [ctx.tenantId],
+      ).then((r) => r.rows),
     );
 
-    const events = rows.map((wo) => ({
+    const events = rows.map((wo: Record<string, unknown>) => ({
       id: wo.id,
       time: wo.created_at,
       tech: wo.telegram_username ?? "Unknown Tech",
-      channel: platformFromSource(wo.source),
+      channel: platformFromSource(String(wo.source ?? "")),
       asset: wo.equipment_type
         ? `${wo.manufacturer ?? ""} ${wo.model_number ?? ""} ${wo.equipment_type}`.trim()
         : null,

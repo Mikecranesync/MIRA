@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const HUB = "https://app.factorylm.com/hub";
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
 const CREDS = { email: "playwright@factorylm.com", password: "TestPass123" };
 
 test.beforeAll(async ({ request }) => {

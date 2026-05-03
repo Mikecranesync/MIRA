@@ -6,7 +6,8 @@ export type Provider =
   | "google"
   | "microsoft"
   | "dropbox"
-  | "confluence";
+  | "confluence"
+  | "maintainx";
 
 export type ConnectionMeta = {
   connected: boolean;

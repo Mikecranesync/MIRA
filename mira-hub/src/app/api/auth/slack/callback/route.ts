@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { upsertBinding } from "@/lib/bindings";
 import { validateState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
+import { API_BASE, OAUTH_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
       code,
       client_id: process.env.SLACK_CLIENT_ID!,
       client_secret: process.env.SLACK_CLIENT_SECRET!,
-      redirect_uri: `${appUrl}/hub/api/auth/slack/callback`,
+      redirect_uri: `${appUrl}${OAUTH_BASE}/api/auth/slack/callback`,
     }),
   });
 
@@ -51,13 +52,13 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  const res = NextResponse.redirect(`${appUrl}/hub/channels?provider=slack&status=connected`);
+  const res = NextResponse.redirect(`${appUrl}${API_BASE}/channels?provider=slack&status=connected`);
   res.cookies.delete(stateCookieName("slack"));
   return res;
 }
 
 function errorRedirect(appUrl: string, reason: string) {
   return NextResponse.redirect(
-    `${appUrl}/hub/channels?provider=slack&status=error&reason=${encodeURIComponent(reason)}`,
+    `${appUrl}${API_BASE}/channels?provider=slack&status=error&reason=${encodeURIComponent(reason)}`,
   );
 }
