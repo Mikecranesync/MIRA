@@ -172,14 +172,17 @@ margin notes:
 NARRATION CAPTION BOX in the lower-left of the canvas — a
 movie-trailer-style "in a world where..." pitch caption. Render this
 as a wide rectangular yellow caption box with thick black border,
-positioned in the lower-left corner, roughly 40% of the canvas width
-and 18% of the canvas height. It overlays the lower portion of the
+positioned in the lower-left corner, roughly 45% of the canvas width
+and 20% of the canvas height. It overlays the lower portion of the
 WITHOUT MIRA scene (over wet floor / low wall area, NOT covering
 Rico's face or the manual page). Two lines of bold black caps text:
-    IN A WORLD WHERE FAULT CODES JUST SAY "CONSULT FACTORY"...
-    WHEN YOU CAN CHAT WITH YOUR MANUALS, EVERYTHING GETS EASIER.
+    IN A WORLD WHERE A CRYPTIC FAULT CODE COSTS HOURS OF DOWNTIME...
+    WHEN YOU CAN CHAT WITH YOUR MANUALS, EVERY TECH BECOMES THE 20-YEAR TECH.
 This caption is the pitch — narrator voice, classic trailer cadence.
-It must be clearly readable at a glance.
+It speaks to BOTH maintenance managers (downtime cost, tribal-knowledge
+bottleneck) and maintenance techs (aspirational — becoming the senior
+tech without the 20 years of bruises). It must be clearly readable at
+a glance and unmistakable as the marketing payoff.
 
 Both scenes show the SAME character — RICO, a maintenance technician,
 mid-30s, dark hair, reading glasses, navy-blue coveralls with a clearly
