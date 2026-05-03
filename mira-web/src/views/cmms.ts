@@ -386,6 +386,7 @@ export function renderSamplePlaceholder(): string {
       <h1>You're signed in.</h1>
       <p>Your sample workspace will appear here once Phase 1 ships. For now, the fastest way to feel the product is to upload your first manual — MIRA will OCR it, chunk it, and let you ask questions with citations.</p>
       <div class="fl-sample-cta">
+        <a id="cmms-btn" href="#" class="fl-btn fl-btn-primary" data-cta="sample-cmms" style="display:none">Open CMMS</a>
         ${btnPrimary("Upload your first manual", { href: "/activated", cta: "sample-upload" })}
         ${btnGhost("Back to home", { href: "/", cta: "sample-home" })}
       </div>
@@ -393,6 +394,25 @@ export function renderSamplePlaceholder(): string {
   </main>
   ${footer({ ctaPrefix: "sample" })}
   <script src="/sun-toggle.js"></script>
+  <script>
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var token = params.get('token');
+      if (token) {
+        sessionStorage.setItem('flm_token', token);
+        history.replaceState(null, '', '/sample');
+      } else {
+        token = sessionStorage.getItem('flm_token');
+      }
+      if (token) {
+        var btn = document.getElementById('cmms-btn');
+        if (btn) {
+          btn.href = '/api/cmms/login?token=' + encodeURIComponent(token);
+          btn.style.display = '';
+        }
+      }
+    })();
+  </script>
 </body>
 </html>`;
 }
