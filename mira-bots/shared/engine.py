@@ -68,6 +68,7 @@ from .photo_handler import (
     load_session_photo,
     save_session_photo,
 )
+from . import quality_gate
 from .response_formatter import (
     _VISION_PROSE_PREFIX_RE,
     _looks_like_model_number,
@@ -262,6 +263,21 @@ Rate each on 1-5 (5=excellent, 3=acceptable, <3=needs revision):
 # ACTIVE_DIAGNOSTIC_STATES, HISTORY_LIMIT, PHOTO_MEMORY_TURNS, _STATE_ALIASES
 # now live in fsm.py (imported above). _PROCESS_TIMEOUT defined below.
 _PROCESS_TIMEOUT = float(os.getenv("MIRA_PROCESS_TIMEOUT", "30"))
+
+# Replies the quality gate must not second-guess: hand-crafted fallback
+# strings the engine returns for known failure modes. They're intentionally
+# short and may trip generic heuristics (e.g. low n-gram diversity), but
+# they're trusted by definition.
+_TRUSTED_FALLBACKS: set[str] = {
+    s.strip()
+    for s in (
+        GENERIC_ENGINE_ERROR,
+        INFERENCE_EXHAUSTED,
+        PHOTO_FAILURE,
+        RAG_FAILURE,
+        TIMEOUT_WARNING,
+    )
+}
 
 # ---------------------------------------------------------------------------
 # Manual-lookup gathering subroutine constants
@@ -604,17 +620,54 @@ class Supervisor:
             )
             return GENERIC_ENGINE_ERROR
         elapsed_ms = int((time.monotonic() - t0) * 1000)
+        reply = await self._apply_quality_gate(chat_id, message, result["reply"])
         self._log_interaction(
             chat_id,
             message,
-            result["reply"],
+            reply,
             fsm_state=result.get("next_state", ""),
             confidence=result.get("confidence", ""),
             has_photo=bool(photo_b64),
             response_time_ms=elapsed_ms,
             platform=platform,
         )
-        return result["reply"]
+        return reply
+
+    async def _apply_quality_gate(self, chat_id: str, message: str, reply: str) -> str:
+        """Run the runtime quality gate; substitute a graceful fallback on failure.
+
+        Wrapped in a broad except: a buggy gate must never block the bot.
+        """
+        if not quality_gate.is_enabled():
+            return reply
+        try:
+            gate = await quality_gate.evaluate(
+                reply,
+                user_message=message,
+                router=self.router,
+                skip_strings=_TRUSTED_FALLBACKS,
+            )
+        except Exception as exc:
+            logger.warning("QUALITY_GATE_INTERNAL_ERROR chat_id=%s err=%s", chat_id, exc)
+            return reply
+        if gate.verdict == "fail":
+            logger.warning(
+                "QUALITY_GATE_FAIL chat_id=%s reasons=%s elapsed_ms=%.1f original=%r",
+                chat_id,
+                ",".join(gate.reasons),
+                gate.elapsed_ms,
+                reply[:200],
+            )
+            return quality_gate.GRACEFUL_FALLBACK
+        if gate.judge_score is not None:
+            logger.info(
+                "QUALITY_GATE_PASS chat_id=%s judge_score=%.2f reason=%s elapsed_ms=%.1f",
+                chat_id,
+                gate.judge_score,
+                gate.judge_reason,
+                gate.elapsed_ms,
+            )
+        return reply
 
     async def process_multi_photo(
         self,
