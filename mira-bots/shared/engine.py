@@ -33,6 +33,7 @@ from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
 from .workers.nameplate_worker import NameplateWorker
 from .workers.plc_worker import PLCWorker
+from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .workers.print_worker import PrintWorker
 from .workers.rag_worker import RAGWorker
 from .workers.vision_worker import VisionWorker
@@ -1073,6 +1074,17 @@ class Supervisor:
         # Phase 3 — prepend honest crawl-failure message if a prior doc-crawl exhausted.
         if _honest_prefix:
             formatted = _honest_prefix + formatted
+
+        # CRA-11 / Unit 2 — observational citation compliance check.
+        # Logs CITATION_COMPLIANCE_OK / _MISS so we can measure inline-cite
+        # rate over time. Never blocks the reply.
+        _check_citation_compliance(
+            formatted,
+            getattr(self.rag, "kb_status", {}),
+            fsm_state=state.get("state", ""),
+            chat_id=chat_id,
+        )
+
         tl_flush()
         return self._make_result(
             formatted,
@@ -1488,6 +1500,14 @@ class Supervisor:
         formatted = self._format_reply(parsed, user_message=message)
         if honest_prefix:
             formatted = honest_prefix + formatted
+
+        _check_citation_compliance(
+            formatted,
+            getattr(self.rag, "kb_status", {}),
+            fsm_state=state.get("state", ""),
+            chat_id=chat_id,
+        )
+
         return self._make_result(
             formatted,
             self._infer_confidence(formatted),
