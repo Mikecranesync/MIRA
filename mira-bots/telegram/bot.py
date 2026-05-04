@@ -7,11 +7,22 @@ import logging
 import os
 
 import httpx
+from admin_commands import (
+    invite_command,
+    invite_status_command,
+    revoke_command,
+    team_command,
+)
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
 from shared import tts
 from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
+from shared.identity.service import get_identity_service
+from shared.tenant.authorizer import Authorizer
+from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
+from start_command import start_command
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.error import Conflict
@@ -24,18 +35,6 @@ from telegram.ext import (
     filters,
 )
 from voice_transcription import transcribe_voice
-
-from admin_commands import (
-    invite_command,
-    invite_status_command,
-    revoke_command,
-    team_command,
-)
-from shared.identity.service import get_identity_service
-from shared.tenant.authorizer import Authorizer
-from start_command import start_command
-from sqlalchemy import create_engine
-from sqlalchemy.pool import NullPool
 
 logging.basicConfig(
     level=logging.INFO,

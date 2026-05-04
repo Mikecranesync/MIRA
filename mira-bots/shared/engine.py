@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from .chat_tenant import resolve as resolve_tenant
+from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .conversation_router import route_intent
 from .detection.recurring_fault import check_recurring_and_annotate
 from .fallback_responses import (
@@ -87,7 +88,6 @@ from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
 from .workers.nameplate_worker import NameplateWorker
 from .workers.plc_worker import PLCWorker
-from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .workers.print_worker import PrintWorker
 from .workers.rag_worker import RAGWorker
 from .workers.vision_worker import VisionWorker
