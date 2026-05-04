@@ -201,8 +201,7 @@ class TestPromptWithChunks:
     def test_source_tag_count_matches_chunk_count(self):
         w = _make_worker()
         chunks = [
-            _chunk(manufacturer="ABB", model_number=f"ACS-{i}", section="Faults")
-            for i in range(5)
+            _chunk(manufacturer="ABB", model_number=f"ACS-{i}", section="Faults") for i in range(5)
         ]
         msgs = w._build_prompt_with_chunks(_state(), "?", chunks)
         # Look only at the injected references block — the static system
@@ -342,10 +341,7 @@ def _import_compliance_check():
 class TestCitationCompliance:
     def test_compliance_ok_when_tag_present(self, caplog):
         check = _import_compliance_check()
-        reply = (
-            "Set parameter F2-01 to 60Hz "
-            "[Source: Yaskawa A1000 — Parameter Settings]."
-        )
+        reply = "Set parameter F2-01 to 60Hz [Source: Yaskawa A1000 — Parameter Settings]."
         kb = {"status": "covered", "citations": []}
         with caplog.at_level(logging.INFO, logger="mira-gsd"):
             result = check(reply, kb, fsm_state="DIAGNOSIS", chat_id="t1")
@@ -401,9 +397,7 @@ class TestCitationCompliance:
 
     def test_partial_status_with_tag_passes(self):
         check = _import_compliance_check()
-        reply = (
-            "Check wiring on terminal 3 [Source: Siemens G120 — Wiring Diagrams]."
-        )
+        reply = "Check wiring on terminal 3 [Source: Siemens G120 — Wiring Diagrams]."
         kb = {"status": "partial", "citations": []}
         result = check(reply, kb, fsm_state="DIAGNOSIS", chat_id="t6")
         assert result["required"] is True
@@ -428,13 +422,12 @@ class TestCitationCompliance:
         """Sanity check that no test fixture leaks "p. N" into the tag — that
         would indicate the dishonest format crept back in."""
         check = _import_compliance_check()
-        reply = (
-            "[Source: Allen-Bradley PowerFlex 755 — DC Bus Faults]"
-        )
+        reply = "[Source: Allen-Bradley PowerFlex 755 — DC Bus Faults]"
         out = check(reply, {"status": "covered"}, fsm_state="DIAGNOSIS", chat_id="z")
         assert out["tag_count"] == 1
         # No page-number substring anywhere in the tag
         import re as _re
+
         for tag in _re.findall(r"\[Source:[^\]]+\]", reply, _re.I):
             assert "p." not in tag.lower()
             assert "page" not in tag.lower()
@@ -446,36 +439,96 @@ class TestCitationCompliance:
 
 
 SAMPLE_QUESTIONS = [
-    ("PowerFlex 755 fault F004 — what does it mean?",
-     _chunk(manufacturer="Allen-Bradley", model_number="PowerFlex 755",
-            section="DC Bus Faults", content="F004 indicates DC bus overvoltage.")),
-    ("Yaskawa A1000 OC1 trip on startup",
-     _chunk(manufacturer="Yaskawa", model_number="A1000",
-            section="Fault Codes", content="OC1 — overcurrent during accel.")),
-    ("Siemens G120 set parameter for line frequency",
-     _chunk(manufacturer="Siemens", model_number="G120",
-            section="Parameter List", content="P0100 sets line frequency.")),
-    ("Danfoss FC302 alarm A14",
-     _chunk(manufacturer="Danfoss", model_number="FC302",
-            section="Alarms", content="A14 earth fault.")),
-    ("ABB ACS580 trip on overvoltage",
-     _chunk(manufacturer="ABB", model_number="ACS580",
-            section="Trips", content="Overvoltage trip threshold.")),
-    ("Rockwell PowerFlex 525 F081",
-     _chunk(manufacturer="Rockwell", model_number="PowerFlex 525",
-            section="Fault Codes", content="F081 control input error.")),
-    ("AutomationDirect GS10 reset procedure",
-     _chunk(manufacturer="AutomationDirect", model_number="GS10",
-            section="Reset", content="Press STOP twice to reset.")),
-    ("SEW MOVITRAC current limit setting",
-     _chunk(manufacturer="SEW", model_number="MOVITRAC",
-            section="Current Limits", content="P303 sets current limit.")),
-    ("Mitsubishi FR-A800 startup fault E.OC1",
-     _chunk(manufacturer="Mitsubishi", model_number="FR-A800",
-            section="Faults", content="E.OC1 overcurrent during accel.")),
-    ("Schneider ATV320 wiring of terminals",
-     _chunk(manufacturer="Schneider", model_number="ATV320",
-            section="Wiring", content="Terminal R1 is the relay output.")),
+    (
+        "PowerFlex 755 fault F004 — what does it mean?",
+        _chunk(
+            manufacturer="Allen-Bradley",
+            model_number="PowerFlex 755",
+            section="DC Bus Faults",
+            content="F004 indicates DC bus overvoltage.",
+        ),
+    ),
+    (
+        "Yaskawa A1000 OC1 trip on startup",
+        _chunk(
+            manufacturer="Yaskawa",
+            model_number="A1000",
+            section="Fault Codes",
+            content="OC1 — overcurrent during accel.",
+        ),
+    ),
+    (
+        "Siemens G120 set parameter for line frequency",
+        _chunk(
+            manufacturer="Siemens",
+            model_number="G120",
+            section="Parameter List",
+            content="P0100 sets line frequency.",
+        ),
+    ),
+    (
+        "Danfoss FC302 alarm A14",
+        _chunk(
+            manufacturer="Danfoss",
+            model_number="FC302",
+            section="Alarms",
+            content="A14 earth fault.",
+        ),
+    ),
+    (
+        "ABB ACS580 trip on overvoltage",
+        _chunk(
+            manufacturer="ABB",
+            model_number="ACS580",
+            section="Trips",
+            content="Overvoltage trip threshold.",
+        ),
+    ),
+    (
+        "Rockwell PowerFlex 525 F081",
+        _chunk(
+            manufacturer="Rockwell",
+            model_number="PowerFlex 525",
+            section="Fault Codes",
+            content="F081 control input error.",
+        ),
+    ),
+    (
+        "AutomationDirect GS10 reset procedure",
+        _chunk(
+            manufacturer="AutomationDirect",
+            model_number="GS10",
+            section="Reset",
+            content="Press STOP twice to reset.",
+        ),
+    ),
+    (
+        "SEW MOVITRAC current limit setting",
+        _chunk(
+            manufacturer="SEW",
+            model_number="MOVITRAC",
+            section="Current Limits",
+            content="P303 sets current limit.",
+        ),
+    ),
+    (
+        "Mitsubishi FR-A800 startup fault E.OC1",
+        _chunk(
+            manufacturer="Mitsubishi",
+            model_number="FR-A800",
+            section="Faults",
+            content="E.OC1 overcurrent during accel.",
+        ),
+    ),
+    (
+        "Schneider ATV320 wiring of terminals",
+        _chunk(
+            manufacturer="Schneider",
+            model_number="ATV320",
+            section="Wiring",
+            content="Terminal R1 is the relay output.",
+        ),
+    ),
 ]
 
 

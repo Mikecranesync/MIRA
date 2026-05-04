@@ -50,6 +50,7 @@ def format_source_label(chunk: dict | None) -> str:
         return head
     return section
 
+
 # Max tokens to allocate for conversation history in the prompt.
 # Prevents late-conversation latency spikes from unbounded context growth.
 _HISTORY_TOKEN_BUDGET = int(os.getenv("MIRA_HISTORY_TOKEN_BUDGET", "2000"))
@@ -104,13 +105,19 @@ def _build_clarification_request(message: str, asset_identified: str) -> str | N
     parts.append("To look this up I need a bit more info:\n")
 
     if not asset_identified:
-        parts.append("1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Rockwell)")
-        parts.append("2. **Model number** — shown on the nameplate or display (e.g. GS20, PowerFlex 40)")
+        parts.append(
+            "1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Rockwell)"
+        )
+        parts.append(
+            "2. **Model number** — shown on the nameplate or display (e.g. GS20, PowerFlex 40)"
+        )
         parts.append("3. **Exact code** — copy it exactly as it appears on the screen")
     else:
         parts.append(f"Equipment: {asset_identified}")
         parts.append("1. **Exact code** — copy it exactly as it appears on the screen")
-        parts.append("2. **What were you doing** when it appeared? (starting up, running, decelerating, idle)")
+        parts.append(
+            "2. **What were you doing** when it appeared? (starting up, running, decelerating, idle)"
+        )
 
     return "\n".join(parts)
 
@@ -331,7 +338,9 @@ class RAGWorker:
             if neon_chunks and top_score < _min_sim:
                 logger.info(
                     "RAG_QUALITY_GATE top_score=%.3f min=%.2f triage=%s — suppressed",
-                    top_score, _min_sim, _triage_conf or "none",
+                    top_score,
+                    _min_sim,
+                    _triage_conf or "none",
                 )
                 chunk_texts = []
                 neon_chunks = []
