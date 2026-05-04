@@ -253,3 +253,98 @@ async def test_vision_worker_failure_continues_with_placeholder():
 
     assert result  # returns something
     assert eng.vision.process.call_count == 2  # still attempted both
+
+
+# ---------------------------------------------------------------------------
+# Progress callback (on_progress) — fires once per photo, in order, never aborts
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_on_progress_fires_once_per_photo_in_order():
+    """Callback fires (1, n), (2, n), ..., (n, n) — exactly N times, in order."""
+    eng = _make_engine()
+    eng.vision.process = AsyncMock(side_effect=[NAMEPLATE, BEARING_DAMAGE, FAULT_DISPLAY])
+    eng.router.complete = AsyncMock(return_value=("synth reply", {}))
+
+    events: list[tuple[int, int]] = []
+
+    async def on_progress(idx_done: int, n_total: int) -> None:
+        events.append((idx_done, n_total))
+
+    await eng.process_multi_photo(
+        chat_id="test-progress",
+        message="",
+        photos_b64=[_b64("img1"), _b64("img2"), _b64("img3")],
+        on_progress=on_progress,
+    )
+
+    assert events == [(1, 3), (2, 3), (3, 3)]
+
+
+@pytest.mark.asyncio
+async def test_on_progress_fires_even_when_vision_failed_for_a_photo():
+    """Vision failure on photo 2 still fires (2, n) — caller sees real progress, not stuck."""
+    eng = _make_engine()
+    eng.vision.process = AsyncMock(
+        side_effect=[NAMEPLATE, Exception("Ollama timeout"), BEARING_DAMAGE]
+    )
+    eng.router.complete = AsyncMock(return_value=("synth", {}))
+
+    events: list[tuple[int, int]] = []
+
+    async def on_progress(idx_done: int, n_total: int) -> None:
+        events.append((idx_done, n_total))
+
+    await eng.process_multi_photo(
+        chat_id="test-progress-fail",
+        message="",
+        photos_b64=[_b64("img1"), _b64("img2"), _b64("img3")],
+        on_progress=on_progress,
+    )
+
+    # All three photos still report progress, even though photo 2 had a vision
+    # exception (it degraded to the UNCLEAR placeholder).
+    assert events == [(1, 3), (2, 3), (3, 3)]
+
+
+@pytest.mark.asyncio
+async def test_on_progress_callback_exception_does_not_abort_engine():
+    """Flaky callback (e.g., Telegram edit_message rate-limited) must not break processing."""
+    eng = _make_engine()
+    eng.vision.process = AsyncMock(side_effect=[NAMEPLATE, BEARING_DAMAGE])
+    eng.router.complete = AsyncMock(return_value=("synth reply text", {}))
+
+    call_count = 0
+
+    async def flaky_on_progress(idx_done: int, n_total: int) -> None:
+        nonlocal call_count
+        call_count += 1
+        raise RuntimeError("Telegram 429 rate-limited")
+
+    result = await eng.process_multi_photo(
+        chat_id="test-flaky-cb",
+        message="",
+        photos_b64=[_b64("img1"), _b64("img2")],
+        on_progress=flaky_on_progress,
+    )
+
+    # Engine completes normally despite every callback raising
+    assert result == "synth reply text"
+    assert call_count == 2  # called once per photo
+    assert eng.vision.process.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_on_progress_optional_default_none():
+    """Backwards-compatible — omitting on_progress works exactly as before."""
+    eng = _make_engine()
+    eng.vision.process = AsyncMock(side_effect=[NAMEPLATE])
+    eng.router.complete = AsyncMock(return_value=("single-photo reply", {}))
+
+    result = await eng.process_multi_photo(
+        chat_id="test-no-cb",
+        message="",
+        photos_b64=[_b64("img1")],
+    )
+    assert result == "single-photo reply"

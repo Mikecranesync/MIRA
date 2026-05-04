@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -625,6 +626,7 @@ class Supervisor:
         platform: str = "telegram",
         tenant_id: str | None = None,
         mira_user_id: str | None = None,
+        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> str:
         """Burst entry point. Returns combined reply for N photos (N >= 1).
 
@@ -636,6 +638,12 @@ class Supervisor:
         (every cascade provider down), the method falls back to a deterministic
         numbered list. Only the LAST photo is persisted via _save_session_photo
         so follow-up turns ("tell me more about photo 4") have a single anchor.
+
+        ``on_progress(idx_done, n_total)`` — optional async callback fired after
+        each photo's vision call completes (idx_done is 1-based, fires N times
+        across the burst). Callers (the photo-batch worker) use this to edit
+        the chat ack message ("Processing photo 2/4..."). Callback exceptions
+        are caught and logged so a flaky chat-edit can't take down the engine.
         """
         self._current_tenant_id = tenant_id or getattr(self, "tenant_id", "") or ""
         self._current_mira_user_id = mira_user_id or ""
@@ -666,6 +674,15 @@ class Supervisor:
                         "drawing_type_confidence": 0.0,
                     }
                 analyses.append(vresult)
+                if on_progress is not None:
+                    try:
+                        await on_progress(idx, n)
+                    except Exception as cb_exc:
+                        logger.warning(
+                            "MULTI_PHOTO_PROGRESS_CALLBACK_FAILURE "
+                            "chat_id=%s idx=%d/%d error=%s",
+                            chat_id, idx, n, cb_exc,
+                        )
 
             bullets = []
             for idx, a in enumerate(analyses, start=1):
