@@ -815,3 +815,41 @@ class TestFreshQuestionDuringWO:
 
         assert not f("")
         assert not f("   ")
+
+
+class TestResetWipesAllChatKeys:
+    """Mike 2026-05-04 — /new wasn't clearing the right SQLite row because
+    the dispatcher saves under composite key 'telegram:<id>' but the bot
+    handler called engine.reset(<raw_id>). reset() must wipe all variants."""
+
+    def test_reset_deletes_composite_telegram_key(self, supervisor):
+        # Seed a row under the composite key the dispatcher uses
+        composite = "telegram:8445149012"
+        state = supervisor._load_state(composite)
+        state["asset_identified"] = "Pump A3"
+        state["context"]["session_context"]["symptom_summary"] = "high differential filter pressure"
+        supervisor._save_state(composite, state)
+        # Reset using the RAW chat id (what bot.py passes)
+        supervisor.reset("8445149012")
+        # The composite row must be gone now
+        reloaded = supervisor._load_state(composite)
+        assert reloaded.get("asset_identified") in (None, "")
+        assert reloaded["context"].get("session_context", {}).get("symptom_summary", "") == ""
+
+    def test_reset_deletes_composite_with_thread_key(self, supervisor):
+        composite = "telegram:12345:67890"
+        state = supervisor._load_state(composite)
+        state["asset_identified"] = "Conveyor 7"
+        supervisor._save_state(composite, state)
+        supervisor.reset("12345")
+        reloaded = supervisor._load_state(composite)
+        assert reloaded.get("asset_identified") in (None, "")
+
+    def test_reset_deletes_exact_key_too(self, supervisor):
+        # Some legacy callers pass the raw key directly
+        state = supervisor._load_state("legacy_chat_id")
+        state["asset_identified"] = "Old equipment"
+        supervisor._save_state("legacy_chat_id", state)
+        supervisor.reset("legacy_chat_id")
+        reloaded = supervisor._load_state("legacy_chat_id")
+        assert reloaded.get("asset_identified") in (None, "")

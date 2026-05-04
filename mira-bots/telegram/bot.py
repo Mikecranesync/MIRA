@@ -5,6 +5,7 @@ import base64
 import io as _io
 import logging
 import os
+import re
 
 import httpx
 from admin_commands import (
@@ -551,6 +552,21 @@ async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔄 Fresh start. What can I help with?")
 
 
+# Tolerant /new matcher: catches "/new", "/ new", "/New", "/  new", "/NEW", etc.
+# Telegram normally only fires CommandHandler on exact "/new"; users on shaky
+# autocorrect or copy-paste end up with stray spaces or capitalised variants
+# that fall through to the message handler and confuse the engine.
+_NEW_VARIANT_RE = re.compile(r"^\s*/\s*new(?:@\w+)?\s*$", re.IGNORECASE)
+
+
+async def new_command_variant(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text-message variants of /new that don't match PTB's CommandHandler."""
+    text = update.message.text or ""
+    if not _NEW_VARIANT_RE.match(text):
+        return
+    await new_command(update, context)
+
+
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Query Open WebUI for an equipment status summary."""
     headers = {"Content-Type": "application/json"}
@@ -812,6 +828,15 @@ def main():
     app.add_handler(CommandHandler("voice", voice_command))
     app.add_handler(CommandHandler("bad", bad_command))
     app.add_handler(CommandHandler("help", help_command))
+    # /new variant matcher: catches "/ new", "/New", " /new ", etc. that PTB's
+    # CommandHandler doesn't match. Must be registered BEFORE the catch-all
+    # text handler so a stray-space /new doesn't get diagnosed as a question.
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\s*/\s*new(?:@\w+)?\s*$") & ~filters.COMMAND,
+            new_command_variant,
+        )
+    )
     app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
