@@ -30,7 +30,12 @@ services:
       - PDF_EXTRACT_IMAGES=true
       # KB status indicator — red outline by default (unknown = caution).
       # Per-turn 🟢/🟡/🔴 banners in pipeline responses provide the live signal.
-      - "WEBUI_CUSTOM_CSS=#app > div:first-child { outline: 3px solid #cc3333; outline-offset: -3px; border-radius: 4px; transition: outline-color 0.5s ease; }"
+      # CRA-24: also enforce 44x44 minimum tap target on mobile widths so the
+      # OAuth/password buttons on /auth pass iOS HIG / WCAG 2.5.5. Open WebUI
+      # uses Svelte-generated class names that drift across releases, so we
+      # target generic interactive elements (button / a[href] / input
+      # submit/button) inside a mobile media query — desktop unchanged.
+      - "WEBUI_CUSTOM_CSS=#app > div:first-child { outline: 3px solid #cc3333; outline-offset: -3px; border-radius: 4px; transition: outline-color 0.5s ease; } @media (max-width: 768px) { button, a[href], input[type=submit], input[type=button] { min-height: 44px; } }"
       # STT — Groq Whisper free tier (voice-to-text)
       - AUDIO_STT_ENGINE=openai
       - AUDIO_STT_OPENAI_API_BASE_URL=https://api.groq.com/openai/v1

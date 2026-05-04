@@ -41,6 +41,22 @@ describe("GET /m/:asset_tag/report", () => {
     const res = await app.request("/m/BAD TAG/report");
     expect(res.status).toBe(400);
   });
+
+  test("200 not-found HTML for nonexistent tag", async () => {
+    const res = await app.request("/m/NOEXIST-REPORT-TAG/report");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Asset not found");
+  });
+
+  test("CRA-24: 'Open MIRA' link meets 44x44 tap target on mobile", async () => {
+    const res = await app.request("/m/NOEXIST-REPORT-TAG/report");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("min-height: 44px");
+    expect(html).toContain("padding: 0.75rem 1rem");
+    expect(html).toContain('<a href="https://app.factorylm.com">Open MIRA</a>');
+  });
 });
 
 describe("POST /api/m/report", () => {

@@ -35,7 +35,16 @@ const NOT_FOUND_HTML = `<!doctype html>
     body { font-family: system-ui, sans-serif; max-width: 480px; margin: 3rem auto; padding: 1rem; color: #111; }
     h1 { font-size: 1.25rem; font-weight: 600; }
     p { color: #444; line-height: 1.5; }
-    a { color: #f5a623; }
+    /* CRA-24: 44x44 mobile tap target (was ~82x18). */
+    a {
+      color: #f5a623;
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0.75rem 1rem;
+      text-decoration: none;
+    }
+    a:hover, a:focus { text-decoration: underline; }
   </style>
 </head><body>
   <h1>Asset not found in your plant</h1>
