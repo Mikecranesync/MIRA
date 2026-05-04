@@ -830,7 +830,10 @@ class Supervisor:
             if not self._is_doc_specific(mfr, combined):
                 # If nameplate was already scanned, asset_identified is "Vendor, Model".
                 # Skip gathering — we already know enough to crawl.
-                asset_id = state.get("asset_identified", "")
+                # NOTE: SQLite returns None for NULL columns, ignoring dict.get default,
+                # so coalesce explicitly to avoid `'NoneType' is not iterable` on the
+                # following `in` check (bug surfaced by tech-19 benchmark case).
+                asset_id = state.get("asset_identified") or ""
                 if "," in asset_id:
                     fallback_mfr = mfr or asset_id.split(",", 1)[0].strip()
                     return await self._do_documentation_lookup(
