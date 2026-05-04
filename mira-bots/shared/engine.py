@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from .chat_tenant import resolve as resolve_tenant
+from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .conversation_router import route_intent
 from .detection.recurring_fault import check_recurring_and_annotate
 from .fallback_responses import (
@@ -675,9 +676,7 @@ class Supervisor:
                         tenant_id=resolved_tenant,
                         honest_prefix=_honest_prefix,
                     )
-                return await self._handle_instructional_question(
-                    chat_id, message, state, trace_id
-                )
+                return await self._handle_instructional_question(chat_id, message, state, trace_id)
 
             if _router_intent == "continue_current" and detect_session_followup(
                 message, sc, state["state"]
@@ -741,7 +740,11 @@ class Supervisor:
                     kb_covered, _ = kb_has_coverage(mfr, combined, resolved_tenant or "")
                     if kb_covered:
                         return await self._do_documentation_lookup(
-                            chat_id, message, state, trace_id, resolved_tenant,
+                            chat_id,
+                            message,
+                            state,
+                            trace_id,
+                            resolved_tenant,
                             vendor_override=mfr,
                         )
                 return await self._enter_manual_lookup_gathering(
@@ -1244,6 +1247,17 @@ class Supervisor:
         # Phase 3 — prepend honest crawl-failure message if a prior doc-crawl exhausted.
         if _honest_prefix:
             formatted = _honest_prefix + formatted
+
+        # CRA-11 / Unit 2 — observational citation compliance check.
+        # Logs CITATION_COMPLIANCE_OK / _MISS so we can measure inline-cite
+        # rate over time. Never blocks the reply.
+        _check_citation_compliance(
+            formatted,
+            getattr(self.rag, "kb_status", {}),
+            fsm_state=state.get("state", ""),
+            chat_id=chat_id,
+        )
+
         tl_flush()
         return self._make_result(
             formatted,
@@ -1827,6 +1841,14 @@ class Supervisor:
         formatted = self._format_reply(parsed, user_message=message)
         if honest_prefix:
             formatted = honest_prefix + formatted
+
+        _check_citation_compliance(
+            formatted,
+            getattr(self.rag, "kb_status", {}),
+            fsm_state=state.get("state", ""),
+            chat_id=chat_id,
+        )
+
         return self._make_result(
             formatted,
             self._infer_confidence(formatted),
@@ -2468,7 +2490,11 @@ class Supervisor:
         # Phase 2 — KB pre-check: skip crawl when we already have coverage.
         kb_covered, kb_reason = kb_has_coverage(mfr, combined, resolved_tenant or "")
         if kb_covered:
-            reply = f"I have {mfr} documentation indexed." if mfr else "I already have documentation indexed for that equipment."
+            reply = (
+                f"I have {mfr} documentation indexed."
+                if mfr
+                else "I already have documentation indexed for that equipment."
+            )
             if url:
                 reply += f" Official source: {url}"
             reply += " Ask about fault codes, specs, or wiring."

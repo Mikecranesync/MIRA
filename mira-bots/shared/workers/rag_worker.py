@@ -15,6 +15,42 @@ from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support
 from ..inference.router import InferenceRouter
 from ..langfuse_setup import trace_rag_query
 
+# CRA-11 / Unit 2 — citation infrastructure.
+#
+# CITATION_TAG_RE matches the "[Source: ...]" markers we inject in retrieval
+# headers and instruct the LLM to echo. Used by post-LLM compliance checks.
+#
+# format_source_label(chunk) builds the human-readable label for one chunk.
+# Honesty constraint (per fe916de commit): we DO NOT render a page number.
+# The DB column "source_page" actually holds chunk_index (a sequential ID
+# from the chunker), not a real PDF page number. Showing "p. 47" when we
+# mean "chunk 47" would mislead techs reading the citation. Backfilling
+# real page numbers from PDF re-extraction is a separate task.
+CITATION_TAG_RE = re.compile(r"\[Source:[^\]]+\]", re.IGNORECASE)
+
+
+def format_source_label(chunk: dict | None) -> str:
+    """Build the "Manufacturer Model — Section" label for a citation tag.
+
+    Returns "" when no usable metadata is present so callers can decide
+    whether to emit a [Source:] tag at all. Page numbers are intentionally
+    omitted — see module docstring above.
+    """
+    if not chunk:
+        return ""
+    mfr = (chunk.get("manufacturer") or "").strip()
+    mdl = (chunk.get("model_number") or "").strip()
+    meta = chunk.get("metadata") or {}
+    section = (meta.get("section") or "").strip()
+
+    head = " ".join(p for p in (mfr, mdl) if p)
+    if head and section:
+        return f"{head} — {section}"
+    if head:
+        return head
+    return section
+
+
 # Max tokens to allocate for conversation history in the prompt.
 # Prevents late-conversation latency spikes from unbounded context growth.
 _HISTORY_TOKEN_BUDGET = int(os.getenv("MIRA_HISTORY_TOKEN_BUDGET", "2000"))
@@ -69,13 +105,19 @@ def _build_clarification_request(message: str, asset_identified: str) -> str | N
     parts.append("To look this up I need a bit more info:\n")
 
     if not asset_identified:
-        parts.append("1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Rockwell)")
-        parts.append("2. **Model number** — shown on the nameplate or display (e.g. GS20, PowerFlex 40)")
+        parts.append(
+            "1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Rockwell)"
+        )
+        parts.append(
+            "2. **Model number** — shown on the nameplate or display (e.g. GS20, PowerFlex 40)"
+        )
         parts.append("3. **Exact code** — copy it exactly as it appears on the screen")
     else:
         parts.append(f"Equipment: {asset_identified}")
         parts.append("1. **Exact code** — copy it exactly as it appears on the screen")
-        parts.append("2. **What were you doing** when it appeared? (starting up, running, decelerating, idle)")
+        parts.append(
+            "2. **What were you doing** when it appeared? (starting up, running, decelerating, idle)"
+        )
 
     return "\n".join(parts)
 
@@ -170,8 +212,11 @@ source manual for your specific configuration." Do not pad incomplete \
 retrieval with generic explanations. Set confidence to MEDIUM.
 16. CITATION REQUIRED. You MUST cite your source for any technical advice \
 (parameter values, fault codes, torque specs, timing, electrical specs). \
-Format: "According to [Manual Name], [Section]: ..." and end with \
-"[Source: {manufacturer} {model_number}, {section}]". \
+Echo the exact "[Source: ...]" tag from the RETRIEVED REFERENCE DOCUMENTS \
+section, inline with the fact you are citing. The tag format is \
+"[Source: {manufacturer} {model_number} — {section}]" — copy it verbatim \
+from what you were given. Never invent or fabricate a [Source: ...] tag for \
+content that did not arrive with one. \
 If no retrieved documents appear in the RETRIEVED REFERENCE DOCUMENTS section \
 above, do NOT give technical advice. Instead say exactly: \
 "I don't have documentation for this equipment in my records — searching now. \
@@ -293,7 +338,9 @@ class RAGWorker:
             if neon_chunks and top_score < _min_sim:
                 logger.info(
                     "RAG_QUALITY_GATE top_score=%.3f min=%.2f triage=%s — suppressed",
-                    top_score, _min_sim, _triage_conf or "none",
+                    top_score,
+                    _min_sim,
+                    _triage_conf or "none",
                 )
                 chunk_texts = []
                 neon_chunks = []
@@ -436,10 +483,17 @@ class RAGWorker:
         self,
         state: dict,
         message: str,
-        chunks: list[str],
+        chunks: list,
         photo_b64: str = None,
     ) -> list[dict]:
-        """Build prompt with explicitly injected reranked chunks."""
+        """Build prompt with explicitly injected reranked chunks.
+
+        ``chunks`` may be either a list of plain strings (legacy callers) or
+        a list of chunk dicts. When a dict is passed, the [Source: ...] tag
+        comes from that dict directly so reranking does not mis-pair labels
+        with text. When a string is passed, the parallel ``_last_neon_chunks``
+        list is used as the metadata source.
+        """
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
@@ -456,22 +510,26 @@ class RAGWorker:
                 "the technician explicitly switches topic.\n"
             )
 
-        # Inject reranked chunks as reference context with source headers
+        # Inject reranked chunks as reference context with source headers.
+        # Each chunk gets a [Source: Mfr Mdl — Section] tag the LLM is
+        # instructed (rule 16) to echo inline next to facts it cites.
+        # Rerank-stable: when `chunks` is a list of dicts, label comes from
+        # that dict directly so reordering doesn't mis-pair labels with text.
+        # When chunks are bare strings (legacy callers), fall back to the
+        # parallel _last_neon_chunks list.
         system_content += "\n--- RETRIEVED REFERENCE DOCUMENTS ---\n"
         for i, chunk in enumerate(chunks, 1):
-            nc = self._last_neon_chunks[i - 1] if i - 1 < len(self._last_neon_chunks) else {}
-            meta = nc.get("metadata") or {}
-            mfr = nc.get("manufacturer", "")
-            mdl = nc.get("model_number", "")
-            section = meta.get("section", "")
-            label_parts = [p for p in [mfr, mdl] if p]
-            label = " ".join(label_parts)
-            if section:
-                label += f" — {section}"
-            if label:
-                system_content += f"[{i}] [Source: {label}] {chunk}\n"
+            if isinstance(chunk, dict):
+                nc = chunk
+                text = chunk.get("content", "")
             else:
-                system_content += f"[{i}] {chunk}\n"
+                nc = self._last_neon_chunks[i - 1] if i - 1 < len(self._last_neon_chunks) else {}
+                text = chunk
+            label = format_source_label(nc)
+            if label:
+                system_content += f"[{i}] [Source: {label}] {text}\n"
+            else:
+                system_content += f"[{i}] {text}\n"
         system_content += "--- END REFERENCES ---\n"
 
         messages = [{"role": "system", "content": system_content}]
@@ -587,11 +645,11 @@ class RAGWorker:
         if neon_chunks:
             system_content += "\n--- NEONDB KNOWLEDGE BASE (retrieved) ---\n"
             for i, chunk in enumerate(neon_chunks, 1):
-                mfr = chunk.get("manufacturer") or ""
-                model = chunk.get("model_number") or ""
                 score = chunk.get("similarity") or 0.0
-                label = f"{mfr} {model}".strip() or chunk.get("equipment_type") or "unknown"
-                system_content += f"[{i}] [{label}] (score={score:.3f})\n{chunk['content']}\n\n"
+                label = format_source_label(chunk) or (chunk.get("equipment_type") or "unknown")
+                system_content += (
+                    f"[{i}] [Source: {label}] (score={score:.3f})\n{chunk['content']}\n\n"
+                )
             system_content += "--- END NEONDB CONTEXT ---\n"
 
         messages = [{"role": "system", "content": system_content}]
