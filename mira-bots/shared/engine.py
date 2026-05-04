@@ -651,7 +651,10 @@ class Supervisor:
                 except Exception as exc:
                     logger.warning(
                         "MULTI_PHOTO_VISION_FAILURE chat_id=%s idx=%d/%d error=%s",
-                        chat_id, idx, n, exc,
+                        chat_id,
+                        idx,
+                        n,
+                        exc,
                     )
                     vresult = {
                         "classification": "UNCLEAR",
@@ -701,7 +704,9 @@ class Supervisor:
             except Exception as exc:
                 logger.warning(
                     "MULTI_PHOTO_ROUTER_FAILURE chat_id=%s n=%d error=%s",
-                    chat_id, n, exc,
+                    chat_id,
+                    n,
+                    exc,
                 )
                 reply_text = ""
 
@@ -719,7 +724,10 @@ class Supervisor:
         except Exception as exc:
             logger.error(
                 "MULTI_PHOTO_PROCESS_ERROR chat_id=%s n=%d error=%s",
-                chat_id, n, exc, exc_info=True,
+                chat_id,
+                n,
+                exc,
+                exc_info=True,
             )
             return GENERIC_ENGINE_ERROR
 
