@@ -1,8 +1,12 @@
 """
 Per-beat TTS for comic-pipeline v2.
 
-One OpenAI tts-1-hd call per narration beat. Cached on disk by content hash
+One OpenAI TTS call per narration beat. Cached on disk by content hash
 so iteration on visuals doesn't re-pay for unchanged narration.
+
+Model routing:
+  gpt-4o-mini-tts — instruction-following; pass style_instruction via instructions=
+  tts-1-hd        — legacy; ignores instructions; cadence set only by voice + speed
 """
 from __future__ import annotations
 
@@ -18,6 +22,8 @@ from openai import OpenAI
 
 logger = logging.getLogger("comic.v2.tts")
 
+_INSTRUCTION_MODELS = {"gpt-4o-mini-tts", "gpt-4o-audio-preview"}
+
 
 @dataclass
 class BeatAudio:
@@ -28,9 +34,9 @@ class BeatAudio:
     duration: float
 
 
-def _hash_for(text: str, voice: str, model: str, speed: float) -> str:
+def _hash_for(text: str, voice: str, model: str, speed: float, instructions: str) -> str:
     h = hashlib.sha256()
-    h.update(f"{model}|{voice}|{speed}|{text}".encode("utf-8"))
+    h.update(f"{model}|{voice}|{speed}|{instructions}|{text}".encode("utf-8"))
     return h.hexdigest()[:16]
 
 
@@ -51,19 +57,28 @@ def synth_beat(
     model: str,
     speed: float,
     cache_dir: Path,
+    instructions: str = "",
 ) -> Path:
-    """Synthesize one beat's MP3, hitting the on-disk cache if possible."""
+    """Synthesize one beat's MP3, hitting the on-disk cache if possible.
+
+    When model is gpt-4o-mini-tts, the instructions= parameter is passed so
+    the style context actually shapes delivery (cadence, tone, gravitas).
+    Legacy tts-1-hd ignores instructions; style comes only from voice + speed.
+    """
     cache_dir.mkdir(parents=True, exist_ok=True)
-    fingerprint = _hash_for(text, voice, model, speed)
+    fingerprint = _hash_for(text, voice, model, speed, instructions)
     out_path = cache_dir / f"beat_{fingerprint}.mp3"
     if out_path.exists() and out_path.stat().st_size > 0:
         logger.info("[tts] cache hit %s (%s…)", out_path.name, text[:40])
         return out_path
 
-    logger.info("[tts] synth (%d chars, speed=%.2f) %s…", len(text), speed, text[:60])
-    with client.audio.speech.with_streaming_response.create(
-        model=model, voice=voice, input=text, speed=speed,
-    ) as response:
+    logger.info("[tts] synth model=%s (%d chars, speed=%.2f) %s…", model, len(text), speed, text[:60])
+
+    kwargs: dict = dict(model=model, voice=voice, input=text, speed=speed)
+    if instructions and model in _INSTRUCTION_MODELS:
+        kwargs["instructions"] = instructions
+
+    with client.audio.speech.with_streaming_response.create(**kwargs) as response:
         response.stream_to_file(out_path)
     return out_path
 
@@ -83,18 +98,19 @@ def synth_all_beats(
     voice = audio_cfg["tts_voice"]
     model = audio_cfg["tts_model"]
     speed = float(audio_cfg["tts_speed"])
-    # Note: tts-1-hd does NOT follow inline style instructions — the model
-    # reads whatever you put in `input` aloud, including a "style preamble".
-    # Documentary cadence comes from voice=onyx + speed=0.9, not from prompt text.
-    # (For instruction-following TTS, swap model to "gpt-4o-mini-tts" + use
-    # the `instructions` parameter.)
+    instructions = audio_cfg.get("style_instruction", "").strip()
+
+    if model in _INSTRUCTION_MODELS and instructions:
+        logger.info("[tts] using instructions= parameter (model=%s)", model)
+    elif instructions:
+        logger.info("[tts] model=%s ignores style instructions; cadence from voice+speed only", model)
 
     beats: list[BeatAudio] = []
     for shot in storyboard["shots"]:
         for j, beat in enumerate(shot["beats"]):
             mp3 = synth_beat(
                 client, text=beat["text"], voice=voice, model=model,
-                speed=speed, cache_dir=cache_dir,
+                speed=speed, cache_dir=cache_dir, instructions=instructions,
             )
             beats.append(BeatAudio(
                 shot_id=shot["id"], beat_index=j, text=beat["text"],

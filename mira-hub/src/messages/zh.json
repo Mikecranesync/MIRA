@@ -564,6 +564,10 @@
       "team": "技术员名单与任务分配",
       "cmms": "Atlas CMMS系统集成",
       "admin": "用户、角色和系统设置"
+    },
+    "exportData": {
+      "label": "导出所有数据",
+      "desc": "以ZIP格式下载工单、资产、排程和知识库"
     }
   },
   "eventLog": {

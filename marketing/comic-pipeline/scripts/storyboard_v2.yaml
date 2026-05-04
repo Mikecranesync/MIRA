@@ -32,7 +32,7 @@ video:
   output_name: mira_explainer_v2.mp4
 
 audio:
-  tts_model: tts-1-hd
+  tts_model: gpt-4o-mini-tts   # upgraded from tts-1-hd; supports instructions= parameter
   tts_voice: onyx
   tts_speed: 0.90              # slower than default 1.0 for documentary cadence
   pause_within_shot: 0.5       # silence between beats inside a shot

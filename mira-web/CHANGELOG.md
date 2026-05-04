@@ -4,8 +4,192 @@ All notable changes to `mira-web` (the FactoryLM PLG acquisition + beta onboardi
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Tags are scoped
-to the component (`mira-web-vX.Y.Z`) so they don't collide with the MIRA
+to the component (`mira-web/vX.Y.Z`) so they don't collide with the MIRA
 monorepo's top-level tag progression.
+
+## [0.6.0] — 2026-05-03
+
+### Changed
+- **Site-wide topbar coherence — Phase 2 done.** The static HTML pages
+  (`pricing.html`, `privacy.html`, `terms.html`, `trust.html`,
+  `legal/dpa.html`) and the blog renderer (`src/lib/blog-renderer.ts`)
+  now serve the same standardized topbar as the TS-rendered marketing
+  views: plain "FactoryLM" wordmark (M-icon SVG dropped), the standard
+  5-link nav (CMMS / Pricing / Blog / Limitations / Security), and
+  the "Sign in" CTA. Per-page differences are limited to
+  `aria-current="page"`. This closes all six topbar variants flagged
+  in the 2026-05-03 style audit.
+- **Static HTML footers standardized.** Each footer now uses the same
+  4-link set as the marketing pages (Limitations / Trust / Privacy /
+  Terms) and drops the M-icon SVG from the footer logo. Previous
+  footers had inconsistent link sets (some had Blog + Fault Codes +
+  Troubleshooter + Contact, others omitted some).
+- **Blog renderer nav drops the M-icon and Mira-FAB-only branding
+  collision.** The 4 blog routes (/blog, /blog/fault-codes,
+  /blog/:slug for posts, /blog/:slug for fault codes) all render the
+  standardized topbar via the refactored `nav()` helper in
+  `blog-renderer.ts`.
+
+### Added
+- **56-test site-wide coherence suite** at
+  `src/__tests__/site-wide-topbar.test.ts`. Reads each rendered or
+  static HTML page and asserts:
+  - No M-icon SVG (`fill="#f0a000"`) in the topbar
+  - "Sign in" CTA copy (rejects "Get Started" / "Try free" /
+    "Join the Beta")
+  - All five standard nav links present
+  - M-icon-era labels gone ("Troubleshooter", "Product",
+    "Fault Codes" link in topbar)
+
+### Notes
+- /activated retains its own bespoke single-purpose post-payment
+  design (no topbar to standardize).
+- The static HTML pages keep their existing dark CSS world (their
+  own `--bg`/`--surface`/`--text` tokens). Only the nav/footer
+  markup was touched. Future Phase 3 could fully unify the design
+  tokens across blog + static pages with the marketing site, but
+  that's not needed to close the 2026-05-03 audit.
+- SW `CACHE_NAME` does not need to bump for this release — sw.js is
+  network-first for HTML navigations, so the changed static HTML
+  pages will reach returning visitors immediately on next nav.
+
+## [0.5.2] — 2026-05-03
+
+### Fixed
+- **Service worker was masking the v0.5.0 + v0.5.1 deploys.** Returning
+  visitors saw the old topbar, white edges, and dead sun-toggle even
+  after both PRs landed in production because `sw.js` is cache-first
+  for static assets and `CACHE_NAME` had been pinned at `factorylm-v3`
+  since the SW was introduced. Bump to `factorylm-v4` triggers the
+  activate handler's `caches.delete()` for every key !== current name,
+  forcing all CSS/JS to re-fetch on next page load. Also adds
+  `_dark-theme.css` and `_components.css` companions `_dark-theme.css`
+  and `sun-toggle.js` to `PRECACHE_URLS` so future first-load visitors
+  get them up front instead of opportunistically.
+
+  CACHE_NAME bumps need to ship every time a CSS/JS asset under
+  `/public` changes — added a TODO comment in `sw.js` so future
+  edits don't repeat the trap.
+
+## [0.5.1] — 2026-05-03
+
+### Fixed
+- **White viewport edges around dark pages.** `_dark-theme.css` only
+  painted the `<body>` background; the `<html>` element kept its UA
+  default white. When body content was shorter than the viewport, the
+  unpainted html element bled through as a white strip on the right
+  and bottom edges (visible on `/cmms`, `/limitations`, `/security`
+  in the v0.5.0 production screenshots). Fix paints `<html>` with the
+  same `#09090c` and adds `min-height: 100vh; margin: 0` to body so
+  it always fills the viewport.
+- **Sun-readable toggle button did nothing.** `sun-toggle.js` defined
+  `window.flToggleSun` but never attached a click listener to the
+  `#fl-sun-toggle` button — it has been a dead button on every page
+  shipping it. Fix adds an `addEventListener("click", flToggleSun)`
+  in the existing `DOMContentLoaded` handler. Now toggles between the
+  dark cartoon palette and the high-contrast `body.sun` outdoor mode
+  (`#F0F0F0` bg, `#000` text, defined in `_tokens.css`).
+
+## [0.5.0] — 2026-05-03
+
+### Added
+- **Shared topbar partial** at `mira-web/src/views/_topbar.ts` exporting
+  `navbar({ currentPath, ctaPrefix })` and `footer({ ctaPrefix })`. Single
+  source of truth for the four TS-rendered marketing views (home, cmms,
+  limitations, security/sample). Per-page differences are limited to
+  `aria-current="page"` and the `data-cta` analytics prefix.
+- **23-test contract suite** (`src/views/__tests__/topbar.test.ts`)
+  locking down link set, ordering, CTA copy, and per-page
+  `aria-current` placement so the four views cannot drift apart again.
+
+### Changed
+- **`/limitations` and `/security` adopt the dark palette** by linking
+  the v0.4.0 `_dark-theme.css` stylesheet — same single-line opt-in
+  pattern used by `/cmms` and `/sample`. Closes the P1 row in the
+  2026-05-03 style audit.
+- **`/cmms` topbar gains the standard nav and CTA.** Previously
+  `/cmms` had its own four-link nav (Home / Pricing / Limitations /
+  Security) with no CTA; it now matches the home topbar exactly,
+  with `aria-current="page"` on the CMMS link.
+
+### Notes
+- This release fixes 4 of the 6 topbar variants flagged in the
+  2026-05-03 style audit. The remaining two — the M-icon-era topbar
+  shared by the static HTML pages (`pricing.html`, `privacy.html`,
+  `terms.html`, `trust.html`, `legal/dpa.html`) and the blog renderer
+  (`blog-renderer.ts`) — require either converting the static pages
+  to TS views or a build-time string-injection pass. Tracked as
+  Phase 2 in the audit.
+
+## [0.4.0] — 2026-05-03
+
+### Added
+- **Shared dark-theme stylesheet** at `mira-web/public/_dark-theme.css`
+  carrying the FactoryLM design-token overrides (page bg, card surface,
+  ink, amber accent) plus the dark-tinted `.fl-col-bad` /
+  `.fl-col-good` overrides used by the ChatGPT-vs-MIRA compare blocks.
+  Any view that wants to opt into the dark palette now includes a
+  single `<link rel="stylesheet" href="/_dark-theme.css">` in its
+  `<head>` — no per-component refactor needed because existing
+  selectors reference the tokens via `var()`.
+
+### Changed
+- **`/cmms` and `/sample` adopt the dark palette.** This is the P0 fix
+  from the 2026-05-03 style audit (`tools/web-review-runs/
+  2026-05-03-style-audit/AUDIT.md`): `/cmms` is the conversion landing
+  page every "Start Free — magic link" click on home led to, and the
+  light-theme break in the funnel was the most visible inconsistency
+  on the site after v0.3.1 shipped the dark hero. (`views/cmms.ts`)
+- **`home.ts` no longer carries the dark-token block inline.** The
+  duplicated CSS moved to `_dark-theme.css`; `home.ts` keeps only
+  layout/typography styles unique to the home view. (`views/home.ts`)
+- **`/_dark-theme.css` registered as a static route** alongside
+  `_tokens.css` and `_components.css` in `src/server.ts`.
+
+### Notes
+- This intentionally does *not* touch `/limitations`, `/security`,
+  `/pricing`, `/blog`, the legal stack, or `/activated` (which has its
+  own bespoke dark theme via static HTML). Those are tracked in the
+  audit as P1/P2 with separate fixes coming.
+
+## [0.3.1] — 2026-05-03
+
+### Fixed
+- **`/images/*` static route was missing.** v0.3.0 shipped the new hero
+  cartoon at `/images/hero-fault-lookup-cartoon.png`, but Hono's
+  `serveStatic` registrations in `src/server.ts` only covered `/public/*`
+  and a handful of explicit per-file paths — anything under `/images/`
+  404'd. Same root-cause as the pre-existing
+  `/images/app-screenshot-desktop.png` 404 flagged in PR #933. Adds
+  `app.use("/images/*", serveStatic({ root: "./public" }))` so the
+  conventional `/images/foo.png` path works without forcing a `/public/`
+  prefix in markup. (`mira-web/src/server.ts`)
+
+## [0.3.0] — 2026-05-03
+
+### Changed
+- **Landing-page hero is now the WITHOUT-MIRA / WITH-MIRA fault-lookup
+  cartoon** instead of the placeholder work-orders screenshot. Marvel-style
+  split-panel with thick diagonal divider, real Allen-Bradley PowerFlex 525
+  F-012 = HW OverCurrent fault data, narration caption pitching "in a
+  world where a cryptic fault code costs hours of downtime... when you
+  can chat with your manuals, every tech becomes the 20-year tech." Same
+  hero copy (h1/h2/h3/sub) and CTAs preserved — the cartoon is what the
+  existing "Compound-interest knowledge for industrial maintenance"
+  headline was always pointing at.
+- New asset `mira-web/public/images/hero-fault-lookup-cartoon.png`
+  (1792×1024, 3.2MB), copied from `marketing/cartoons/compound-interest/
+  panel-3.png` so the source-of-truth panel still lives in the cartoon
+  pipeline.
+- `home.ts` hero `<img>` swap: `src` + `alt` + intrinsic dimensions
+  updated; width/height match the actual file so CLS stays clean.
+  `aria-hidden="true"` preserved (image is decorative; surrounding text
+  carries the message for screen readers).
+
+### Fixed
+- **Production 404 on `/images/app-screenshot-desktop.png`** (flagged in
+  PR #933 as a pre-existing issue) is incidentally resolved — the
+  reference is gone.
 
 ## [0.2.1] — 2026-04-11
 

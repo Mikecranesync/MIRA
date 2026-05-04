@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import sys
@@ -418,6 +419,105 @@ class TestManualLookupGatheringEscape:
         assert loaded["state"] == "IDLE", "IDLE must be persisted to DB"
 
 
+class TestSessionPivotRouting:
+    def _save_active_state(self, supervisor, chat_id: str) -> None:
+        supervisor._save_state(
+            chat_id,
+            {
+                "state": "Q2",
+                "asset_identified": "Elmo, Gold Drive",
+                "context": {
+                    "photo_turn": 3,
+                    "session_context": {
+                        "equipment_type": "Elmo Gold Drive",
+                        "manufacturer": "Elmo",
+                        "last_question": "Check the DC bus?",
+                        "last_options": ["Yes", "No"],
+                    },
+                },
+                "exchange_count": 5,
+                "fault_category": "hydraulic",
+                "final_state": "RESOLVED",
+            },
+        )
+
+    def test_documentation_pivot_skips_session_followup(self, supervisor):
+        chat_id = "test-doc-pivot"
+        self._save_active_state(supervisor, chat_id)
+
+        with (
+            patch(
+                "shared.engine.route_intent",
+                new=AsyncMock(
+                    return_value={
+                        "intent": "find_documentation",
+                        "confidence": 0.98,
+                        "reasoning": "user asked for documentation",
+                    }
+                ),
+            ),
+            patch("shared.engine.classify_intent", return_value="documentation"),
+            patch.object(
+                supervisor, "_handle_session_followup", new_callable=AsyncMock
+            ) as followup,
+            patch("shared.engine.kb_has_coverage", return_value=(True, "cached docs")),
+        ):
+            result = asyncio.run(supervisor.process_full(chat_id, "do they have a website"))
+
+        assert followup.await_count == 0
+        assert result["next_state"] == "ASSET_IDENTIFIED"
+
+        loaded = supervisor._load_state(chat_id)
+        assert loaded["state"] == "ASSET_IDENTIFIED"
+        assert loaded["fault_category"] is None
+        assert loaded["final_state"] is None
+        assert loaded["context"]["session_context"]["last_question"] is None
+        assert loaded["context"]["session_context"]["last_options"] == []
+        assert "photo_turn" not in loaded["context"]
+
+    def test_explicit_recap_still_uses_session_followup(self, supervisor):
+        chat_id = "test-followup-pivot"
+        self._save_active_state(supervisor, chat_id)
+
+        with (
+            patch(
+                "shared.engine.route_intent",
+                new=AsyncMock(
+                    return_value={
+                        "intent": "answer_question",
+                        "confidence": 0.83,
+                        "reasoning": "user is asking about the prior answer",
+                    }
+                ),
+            ),
+            patch("shared.engine.classify_intent", return_value="industrial"),
+            patch.object(
+                supervisor,
+                "_handle_session_followup",
+                new=AsyncMock(
+                    return_value={
+                        "reply": "followup",
+                        "confidence": "medium",
+                        "trace_id": "trace-1",
+                        "next_state": "Q2",
+                    }
+                ),
+            ) as followup,
+            patch.object(
+                supervisor, "_handle_instructional_question", new_callable=AsyncMock
+            ) as instructional,
+            patch.object(supervisor, "_load_recent_session_photo", return_value="session-photo"),
+        ):
+            result = asyncio.run(
+                supervisor.process_full(chat_id, "where did you get that information")
+            )
+
+        assert result["reply"] == "followup"
+        assert followup.await_count == 1
+        assert instructional.await_count == 0
+        assert followup.await_args.kwargs["session_photo"] == "session-photo"
+
+
 # ---------------------------------------------------------------------------
 # _format_reply
 # ---------------------------------------------------------------------------
@@ -661,3 +761,95 @@ class TestFaultInfoRegex:
 
     def test_danfoss_alarm4(self):
         assert _FAULT_INFO_RE.search("FC102 showing Alarm 4")
+
+
+class TestFreshQuestionDuringWO:
+    """Guard against regression where a fresh question during a stale cmms_pending
+    state gets misrouted into the WO confirmation flow (bot critical fix 2026-05-04)."""
+
+    def test_yes_is_wo_response(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+
+        assert not f("yes")
+        assert not f("Yes")
+        assert not f("yeah")
+        assert not f("y")
+
+    def test_no_is_wo_response(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+
+        assert not f("no")
+        assert not f("nope")
+        assert not f("skip")
+        assert not f("cancel")
+
+    def test_edits_are_wo_response(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+
+        assert not f("change priority to HIGH")
+        assert not f("asset is Pump-A3")
+        assert not f("priority is HIGH")
+        assert not f("line is Line 1")
+
+    def test_question_marks_are_fresh(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+
+        assert f("What causes a VFD overcurrent fault?")
+        assert f("How do I reset this drive?")
+        assert f("why is my pump leaking?")
+
+    def test_question_words_are_fresh(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+
+        assert f("How do I diagnose this")
+        assert f("Tell me about cooling tower maintenance")
+        assert f("describe the fault category")
+
+    def test_long_statements_are_fresh(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+
+        assert f("My motor is making a strange grinding noise during startup")
+
+    def test_empty_message_is_not_fresh(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+
+        assert not f("")
+        assert not f("   ")
+
+
+class TestResetWipesAllChatKeys:
+    """Mike 2026-05-04 — /new wasn't clearing the right SQLite row because
+    the dispatcher saves under composite key 'telegram:<id>' but the bot
+    handler called engine.reset(<raw_id>). reset() must wipe all variants."""
+
+    def test_reset_deletes_composite_telegram_key(self, supervisor):
+        # Seed a row under the composite key the dispatcher uses
+        composite = "telegram:8445149012"
+        state = supervisor._load_state(composite)
+        state["asset_identified"] = "Pump A3"
+        state["context"]["session_context"]["symptom_summary"] = "high differential filter pressure"
+        supervisor._save_state(composite, state)
+        # Reset using the RAW chat id (what bot.py passes)
+        supervisor.reset("8445149012")
+        # The composite row must be gone now
+        reloaded = supervisor._load_state(composite)
+        assert reloaded.get("asset_identified") in (None, "")
+        assert reloaded["context"].get("session_context", {}).get("symptom_summary", "") == ""
+
+    def test_reset_deletes_composite_with_thread_key(self, supervisor):
+        composite = "telegram:12345:67890"
+        state = supervisor._load_state(composite)
+        state["asset_identified"] = "Conveyor 7"
+        supervisor._save_state(composite, state)
+        supervisor.reset("12345")
+        reloaded = supervisor._load_state(composite)
+        assert reloaded.get("asset_identified") in (None, "")
+
+    def test_reset_deletes_exact_key_too(self, supervisor):
+        # Some legacy callers pass the raw key directly
+        state = supervisor._load_state("legacy_chat_id")
+        state["asset_identified"] = "Old equipment"
+        supervisor._save_state("legacy_chat_id", state)
+        supervisor.reset("legacy_chat_id")
+        reloaded = supervisor._load_state("legacy_chat_id")
+        assert reloaded.get("asset_identified") in (None, "")

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { CLOSING_STATUSES, validateWOCompletion } from "@/lib/wo-completion-validation";
 
 export const dynamic = "force-dynamic";
 
@@ -108,5 +109,109 @@ export async function GET(
   } catch (err) {
     console.error("[api/work-orders/[id] GET]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  if (!process.env.NEON_DATABASE_URL) {
+    return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+  }
+
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
+
+  const { id } = await params;
+
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { status, title, fault_description, resolution, priority } = body as {
+    status?: string;
+    title?: string;
+    fault_description?: string;
+    resolution?: string;
+    priority?: string;
+  };
+
+  // When closing, validate required fields against current + incoming values.
+  if (status && CLOSING_STATUSES.has(status)) {
+    const current = await withTenantContext(ctx.tenantId, (c) =>
+      c
+        .query<{ title: string; description: string | null; fault_description: string | null; resolution: string | null }>(
+          `SELECT title, description, fault_description, resolution
+           FROM work_orders WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+          [id, ctx.tenantId],
+        )
+        .then((r) => r.rows[0] ?? null),
+    );
+
+    if (!current) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    const { valid, missing_fields } = validateWOCompletion({
+      title: title ?? current.title,
+      description: current.description,
+      fault_description: fault_description ?? current.fault_description,
+      resolution: resolution ?? current.resolution,
+    });
+
+    if (!valid) {
+      return NextResponse.json(
+        { error: "Cannot close work order — missing required fields", missing_fields },
+        { status: 400 },
+      );
+    }
+  }
+
+  // Build the SET clause dynamically.
+  const setParts: string[] = ["updated_at = NOW()"];
+  const values: unknown[] = [id, ctx.tenantId];
+
+  function param(v: unknown) {
+    values.push(v);
+    return `$${values.length}`;
+  }
+
+  if (status !== undefined) {
+    // Cast to text so needs_completion (may not be in enum yet) still works.
+    setParts.push(`status = ${param(status)}::text::workorderstatus`);
+    if (CLOSING_STATUSES.has(status)) {
+      setParts.push("closed_at = NOW()");
+    }
+  }
+  if (title !== undefined) setParts.push(`title = ${param(title)}`);
+  if (fault_description !== undefined) setParts.push(`fault_description = ${param(fault_description)}`);
+  if (resolution !== undefined) setParts.push(`resolution = ${param(resolution)}`);
+  if (priority !== undefined) setParts.push(`priority = ${param(priority)}::prioritylevel`);
+
+  try {
+    const updated = await withTenantContext(ctx.tenantId, (c) =>
+      c
+        .query(
+          `UPDATE work_orders
+           SET ${setParts.join(", ")}
+           WHERE id = $1 AND tenant_id = $2
+           RETURNING id, work_order_number, status, resolution, fault_description, closed_at, updated_at`,
+          values,
+        )
+        .then((r) => r.rows[0] ?? null),
+    );
+
+    if (!updated) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ work_order: updated });
+  } catch (err) {
+    console.error("[api/work-orders/[id] PATCH]", err);
+    return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
 }

@@ -5,15 +5,30 @@ import base64
 import io as _io
 import logging
 import os
+import re
 
 import httpx
+from admin_commands import (
+    invite_command,
+    invite_status_command,
+    revoke_command,
+    team_command,
+)
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
 from shared import tts
 from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
+from shared.identity.service import get_identity_service
+from shared.photo_handler import (
+    DEFAULT_PHOTO_CAPTION,
+    preserve_first_meaningful_caption,
+)
+from shared.tenant.authorizer import Authorizer
+from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
+from start_command import start_command
 from telegram import Update
-from voice_transcription import transcribe_voice
 from telegram.constants import ChatAction
 from telegram.error import Conflict
 from telegram.ext import (
@@ -24,6 +39,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from voice_transcription import transcribe_voice
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,9 +67,28 @@ engine = Supervisor(
     mcp_base_url=MCP_BASE_URL,
 )
 
+# Multi-tenant infra (NeonDB-backed)
+ADMIN_TELEGRAM_IDS = os.environ.get("ADMIN_TELEGRAM_IDS", "")
+DEFAULT_TENANT_ID = os.environ.get("MIRA_TENANT_ID", "")
+
+_identity_service = get_identity_service()
+_authorizer = Authorizer(admin_telegram_ids=ADMIN_TELEGRAM_IDS)
+
+_neon_url = os.environ.get("NEON_DATABASE_URL", "")
+_admin_db_engine = (
+    create_engine(
+        _neon_url,
+        poolclass=NullPool,
+        connect_args={"sslmode": "require"},
+        pool_pre_ping=True,
+    )
+    if _neon_url
+    else None
+)
+
 # Chat Abstraction Layer — wraps engine in platform-agnostic protocol
 adapter = TelegramChatAdapter(bot_token=TELEGRAM_BOT_TOKEN)
-dispatcher = ChatDispatcher(engine)
+dispatcher = ChatDispatcher(engine, identity_service=_identity_service)
 
 FAULT_KEYWORDS = {
     "fault",
@@ -468,7 +503,7 @@ async def _flush_photos(
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Buffer photos and process as a batch after PHOTO_BUFFER_WINDOW seconds."""
     chat_id_int = update.effective_chat.id
-    caption = update.message.caption or "Analyze this equipment photo"
+    caption = update.message.caption or DEFAULT_PHOTO_CAPTION
     logger.info("Photo from %s: %s", update.effective_user.first_name, caption)
 
     # Download and resize immediately; store raw bytes for KB ingest
@@ -492,7 +527,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if existing_task:
             existing_task.cancel()
         buf["batches"].append((raw_bytes, vision_bytes))
-        buf["caption"] = caption  # last caption wins
+        buf["caption"] = preserve_first_meaningful_caption(buf["caption"], caption)
         buf["update"] = update
     else:
         PHOTO_BUFFER[chat_id_int] = {
@@ -511,6 +546,29 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     engine.reset(chat_id)
     await update.message.reply_text("Conversation reset.")
+
+
+async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Hard-reset conversation state — no preview of WO, no carryover from prior sessions."""
+    chat_id = str(update.effective_chat.id)
+    engine.reset(chat_id)
+    logger.info("NEW_SESSION chat_id=%s user=%s", chat_id, update.effective_user.first_name)
+    await update.message.reply_text("🔄 Fresh start. What can I help with?")
+
+
+# Tolerant /new matcher: catches "/new", "/ new", "/New", "/  new", "/NEW", etc.
+# Telegram normally only fires CommandHandler on exact "/new"; users on shaky
+# autocorrect or copy-paste end up with stray spaces or capitalised variants
+# that fall through to the message handler and confuse the engine.
+_NEW_VARIANT_RE = re.compile(r"^\s*/\s*new(?:@\w+)?\s*$", re.IGNORECASE)
+
+
+async def new_command_variant(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text-message variants of /new that don't match PTB's CommandHandler."""
+    text = update.message.text or ""
+    if not _NEW_VARIANT_RE.match(text):
+        return
+    await new_command(update, context)
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -625,12 +683,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Return static command list."""
     await update.message.reply_text(
         "MIRA Commands:\n"
+        "/invite <email> \u2014 (admin) mint enrollment link\n"
+        "/team \u2014 (admin) list enrolled members\n"
+        "/revoke <telegram_id> \u2014 (admin) remove a member\n"
+        "/invite_status \u2014 (admin) list pending/used invites\n"
         "/equipment [id] \u2014 Live equipment status (instant)\n"
         "/faults \u2014 Active fault list (instant)\n"
         "/status \u2014 AI equipment summary\n"
         "/voice on|off \u2014 Enable/disable spoken responses\n"
         "/bad [reason] \u2014 Flag this response as unhelpful\n"
-        "/reset \u2014 Reset conversation state\n"
+        "/new \u2014 Fresh start (clear conversation state)\n"
+        "/reset \u2014 Reset conversation state (alias for /new)\n"
         "/help \u2014 Show this help\n"
         "Or just type any maintenance question.\n"
         "Send a photo to identify equipment.\n"
@@ -678,6 +741,90 @@ async def _conflict_error_handler(update: object, context) -> None:
 
 def main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(_startup).build()
+
+    # Helper to bind admin command kwargs without subclassing PTB's CommandHandler.
+    async def _wrap_invite(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
+            return
+        await invite_command(
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_team(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
+            return
+        await team_command(
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_revoke(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
+            return
+        await revoke_command(
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_invite_status(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
+            return
+        await invite_status_command(
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_start(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("MIRA isn't fully configured. Ask your admin.")
+            return
+        # No-args /start from an already-enrolled user → behave like /new.
+        # Args present → invite-token consumption flow (unchanged).
+        if not (context.args or []):
+            chat_id = str(update.effective_chat.id)
+            engine.reset(chat_id)
+            logger.info(
+                "START_RESET chat_id=%s user=%s",
+                chat_id,
+                update.effective_user.first_name if update.effective_user else "?",
+            )
+            await update.message.reply_text("🔄 Fresh start. What can I help with?")
+            return
+        await start_command(update, context, engine=_admin_db_engine)
+
+    # IMPORTANT: register /start and /new FIRST so they win over the legacy welcome
+    # AND so they always run before the message handler regardless of FSM state.
+    app.add_handler(CommandHandler("start", _wrap_start))
+    app.add_handler(CommandHandler("new", new_command))
+    app.add_handler(CommandHandler("invite", _wrap_invite))
+    app.add_handler(CommandHandler("team", _wrap_team))
+    app.add_handler(CommandHandler("revoke", _wrap_revoke))
+    app.add_handler(CommandHandler("invite_status", _wrap_invite_status))
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))
     app.add_handler(CommandHandler("status", status_command))
@@ -685,6 +832,15 @@ def main():
     app.add_handler(CommandHandler("voice", voice_command))
     app.add_handler(CommandHandler("bad", bad_command))
     app.add_handler(CommandHandler("help", help_command))
+    # /new variant matcher: catches "/ new", "/New", " /new ", etc. that PTB's
+    # CommandHandler doesn't match. Must be registered BEFORE the catch-all
+    # text handler so a stray-space /new doesn't get diagnosed as a question.
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\s*/\s*new(?:@\w+)?\s*$") & ~filters.COMMAND,
+            new_command_variant,
+        )
+    )
     app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
@@ -692,7 +848,9 @@ def main():
     app.add_error_handler(_conflict_error_handler)
     _ver_path = os.path.join(os.path.dirname(__file__), "VERSION")
     _ver = open(_ver_path).read().strip() if os.path.exists(_ver_path) else "unknown"
-    logger.info("MIRA Telegram bot starting (polling) version=%s", _ver)
+    logger.info(
+        "MIRA Telegram bot starting (polling) version=%s admins=%d", _ver, _authorizer.admin_count()
+    )
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
