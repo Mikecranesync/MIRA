@@ -1,0 +1,12 @@
+[
+  {
+    "id": "P2:/login:lighthouse-performance",
+    "severity": "P2",
+    "page": "/login",
+    "title": "Lighthouse performance score 73",
+    "evidence": "Threshold for performance is \u226580; got 73",
+    "suggested_fix": "Inspect Lighthouse report; common fixes: image optimization, JS deferral, semantic HTML",
+    "occurrences": 1,
+    "source": "lighthouse"
+  }
+]
