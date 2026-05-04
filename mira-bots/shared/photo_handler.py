@@ -117,3 +117,23 @@ def build_print_reply(vision_data: dict) -> str:
         f"Labels I can see: {preview}\n"
         f"{next_step}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Photo-burst buffer caption merging
+# ---------------------------------------------------------------------------
+
+DEFAULT_PHOTO_CAPTION = "Analyze this equipment photo"
+
+
+def preserve_first_meaningful_caption(existing: str, incoming: str) -> str:
+    """Return the caption to keep when a photo joins an existing burst buffer.
+
+    Telegram media-groups put the user's caption only on the FIRST photo of
+    a burst; photos 2-N arrive with no caption and the bot fills in
+    ``DEFAULT_PHOTO_CAPTION``. Don't let those placeholders overwrite a real
+    caption from photo 1.
+    """
+    if existing == DEFAULT_PHOTO_CAPTION and incoming != DEFAULT_PHOTO_CAPTION:
+        return incoming
+    return existing

@@ -21,7 +21,6 @@ from .fallback_responses import (
     PHOTO_FAILURE,
     RAG_FAILURE,
     TIMEOUT_WARNING,
-    work_order_failure,
 )
 from .fsm import (
     _FAULT_INFO_RE,  # noqa: F401 — re-exported for test_engine.py backward compat
@@ -616,6 +615,132 @@ class Supervisor:
             platform=platform,
         )
         return result["reply"]
+
+    async def process_multi_photo(
+        self,
+        chat_id: str,
+        message: str,
+        photos_b64: list[str],
+        *,
+        platform: str = "telegram",
+        tenant_id: str | None = None,
+        mira_user_id: str | None = None,
+    ) -> str:
+        """Burst entry point. Returns combined reply for N photos (N >= 1).
+
+        Each photo runs through VisionWorker.process() sequentially because the
+        vision model is GPU-bound on a single Ollama node. Per-photo vision
+        failures degrade to a placeholder for that slot — the method never
+        raises to the caller. Combined results are sent through
+        InferenceRouter.complete() for synthesis; if the router returns empty
+        (every cascade provider down), the method falls back to a deterministic
+        numbered list. Only the LAST photo is persisted via _save_session_photo
+        so follow-up turns ("tell me more about photo 4") have a single anchor.
+        """
+        self._current_tenant_id = tenant_id or getattr(self, "tenant_id", "") or ""
+        self._current_mira_user_id = mira_user_id or ""
+
+        n = len(photos_b64)
+        t0 = time.monotonic()
+
+        try:
+            analyses: list[dict] = []
+            for idx, photo_b64 in enumerate(photos_b64, start=1):
+                try:
+                    vresult = await self.vision.process(photo_b64, message)
+                except Exception as exc:
+                    logger.warning(
+                        "MULTI_PHOTO_VISION_FAILURE chat_id=%s idx=%d/%d error=%s",
+                        chat_id,
+                        idx,
+                        n,
+                        exc,
+                    )
+                    vresult = {
+                        "classification": "UNCLEAR",
+                        "classification_confidence": 0.0,
+                        "vision_result": "unclear",
+                        "ocr_items": [],
+                        "tesseract_text": "",
+                        "drawing_type": None,
+                        "drawing_type_confidence": 0.0,
+                    }
+                analyses.append(vresult)
+
+            bullets = []
+            for idx, a in enumerate(analyses, start=1):
+                cls = str(a.get("classification", "")).strip()
+                vr = str(a.get("vision_result", "")).strip()
+                ocr = a.get("ocr_items") or []
+                ocr_str = ", ".join(str(o) for o in ocr[:6]) if ocr else ""
+                line = f"{idx}. [{cls}] {vr}" if cls else f"{idx}. {vr}"
+                if ocr_str:
+                    line += f" (OCR: {ocr_str})"
+                bullets.append(line)
+
+            system_prompt = (
+                "You are MIRA, an industrial maintenance assistant. The user just "
+                f"sent {n} photos in one burst. Below is each photo's vision/OCR "
+                "analysis. Briefly list each photo's content (numbered, one short "
+                "line each), then synthesize across them: if a nameplate and a "
+                "damage/fault photo are both present, connect the two; if photos "
+                "appear unrelated, ask which asset to troubleshoot first. Reference "
+                "photos by number. Keep under 300 words."
+            )
+            user_prompt = (
+                (f"User caption: {message}\n\n" if message else "")
+                + f"Photo analyses ({n}):\n"
+                + "\n".join(bullets)
+            )
+            try:
+                reply_text, _usage = await self.router.complete(
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    max_tokens=600,
+                    session_id=f"{chat_id}_multi_photo",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "MULTI_PHOTO_ROUTER_FAILURE chat_id=%s n=%d error=%s",
+                    chat_id,
+                    n,
+                    exc,
+                )
+                reply_text = ""
+
+            if reply_text and reply_text.strip():
+                reply = reply_text.strip()
+            else:
+                reply = f"📸 Processed {n} photos:\n\n" + "\n".join(
+                    f"{i}. {(str(a.get('vision_result', '')).strip() or 'unclear')}"
+                    for i, a in enumerate(analyses, start=1)
+                )
+
+            if photos_b64:
+                self._save_session_photo(chat_id, photos_b64[-1])
+
+        except Exception as exc:
+            logger.error(
+                "MULTI_PHOTO_PROCESS_ERROR chat_id=%s n=%d error=%s",
+                chat_id,
+                n,
+                exc,
+                exc_info=True,
+            )
+            return GENERIC_ENGINE_ERROR
+
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        self._log_interaction(
+            chat_id,
+            f"[multi-photo x{n}] {message}".strip(),
+            reply,
+            has_photo=True,
+            response_time_ms=elapsed_ms,
+            platform=platform,
+        )
+        return reply
 
     async def process_full(
         self,

@@ -20,6 +20,10 @@ from shared import tts
 from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
 from shared.identity.service import get_identity_service
+from shared.photo_handler import (
+    DEFAULT_PHOTO_CAPTION,
+    preserve_first_meaningful_caption,
+)
 from shared.tenant.authorizer import Authorizer
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
@@ -499,7 +503,7 @@ async def _flush_photos(
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Buffer photos and process as a batch after PHOTO_BUFFER_WINDOW seconds."""
     chat_id_int = update.effective_chat.id
-    caption = update.message.caption or "Analyze this equipment photo"
+    caption = update.message.caption or DEFAULT_PHOTO_CAPTION
     logger.info("Photo from %s: %s", update.effective_user.first_name, caption)
 
     # Download and resize immediately; store raw bytes for KB ingest
@@ -523,7 +527,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if existing_task:
             existing_task.cancel()
         buf["batches"].append((raw_bytes, vision_bytes))
-        buf["caption"] = caption  # last caption wins
+        buf["caption"] = preserve_first_meaningful_caption(buf["caption"], caption)
         buf["update"] = update
     else:
         PHOTO_BUFFER[chat_id_int] = {
