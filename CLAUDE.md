@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v3.4.0 | **Updated:** 2026-04-17
+**Version:** v3.5.0 | **Updated:** 2026-05-04
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Gemini (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
