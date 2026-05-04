@@ -18,6 +18,12 @@ _RATE_LIMIT_MESSAGES = int(os.getenv("RATE_LIMIT_MESSAGES", "10"))
 _RATE_LIMIT_WINDOW = 60  # seconds
 
 
+def _admin_telegram_ids() -> frozenset[str]:
+    """Parse ADMIN_TELEGRAM_IDS env (CSV) — admins bypass the identity gate."""
+    raw = os.getenv("ADMIN_TELEGRAM_IDS", "")
+    return frozenset(tok.strip() for tok in raw.split(",") if tok.strip())
+
+
 class ChatDispatcher:
     """Takes normalized events from any adapter, runs them through MIRA's engine,
     returns normalized responses."""
@@ -99,18 +105,41 @@ class ChatDispatcher:
             )
 
         if mira_user is None:
-            logger.info(
-                "DISPATCH_BLOCKED platform=%s ext=%s reason=stranger",
-                event.platform,
-                event.external_user_id,
-            )
-            return NormalizedChatResponse(
-                text=(
-                    "Hi — I'm MIRA, your team's maintenance assistant. "
-                    "I'm invite-only. Ask your admin to send you an enrollment link."
-                ),
-                thread_id=event.external_thread_id,
-            )
+            # Admin bypass: ADMIN_TELEGRAM_IDS holders are the operators of the
+            # bot — they should never be gated by their own enrollment system.
+            # Synthesize a MiraUser with the default tenant_id from env so the
+            # rest of the pipeline (engine.process, ChatDispatcher logging) has
+            # the fields it expects.
+            admin_ids = _admin_telegram_ids()
+            if event.platform == "telegram" and str(event.external_user_id) in admin_ids:
+                from shared.identity.service import MiraUser as _MiraUser
+
+                tenant_id = os.getenv("MIRA_TENANT_ID", "")
+                mira_user = _MiraUser(
+                    id=f"admin:{event.external_user_id}",
+                    tenant_id=tenant_id,
+                    display_name="Admin",
+                    email="",
+                )
+                logger.info(
+                    "DISPATCH_ADMIN_BYPASS platform=%s ext=%s tenant=%s",
+                    event.platform,
+                    event.external_user_id,
+                    tenant_id,
+                )
+            else:
+                logger.info(
+                    "DISPATCH_BLOCKED platform=%s ext=%s reason=stranger",
+                    event.platform,
+                    event.external_user_id,
+                )
+                return NormalizedChatResponse(
+                    text=(
+                        "Hi — I'm MIRA, your team's maintenance assistant. "
+                        "I'm invite-only. Ask your admin to send you an enrollment link."
+                    ),
+                    thread_id=event.external_thread_id,
+                )
 
         # Extract pre-downloaded image bytes (set by adapter before dispatch)
         photo_b64 = None

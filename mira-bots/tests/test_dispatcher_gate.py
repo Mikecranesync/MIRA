@@ -74,3 +74,34 @@ async def test_no_identity_service_blocks_all(fake_engine):
         or "not configured" in resp.text.lower()
     )
     fake_engine.process.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_admin_bypass_when_no_identity_link(fake_engine, monkeypatch):
+    """Admin telegram IDs (operators of the bot) bypass the enrollment gate
+    even without an identity_links row — they should never be locked out of
+    their own bot."""
+    monkeypatch.setenv("ADMIN_TELEGRAM_IDS", "8445149012")
+    monkeypatch.setenv("MIRA_TENANT_ID", "t_admin")
+    identity = MagicMock(spec=IdentityService)
+    identity.lookup_only = MagicMock(return_value=None)
+    disp = ChatDispatcher(fake_engine, identity_service=identity)
+    resp = await disp.dispatch(_event("8445149012", "diagnose this"))
+    assert resp.text == "OK reply"
+    fake_engine.process.assert_awaited_once()
+    # Engine should receive the admin bypass user with default tenant
+    call_kwargs = fake_engine.process.await_args.kwargs
+    assert call_kwargs.get("tenant_id") == "t_admin"
+    assert call_kwargs.get("mira_user_id") == "admin:8445149012"
+
+
+@pytest.mark.asyncio
+async def test_non_admin_still_blocked(fake_engine, monkeypatch):
+    """A non-admin telegram ID still hits the invite gate — bypass is admin-only."""
+    monkeypatch.setenv("ADMIN_TELEGRAM_IDS", "8445149012")
+    identity = MagicMock(spec=IdentityService)
+    identity.lookup_only = MagicMock(return_value=None)
+    disp = ChatDispatcher(fake_engine, identity_service=identity)
+    resp = await disp.dispatch(_event("999", "hi"))
+    assert "invite" in resp.text.lower()
+    fake_engine.process.assert_not_called()
