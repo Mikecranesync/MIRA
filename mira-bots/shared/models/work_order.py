@@ -246,18 +246,14 @@ def build_uns_wo_from_state(state: dict) -> UNSWorkOrder:
                     fault_desc = content[:500]
                     break
 
-    # Resolution: prefer session_context summary, otherwise last substantive assistant
-    # turn — explicitly skip WO preview / failure notice messages.
+    # Resolution: only use an explicit diagnosis_summary that the engine wrote
+    # for THIS work-order context. We deliberately do NOT scrape the most
+    # recent assistant turn — that turn is usually a clarifying question or
+    # an unrelated reply, and grabbing it produced wrong WOs in production
+    # (Mike 2026-05-04 saw a prior MIRA answer pulled in as the resolution).
+    # When no explicit resolution exists, leave the field blank for the user
+    # to fill in via the WO edit flow.
     resolution = sc.get("diagnosis_summary", "")
-    if not resolution:
-        history = ctx.get("history", [])
-        asst_turns = [
-            t.get("content", "")[:300]
-            for t in reversed(history[-8:])
-            if t.get("role") == "assistant"
-            and not any((t.get("content") or "").strip().startswith(p) for p in _WO_META_PREFIXES)
-        ]
-        resolution = asst_turns[0] if asst_turns else ""
 
     priority = "HIGH" if fault in _HIGH_PRIORITY_FAULTS else "MEDIUM"
     title = f"[MIRA] {asset_raw[:60]} — {fault} action" if asset_raw else "[MIRA] corrective action"

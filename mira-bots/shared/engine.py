@@ -1291,31 +1291,15 @@ class Supervisor:
                 ctx_sc.pop("revision_critique", None)
                 state["context"] = ctx_sc
 
-        # RESOLVED hook: build UNS-structured WO draft and show preview.
-        # Amend parsed["reply"] now so both history and formatted output include it.
-        _wo_draft = None
+        # RESOLVED hook: previously this auto-appended a WO preview and set
+        # cmms_pending=True any time the FSM landed on RESOLVED. That made
+        # MIRA "uninvited" propose a work order after every diagnosis.
+        # The WO flow is now ONLY entered when the LLM router classifies
+        # intent as "log_work_order" → _handle_wo_request — i.e. the user
+        # explicitly says "create a work order", "log this", etc.
+        # We still run recurring-fault annotation on RESOLVED so persistent
+        # issues are flagged, but we do not push the WO preview.
         if state["state"] == "RESOLVED":
-            try:
-                _wo = build_uns_wo_from_state(state)
-                _wo_draft = _wo.to_dict()
-                _preview = format_wo_preview(_wo)
-                parsed["reply"] = parsed.get("reply", "").rstrip() + "\n\n" + _preview
-            except Exception as _woe:
-                logger.error(
-                    "WO_BUILD_ERROR chat_id=%s error=%s",
-                    chat_id,
-                    _woe,
-                    exc_info=True,
-                )
-                # Diagnosis text is already in parsed["reply"]; append manual WO note
-                diagnosis_summary = parsed.get("reply", "")[:300]
-                parsed["reply"] = (
-                    parsed.get("reply", "").rstrip()
-                    + "\n\n"
-                    + work_order_failure(diagnosis_summary)
-                )
-
-            # Recurring fault detection — annotate reply if same fault recurred
             try:
                 _annotated, _pushed = await check_recurring_and_annotate(
                     self.db_path, state, parsed["reply"]
@@ -1338,12 +1322,9 @@ class Supervisor:
         sc["last_options"] = parsed.get("options", [])
         ctx["session_context"] = sc
 
-        # Persist work-order draft so _handle_cmms_pending can use it next turn.
-        if _wo_draft is not None:
-            ctx["cmms_pending"] = True
-            ctx["cmms_wo_draft"] = _wo_draft
-            logger.info("CMMS_WO_PENDING chat_id=%s title=%r", chat_id, _wo_draft.get("title"))
-
+        # No auto-persist of WO draft here — the WO flow is now opt-in via
+        # _handle_wo_request, which sets cmms_pending itself when the user
+        # explicitly asks to log a work order.
         state["context"] = ctx
 
         self._save_state(chat_id, state)
@@ -1649,13 +1630,32 @@ class Supervisor:
         return self._make_result(reply, "none", trace_id, "RESOLVED")
 
     def reset(self, chat_id: str) -> None:
-        """Reset conversation to IDLE state."""
+        """Reset conversation to IDLE state.
+
+        Deletes any conversation_state row matching this chat_id under any of
+        the known key formats:
+          - exact match (legacy/internal callers passing the raw key)
+          - "telegram:<id>"           (current ChatDispatcher key, no thread)
+          - "telegram:<id>:..."       (current ChatDispatcher key with thread)
+        Same shape for slack/teams/etc. We delete via LIKE prefix so a /new
+        from any caller wipes all rows that could re-surface stale state.
+        """
         self._clear_session_photo(chat_id)
         db = sqlite3.connect(self.db_path)
         db.execute("PRAGMA journal_mode=WAL")
+        # Exact key
         db.execute("DELETE FROM conversation_state WHERE chat_id = ?", (chat_id,))
+        # Composite keys for known platforms ending in this raw chat id
+        for platform in ("telegram", "slack", "teams", "gchat", "webui"):
+            prefix = f"{platform}:{chat_id}"
+            db.execute(
+                "DELETE FROM conversation_state WHERE chat_id = ? OR chat_id LIKE ?",
+                (prefix, f"{prefix}:%"),
+            )
         db.commit()
+        deleted = db.total_changes
         db.close()
+        logger.info("ENGINE_RESET chat_id=%s rows_deleted=%d", chat_id, deleted)
 
     def log_feedback(self, chat_id: str, feedback: str, reason: str = "") -> None:
         state = self._load_state(chat_id)
