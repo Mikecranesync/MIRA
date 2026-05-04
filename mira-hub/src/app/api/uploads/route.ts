@@ -194,7 +194,18 @@ function idempotentResponse(existing: Upload, requestId: string): NextResponse {
 export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
-  const rows = await listUploads(ctx.tenantId);
-  return NextResponse.json(rows);
+  try {
+    const rows = await listUploads(ctx.tenantId);
+    return NextResponse.json(rows);
+  } catch (err) {
+    // CRA-38: a Neon connection blip or a schema-drift error here used to
+    // bubble out as a 500, lighting up the /knowledge page's network tab
+    // and Lighthouse audit. The list is non-essential UI (the page polls
+    // again every 2s while uploads are in-flight), so an empty-array 200
+    // is the right degradation: clean network, page keeps working, the
+    // next poll picks up real data when the underlying issue clears.
+    console.error("[api/uploads GET] listUploads failed:", err);
+    return NextResponse.json([], { status: 200 });
+  }
 }
 

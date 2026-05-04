@@ -27,6 +27,13 @@ services:
       - DROPBOX_APP_SECRET=${DROPBOX_APP_SECRET}
       - ATLASSIAN_CLIENT_ID=${ATLASSIAN_CLIENT_ID}
       - ATLASSIAN_CLIENT_SECRET=${ATLASSIAN_CLIENT_SECRET}
+      # Atlas CMMS live stats — required for /api/cmms/stats to return real
+      # data instead of {degraded: true}. Mirrors docker-compose.saas.yml
+      # (the VPS deploy target) so local dev with hub.yml shows live stats
+      # too. Set values via Doppler factorylm/prd.
+      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-https://cmms.factorylm.com}
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
     healthcheck:
       test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:3000/api/health || wget -qO- http://127.0.0.1:3000/hub/api/health"]
       interval: 30s

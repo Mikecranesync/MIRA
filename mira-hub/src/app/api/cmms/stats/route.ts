@@ -65,7 +65,13 @@ export async function GET() {
 
   const token = await getToken();
   if (!token) {
-    return NextResponse.json({ error: "CMMS credentials not configured" }, { status: 503 });
+    // CRA-37: graceful 200 + degraded marker rather than 5xx so the /cmms
+    // page sees a clean network response and falls back to STATIC_SUMMARY
+    // via its `liveStats === null` path. Was 503.
+    return NextResponse.json(
+      { degraded: true, reason: "credentials_not_configured" },
+      { status: 200 },
+    );
   }
 
   try {
@@ -97,6 +103,10 @@ export async function GET() {
     cachedToken = null;
     tokenExpiresAt = 0;
     console.error("[api/cmms/stats]", err);
-    return NextResponse.json({ error: "CMMS fetch failed" }, { status: 502 });
+    // CRA-37: same graceful fallback. Was 502.
+    return NextResponse.json(
+      { degraded: true, reason: "atlas_unreachable" },
+      { status: 200 },
+    );
   }
 }
