@@ -43,8 +43,13 @@ export default function CMMSPage() {
     try {
       const res = await fetch("/api/cmms/stats");
       if (res.ok) {
-        const data: CMMSStats = await res.json();
-        setLiveStats(data);
+        // CRA-37: server now returns 200 with `degraded: true` when Atlas
+        // is unconfigured/unreachable (instead of 503/502). Treat that as
+        // "no live data" so STATIC_SUMMARY keeps rendering.
+        const data: CMMSStats & { degraded?: boolean } = await res.json();
+        if (!data.degraded) {
+          setLiveStats(data);
+        }
       }
     } catch {
       // silently fall back to static data
