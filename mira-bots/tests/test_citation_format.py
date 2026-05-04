@@ -72,6 +72,42 @@ class TestCitationLabel:
         )
         assert label.count("Allen-Bradley") == 1
 
+    def test_url_only_with_filename_pattern(self):
+        # The Q3 production case: model_number=None, only source_url to a Rockwell PDF.
+        label = _format_citation_label(
+            {
+                "manufacturer": None,
+                "model_number": None,
+                "source_url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf",
+                "section": "A490 [Load Loss Level]",
+            }
+        )
+        assert "Allen-Bradley" in label
+        assert "User Manual" in label
+        assert "520-um001" not in label
+        assert "Um001" not in label
+        assert "A490" in label
+
+    def test_url_only_unknown_vendor(self):
+        # Unknown domain still cleans the stem and appends section.
+        label = _format_citation_label(
+            {
+                "source_url": "https://example.com/docs/some_random_manual.pdf",
+                "section": "Section 5",
+            }
+        )
+        assert "Some Random Manual" in label
+        assert "Section 5" in label
+
+    def test_url_manufacturer_inference(self):
+        for url, expected in [
+            ("https://literature.rockwellautomation.com/foo.pdf", "Allen-Bradley"),
+            ("https://support.industry.siemens.com/cs/doc.pdf", "Siemens"),
+            ("https://library.e.abb.com/public/x.pdf", "ABB"),
+        ]:
+            label = _format_citation_label({"source_url": url})
+            assert expected in label, f"{url} → {label!r}"
+
 
 class TestCitationFooter:
     def test_footer_dedupes_identical_labels(self):
