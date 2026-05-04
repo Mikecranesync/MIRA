@@ -20,6 +20,9 @@ from shared import tts
 from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
 from shared.identity.service import get_identity_service
+from shared.integrations.atlas_cmms import AtlasCMMSClient
+from shared.integrations.wo_outbox import OutboxRow, run_drain_forever
+from shared.notifications.push import send_push
 from shared.photo_handler import (
     DEFAULT_PHOTO_CAPTION,
     preserve_first_meaningful_caption,
@@ -702,7 +705,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _startup(application: Application) -> None:
-    """Clear any competing webhook/poller and verify bot identity before polling."""
+    """Clear any competing webhook/poller, verify identity, start outbox drain."""
     try:
         await application.bot.delete_webhook(drop_pending_updates=True)
         logger.info("Webhook cleared (drop_pending_updates=True)")
@@ -721,6 +724,35 @@ async def _startup(application: Application) -> None:
             exc,
         )
         raise SystemExit(1) from exc
+
+    # --- Atlas WO outbox drain (Unit 8 / CRA-17) ----------------------------
+    # Re-attempts every 5 minutes. Each pass tries one POST per pending row;
+    # the row's `attempts` counter increments. After 3h unsent, an admin
+    # alert fires once via ntfy.sh.
+    _outbox_client = AtlasCMMSClient()  # reads MCP_BASE_URL + MCP_REST_API_KEY
+
+    async def _outbox_submit(payload: dict) -> dict:
+        try:
+            return await _outbox_client._post_work_order(payload)
+        except Exception as exc:
+            return {"error": f"{type(exc).__name__}: {exc}"}
+
+    async def _outbox_alert(row: OutboxRow) -> None:
+        title = str(row.payload.get("title", ""))[:60]
+        await send_push(
+            message=(
+                f"Atlas WO unsent for 3h+ (outbox_id={row.id}, attempts={row.attempts}). "
+                f"Title: {title!r}. Last error: {row.last_error!r}"
+            ),
+            title="MIRA WO Outbox Stuck",
+            priority="high",
+            tags=["warning", "construction"],
+        )
+
+    application.create_task(
+        run_drain_forever(_outbox_submit, _outbox_alert),
+        name="wo_outbox_drain",
+    )
 
 
 async def _conflict_error_handler(update: object, context) -> None:
