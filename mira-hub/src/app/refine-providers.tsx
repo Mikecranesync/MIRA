@@ -24,7 +24,6 @@ export function RefineProviders({ children }: { children: React.ReactNode }) {
           { name: "requests",    list: "/requests" },
           { name: "reports",     list: "/reports" },
           { name: "team",        list: "/team" },
-          { name: "admin/users", list: "/admin/users" },
         ]}
         options={{ disableTelemetry: true }}
       >
