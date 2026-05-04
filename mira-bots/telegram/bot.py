@@ -20,6 +20,13 @@ from shared import tts
 from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
 from shared.identity.service import get_identity_service
+from shared.photo_batch_queue import (
+    BURST_WINDOW_SECONDS,
+    BurstFull,
+    PhotoBatchQueue,
+    PhotoBatchRecord,
+    QueueFull,
+)
 from shared.photo_handler import (
     DEFAULT_PHOTO_CAPTION,
     preserve_first_meaningful_caption,
@@ -104,9 +111,22 @@ FAULT_KEYWORDS = {
     "warning",
 }
 
-# Photo batching: accumulate rapid-fire multi-photo messages before processing
-PHOTO_BUFFER: dict[int, dict] = {}
-PHOTO_BUFFER_WINDOW = 4.0  # seconds to wait for additional photos in same burst
+# Photo batching: in-memory pre-collector decides single vs multi after a 4s
+# window. Single-photo bursts go through the FSM-aware ChatDispatcher (the
+# existing path, unchanged). Multi-photo bursts (2+) are enqueued to the
+# durable PhotoBatchQueue and drained by a single async worker — vision is
+# GPU-bound on one Ollama node, so worker concurrency is 1.
+#
+# Pre-collector state lives in memory and is dropped on bot restart (max
+# data loss = the 4s burst window). Anything that makes it into the durable
+# queue survives restarts.
+_BURST_COLLECTOR: dict[int, dict] = {}
+_PHOTO_QUEUE_DB_PATH = os.environ.get(
+    "PHOTO_QUEUE_DB_PATH",
+    os.path.join(os.path.dirname(os.environ.get("MIRA_DB_PATH", "/data/mira.db")),
+                 "photo_batches.db"),
+)
+photo_queue = PhotoBatchQueue(_PHOTO_QUEUE_DB_PATH)
 
 
 class typing_action:
@@ -420,93 +440,147 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(f"MIRA error: {exc}")
 
 
-async def _process_photo_batch(
-    batches: list[tuple[bytes, bytes]],
+async def _dispatch_single_photo(
+    raw_bytes: bytes,
+    vision_bytes: bytes,
     caption: str,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Process buffered (raw_bytes, vision_bytes) pairs.
+    """Single-photo path — FSM-aware dispatch through ChatDispatcher.
 
-    Single photo: dispatches through ChatDispatcher (FSM-aware, unchanged path).
-    Multi-photo burst: sends acknowledgment immediately, runs each photo through
-    VisionWorker sequentially, then combines results into one intelligent reply.
+    Unchanged behaviour from the previous in-memory PHOTO_BUFFER. Single
+    photos still need work-order / FSM context, so they bypass the durable
+    queue and run synchronously while we still hold the original Update.
     """
     chat_id = str(update.effective_chat.id)
+    await update.message.reply_text("Analyzing equipment...")
+    update_dict = update.to_dict()
 
-    if len(batches) == 1:
-        # Single-photo path — unchanged; goes through ChatDispatcher for FSM routing
-        await update.message.reply_text("Analyzing equipment...")
-        _raw_bytes, vision_bytes = batches[0]
-        update_dict = update.to_dict()
-        async with typing_action(context, update.effective_chat.id):
+    async with typing_action(context, update.effective_chat.id):
+        try:
+            normalized = await adapter.normalize_incoming(update_dict)
+            normalized.text = caption
+            if normalized.attachments:
+                normalized.attachments[0].data = vision_bytes
+            process_task = asyncio.create_task(dispatcher.dispatch(normalized))
             try:
-                normalized = await adapter.normalize_incoming(update_dict)
-                normalized.text = caption
-                if normalized.attachments:
-                    normalized.attachments[0].data = vision_bytes
-                process_task = asyncio.create_task(dispatcher.dispatch(normalized))
-                try:
-                    response = await asyncio.wait_for(asyncio.shield(process_task), timeout=10.0)
-                except asyncio.TimeoutError:
-                    await update.message.reply_text(
-                        "Processing equipment photo — this may take up to 90 seconds"
-                        " for detailed images..."
-                    )
-                    response = await process_task
-                final_reply = response.text or "MIRA error: no response from vision pipeline."
-            except Exception as e:
-                logger.error("Photo processing error: %s", e)
-                final_reply = f"MIRA error: {e}"
-    else:
-        # Multi-photo burst — ack immediately, process sequentially, combine
-        n = len(batches)
-        await update.message.reply_text(
-            f"📸 Processing {n} photos — I'll have results for you shortly."
-        )
-        async with typing_action(context, update.effective_chat.id):
-            photos_b64 = [base64.b64encode(vision_bytes).decode() for _, vision_bytes in batches]
-            try:
-                final_reply = await engine.process_multi_photo(
-                    chat_id=chat_id,
-                    message=caption,
-                    photos_b64=photos_b64,
-                    platform="telegram",
+                response = await asyncio.wait_for(asyncio.shield(process_task), timeout=10.0)
+            except asyncio.TimeoutError:
+                await update.message.reply_text(
+                    "Processing equipment photo — this may take up to 90 seconds"
+                    " for detailed images..."
                 )
-            except Exception as e:
-                logger.error("Multi-photo processing error: %s", e)
-                final_reply = f"MIRA error processing {n} photos: {e}"
+                response = await process_task
+            final_reply = response.text or "MIRA error: no response from vision pipeline."
+        except Exception as e:
+            logger.error("Photo processing error: %s", e)
+            final_reply = f"MIRA error: {e}"
 
     if INGEST_SERVICE_URL:
         asset_tag = caption.split()[0] if caption else "UNKNOWN"
-        for raw_bytes, _ in batches:
-            asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
-        final_reply += "\n\nPhoto(s) queued for knowledge base."
+        asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
+        final_reply += "\n\nPhoto queued for knowledge base."
 
     await update.message.reply_text(final_reply)
     await _maybe_send_voice(update, context, chat_id, final_reply)
 
 
-async def _flush_photos(
+async def _enqueue_multi_photo_burst(
+    batches: list[tuple[bytes, bytes]],
+    caption: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Multi-photo path — push every photo into the durable queue, ack now.
+
+    The actual processing happens later inside ``_photo_batch_worker``, so
+    a bot restart between burst-close and worker-pickup is recoverable. We
+    still need the Update here only to send the immediate ack message;
+    everything else (vision, synthesis, reply) happens worker-side using
+    only ``application.bot``.
+    """
+    chat_id = str(update.effective_chat.id)
+    n = len(batches)
+    ack = await update.message.reply_text(
+        f"📸 Queued {n} photos — I'll have results for you shortly."
+    )
+
+    batch_id: int | None = None
+    rejected = 0
+    for raw_bytes, vision_bytes in batches:
+        photo_b64 = base64.b64encode(vision_bytes).decode()
+        try:
+            batch_id, _ = await photo_queue.add_photo_to_burst(
+                chat_id=chat_id,
+                platform="telegram",
+                photo_b64=photo_b64,
+                caption=caption,
+                ack_message_id=ack.message_id,
+            )
+        except BurstFull:
+            rejected += 1
+            continue
+
+    if batch_id is None:
+        await update.message.reply_text(
+            "MIRA: every photo in this burst was rejected — please retry."
+        )
+        return
+
+    if rejected:
+        await update.message.reply_text(
+            f"⚠️ Burst capped at {n - rejected}/{n} photos "
+            f"({rejected} dropped — try fewer photos at once)."
+        )
+
+    try:
+        await photo_queue.close_burst(batch_id)
+    except QueueFull:
+        await update.message.reply_text(
+            "🚧 The photo queue is full right now. Please retry in a moment."
+        )
+        await photo_queue.mark_failed(batch_id, "queue full at close_burst")
+        return
+
+    if INGEST_SERVICE_URL:
+        asset_tag = caption.split()[0] if caption else "UNKNOWN"
+        for raw_bytes, _ in batches:
+            asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
+
+
+async def _flush_collector(
     chat_id_int: int,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Wait for buffer window, then process all buffered photos as a batch."""
-    await asyncio.sleep(PHOTO_BUFFER_WINDOW)
-    buf = PHOTO_BUFFER.pop(chat_id_int, None)
+    """After the burst window closes, route to single or multi path."""
+    try:
+        await asyncio.sleep(BURST_WINDOW_SECONDS)
+    except asyncio.CancelledError:
+        return
+
+    buf = _BURST_COLLECTOR.pop(chat_id_int, None)
     if not buf:
         return
-    await _process_photo_batch(buf["batches"], buf["caption"], update, context)
+
+    batches = buf["batches"]
+    caption = buf["caption"]
+    last_update = buf["update"]
+
+    if len(batches) == 1:
+        raw_bytes, vision_bytes = batches[0]
+        await _dispatch_single_photo(raw_bytes, vision_bytes, caption, last_update, context)
+    else:
+        await _enqueue_multi_photo_burst(batches, caption, last_update, context)
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Buffer photos and process as a batch after PHOTO_BUFFER_WINDOW seconds."""
+    """Collect photos for ``BURST_WINDOW_SECONDS``, then route single/multi."""
     chat_id_int = update.effective_chat.id
     caption = update.message.caption or DEFAULT_PHOTO_CAPTION
     logger.info("Photo from %s: %s", update.effective_user.first_name, caption)
 
-    # Download and resize immediately; store raw bytes for KB ingest
     try:
         photo = update.message.photo[-1]
         await context.bot.send_chat_action(
@@ -520,8 +594,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"MIRA error: {e}")
         return
 
-    # Add to buffer; cancel and restart the flush timer
-    buf = PHOTO_BUFFER.get(chat_id_int)
+    buf = _BURST_COLLECTOR.get(chat_id_int)
     if buf:
         existing_task = buf.get("task")
         if existing_task:
@@ -530,15 +603,78 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buf["caption"] = preserve_first_meaningful_caption(buf["caption"], caption)
         buf["update"] = update
     else:
-        PHOTO_BUFFER[chat_id_int] = {
+        _BURST_COLLECTOR[chat_id_int] = {
             "batches": [(raw_bytes, vision_bytes)],
             "caption": caption,
             "update": update,
             "task": None,
         }
 
-    flush_task = asyncio.create_task(_flush_photos(chat_id_int, update, context))
-    PHOTO_BUFFER[chat_id_int]["task"] = flush_task
+    flush_task = asyncio.create_task(_flush_collector(chat_id_int, update, context))
+    _BURST_COLLECTOR[chat_id_int]["task"] = flush_task
+
+
+async def _photo_batch_worker(application: Application) -> None:
+    """Drain the durable photo-batch queue forever.
+
+    Vision is GPU-bound on a single Ollama node, so concurrency = 1 by
+    design. On every iteration: dequeue (blocks), process via
+    ``engine.process_multi_photo``, deliver reply via ``application.bot``,
+    mark done/failed. Worker exceptions are logged but never propagated —
+    the loop must outlive any single bad batch.
+    """
+    logger.info("PHOTO_QUEUE_WORKER starting (db=%s)", _PHOTO_QUEUE_DB_PATH)
+    while True:
+        rec: PhotoBatchRecord
+        try:
+            rec = await photo_queue.dequeue()
+        except Exception as exc:
+            logger.error("PHOTO_QUEUE_WORKER dequeue error: %s", exc)
+            await asyncio.sleep(1.0)
+            continue
+
+        n = len(rec.photos_b64)
+        logger.info(
+            "PHOTO_QUEUE_WORKER processing batch_id=%d chat=%s n=%d",
+            rec.id, rec.chat_id, n,
+        )
+        try:
+            reply = await engine.process_multi_photo(
+                chat_id=rec.chat_id,
+                message=rec.caption,
+                photos_b64=rec.photos_b64,
+                platform=rec.platform,
+            )
+            if not reply:
+                reply = (
+                    f"MIRA error: vision pipeline returned no response for "
+                    f"{n} photos. Please retry."
+                )
+            try:
+                await application.bot.send_message(
+                    chat_id=int(rec.chat_id), text=reply
+                )
+            except Exception as send_exc:
+                logger.error(
+                    "PHOTO_QUEUE_WORKER reply send failed batch_id=%d: %s",
+                    rec.id, send_exc,
+                )
+            await photo_queue.mark_done(rec.id, reply)
+        except Exception as exc:
+            logger.exception(
+                "PHOTO_QUEUE_WORKER processing error batch_id=%d", rec.id
+            )
+            try:
+                await application.bot.send_message(
+                    chat_id=int(rec.chat_id),
+                    text=f"MIRA error processing {n} photos: {exc}",
+                )
+            except Exception as send_exc:
+                logger.error(
+                    "PHOTO_QUEUE_WORKER error-reply send failed batch_id=%d: %s",
+                    rec.id, send_exc,
+                )
+            await photo_queue.mark_failed(rec.id, str(exc))
 
 
 async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -702,7 +838,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _startup(application: Application) -> None:
-    """Clear any competing webhook/poller and verify bot identity before polling."""
+    """Clear any competing webhook/poller, verify identity, start photo worker."""
     try:
         await application.bot.delete_webhook(drop_pending_updates=True)
         logger.info("Webhook cleared (drop_pending_updates=True)")
@@ -721,6 +857,14 @@ async def _startup(application: Application) -> None:
             exc,
         )
         raise SystemExit(1) from exc
+
+    n_recovered = await photo_queue.recover_orphans()
+    if n_recovered:
+        logger.warning(
+            "PHOTO_QUEUE recovered %d orphan batch(es) from previous shutdown",
+            n_recovered,
+        )
+    application.create_task(_photo_batch_worker(application), name="photo_batch_worker")
 
 
 async def _conflict_error_handler(update: object, context) -> None:
