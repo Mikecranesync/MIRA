@@ -111,6 +111,7 @@ class TestMakeResult:
             "confidence": "high",
             "trace_id": "trace-123",
             "next_state": "Q1",
+            "dispatch_kind": "",
         }
 
     def test_defaults(self):
@@ -118,6 +119,17 @@ class TestMakeResult:
         assert result["confidence"] == "none"
         assert result["trace_id"] is None
         assert result["next_state"] is None
+        assert result["dispatch_kind"] == ""
+
+    def test_with_dispatch_kind(self):
+        result = Supervisor._make_result(
+            "wo preview",
+            "none",
+            "trace-1",
+            "Q1",
+            dispatch_kind="action_request",
+        )
+        assert result["dispatch_kind"] == "action_request"
 
 
 # ---------------------------------------------------------------------------
