@@ -761,3 +761,50 @@ class TestFaultInfoRegex:
 
     def test_danfoss_alarm4(self):
         assert _FAULT_INFO_RE.search("FC102 showing Alarm 4")
+
+
+class TestFreshQuestionDuringWO:
+    """Guard against regression where a fresh question during a stale cmms_pending
+    state gets misrouted into the WO confirmation flow (bot critical fix 2026-05-04)."""
+
+    def test_yes_is_wo_response(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+        assert not f("yes")
+        assert not f("Yes")
+        assert not f("yeah")
+        assert not f("y")
+
+    def test_no_is_wo_response(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+        assert not f("no")
+        assert not f("nope")
+        assert not f("skip")
+        assert not f("cancel")
+
+    def test_edits_are_wo_response(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+        assert not f("change priority to HIGH")
+        assert not f("asset is Pump-A3")
+        assert not f("priority is HIGH")
+        assert not f("line is Line 1")
+
+    def test_question_marks_are_fresh(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+        assert f("What causes a VFD overcurrent fault?")
+        assert f("How do I reset this drive?")
+        assert f("why is my pump leaking?")
+
+    def test_question_words_are_fresh(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+        assert f("How do I diagnose this")
+        assert f("Tell me about cooling tower maintenance")
+        assert f("describe the fault category")
+
+    def test_long_statements_are_fresh(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+        assert f("My motor is making a strange grinding noise during startup")
+
+    def test_empty_message_is_not_fresh(self):
+        from shared.engine import _is_fresh_question_during_wo as f
+        assert not f("")
+        assert not f("   ")
