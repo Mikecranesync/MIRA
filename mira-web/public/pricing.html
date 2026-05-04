@@ -219,6 +219,38 @@
     }
     .faq-q.open + .faq-a { display: block; }
 
+    /* ── Accessibility ── */
+
+    /* Skip-to-content link: hidden off-screen until focused */
+    .skip-link {
+      position: fixed; top: -100%; left: 0; z-index: 9999;
+      background: var(--amber); color: #0a0a08;
+      font-size: 14px; font-weight: 700;
+      padding: 12px 20px;
+      border-radius: 0 0 6px 0;
+      text-decoration: none;
+      transition: top 0.1s;
+    }
+    .skip-link:focus { top: 0; outline: 3px solid #0a0a08; outline-offset: 2px; }
+
+    /* Global focus-visible ring — visible on keyboard, not on mouse click */
+    :focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 3px;
+      border-radius: 3px;
+    }
+
+    /* Bring sticky-nav elements into view with scroll-margin */
+    #main-content { scroll-margin-top: 64px; }
+    .pricing-card { scroll-margin-top: 72px; }
+
+    /* FAQ keyboard accessibility */
+    .faq-q:focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 2px;
+      border-radius: 3px;
+    }
+
     /* Footer */
     footer {
       border-top: 1px solid var(--border);
@@ -230,25 +262,29 @@
     .footer-links a { color: var(--text-faint); text-decoration: none; font-size: 13px; }
     .footer-links a:hover { color: var(--text-dim); }
   </style>
+  <!-- PostHog analytics (closes #618) — server injects PLG_POSTHOG_KEY; no-op stub if unset -->
+  <script src="/posthog-init.js" defer></script>
 </head>
 <body>
 
+  <!-- Skip to main content: first Tab stop, satisfies WCAG 2.4.1 -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <nav>
     <div class="nav-inner">
-      <a href="/" class="nav-logo">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" rx="5" fill="#f0a000"/><path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        FactoryLM
-      </a>
+      <a href="/" class="nav-logo" aria-label="FactoryLM home">FactoryLM</a>
       <ul class="nav-links">
-        <li><a href="/#features">Product</a></li>
+        <li><a href="/cmms">CMMS</a></li>
+        <li><a href="/pricing" aria-current="page">Pricing</a></li>
         <li><a href="/blog">Blog</a></li>
-        <li><a href="/cmms">Troubleshooter</a></li>
+        <li><a href="/limitations">Limitations</a></li>
+        <li><a href="/security">Security</a></li>
       </ul>
-      <a href="/cmms" class="nav-cta">Get Started</a>
+      <a href="/cmms" class="nav-cta">Sign in</a>
     </div>
   </nav>
 
-  <main>
+  <main id="main-content">
     <section class="hero">
       <div class="inner">
         <div class="hero-eyebrow">Pricing</div>
@@ -274,7 +310,7 @@
               <li>Telegram, Slack, and web chat</li>
               <li>Photo-to-diagnosis</li>
             </ul>
-            <a href="/cmms" class="card-cta card-cta-primary">Start with MIRA</a>
+            <a href="/api/checkout/session" class="card-cta card-cta-primary">Start Free Trial</a>
             <p class="card-footnote">14-day money-back guarantee</p>
           </div>
 
@@ -291,7 +327,7 @@
               <li>All 3 adapters bundled (one price)</li>
               <li>Priority support</li>
             </ul>
-            <a href="/cmms" class="card-cta card-cta-ghost">Get MIRA Integrated</a>
+            <a href="/api/checkout/session" class="card-cta card-cta-ghost">Start Free Trial</a>
             <p class="card-footnote">14-day money-back guarantee</p>
           </div>
 
@@ -371,15 +407,10 @@
   <footer>
     <div class="inner">
       <div class="footer-inner">
-        <a href="/" class="nav-logo" style="font-size:13px;">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18"><rect width="24" height="24" rx="5" fill="#f0a000"/><path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          FactoryLM
-        </a>
+        <a href="/" class="nav-logo" style="font-size:13px;" aria-label="FactoryLM home">FactoryLM</a>
         <ul class="footer-links">
-          <li><a href="/blog">Blog</a></li>
-          <li><a href="/blog/fault-codes">Fault Codes</a></li>
-          <li><a href="/cmms">Troubleshooter</a></li>
-          <li><a href="mailto:contact@factorylm.com">Contact</a></li>
+          <li><a href="/limitations">Limitations</a></li>
+          <li><a href="/trust">Trust</a></li>
           <li><a href="/privacy">Privacy</a></li>
           <li><a href="/terms">Terms</a></li>
         </ul>
@@ -389,8 +420,17 @@
 
   <script>
     document.querySelectorAll('.faq-q').forEach(function (q) {
-      q.addEventListener('click', function () {
-        q.classList.toggle('open');
+      // Keyboard accessibility: make div focusable + toggle on Enter/Space
+      q.setAttribute('tabindex', '0');
+      q.setAttribute('role', 'button');
+      q.setAttribute('aria-expanded', 'false');
+      function toggle() {
+        var open = q.classList.toggle('open');
+        q.setAttribute('aria-expanded', String(open));
+      }
+      q.addEventListener('click', toggle);
+      q.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
       });
     });
   </script>

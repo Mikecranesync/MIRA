@@ -12,6 +12,7 @@ import yaml
 
 from .. import neon_recall as _neon_recall
 from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
+from ..inference.router import InferenceRouter
 from ..langfuse_setup import trace_rag_query
 
 # CRA-11 / Unit 2 — citation infrastructure.
@@ -70,6 +71,48 @@ def _load_prompt_meta() -> dict:
 
 
 logger = logging.getLogger("mira-gsd")
+
+_FAULT_MENTION_RE = re.compile(
+    r"\b(fault|error|alarm|trip|code|warning|showing|display|flashing|reading)\b",
+    re.IGNORECASE,
+)
+
+
+def _build_clarification_request(message: str, asset_identified: str) -> str | None:
+    """Return a targeted clarification question when the KB has no coverage.
+
+    Uses the same fault code extractor as neon_recall so the codes quoted back
+    to the user are exactly what was searched — no false positives from generic
+    English words. Returns None for non-fault queries so the LLM honesty path
+    fires instead.
+    """
+    has_fault_mention = bool(_FAULT_MENTION_RE.search(message))
+    # Use the same extractor the recall path used — what it found is what failed
+    attempted_codes = _neon_recall._extract_fault_codes(message)
+
+    if not has_fault_mention and not attempted_codes:
+        return None
+
+    parts: list[str] = []
+
+    if attempted_codes:
+        quoted = ", ".join(f"**{c}**" for c in attempted_codes[:3])
+        parts.append(f"I searched for {quoted} but couldn't find it in my knowledge base.")
+    else:
+        parts.append("I couldn't find anything matching your description in my knowledge base.")
+
+    parts.append("To look this up I need a bit more info:\n")
+
+    if not asset_identified:
+        parts.append("1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Rockwell)")
+        parts.append("2. **Model number** — shown on the nameplate or display (e.g. GS20, PowerFlex 40)")
+        parts.append("3. **Exact code** — copy it exactly as it appears on the screen")
+    else:
+        parts.append(f"Equipment: {asset_identified}")
+        parts.append("1. **Exact code** — copy it exactly as it appears on the screen")
+        parts.append("2. **What were you doing** when it appeared? (starting up, running, decelerating, idle)")
+
+    return "\n".join(parts)
 
 
 def _trim_history_by_tokens(
@@ -277,30 +320,60 @@ class RAGWorker:
 
             # Quality gate: only use retrieval when top chunk is genuinely relevant
             top_score = max((c.get("similarity", 0) for c in neon_chunks), default=0)
-            if neon_chunks and top_score < 0.70:
-                logger.info("RAG_QUALITY_GATE top_score=%.3f — chunks suppressed", top_score)
+            _triage_conf = (state.get("context") or {}).get("triage_result", {}).get("confidence")
+            _enriched = (state.get("context") or {}).get("triage_enriched", False)
+            if _triage_conf == "medium" or _enriched:
+                _min_sim = 0.55
+            elif _triage_conf == "low":
+                _min_sim = 0.45
+            else:
+                _min_sim = 0.70
+            if neon_chunks and top_score < _min_sim:
+                logger.info(
+                    "RAG_QUALITY_GATE top_score=%.3f min=%.2f triage=%s — suppressed",
+                    top_score, _min_sim, _triage_conf or "none",
+                )
                 chunk_texts = []
+                neon_chunks = []
 
-            # Vendor-relevance check: if the query names a specific vendor/brand but ALL
-            # returned chunks have a different manufacturer, they are cross-vendor
-            # contamination from the shared OEM pool.  Suppress them so the honesty
-            # directive fires rather than the LLM hallucinating with wrong-equipment docs.
+            # Cross-vendor filter: drop chunks whose manufacturer doesn't match the
+            # identified vendor.  Chunks with no manufacturer tag are kept (they may be
+            # generic content like fault code tables or application notes).
+            # Falls back to the old all-or-nothing suppress if no per-chunk filtering
+            # yields results.
             if chunk_texts and not photo_b64:
                 query_combined = f"{message} {state.get('asset_identified', '')}".strip()
                 query_vendor = vendor_name_from_text(query_combined)
                 if query_vendor:
                     qv_lower = query_vendor.lower()
-                    vendor_matched = any(
-                        qv_lower in (c.get("manufacturer") or "").lower() for c in neon_chunks
-                    )
-                    if not vendor_matched:
+                    filtered_chunks = [
+                        c
+                        for c in neon_chunks
+                        if not c.get("manufacturer")
+                        or qv_lower in (c.get("manufacturer") or "").lower()
+                    ]
+                    if filtered_chunks:
+                        dropped = len(neon_chunks) - len(filtered_chunks)
+                        if dropped:
+                            logger.info(
+                                "CROSS_VENDOR_FILTER vendor=%r — dropped %d mismatched "
+                                "chunk(s), kept %d",
+                                query_vendor,
+                                dropped,
+                                len(filtered_chunks),
+                            )
+                        neon_chunks = filtered_chunks
+                        chunk_texts = [c["content"] for c in neon_chunks]
+                    else:
+                        # No chunks survived filtering — full suppress so honesty fires
                         logger.info(
-                            "CROSS_VENDOR_CONTAMINATION vendor=%r — %d chunk(s) from "
-                            "other equipment suppressed, honesty directive will fire",
+                            "CROSS_VENDOR_CONTAMINATION vendor=%r — %d chunk(s) fully "
+                            "suppressed (no match), honesty directive will fire",
                             query_vendor,
                             len(chunk_texts),
                         )
                         chunk_texts = []
+                        neon_chunks = []
 
             self._last_sources = chunk_texts
             self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
@@ -341,10 +414,25 @@ class RAGWorker:
                 self._last_no_kb = no_kb
                 if no_kb:
                     logger.info(
-                        "NO_KB_COVERAGE asset=%r — honesty directive injected",
+                        "NO_KB_COVERAGE asset=%r — checking for clarification shortcut",
                         state.get("asset_identified", "unknown"),
                     )
-                messages = self._build_prompt(state, rewritten, photo_b64, no_kb_coverage=no_kb)
+                    triage_data = (state.get("context") or {}).get("triage_result", {})
+                    if triage_data.get("is_answerable_from_general_knowledge"):
+                        messages = self._build_prompt(
+                            state, rewritten, photo_b64, no_kb_coverage="general_knowledge"
+                        )
+                    else:
+                        clarification = _build_clarification_request(
+                            message, state.get("asset_identified", "")
+                        )
+                        if clarification:
+                            return clarification
+                        messages = self._build_prompt(
+                            state, rewritten, photo_b64, no_kb_coverage=True
+                        )
+                else:
+                    messages = self._build_prompt(state, rewritten, photo_b64)
             t0 = time.monotonic()
             raw = await self._call_llm(messages, model=model)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -405,6 +493,13 @@ class RAGWorker:
             system_content += f"Asset identified: {state['asset_identified']}\n"
         if state.get("fault_category"):
             system_content += f"Fault category: {state['fault_category']}\n"
+        _sc = state.get("context", {}).get("session_context", {})
+        if _sc.get("active_alarm"):
+            system_content += (
+                f"ACTIVE INVESTIGATION: {_sc['active_alarm']}\n"
+                "Focus EXCLUSIVELY on this alarm. Do NOT discuss other alarms unless "
+                "the technician explicitly switches topic.\n"
+            )
 
         # Inject reranked chunks as reference context with source headers.
         # Each chunk gets a [Source: Mfr Mdl — Section] tag the LLM is
@@ -476,14 +571,15 @@ class RAGWorker:
         message: str,
         photo_b64: str = None,
         neon_chunks: list[dict] = None,
-        no_kb_coverage: bool = False,
+        no_kb_coverage: bool | str = False,
     ) -> list[dict]:
         """Build message list for LLM with GSD system prompt and state context.
 
         Args:
-            no_kb_coverage: True when retrieval was attempted but returned zero results.
-                Injects an explicit honesty directive so the LLM admits it has no
-                documentation rather than hallucinating specifics.
+            no_kb_coverage: True when retrieval ran but returned zero results (injects
+                honesty directive). "general_knowledge" when triage flagged the query as
+                answerable from general engineering knowledge — LLM answers with a prefix
+                instead of refusing.
         """
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
@@ -493,9 +589,27 @@ class RAGWorker:
             system_content += f"Asset identified: {state['asset_identified']}\n"
         if state.get("fault_category"):
             system_content += f"Fault category: {state['fault_category']}\n"
+        _sc = state.get("context", {}).get("session_context", {})
+        if _sc.get("active_alarm"):
+            system_content += (
+                f"ACTIVE INVESTIGATION: {_sc['active_alarm']}\n"
+                "Focus EXCLUSIVELY on this alarm. Do NOT discuss other alarms unless "
+                "the technician explicitly switches topic.\n"
+            )
 
+        # General knowledge mode: triage says answerable without equipment-specific docs
+        if no_kb_coverage == "general_knowledge":
+            system_content += (
+                "\n\n--- GENERAL KNOWLEDGE MODE ---\n"
+                "No equipment-specific documentation found in the knowledge base.\n"
+                "You MUST prefix your answer with: "
+                '"Based on general industrial knowledge (not from specific documentation for this equipment): "\n'
+                "Then give your best answer. Do NOT refuse to answer.\n"
+                "End by asking ONE specific question that would help find the right documentation.\n"
+                "--- END GENERAL KNOWLEDGE MODE ---\n"
+            )
         # Honesty directive: retrieval ran but found nothing relevant
-        if no_kb_coverage:
+        elif no_kb_coverage:
             asset = state.get("asset_identified", "")
             support_url = vendor_support_url(asset) or vendor_support_url(message)
             url_hint = (
@@ -649,15 +763,26 @@ class RAGWorker:
         return None
 
     async def _call_llm(self, messages: list[dict], model: str = None) -> str:
-        """Call LLM — cloud cascade (Groq→Cerebras→Claude) then Open WebUI fallback."""
+        """Call LLM — cloud cascade (Groq→Cerebras→Claude) then Open WebUI fallback.
+
+        PII sanitization (IPv4/MAC/serial → placeholders) is applied to every
+        outbound LLM call regardless of which backend is reached. The cascade
+        path sanitizes inside `router.complete()`; the Open WebUI fallback is
+        sanitized here so neither path can leak.
+        """
+        clean = (
+            self.router.sanitize_context(messages)
+            if self.router
+            else InferenceRouter.sanitize_context(messages)
+        )
+
         if self.router and self.router.enabled:
-            clean = self.router.sanitize_context(messages)
-            content, usage = await self.router.complete(clean)
+            content, usage = await self.router.complete(clean, max_tokens=2048, sanitize=False)
             if content:
                 self.router.log_usage(usage)
                 return content
 
-        return await self._call_openwebui(messages, model=model)
+        return await self._call_openwebui(clean, model=model)
 
     async def _call_openwebui(self, messages: list[dict], model: str = None) -> str:
         """Call Open WebUI chat completions API with observability logging."""

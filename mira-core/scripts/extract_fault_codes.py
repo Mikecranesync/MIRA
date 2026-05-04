@@ -9,6 +9,7 @@ Usage:
       uv run --with sqlalchemy --with psycopg2-binary --with httpx \
       python mira-core/scripts/extract_fault_codes.py [--model MODEL] [--dry-run] [--limit N]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -113,34 +114,45 @@ def _call_claude(content: str, model: str) -> list[dict]:
     return []
 
 
-def _insert_fault_code(conn, text_fn, tenant_id: str, fc: dict,
-                       manufacturer: str, model: str,
-                       chunk_id: str, source_url: str, page_num: int) -> bool:
+def _insert_fault_code(
+    conn,
+    text_fn,
+    tenant_id: str,
+    fc: dict,
+    manufacturer: str,
+    model: str,
+    chunk_id: str,
+    source_url: str,
+    page_num: int,
+) -> bool:
     """Insert one fault code. Returns True on success, False on duplicate/error."""
     try:
-        conn.execute(text_fn(
-            "INSERT INTO fault_codes "
-            "(id, tenant_id, code, description, cause, action, severity, "
-            "equipment_model, manufacturer, source_chunk_id, source_url, page_num) "
-            "VALUES (:id, :tid, :code, :desc, :cause, :action, :sev, "
-            ":model, :mfr, :chunk_id, :url, :page) "
-            "ON CONFLICT (tenant_id, code, equipment_model) DO UPDATE SET "
-            "description = EXCLUDED.description, cause = EXCLUDED.cause, "
-            "action = EXCLUDED.action, severity = EXCLUDED.severity"
-        ), {
-            "id": str(uuid.uuid4()),
-            "tid": tenant_id,
-            "code": fc["code"].upper(),
-            "desc": fc.get("description", ""),
-            "cause": fc.get("cause", ""),
-            "action": fc.get("action", ""),
-            "sev": fc.get("severity", ""),
-            "model": model or "",
-            "mfr": manufacturer or "",
-            "chunk_id": chunk_id,
-            "url": source_url or "",
-            "page": page_num,
-        })
+        conn.execute(
+            text_fn(
+                "INSERT INTO fault_codes "
+                "(id, tenant_id, code, description, cause, action, severity, "
+                "equipment_model, manufacturer, source_chunk_id, source_url, page_num) "
+                "VALUES (:id, :tid, :code, :desc, :cause, :action, :sev, "
+                ":model, :mfr, :chunk_id, :url, :page) "
+                "ON CONFLICT (tenant_id, code, equipment_model) DO UPDATE SET "
+                "description = EXCLUDED.description, cause = EXCLUDED.cause, "
+                "action = EXCLUDED.action, severity = EXCLUDED.severity"
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "tid": tenant_id,
+                "code": fc["code"].upper(),
+                "desc": fc.get("description", ""),
+                "cause": fc.get("cause", ""),
+                "action": fc.get("action", ""),
+                "sev": fc.get("severity", ""),
+                "model": model or "",
+                "mfr": manufacturer or "",
+                "chunk_id": chunk_id,
+                "url": source_url or "",
+                "page": page_num,
+            },
+        )
         return True
     except Exception as e:
         log.warning("Insert failed for %s: %s", fc.get("code"), e)
@@ -152,20 +164,21 @@ def main() -> None:
     from sqlalchemy.pool import NullPool
 
     parser = argparse.ArgumentParser(description="Extract fault codes from KB chunks")
-    parser.add_argument("--model", default="claude-sonnet-4-6",
-                        help="Claude model for extraction")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Print extraction results without inserting")
-    parser.add_argument("--limit", type=int, default=0,
-                        help="Max chunks to process (0=all)")
+    parser.add_argument("--model", default="claude-sonnet-4-6", help="Claude model for extraction")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print extraction results without inserting"
+    )
+    parser.add_argument("--limit", type=int, default=0, help="Max chunks to process (0=all)")
     args = parser.parse_args()
 
     if not all([NEON_DATABASE_URL, MIRA_TENANT_ID, ANTHROPIC_API_KEY]):
         sys.exit("ERROR: NEON_DATABASE_URL, MIRA_TENANT_ID, and ANTHROPIC_API_KEY required")
 
     engine = create_engine(
-        NEON_DATABASE_URL, poolclass=NullPool,
-        connect_args={"sslmode": "require"}, pool_pre_ping=True,
+        NEON_DATABASE_URL,
+        poolclass=NullPool,
+        connect_args={"sslmode": "require"},
+        pool_pre_ping=True,
     )
 
     log.info("Finding chunks with fault code patterns...")
@@ -192,9 +205,15 @@ def main() -> None:
             mfr = chunk.get("manufacturer") or ""
             model = chunk.get("model_number") or ""
 
-            log.info("[%d/%d] %s %s (page %s, %d chars)",
-                     i, len(unique_chunks), mfr or "?", model or "?",
-                     chunk.get("source_page"), len(content))
+            log.info(
+                "[%d/%d] %s %s (page %s, %d chars)",
+                i,
+                len(unique_chunks),
+                mfr or "?",
+                model or "?",
+                chunk.get("source_page"),
+                len(content),
+            )
 
             try:
                 fault_codes = _call_claude(content, args.model)
@@ -208,19 +227,29 @@ def main() -> None:
                 continue
 
             total_extracted += len(fault_codes)
-            log.info("  → %d fault codes: %s",
-                     len(fault_codes),
-                     ", ".join(fc.get("code", "?") for fc in fault_codes))
+            log.info(
+                "  → %d fault codes: %s",
+                len(fault_codes),
+                ", ".join(fc.get("code", "?") for fc in fault_codes),
+            )
 
             if args.dry_run:
                 for fc in fault_codes:
-                    print(f"    {fc['code']}: {fc.get('description', '?')} — {fc.get('cause', '')[:80]}")
+                    print(
+                        f"    {fc['code']}: {fc.get('description', '?')} — {fc.get('cause', '')[:80]}"
+                    )
                 continue
 
             for fc in fault_codes:
                 if _insert_fault_code(
-                    conn, text, MIRA_TENANT_ID, fc, mfr, model,
-                    chunk.get("id", ""), chunk.get("source_url", ""),
+                    conn,
+                    text,
+                    MIRA_TENANT_ID,
+                    fc,
+                    mfr,
+                    model,
+                    chunk.get("id", ""),
+                    chunk.get("source_url", ""),
                     chunk.get("source_page"),
                 ):
                     total_inserted += 1
@@ -228,8 +257,12 @@ def main() -> None:
             conn.commit()
             time.sleep(0.5)  # rate limit
 
-    log.info("Done. %d chunks processed, %d fault codes extracted, %d inserted.",
-             len(unique_chunks), total_extracted, total_inserted)
+    log.info(
+        "Done. %d chunks processed, %d fault codes extracted, %d inserted.",
+        len(unique_chunks),
+        total_extracted,
+        total_inserted,
+    )
 
 
 if __name__ == "__main__":

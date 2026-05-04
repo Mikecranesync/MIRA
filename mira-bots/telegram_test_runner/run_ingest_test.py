@@ -11,7 +11,6 @@ Usage:
 """
 
 import argparse
-import json
 import os
 import sys
 import time
@@ -24,8 +23,8 @@ import yaml
 _HERE = Path(__file__).parent
 sys.path.insert(0, str(_HERE))
 
-import judge
-import report as report_module
+import judge  # noqa: E402
+import report as report_module  # noqa: E402
 
 _MIRA_SERVER = os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost")
 INGEST_URL = os.getenv("INGEST_URL", f"{_MIRA_SERVER}:8002/ingest/photo")
@@ -89,11 +88,11 @@ def main():
         print("No cases matched. Check manifest path or case names.")
         sys.exit(1)
 
-    print(f"\n{'='*60}")
-    print(f"MIRA 100-Case Ingest Validation")
+    print(f"\n{'=' * 60}")
+    print("MIRA 100-Case Ingest Validation")
     print(f"Endpoint: {INGEST_URL}")
     print(f"Cases to run: {len(cases)}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     results = []
     total = len(cases)
@@ -138,13 +137,13 @@ def main():
         if r["passed"]:
             by_cat[cat]["pass"] += 1
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"FINAL RESULTS: {total_pass}/{total} pass ({pass_rate:.1f}%)")
     print(f"Avg word count: {avg_words:.1f}  |  Avg response time: {avg_elapsed:.1f}s")
-    print(f"{'='*60}")
-    print(f"\nResults by category:")
+    print(f"{'=' * 60}")
+    print("\nResults by category:")
     for cat, counts in sorted(by_cat.items()):
-        cat_rate = counts['pass'] / counts['total'] * 100
+        cat_rate = counts["pass"] / counts["total"] * 100
         print(f"  {cat:<20} {counts['pass']}/{counts['total']}  ({cat_rate:.0f}%)")
 
     # Bucket breakdown
@@ -154,7 +153,7 @@ def main():
             b = r["failure_bucket"]
             buckets[b] = buckets.get(b, 0) + 1
     if buckets:
-        print(f"\nFailure buckets:")
+        print("\nFailure buckets:")
         for b, cnt in sorted(buckets.items(), key=lambda x: -x[1]):
             print(f"  {b:<30} {cnt}")
 
@@ -168,14 +167,14 @@ def main():
     )
 
     # Verdict
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     if pass_rate >= 95:
         print(f"TARGET MET ✅  {pass_rate:.1f}% ≥ 95% — field ready")
     elif pass_rate >= 90:
         print(f"COMMIT THRESHOLD MET ⚠️  {pass_rate:.1f}% ≥ 90% — commit with notes")
     else:
         print(f"BELOW THRESHOLD ❌  {pass_rate:.1f}% < 90% — diagnose and fix before commit")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     sys.exit(0 if pass_rate >= 90 else 1)
 

@@ -234,7 +234,7 @@ async def trace_rag_query(query: str, session_id: str = None, metadata: dict[str
     lf = get_langfuse()
     trace = None
 
-    if lf is not None:
+    if lf is not None and hasattr(lf, "trace"):
         try:
             trace = lf.trace(
                 name="rag_query",
@@ -250,7 +250,7 @@ async def trace_rag_query(query: str, session_id: str = None, metadata: dict[str
     try:
         yield helper
     finally:
-        if lf is not None and trace is not None:
+        if lf is not None and hasattr(lf, "trace") and trace is not None:
             try:
                 lf.flush()
             except Exception as exc:

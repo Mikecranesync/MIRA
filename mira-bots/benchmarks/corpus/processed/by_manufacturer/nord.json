@@ -1,0 +1,23 @@
+[
+  {
+    "id": "1h5nl9i",
+    "title": "\"That's how we've always done it\" acceptable excuse?",
+    "selftext": "I'm a ME 3 years out of school and I recently took a job with a company designing heavy machinery. One of my biggest pet peeves is that when I ask why things are done a certain way, the response is always the same (\"That's how we've always done it\"). I should also note that only 3/15 \"engineers\" here hold degrees and the rest are self taught drafters.\n\nOne of many examples: we use these Nord gearmotors on conveyors and it was an instant red flag to me that they have been ordering units with B14 flanges (circled in green), but then proceed to foot mount them anyways. Not sure if it was a one off, but the unit I had quoted did not even have the holes (circled in red) defined on the drawing. This leads me to believe they were never meant to be used for mounting. When I had the same spec gearmotor quoted as a foot mounted unit, the bolt holes had 4 instead of 3 and larger diameter, leading me to the same conclusion I had before.\n\nWhen I asked my manager, Engineer #2, about this issue, all he said was \"if it aint broke, dont fix it\". Engineer 3 was the one who told me to do this in the first place and thought the face circled in blue was the b flange lol.\n\nMy biggest worry is that something like this could fail and my company would hold me accountable. Which makes me really not want to go for my PE here either. Also, I feel like I need to be in autopilot in order to succeed here, rather than being able to use my brain and learn things conceptually. \n\nIs it worth protesting against this common excuse and other perceived bad practices? Or do you think I should just go with it? \n\nhttps://preview.redd.it/0ctynahexm4e1.png?width=756&amp;format=png&amp;auto=webp&amp;s=6c3d1979e9cd7f9d420aa852283eb802911d734a\n\n",
+    "score": 111,
+    "num_comments": 105,
+    "created_utc": 1733233145,
+    "subreddit": "MechanicalEngineering",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.6,
+    "quality_pass": false,
+    "quality_reasons": [
+      "no equipment mention"
+    ],
+    "manufacturer": "Nord",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  }
+]

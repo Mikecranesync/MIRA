@@ -4,11 +4,14 @@
  * Hono on Bun. Routes:
  *   GET  /                        → Homepage
  *   GET  /cmms                    → Serve CMMS landing / dashboard page
+ *   GET  /limitations             → Honest "what we don't do yet" page (#677)
  *   GET  /activated               → Post-payment single-purpose upload page
  *   GET  /blog                    → Blog index (articles + fault codes link)
  *   GET  /blog/fault-codes        → Fault code library index
  *   GET  /blog/:slug              → Individual blog post or fault code article
  *   GET  /sitemap.xml             → Dynamic sitemap
+ *   GET  /llms.txt                → LLM/AI-crawler product summary (GEO foundation)
+ *   GET  /llms-full.txt           → Extended LLM content disclosure
  *   GET  /api/health              → Liveness probe
  *   POST /api/register            → Create pending tenant + start nurture
  *   GET  /api/checkout            → Stripe Checkout redirect ($97/mo)
@@ -20,6 +23,7 @@
  *   GET  /demo/work-orders        → Static ticker data (no auth)
  *   POST /api/mira/chat           → SSE AI chat via mira-pipeline (active only)
  *   GET  /demo/tenant-work-orders → Real WOs for authenticated user (active only)
+ *   GET  /qr-test                  → Branded QR display page (no auth; ?tenant_id &tenant_name)
  *   GET  /admin/qr-print          → Admin: list assets + select stickers (ADMIN only)
  *   POST /api/admin/qr-print-batch → Admin: UPSERT tags + generate Avery 5163 PDF (ADMIN only)
  */
@@ -27,6 +31,19 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
+import { renderHome } from "./views/home.js";
+import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
+import { renderLimitations } from "./views/limitations.js";
+import { renderSecurity } from "./views/security.js";
+import {
+  createMagicLink,
+  validateAndConsumeToken,
+  buildMagicLinkUrl,
+  checkMagicLinkRateLimit,
+  neonMagicLinkStorage,
+  auditMagicLink,
+} from "./lib/magic-link.js";
+import { sendMagicLinkEmail } from "./lib/mailer.js";
 import { signToken, requireAuth, requireActive, type MiraTokenPayload } from "./lib/auth.js";
 import { buildSessionCookie } from "./lib/cookie-session.js";
 import {
@@ -63,8 +80,16 @@ import { seedAssetFromNameplate } from "./seed/knowledge-seed.js";
 import { importCSV } from "./lib/csv-import.js";
 import { sendBetaWelcomeEmail, sendActivatedEmail } from "./lib/mailer.js";
 import { startDripScheduler } from "./lib/drip.js";
+import { recordAuditEvent, requestMetadata } from "./lib/audit.js";
+import {
+  requestSoftDelete,
+  purgePendingDeletions,
+} from "./lib/account-deletion.js";
+import { getMfaState } from "./lib/quota.js";
+import { decryptSecret, verifyTotp, findRecoveryCodeIndex } from "./lib/mfa.js";
 import {
   createCheckoutSession,
+  createDirectCheckoutSession,
   createPortalSession,
   constructWebhookEvent,
 } from "./lib/stripe.js";
@@ -91,9 +116,13 @@ import {
 import { m } from "./routes/m.js";
 import { mChooser } from "./routes/m-chooser.js";
 import { mReport, mReportApi } from "./routes/m-report.js";
+import { mRegister, mRegisterApi } from "./routes/m-register.js";
 import { adminPages, adminApi } from "./routes/admin/qr-print.js";
 import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
+import { qrTest } from "./routes/qr-test.js";
+import { inbox } from "./routes/inbox.js";
+import { mfa } from "./routes/mfa.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -135,11 +164,36 @@ export const app = new Hono();
 // Middleware
 app.use("*", cors());
 
+// Ensure Content-Length is set on all non-streaming text responses.
+// Bun sends HTML/JSON with chunked transfer encoding; nginx cannot synthesize
+// Content-Length for HEAD from a chunked body and returns 0 instead — breaking
+// LinkedIn/Slack preview unfurls and uptime monitors (issue #617).
+// Buffering here sets Content-Length on the GET response; Hono then propagates
+// it to HEAD responses automatically (strips body, keeps header).
+app.use("*", async (c, next) => {
+  await next();
+  const ct = c.res.headers.get("content-type") ?? "";
+  if (
+    !c.res.headers.has("content-length") &&
+    !ct.includes("event-stream") &&
+    (ct.startsWith("text/") || ct.startsWith("application/json") || ct.startsWith("application/xml"))
+  ) {
+    const body = await c.res.arrayBuffer();
+    c.res = new Response(body, { status: c.res.status, headers: c.res.headers });
+    c.res.headers.set("content-length", String(body.byteLength));
+  }
+});
+
 // QR scan routes — /m/:asset_tag (auth optional), /m/:asset_tag/choose, /m/:asset_tag/report
-app.route("/m", mChooser);   // GET /m/:asset_tag/choose[?set_pref=...]
-app.route("/m", mReport);    // GET /m/:asset_tag/report
-app.route("/m", m);          // GET /m/:asset_tag (main entry — must register last so subroutes match first)
-app.route("/", mReportApi);  // POST /api/m/report
+app.route("/m", mChooser);     // GET /m/:asset_tag/choose[?set_pref=...]
+app.route("/m", mReport);      // GET /m/:asset_tag/report
+app.route("/m", mRegister);    // GET /m/:asset_tag/register (auto-register form)
+app.route("/m", m);            // GET /m/:asset_tag (main entry — must register last so subroutes match first)
+app.route("/", mReportApi);    // POST /api/m/report
+app.route("/", mRegisterApi);  // POST /api/m/auto-register (#439)
+
+// QR test page — branded asset sheet, no auth required (sales/demo tool)
+app.route("/", qrTest);                 // handles GET /qr-test[?tenant_id=&tenant_name=]
 
 // Admin routes — QR print page + batch PDF endpoint + channel config
 app.route("/admin", adminPages);        // handles GET /admin/qr-print
@@ -148,15 +202,105 @@ app.route("/admin", qrAnalytics);       // handles GET /admin/qr-analytics
 app.route("/admin", adminChannelPages); // handles GET /admin/channels
 app.route("/", adminChannelApi);        // handles POST /api/admin/channels
 
+// Magic email inbox (Unit 3): Google Apps Script poller webhook (HMAC-signed)
+app.route("/api/v1/inbox", inbox);       // POST /api/v1/inbox/email
+
+// MFA (TOTP) — Tier 1 #9. Free on every plan; SSO is the upsell.
+app.route("/api/auth/mfa", mfa);         // setup / enable / disable / status
+
+// Account deletion (Tier 1 #8) — CCPA "right to be forgotten" answer.
+// Soft delete now, hard purge after 30 days.
+app.delete("/api/v1/account", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+  const tenant = await findTenantById(user.sub);
+  if (!tenant) return c.json({ error: "Tenant not found" }, 404);
+
+  const body = (await c.req.json().catch(() => null)) as
+    | { confirm?: string; code?: string; recovery_code?: string; reason?: string }
+    | null;
+
+  // Defensive confirmation phrase — protects against XSRF / accidental
+  // clicks. Exact-match required.
+  if (body?.confirm !== "DELETE") {
+    return c.json(
+      { error: "Send {\"confirm\":\"DELETE\"} in the body to proceed." },
+      400,
+    );
+  }
+
+  // If MFA is enabled, require re-auth (TOTP or recovery code) before
+  // accepting the deletion. Stops a stolen session from nuking an account.
+  const mfaState = await getMfaState(user.sub);
+  if (mfaState.enabled && mfaState.secretEnc) {
+    const code = (body?.code ?? "").trim();
+    const recovery = (body?.recovery_code ?? "").trim();
+    let pass = false;
+    try {
+      const secret = decryptSecret(mfaState.secretEnc);
+      if (/^\d{6}$/.test(code) && verifyTotp(secret, code)) pass = true;
+    } catch {
+      pass = false;
+    }
+    if (!pass && recovery) {
+      const idx = findRecoveryCodeIndex(recovery, mfaState.recoveryCodesHashed);
+      if (idx >= 0) pass = true;
+    }
+    if (!pass) {
+      return c.json({ error: "MFA re-auth required (code or recovery_code)" }, 401);
+    }
+  }
+
+  const meta = requestMetadata(c);
+  const result = await requestSoftDelete({
+    tenant,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+    reason: body?.reason,
+  });
+  return c.json(result, 200);
+});
+
+// Daily worker — runs the hard purge for tenants past their 30-day grace.
+const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+if (process.env.NODE_ENV !== "test" && process.env.MIRA_DISABLE_PURGE_WORKER !== "1") {
+  setInterval(() => {
+    purgePendingDeletions().catch((err) =>
+      console.error("[purge] worker error:", err),
+    );
+  }, PURGE_INTERVAL_MS);
+  // First run on a 60s delay so the server is fully up.
+  setTimeout(() => {
+    purgePendingDeletions().catch((err) =>
+      console.error("[purge] worker error (initial):", err),
+    );
+  }, 60_000);
+}
+
 // ---------------------------------------------------------------------------
 // Static files
 // ---------------------------------------------------------------------------
 
 app.use("/public/*", serveStatic({ root: "./" }));
+// Marketing/site imagery served at the conventional /images/* path so the
+// landing page can reference assets the way every other web app does
+// (without a /public/ prefix). Without this route, anything under
+// public/images/ 404s — that's the bug PR #933 flagged for
+// /images/app-screenshot-desktop.png and that the v0.3.0 hero swap
+// also tripped on. Fixed here for v0.3.1.
+app.use("/images/*", serveStatic({ root: "./public" }));
 app.use("/manifest.json", serveStatic({ path: "./public/manifest.json" }));
 app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
 app.use("/robots.txt", serveStatic({ path: "./public/robots.txt" }));
 app.use("/og-image.png", serveStatic({ path: "./public/og-image.png" }));
+// Wave A+B design-system assets — root-served so head() can reference them
+// without the /public/ prefix (matches the head() helper's <link> output).
+app.use("/_tokens.css", serveStatic({ path: "./public/_tokens.css" }));
+app.use("/_components.css", serveStatic({ path: "./public/_components.css" }));
+app.use("/_dark-theme.css", serveStatic({ path: "./public/_dark-theme.css" }));
+app.use("/sun-toggle.js", serveStatic({ path: "./public/sun-toggle.js" }));
+app.use("/feature-cartoons.js", serveStatic({ path: "./public/feature-cartoons.js" }));
+app.use("/posthog-init.js", serveStatic({ path: "./public/posthog-init.js" }));
+app.use("/pwa-install.js", serveStatic({ path: "./public/pwa-install.js" }));
 
 // Dynamic sitemap (replaces static file)
 app.get("/sitemap.xml", (c) => {
@@ -178,8 +322,12 @@ app.get("/sitemap.xml", (c) => {
       priority: "0.7",
       freq: "monthly" as const,
     })),
+    { loc: "/limitations", priority: "0.5", freq: "monthly" },
+    { loc: "/security", priority: "0.5", freq: "monthly" },
     { loc: "/privacy", priority: "0.3", freq: "yearly" },
     { loc: "/terms", priority: "0.3", freq: "yearly" },
+    { loc: "/trust", priority: "0.4", freq: "monthly" },
+    { loc: "/legal/dpa", priority: "0.3", freq: "yearly" },
   ];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -205,12 +353,9 @@ ${pages
 // Routes
 // ---------------------------------------------------------------------------
 
-// Homepage
-app.get("/", async (c) => {
-  const file = Bun.file("./public/index.html");
-  return new Response(await file.arrayBuffer(), {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
+// Homepage — server-rendered via renderHome() (composes head() + Wave-B helpers)
+app.get("/", (c) => {
+  return c.html(renderHome(c.req.url));
 });
 
 // Health probe
@@ -218,12 +363,52 @@ app.get("/api/health", (c) =>
   c.json({ status: "ok", service: "mira-web", version: "0.2.1" })
 );
 
-// Serve CMMS page
-app.get("/cmms", async (c) => {
-  const file = Bun.file("./public/cmms.html");
-  return new Response(await file.arrayBuffer(), {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
+// PostHog analytics init (closes #618)
+// Public API key is safe in HTML, but we serve it from server env so
+// dev/staging/prod can use different projects without source changes.
+// If PLG_POSTHOG_KEY is unset, a no-op stub is shipped so calls to
+// posthog.capture(...) in HTML never throw — analytics is disabled silently.
+const POSTHOG_HOST = (process.env.PLG_POSTHOG_HOST || "https://us.i.posthog.com").trim();
+app.get("/posthog-init.js", (c) => {
+  const key = (process.env.PLG_POSTHOG_KEY || "").trim();
+  c.header("Content-Type", "application/javascript; charset=utf-8");
+  // Cache for 5 minutes — same as static assets — but vary by host so a
+  // key rotation is picked up quickly without a hard reload.
+  c.header("Cache-Control", "public, max-age=300");
+  if (!key) {
+    return c.body(
+      "// PostHog: PLG_POSTHOG_KEY is unset; analytics disabled.\n" +
+      "window.posthog={capture:function(){},identify:function(){},init:function(){},reset:function(){}};\n",
+    );
+  }
+  // Stock PostHog snippet, plus a tiny convenience: track clicks on any
+  // [data-cta] element so marketing CTAs show up in funnels without the
+  // HTML having to call posthog.capture() manually.
+  return c.body(
+    "!function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(\".\");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement(\"script\")).type=\"text/javascript\",p.crossOrigin=\"anonymous\",p.async=!0,p.src=s.api_host.replace(\".i.posthog.com\",\"-assets.i.posthog.com\")+\"/static/array.js\",(r=t.getElementsByTagName(\"script\")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a=\"posthog\",u.people=u.people||[],u.toString=function(t){var e=\"posthog\";return\"posthog\"!==a&&(e+=\".\"+a),t||(e+=\" (stub)\"),e},u.people.toString=function(){return u.toString(1)+\".people (stub)\"},o=\"init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey canRenderSurveyAsync identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing\".split(\" \"),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);\n" +
+    `posthog.init(${JSON.stringify(key)}, { api_host: ${JSON.stringify(POSTHOG_HOST)}, person_profiles: "identified_only", capture_pageview: true });\n` +
+    "document.addEventListener('click', function(e){var el=e.target.closest('[data-cta]');if(el){posthog.capture('cta_click',{cta:el.getAttribute('data-cta'),href:el.getAttribute('href')||null,page:location.pathname});}}, {capture:true});\n",
+  );
+});
+
+// CMMS landing — server-rendered (#SO-070): one-input magic-link form
+app.get("/cmms", (c) => {
+  return c.html(renderCmms(c.req.url));
+});
+
+// Limitations page (#677 / #SO-005) — honest "what we don't do yet"
+app.get("/limitations", (c) => {
+  return c.html(renderLimitations(c.req.url));
+});
+
+// Security page (#893) — infrastructure, data protection, AI safety, compliance roadmap
+app.get("/security", (c) => {
+  return c.html(renderSecurity(c.req.url));
+});
+
+// Sample workspace placeholder (#SO-070 AC4) — Phase-0 destination after sign-in.
+app.get("/sample", (c) => {
+  return c.html(renderSamplePlaceholder());
 });
 
 // Post-payment single-purpose upload page (activation email lands here).
@@ -255,6 +440,21 @@ app.get("/pricing", async (c) => {
   });
 });
 
+// GEO foundation (#681) — llmstxt.org standard for AI-crawler content disclosure
+app.get("/llms.txt", async (c) => {
+  const file = Bun.file("./public/llms.txt");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+  });
+});
+
+app.get("/llms-full.txt", async (c) => {
+  const file = Bun.file("./public/llms-full.txt");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+  });
+});
+
 app.get("/privacy", async (c) => {
   const file = Bun.file("./public/privacy.html");
   return new Response(await file.text(), {
@@ -264,6 +464,27 @@ app.get("/privacy", async (c) => {
 
 app.get("/terms", async (c) => {
   const file = Bun.file("./public/terms.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+app.get("/trust", async (c) => {
+  const file = Bun.file("./public/trust.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+app.get("/.well-known/security.txt", async (c) => {
+  const file = Bun.file("./public/.well-known/security.txt");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+});
+
+app.get("/legal/dpa", async (c) => {
+  const file = Bun.file("./public/legal/dpa.html");
   return new Response(await file.text(), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
@@ -391,7 +612,61 @@ app.get("/demo/work-orders", (c) =>
 // Registration
 // ---------------------------------------------------------------------------
 
+// Per-IP rate limiter for /api/register.
+// Token bucket: 5 requests per minute, 20 per hour. In-memory; single-instance OK.
+// Blocks signup-flood / SMTP-bomb attempts while keeping legit signup traffic free.
+const REGISTER_RATE_BUCKETS = new Map<string, { minute: number[]; hour: number[] }>();
+const REGISTER_LIMIT_PER_MINUTE = 5;
+const REGISTER_LIMIT_PER_HOUR = 20;
+
+function checkRegisterRateLimit(ip: string): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  const minuteAgo = now - 60_000;
+  const hourAgo = now - 3_600_000;
+  const bucket = REGISTER_RATE_BUCKETS.get(ip) ?? { minute: [], hour: [] };
+  bucket.minute = bucket.minute.filter((t) => t > minuteAgo);
+  bucket.hour = bucket.hour.filter((t) => t > hourAgo);
+  if (bucket.minute.length >= REGISTER_LIMIT_PER_MINUTE) {
+    return { allowed: false, retryAfterSec: Math.ceil((bucket.minute[0] + 60_000 - now) / 1000) };
+  }
+  if (bucket.hour.length >= REGISTER_LIMIT_PER_HOUR) {
+    return { allowed: false, retryAfterSec: Math.ceil((bucket.hour[0] + 3_600_000 - now) / 1000) };
+  }
+  bucket.minute.push(now);
+  bucket.hour.push(now);
+  REGISTER_RATE_BUCKETS.set(ip, bucket);
+  return { allowed: true, retryAfterSec: 0 };
+}
+
+function getClientIp(headers: Headers, fallback = "unknown"): string {
+  const fwd = headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]!.trim();
+  return headers.get("x-real-ip") || headers.get("cf-connecting-ip") || fallback;
+}
+
+// Cross-origin guard for /api/register — block browser-driven cross-origin POSTs.
+// Empty/null Origin (same-origin or curl) is allowed; any cross-origin Origin must
+// be in the allowlist. ALLOWED_ORIGINS env override comma-separated.
+const REGISTER_ALLOWED_ORIGINS = (process.env.PLG_REGISTER_ALLOWED_ORIGINS ||
+  "https://factorylm.com,https://www.factorylm.com,http://localhost:3000,http://localhost:3200")
+  .split(",").map(s => s.trim()).filter(Boolean);
+
 app.post("/api/register", async (c) => {
+  const origin = c.req.header("origin");
+  if (origin && !REGISTER_ALLOWED_ORIGINS.includes(origin)) {
+    return c.json({ error: "Forbidden origin" }, 403);
+  }
+
+  const ip = getClientIp(c.req.raw.headers);
+  const rl = checkRegisterRateLimit(ip);
+  if (!rl.allowed) {
+    c.header("Retry-After", String(rl.retryAfterSec));
+    return c.json(
+      { error: "Too many signup attempts. Please try again in a minute." },
+      429,
+    );
+  }
+
   const body = await c.req.json();
   const { email, company, firstName } = body;
 
@@ -437,6 +712,15 @@ app.post("/api/register", async (c) => {
       atlasUserId: 0,
     });
 
+    const meta = requestMetadata(c);
+    void recordAuditEvent({
+      tenantId,
+      action: "tenant.signup",
+      metadata: { email, company },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
     // Send beta welcome email (async, don't block response)
     sendBetaWelcomeEmail(
       email,
@@ -452,8 +736,205 @@ app.post("/api/register", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Magic-link sign-in (#SO-070)
+// ---------------------------------------------------------------------------
+
+app.post("/api/magic-link", async (c) => {
+  let email: string;
+  let plan: string | undefined;
+  try {
+    const body = await c.req.json();
+    email = String(body?.email ?? "").trim().toLowerCase();
+    const rawPlan = String(body?.plan ?? "").trim().toLowerCase();
+    plan = rawPlan && /^[a-z]{1,32}$/.test(rawPlan) ? rawPlan : undefined;
+  } catch {
+    return c.json({ error: "Invalid request body" }, 400);
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json(
+      { error: "That email doesn't look right — check it and try again" },
+      400
+    );
+  }
+
+  const ip =
+    c.req.header("cf-connecting-ip") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "";
+  const userAgent = c.req.header("user-agent") ?? "";
+
+  if (!checkMagicLinkRateLimit(email)) {
+    auditMagicLink({
+      email,
+      action: "magic_link.rate_limited",
+      ip,
+      userAgent,
+    }).catch(() => {});
+    return c.json(
+      { error: "Please wait a minute before requesting another link." },
+      429
+    );
+  }
+
+  try {
+    let tenant = await findTenantByEmail(email);
+    if (!tenant) {
+      const tenantId = crypto.randomUUID();
+      await createTenant({
+        id: tenantId,
+        email,
+        company: "",
+        firstName: "",
+        tier: "pending",
+        atlasPassword: "",
+        atlasCompanyId: 0,
+        atlasUserId: 0,
+      });
+      tenant = await findTenantByEmail(email);
+    }
+    if (!tenant) {
+      console.error("[magic-link] Tenant lookup failed after create");
+      return c.json({ error: "Something went wrong. Please try again." }, 500);
+    }
+
+    const storage = neonMagicLinkStorage();
+    const created = await createMagicLink(storage, {
+      tenantId: tenant.id,
+      email,
+    });
+
+    const publicUrl = process.env.PUBLIC_URL || "https://factorylm.com";
+    const loginUrl = buildMagicLinkUrl(publicUrl, created.token, email);
+
+    auditMagicLink({
+      email,
+      action: "magic_link.requested",
+      tenantId: tenant.id,
+      ip,
+      userAgent,
+      meta: plan ? { plan } : undefined,
+    }).catch(() => {});
+
+    sendMagicLinkEmail(email, loginUrl)
+      .then((sent) =>
+        auditMagicLink({
+          email,
+          action: sent ? "magic_link.sent" : "magic_link.invalid",
+          tenantId: tenant!.id,
+          ip,
+          userAgent,
+          meta: sent ? undefined : { reason: "send_failed" },
+        }).catch(() => {})
+      )
+      .catch((err) => console.error("[magic-link] Send failed:", err));
+
+    return c.json({
+      success: true,
+      message: "Check your email for the sign-in link.",
+    });
+  } catch (err) {
+    console.error("[magic-link] Error:", err);
+    return c.json({ error: "Something went wrong. Please try again." }, 500);
+  }
+});
+
+app.get("/api/magic/login", async (c) => {
+  const token = c.req.query("token") ?? "";
+  const queryEmail = c.req.query("email") ?? "";
+  if (!token) {
+    return c.html(magicLinkErrorPage("Missing token"), 400);
+  }
+
+  const ip =
+    c.req.header("cf-connecting-ip") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "";
+  const userAgent = c.req.header("user-agent") ?? "";
+
+  try {
+    const storage = neonMagicLinkStorage();
+    const result = await validateAndConsumeToken(storage, token);
+    if (!result.ok) {
+      auditMagicLink({
+        email: queryEmail,
+        action: "magic_link.invalid",
+        ip,
+        userAgent,
+        meta: { reason: result.reason },
+      }).catch(() => {});
+      const msg =
+        result.reason === "expired"
+          ? "This sign-in link has expired. Request a new one below."
+          : result.reason === "already_consumed"
+            ? "This sign-in link has already been used. Request a new one."
+            : "We couldn't verify that link. Request a new one below.";
+      return c.html(magicLinkErrorPage(msg), 410);
+    }
+
+    const tenant = await findTenantById(result.tenantId);
+    if (!tenant) {
+      return c.html(magicLinkErrorPage("Account not found"), 404);
+    }
+
+    const sessionToken = await signToken({
+      tenantId: tenant.id,
+      email: tenant.email,
+      tier: tenant.tier,
+      atlasCompanyId: tenant.atlas_company_id || 0,
+      atlasUserId: tenant.atlas_user_id || 0,
+      atlasRole: "USER",
+    });
+
+    auditMagicLink({
+      email: tenant.email,
+      action: "magic_link.consumed",
+      tenantId: tenant.id,
+      ip,
+      userAgent,
+    }).catch(() => {});
+
+    c.header("Set-Cookie", buildSessionCookie(sessionToken));
+    return c.redirect(`/sample?token=${encodeURIComponent(sessionToken)}`, 302);
+  } catch (err) {
+    console.error("[magic-link/login] Error:", err);
+    return c.html(magicLinkErrorPage("Something went wrong"), 500);
+  }
+});
+
+function magicLinkErrorPage(msg: string): string {
+  const safe = msg.replace(/[<>]/g, "");
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><title>Sign-in link invalid — FactoryLM</title>
+<link rel="stylesheet" href="/_tokens.css">
+<style>
+  body { font-family: var(--fl-font-sans); padding: 48px 24px; max-width: 560px; margin: 0 auto; }
+  .card { background: var(--fl-card-0); border: 1px solid var(--fl-rule-200); border-radius: 12px; padding: 32px; box-shadow: var(--fl-shadow-sm); text-align: center; }
+  h1 { color: var(--fl-navy-900); margin: 0 0 16px; }
+  p  { color: var(--fl-muted-600); line-height: 1.55; margin: 0 0 24px; }
+  a  { color: var(--fl-navy-900); }
+</style></head><body>
+<div class="card">
+  <h1>Sign-in link unavailable</h1>
+  <p>${safe}</p>
+  <p><a href="/cmms">Request a new sign-in link →</a></p>
+</div></body></html>`;
+}
+
+// ---------------------------------------------------------------------------
 // Stripe — Checkout, Webhook, Billing Portal
 // ---------------------------------------------------------------------------
+
+// Direct checkout — no email required, Stripe collects it. Used by pricing page buttons.
+app.get("/api/checkout/session", async (c) => {
+  try {
+    const url = await createDirectCheckoutSession();
+    return c.redirect(url, 303);
+  } catch (err) {
+    console.error("[checkout/session] Error:", err);
+    return c.redirect("/pricing?checkout=error", 303);
+  }
+});
 
 // Checkout redirect (unauthenticated — called from payment email link)
 app.get("/api/checkout", async (c) => {
@@ -484,6 +965,54 @@ app.get("/api/checkout", async (c) => {
   }
 });
 
+// Direct checkout from pricing page — finds/creates pending tenant then redirects to Stripe.
+// Accepts { email, company? }. Returns { url } for JS redirect or redirects directly.
+app.post("/api/checkout/start", async (c) => {
+  const ip = getClientIp(c.req.raw.headers);
+  const rl = checkRegisterRateLimit(ip);
+  if (!rl.allowed) {
+    c.header("Retry-After", String(rl.retryAfterSec));
+    return c.json({ error: "Too many attempts. Try again shortly." }, 429);
+  }
+
+  let body: { email?: string; company?: string };
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+
+  const { email, company } = body;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: "Valid email required" }, 400);
+  }
+
+  try {
+    let tenantId: string;
+    const existing = await findTenantByEmail(email);
+    if (existing) {
+      tenantId = existing.id;
+      if (existing.tier === "active") {
+        return c.json({ url: "/cmms?payment=success" });
+      }
+    } else {
+      tenantId = crypto.randomUUID();
+      await createTenant({
+        id: tenantId,
+        email,
+        company: company || email.split("@")[1] || "unknown",
+        firstName: "",
+        tier: "pending",
+        atlasPassword: "",
+        atlasCompanyId: 0,
+        atlasUserId: 0,
+      });
+    }
+
+    const checkoutUrl = await createCheckoutSession(tenantId, email);
+    return c.json({ url: checkoutUrl });
+  } catch (err) {
+    console.error("[checkout/start] Error:", err);
+    return c.json({ error: "Failed to create checkout session" }, 500);
+  }
+});
+
 // Stripe webhook (unauthenticated — Stripe sends events here)
 app.post("/api/stripe/webhook", async (c) => {
   const signature = c.req.header("stripe-signature");
@@ -509,11 +1038,6 @@ app.post("/api/stripe/webhook", async (c) => {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
-      const tenantId = session.metadata?.tenant_id;
-      if (!tenantId) {
-        console.error("[stripe-webhook] No tenant_id in session metadata");
-        break;
-      }
 
       const customerId = typeof session.customer === "string"
         ? session.customer
@@ -522,9 +1046,50 @@ app.post("/api/stripe/webhook", async (c) => {
         ? session.subscription
         : session.subscription?.id || "";
 
+      let tenantId = session.metadata?.tenant_id;
+
+      // No tenant_id — direct checkout from pricing page. Find or create by email.
+      if (!tenantId) {
+        const email = session.customer_details?.email;
+        if (!email) {
+          console.error("[stripe-webhook] No tenant_id and no email in session");
+          break;
+        }
+        let t = await findTenantByEmail(email);
+        if (!t) {
+          const newId = crypto.randomUUID();
+          await createTenant({
+            id: newId,
+            email,
+            company: email.split("@")[1] || "unknown",
+            firstName: "",
+            tier: "pending",
+            atlasPassword: "",
+            atlasCompanyId: 0,
+            atlasUserId: 0,
+          });
+          t = await findTenantById(newId);
+        }
+        if (!t) {
+          console.error("[stripe-webhook] Could not find/create tenant for", email);
+          break;
+        }
+        tenantId = t.id;
+        console.log("[stripe-webhook] Matched tenant via email:", tenantId, email);
+      }
+
       await updateTenantStripe(tenantId, customerId, subscriptionId);
       await updateTenantTier(tenantId, "active");
       console.log("[stripe-webhook] Tenant activated:", tenantId);
+
+      void recordAuditEvent({
+        tenantId,
+        actorType: "system",
+        actorId: "stripe.webhook",
+        action: "tenant.activated",
+        resource: subscriptionId,
+        metadata: { customer_id: customerId, subscription_id: subscriptionId },
+      });
 
       const tenant = await findTenantById(tenantId);
       if (!tenant) {
@@ -562,6 +1127,13 @@ app.post("/api/stripe/webhook", async (c) => {
       if (tenantId) {
         await updateTenantTier(tenantId, "churned");
         console.log("[stripe-webhook] Tenant churned:", tenantId);
+        void recordAuditEvent({
+          tenantId,
+          actorType: "system",
+          actorId: "stripe.webhook",
+          action: "tenant.churned",
+          resource: sub.id,
+        });
       } else {
         // Fallback: look up by customer ID
         const customerId = typeof sub.customer === "string"
@@ -572,6 +1144,14 @@ app.post("/api/stripe/webhook", async (c) => {
           if (tenant) {
             await updateTenantTier(tenant.id, "churned");
             console.log("[stripe-webhook] Tenant churned (by customer):", tenant.id);
+            void recordAuditEvent({
+              tenantId: tenant.id,
+              actorType: "system",
+              actorId: "stripe.webhook",
+              action: "tenant.churned",
+              resource: sub.id,
+              metadata: { matched_via: "customer_id" },
+            });
           }
         }
       }
@@ -644,12 +1224,17 @@ app.get("/api/me", requireActive, async (c) => {
     ready: tenant.atlas_provisioning_status === "ok"
         && tenant.activation_email_status !== "pending",
   };
+  const inboxDomain = process.env.INBOX_DOMAIN || "inbox.factorylm.com";
+  const inboxAddress = tenant.inbox_slug
+    ? `kb+${tenant.inbox_slug}@${inboxDomain}`
+    : null;
   return c.json({
     tenantId: user.sub,
     email: user.email,
     tier: "active",
     quota,
     provisioning,
+    inbox: { slug: tenant.inbox_slug, address: inboxAddress },
   });
 });
 
@@ -773,6 +1358,7 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
   }
 
   const started = Date.now();
+  const meta = requestMetadata(c);
   try {
     const resp = await fetch(`${MIRA_INGEST_URL()}/ingest/document-kb`, {
       method: "POST",
@@ -788,6 +1374,20 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
       latencyMs,
     );
 
+    void recordAuditEvent({
+      tenantId: user.sub,
+      action: "manual.uploaded",
+      resource: file.name || "upload.pdf",
+      metadata: {
+        size_bytes: file.size,
+        ingest_status: resp.status,
+        latency_ms: latencyMs,
+        equipment_type: typeof equipmentType === "string" ? equipmentType : null,
+      },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
     const contentType = resp.headers.get("content-type") || "application/json";
     return new Response(bodyText, {
       status: resp.status,
@@ -795,6 +1395,14 @@ app.post("/api/ingest/manual", requireActive, async (c) => {
     });
   } catch (err) {
     console.error("[ingest-manual] Proxy failed:", err);
+    void recordAuditEvent({
+      tenantId: user.sub,
+      action: "manual.uploaded",
+      resource: file.name || "upload.pdf",
+      metadata: { size_bytes: file.size, error: "upstream-unreachable" },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
     return c.json({ error: "Ingest upstream unreachable" }, 502);
   }
 });

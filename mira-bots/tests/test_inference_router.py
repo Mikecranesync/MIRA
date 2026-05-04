@@ -1,15 +1,15 @@
 """Integration test — InferenceRouter with real industrial equipment images.
 
-Tests Claude API vision path against the 5 sample tag images.
-Requires INFERENCE_BACKEND=claude and ANTHROPIC_API_KEY to be set.
+Tests the cloud cascade vision path against the 5 sample tag images. Requires
+INFERENCE_BACKEND=cloud and at least one of GROQ_API_KEY (vision capable) or
+GEMINI_API_KEY to be set.
 
 Run:
-    INFERENCE_BACKEND=claude ANTHROPIC_API_KEY=<key> pytest tests/test_inference_router.py -v -s
+    INFERENCE_BACKEND=cloud GROQ_API_KEY=<key> pytest tests/test_inference_router.py -v -s
 """
 
 import asyncio
 import base64
-import os
 import pathlib
 import sys
 
@@ -20,7 +20,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 from shared.inference.router import InferenceRouter
 
-ASSETS = pathlib.Path(__file__).parent.parent / "telegram_test_runner" / "test-assets" / "sample_tags"
+ASSETS = (
+    pathlib.Path(__file__).parent.parent / "telegram_test_runner" / "test-assets" / "sample_tags"
+)
 
 # (filename, must_contain_any, must_not_contain)
 TEST_CASES = [
@@ -42,15 +44,42 @@ TEST_CASES = [
     (
         "bad_glare_tag.jpg",
         # Glare image — expect an honest response, not a hallucination
-        ["glare", "difficult", "unclear", "partially", "limited", "hard", "close", "closer",
-         "Allen", "Micro", "GS", "VFD", "panel", "cabinet", "enclosure"],
+        [
+            "glare",
+            "difficult",
+            "unclear",
+            "partially",
+            "limited",
+            "hard",
+            "close",
+            "closer",
+            "Allen",
+            "Micro",
+            "GS",
+            "VFD",
+            "panel",
+            "cabinet",
+            "enclosure",
+        ],
         [],
     ),
     (
         "cropped_tight_tag.jpg",
         # Tight crop — partial info is fine, but shouldn't be empty
-        ["Allen", "Micro", "GS", "VFD", "panel", "cabinet", "controller", "drive",
-         "closer", "partial", "limited", "unclear"],
+        [
+            "Allen",
+            "Micro",
+            "GS",
+            "VFD",
+            "panel",
+            "cabinet",
+            "controller",
+            "drive",
+            "closer",
+            "partial",
+            "limited",
+            "unclear",
+        ],
         [],
     ),
 ]
@@ -61,29 +90,31 @@ def _load_b64(path: pathlib.Path) -> str:
 
 
 def _build_messages(photo_b64: str) -> list[dict]:
-    return [{
-        "role": "user",
-        "content": [
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
-            },
-            {
-                "type": "text",
-                "text": (
-                    "What is in this image? If it is a piece of equipment, "
-                    "return: manufacturer, model, and one visible observation. "
-                    "If it is an electrical drawing, schematic, or diagram, "
-                    "say 'electrical drawing' and the type. "
-                    "If the image shows a computer monitor or laptop screen, "
-                    "analyze ONLY the technical content on screen. "
-                    "If text is small or partially visible, describe what you "
-                    "can read and note a closer shot may improve extraction. "
-                    "Keep it under 30 words. Do NOT invent any text."
-                ),
-            },
-        ],
-    }]
+    return [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
+                },
+                {
+                    "type": "text",
+                    "text": (
+                        "What is in this image? If it is a piece of equipment, "
+                        "return: manufacturer, model, and one visible observation. "
+                        "If it is an electrical drawing, schematic, or diagram, "
+                        "say 'electrical drawing' and the type. "
+                        "If the image shows a computer monitor or laptop screen, "
+                        "analyze ONLY the technical content on screen. "
+                        "If text is small or partially visible, describe what you "
+                        "can read and note a closer shot may improve extraction. "
+                        "Keep it under 30 words. Do NOT invent any text."
+                    ),
+                },
+            ],
+        }
+    ]
 
 
 @pytest.fixture(scope="module")
@@ -91,7 +122,8 @@ def router():
     r = InferenceRouter()
     if not r.enabled:
         pytest.skip(
-            "InferenceRouter not enabled — set INFERENCE_BACKEND=claude and ANTHROPIC_API_KEY"
+            "InferenceRouter not enabled — set INFERENCE_BACKEND=cloud and one of "
+            "GROQ_API_KEY / CEREBRAS_API_KEY / GEMINI_API_KEY"
         )
     return r
 
@@ -106,7 +138,7 @@ def test_vision_identification(router, filename, must_contain_any, must_not_cont
 
     content, usage = asyncio.run(router.complete(messages))
 
-    assert content, f"[{filename}] Empty response from Claude"
+    assert content, f"[{filename}] Empty response from cascade"
     print(f"\n[{filename}]\n  Response: {content}\n  Usage: {usage}")
 
     InferenceRouter.log_usage(usage)
@@ -116,19 +148,17 @@ def test_vision_identification(router, filename, must_contain_any, must_not_cont
     if must_contain_any:
         matched = any(kw.lower() in content_lower for kw in must_contain_any)
         assert matched, (
-            f"[{filename}] Expected one of {must_contain_any!r} in response.\n"
-            f"  Got: {content!r}"
+            f"[{filename}] Expected one of {must_contain_any!r} in response.\n  Got: {content!r}"
         )
 
     for bad in must_not_contain:
         assert bad.lower() not in content_lower, (
-            f"[{filename}] Found forbidden word {bad!r} in response.\n"
-            f"  Got: {content!r}"
+            f"[{filename}] Found forbidden word {bad!r} in response.\n  Got: {content!r}"
         )
 
 
 def test_sanitize_strips_ip(router):
-    """Confirm sanitizer removes IPv4 addresses before sending to Claude."""
+    """Confirm sanitizer removes IPv4 addresses before sending to a provider."""
     messages = [{"role": "user", "content": "Device at 192.168.1.100 is faulted"}]
     clean = InferenceRouter.sanitize_context(messages)
     assert "192.168" not in clean[0]["content"]
@@ -153,9 +183,9 @@ def test_fallback_when_disabled():
     """Router returns ('', {}) immediately when disabled — no API call made."""
     r = InferenceRouter.__new__(InferenceRouter)
     r.backend = "local"
-    r.api_key = ""
-    r.model = "claude-3-5-sonnet-20241022"
+    r.providers = []
     r.enabled = False
+    r._provider_call_windows = {}
 
     content, usage = asyncio.run(r.complete([{"role": "user", "content": "test"}]))
     assert content == ""

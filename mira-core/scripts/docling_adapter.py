@@ -9,6 +9,7 @@ Activated via USE_DOCLING=true env var — never call directly.
     adapter = DoclingAdapter()
     blocks = adapter.extract_from_pdf(pdf_bytes)
 """
+
 from __future__ import annotations
 
 import io
@@ -49,9 +50,7 @@ class DoclingAdapter:
             from docling.document_converter import DocumentConverter, PdfFormatOption
             from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
         except ImportError as e:
-            raise RuntimeError(
-                "docling not installed — run: uv pip install 'docling[ocr]'"
-            ) from e
+            raise RuntimeError("docling not installed — run: uv pip install 'docling[ocr]'") from e
 
         opts = PdfPipelineOptions(do_ocr=self.enable_ocr, do_table_structure=True)
         self._converter = DocumentConverter(
@@ -130,6 +129,7 @@ class DoclingAdapter:
             return []
         finally:
             import os
+
             try:
                 os.unlink(tmp_path)
             except (OSError, UnboundLocalError):

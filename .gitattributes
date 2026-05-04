@@ -1,2 +1,6 @@
 # Force LF line endings for shell scripts (critical for Docker containers)
 *.sh text eol=lf
+
+# Vendored third-party JS — preserve bytes exactly so SRI hashes stay valid
+mira-web/public/lib/*.js binary
+mira-web/public/lib/*.css binary

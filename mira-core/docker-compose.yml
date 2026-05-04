@@ -57,7 +57,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   mira-mcpo:
-    image: mira-core-mira-mcpo:latest
+    image: mira-core-mira-mcpo:${MIRA_MCPO_VERSION:-3.4}
     container_name: mira-mcpo
     command: --port 8000 --api-key ${MCPO_API_KEY} --config /mcp/config.json
     volumes:

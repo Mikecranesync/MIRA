@@ -29,7 +29,7 @@ logger = logging.getLogger("reddit-harvest")
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, "mira-bots"))
 
-from shared.benchmark_db import ensure_tables, insert_question, count_questions  # noqa: E402
+from shared.benchmark_db import count_questions, ensure_tables, insert_question  # noqa: E402
 
 SUBREDDITS = [
     "IndustrialMaintenance",
@@ -74,9 +74,25 @@ def _is_relevant(title: str, selftext: str) -> bool:
     if t.endswith("?"):
         return True
     question_starts = (
-        "how", "why", "what", "when", "is it", "can i", "does anyone", "anyone",
-        "need help", "help with", "trying to", "fault", "error", "alarm",
-        "not working", "keeps", "will not", "wont", "won't",
+        "how",
+        "why",
+        "what",
+        "when",
+        "is it",
+        "can i",
+        "does anyone",
+        "anyone",
+        "need help",
+        "help with",
+        "trying to",
+        "fault",
+        "error",
+        "alarm",
+        "not working",
+        "keeps",
+        "will not",
+        "wont",
+        "won't",
     )
     return any(t.startswith(p) for p in question_starts)
 

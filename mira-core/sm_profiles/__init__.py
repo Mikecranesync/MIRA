@@ -1,4 +1,5 @@
 """SM Profile module — typed equipment nodes (vision doc Problem 4)."""
+
 from .profile_loader import (
     list_profiles,
     load_all_profiles,

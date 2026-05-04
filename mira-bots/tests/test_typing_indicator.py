@@ -1,13 +1,14 @@
 """Tests for the typing_action async context manager."""
 
 import asyncio
-import sys
 import os
-
-import pytest
+import sys
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
+sys.modules.pop("chat_adapter", None)  # isolate from other bot adapters
 
 from bot import typing_action
 

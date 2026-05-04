@@ -1,4 +1,5 @@
 """SM Profile loader — reads + validates JSON files from profiles/."""
+
 from __future__ import annotations
 
 import json

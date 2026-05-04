@@ -68,6 +68,9 @@ bun test             # Run tests
 | Var | Purpose |
 |-----|---------|
 | `PLG_ADMIN_TOKEN` | Bearer token for `/api/admin/activation-health`. Generate a random string and set in Doppler `factorylm/prd`. |
+| `PLG_REGISTER_ALLOWED_ORIGINS` | Comma-separated allowlist of origins permitted to POST `/api/register`. Defaults to `https://factorylm.com,https://www.factorylm.com,http://localhost:3000,http://localhost:3200`. (Issue #615.) |
+| `PLG_POSTHOG_KEY` | PostHog **public** project API key for client-side analytics. Served via `GET /posthog-init.js`; if unset, a no-op stub ships and analytics is disabled. (Issue #618.) |
+| `PLG_POSTHOG_HOST` | PostHog ingest host. Defaults to `https://us.i.posthog.com`. Set to `https://eu.i.posthog.com` if the project is on PostHog EU. |
 
 ## PRDs
 - `MIRA/PRDS/factorylm-plg-funnel.md` — PLG funnel spec

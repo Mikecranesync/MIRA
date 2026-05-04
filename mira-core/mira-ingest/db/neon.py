@@ -545,3 +545,129 @@ def insert_manual_cache_url(
         )
         conn.commit()
     return True
+
+
+# ── Session analysis (written by tests/eval/analyze_sessions.py) ──────────────
+
+
+def ensure_session_analyses_table() -> None:
+    """Additive migration: create session_analyses table for analyzer results."""
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS session_analyses (
+            id SERIAL PRIMARY KEY,
+            chat_id_hash TEXT NOT NULL,
+            analyzed_at TIMESTAMPTZ DEFAULT NOW(),
+            version TEXT,
+            platform TEXT,
+            turn_count INT,
+            overall_score FLOAT,
+            grades JSONB,
+            fixture_path TEXT,
+            category TEXT,
+            session_timestamp TEXT
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_session_analyses_hash ON session_analyses (chat_id_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_session_analyses_score ON session_analyses (overall_score)",
+        "CREATE INDEX IF NOT EXISTS idx_session_analyses_category ON session_analyses (category)",
+    ]
+    try:
+        with _engine().connect() as conn:
+            for stmt in statements:
+                conn.execute(text(stmt))
+            conn.commit()
+    except Exception as exc:
+        import logging
+
+        logging.getLogger("mira-ingest").warning(
+            "session_analyses table migration failed (non-fatal): %s", exc
+        )
+
+
+def write_session_analysis(result: dict) -> None:
+    """Write one session analysis result to NeonDB."""
+    with _engine().connect() as conn:
+        conn.execute(
+            text("""
+            INSERT INTO session_analyses
+                (chat_id_hash, version, platform, turn_count, overall_score,
+                 grades, fixture_path, category, session_timestamp)
+            VALUES
+                (:hash, :ver, :platform, :turns, :score,
+                 :grades, :fixture, :category, :ts)
+            """),
+            {
+                "hash": result.get("chat_id_hash", ""),
+                "ver": result.get("version", ""),
+                "platform": result.get("platform", ""),
+                "turns": result.get("turn_count", 0),
+                "score": result.get("overall_score", 0.0),
+                "grades": json.dumps(result.get("grades", {})),
+                "fixture": result.get("fixture_path", ""),
+                "category": result.get("category", ""),
+                "ts": result.get("session_timestamp", ""),
+            },
+        )
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Magic-inbox safety gate (Unit 3.5): per-tenant content-hash dedup ledger.
+# Decoupled from knowledge_entries (which Open WebUI manages) — see
+# migrations/007_tenant_ingested_files.sql for the table definition.
+# ---------------------------------------------------------------------------
+
+
+def tenant_ingested_files_lookup(tenant_id: str, content_hash: str) -> dict[str, Any] | None:
+    """Return existing ledger row for (tenant_id, content_hash) or None.
+
+    Fail-open on DB error: returns None so the caller proceeds with ingest
+    rather than silently dropping the file. (Same convention as
+    check_tier_limit — never block ingest on infra failures.)
+    """
+    if not tenant_id or not content_hash:
+        return None
+    try:
+        with _engine().connect() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        "SELECT filename, ingested_at, source "
+                        "FROM tenant_ingested_files "
+                        "WHERE tenant_id = :tid AND content_hash = :h LIMIT 1"
+                    ),
+                    {"tid": tenant_id, "h": content_hash},
+                )
+                .mappings()
+                .fetchone()
+            )
+        return dict(row) if row else None
+    except Exception:
+        return None
+
+
+def tenant_ingested_files_record(
+    tenant_id: str, content_hash: str, filename: str, source: str = "unknown"
+) -> None:
+    """Insert a ledger row. ON CONFLICT DO NOTHING — idempotent on retry.
+
+    Fail-open on DB error: logs nothing, swallows exception. The file is
+    already in Open WebUI by the time this runs; failing here would just
+    mean the next forward of the same file gets re-ingested.
+    """
+    if not tenant_id or not content_hash:
+        return
+    try:
+        with _engine().begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO tenant_ingested_files "
+                    "  (tenant_id, content_hash, filename, source) "
+                    "VALUES (:tid, :h, :fn, :src) "
+                    "ON CONFLICT (tenant_id, content_hash) DO NOTHING"
+                ),
+                {"tid": tenant_id, "h": content_hash, "fn": filename, "src": source},
+            )
+    except Exception:
+        pass

@@ -45,10 +45,12 @@ MIN_CHUNK_CHARS = 80
 
 # RULE: Docling is the ONLY PDF extractor for this script. pdfplumber is not used.
 # Do not add pdfplumber as a fallback — if Docling is unavailable, the script must fail fast.
-import sys as _sys
+import sys as _sys  # noqa: E402
+
 _sys.path.insert(0, str(Path(__file__).parent))
 try:
     from docling_adapter import DoclingAdapter as _DoclingAdapter
+
     _docling = _DoclingAdapter(max_pages=MAX_PDF_PAGES)
     logging.getLogger(__name__).info("Docling extraction active (OCR + semantic chunking)")
 except Exception as _e:
@@ -78,11 +80,10 @@ if _INGEST_DIR not in sys.path:
     sys.path.insert(0, _INGEST_DIR)
 
 from db.neon import (  # noqa: E402
+    health_check,
     insert_knowledge_entry,
     knowledge_entry_exists,
-    health_check,
 )
-
 
 # ---------------------------------------------------------------------------
 # Text extraction (reused from ingest_manuals.py)
@@ -137,7 +138,6 @@ def _detect_sections(page_text: str) -> list[tuple[str, str]]:
     return sections
 
 
-
 def _extract_from_text(data: bytes) -> list[dict]:
     """Extract text blocks from a plain text file."""
     text = data.decode("utf-8", errors="replace")
@@ -158,6 +158,7 @@ def _extract_from_text(data: bytes) -> list[dict]:
 # Chunking (reused from ingest_manuals.py)
 # ---------------------------------------------------------------------------
 
+
 def _chunk_text(text: str) -> Generator[str, None, None]:
     start = 0
     while start < len(text):
@@ -176,13 +177,16 @@ def _blocks_to_chunks(blocks: list[dict]) -> list[dict]:
             chunks.append(block)
         else:
             for piece in _chunk_text(text):
-                chunks.append({"text": piece, "page_num": block["page_num"], "section": block["section"]})
+                chunks.append(
+                    {"text": piece, "page_num": block["page_num"], "section": block["section"]}
+                )
     return chunks
 
 
 # ---------------------------------------------------------------------------
 # Embedding
 # ---------------------------------------------------------------------------
+
 
 def _embed(text: str) -> list[float] | None:
     try:
@@ -265,10 +269,11 @@ def _extract_model(filename: str) -> str | None:
 # File processor
 # ---------------------------------------------------------------------------
 
+
 def process_file(file_path: Path, dry_run: bool = False) -> tuple[int, int]:
     """Process a single file. Returns (chunks_found, chunks_inserted)."""
     data = file_path.read_bytes()
-    file_hash = hashlib.sha256(data).hexdigest()[:16]
+    file_hash = hashlib.sha256(data).hexdigest()[:16]  # noqa: F841
     source_url = f"gdrive://{file_path.name}"
 
     suffix = file_path.suffix.lower()
@@ -289,7 +294,7 @@ def process_file(file_path: Path, dry_run: bool = False) -> tuple[int, int]:
     chunks = _blocks_to_chunks(blocks)
     parent_dir = file_path.parent.name
     manufacturer = _extract_mfr(file_path.name, parent_dir)
-    equipment_type = _extract_equipment_type(file_path.name, parent_dir)
+    equipment_type = _extract_equipment_type(file_path.name, parent_dir)  # noqa: F841
     model = _extract_model(file_path.name)
 
     if dry_run:
@@ -332,6 +337,7 @@ def process_file(file_path: Path, dry_run: bool = False) -> tuple[int, int]:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Ingest local PDF/TXT files into NeonDB knowledge_entries",
@@ -370,8 +376,7 @@ def main() -> None:
 
     # Find all supported files
     files = [
-        f for f in scan_path.rglob("*")
-        if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
+        f for f in scan_path.rglob("*") if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
     ]
 
     if not files:

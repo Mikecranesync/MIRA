@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -64,7 +62,10 @@ def mock_router():
     router.enabled = True
     router.backend = "cloud"
     router.complete = AsyncMock(
-        return_value=("Test diagnostic response", {"provider": "claude", "input_tokens": 10, "output_tokens": 20})
+        return_value=(
+            "Test diagnostic response",
+            {"provider": "claude", "input_tokens": 10, "output_tokens": 20},
+        )
     )
     # Keep the real sanitize_context — it's a static method with no side effects
     from shared.inference.router import InferenceRouter

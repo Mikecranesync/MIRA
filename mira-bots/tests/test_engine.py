@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import sys
 
 sys.path.insert(0, "mira-bots")
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from shared.engine import STATE_ORDER, Supervisor, _STATE_ALIASES, _FAULT_INFO_RE
-
+from shared.engine import _FAULT_INFO_RE, _STATE_ALIASES, Supervisor
 
 # ---------------------------------------------------------------------------
 # Fixture: minimal Supervisor with mocked workers
@@ -420,6 +419,105 @@ class TestManualLookupGatheringEscape:
         assert loaded["state"] == "IDLE", "IDLE must be persisted to DB"
 
 
+class TestSessionPivotRouting:
+    def _save_active_state(self, supervisor, chat_id: str) -> None:
+        supervisor._save_state(
+            chat_id,
+            {
+                "state": "Q2",
+                "asset_identified": "Elmo, Gold Drive",
+                "context": {
+                    "photo_turn": 3,
+                    "session_context": {
+                        "equipment_type": "Elmo Gold Drive",
+                        "manufacturer": "Elmo",
+                        "last_question": "Check the DC bus?",
+                        "last_options": ["Yes", "No"],
+                    },
+                },
+                "exchange_count": 5,
+                "fault_category": "hydraulic",
+                "final_state": "RESOLVED",
+            },
+        )
+
+    def test_documentation_pivot_skips_session_followup(self, supervisor):
+        chat_id = "test-doc-pivot"
+        self._save_active_state(supervisor, chat_id)
+
+        with (
+            patch(
+                "shared.engine.route_intent",
+                new=AsyncMock(
+                    return_value={
+                        "intent": "find_documentation",
+                        "confidence": 0.98,
+                        "reasoning": "user asked for documentation",
+                    }
+                ),
+            ),
+            patch("shared.engine.classify_intent", return_value="documentation"),
+            patch.object(supervisor, "_handle_session_followup", new_callable=AsyncMock) as followup,
+            patch("shared.engine.kb_has_coverage", return_value=(True, "cached docs")),
+        ):
+            result = asyncio.run(
+                supervisor.process_full(chat_id, "do they have a website")
+            )
+
+        assert followup.await_count == 0
+        assert result["next_state"] == "ASSET_IDENTIFIED"
+
+        loaded = supervisor._load_state(chat_id)
+        assert loaded["state"] == "ASSET_IDENTIFIED"
+        assert loaded["fault_category"] is None
+        assert loaded["final_state"] is None
+        assert loaded["context"]["session_context"]["last_question"] is None
+        assert loaded["context"]["session_context"]["last_options"] == []
+        assert "photo_turn" not in loaded["context"]
+
+    def test_explicit_recap_still_uses_session_followup(self, supervisor):
+        chat_id = "test-followup-pivot"
+        self._save_active_state(supervisor, chat_id)
+
+        with (
+            patch(
+                "shared.engine.route_intent",
+                new=AsyncMock(
+                    return_value={
+                        "intent": "answer_question",
+                        "confidence": 0.83,
+                        "reasoning": "user is asking about the prior answer",
+                    }
+                ),
+            ),
+            patch("shared.engine.classify_intent", return_value="industrial"),
+            patch.object(
+                supervisor,
+                "_handle_session_followup",
+                new=AsyncMock(
+                    return_value={
+                        "reply": "followup",
+                        "confidence": "medium",
+                        "trace_id": "trace-1",
+                        "next_state": "Q2",
+                    }
+                ),
+            ) as followup,
+            patch.object(
+                supervisor, "_handle_instructional_question", new_callable=AsyncMock
+            ) as instructional,
+            patch.object(supervisor, "_load_recent_session_photo", return_value="session-photo"),
+        ):
+            result = asyncio.run(
+                supervisor.process_full(chat_id, "where did you get that information")
+            )
+
+        assert result["reply"] == "followup"
+        assert followup.await_count == 1
+        assert instructional.await_count == 0
+        assert followup.await_args.kwargs["session_photo"] == "session-photo"
+
+
 # ---------------------------------------------------------------------------
 # _format_reply
 # ---------------------------------------------------------------------------
@@ -511,7 +609,11 @@ class TestFormatReply:
         result = supervisor._format_reply(
             {
                 "reply": "Which do you want to check?",
-                "options": ["Motor connection to VFD", "Nameplate vs VFD settings", "Load on motor"],
+                "options": [
+                    "Motor connection to VFD",
+                    "Nameplate vs VFD settings",
+                    "Load on motor",
+                ],
             }
         )
         assert "1. Motor connection" in result

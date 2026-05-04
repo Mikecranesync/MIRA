@@ -144,6 +144,43 @@ def _run_eval(ts: str, out_file: Path, judge_enabled: bool) -> dict:
 
     subprocess.run(["git", "add"] + files_to_stage, cwd=MIRA_DIR, check=True)
 
+    # Safety whitelist — the bot is only permitted to commit paths under
+    # tests/eval/**. On 2026-04-24 an eval run (00c34e6) somehow co-committed
+    # mira-hub/src/** changes alongside the scorecard, stripping the Upload
+    # picker wiring out of the Knowledge page. Root cause of the extra
+    # staging was never identified, so we defend here: refuse to commit
+    # anything off-path and unstage it before logging + bailing.
+    staged_r = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        cwd=MIRA_DIR, capture_output=True, text=True,
+    )
+    staged_paths = [p for p in staged_r.stdout.splitlines() if p.strip()]
+    off_path = [p for p in staged_paths if not p.startswith("tests/eval/")]
+    if off_path:
+        logger.error(
+            "MIRA eval refusing to commit — %d off-whitelist paths staged: %s",
+            len(off_path),
+            ", ".join(off_path[:10]),
+        )
+        # Unstage everything off-whitelist so the next iteration has a clean slate
+        subprocess.run(
+            ["git", "reset", "HEAD", "--"] + off_path,
+            cwd=MIRA_DIR, capture_output=True, text=True,
+        )
+        # Also throw away any working-tree changes to those paths so the source
+        # of truth (origin/main) wins on the next fetch — otherwise the same
+        # rogue modifications will re-stage on the next run.
+        subprocess.run(
+            ["git", "checkout", "HEAD", "--"] + off_path,
+            cwd=MIRA_DIR, capture_output=True, text=True,
+        )
+        return {
+            "status": "refused",
+            "reason": "off_whitelist_paths_staged",
+            "paths": off_path,
+            "ts": ts,
+        }
+
     tag_label = "with judge" if judge_enabled else "no judge"
     commit_msg = (
         f"chore: eval run {ts} UTC ({tag_label})\n\n"

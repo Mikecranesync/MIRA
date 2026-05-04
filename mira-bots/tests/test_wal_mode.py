@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
 def test_wal_mode_active():
     """GSDEngine._ensure_table() must set WAL journal mode."""
     import sqlite3
+
     db_path = tempfile.mktemp(suffix=".db")
     try:
         conn = sqlite3.connect(db_path)

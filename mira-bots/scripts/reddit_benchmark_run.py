@@ -59,12 +59,12 @@ def _infer_confidence(reply: str) -> str:
 
 
 from shared.benchmark_db import (  # noqa: E402
-    ensure_tables,
-    list_questions,
+    count_questions,
     create_run,
+    ensure_tables,
     finish_run,
     insert_result,
-    count_questions,
+    list_questions,
 )
 
 
@@ -140,8 +140,11 @@ async def run_benchmark(db_path: str | None = None) -> dict:
             processed += 1
             logger.info(
                 "  [%d/%d] q=%d confidence=%s latency=%dms",
-                processed, len(questions), qid,
-                confidence, latency_ms,
+                processed,
+                len(questions),
+                qid,
+                confidence,
+                latency_ms,
             )
         except Exception as exc:
             latency_ms = int((time.monotonic() - t0) * 1000)

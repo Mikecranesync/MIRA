@@ -66,8 +66,7 @@ class Tools:
                 reading_str = ", ".join(readings) if readings else "no readings"
                 status = r.get("status", "unknown").upper()
                 lines.append(
-                    f"- **{r['name']}** ({r['equipment_id']}): "
-                    f"{status} \u2014 {reading_str}"
+                    f"- **{r['name']}** ({r['equipment_id']}): {status} \u2014 {reading_str}"
                 )
             return "\n".join(lines)
         except httpx.HTTPStatusError as e:
@@ -152,9 +151,7 @@ class Tools:
         except Exception as e:
             return f"Error creating work order: {e}"
 
-    async def get_fault_history(
-        self, equipment_id: str = "", limit: int = 10
-    ) -> str:
+    async def get_fault_history(self, equipment_id: str = "", limit: int = 10) -> str:
         """
         Get fault history for equipment. Shows resolved and unresolved faults
         over time. Useful for identifying recurring issues or patterns.

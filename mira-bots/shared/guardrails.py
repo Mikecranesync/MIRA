@@ -53,7 +53,45 @@ SAFETY_KEYWORDS = [
     # Temporal live-work phrases — Karpathy loop finding 2026-04-19
     "was live",
     "while live",
+    # Power isolation variants missed in forensic 2026-04-14 session (BUG-FORENSIC-003)
+    "isolate power",
+    "which cable to pull",
+    "which wire to pull",
+    "pull the cable",
+    "cut the power",
+    "cut power",
+    "disconnect power",
+    "disconnect the power",
 ]
+
+# Phrases that describe an *active*, observable hazard — never educational.
+# These bypass the educational-framing check that normally lets "how do I
+# perform LOTO" or "what is arc flash" route to RAG instead of SAFETY_ALERT.
+SAFETY_KEYWORDS_IMMEDIATE = frozenset(
+    [
+        # Physical observations (reporting, not asking)
+        "exposed wire",
+        "visible smoke",
+        "smoke from",
+        "burn mark",
+        "melted insulation",
+        "electrical fire",
+        "live wire",
+        "live circuit",
+        "live panel",
+        "was live",
+        "while live",
+        # Active isolation attempts — technician is about to act on live equipment
+        "which cable to pull",
+        "which wire to pull",
+        "pull the cable",
+        "cut the power",
+        "cut power",
+        "disconnect power",
+        "disconnect the power",
+        "isolate power",
+    ]
+)
 
 INTENT_KEYWORDS = {
     # Fault & alarm terms
@@ -369,12 +407,19 @@ _VENDOR_DISPLAY_NAMES: dict[str, str] = {
     "rockwell": "Rockwell Automation",
     "powerflex": "Rockwell Automation",
     "siemens": "Siemens",
+    "micromaster": "Siemens",
+    "sinamics": "Siemens",
     "abb": "ABB",
     "omron": "Omron",
     "schneider electric": "Schneider Electric",
     "schneider": "Schneider Electric",
     "mitsubishi": "Mitsubishi Electric",
+    "fr-e": "Mitsubishi Electric",
+    "fr-a": "Mitsubishi Electric",
+    "fr-d": "Mitsubishi Electric",
+    "fr-f": "Mitsubishi Electric",
     "danfoss": "Danfoss",
+    "aqua drive": "Danfoss",
     "eaton": "Eaton",
     "delta": "Delta Electronics",
     "lenze": "Lenze",
@@ -452,6 +497,48 @@ _DOCUMENTATION_PHRASES = (
     "manual for this",  # fallback broad-match; safe post-v2.4.1 since it requires "for this"
     "datasheet for this",
     "documentation for this",
+    # Installation / setup / commissioning — document-fetch variants only.
+    # Procedural how-to variants ("how to install", "how to wire") moved to
+    # _INSTRUCTIONAL_PHRASES so they route to answer_question instead of doc crawl.
+    "install this",
+    "installing this",
+    "wiring steps",
+    "wiring guide",
+    "setup guide",
+    "set up this",
+    "setting up this",
+    "commissioning steps",
+    "commissioning guide",
+    "startup procedure",
+    "startup steps",
+    "first time setup",
+    "initial setup",
+)
+
+# Procedural how-to questions — user wants step-by-step instructions from the LLM,
+# not a document to download. Checked before _DOCUMENTATION_PHRASES so "how to install"
+# routes to answer_question rather than triggering a doc crawl.
+_INSTRUCTIONAL_PHRASES = (
+    "how to install",
+    "installation steps",
+    "getting ready to install",
+    "first steps to install",
+    "how do i wire",
+    "how to wire",
+    "how to set up",
+    "how do i set up",
+    "how to commission",
+    "how to connect",
+    "how do i connect",
+    "how do i configure",
+    "how do i enable",
+    "how to enable",
+    "getting started with",
+    "quick steps",
+    "give me steps",
+    "give me the steps",
+    "walk me through",
+    "what are the steps",
 )
 
 # Signals that the technician is under time or job pressure.
@@ -533,48 +620,41 @@ _GREETING_VARIANTS = [
     ("Hey. What's the equipment and what's it doing?"),
 ]
 
-SESSION_FOLLOWUP_SIGNALS = [
-    "you said",
-    "you mentioned",
-    "you told me",
-    "link",
-    "url",
-    "website",
-    "manufacturer",
-    "datasheet",
-    "manual",
-    "document",
-    "earlier",
-    "before",
-    "last time",
-    "again",
-    "repeat",
-    "what was",
-    "where did",
-    "explain",
-    "why",
-    "tell me more",
-    "go deeper",
-    "how does that work",
-    "what does that mean",
-    "break it down",
-    "more detail",
-]
+SESSION_FOLLOWUP_PATTERNS = (
+    re.compile(r"\byou (?:said|mentioned|told me)\b"),
+    re.compile(r"\b(?:earlier|before|last time)\b"),
+    re.compile(r"\bwhat was\b"),
+    re.compile(r"\bwhere did\b"),
+    re.compile(r"^(?:why|explain)\b"),
+    re.compile(r"\btell me more\b"),
+    re.compile(r"\bgo deeper\b"),
+    re.compile(r"\bhow does that work\b"),
+    re.compile(r"\bwhat does that mean\b"),
+    re.compile(r"\bbreak it down\b"),
+    re.compile(r"\bmore detail\b"),
+    re.compile(r"\brepeat\b"),
+    re.compile(r"^(?:again)\b"),
+)
 
 
 def detect_session_followup(message: str, session_context: dict, fsm_state: str) -> bool:
     """Return True if message is a follow-up to an active diagnostic session.
 
-    Fires when: state is not IDLE, session_context exists, and message
-    contains a signal word suggesting the technician is continuing the session
-    (e.g. asking for a link, referencing something MIRA said earlier).
+    Fires when: state is not IDLE, session_context exists, and the message
+    explicitly references earlier assistant context.
+
+    Deliberately excludes generic documentation terms like "manual" or
+    "website" so those can route through the normal documentation flow instead
+    of getting trapped in stale follow-up state.
     """
     if fsm_state == "IDLE":
         return False
     if not session_context:
         return False
-    msg_lower = message.lower()
-    return any(sig in msg_lower for sig in SESSION_FOLLOWUP_SIGNALS)
+    msg_lower = message.lower().strip()
+    if not msg_lower:
+        return False
+    return any(pattern.search(msg_lower) for pattern in SESSION_FOLLOWUP_PATTERNS)
 
 
 _SELECTION_RE = re.compile(r"^\s*(?:option\s+)?(\d+)[.\-,):]?\s*", re.IGNORECASE)
@@ -649,12 +729,14 @@ def detect_emotional_state(message: str) -> str:
 def classify_intent(message: str) -> str:
     """Classify message intent.
 
-    Returns: 'greeting' | 'help' | 'industrial' | 'documentation' | 'safety' | 'off_topic'
+    Returns: 'greeting' | 'help' | 'industrial' | 'instructional' | 'documentation' | 'safety' | 'off_topic'
 
-    'documentation' fires when the technician explicitly asks for a manual,
-    datasheet, pinout, or wiring diagram — distinct from a diagnostic question
-    that happens to reference a manual.  It routes to an immediate vendor-URL
-    response + async KB crawl rather than the standard RAG diagnostic path.
+    'instructional' fires for procedural how-to questions ("how do I connect via Ethernet?",
+    "give me quick steps to configure the baud rate") — routes to answer_question so the LLM
+    answers directly rather than triggering a documentation crawl.
+
+    'documentation' fires when the technician explicitly asks to FETCH a manual,
+    datasheet, pinout, or wiring diagram — routes to vendor-URL response + async KB crawl.
 
     Industrial intent is broad — any question about equipment, specifications,
     installation, maintenance, or fault diagnosis. The default for unrecognized
@@ -664,16 +746,27 @@ def classify_intent(message: str) -> str:
     msg = strip_mentions(message).lower().strip()
     msg_expanded = expand_abbreviations(msg)
 
-    # Safety short-circuit: only fires for active hazard reports, not educational
-    # questions about safety concepts.  Educational framing ("what is arc flash",
-    # "how do I perform LOTO", "the restricted approach boundary is defined as")
-    # routes to industrial so RAG can provide real procedure information.
+    # Safety short-circuit: two tiers.
+    # Tier 1 — IMMEDIATE: physical hazard observations and active live-work actions.
+    # These always escalate regardless of educational framing — "which cable to pull"
+    # is never a conceptual question.
+    if any(kw in msg for kw in SAFETY_KEYWORDS_IMMEDIATE):
+        return "safety"
+
+    # Tier 2 — STANDARD: safety concepts where educational framing routes to RAG.
+    # "how do I perform LOTO" and "what is arc flash" go to industrial so RAG
+    # can provide real procedure information rather than a boilerplate STOP message.
     if any(kw in msg for kw in SAFETY_KEYWORDS):
         if not _EDUCATIONAL_QUESTION_RE.match(msg):
             return "safety"
 
     if any(pat in msg for pat in HELP_PATTERNS):
         return "help"
+
+    # Procedural how-to questions — checked BEFORE documentation so phrases like
+    # "how to install" route to answer_question (LLM direct) not a doc crawl.
+    if any(phrase in msg for phrase in _INSTRUCTIONAL_PHRASES):
+        return "instructional"
 
     # Documentation retrieval — checked BEFORE industrial so "manual" in
     # INTENT_KEYWORDS doesn't swallow explicit document requests.
@@ -888,6 +981,7 @@ def expand_abbreviations(message: str) -> str:
 
 def rewrite_question(message: str, asset_identified: str = None) -> str:
     """Reformulate vague questions into precise technical queries."""
+    original = message
     message = expand_abbreviations(message)
     rewrites = {
         "acting weird": "intermittent fault behavior",
@@ -902,6 +996,9 @@ def rewrite_question(message: str, asset_identified: str = None) -> str:
     for vague, precise in rewrites.items():
         if vague in msg_lower:
             result = msg_lower.replace(vague, precise)
+
+    if not result or not result.strip():
+        result = original
 
     if asset_identified:
         result = f"{asset_identified} \u2014 {result}"

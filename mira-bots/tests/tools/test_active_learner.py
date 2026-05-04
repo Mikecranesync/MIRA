@@ -13,21 +13,18 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import yaml
-
-import sys
 
 # mira-bots/ has a hyphen and can't be imported as a package.
 # Add mira-bots/ itself to the path so sub-packages are importable directly.
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from tools.active_learner import ActiveLearner
-
 
 # ── Fixtures (pytest, not eval) ───────────────────────────────────────────────
 
@@ -153,9 +150,14 @@ async def test_anonymize_strips_pii_keeps_vendor():
         learner = _make_learner(str(Path(d) / "mira.db"), str(Path(d) / "state.json"))
 
         with patch.object(learner, "_claude_json", new=AsyncMock(return_value=fake_response)):
-            result = await learner.anonymize([
-                {"role": "user", "content": "I need a manual for our Pilz PSENcode, John at Acme Mfg"},
-            ])
+            result = await learner.anonymize(
+                [
+                    {
+                        "role": "user",
+                        "content": "I need a manual for our Pilz PSENcode, John at Acme Mfg",
+                    },
+                ]
+            )
 
     assert result is not None
     assert "Pilz" in result["turns"][0]["content"]
@@ -309,5 +311,7 @@ async def test_open_draft_pr_calls_expected_git_commands():
     assert any("git add" in cmd for cmd in all_cmds), "missing git add"
     assert any("git commit" in cmd for cmd in all_cmds), "missing git commit"
     assert any("git push" in cmd for cmd in all_cmds), "missing git push"
-    assert any("gh pr create" in cmd and "--draft" in cmd for cmd in all_cmds), "missing gh pr create --draft"
+    assert any("gh pr create" in cmd and "--draft" in cmd for cmd in all_cmds), (
+        "missing gh pr create --draft"
+    )
     assert pr_url == "https://github.com/Mikecranesync/MIRA/pull/999"

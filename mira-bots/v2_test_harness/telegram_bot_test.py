@@ -4,6 +4,7 @@ telegram_bot_test.py — MIRA Telegram Path End-to-End Test
 Phases 1-6: bot health → session check → GSD smoke test → manual photo instructions → release gate
 Sequential execution only. No asyncio concurrency between phases.
 """
+
 import asyncio
 import json
 import os
@@ -37,11 +38,11 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 BOT_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 SMOKE_CASES = [
-    ("smoke_vfd_01",    "My GS10 VFD tripped on overcurrent this morning"),
-    ("smoke_plc_02",    "Micro820 PLC showing fault light, all outputs dead"),
-    ("smoke_motor_03",  "Motor running hot, bearing noise on drive end"),
-    ("smoke_generic_04","What should I check first on a tripped VFD?"),
-    ("smoke_panel_05",  "Panel breaker keeps tripping under load"),
+    ("smoke_vfd_01", "My GS10 VFD tripped on overcurrent this morning"),
+    ("smoke_plc_02", "Micro820 PLC showing fault light, all outputs dead"),
+    ("smoke_motor_03", "Motor running hot, bearing noise on drive end"),
+    ("smoke_generic_04", "What should I check first on a tripped VFD?"),
+    ("smoke_panel_05", "Panel breaker keeps tripping under load"),
 ]
 
 # Answers to GSD clarifying questions — pushes FSM from Q1 into DIAGNOSIS
@@ -55,18 +56,52 @@ SMOKE_FOLLOWUPS = [
 
 # Condition patterns for 4-part GSD text scorer
 _INDUSTRIAL_TERMS = [
-    "vfd", "drive", "motor", "plc", "fault", "overcurrent", "overload",
-    "bearing", "voltage", "current", "breaker", "circuit", "panel",
-    "winding", "inverter", "contactor", "relay", "electrical", "tripped",
+    "vfd",
+    "drive",
+    "motor",
+    "plc",
+    "fault",
+    "overcurrent",
+    "overload",
+    "bearing",
+    "voltage",
+    "current",
+    "breaker",
+    "circuit",
+    "panel",
+    "winding",
+    "inverter",
+    "contactor",
+    "relay",
+    "electrical",
+    "tripped",
 ]
 _ACTION_VERBS = [
-    "check", "inspect", "verify", "measure", "reset", "test", "replace",
-    "disconnect", "reconnect", "clean", "tighten", "remove", "install",
-    "confirm", "ensure", "read",
+    "check",
+    "inspect",
+    "verify",
+    "measure",
+    "reset",
+    "test",
+    "replace",
+    "disconnect",
+    "reconnect",
+    "clean",
+    "tighten",
+    "remove",
+    "install",
+    "confirm",
+    "ensure",
+    "read",
 ]
 _HALLUCINATION_TERMS = [
-    "siemens", "allen-bradley", "rockwell", "ab plc",
-    "mitsubishi melsec", "omron sysmac", "schneider modicon",
+    "siemens",
+    "allen-bradley",
+    "rockwell",
+    "ab plc",
+    "mitsubishi melsec",
+    "omron sysmac",
+    "schneider modicon",
 ]
 
 
@@ -74,39 +109,44 @@ _HALLUCINATION_TERMS = [
 # Scorer
 # ---------------------------------------------------------------------------
 
+
 def _score_gsd_response(case_name: str, reply: str) -> dict:
     """4-condition scorer for GSD text responses (no vision)."""
     if not reply:
         return {
-            "case": case_name, "passed": False,
-            "conditions": {k: False for k in ["RELEVANCE", "READABILITY", "NO_HALLUCINATION", "ACTIONABILITY"]},
-            "word_count": 0, "failed": ["RELEVANCE", "READABILITY", "NO_HALLUCINATION", "ACTIONABILITY"],
+            "case": case_name,
+            "passed": False,
+            "conditions": {
+                k: False for k in ["RELEVANCE", "READABILITY", "NO_HALLUCINATION", "ACTIONABILITY"]
+            },
+            "word_count": 0,
+            "failed": ["RELEVANCE", "READABILITY", "NO_HALLUCINATION", "ACTIONABILITY"],
             "reply_snippet": "",
         }
 
     r = reply.lower()
     word_count = len(reply.split())
 
-    relevance      = any(t in r for t in _INDUSTRIAL_TERMS)
-    readability    = 10 <= word_count <= 150
+    relevance = any(t in r for t in _INDUSTRIAL_TERMS)
+    readability = 10 <= word_count <= 150
     no_hallucination = not any(t in r for t in _HALLUCINATION_TERMS)
-    actionability  = any(v in r for v in _ACTION_VERBS)
+    actionability = any(v in r for v in _ACTION_VERBS)
 
     conditions = {
-        "RELEVANCE":        relevance,
-        "READABILITY":      readability,
+        "RELEVANCE": relevance,
+        "READABILITY": readability,
         "NO_HALLUCINATION": no_hallucination,
-        "ACTIONABILITY":    actionability,
+        "ACTIONABILITY": actionability,
     }
     passed = all(conditions.values())
     failed = [k for k, v in conditions.items() if not v]
 
     return {
-        "case":         case_name,
-        "passed":       passed,
-        "conditions":   conditions,
-        "word_count":   word_count,
-        "failed":       failed,
+        "case": case_name,
+        "passed": passed,
+        "conditions": conditions,
+        "word_count": word_count,
+        "failed": failed,
         "reply_snippet": reply[:120],
     }
 
@@ -114,6 +154,7 @@ def _score_gsd_response(case_name: str, reply: str) -> dict:
 # ---------------------------------------------------------------------------
 # Phase 1 — Bot Health Check
 # ---------------------------------------------------------------------------
+
 
 def phase1_bot_health() -> dict:
     print("\n=== PHASE 1: Bot Health Check ===")
@@ -123,7 +164,9 @@ def phase1_bot_health() -> dict:
     try:
         r = subprocess.run(
             ["docker", "inspect", "mira-bot-telegram", "--format", "{{.State.Health.Status}}"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         status = r.stdout.strip()
         print(f"  Docker health: {status}")
@@ -131,7 +174,8 @@ def phase1_bot_health() -> dict:
             print("  ERROR: Container not healthy. Container logs (last 20 lines):")
             logs = subprocess.run(
                 ["docker", "logs", "--tail", "20", "mira-bot-telegram"],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             print(logs.stdout[-1000:] or logs.stderr[-500:])
             return result
@@ -146,7 +190,7 @@ def phase1_bot_health() -> dict:
         if data.get("ok"):
             bot = data["result"]
             result["username"] = bot.get("username")
-            result["bot_id"]   = bot.get("id")
+            result["bot_id"] = bot.get("id")
             print(f"  Bot: @{result['username']} (id={result['bot_id']})")
         else:
             print(f"  getMe failed: {data}")
@@ -165,9 +209,7 @@ def phase1_bot_health() -> dict:
         last_ts = None
         if updates:
             last_ts = updates[-1].get("message", {}).get("date")
-        ts_str = (
-            f" | Last: {datetime.fromtimestamp(last_ts, tz=timezone.utc)}" if last_ts else ""
-        )
+        ts_str = f" | Last: {datetime.fromtimestamp(last_ts, tz=timezone.utc)}" if last_ts else ""
         print(f"  Recent updates: {len(updates)}{ts_str}")
     except Exception as e:
         print(f"  getUpdates error: {e}")
@@ -179,6 +221,7 @@ def phase1_bot_health() -> dict:
 # ---------------------------------------------------------------------------
 # Phase 2 — Session Check
 # ---------------------------------------------------------------------------
+
 
 def phase2_session_check() -> dict:
     print("\n=== PHASE 2: Session Check ===")
@@ -214,6 +257,7 @@ def phase2_session_check() -> dict:
 # Phase 3B — Two-Layer Smoke Test
 # ---------------------------------------------------------------------------
 
+
 async def _run_gsd_engine_smoke() -> list[dict]:
     """5 smoke cases via GSDEngine direct. 2-turn exchange to push FSM into DIAGNOSIS."""
     sys.path.insert(0, str(_TELEGRAM_DIR))
@@ -226,8 +270,10 @@ async def _run_gsd_engine_smoke() -> list[dict]:
     db_path = f"/tmp/mira_tg_smoke_{int(time.time())}.db"
     engine = GSDEngine(
         db_path=db_path,
-        openwebui_url=os.getenv("OPENWEBUI_BASE_URL",
-            os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":3000"),
+        openwebui_url=os.getenv(
+            "OPENWEBUI_BASE_URL",
+            os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":3000",
+        ),
         api_key=os.getenv("OPENWEBUI_API_KEY", ""),
         collection_id=os.getenv("KNOWLEDGE_COLLECTION_ID", ""),
         vision_model=os.getenv("VISION_MODEL", "qwen2.5vl:7b"),
@@ -235,7 +281,7 @@ async def _run_gsd_engine_smoke() -> list[dict]:
 
     results = []
     for i, (case_name, fault_msg) in enumerate(SMOKE_CASES):
-        print(f"  [{i+1}/5] {case_name}")
+        print(f"  [{i + 1}/5] {case_name}")
         print(f"         → {fault_msg[:70]}")
         try:
             # Turn 1: fault description — FSM IDLE → Q1 (clarifying question)
@@ -259,12 +305,17 @@ async def _run_gsd_engine_smoke() -> list[dict]:
 
         except Exception as exc:
             print(f"         ERROR: {exc}")
-            results.append({
-                "case": case_name, "passed": False,
-                "conditions": {}, "word_count": 0,
-                "failed": ["ERROR"], "reply_snippet": str(exc)[:120],
-                "elapsed": 0,
-            })
+            results.append(
+                {
+                    "case": case_name,
+                    "passed": False,
+                    "conditions": {},
+                    "word_count": 0,
+                    "failed": ["ERROR"],
+                    "reply_snippet": str(exc)[:120],
+                    "elapsed": 0,
+                }
+            )
 
     try:
         os.unlink(db_path)
@@ -297,16 +348,21 @@ def _layer_b_bot_api(bot_info: dict) -> dict:
         if chat_id:
             print(f"    User chat_id found: {chat_id} — testing sendMessage")
             with httpx.Client(timeout=10) as client:
-                r2 = client.post(f"{BOT_API}/sendMessage", json={
-                    "chat_id": chat_id,
-                    "text": "[MIRA smoke test ping — ignore]",
-                })
+                r2 = client.post(
+                    f"{BOT_API}/sendMessage",
+                    json={
+                        "chat_id": chat_id,
+                        "text": "[MIRA smoke test ping — ignore]",
+                    },
+                )
             send_ok = r2.json().get("ok", False)
             result["send_tested"] = True
             result["send_ok"] = send_ok
             print(f"    sendMessage: {'OK' if send_ok else 'FAILED'}")
         else:
-            print("    No user chat_id in recent updates — skipping sendMessage (informational only)")
+            print(
+                "    No user chat_id in recent updates — skipping sendMessage (informational only)"
+            )
 
     except Exception as e:
         print(f"    Layer B error: {e}")
@@ -321,24 +377,25 @@ def phase3b_smoke_test(bot_info: dict) -> dict:
     gsd_results = asyncio.run(_run_gsd_engine_smoke())
 
     passed = sum(1 for r in gsd_results if r.get("passed"))
-    total  = len(gsd_results)
-    rate   = passed / total if total > 0 else 0.0
+    total = len(gsd_results)
+    rate = passed / total if total > 0 else 0.0
     print(f"\n  Layer A result: {passed}/{total} passed ({rate:.0%})")
 
     layer_b = _layer_b_bot_api(bot_info)
 
     return {
         "gsd_results": gsd_results,
-        "gsd_passed":  passed,
-        "gsd_total":   total,
-        "gsd_rate":    rate,
-        "layer_b":     layer_b,
+        "gsd_passed": passed,
+        "gsd_total": total,
+        "gsd_rate": rate,
+        "layer_b": layer_b,
     }
 
 
 # ---------------------------------------------------------------------------
 # Phase 4 — Write Report + Manual Photo Instructions
 # ---------------------------------------------------------------------------
+
 
 def phase4_write_report_and_instructions(bot_info: dict, smoke: dict) -> None:
     print("\n=== PHASE 4: Report + Manual Photo Instructions ===")
@@ -363,9 +420,9 @@ def phase4_write_report_and_instructions(bot_info: dict, smoke: dict) -> None:
         "|------|--------|-------|-------------------|---------|",
     ]
     for r in smoke["gsd_results"]:
-        status  = "PASS" if r.get("passed") else "FAIL"
-        wc      = r.get("word_count", "—")
-        failed  = ", ".join(r.get("failed", [])) or "—"
+        status = "PASS" if r.get("passed") else "FAIL"
+        wc = r.get("word_count", "—")
+        failed = ", ".join(r.get("failed", [])) or "—"
         snippet = r.get("reply_snippet", r.get("reason", ""))[:60].replace("|", "\\|")
         lines.append(f"| {r['case']} | {status} | {wc} | {failed} | {snippet} |")
 
@@ -391,7 +448,7 @@ def phase4_write_report_and_instructions(bot_info: dict, smoke: dict) -> None:
 ║           MANUAL PHOTO TEST REQUIRED                         ║
 ╠══════════════════════════════════════════════════════════════╣
 ║ From your phone:                                             ║
-║  1. Open Telegram → search @{bot_username}{' ' * max(0, pad)} ║
+║  1. Open Telegram → search @{bot_username}{" " * max(0, pad)} ║
 ║  2. Send any nameplate photo of your GS10 or Micro820        ║
 ║  3. Caption: 'VFD tripped this morning, what is this and     ║
 ║              what do I check?'                               ║
@@ -404,6 +461,7 @@ def phase4_write_report_and_instructions(bot_info: dict, smoke: dict) -> None:
 # ---------------------------------------------------------------------------
 # Phase 5 — Telethon Setup Instructions
 # ---------------------------------------------------------------------------
+
 
 def phase5_telethon_instructions(bot_info: dict) -> None:
     print("\n=== PHASE 5: Optional Telethon Setup ===")
@@ -425,6 +483,7 @@ OPTIONAL: Set up Telethon for full photo automation
 # Phase 6 — Smoke Results Checkpoint (no tag — gate lives in telegram_verify.py)
 # ---------------------------------------------------------------------------
 
+
 def phase6_write_smoke_results(smoke: dict) -> None:
     """Write GSD smoke results to JSON for telegram_verify.py to consume."""
     print("\n=== PHASE 6: Smoke Results Checkpoint ===")
@@ -432,9 +491,9 @@ def phase6_write_smoke_results(smoke: dict) -> None:
     _ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
         "gsd_passed": smoke["gsd_passed"],
-        "gsd_total":  smoke["gsd_total"],
-        "gsd_rate":   gsd_rate,
-        "ts":         datetime.now(tz=timezone.utc).isoformat(),
+        "gsd_total": smoke["gsd_total"],
+        "gsd_rate": gsd_rate,
+        "ts": datetime.now(tz=timezone.utc).isoformat(),
     }
     out = _ARTIFACTS_DIR / "smoke_results.json"
     out.write_text(json.dumps(payload, indent=2))
@@ -455,6 +514,7 @@ def phase6_write_smoke_results(smoke: dict) -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     print("MIRA Telegram Path End-to-End Test")

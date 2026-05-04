@@ -4,6 +4,7 @@ An SM Profile is a versioned JSON document describing a class of
 industrial equipment: its measurable properties (with units + ranges +
 alarm thresholds) and its valid relationships to other equipment.
 """
+
 from __future__ import annotations
 
 from typing import Literal

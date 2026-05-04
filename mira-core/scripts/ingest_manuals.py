@@ -32,25 +32,28 @@ import httpx
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
 MIRA_TENANT_ID = os.getenv("MIRA_TENANT_ID")
-CHUNK_SIZE = 800             # pdfplumber fallback path
-CHUNK_SIZE_DOCLING = 2500    # Docling path — blocks are pre-chunked semantically
+CHUNK_SIZE = 800  # pdfplumber fallback path
+CHUNK_SIZE_DOCLING = 2500  # Docling path — blocks are pre-chunked semantically
 CHUNK_OVERLAP = 200
 DOWNLOAD_TIMEOUT = 60
 EMBED_TIMEOUT = 30
 MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "1000"))
 MIN_CHUNK_CHARS = 80
-REQUEST_DELAY = 0.5          # seconds between URL downloads (polite crawl)
+REQUEST_DELAY = 0.5  # seconds between URL downloads (polite crawl)
 
 # Docling is the primary PDF extractor. pdfplumber is the fallback.
 _docling = None
 try:
     import pathlib as _pathlib
     import sys as _sys
+
     _sys.path.insert(0, str(_pathlib.Path(__file__).parent))
     from docling_adapter import DoclingAdapter as _DoclingAdapter
+
     _docling = _DoclingAdapter(max_pages=MAX_PDF_PAGES)
 except Exception as _e:
     import logging as _logging
+
     _logging.getLogger(__name__).warning(
         "Docling unavailable: %s — pdfplumber will be used for all PDFs", _e
     )
@@ -91,7 +94,7 @@ from ingest.chunker import chunk_blocks  # noqa: E402
 # ---------------------------------------------------------------------------
 
 BOILERPLATE_RE = re.compile(
-    r"(?:^\d{1,4}$)"           # bare page numbers
+    r"(?:^\d{1,4}$)"  # bare page numbers
     r"|(?:www\.\S+\.com)",
     re.MULTILINE,
 )
@@ -206,6 +209,7 @@ def _extract_from_html(data: bytes) -> list[dict]:
 # Embedding
 # ---------------------------------------------------------------------------
 
+
 def _embed(text: str) -> list[float] | None:
     try:
         resp = httpx.post(
@@ -298,6 +302,7 @@ def _extract_model_from_url(url: str, hint: str | None = None) -> str | None:
 # Per-URL processor
 # ---------------------------------------------------------------------------
 
+
 def process_url(record: dict) -> int:
     """Download, chunk, embed, insert one URL. Returns number of chunks inserted."""
     url = record["url"]
@@ -307,8 +312,12 @@ def process_url(record: dict) -> int:
 
     # Download
     try:
-        resp = httpx.get(url, timeout=DOWNLOAD_TIMEOUT, follow_redirects=True,
-                         headers={"User-Agent": "MIRA-IngestBot/1.0 (manual KB builder)"})
+        resp = httpx.get(
+            url,
+            timeout=DOWNLOAD_TIMEOUT,
+            follow_redirects=True,
+            headers={"User-Agent": "MIRA-IngestBot/1.0 (manual KB builder)"},
+        )
         resp.raise_for_status()
         data = resp.content
     except Exception as exc:
@@ -374,19 +383,21 @@ def process_url(record: dict) -> int:
             "section": chunk.get("section", ""),
             "chunk_type": chunk.get("chunk_type", "text"),
         }
-        buffer.append({
-            "id": str(uuid.uuid4()),
-            "tenant_id": MIRA_TENANT_ID,
-            "source_type": "manual",
-            "manufacturer": manufacturer,
-            "model_number": model,
-            "content": text,
-            "embedding": str(embedding),
-            "source_url": url,
-            "source_page": chunk_idx,
-            "metadata": json.dumps(meta),
-            "chunk_type": chunk.get("chunk_type", "text"),
-        })
+        buffer.append(
+            {
+                "id": str(uuid.uuid4()),
+                "tenant_id": MIRA_TENANT_ID,
+                "source_type": "manual",
+                "manufacturer": manufacturer,
+                "model_number": model,
+                "content": text,
+                "embedding": str(embedding),
+                "source_url": url,
+                "source_page": chunk_idx,
+                "metadata": json.dumps(meta),
+                "chunk_type": chunk.get("chunk_type", "text"),
+            }
+        )
 
         if len(buffer) >= batch_size:
             try:
@@ -413,6 +424,7 @@ def process_url(record: dict) -> int:
 # Tracking updates
 # ---------------------------------------------------------------------------
 
+
 def _update_tracking(record: dict, inserted: int) -> None:
     table = record["source_table"]
     row_id = record["row_id"]
@@ -430,6 +442,7 @@ def _update_tracking(record: dict, inserted: int) -> None:
 # ---------------------------------------------------------------------------
 # Local PDF ingest
 # ---------------------------------------------------------------------------
+
 
 def process_local_pdf(pdf_path: str) -> int:
     """Extract, chunk, embed, insert one local PDF file. Returns chunks inserted."""
@@ -498,19 +511,21 @@ def process_local_pdf(pdf_path: str) -> int:
             "section": chunk.get("section", ""),
             "chunk_type": chunk.get("chunk_type", "text"),
         }
-        buffer.append({
-            "id": str(uuid.uuid4()),
-            "tenant_id": MIRA_TENANT_ID,
-            "source_type": "manual",
-            "manufacturer": mfr,
-            "model_number": model,
-            "content": chunk["text"],
-            "embedding": str(embedding),
-            "source_url": filename,
-            "source_page": chunk_idx,
-            "metadata": json.dumps(meta),
-            "chunk_type": chunk.get("chunk_type", "text"),
-        })
+        buffer.append(
+            {
+                "id": str(uuid.uuid4()),
+                "tenant_id": MIRA_TENANT_ID,
+                "source_type": "manual",
+                "manufacturer": mfr,
+                "model_number": model,
+                "content": chunk["text"],
+                "embedding": str(embedding),
+                "source_url": filename,
+                "source_page": chunk_idx,
+                "metadata": json.dumps(meta),
+                "chunk_type": chunk.get("chunk_type", "text"),
+            }
+        )
 
         if len(buffer) >= batch_size:
             try:
@@ -535,6 +550,7 @@ def process_local_pdf(pdf_path: str) -> int:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     import argparse
@@ -611,7 +627,10 @@ def main() -> None:
 
     log.info(
         "Done. %d URLs processed (%d ok / %d fail). %d total chunks inserted into knowledge_entries.",
-        len(pending), ok_count, fail_count, total_inserted,
+        len(pending),
+        ok_count,
+        fail_count,
+        total_inserted,
     )
 
 

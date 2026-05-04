@@ -51,6 +51,7 @@ const LAYOUTS: Record<LabelFormat, LayoutSpec> = {
 export async function buildStickerSheetPdf(
   rows: StickerInput[],
   format: LabelFormat = "5163",
+  tenantName?: string,
 ): Promise<Uint8Array> {
   if (rows.length === 0) {
     throw new Error("buildStickerSheetPdf: rows must be non-empty");
@@ -135,6 +136,20 @@ export async function buildStickerSheetPdf(
         font: helv,
         color: rgb(0.5, 0.5, 0.5),
       });
+
+      // Tenant name + "Powered by MIRA" micro-footer at bottom of label
+      if (tenantName) {
+        const footerSize = is5160 ? 3.5 : 5.5;
+        const footerY = labelY + 1;
+        const footerText = `${tenantName} · Powered by MIRA`;
+        page.drawText(footerText, {
+          x: labelX + IN(0.08),
+          y: footerY,
+          size: footerSize,
+          font: helv,
+          color: rgb(0.65, 0.65, 0.65),
+        });
+      }
     }
   }
 

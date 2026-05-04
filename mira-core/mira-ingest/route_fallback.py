@@ -276,7 +276,7 @@ async def _run_llm_discover_url(
     Validates the URL with an HTTP HEAD request before attempting to ingest.
     Returns (docs, "llm") as sentinel — no Apify run involved.
     """
-    # Try providers in order: Gemini → Groq → Anthropic
+    # Try providers in order: Gemini → Groq
     prompt = _LLM_PROMPT.format(manufacturer=manufacturer, model=model)
 
     discovered_url: str | None = None
@@ -336,43 +336,6 @@ async def _run_llm_discover_url(
                     )
         except Exception as exc:
             logger.debug("[%s] Groq URL discovery failed: %s", job_id, exc)
-
-    # --- Anthropic ---
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-    claude_model = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
-    if anthropic_key and not discovered_url:
-        try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": anthropic_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": claude_model,
-                        "max_tokens": 200,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                if resp.status_code == 200:
-                    text = resp.json()["content"][0]["text"]
-                    text = re.sub(r"```json|```", "", text).strip()
-                    # Find JSON in response
-                    m = re.search(r"\{.*\}", text, re.DOTALL)
-                    if m:
-                        parsed = json.loads(m.group())
-                        discovered_url = parsed.get("url")
-                        confidence = parsed.get("confidence", "low")
-                        logger.info(
-                            "[%s] LLM (Claude) discovered URL: %s (%s)",
-                            job_id,
-                            discovered_url,
-                            confidence,
-                        )
-        except Exception as exc:
-            logger.debug("[%s] Anthropic URL discovery failed: %s", job_id, exc)
 
     if not discovered_url or confidence == "low":
         logger.info("[%s] LLM URL discovery returned null or low-confidence", job_id)

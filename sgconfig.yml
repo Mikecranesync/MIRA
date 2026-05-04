@@ -1,0 +1,9 @@
+# ast-grep rule configuration — security, error handling, hardcoded values
+# Equivalent to diffray.yml but uses ast-grep (diffray v0.5.4 requires OpenAI, not Anthropic)
+# Run: sg scan --config sgconfig.yml .
+
+ruleDirs:
+  - .ast-grep-rules
+
+testConfigs:
+  - testDir: .ast-grep-tests

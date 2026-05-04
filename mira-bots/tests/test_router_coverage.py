@@ -9,9 +9,7 @@ sys.path.insert(0, "mira-bots")
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from shared.inference.router import InferenceRouter, _is_gibberish
-
 
 # ---------------------------------------------------------------------------
 # sanitize_context (static method, no mocking needed)
@@ -58,9 +56,7 @@ class TestSanitizeContext:
         assert result[0]["content"] == 42
 
     def test_multiple_pii_types(self):
-        messages = [
-            {"role": "user", "content": "IP 10.0.0.1 MAC AA:BB:CC:DD:EE:FF SN XYZ-12345"}
-        ]
+        messages = [{"role": "user", "content": "IP 10.0.0.1 MAC AA:BB:CC:DD:EE:FF SN XYZ-12345"}]
         result = InferenceRouter.sanitize_context(messages)
         content = result[0]["content"]
         assert "[IP]" in content
@@ -100,14 +96,16 @@ class TestRouterComplete:
     @pytest.fixture
     def router_with_providers(self):
         """Router with mocked providers for cascade testing."""
-        with patch.dict("os.environ", {
-            "INFERENCE_BACKEND": "cloud",
-            "ANTHROPIC_API_KEY": "sk-ant-test",
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "INFERENCE_BACKEND": "cloud",
+                "GROQ_API_KEY": "gsk_test",
+            },
+        ):
             with patch("shared.inference.router._build_providers") as mock_build:
                 mock_provider = MagicMock()
-                mock_provider.name = "claude"
-                mock_provider.format = "anthropic"
+                mock_provider.name = "groq"
                 mock_provider.vision_model = ""
                 mock_provider.enabled = True
                 mock_build.return_value = [mock_provider]
@@ -124,9 +122,47 @@ class TestRouterComplete:
 
     async def test_complete_returns_first_success(self, router_with_providers):
         router = router_with_providers
-        router._call_provider = AsyncMock(
-            return_value=("diagnosis result", {"provider": "claude", "input_tokens": 50})
+        router._call_openai_compat = AsyncMock(
+            return_value=("diagnosis result", {"provider": "groq", "input_tokens": 50})
         )
         content, usage = await router.complete([{"role": "user", "content": "VFD fault F-201"}])
         assert content == "diagnosis result"
-        assert usage["provider"] == "claude"
+        assert usage["provider"] == "groq"
+
+    async def test_complete_sanitizes_by_default(self, router_with_providers):
+        """complete() must scrub IPs/MACs/serials before reaching the provider —
+        opt-in sanitization is the wrong default; one forgetful caller leaks PII."""
+        router = router_with_providers
+        captured: dict = {}
+
+        async def fake_call_provider(provider, messages, *_args, **_kwargs):
+            captured["messages"] = messages
+            return ("ok", {"provider": "groq"})
+
+        router._call_openai_compat = fake_call_provider
+        await router.complete(
+            [{"role": "user", "content": "PLC at 10.0.0.5 (MAC AA:BB:CC:DD:EE:FF) S/N ABC123"}]
+        )
+        sent = captured["messages"][0]["content"]
+        assert "10.0.0.5" not in sent
+        assert "AA:BB:CC:DD:EE:FF" not in sent
+        assert "ABC123" not in sent
+        assert "[IP]" in sent and "[MAC]" in sent and "[SN]" in sent
+
+    async def test_complete_sanitize_false_passes_raw(self, router_with_providers):
+        """sanitize=False is the bypass for offline evals that test the sanitizer itself."""
+        router = router_with_providers
+        captured: dict = {}
+
+        async def fake_call_provider(provider, messages, *_args, **_kwargs):
+            captured["messages"] = messages
+            return ("ok", {"provider": "groq"})
+
+        router._call_openai_compat = fake_call_provider
+        await router.complete(
+            [{"role": "user", "content": "raw 10.0.0.5"}],
+            sanitize=False,
+        )
+        sent = captured["messages"][0]["content"]
+        assert "10.0.0.5" in sent
+        assert "[IP]" not in sent

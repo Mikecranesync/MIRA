@@ -131,7 +131,9 @@ CRAWL_TARGETS = [
 ]
 
 # Link patterns that suggest manuals / technical docs
-MANUAL_LINK_SELECTOR = "a[href$='.pdf'], a[href*='download'], a[href*='manual'], a[href*='instruction']"
+MANUAL_LINK_SELECTOR = (
+    "a[href$='.pdf'], a[href*='download'], a[href*='manual'], a[href*='instruction']"
+)
 
 PDF_URL_RE = re.compile(r"https?://\S+\.pdf", re.IGNORECASE)
 
@@ -150,6 +152,7 @@ def _extract_model_from_text(text: str) -> str | None:
 # ---------------------------------------------------------------------------
 # Apify runner
 # ---------------------------------------------------------------------------
+
 
 def _run_apify_crawl(target: dict, apify_token: str) -> list[dict]:
     """Launch one Apify crawl and return dataset items."""
@@ -223,6 +226,7 @@ def _extract_urls_from_items(items: list[dict], manufacturer: str) -> list[dict]
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     apify_token = os.getenv("APIFY_API_KEY")

@@ -1,0 +1,26 @@
+{
+  "skill_name": "web-review",
+  "evals": [
+    {
+      "id": 0,
+      "name": "factorylm-cmms-targeted",
+      "prompt": "Take a hard look at https://factorylm.com/cmms — that's the funnel page for our $97/mo CMMS product. I'm pretty sure something's broken in the JS (I keep seeing weird console errors when I resize). I want the most obvious problems first, ranked by severity. Don't file anything yet — just show me what you find and what evidence you have for each one. If there's a clear top-3, tell me which 3 you'd file as GitHub issues.",
+      "expected_output": "A markdown table of findings sorted P0→P3, including the JS TypeError on cmms:508 (P0, fires on resize), the favicon.ico 404 (P1), missing security headers (P0/P1), tap targets <44px (P2), deprecated apple-mobile-web-app-capable meta (P2), and incomplete OG tags. Skill must propose top-3 to file but NOT auto-file. Mentions that wiki/reviews/<date>-factorylm.com.md will be written.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "factorylm-broad-audit",
+      "prompt": "Run an adversarial review of https://factorylm.com — this is our marketing landing page. Top 5 things to fix, ranked by impact. I want to ship issues to GitHub if they're worth filing.",
+      "expected_output": "Findings list ordered by severity. Should catch: missing HSTS header (P0), missing CSP (P1), missing X-Frame-Options/X-Content-Type-Options (P2), missing Permissions/Referrer-Policy (P3). Page DOM is clean (already validated 2026-04-25), so DOM findings should be minimal/zero. Skill should explicitly note the page is well-built and security headers are the main gap.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "third-party-example-com",
+      "prompt": "Quick review of https://example.com — this is a third-party site, not ours. What's the worst thing about it? I just want a summary, no GitHub filing needed (and don't try, the repo isn't ours).",
+      "expected_output": "Short summary. example.com is intentionally minimal (single h1, single paragraph). Findings should be limited and the skill should NOT try to file issues to Mikecranesync/MIRA since the user said 'not ours'. Should still produce a findings table and offer to write a vault report.",
+      "files": []
+    }
+  ]
+}

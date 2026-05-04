@@ -1,6 +1,7 @@
 """
 agent.py — Autonomous release decision agent.
 """
+
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,8 +9,8 @@ from pathlib import Path
 
 @dataclass
 class Decision:
-    action: str          # "STOP" | "COMMIT_NO_TAG" | "RELEASE" | "REPORT_ONLY" | "RELEASE_INGEST_ONLY"
-    version: str         # e.g. "v1.1" or "" if no tag
+    action: str  # "STOP" | "COMMIT_NO_TAG" | "RELEASE" | "REPORT_ONLY" | "RELEASE_INGEST_ONLY"
+    version: str  # e.g. "v1.1" or "" if no tag
     message: str
     ingest_rate: float
     tele_rate: float | None
@@ -70,7 +71,7 @@ def make_decision(
             action="RELEASE",
             version=next_ver,
             message=f"MIRA {next_ver} RELEASED — ingest {ingest_rate:.1%}"
-                    + (f", Telegram {tele_rate:.1%}" if tele_rate is not None else ", Telegram skipped"),
+            + (f", Telegram {tele_rate:.1%}" if tele_rate is not None else ", Telegram skipped"),
             ingest_rate=ingest_rate,
             tele_rate=tele_rate,
         )
@@ -79,7 +80,7 @@ def make_decision(
             action="RELEASE_INGEST_ONLY",
             version=next_ver,
             message=f"MIRA {next_ver} RELEASED — ingest {ingest_rate:.1%} validated. "
-                    f"Telegram {tele_rate:.1%} below 90% — note Telegram gap.",
+            f"Telegram {tele_rate:.1%} below 90% — note Telegram gap.",
             ingest_rate=ingest_rate,
             tele_rate=tele_rate,
         )

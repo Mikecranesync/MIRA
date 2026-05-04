@@ -1,0 +1,276 @@
+{
+  "route": "pricing",
+  "url": "https://factorylm.com/pricing",
+  "started_at": "2026-04-26T08:30:57.039Z",
+  "status": 200,
+  "final_url": "https://factorylm.com/pricing",
+  "dom_desktop": {
+    "url": "https://factorylm.com/pricing",
+    "images_total": 0,
+    "images_no_alt": [],
+    "images_empty_alt": 0,
+    "h1_count": 1,
+    "h1_text": [
+      "One price for your whole team."
+    ],
+    "heading_skips": [],
+    "meta": {
+      "title": "Pricing — FactoryLM AI Troubleshooter",
+      "description": "MIRA pricing: $97/mo unlimited queries with flat site license, $297/mo adds CMMS write-back. 14-day money-back guarantee. Works with MaintainX, Limble, UpKeep.",
+      "canonical": "https://factorylm.com/pricing",
+      "og_title": "Pricing — FactoryLM AI Troubleshooter",
+      "og_image": "https://factorylm.com/og-image.png",
+      "og_url": "https://factorylm.com/pricing",
+      "twitter_card": "summary_large_image",
+      "viewport": "width=device-width, initial-scale=1.0",
+      "lang": "en",
+      "favicon": "https://factorylm.com/public/icons/favicon.svg"
+    },
+    "deprecated_meta": [],
+    "external_no_noopener": [],
+    "mixed_content": [],
+    "tap_targets_too_small": [
+      {
+        "tag": "A",
+        "text": "FactoryLM",
+        "w": 107,
+        "h": 24
+      },
+      {
+        "tag": "A",
+        "text": "Product",
+        "w": 52,
+        "h": 17
+      },
+      {
+        "tag": "A",
+        "text": "Blog",
+        "w": 30,
+        "h": 17
+      },
+      {
+        "tag": "A",
+        "text": "Troubleshooter",
+        "w": 100,
+        "h": 17
+      },
+      {
+        "tag": "A",
+        "text": "Get Started",
+        "w": 102,
+        "h": 37
+      },
+      {
+        "tag": "A",
+        "text": "FactoryLM",
+        "w": 96,
+        "h": 22
+      },
+      {
+        "tag": "A",
+        "text": "Blog",
+        "w": 27,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Fault Codes",
+        "w": 73,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Troubleshooter",
+        "w": 93,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Contact",
+        "w": 48,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Privacy",
+        "w": 46,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Terms",
+        "w": 38,
+        "h": 16
+      }
+    ],
+    "buttons_no_name": 0,
+    "forms": [],
+    "jsonld_types": [],
+    "ctas": [
+      {
+        "tag": "A",
+        "text": "Get Started",
+        "href": "https://factorylm.com/cmms",
+        "disabled": false
+      }
+    ],
+    "links_total": 14,
+    "links_internal": [
+      "/",
+      "/#features",
+      "/blog",
+      "/cmms",
+      "/cmms",
+      "/cmms",
+      "/cmms",
+      "/",
+      "/blog",
+      "/blog/fault-codes",
+      "/cmms",
+      "/privacy",
+      "/terms"
+    ],
+    "links_external": [
+      "mailto:contact@factorylm.com"
+    ],
+    "body_text_len": 1452,
+    "has_main_landmark": true,
+    "has_nav_landmark": true,
+    "has_footer_landmark": true
+  },
+  "dom_mobile": {
+    "url": "https://factorylm.com/pricing",
+    "images_total": 0,
+    "images_no_alt": [],
+    "images_empty_alt": 0,
+    "h1_count": 1,
+    "h1_text": [
+      "One price for your whole team."
+    ],
+    "heading_skips": [],
+    "meta": {
+      "title": "Pricing — FactoryLM AI Troubleshooter",
+      "description": "MIRA pricing: $97/mo unlimited queries with flat site license, $297/mo adds CMMS write-back. 14-day money-back guarantee. Works with MaintainX, Limble, UpKeep.",
+      "canonical": "https://factorylm.com/pricing",
+      "og_title": "Pricing — FactoryLM AI Troubleshooter",
+      "og_image": "https://factorylm.com/og-image.png",
+      "og_url": "https://factorylm.com/pricing",
+      "twitter_card": "summary_large_image",
+      "viewport": "width=device-width, initial-scale=1.0",
+      "lang": "en",
+      "favicon": "https://factorylm.com/public/icons/favicon.svg"
+    },
+    "deprecated_meta": [],
+    "external_no_noopener": [],
+    "mixed_content": [],
+    "tap_targets_too_small": [
+      {
+        "tag": "A",
+        "text": "FactoryLM",
+        "w": 107,
+        "h": 24
+      },
+      {
+        "tag": "A",
+        "text": "Get Started",
+        "w": 102,
+        "h": 37
+      },
+      {
+        "tag": "A",
+        "text": "FactoryLM",
+        "w": 96,
+        "h": 22
+      },
+      {
+        "tag": "A",
+        "text": "Blog",
+        "w": 27,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Fault Codes",
+        "w": 40,
+        "h": 37
+      },
+      {
+        "tag": "A",
+        "text": "Troubleshooter",
+        "w": 93,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Contact",
+        "w": 48,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Privacy",
+        "w": 46,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Terms",
+        "w": 38,
+        "h": 16
+      }
+    ],
+    "buttons_no_name": 0,
+    "forms": [],
+    "jsonld_types": [],
+    "ctas": [
+      {
+        "tag": "A",
+        "text": "Get Started",
+        "href": "https://factorylm.com/cmms",
+        "disabled": false
+      }
+    ],
+    "links_total": 14,
+    "links_internal": [
+      "/",
+      "/#features",
+      "/blog",
+      "/cmms",
+      "/cmms",
+      "/cmms",
+      "/cmms",
+      "/",
+      "/blog",
+      "/blog/fault-codes",
+      "/cmms",
+      "/privacy",
+      "/terms"
+    ],
+    "links_external": [
+      "mailto:contact@factorylm.com"
+    ],
+    "body_text_len": 1424,
+    "has_main_landmark": true,
+    "has_nav_landmark": true,
+    "has_footer_landmark": true
+  },
+  "focus_after_3tab": {
+    "tag": "A",
+    "text": "Start with MIRA",
+    "in_viewport": false,
+    "rect": {
+      "x": 53,
+      "y": 934,
+      "w": 269,
+      "h": 46
+    }
+  },
+  "focus_before": "BODY",
+  "scroll_introduced_errors": 0,
+  "console_errors": [],
+  "console_warnings": [],
+  "page_errors": [],
+  "failed_responses": [],
+  "failed_requests": [],
+  "finished_at": "2026-04-26T08:31:01.261Z"
+}

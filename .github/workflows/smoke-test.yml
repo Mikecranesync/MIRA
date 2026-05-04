@@ -1,0 +1,81 @@
+name: Smoke Test
+
+# Deploy gate: verifies factorylm.com + app.factorylm.com are healthy before
+# deploy-vps.yml is allowed to run. See issue #689.
+#
+# Triggers:
+#   push to main  — fires first; deploy-vps.yml waits for this to succeed
+#   PR to main    — blocks merge if smoke fails (branch protection rule)
+#   workflow_dispatch — manual trigger for ad-hoc checks
+#
+# deploy-vps.yml listens for workflow_run: ["Smoke Test"] types: [completed]
+# and checks conclusion == 'success' before starting the deploy job.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'wiki/**'
+      - '**/*.md'
+      - '.claude/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'wiki/**'
+      - '**/*.md'
+      - '.claude/**'
+  workflow_dispatch: {}
+
+jobs:
+  smoke:
+    name: E2E smoke (factorylm.com + app.factorylm.com)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install mira-hub npm deps (includes @playwright/test)
+        working-directory: mira-hub
+        run: npm ci --ignore-scripts
+
+      - name: Install Playwright Chromium browser + OS deps
+        working-directory: mira-hub
+        run: npx playwright install chromium --with-deps
+
+      - name: Run smoke tests
+        working-directory: mira-hub
+        env:
+          WEB_URL: https://factorylm.com
+          HUB_URL: https://app.factorylm.com
+        run: npx playwright test --config playwright.smoke.config.ts
+
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-failures-${{ github.run_id }}
+          path: mira-hub/test-results/
+          retention-days: 3
+
+      - name: Annotate PR with failure summary
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          echo "## ❌ Smoke test failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "One or more critical pages are broken on production." >> "$GITHUB_STEP_SUMMARY"
+          echo "Download the \`smoke-failures-${{ github.run_id }}\` artifact for screenshots." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| URL | What was checked |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|-----------------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| https://factorylm.com/ | OG tags, FactoryLM title |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| https://factorylm.com/pricing | Pricing cards visible |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| https://factorylm.com/cmms | Magic link email form |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| https://app.factorylm.com/ | Redirects to /login |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| https://app.factorylm.com/login | Email + password + Google OAuth |" >> "$GITHUB_STEP_SUMMARY"

@@ -20,9 +20,6 @@
  * The NOT_FOUND_HTML constant is kept byte-identical across all paths so
  * cross-tenant and nonexistent tags are indistinguishable to an attacker.
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import { Hono } from "hono";
 import { verifyToken } from "../lib/auth.js";
 import {
@@ -36,12 +33,6 @@ import {
   parseCookies,
   readChannelPref,
 } from "../lib/cookie-session.js";
-
-const _dir = dirname(fileURLToPath(import.meta.url));
-const NOT_FOUND_HTML = readFileSync(
-  join(_dir, "../views/scan-not-found.html"),
-  "utf-8",
-);
 
 function buildChannelUrl(
   channel: string,
@@ -102,7 +93,8 @@ m.get("/:asset_tag", async (c) => {
     });
 
     if (!resolved.found) {
-      return c.html(NOT_FOUND_HTML, 200);
+      // PLG loop: redirect to auto-register form instead of dead-end not-found page (#439)
+      return c.redirect(`/m/${assetTag}/register`, 302);
     }
 
     c.header("Set-Cookie", buildPendingScanCookie(scanId));
@@ -113,7 +105,8 @@ m.get("/:asset_tag", async (c) => {
   const resolved = await resolveAssetWithChannelConfig(assetTag);
 
   if (!resolved.found) {
-    return c.html(NOT_FOUND_HTML, 200);
+    // PLG loop: redirect to auto-register form instead of dead-end not-found page (#439)
+    return c.redirect(`/m/${assetTag}/register`, 302);
   }
 
   // Record scan (unauthed — no atlas_user_id)

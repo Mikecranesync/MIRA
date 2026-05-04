@@ -2,6 +2,7 @@
 MIRA Telegram Vision Test Runner
 CLI entry point using Telethon to send photos and collect bot replies.
 """
+
 import argparse
 import asyncio
 import os
@@ -31,13 +32,13 @@ def print_summary_table(results: list[dict]) -> None:
         result_str = "PASS ✅" if r["passed"] else "FAIL ❌"
         bucket = r["failure_bucket"] or ""
         score_str = f"{r['score']}/{r['max_score']}"
-        print(
-            f"{r['case']:<30} {result_str:<10} {score_str:<10} {r['confidence']:<12.2f} {bucket}"
-        )
+        print(f"{r['case']:<30} {result_str:<10} {score_str:<10} {r['confidence']:<12.2f} {bucket}")
     print()
 
 
-async def collect_reply(client, bot_entity, image_path: str, caption: str, timeout: int) -> str | None:
+async def collect_reply(
+    client, bot_entity, image_path: str, caption: str, timeout: int
+) -> str | None:
     """Send photo and poll for bot reply using silence-detection."""
     sent = await client.send_file(bot_entity, image_path, caption=caption)
     collected = []
@@ -105,7 +106,9 @@ async def run_cases(cases: list[dict], dry_run: bool, timeout: int) -> list[dict
     session_env = os.environ.get("TELEGRAM_TEST_SESSION_PATH", "/session/test_account.session")
 
     # Strip .session suffix for TelegramClient
-    session_path = session_env[: -len(".session")] if session_env.endswith(".session") else session_env
+    session_path = (
+        session_env[: -len(".session")] if session_env.endswith(".session") else session_env
+    )
 
     if not os.path.exists(session_env):
         print(f"ERROR: Telethon session not found at {session_env}")
@@ -143,10 +146,14 @@ def main() -> None:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--case", metavar="CASE_NAME", help="Run one named case")
     group.add_argument("--all", action="store_true", help="Run all cases")
-    group.add_argument("--cases", nargs="+", metavar="CASE_NAME",
-                       help="Run specific named cases (space-separated)")
-    parser.add_argument("--manifest", default=None,
-                        help="Path to manifest YAML, relative to /app (default: test_manifest.yaml)")
+    group.add_argument(
+        "--cases", nargs="+", metavar="CASE_NAME", help="Run specific named cases (space-separated)"
+    )
+    parser.add_argument(
+        "--manifest",
+        default=None,
+        help="Path to manifest YAML, relative to /app (default: test_manifest.yaml)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Skip Telethon, test scoring only")
     parser.add_argument("--timeout", type=int, default=60, help="Seconds to wait for reply")
     args = parser.parse_args()

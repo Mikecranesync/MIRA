@@ -2,6 +2,7 @@
 Report writer for MIRA Telegram vision test harness.
 Writes artifacts/latest_run/results.json and artifacts/latest_run/report.md
 """
+
 import json
 import os
 from datetime import datetime, timezone
@@ -27,7 +28,14 @@ def _get_standing_verdict(result: dict) -> str:
     return verdicts.get(bucket, "Unable to determine verdict.")
 
 
-def write_report(results: list[dict], bot_username: str, dry_run: bool, artifacts_dir: str = "artifacts", run_changelog: str = "", output_prefix: str = "") -> None:
+def write_report(
+    results: list[dict],
+    bot_username: str,
+    dry_run: bool,
+    artifacts_dir: str = "artifacts",
+    run_changelog: str = "",
+    output_prefix: str = "",
+) -> None:
     """Write JSON + Markdown report to artifacts/latest_run/.
 
     Args:
@@ -104,9 +112,7 @@ def write_report(results: list[dict], bot_username: str, dry_run: bool, artifact
         result_icon = "✅" if r["passed"] else "❌"
         cond_str = " ".join("✅" if v else "❌" for v in r["conditions"].values())
         bucket = r["failure_bucket"] or "—"
-        lines.append(
-            f"| {r['case']} | {result_icon} | {cond_str} | {bucket} |"
-        )
+        lines.append(f"| {r['case']} | {result_icon} | {cond_str} | {bucket} |")
     lines.append("")
 
     # Detailed case analysis
@@ -127,12 +133,24 @@ def write_report(results: list[dict], bot_username: str, dry_run: bool, artifact
         # Build condition table
         conds = r.get("conditions", {})
         facts = r.get("extracted_facts", {})
-        lines.append(f"| IDENTIFICATION | {'✅' if conds.get('IDENTIFICATION') else '❌'} | {', '.join(facts.get('identification_terms_found', []) or ['—'])} |")
-        lines.append(f"| FAULT_CAUSE | {'✅' if conds.get('FAULT_CAUSE') else '❌'} | {', '.join(facts.get('fault_cause_found', []) or ['—'])} |")
-        lines.append(f"| NEXT_STEP | {'✅' if conds.get('NEXT_STEP') else '❌'} | {', '.join(facts.get('next_step_found', []) or ['—'])} |")
-        lines.append(f"| READABILITY | {'✅' if conds.get('READABILITY') else '❌'} | {r.get('word_count', 0)} words ≤ 150 |")
-        lines.append(f"| SPEED | {'✅' if conds.get('SPEED') else '❌'} | {r.get('elapsed', 0):.1f}s < 30s |")
-        lines.append(f"| ACTIONABILITY | {'✅' if conds.get('ACTIONABILITY') else '❌'} | ID + Next Step |")
+        lines.append(
+            f"| IDENTIFICATION | {'✅' if conds.get('IDENTIFICATION') else '❌'} | {', '.join(facts.get('identification_terms_found', []) or ['—'])} |"
+        )
+        lines.append(
+            f"| FAULT_CAUSE | {'✅' if conds.get('FAULT_CAUSE') else '❌'} | {', '.join(facts.get('fault_cause_found', []) or ['—'])} |"
+        )
+        lines.append(
+            f"| NEXT_STEP | {'✅' if conds.get('NEXT_STEP') else '❌'} | {', '.join(facts.get('next_step_found', []) or ['—'])} |"
+        )
+        lines.append(
+            f"| READABILITY | {'✅' if conds.get('READABILITY') else '❌'} | {r.get('word_count', 0)} words ≤ 150 |"
+        )
+        lines.append(
+            f"| SPEED | {'✅' if conds.get('SPEED') else '❌'} | {r.get('elapsed', 0):.1f}s < 30s |"
+        )
+        lines.append(
+            f"| ACTIONABILITY | {'✅' if conds.get('ACTIONABILITY') else '❌'} | ID + Next Step |"
+        )
         lines += [""]
 
         # Violations
@@ -142,13 +160,13 @@ def write_report(results: list[dict], bot_username: str, dry_run: bool, artifact
             lines.append("")
 
         # Standing at the machine verdict
-        lines.append(f"#### Standing at the Machine")
+        lines.append("#### Standing at the Machine")
         lines.append(f"> {_get_standing_verdict(r)}")
         lines.append("")
 
         # Fix suggestion
         if r.get("fix_suggestion"):
-            lines.append(f"#### Fix Recommendation")
+            lines.append("#### Fix Recommendation")
             lines.append(f"> {r['fix_suggestion']}")
             lines.append("")
 

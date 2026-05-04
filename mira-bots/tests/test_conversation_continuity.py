@@ -69,13 +69,16 @@ def test_non_industrial_continues_session():
 
 
 def test_session_followup_detection():
-    """detect_session_followup returns True for signal words in active session."""
+    """detect_session_followup only fires for explicit references to earlier context."""
     from shared.guardrails import detect_session_followup
 
     sc = {"equipment_type": "ABB VFD", "last_question": "Check the DC bus?"}
 
-    # Should detect follow-up in active session
-    assert detect_session_followup("give me the manufacturer website", sc, "Q2") is True
+    # Documentation pivots should not get trapped in stale follow-up state
+    assert detect_session_followup("give me the manufacturer website", sc, "Q2") is False
+    assert detect_session_followup("user manual", sc, "Q2") is False
+
+    # Explicit recap questions should still detect follow-up in active session
     assert detect_session_followup("where did you get that information", sc, "Q3") is True
     assert detect_session_followup("you said it was the DC bus earlier", sc, "DIAGNOSIS") is True
 

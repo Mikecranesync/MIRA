@@ -17,6 +17,7 @@ COPY mira-pipeline/memory.py .
 COPY mira-pipeline/feedback_sync.py .
 COPY mira-pipeline/eval_api.py .
 COPY mira-pipeline/qr_bridge.py .
+COPY VERSION .
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 9099

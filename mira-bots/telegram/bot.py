@@ -7,18 +7,35 @@ import logging
 import os
 
 import httpx
+from chat_adapter import TelegramChatAdapter
 from PIL import Image
 from shared import tts
+from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
 from telegram import Update
 from telegram.constants import ChatAction
+from telegram.error import Conflict
 from telegram.ext import (
+    Application,
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
 )
+from voice_transcription import transcribe_voice
+
+from admin_commands import (
+    invite_command,
+    invite_status_command,
+    revoke_command,
+    team_command,
+)
+from shared.identity.service import get_identity_service
+from shared.tenant.authorizer import Authorizer
+from start_command import start_command
+from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +62,29 @@ engine = Supervisor(
     tenant_id=os.environ.get("MIRA_TENANT_ID", ""),
     mcp_base_url=MCP_BASE_URL,
 )
+
+# Multi-tenant infra (NeonDB-backed)
+ADMIN_TELEGRAM_IDS = os.environ.get("ADMIN_TELEGRAM_IDS", "")
+DEFAULT_TENANT_ID = os.environ.get("MIRA_TENANT_ID", "")
+
+_identity_service = get_identity_service()
+_authorizer = Authorizer(admin_telegram_ids=ADMIN_TELEGRAM_IDS)
+
+_neon_url = os.environ.get("NEON_DATABASE_URL", "")
+_admin_db_engine = (
+    create_engine(
+        _neon_url,
+        poolclass=NullPool,
+        connect_args={"sslmode": "require"},
+        pool_pre_ping=True,
+    )
+    if _neon_url
+    else None
+)
+
+# Chat Abstraction Layer — wraps engine in platform-agnostic protocol
+adapter = TelegramChatAdapter(bot_token=TELEGRAM_BOT_TOKEN)
+dispatcher = ChatDispatcher(engine, identity_service=_identity_service)
 
 FAULT_KEYWORDS = {
     "fault",
@@ -290,62 +330,152 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Route text messages through the GSD engine."""
+    """Route text messages through the GSD engine via ChatAdapter."""
     text = update.message.text
     chat_id = str(update.effective_chat.id)
     logger.info("Received from %s: %s", update.effective_user.first_name, text)
     if any(kw in text.lower() for kw in FAULT_KEYWORDS):
         await update.message.reply_text("Diagnosing...")
+    normalized = await adapter.normalize_incoming(update.to_dict())
     try:
         async with typing_action(context, update.effective_chat.id):
-            reply = await engine.process(chat_id, text)
+            response = await dispatcher.dispatch(normalized)
+        await adapter.render_outgoing(response, normalized)
+        await _maybe_send_voice(update, context, chat_id, response.text)
     except Exception as e:
-        logger.error("GSD error: %s", e)
-        reply = f"MIRA error: {e}"
-    await update.message.reply_text(reply)
-    await _maybe_send_voice(update, context, chat_id, reply)
+        logger.error("Dispatch error: %s", e)
+        await update.message.reply_text(f"MIRA error: {e}")
+
+
+async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle incoming Telegram voice messages (OGG/Opus).
+
+    Pipeline:
+      1. Download voice file from Telegram
+      2. Transcribe via Groq Whisper (whisper-large-v3-turbo)
+      3. Route transcribed text through the normal GSD engine (same as text)
+      4. If MIRA's reply contains a WO preview, the FSM handles "yes" confirmation
+         through the same handle_message path on the next turn
+
+    Falls back gracefully if GROQ_API_KEY is missing or Whisper fails.
+    """
+    voice = update.message.voice
+    chat_id = str(update.effective_chat.id)
+    user_name = update.effective_user.first_name if update.effective_user else "User"
+
+    logger.info(
+        "Voice message from %s: duration=%ds file_id=%s",
+        user_name,
+        voice.duration if voice else 0,
+        voice.file_id if voice else "?",
+    )
+
+    # Acknowledge receipt while we transcribe
+    await update.message.reply_text("🎤 Transcribing your message…")
+
+    try:
+        tg_file = await context.bot.get_file(voice.file_id)
+        audio_bytes = await tg_file.download_as_bytearray()
+    except Exception as exc:
+        logger.error("Voice download failed: %s", exc)
+        await update.message.reply_text(
+            "Sorry, I couldn't download your voice message. Please try again or type your message."
+        )
+        return
+
+    async with typing_action(context, update.effective_chat.id):
+        transcribed = await transcribe_voice(bytes(audio_bytes))
+
+    if not transcribed:
+        await update.message.reply_text(
+            "I couldn't transcribe your voice message "
+            "(GROQ_API_KEY may not be set, or the audio was unclear).\n"
+            "Please type your message instead."
+        )
+        return
+
+    logger.info("Voice → text from %s: %r", user_name, transcribed[:100])
+
+    # Echo transcription so the tech can see what was captured
+    await update.message.reply_text(f'_🎤 Heard: "{transcribed}"_', parse_mode="Markdown")
+
+    # Route through the exact same path as a text message
+    normalized = await adapter.normalize_incoming(update.to_dict())
+    normalized.text = transcribed
+
+    if any(kw in transcribed.lower() for kw in FAULT_KEYWORDS):
+        await update.message.reply_text("Diagnosing…")
+
+    try:
+        async with typing_action(context, update.effective_chat.id):
+            response = await dispatcher.dispatch(normalized)
+        await adapter.render_outgoing(response, normalized)
+        await _maybe_send_voice(update, context, chat_id, response.text)
+    except Exception as exc:
+        logger.error("Voice dispatch error: %s", exc)
+        await update.message.reply_text(f"MIRA error: {exc}")
 
 
 async def _process_photo_batch(
-    photos: list,
+    batches: list[tuple[bytes, bytes]],
     caption: str,
-    raw_bytes_list: list,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Process buffered photos and send a single combined reply."""
+    """Process buffered (raw_bytes, vision_bytes) pairs.
+
+    Single photo: dispatches through ChatDispatcher (FSM-aware, unchanged path).
+    Multi-photo burst: sends acknowledgment immediately, runs each photo through
+    VisionWorker sequentially, then combines results into one intelligent reply.
+    """
     chat_id = str(update.effective_chat.id)
-    await update.message.reply_text("Analyzing equipment...")
-    replies = []
-    async with typing_action(context, update.effective_chat.id):
-        for photo_b64 in photos:
+
+    if len(batches) == 1:
+        # Single-photo path — unchanged; goes through ChatDispatcher for FSM routing
+        await update.message.reply_text("Analyzing equipment...")
+        _raw_bytes, vision_bytes = batches[0]
+        update_dict = update.to_dict()
+        async with typing_action(context, update.effective_chat.id):
             try:
-                process_task = asyncio.create_task(
-                    engine.process(chat_id, caption, photo_b64=photo_b64)
-                )
+                normalized = await adapter.normalize_incoming(update_dict)
+                normalized.text = caption
+                if normalized.attachments:
+                    normalized.attachments[0].data = vision_bytes
+                process_task = asyncio.create_task(dispatcher.dispatch(normalized))
                 try:
-                    reply = await asyncio.wait_for(asyncio.shield(process_task), timeout=10.0)
+                    response = await asyncio.wait_for(asyncio.shield(process_task), timeout=10.0)
                 except asyncio.TimeoutError:
                     await update.message.reply_text(
                         "Processing equipment photo — this may take up to 90 seconds"
                         " for detailed images..."
                     )
-                    reply = await process_task
-                if reply:
-                    replies.append(reply)
+                    response = await process_task
+                final_reply = response.text or "MIRA error: no response from vision pipeline."
             except Exception as e:
-                logger.error("Photo batch processing error: %s", e)
-
-    if not replies:
-        final_reply = "MIRA error: no response from vision pipeline."
-    elif len(replies) == 1:
-        final_reply = replies[0]
+                logger.error("Photo processing error: %s", e)
+                final_reply = f"MIRA error: {e}"
     else:
-        final_reply = replies[0] + f"\n\n({len(replies)} photos analyzed)"
+        # Multi-photo burst — ack immediately, process sequentially, combine
+        n = len(batches)
+        await update.message.reply_text(
+            f"📸 Processing {n} photos — I'll have results for you shortly."
+        )
+        async with typing_action(context, update.effective_chat.id):
+            photos_b64 = [base64.b64encode(vision_bytes).decode() for _, vision_bytes in batches]
+            try:
+                final_reply = await engine.process_multi_photo(
+                    chat_id=chat_id,
+                    message=caption,
+                    photos_b64=photos_b64,
+                    platform="telegram",
+                )
+            except Exception as e:
+                logger.error("Multi-photo processing error: %s", e)
+                final_reply = f"MIRA error processing {n} photos: {e}"
 
     if INGEST_SERVICE_URL:
         asset_tag = caption.split()[0] if caption else "UNKNOWN"
-        for raw_bytes in raw_bytes_list:
+        for raw_bytes, _ in batches:
             asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
         final_reply += "\n\nPhoto(s) queued for knowledge base."
 
@@ -363,9 +493,7 @@ async def _flush_photos(
     buf = PHOTO_BUFFER.pop(chat_id_int, None)
     if not buf:
         return
-    await _process_photo_batch(
-        buf["photos"], buf["caption"], buf["raw_bytes_list"], update, context
-    )
+    await _process_photo_batch(buf["batches"], buf["caption"], update, context)
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -374,7 +502,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = update.message.caption or "Analyze this equipment photo"
     logger.info("Photo from %s: %s", update.effective_user.first_name, caption)
 
-    # Download and resize immediately
+    # Download and resize immediately; store raw bytes for KB ingest
     try:
         photo = update.message.photo[-1]
         await context.bot.send_chat_action(
@@ -383,7 +511,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file = await context.bot.get_file(photo.file_id)
         raw_bytes = bytes(await file.download_as_bytearray())
         vision_bytes = _resize_for_vision(raw_bytes)
-        photo_b64 = base64.b64encode(vision_bytes).decode("utf-8")
     except Exception as e:
         logger.error("Photo download error: %s", e)
         await update.message.reply_text(f"MIRA error: {e}")
@@ -395,14 +522,12 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         existing_task = buf.get("task")
         if existing_task:
             existing_task.cancel()
-        buf["photos"].append(photo_b64)
-        buf["raw_bytes_list"].append(raw_bytes)
+        buf["batches"].append((raw_bytes, vision_bytes))
         buf["caption"] = caption  # last caption wins
         buf["update"] = update
     else:
         PHOTO_BUFFER[chat_id_int] = {
-            "photos": [photo_b64],
-            "raw_bytes_list": [raw_bytes],
+            "batches": [(raw_bytes, vision_bytes)],
             "caption": caption,
             "update": update,
             "task": None,
@@ -531,6 +656,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Return static command list."""
     await update.message.reply_text(
         "MIRA Commands:\n"
+        "/invite <email> \u2014 (admin) mint enrollment link\n"
+        "/team \u2014 (admin) list enrolled members\n"
+        "/revoke <telegram_id> \u2014 (admin) remove a member\n"
+        "/invite_status \u2014 (admin) list pending/used invites\n"
         "/equipment [id] \u2014 Live equipment status (instant)\n"
         "/faults \u2014 Active fault list (instant)\n"
         "/status \u2014 AI equipment summary\n"
@@ -544,8 +673,96 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def _startup(application: Application) -> None:
+    """Clear any competing webhook/poller and verify bot identity before polling."""
+    try:
+        await application.bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Webhook cleared (drop_pending_updates=True)")
+    except Exception as exc:
+        logger.warning("delete_webhook failed: %s", exc)
+
+    try:
+        me = await application.bot.get_me()
+        logger.info("Bot identity confirmed: @%s (id=%s)", me.username, me.id)
+    except Conflict as exc:
+        logger.error(
+            "409 Conflict on getMe — another process is already polling with this token. "
+            "To fix: SSH to every node and run: "
+            "pkill -f 'python bot.py' || docker stop mira-bot-telegram. "
+            "Then restart this container. Error: %s",
+            exc,
+        )
+        raise SystemExit(1) from exc
+
+
+async def _conflict_error_handler(update: object, context) -> None:
+    """On 409 Conflict sleep 15s and let PTB retry — avoids crash-restart loop."""
+    import asyncio
+
+    from telegram.error import Conflict as TGConflict
+
+    if isinstance(context.error, TGConflict):
+        logger.warning(
+            "409 Conflict during polling — another session is active. "
+            "Sleeping 15s and retrying (do NOT call getUpdates externally while bot is running)."
+        )
+        await asyncio.sleep(15)
+        return  # let PTB retry getUpdates
+    raise context.error
+
+
 def main():
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(_startup).build()
+
+    # Helper to bind admin command kwargs without subclassing PTB's CommandHandler.
+    async def _wrap_invite(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            return
+        await invite_command(
+            update, context,
+            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_team(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            return
+        await team_command(
+            update, context,
+            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_revoke(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            return
+        await revoke_command(
+            update, context,
+            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_invite_status(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            return
+        await invite_status_command(
+            update, context,
+            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_start(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("MIRA isn't fully configured. Ask your admin.")
+            return
+        await start_command(update, context, engine=_admin_db_engine)
+
+    # IMPORTANT: register /start FIRST so it wins over the legacy welcome.
+    app.add_handler(CommandHandler("start", _wrap_start))
+    app.add_handler(CommandHandler("invite", _wrap_invite))
+    app.add_handler(CommandHandler("team", _wrap_team))
+    app.add_handler(CommandHandler("revoke", _wrap_revoke))
+    app.add_handler(CommandHandler("invite_status", _wrap_invite_status))
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))
     app.add_handler(CommandHandler("status", status_command))
@@ -555,9 +772,14 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+    app.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    logger.info("MIRA Telegram bot started (polling)")
-    app.run_polling()
+    app.add_error_handler(_conflict_error_handler)
+    _ver_path = os.path.join(os.path.dirname(__file__), "VERSION")
+    _ver = open(_ver_path).read().strip() if os.path.exists(_ver_path) else "unknown"
+    logger.info("MIRA Telegram bot starting (polling) version=%s admins=%d",
+                _ver, _authorizer.admin_count())
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":

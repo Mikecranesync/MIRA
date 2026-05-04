@@ -36,17 +36,17 @@ logger = logging.getLogger("prejudged-benchmark-run")
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, "mira-bots"))
 
-from shared.engine import Supervisor  # noqa: E402
 from shared.benchmark_db import (  # noqa: E402
-    ensure_tables,
-    list_prejudged_cases,
     count_prejudged_cases,
-    get_prejudged_case,
     create_prejudged_run,
+    ensure_tables,
     finish_prejudged_run,
+    get_prejudged_case,
     insert_prejudged_conversation,
+    list_prejudged_cases,
     update_prejudged_judge_scores,
 )
+from shared.engine import Supervisor  # noqa: E402
 
 MAX_TURNS = 8
 DIAGNOSIS_STATES = {"DIAGNOSIS", "FIX_STEP", "RESOLVED"}
@@ -62,6 +62,7 @@ VERDICT_THRESHOLDS = [
 
 def _get_anthropic_client():
     import anthropic
+
     return anthropic.Anthropic()
 
 
@@ -102,9 +103,7 @@ def _simulate_answer(
 ) -> str:
     """Use Claude sonnet to simulate a technician's answer based on ground truth."""
     gt_json = json.dumps(ground_truth, indent=2)
-    transcript_text = "\n".join(
-        f"[{t['role'].upper()}]: {t['content']}" for t in transcript
-    )
+    transcript_text = "\n".join(f"[{t['role'].upper()}]: {t['content']}" for t in transcript)
 
     hint_instruction = ""
     if turn_number >= 6:
@@ -151,18 +150,21 @@ def _judge_conversation(
 
     Returns dict with 5 dimension scores + verdict + reasoning.
     """
-    ground_truth = json.loads(case["ground_truth"]) if isinstance(case["ground_truth"], str) else case["ground_truth"]
+    ground_truth = (
+        json.loads(case["ground_truth"])
+        if isinstance(case["ground_truth"], str)
+        else case["ground_truth"]
+    )
     gt_json = json.dumps(ground_truth, indent=2)
     transcript_text = "\n".join(
-        f"[{t['role'].upper()} (state={t.get('state', '?')})]: {t['content']}"
-        for t in transcript
+        f"[{t['role'].upper()} (state={t.get('state', '?')})]: {t['content']}" for t in transcript
     )
 
     prompt = f"""You are an expert industrial maintenance trainer evaluating an AI diagnostic assistant's performance. Score the following conversation on 5 dimensions.
 
-CASE: {case['title']}
-EQUIPMENT: {case.get('equipment_type', 'unknown')}
-DIFFICULTY: {case.get('difficulty', 'medium')}
+CASE: {case["title"]}
+EQUIPMENT: {case.get("equipment_type", "unknown")}
+DIFFICULTY: {case.get("difficulty", "medium")}
 REACHED DIAGNOSIS: {reached_diagnosis}
 TURNS USED: {turn_count}
 
@@ -205,6 +207,7 @@ Return ONLY the JSON object, no other text."""
         if text.startswith("{"):
             return json.loads(text)
         import re
+
         match = re.search(r"\{[^{}]*\}", text, re.DOTALL)
         if match:
             return json.loads(match.group())
@@ -242,7 +245,11 @@ async def run_single_case(
     """
     case_id = case["id"]
     chat_id = f"prejudged-{run_id}-c{case_id}"
-    ground_truth = json.loads(case["ground_truth"]) if isinstance(case["ground_truth"], str) else case["ground_truth"]
+    ground_truth = (
+        json.loads(case["ground_truth"])
+        if isinstance(case["ground_truth"], str)
+        else case["ground_truth"]
+    )
 
     transcript = []
     message = case["evidence_packet"]
@@ -267,16 +274,17 @@ async def run_single_case(
             fsm_state = _read_fsm_state(chat_id, db_path)
             final_state = fsm_state
 
-            transcript.append({
-                "role": "mira",
-                "content": reply,
-                "state": fsm_state,
-                "turn": turn,
-                "latency_ms": latency,
-            })
+            transcript.append(
+                {
+                    "role": "mira",
+                    "content": reply,
+                    "state": fsm_state,
+                    "turn": turn,
+                    "latency_ms": latency,
+                }
+            )
 
-            logger.info("    Turn %d: MIRA [%s] (%dms) — %s",
-                         turn, fsm_state, latency, reply[:80])
+            logger.info("    Turn %d: MIRA [%s] (%dms) — %s", turn, fsm_state, latency, reply[:80])
 
             # Check if we reached diagnosis
             if fsm_state in DIAGNOSIS_STATES:
@@ -285,13 +293,18 @@ async def run_single_case(
 
             # Simulate technician answer
             sim_answer = _simulate_answer(
-                ground_truth, transcript, turn, anthropic_client,
+                ground_truth,
+                transcript,
+                turn,
+                anthropic_client,
             )
-            transcript.append({
-                "role": "technician",
-                "content": sim_answer,
-                "turn": turn,
-            })
+            transcript.append(
+                {
+                    "role": "technician",
+                    "content": sim_answer,
+                    "turn": turn,
+                }
+            )
             logger.info("    Turn %d: TECH — %s", turn, sim_answer[:80])
 
             message = sim_answer
@@ -332,7 +345,11 @@ async def run_single_case(
     # Judge the conversation
     logger.info("    Judging case %d...", case_id)
     scores = _judge_conversation(
-        case, transcript, turn_count, reached_diagnosis, anthropic_client,
+        case,
+        transcript,
+        turn_count,
+        reached_diagnosis,
+        anthropic_client,
     )
 
     evidence_util = scores.get("evidence_utilization", 0.0)
@@ -342,11 +359,7 @@ async def run_single_case(
     expert = scores.get("expert_comparison", 0.0)
 
     composite = (
-        evidence_util * 0.20
-        + path_eff * 0.20
-        + gsd_comp * 0.25
-        + root_cause * 0.25
-        + expert * 0.10
+        evidence_util * 0.20 + path_eff * 0.20 + gsd_comp * 0.25 + root_cause * 0.25 + expert * 0.10
     )
     verdict = _compute_verdict(composite)
 
@@ -362,8 +375,14 @@ async def run_single_case(
         db_path=db_path,
     )
 
-    logger.info("    Case %d: score=%.1f verdict=%s turns=%d diag=%s",
-                 case_id, composite, verdict, turn_count, reached_diagnosis)
+    logger.info(
+        "    Case %d: score=%.1f verdict=%s turns=%d diag=%s",
+        case_id,
+        composite,
+        verdict,
+        turn_count,
+        reached_diagnosis,
+    )
 
     return {
         "case_id": case_id,
@@ -413,7 +432,11 @@ async def run_benchmark(
 
     for case in cases:
         result = await run_single_case(
-            case, run_id, supervisor, anthropic_client, db_path,
+            case,
+            run_id,
+            supervisor,
+            anthropic_client,
+            db_path,
         )
         results.append(result)
         if result.get("error"):
@@ -421,15 +444,23 @@ async def run_benchmark(
 
     status = "completed" if errors == 0 else "completed_with_errors"
     finish_prejudged_run(
-        run_id, status=status, case_count=len(cases), db_path=db_path,
+        run_id,
+        status=status,
+        case_count=len(cases),
+        db_path=db_path,
     )
 
     # Compute aggregate stats
     scores = [r["composite_score"] for r in results if "composite_score" in r]
     avg_score = sum(scores) / len(scores) if scores else 0.0
 
-    logger.info("Benchmark run %d finished: %d cases, %d errors, avg=%.1f",
-                 run_id, len(cases), errors, avg_score)
+    logger.info(
+        "Benchmark run %d finished: %d cases, %d errors, avg=%.1f",
+        run_id,
+        len(cases),
+        errors,
+        avg_score,
+    )
 
     return {
         "run_id": run_id,
@@ -448,11 +479,13 @@ def main():
     args = parser.parse_args()
 
     db_path = args.db or os.getenv("MIRA_DB_PATH")
-    result = asyncio.run(run_benchmark(
-        db_path=db_path,
-        limit=args.limit,
-        case_id=args.case_id,
-    ))
+    result = asyncio.run(
+        run_benchmark(
+            db_path=db_path,
+            limit=args.limit,
+            case_id=args.case_id,
+        )
+    )
     print(f"\nResult: {json.dumps(result, indent=2, default=str)}")
 
 

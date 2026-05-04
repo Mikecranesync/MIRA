@@ -208,10 +208,11 @@ async def run_synthetic_conversation(
         if verbose:
             print(f"[MIRA] {reply[:300]}{'...' if len(reply) > 300 else ''}")
 
-        # Natural stopping: MIRA says "resolved" or "fixed"
-        if any(kw in reply.lower() for kw in ("resolved", "fixed", "work order", "issue closed")):
+        # Stop when FSM reaches a terminal state, not on keyword sniff
+        fsm_state = pipeline.fsm_state(chat_id)
+        if fsm_state in ("RESOLVED", "SAFETY_ALERT"):
             if verbose:
-                print("[synthetic_user] Conversation appears resolved.")
+                print(f"[synthetic_user] FSM reached {fsm_state} — stopping.")
             break
 
     fsm_state = pipeline.fsm_state(chat_id)
@@ -228,7 +229,7 @@ async def run_synthetic_conversation(
 # ── LLM call helpers ──────────────────────────────────────────────────────────
 
 _GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-_ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+_CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 
 async def _llm_call(
@@ -246,8 +247,8 @@ async def _llm_call(
     try:
         if provider == "groq":
             result = await _call_groq(messages, max_tokens)
-        elif provider == "claude":
-            result = await _call_claude(messages, max_tokens)
+        elif provider == "cerebras":
+            result = await _call_cerebras(messages, max_tokens)
         elif provider == "gemini":
             result = await _call_gemini(messages, max_tokens)
         else:
@@ -262,11 +263,11 @@ async def _llm_call(
 
 
 def _pick_provider() -> str:
-    """Return the first available provider based on set API keys."""
+    """Return the first available provider: Groq → Cerebras → Gemini."""
     if os.getenv("GROQ_API_KEY"):
         return "groq"
-    if os.getenv("ANTHROPIC_API_KEY"):
-        return "claude"
+    if os.getenv("CEREBRAS_API_KEY"):
+        return "cerebras"
     if os.getenv("GEMINI_API_KEY"):
         return "gemini"
     return "fallback"
@@ -294,26 +295,26 @@ async def _call_groq(messages: list[dict], max_tokens: int) -> str:
         return resp.json()["choices"][0]["message"]["content"]
 
 
-async def _call_claude(messages: list[dict], max_tokens: int) -> str:
+async def _call_cerebras(messages: list[dict], max_tokens: int) -> str:
     import httpx
 
-    model = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")  # Haiku for cheap synthetic turns
+    model = os.getenv("CEREBRAS_MODEL", "llama-3.3-70b")
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
-            _ANTHROPIC_URL,
+            _CEREBRAS_URL,
             headers={
-                "x-api-key": os.getenv("ANTHROPIC_API_KEY", ""),
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
+                "Authorization": f"Bearer {os.getenv('CEREBRAS_API_KEY', '')}",
+                "Content-Type": "application/json",
             },
             json={
                 "model": model,
-                "max_tokens": max_tokens,
                 "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": 0.85,
             },
         )
         resp.raise_for_status()
-        return resp.json()["content"][0]["text"]
+        return resp.json()["choices"][0]["message"]["content"]
 
 
 async def _call_gemini(messages: list[dict], max_tokens: int) -> str:

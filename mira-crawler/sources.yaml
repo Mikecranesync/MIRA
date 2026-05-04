@@ -207,3 +207,41 @@ tiers:
       format: pdf
       manufacturer: Emerson
       description: "Vibration Analysis for Machinery Health Diagnosis — fault progression, spectral patterns"
+
+  # ── TIER 6: HVAC Public Domain / Government ─────────────────────
+  # NOTE: Major OEM service manuals (Lennox, Carrier, Trane, Daikin, York)
+  # require technician portal login — not crawlable under the zero-login rule.
+  # These are publicly accessible HVAC references with no login required.
+  6_hvac_public:
+    doe_hvac_fundamentals:
+      url: "https://www.energy.gov/sites/default/files/2014/12/f19/HVAC%20Fundamentals%20Handout.pdf"
+      type: reference
+      format: pdf
+      license: public-domain
+      description: "DOE HVAC Fundamentals — refrigeration cycle, cooling/heating loads, system types"
+      priority: 2
+
+    doe_operations_maintenance:
+      url: "https://www.energy.gov/sites/default/files/2013/10/f3/omguide_complete.pdf"
+      type: reference
+      format: pdf
+      license: public-domain
+      description: "DOE Operations & Maintenance Best Practices — HVAC equipment, chillers, AHUs, PM intervals"
+      priority: 2
+
+    epa_refrigerant_guide:
+      url: "https://www.epa.gov/sites/default/files/2015-08/documents/transitioning_to_low_gwp_refrigerants_in_the_u.s._0.pdf"
+      type: reference
+      format: pdf
+      license: public-domain
+      description: "EPA low-GWP refrigerant transition guide — R-22 replacement, R-410A, R-32, R-454B properties"
+      priority: 2
+
+    automationdirect_hvac_drives:
+      url: "https://cdn.automationdirect.com/static/manuals/gs30m/gs30m.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: AutomationDirect
+      equipment_id: GS30
+      crawl_pattern: direct
+      description: "GS30 HVAC-rated AC Drive manual — BACnet, airflow compensation, fire/smoke mode"

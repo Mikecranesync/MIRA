@@ -5,13 +5,11 @@ Runs in a daemon thread from runner_async.py.
 Usage:
     curl http://localhost:8020/results
 """
-import json
+
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-RESULTS_PATH = os.path.join(
-    os.path.dirname(__file__), "../artifacts/latest_run/results.json"
-)
+RESULTS_PATH = os.path.join(os.path.dirname(__file__), "../artifacts/latest_run/results.json")
 
 
 class Handler(BaseHTTPRequestHandler):

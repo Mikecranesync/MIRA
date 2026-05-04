@@ -14,7 +14,9 @@ All secrets via Doppler (`factorylm/prd`). Never in `.env` files committed to gi
 ## PII Sanitization
 `InferenceRouter.sanitize_context()` in `mira-bots/shared/inference/router.py`:
 - IPv4 → `[IP]`, MAC → `[MAC]`, Serial numbers → `[SN]`
-- Static method — callers must invoke explicitly before any API call
+- **Default-on inside `InferenceRouter.complete()`** (`sanitize=True` arg) — every cascade call is sanitized automatically
+- Open WebUI fallback in `rag_worker._call_llm()` also sanitizes before passing through, so neither path can leak
+- Pass `sanitize=False` only for offline evals that need to verify the sanitizer itself
 - Applied to both `str` content and multipart `text` blocks
 
 ## Safety Keywords

@@ -1,0 +1,11 @@
+id: unvalidated-fastapi-body
+language: Python
+severity: warning
+message: "FastAPI endpoint reads request body directly — ensure Pydantic model validates before use"
+rule:
+  pattern: await $REQ.body()
+  inside:
+    kind: function_definition
+    has:
+      kind: decorator
+      pattern: "@$ROUTER.$METHOD($PATH)"

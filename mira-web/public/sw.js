@@ -1,5 +1,17 @@
-const CACHE_NAME = 'factorylm-v2';
-const PRECACHE_URLS = ['/cmms', '/manifest.json', '/public/cmms.css'];
+// Bump CACHE_NAME on every release that ships a new CSS/JS asset under /public
+// so returning visitors get fresh files instead of stale cache. The activate
+// handler below deletes any cache key that doesn't match this name.
+const CACHE_NAME = 'factorylm-v4';
+const PRECACHE_URLS = [
+  '/',
+  '/cmms',
+  '/pricing',
+  '/manifest.json',
+  '/_tokens.css',
+  '/_components.css',
+  '/_dark-theme.css',
+  '/sun-toggle.js',
+];
 const API_PREFIXES = ['/api/', '/demo/'];
 
 self.addEventListener('install', event => {

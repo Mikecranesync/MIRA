@@ -57,44 +57,49 @@ function htmlHead(opts: {
 </head>`;
 }
 
-// ── Shared nav (matches index.html structure exactly) ──
+// ── Shared nav + footer ──
+//
+// The blog uses its own CSS world (blog.css) but the topbar markup is now
+// the same standardized 5-link nav + "Sign in" CTA used by the marketing
+// pages. Drops the M-icon, uses the wordmark only — matches the post-v0.5.0
+// site standard. blog.css's `.nav-*` classes still provide the visual style.
 
-function nav(): string {
+interface BlogNavOpts {
+  /** Path of the current page, used for aria-current="page". */
+  currentPath?: string;
+}
+
+function navLink(href: string, label: string, currentPath?: string): string {
+  const current = currentPath === href ? ` aria-current="page"` : "";
+  return `<li><a href="${href}"${current}>${label}</a></li>`;
+}
+
+function nav(opts: BlogNavOpts = {}): string {
   return `<nav id="main-nav" role="navigation" aria-label="Main navigation">
   <div class="nav-inner">
-    <a href="/" class="nav-logo" aria-label="FactoryLM home">
-      ${LOGO_SVG}
-      FactoryLM
-    </a>
+    <a href="/" class="nav-logo" aria-label="FactoryLM home">FactoryLM</a>
     <ul class="nav-links" role="list">
-      <li><a href="/#features">Product</a></li>
-      <li><a href="/blog">Blog</a></li>
-      <li><a href="/blog/fault-codes">Fault Codes</a></li>
-      <li><a href="/cmms">CMMS</a></li>
+      ${navLink("/cmms", "CMMS", opts.currentPath)}
+      ${navLink("/pricing", "Pricing", opts.currentPath)}
+      ${navLink("/blog", "Blog", opts.currentPath)}
+      ${navLink("/limitations", "Limitations", opts.currentPath)}
+      ${navLink("/security", "Security", opts.currentPath)}
     </ul>
-    <a href="/cmms" class="nav-cta">Try free</a>
+    <a href="/cmms" class="nav-cta">Sign in</a>
   </div>
 </nav>`;
 }
-
-// ── Shared footer (matches index.html structure exactly) ──
 
 function siteFooter(): string {
   return `<footer role="contentinfo">
   <div class="inner">
     <div class="footer-inner">
-      <a href="/" class="footer-logo" aria-label="FactoryLM home">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
-          <rect width="24" height="24" rx="5" fill="#f0a000"/>
-          <path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        FactoryLM
-      </a>
+      <a href="/" class="footer-logo" aria-label="FactoryLM home">FactoryLM</a>
       <ul class="footer-links" role="list">
-        <li><a href="/blog">Blog</a></li>
-        <li><a href="/blog/fault-codes">Fault Codes</a></li>
-        <li><a href="/cmms">CMMS</a></li>
-        <li><a href="mailto:contact@factorylm.com">Contact</a></li>
+        <li><a href="/limitations">Limitations</a></li>
+        <li><a href="/trust">Trust</a></li>
+        <li><a href="/privacy">Privacy</a></li>
+        <li><a href="/terms">Terms</a></li>
       </ul>
     </div>
   </div>
@@ -155,7 +160,7 @@ export function renderBlogPost(
 
   return `${htmlHead({ title: `${post.title} | FactoryLM`, description: post.description, canonical, jsonLd })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <article class="article-wrap">
@@ -220,28 +225,72 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
   </div>`
       : "";
 
+  const fixStepsLd = fc.recommendedFix
+    .split("\n")
+    .map((s) => s.replace(/^\d+\.\s*/, "").trim())
+    .filter(Boolean)
+    .map((text, i) => ({
+      "@type": "HowToStep",
+      position: i + 1,
+      name: text.split(".")[0] ?? text,
+      text,
+    }));
+
   const jsonLd = `<script type="application/ld+json">
-  {
+  ${JSON.stringify({
     "@context": "https://schema.org",
-    "@type": "Article",
-    "headline": ${JSON.stringify(fc.title)},
-    "description": ${JSON.stringify(fc.metaDescription)},
-    "url": ${JSON.stringify(canonical)},
-    "datePublished": "${TODAY}",
-    "dateModified": "${TODAY}",
-    "author": { "@type": "Organization", "name": "FactoryLM" },
-    "publisher": {
-      "@type": "Organization",
-      "name": "FactoryLM",
-      "logo": { "@type": "ImageObject", "url": "${BASE_URL}/public/icons/mira-512.png" }
-    },
-    "mainEntityOfPage": { "@type": "WebPage", "@id": ${JSON.stringify(canonical)} }
-  }
+    "@graph": [
+      {
+        "@type": "TroubleshootingGuide",
+        "@id": `${canonical}#guide`,
+        name: fc.title,
+        description: fc.metaDescription,
+        url: canonical,
+        datePublished: TODAY,
+        dateModified: TODAY,
+        author: { "@type": "Organization", name: "FactoryLM", url: BASE_URL },
+        publisher: {
+          "@type": "Organization",
+          name: "FactoryLM",
+          logo: { "@type": "ImageObject", url: `${BASE_URL}/public/icons/mira-512.png` },
+        },
+        about: {
+          "@type": "Product",
+          name: fc.equipment,
+          manufacturer: { "@type": "Organization", name: fc.manufacturer },
+        },
+        step: fixStepsLd,
+        mainEntity: {
+          "@type": "FAQPage",
+          mainEntity: [
+            {
+              "@type": "Question",
+              name: `What does ${fc.faultCode} mean on ${fc.equipment}?`,
+              acceptedAnswer: { "@type": "Answer", text: fc.description },
+            },
+            {
+              "@type": "Question",
+              name: `What causes ${fc.faultCode} on ${fc.equipment}?`,
+              acceptedAnswer: {
+                "@type": "Answer",
+                text: fc.commonCauses.join(" "),
+              },
+            },
+            {
+              "@type": "Question",
+              name: `How do I fix ${fc.faultCode} on ${fc.equipment}?`,
+              acceptedAnswer: { "@type": "Answer", text: fc.recommendedFix },
+            },
+          ],
+        },
+      },
+    ],
+  }, null, 2)}
   </script>`;
 
   return `${htmlHead({ title: `${fc.title} | FactoryLM`, description: fc.metaDescription, canonical, jsonLd })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <article class="article-wrap">
@@ -330,7 +379,7 @@ export function renderBlogIndex(
     jsonLd,
   })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <div class="blog-hero">
@@ -361,7 +410,7 @@ ${postCards}
 
 <div class="inner" style="padding-bottom: 48px;">
   <div class="cta-card fade-in">
-    <h3>Get answers faster with Mira AI</h3>
+    <h3>Get answers faster with MIRA AI</h3>
     <p>Type a fault code and get the fix from your equipment manuals in seconds.</p>
     <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
   </div>
@@ -428,7 +477,7 @@ ${codes
     jsonLd,
   })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <div class="blog-hero">

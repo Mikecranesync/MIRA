@@ -2,10 +2,14 @@
 
 **Version:** v3.4.0 | **Updated:** 2026-04-17
 **One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Claude (cascade) | `local` → Open WebUI → qwen2.5vl:7b
-**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → GSDEngine → Anthropic API
+**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Gemini (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
+**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
 
 ---
+
+## North Star + Strategy
+- **Technical flywheel:** `NORTH_STAR.md` — read before any feature work; every PR references which flywheel step it supports
+- **Commercial strategy:** `STRATEGY.md` — ICP, pricing tiers, GTM motion, competitive moat
 
 ## Coding Principles → `wiki/references/coding-principles.md`
 ## KANBAN Board → `wiki/references/kanban.md`
@@ -15,8 +19,8 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **No cloud except:** Anthropic Claude API + NeonDB (Doppler-managed secrets).
-3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the Claude API call.
+2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 — never reintroduce).
+3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler (`factorylm/prd`). Never in `.env` files committed to git.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
 6. **Commits:** Conventional format (`feat/fix/security/docs/refactor/test/chore/BREAKING`).
@@ -31,9 +35,11 @@ MIRA/
 ├── mira-bots/       # Telegram, Slack adapters + shared diagnostic engine
 ├── mira-bridge/     # Node-RED orchestration, SQLite WAL shared state
 ├── mira-mcp/        # FastMCP server, NeonDB recall, equipment diagnostic tools
-├── mira-pipeline/   # OpenAI-compat API wrapping GSDEngine — active VPS chat path
+├── mira-pipeline/   # OpenAI-compat API wrapping Supervisor (shared/engine.py) — active VPS chat path
 ├── mira-web/        # PLG funnel — Hono/Bun, Stripe, /cmms landing + Mira AI chat
 ├── mira-cmms/       # Atlas CMMS — work orders, PM scheduling, asset registry
+├── mira-crawler/    # KB ingest + manual chunker (OEM discovery pipeline)
+├── mira-ops/        # Observability dashboards (Prometheus, Grafana, Flower)
 ├── mira-relay/      # Cloud relay endpoint for Ignition factory→cloud tag streaming (SaaS-only, in saas.yml)
 ├── mira-sidecar/    # ⚠️ LEGACY — ChromaDB RAG, superseded by mira-pipeline (ADR-0008); sunset pending OEM migration
 ├── mira-connect/    # ⚠️ DEFERRED — Modbus/PLC drivers (post-MVP, "Config 4")
@@ -96,13 +102,25 @@ bash install/smoke_test.sh
 
 ---
 
+## Screenshot Rule (Promotional Materials Pipeline)
+
+Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-screenshots/` with a descriptive filename:
+- Format: `YYYY-MM-DD_feature-name_viewport.png` (e.g., `2026-04-26_pm-calendar-auto-scheduled_desktop.png`)
+- Always capture both desktop (1440x900) and mobile (412x915) viewports
+- These feed the automated YouTube video pipeline in `tools/seedance-video-gen.py` and `tools/` video builders
+- This folder is the single source of truth for all promotional visuals
+- Include screenshots of: new features, before/after comparisons, key user flows, real data displays
+- Never delete from this folder — it's an append-only archive
+
+---
+
 ## Gotchas
 
 - **macOS keychain over SSH** — `docker build`/`doppler` fail on Bravo/Charlie. Workaround: `docker cp` + restart. Bravo fixed with `doppler configure set token-storage file`.
 - **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
 - **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
 - **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
-- **Gemini key blocked** — 403 in Doppler. Cascade falls through to Groq/Claude.
+- **Gemini key blocked** — 403 in Doppler. Cascade falls through to next provider; if all fail, falls through to Open WebUI/Ollama.
 
 ---
 
@@ -117,9 +135,10 @@ bash install/smoke_test.sh
 - **ADRs:** `docs/adr/`
 - **Ops wiki:** `wiki/` — **Session start: read `wiki/hot.md`. Session end: update it.**
 - **Wiki schema:** `wiki/SCHEMA.md`
+- **Wiki sync across nodes + `~/MiraDrop/` auto-ingest:** `wiki/nodes/wiki-sync.md`
 - **Skills:** `.claude/skills/`
 - **Sprint state:** `.planning/STATE.md`
-- **Active 90-day MVP plan:** `~/.claude/plans/yes-giggly-floyd.md` — locked 2026-04-19 → 2026-07-19; do not propose work outside the 10 units
+- **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
 
 ---
@@ -135,6 +154,25 @@ bash install/smoke_test.sh
 | `mira-relay` | **Active SaaS infrastructure** (NOT deferred) | Cloud endpoint for Ignition factory→cloud tag streaming; powers MIRA Connect activation flow on `factorylm.com`. Lives in `docker-compose.saas.yml` only. | still in repo + saas.yml |
 
 To restore an archived module: `git checkout archive/<branch> -- <module-dir>` then commit on a new branch.
+
+---
+
+## Automated Code Review Pipeline
+
+Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
+
+| Component | File | What it does |
+|-----------|------|-------------|
+| GitHub Action | `.github/workflows/code-review.yml` | shellcheck → ast-grep (IPs/secrets) → cascade review (Groq → Cerebras → Gemini) → PR comment |
+| ast-grep rules | `.ast-grep-rules/` | Hardcoded IPs, secrets, missing socket error handling, raw FastAPI body |
+| ast-grep config | `sgconfig.yml` | Rule discovery (replaces diffray — diffray v0.5.4 requires OpenAI) |
+| Self-fix script | `scripts/pr_self_fix.sh` | Reads 🔴 IMPORTANT review comments, asks the LLM cascade for patches, applies + pushes (up to 3 loops) |
+| Pre-commit hook | `.githooks/pre-commit` | shellcheck + rg credential scan + debug artifact scan on staged files |
+
+**To trigger manually:** `gh workflow run code-review.yml`
+**To run self-fix:** `bash scripts/pr_self_fix.sh <PR_NUMBER>`
+**Hook active:** `git config core.hooksPath .githooks` (already set in this repo)
+**Tools required locally:** `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`
 
 ---
 

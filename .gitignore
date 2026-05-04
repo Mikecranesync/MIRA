@@ -5,6 +5,10 @@ mira_copy/outputs/*
 # Session ephemera — PR/issue drafts, one-off probe scripts, worktree parent
 .tmp_*
 .claude/worktrees/
+.worktrees/
+
+# Skill eval workspaces (skill-creator iteration runs; rebuilt locally per session)
+.claude/skills/*-workspace/
 
 # Secrets — NEVER commit these
 .env
@@ -139,3 +143,39 @@ factorylm.properties
 
 # Observability data volumes (managed by Docker)
 observability/grafana/provisioning/dashboards/celery-tasks.json
+.hypothesis/
+
+# Test coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+
+# Playwright MCP session ephemera (per-session, regenerable)
+.playwright-mcp/
+
+# Web-review skill working directories (bare-date dirs hold node_modules,
+# audit JSON, probe scripts — regenerable). Per-PR proof dirs (date-pr-NNN)
+# are explicitly tracked.
+tools/web-review-runs/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
+
+# Marketing video binaries — large, regenerable; keep spend.json tracked
+marketing/videos/**/*.mp4
+marketing/videos/**/*.mov
+marketing/videos/**/*.webm
+marketing/videos/**/*.mp3
+marketing/videos/**/*.wav
+marketing/videos/**/*.ogg
+marketing/videos/**/*.m4a
+
+# Obsidian per-machine state (track plugin config under .obsidian/, not these)
+wiki/.obsidian/workspace*
+wiki/.obsidian/app.json
+wiki/.obsidian/appearance.json
+wiki/.smart-env/
+
+# iCloud sync duplicates (filename ending in " 2.ext"). Keep them out of
+# the repo even if iCloud re-creates them locally.
+**/* 2.md
+**/* 2.txt
+
+.claire/

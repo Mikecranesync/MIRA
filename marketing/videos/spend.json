@@ -1,0 +1,29 @@
+[
+  {
+    "pipeline": "comic",
+    "version": "v1",
+    "output": "/Users/factorylm/mira/marketing/videos/comic-v1/mira_explainer_v1.mp4",
+    "shots": 5,
+    "duration_seconds": 71.17,
+    "estimated_cost_usd": 0.03,
+    "cost_note": "1x TTS call (tts-1-hd, ~1140 chars); visuals reused from user-supplied comic refs",
+    "built_at": "2026-04-24T22:13:22.683621+00:00"
+  },
+  {
+    "pipeline": "comic",
+    "version": "v2",
+    "output": "/Users/factorylm/mira/marketing/videos/comic-v2/mira_explainer_v2.mp4",
+    "shots": 5,
+    "beats": 21,
+    "duration_seconds": 92.0,
+    "estimated_cost_usd": 0.05,
+    "cost_note": "21x TTS calls (tts-1-hd, ~0.9 speed); visuals reused from user-supplied refs; music synthesized in ffmpeg",
+    "features": [
+      "per-beat TTS",
+      "piecewise zoompan camera tracking",
+      "synthesized 2-mood music bed",
+      "sidechain ducking"
+    ],
+    "built_at": "2026-04-24T23:51:47.550233+00:00"
+  }
+]

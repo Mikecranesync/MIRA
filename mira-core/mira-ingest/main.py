@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import hashlib
 import io
 import json
 import logging
@@ -14,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+import pdfplumber
+from asset_tag import sanitize_asset_tag
 from crawl_verifier import (
     OUTCOME_SUCCESS,
     classify_historical,
@@ -24,8 +27,12 @@ from crawl_verifier import (
 )
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image
+from pillow_heif import register_heif_opener
 from pydantic import BaseModel
 from route_fallback import RETRY_ON, run_fallback
+
+# Enable HEIC/HEIF decoding in Pillow so iPhone photos ingest without conversion
+register_heif_opener()
 
 logger = logging.getLogger("mira-ingest")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -45,6 +52,8 @@ FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY", "")
 FIRECRAWL_API_BASE = "https://api.firecrawl.dev/v1"
 APIFY_API_KEY = os.getenv("APIFY_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+PIPELINE_BASE_URL = os.getenv("PIPELINE_BASE_URL", "http://mira-pipeline-saas:9099")
+PIPELINE_API_KEY = os.getenv("PIPELINE_API_KEY", "")
 
 # Manufacturer → primary doc-search URL (Firecrawl maps these to find model PDFs)
 _MANUFACTURER_DOC_URLS: dict[str, str] = {
@@ -124,6 +133,28 @@ def _parse_structured_description(raw: str) -> dict:
 
 
 app = FastAPI(title="mira-ingest")
+
+
+@app.middleware("http")
+async def log_request_id(request, call_next):  # type: ignore[no-untyped-def]
+    """Log X-Request-Id on every request so hub uploads correlate end-to-end.
+
+    The hub generates a request id at upload entry and forwards it as
+    X-Request-Id on every fetch to mira-ingest. We log it (alongside method
+    + path) at INFO so a single grep can recover the full pipeline timeline.
+    """
+    request_id = request.headers.get("x-request-id", "")
+    if request_id and request.url.path not in ("/health", "/health/db"):
+        logger.info(
+            "request_received method=%s path=%s request_id=%s",
+            request.method,
+            request.url.path,
+            request_id,
+        )
+    response = await call_next(request)
+    if request_id:
+        response.headers["X-Request-Id"] = request_id
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -391,6 +422,33 @@ async def startup():
     except Exception as e:
         logger.warning("Could not reach Ollama at %s to verify models: %s", OLLAMA_URL, e)
 
+    # Check that migration 006 (content_tsv tsvector column) has been applied.
+    # BM25 hybrid search silently falls back to vector-only when the column is missing.
+    if os.getenv("NEON_DATABASE_URL"):
+        try:
+            from db.neon import _engine as _neon_engine
+            from sqlalchemy import text as _text
+
+            with _neon_engine().connect() as _conn:
+                row = _conn.execute(
+                    _text(
+                        "SELECT 1 FROM information_schema.columns "
+                        "WHERE table_name='knowledge_entries' AND column_name='content_tsv' LIMIT 1"
+                    )
+                ).fetchone()
+            if row:
+                logger.info("BM25 ready — content_tsv column present on knowledge_entries.")
+            else:
+                logger.warning(
+                    "BM25 DISABLED — content_tsv column missing from knowledge_entries. "
+                    "Apply migration 006: "
+                    "mira-core/mira-ingest/db/migrations/006_knowledge_tsvector.sql "
+                    "(Block 1 in a transaction; Block 2 outside for CONCURRENTLY index). "
+                    "Hybrid search falls back to vector-only until migration is applied."
+                )
+        except Exception as _tsv_exc:
+            logger.warning("Could not check content_tsv column: %s", _tsv_exc)
+
 
 # ---------------------------------------------------------------------------
 # Endpoints
@@ -451,6 +509,8 @@ async def ingest_photo(
             raise
         except Exception:
             pass  # fail open — never block on DB errors
+
+    asset_tag = sanitize_asset_tag(asset_tag)
 
     raw = await image.read()
     if not raw:
@@ -653,6 +713,84 @@ async def search_photos(body: dict):
 
 
 # ---------------------------------------------------------------------------
+# PM Extraction trigger — fires after a manual is successfully ingested
+# ---------------------------------------------------------------------------
+
+_PM_FNAME_STRIP = re.compile(r"[_\-\.]")
+
+
+def _parse_manufacturer_model(equipment_type: str, fname: str) -> tuple[str, str] | None:
+    """Parse (manufacturer, model_number) from equipment_type or filename.
+
+    equipment_type preferred ("Yaskawa GA500" → ("Yaskawa", "GA500")).
+    Falls back to filename stem split ("Yaskawa_GA500_Manual.pdf" → ("Yaskawa", "GA500")).
+    Returns None if we can't extract both parts.
+    """
+    src = equipment_type.strip()
+    if not src:
+        stem = re.sub(r"\.pdf$", "", fname, flags=re.IGNORECASE).strip()
+        src = _PM_FNAME_STRIP.sub(" ", stem)
+    parts = [p for p in src.split() if p]
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    return None
+
+
+def _maybe_trigger_pm_extraction(equipment_type: str, fname: str, tenant_id: str) -> None:
+    """Fire-and-forget PM extraction via mira-pipeline REST API.
+
+    Parses manufacturer + model from equipment_type or filename, then calls
+    POST /api/pm/extract on the pipeline. Non-blocking — failures are logged only.
+    """
+    if not PIPELINE_BASE_URL or not PIPELINE_API_KEY:
+        return
+
+    parsed = _parse_manufacturer_model(equipment_type, fname)
+    if not parsed:
+        logger.debug(
+            "PM extraction skipped: cannot parse manufacturer+model from %r / %r",
+            equipment_type,
+            fname,
+        )
+        return
+
+    manufacturer, model_number = parsed
+
+    async def _call():
+        try:
+            async with httpx.AsyncClient(timeout=300) as client:
+                resp = await client.post(
+                    f"{PIPELINE_BASE_URL}/api/pm/extract",
+                    headers={"Authorization": f"Bearer {PIPELINE_API_KEY}"},
+                    json={
+                        "manufacturer": manufacturer,
+                        "model_number": model_number,
+                        "tenant_id": tenant_id or "mike",
+                    },
+                )
+            if resp.is_success:
+                data = resp.json()
+                logger.info(
+                    "PM_EXTRACT_AUTO manufacturer=%s model=%s chunks=%d stored=%d",
+                    manufacturer,
+                    model_number,
+                    data.get("chunks_found", 0),
+                    data.get("schedules_stored", 0),
+                )
+            else:
+                logger.warning(
+                    "PM_EXTRACT_AUTO non-success: %s %s", resp.status_code, resp.text[:200]
+                )
+        except Exception as exc:
+            logger.warning("PM_EXTRACT_AUTO failed (non-fatal): %s", exc)
+
+    asyncio.create_task(_call())
+    logger.info(
+        "PM_EXTRACT_AUTO queued for %s %s (tenant=%s)", manufacturer, model_number, tenant_id
+    )
+
+
+# ---------------------------------------------------------------------------
 # Document KB ingest — upload original PDF to Open WebUI, let it chunk + embed
 # ---------------------------------------------------------------------------
 
@@ -664,6 +802,10 @@ async def ingest_document_kb(
     collection_hint: str = Form(default=None),
     equipment_type: str = Form(default=None),
     tenant_id: str = Form(default=""),
+    relevance_gate: str = Form(
+        default="off"
+    ),  # 'on' opts in (also requires RELEVANCE_GATE_ENABLED env)
+    source: str = Form(default="unknown"),  # 'inbox' | 'web-upload' | 'cron-oem' | 'unknown'
 ):
     """Upload a PDF to Open WebUI Knowledge Base.
 
@@ -709,11 +851,62 @@ async def ingest_document_kb(
     else:
         tenant_id, tenant_source = "", "default"
     logger.info(
-        "Document KB ingest tenant=%s source=%s filename=%s",
+        "Document KB ingest tenant=%s source=%s filename=%s ingest_source=%s",
         tenant_id or "(none)",
         tenant_source,
         fname,
+        source,
     )
+
+    # Compute content hash up front — used by both dedup gate and the
+    # post-success ledger record below.
+    content_hash = hashlib.sha256(raw).hexdigest()
+
+    # GATE 1: per-tenant content-hash dedup (Unit 3.5).
+    # Cheap DB lookup; fail-open via tenant_ingested_files_lookup itself.
+    if tenant_id:
+        from db.neon import tenant_ingested_files_lookup
+
+        existing = tenant_ingested_files_lookup(tenant_id, content_hash)
+        if existing:
+            logger.info(
+                "[dedup] hit tenant=%s hash=%s original=%s",
+                tenant_id,
+                content_hash[:12],
+                existing["filename"],
+            )
+            return {
+                "status": "duplicate",
+                "filename": fname,
+                "original_filename": existing["filename"],
+                "original_uploaded_at": existing["ingested_at"].isoformat()
+                if hasattr(existing["ingested_at"], "isoformat")
+                else str(existing["ingested_at"]),
+                "content_hash": content_hash,
+            }
+
+    # GATE 2: LLM relevance check (Unit 3.5). Opt-in via env + form flag.
+    # Inbox path always sets relevance_gate=on; web upload picker leaves
+    # it default-off so the existing UX doesn't change.
+    if relevance_gate == "on" and os.getenv("RELEVANCE_GATE_ENABLED", "").lower() == "true":
+        from relevance import classify_document
+
+        first_text = _extract_first_pages_text(raw, n=2)
+        is_manual, reason = await classify_document(first_text)
+        logger.info(
+            "[relevance] tenant=%s file=%s verdict=%s reason=%s",
+            tenant_id or "(none)",
+            fname,
+            "YES" if is_manual else "NO",
+            reason,
+        )
+        if not is_manual:
+            return {
+                "status": "rejected",
+                "filename": fname,
+                "reason": reason,
+                "content_hash": content_hash,
+            }
 
     # Tier limit check (fail open on DB errors — never block on infra failures)
     if tenant_id:
@@ -790,12 +983,24 @@ async def ingest_document_kb(
     except Exception as e:
         logger.warning("KB attach failed (non-fatal, file is uploaded): %s", e)
 
+    # Record the file in the per-tenant dedup ledger (Unit 3.5).
+    # Runs after OW attach so we only mark files we actually shipped to
+    # the KB. Fail-open: ledger record failure is not a user-visible error.
+    if tenant_id:
+        from db.neon import tenant_ingested_files_record
+
+        tenant_ingested_files_record(tenant_id, content_hash, fname, source=source)
+
     logger.info(
         "Document KB ingest complete: %s → collection='%s' processing_status=%s",
         fname,
         col_name,
         processing_status,
     )
+
+    # Auto-trigger PM extraction (North Star flywheel step 4→5).
+    # Parse manufacturer + model from equipment_type or filename, then fire-and-forget.
+    _maybe_trigger_pm_extraction(equipment_type or "", fname, tenant_id or MIRA_TENANT_ID)
 
     return {
         "status": "ok",
@@ -805,7 +1010,28 @@ async def ingest_document_kb(
         "file_id": file_id,
         "processing_status": processing_status,
         "equipment_type": equipment_type or "",
+        "content_hash": content_hash,
     }
+
+
+def _extract_first_pages_text(raw: bytes, n: int = 2) -> str:
+    """Extract text from the first N pages of a PDF for the relevance gate.
+
+    Returns "" on parse failure (relevance.classify_document treats empty
+    text as fail-open).
+    """
+    try:
+        with pdfplumber.open(io.BytesIO(raw)) as doc:
+            pages = doc.pages[:n]
+            chunks: list[str] = []
+            for page in pages:
+                txt = page.extract_text() or ""
+                if txt:
+                    chunks.append(txt)
+            return "\n\n".join(chunks)
+    except Exception as exc:
+        logger.warning("[relevance] pdfplumber extract failed: %s", exc)
+        return ""
 
 
 # ---------------------------------------------------------------------------

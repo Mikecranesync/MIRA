@@ -21,7 +21,7 @@ services:
       - WEBUI_NAME=MIRA
       - WEBUI_ENABLE_TELEMETRY=false
       - WEBUI_CHECK_FOR_UPDATES=false
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OPENAI_API_BASE_URLS=http://mira-pipeline-saas:9099/v1
       - OPENAI_API_KEYS=${PIPELINE_API_KEY:-}
       - DEFAULT_MODELS=mira-diagnostic
@@ -61,7 +61,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - LLM_MODEL_ANTHROPIC=claude-sonnet-4-6
       - EMBEDDING_PROVIDER=ollama
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OLLAMA_EMBED_MODEL=nomic-embed-text
       - HOST=0.0.0.0
       - PORT=5000
@@ -93,9 +93,12 @@ services:
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY}
       - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID}
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - EMBED_TEXT_MODEL=nomic-embed-text
       - APIFY_API_KEY=${APIFY_API_KEY}
+      # Unit 3.5 — magic-inbox safety gates
+      - RELEVANCE_GATE_ENABLED=${RELEVANCE_GATE_ENABLED:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
     networks:
       - mira-net
     restart: unless-stopped
@@ -118,6 +121,8 @@ services:
       - FASTMCP_PORT=8000
       - MCP_REST_API_KEY=${MCP_REST_API_KEY}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
+      - PIPELINE_BASE_URL=http://mira-pipeline-saas:9099
+      - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
     volumes:
       - /opt/mira/data:/mira-db
     networks:
@@ -151,8 +156,13 @@ services:
       - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
+      # Unit 3 — magic email inbox (Apps Script + Gmail plus-addressing)
+      - INBOUND_HMAC_SECRET=${INBOUND_HMAC_SECRET:-}
+      - MIRA_INGEST_URL=${MIRA_INGEST_URL:-http://mira-ingest-saas:8001}
+      - INBOX_DOMAIN=${INBOX_DOMAIN:-factorylm.com}
     networks:
       - mira-net
+      - cmms-ext
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3000/api/health"]
@@ -166,11 +176,13 @@ services:
       context: .
       dockerfile: mira-pipeline/Dockerfile
     container_name: mira-pipeline-saas
+    ports:
+      - "127.0.0.1:9099:9099"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       - MIRA_DB_PATH=/mira-db/mira.db
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
       - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
@@ -178,7 +190,6 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - VISION_MODEL=qwen2.5vl:7b
       - INFERENCE_BACKEND=cloud
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
@@ -192,11 +203,19 @@ services:
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - INGEST_SERVICE_URL=http://mira-ingest-saas:8001
       - EVAL_RUNS_DIR=/eval-runs
+      - SESSION_RECORDING_PATH=/data/sessions
+      - AGENT_LOG_DIR=/mira-db/agent-runs
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - NTFY_URL=${NTFY_URL:-https://ntfy.sh}
+      - NTFY_TOPIC=${NTFY_TOPIC:-mira-factorylm-alerts}
     volumes:
       - /opt/mira/data:/mira-db
       - /opt/mira/data/mem0:/data/mem0
       - mira-webui-data:/app/backend/data:ro
       - /opt/mira/tests/eval/runs:/eval-runs:ro
+      - /opt/mira/mira-bridge/data/sessions:/data/sessions
     networks:
       - mira-net
     restart: unless-stopped
@@ -206,6 +225,44 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+
+  mira-bot-telegram:
+    build:
+      context: .
+      dockerfile: mira-bots/telegram/Dockerfile
+    container_name: mira-bot-telegram
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - MIRA_DB_PATH=/mira-db/mira.db
+      - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - VISION_MODEL=qwen2.5vl:7b
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - INFERENCE_BACKEND=cloud
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=llama-3.3-70b-versatile
+      - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - CEREBRAS_MODEL=llama3.1-8b
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
+      - MCP_BASE_URL=http://mira-mcp-saas:8001
+      - SESSION_RECORDING_PATH=/data/sessions
+      - NTFY_URL=${NTFY_URL:-https://ntfy.sh}
+      - NTFY_TOPIC=${NTFY_TOPIC:-mira-factorylm-alerts}
+    volumes:
+      - /opt/mira/data:/mira-db
+      - /opt/mira/mira-bridge/data/sessions:/data/sessions
+    networks:
+      - mira-net
+    restart: unless-stopped
 
   mira-docling:
     image: quay.io/docling-project/docling-serve:v1.16.1
@@ -246,11 +303,170 @@ services:
       retries: 3
       start_period: 10s
 
+  # Nango — credential vault and auth proxy for third-party CMMS/platform integrations
+  # Dashboard: http://nango-server:3003 (internal) — nginx-proxy to /nango on public domain
+  # Free self-hosted: auth + proxy only. Syncs/actions require Nango Cloud or Enterprise.
+  nango-db:
+    image: postgres:16-alpine
+    container_name: nango-db
+    environment:
+      POSTGRES_USER: nango
+      POSTGRES_PASSWORD: ${NANGO_DB_PASSWORD:-nango}
+      POSTGRES_DB: nango
+    volumes:
+      - nango-db-data:/var/lib/postgresql/data
+    networks:
+      - mira-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nango"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nango-server:
+    image: nangohq/nango-server:hosted
+    container_name: nango-server
+    platform: linux/amd64
+    ports:
+      - "127.0.0.1:3003:3003"
+      - "127.0.0.1:3009:3009"
+    environment:
+      - NANGO_ENCRYPTION_KEY=${NANGO_ENCRYPTION_KEY}
+      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY}
+      - NANGO_DB_USER=nango
+      - NANGO_DB_PASSWORD=${NANGO_DB_PASSWORD:-nango}
+      - NANGO_DB_HOST=nango-db
+      - NANGO_DB_PORT=5432
+      - NANGO_DB_NAME=nango
+      - NANGO_DB_SSL=false
+      - RECORDS_DATABASE_URL=postgresql://nango:${NANGO_DB_PASSWORD:-nango}@nango-db:5432/nango
+      - NANGO_SERVER_URL=${NANGO_SERVER_URL:-http://localhost:3003}
+      - NANGO_PUBLIC_CONNECT_URL=${NANGO_PUBLIC_CONNECT_URL:-http://localhost:3009}
+      - SERVER_PORT=3003
+      - FLAG_AUTH_ENABLED=${NANGO_DASHBOARD_AUTH_ENABLED:-false}
+      - NANGO_DASHBOARD_USERNAME=${NANGO_DASHBOARD_USERNAME:-admin}
+      - NANGO_DASHBOARD_PASSWORD=${NANGO_DASHBOARD_PASSWORD:-changeme}
+      - FLAG_SERVE_CONNECT_UI=true
+      - NANGO_CONNECT_UI_PORT=3009
+      - LOG_LEVEL=info
+      - TELEMETRY=false
+    volumes:
+      - ./nango-integrations/providers.yaml:/app/nango/packages/providers/providers.yaml:ro
+    networks:
+      - mira-net
+    depends_on:
+      nango-db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  mira-hub:
+    build:
+      context: ./mira-hub
+      args:
+        NEXT_PUBLIC_BASE_PATH: ""
+        NEXT_PUBLIC_API_BASE: ""
+    container_name: mira-hub
+    ports:
+      - "127.0.0.1:3101:3000"
+    environment:
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.factorylm.com}
+      # AES-256-GCM key for at-rest encryption of OAuth tokens in hub_channel_bindings
+      - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
+      # NextAuth (Auth.js) — sign-in for the post-paywall hub
+      # AUTH_SECRET: 32-byte random hex used to sign session JWTs
+      # NEXTAUTH_URL: NextAuth v4 builds OAuth callback URLs as
+      #   `${NEXTAUTH_URL}/callback/{provider}` — the path portion of
+      #   NEXTAUTH_URL becomes the auth-API base, NOT the app base. With
+      #   `/hub` only, callback resolves to /hub/callback/google which doesn't
+      #   match the actual handler at /hub/api/auth/callback/google → Google
+      #   returns redirect_uri_mismatch. Including `/api/auth` makes the
+      #   callback resolve to /hub/api/auth/callback/google. Verified via
+      #   live probe of the OAuth flow.
+      # If updating: Doppler factorylm/prd NEXTAUTH_URL must match this value
+      # (or be unset to use this default). GCP authorized redirect URI for
+      # client_id 246891599587-* must include
+      # https://app.factorylm.com/hub/api/auth/callback/google.
+      - AUTH_SECRET=${AUTH_SECRET:-}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/hub/api/auth}
+      - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/hub/api/auth}
+      # Sign-in OAuth client. Named HUB_AUTH_GOOGLE_* to avoid collision with
+      # the existing GOOGLE_OAUTH_CLIENT_ID (Apps Script magic-inbox) and
+      # GOOGLE_CLIENT_ID (Drive integration). Different scopes than both.
+      - HUB_AUTH_GOOGLE_CLIENT_ID=${HUB_AUTH_GOOGLE_CLIENT_ID:-}
+      - HUB_AUTH_GOOGLE_CLIENT_SECRET=${HUB_AUTH_GOOGLE_CLIENT_SECRET:-}
+      # Default tenant carried by lib helpers when no session is present (cron, scripts).
+      # Real API requests resolve tenant from the NextAuth session.
+      - HUB_TENANT_ID=${HUB_TENANT_ID:-mike}
+      # Refine simple-rest data provider — must be set in prod or queries silently mock-fall-through
+      - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-https://app.factorylm.com}
+      # Google Workspace integration OAuth (Drive/Gmail) — distinct from sign-in client
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      # Slack — both bot-token shortcut and full OAuth are supported by the route
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
+      - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET:-}
+      # Microsoft 365 / Teams (single Azure app covers both)
+      - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID:-}
+      - MICROSOFT_CLIENT_SECRET=${MICROSOFT_CLIENT_SECRET:-}
+      # Dropbox
+      - DROPBOX_APP_KEY=${DROPBOX_APP_KEY:-}
+      - DROPBOX_APP_SECRET=${DROPBOX_APP_SECRET:-}
+      # Atlassian Confluence
+      - ATLASSIAN_CLIENT_ID=${ATLASSIAN_CLIENT_ID:-}
+      - ATLASSIAN_CLIENT_SECRET=${ATLASSIAN_CLIENT_SECRET:-}
+      # Telegram (status endpoint reads these; route validates pasted tokens separately)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
+      # mira-ingest target for Knowledge upload pipeline
+      - INGEST_URL=${INGEST_URL:-http://mira-ingest-saas:8001}
+      # Google Picker API key (distinct from OAuth client secret) + project number
+      - GOOGLE_PICKER_API_KEY=${GOOGLE_PICKER_API_KEY:-}
+      - GOOGLE_CLOUD_PROJECT_NUMBER=${GOOGLE_CLOUD_PROJECT_NUMBER:-}
+      # Open WebUI delete-file auth for removing parsed files from KB
+      - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core-saas:8080}
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      # Nango — credential vault for CMMS and platform integrations
+      - NANGO_SERVER_URL=${NANGO_SERVER_URL:-http://nango-server:3003}
+      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-}
+      # LLM cascade for AI Reports (Groq → Cerebras → Gemini)
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      # Atlas CMMS live stats (public URL — mira-hub is not on cmms-ext network)
+      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-https://cmms.factorylm.com}
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+    networks:
+      - mira-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
 networks:
   mira-net:
     driver: bridge
+  cmms-ext:
+    external: true
+    name: factorylm-cmms_default
 
 volumes:
   mira-webui-data:
   mira-chroma:
   mira-docs:
+  nango-db-data:

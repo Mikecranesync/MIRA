@@ -99,14 +99,35 @@ export async function sendBetaWelcomeEmail(
 }
 
 /**
+ * Send a magic-link sign-in email (#SO-070).
+ * Single-use, 10-minute TTL token. Lands at /sample after click.
+ */
+export async function sendMagicLinkEmail(
+  email: string,
+  loginUrl: string
+): Promise<boolean> {
+  return sendEmail({
+    to: email,
+    subject: "Your FactoryLM sign-in link",
+    templateName: "magic-link",
+    vars: {
+      LOGIN_URL: loginUrl,
+      EMAIL: email,
+    },
+  });
+}
+
+/**
  * Send the "you're in" email after successful Stripe payment.
  * Includes JWT login link for immediate CMMS access.
+ * Also includes the tenant's magic-inbox address if their inbox_slug is set.
  */
 export async function sendActivatedEmail(
   email: string,
   firstName: string,
   company: string,
-  token: string
+  token: string,
+  inboxAddress: string | null = null,
 ): Promise<boolean> {
   return sendEmail({
     to: email,
@@ -118,8 +139,155 @@ export async function sendActivatedEmail(
       TOKEN: token,
       ACTIVATED_URL: `${PUBLIC_URL()}/activated?token=${token}`,
       CMMS_URL: `${PUBLIC_URL()}/api/cmms/login?token=${token}`,
+      INBOX_ADDRESS: inboxAddress || "",
+      INBOX_ADDRESS_URL: inboxAddress ? `mailto:${inboxAddress}` : "#",
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Magic email inbox (Unit 3) — receipt email after Postmark webhook fires
+// ---------------------------------------------------------------------------
+
+export interface InboxReceiptResult {
+  ingested: { filename: string }[];
+  skipped: { filename: string; reason: string }[];
+  too_large: { filename: string; size_mb: number }[];
+  duplicates: { filename: string; original_filename: string; original_uploaded_at: string }[];
+  rejected: { filename: string; reason: string }[];
+  errors: { filename: string; status: number | string }[];
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return "earlier";
+  // Trim to YYYY-MM-DD if we can parse it; otherwise pass through.
+  try {
+    const d = new Date(iso);
+    if (Number.isFinite(d.getTime())) {
+      return d.toISOString().slice(0, 10);
+    }
+  } catch {
+    // fall through
+  }
+  return iso;
+}
+
+function formatInboxReceiptBody(firstName: string, r: InboxReceiptResult): string {
+  const lines: string[] = [];
+  lines.push(`Hey ${firstName || "there"},`);
+  lines.push("");
+
+  if (r.ingested.length > 0) {
+    lines.push("Got it. Here's what landed in your knowledge base just now:");
+    lines.push("");
+    for (const f of r.ingested) {
+      lines.push(`  ${f.filename}  (searchable in Telegram within 2 min)`);
+    }
+    lines.push("");
+  } else {
+    lines.push("Nothing landed in your knowledge base from that email — see why below.");
+    lines.push("");
+  }
+
+  if (r.duplicates.length > 0) {
+    lines.push("Already in your KB (skipped to avoid duplicates):");
+    for (const f of r.duplicates) {
+      const when = formatDate(f.original_uploaded_at);
+      lines.push(`  - ${f.filename}  (original: ${f.original_filename}, uploaded ${when})`);
+    }
+    lines.push("");
+  }
+
+  if (r.rejected.length > 0) {
+    lines.push("Didn't look like a manual to me, so I left them out:");
+    for (const f of r.rejected) {
+      lines.push(`  - ${f.filename}  (${f.reason})`);
+    }
+    lines.push("");
+    lines.push("If I'm wrong, forward the file again with [force] at the start of the subject line.");
+    lines.push("");
+  }
+
+  if (r.skipped.length > 0) {
+    lines.push("Skipped because they aren't PDFs:");
+    for (const f of r.skipped) {
+      lines.push(`  - ${f.filename}  (${f.reason})`);
+    }
+    lines.push("");
+  }
+
+  if (r.too_large.length > 0) {
+    lines.push("Too big (20 MB max per file):");
+    for (const f of r.too_large) {
+      lines.push(`  - ${f.filename}  (${f.size_mb} MB - reply and I'll share an upload link)`);
+    }
+    lines.push("");
+  }
+
+  if (r.errors.length > 0) {
+    lines.push("Hit a problem on these (we'll auto-retry once, but reply if it persists):");
+    for (const f of r.errors) {
+      lines.push(`  - ${f.filename}  (status ${f.status})`);
+    }
+    lines.push("");
+  }
+
+  if (r.ingested.length > 0) {
+    lines.push("Try it: ask MIRA in Telegram about anything from the new manual.");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Send the inbox receipt email via Resend (plain text, no HTML template).
+ * Variable-length file lists don't fit the {{VAR}} system, so this bypasses sendEmail().
+ * Dev-mode short-circuit: logs body instead of sending when RESEND_API_KEY is unset.
+ */
+export async function sendInboxReceiptEmail(
+  toEmail: string,
+  firstName: string,
+  result: InboxReceiptResult
+): Promise<boolean> {
+  const total = result.ingested.length;
+  const subject = total > 0
+    ? `MIRA - ${total} ${total === 1 ? "file" : "files"} added to your knowledge base`
+    : "MIRA - couldn't add anything from your last email";
+  const body = formatInboxReceiptBody(firstName, result);
+
+  const apiKey = RESEND_API_KEY();
+  if (!apiKey) {
+    console.log("[mailer] (dev-mode) RESEND_API_KEY unset; would send to", toEmail);
+    console.log("[mailer] subject:", subject);
+    console.log("[mailer] body:\n" + body);
+    return false;
+  }
+
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: `${FROM_NAME} <${FROM_EMAIL()}>`,
+        to: [toEmail],
+        subject,
+        text: body,
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.error("[mailer] inbox receipt Resend error:", resp.status, err);
+      return false;
+    }
+    console.log("[mailer] inbox receipt sent to", toEmail);
+    return true;
+  } catch (err) {
+    console.error("[mailer] inbox receipt send failed:", err);
+    return false;
+  }
 }
 
 /**

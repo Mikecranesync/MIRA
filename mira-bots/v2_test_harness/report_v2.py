@@ -3,15 +3,17 @@ report_v2.py — Writes v2 test run reports.
 Output: artifacts/v2/latest_run/report_v2.md + results_v2.json
         artifacts/v2/evidence/{case_name}_{request,response,score}.json
 """
+
 import json
 import os
+
+# Import v1 standing verdict
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from agent import Decision
 
-# Import v1 standing verdict
-import sys
 _HERE = Path(__file__).parent
 sys.path.insert(0, str(_HERE.parent / "telegram_test_runner"))
 from report import _get_standing_verdict  # noqa: E402
@@ -37,12 +39,12 @@ def write_report_v2(
     passed = sum(1 for r in ingest_results if r.get("passed"))
     failed = total - passed
     pass_rate = round(passed / total, 4) if total > 0 else 0.0
-    avg_words = round(
-        sum(r.get("word_count", 0) for r in ingest_results) / total, 1
-    ) if total > 0 else 0
-    avg_time = round(
-        sum(r.get("elapsed", 0.0) for r in ingest_results) / total, 2
-    ) if total > 0 else 0.0
+    avg_words = (
+        round(sum(r.get("word_count", 0) for r in ingest_results) / total, 1) if total > 0 else 0
+    )
+    avg_time = (
+        round(sum(r.get("elapsed", 0.0) for r in ingest_results) / total, 2) if total > 0 else 0.0
+    )
 
     # --- results_v2.json ---
     payload = {
@@ -113,7 +115,9 @@ def write_report_v2(
     if prompt_heals:
         lines += ["## 5. Fix Changelog", ""]
         for h in prompt_heals:
-            lines.append(f"- **{h['case']}**: DESCRIBE_SYSTEM patched — added numbered label instruction")
+            lines.append(
+                f"- **{h['case']}**: DESCRIBE_SYSTEM patched — added numbered label instruction"
+            )
         lines.append("")
 
     # 6. Case results
@@ -184,20 +188,18 @@ def _heal_summary_table(heal_log: list[dict]) -> list[str]:
     ]
     for h in heal_log:
         rows.append(
-            f"| {h.get('case','?')} | {h.get('heal_type','?')} | {h.get('attempts','?')} | {h.get('original_bucket','?')} |"
+            f"| {h.get('case', '?')} | {h.get('heal_type', '?')} | {h.get('attempts', '?')} | {h.get('original_bucket', '?')} |"
         )
     return rows
 
 
-def _telegram_comparison_table(
-    ingest_r: list[dict], tele_r: list[dict]
-) -> list[str]:
+def _telegram_comparison_table(ingest_r: list[dict], tele_r: list[dict]) -> list[str]:
     tele_map = {r.get("case", ""): r for r in tele_r}
     rows = [
         "| Case | Ingest | Telegram |",
         "|------|--------|----------|",
     ]
-    for r in ingest_r[:len(tele_r)]:
+    for r in ingest_r[: len(tele_r)]:
         name = r.get("case", "")
         ingest_icon = "✅" if r.get("passed") else "❌"
         t = tele_map.get(name, {})

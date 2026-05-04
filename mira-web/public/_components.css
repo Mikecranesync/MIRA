@@ -1,0 +1,448 @@
+/* FactoryLM × MIRA component library — see docs/design-system-2026-04-26.md §3. */
+/* Build order: Wave B (300s) → Wave B (301) → Phase 1+ components appended below. */
+
+/* =========================================================
+   #SO-302 — .fl-btn (primary, ghost, mic)
+   ========================================================= */
+.fl-btn {
+  font-family: var(--fl-font-sans);
+  cursor: pointer;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: background .12s ease, border-color .12s ease;
+}
+.fl-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(201,83,28,.32);
+}
+
+.fl-btn-primary {
+  border: none;
+  background: var(--fl-orange-600);
+  color: #fff;
+  border-radius: var(--fl-radius-md);
+  padding: 10px 16px;
+  min-height: 40px;
+  font-size: var(--fl-type-base);
+  box-shadow: 0 1px 0 rgba(255,255,255,.2) inset, 0 2px 8px rgba(201,83,28,.32);
+}
+.fl-btn-primary:hover { background: var(--fl-orange-500); }
+.fl-btn-primary:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.fl-btn-ghost {
+  border: 1px solid var(--fl-rule-200);
+  background: var(--fl-card-0);
+  color: var(--fl-ink-900);
+  border-radius: var(--fl-radius-sm);
+  padding: 8px 12px;
+  min-height: 40px;
+  font-size: var(--fl-type-sm);
+}
+.fl-btn-ghost:hover { background: var(--fl-bg-50); }
+.fl-btn-ghost:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.fl-btn-mic {
+  border: none;
+  background: var(--fl-orange-600);
+  color: #fff;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+  font-size: var(--fl-type-lg);
+  box-shadow: 0 2px 8px rgba(201,83,28,.32);
+  padding: 0;
+}
+.fl-btn-mic:hover { background: var(--fl-orange-500); }
+
+/* =========================================================
+   #SO-303 — .fl-state four-state pill
+   ========================================================= */
+.fl-state {
+  font-size: var(--fl-type-xs);
+  font-weight: 700;
+  letter-spacing: var(--fl-ls-wide);
+  padding: 4px 10px;
+  border-radius: var(--fl-radius-pill);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.fl-state-glyph {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Indexed — circle */
+.fl-state-indexed {
+  background: var(--fl-state-indexed-bg);
+  color: var(--fl-state-indexed-text);
+}
+.fl-state-indexed .fl-state-glyph {
+  background: var(--fl-good);
+  border-radius: 50%;
+}
+
+/* Partial — rotated square (diamond) */
+.fl-state-partial {
+  background: var(--fl-state-partial-bg);
+  color: var(--fl-state-partial-text);
+}
+.fl-state-partial .fl-state-glyph {
+  background: var(--fl-warn);
+  transform: rotate(45deg);
+  border-radius: 0;
+}
+
+/* Failed — rounded-corner square */
+.fl-state-failed {
+  background: var(--fl-state-failed-bg);
+  color: var(--fl-state-failed-text);
+}
+.fl-state-failed .fl-state-glyph {
+  background: var(--fl-bad);
+  border-radius: 2px;
+}
+
+/* Superseded — plain rectangle with strikethrough */
+.fl-state-superseded {
+  background: var(--fl-state-superseded-bg);
+  color: var(--fl-state-superseded-text);
+  text-decoration: line-through;
+}
+.fl-state-superseded .fl-state-glyph {
+  background: #6B7785;
+  border-radius: 0;
+}
+
+/* =========================================================
+   #SO-304 — .fl-trust-band
+   ========================================================= */
+.fl-trust-band {
+  background: var(--fl-card-0);
+  padding: var(--fl-sp-8) var(--fl-sp-6);
+  text-align: center;
+  border-top: 1px solid var(--fl-rule-200);
+  border-bottom: 1px solid var(--fl-rule-200);
+}
+.fl-trust-eyebrow {
+  font-size: var(--fl-type-sm);
+  letter-spacing: var(--fl-ls-caps);
+  text-transform: uppercase;
+  color: var(--fl-muted-600);
+  margin: 0 0 var(--fl-sp-3);
+}
+.fl-trust-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fl-sp-5);
+  justify-content: center;
+}
+.fl-trust-list li {
+  font-size: var(--fl-type-md);
+  font-weight: 600;
+  color: var(--fl-ink-900);
+}
+@media (max-width: 759px) {
+  .fl-trust-list { gap: var(--fl-sp-3); }
+}
+body.sun .fl-trust-band {
+  border-top: 2px solid #000;
+  border-bottom: 2px solid #000;
+}
+
+/* =========================================================
+   #SO-306 — .fl-stop-card (safety interrupt)
+   ========================================================= */
+.fl-stop-card {
+  background: var(--fl-safety-bg);
+  border: 1.5px solid var(--fl-safety-border);
+  border-radius: var(--fl-radius-lg);
+  padding: 14px;
+  color: var(--fl-safety-text);
+}
+.fl-stop-card h4 {
+  color: var(--fl-safety-border);
+  font-size: var(--fl-type-base);
+  letter-spacing: var(--fl-ls-wide);
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+.fl-stop-cta {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.fl-stop-btn {
+  background: var(--fl-card-0);
+  border: 1px solid var(--fl-safety-border);
+  color: var(--fl-safety-border);
+  border-radius: var(--fl-radius-sm);
+  padding: 8px 12px;
+  font-weight: 700;
+  font-size: var(--fl-type-sm);
+  cursor: pointer;
+  font-family: var(--fl-font-sans);
+}
+.fl-stop-btn:hover { background: var(--fl-safety-bg); }
+.fl-stop-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(181,52,30,.32);
+}
+
+/* =========================================================
+   #SO-305 — .fl-compare side-by-side grid
+   ========================================================= */
+.fl-compare {
+  width: 100%;
+}
+.fl-compare-q {
+  font-size: var(--fl-type-base);
+  font-weight: 600;
+  color: var(--fl-muted-600);
+  margin-bottom: var(--fl-sp-3);
+  font-style: italic;
+}
+.fl-compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--fl-sp-4);
+  align-items: stretch;
+}
+.fl-col {
+  border-radius: var(--fl-radius-lg);
+  padding: var(--fl-sp-4);
+}
+.fl-col-bad {
+  border: 1px solid #F0C9C0;
+  background: #FCF3F0;
+}
+.fl-col-good {
+  border: 1px solid #BCDFCC;
+  background: #F2FAF5;
+}
+.fl-col-h-bad,
+.fl-col-h-good {
+  font-size: var(--fl-type-sm);
+  font-weight: 700;
+  letter-spacing: var(--fl-ls-caps);
+  text-transform: uppercase;
+  margin: 0 0 var(--fl-sp-2);
+}
+.fl-col-h-bad { color: var(--fl-bad); }
+.fl-col-h-good { color: var(--fl-good); }
+.fl-col blockquote {
+  margin: 0;
+  font-size: var(--fl-type-base);
+  line-height: 1.55;
+  color: var(--fl-ink-900);
+}
+.fl-col-note {
+  font-size: var(--fl-type-xs);
+  color: var(--fl-muted-600);
+  margin-top: var(--fl-sp-2);
+}
+.fl-col-citations {
+  margin-top: var(--fl-sp-3);
+  padding-top: var(--fl-sp-2);
+  border-top: 1px dashed var(--fl-rule-200);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fl-cite-chip {
+  background: var(--fl-card-0);
+  border: 1px solid var(--fl-rule-200);
+  border-radius: var(--fl-radius-pill);
+  padding: 3px 9px;
+  font-size: var(--fl-type-xs);
+  font-weight: 600;
+  color: var(--fl-navy-900);
+}
+@media (max-width: 879px) {
+  .fl-compare-grid { grid-template-columns: 1fr; }
+}
+
+/* =========================================================
+   #SO-308 — .fl-limits honesty list
+   ========================================================= */
+.fl-limits {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.fl-limits-intro {
+  font-size: var(--fl-type-md);
+  color: var(--fl-muted-600);
+  margin-bottom: var(--fl-sp-6);
+  line-height: 1.6;
+}
+.fl-limits-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.fl-limits-list li {
+  font-size: var(--fl-type-md);
+  line-height: 1.6;
+  color: var(--fl-ink-900);
+  margin-bottom: var(--fl-sp-5);
+  padding-bottom: var(--fl-sp-5);
+  border-bottom: 1px solid var(--fl-rule-200);
+}
+.fl-limits-list li:last-child {
+  border-bottom: none;
+}
+
+/* =========================================================
+   #SO-307 — .fl-price-card (3 variants)
+   ========================================================= */
+.fl-price-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--fl-sp-5);
+  align-items: start;
+}
+.fl-price-card {
+  background: var(--fl-card-0);
+  border: 1px solid var(--fl-rule-200);
+  border-radius: var(--fl-radius-xl);
+  padding: var(--fl-sp-6);
+  box-shadow: var(--fl-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--fl-sp-4);
+  position: relative;
+}
+.fl-price-card-recommended {
+  border: 2px solid var(--fl-orange-600);
+  transform: scale(1.02);
+}
+.fl-price-ribbon {
+  position: absolute;
+  top: -1px;
+  right: var(--fl-sp-4);
+  background: var(--fl-orange-600);
+  color: #fff;
+  font-size: var(--fl-type-xs);
+  font-weight: 700;
+  letter-spacing: var(--fl-ls-caps);
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 0 0 var(--fl-radius-sm) var(--fl-radius-sm);
+}
+.fl-price-name {
+  font-size: var(--fl-type-lg);
+  font-weight: 700;
+  color: var(--fl-navy-900);
+  margin: 0;
+}
+.fl-price-pitch {
+  font-size: var(--fl-type-sm);
+  color: var(--fl-muted-600);
+  margin: var(--fl-sp-1) 0 0;
+}
+.fl-price-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.fl-price-currency {
+  font-size: var(--fl-type-xl);
+  font-weight: 700;
+  color: var(--fl-ink-900);
+  align-self: flex-start;
+  margin-top: 4px;
+}
+.fl-price-num {
+  font-size: var(--fl-type-4xl);
+  font-weight: 700;
+  color: var(--fl-ink-900);
+  line-height: 1;
+}
+.fl-price-period {
+  font-size: var(--fl-type-base);
+  font-weight: 500;
+  color: var(--fl-muted-600);
+}
+.fl-price-features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fl-sp-2);
+  flex: 1;
+}
+.fl-price-features li {
+  font-size: var(--fl-type-base);
+  color: var(--fl-ink-900);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fl-sp-2);
+}
+.fl-price-features li::before {
+  content: "✓";
+  color: var(--fl-good);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.fl-price-fineprint {
+  font-size: var(--fl-type-xs);
+  color: var(--fl-muted-600);
+  text-align: center;
+  margin: 0;
+}
+@media (max-width: 879px) {
+  .fl-price-row { grid-template-columns: 1fr; }
+  .fl-price-card-recommended { transform: none; }
+}
+
+/* =========================================================
+   #SO-309 — Sun-readable mode toggle button
+   ========================================================= */
+.fl-sun-toggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 60;
+  background: var(--fl-card-0);
+  border: 1px solid var(--fl-rule-200);
+  border-radius: var(--fl-radius-pill);
+  padding: 10px 14px;
+  box-shadow: var(--fl-shadow-sm);
+  font-family: var(--fl-font-sans);
+  font-size: var(--fl-type-base);
+  font-weight: 600;
+  color: var(--fl-ink-900);
+  cursor: pointer;
+  transition: background .12s;
+}
+.fl-sun-toggle:hover { background: var(--fl-bg-50); }
+.fl-sun-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(27,54,93,.20);
+}
+body.sun .fl-sun-toggle {
+  background: #000;
+  color: #fff;
+  border-color: #000;
+}

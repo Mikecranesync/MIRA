@@ -1,0 +1,104 @@
+name: Deploy to VPS
+
+on:
+  # Triggered by smoke-test.yml completing on main — only deploys when smoke passes.
+  # This is the normal push-to-main path: push → smoke-test.yml → deploy-vps.yml.
+  workflow_run:
+    workflows: ["Smoke Test"]
+    types: [completed]
+    branches: [main]
+
+  # Manual deploy bypass — use for hotfixes when you need to deploy without
+  # waiting for smoke. Still runs health checks post-deploy.
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Space-separated services to rebuild (leave blank for all)"
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false  # never cancel a running deploy
+
+jobs:
+  deploy:
+    name: Deploy MIRA to production VPS
+    # For workflow_run triggers: only deploy when the smoke test passed.
+    # For workflow_dispatch (manual hotfix): always run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy
+        env:
+          SERVICES: ${{ github.event.inputs.services }}
+        run: |
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+            root@165.245.138.91 "SERVICES='$SERVICES' bash -s" << 'ENDSSH'
+
+          set -euo pipefail
+          cd /opt/mira
+
+          echo "=== Pull latest code ==="
+          git fetch origin main
+          git reset --hard origin/main
+
+          # Resolve the rebuild list once so cleanup + build + up all agree.
+          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub}"
+          echo "Rebuild targets: $TARGETS"
+
+          echo "=== Pre-deploy cleanup: remove any stale containers blocking recreate ==="
+          # `docker compose up --force-recreate` only removes containers it considers part
+          # of the project; if a previous deploy left a same-named container that compose
+          # has lost track of, we hit `Error: container name already in use` and the deploy
+          # bails out (exact failure mode of run 25264673954, 2026-05-02).
+          for svc in $TARGETS; do
+            docker rm -f "${svc}-saas" 2>/dev/null || true
+          done
+
+          echo "=== Rebuild containers ==="
+          DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $TARGETS
+          doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate $TARGETS
+
+          echo "=== Health check ==="
+          sleep 8
+          STATUS=$(curl -sf http://localhost:9099/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','unknown'))" 2>/dev/null || echo "unreachable")
+          echo "mira-pipeline health: $STATUS"
+          if [ "$STATUS" != "ok" ]; then
+            echo "WARNING: health check returned $STATUS — check container logs"
+            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=20 mira-pipeline-saas
+            exit 1
+          fi
+
+          echo "=== mira-hub health check ==="
+          HUB_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/hub/api/health || echo "unreachable")
+          echo "mira-hub health: $HUB_STATUS"
+          if [ "$HUB_STATUS" != "200" ]; then
+            echo "WARNING: mira-hub health returned $HUB_STATUS — check container logs"
+            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=20 mira-hub
+            # Don't fail the whole deploy on hub health alone — pipeline is the critical path
+          fi
+
+          echo "=== Deploy complete ==="
+          doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml ps --format "table {{.Name}}\t{{.Status}}"
+          ENDSSH
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "::error::VPS deploy failed — check logs above. SSH to 165.245.138.91 and run:"
+          echo "::error::  cd /opt/mira && doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=50"

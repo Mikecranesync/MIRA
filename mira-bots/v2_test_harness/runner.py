@@ -6,10 +6,10 @@ Usage:
   python3 v2_test_harness/runner.py [--all] [--cases NAME...] [--release]
                                      [--skip-probe] [--skip-generate] [--tag-v1]
 """
+
 import argparse
 import asyncio
 import base64
-import json
 import os
 import subprocess
 import sys
@@ -24,12 +24,12 @@ _ROOT = _HERE.parent
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_ROOT / "telegram_test_runner"))
 
-from judge_v2 import create_judge           # noqa: E402
-from healer import Healer                   # noqa: E402
-from generator import generate_cases, write_manifest_v2, is_stale  # noqa: E402
-import telegram_probe                        # noqa: E402
-import agent                                 # noqa: E402
-from report_v2 import write_report_v2, _write_evidence  # noqa: E402
+import agent  # noqa: E402
+import telegram_probe  # noqa: E402
+from generator import generate_cases, is_stale, write_manifest_v2  # noqa: E402
+from healer import Healer  # noqa: E402
+from judge_v2 import create_judge  # noqa: E402
+from report_v2 import _write_evidence, write_report_v2  # noqa: E402
 
 _MIRA_SERVER = os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost")
 INGEST_URL = os.getenv("INGEST_URL", f"{_MIRA_SERVER}:8002/ingest/photo")
@@ -50,7 +50,11 @@ def main():
     parser.add_argument("--cases", nargs="+", metavar="NAME", help="Run specific case names")
     parser.add_argument("--release", action="store_true", help="Tag and push if ≥95%%")
     parser.add_argument("--skip-probe", action="store_true", help="Skip Telegram probe")
-    parser.add_argument("--skip-generate", action="store_true", help="Skip case generation (reuse existing manifest_v2.yaml)")
+    parser.add_argument(
+        "--skip-generate",
+        action="store_true",
+        help="Skip case generation (reuse existing manifest_v2.yaml)",
+    )
     parser.add_argument("--tag-v1", action="store_true", help="Tag v1.0 on both repos and exit")
     args = parser.parse_args()
 
@@ -91,7 +95,7 @@ async def run_all(args) -> tuple[list, list | None, list, object]:
             new_cases = generate_cases(MANIFEST_100_PATH, GSD_ENGINE_PATH, INGEST_MAIN_PATH)
             write_manifest_v2(MANIFEST_100_PATH, new_cases, MANIFEST_V2_PATH)
         else:
-            print(f"manifest_v2.yaml is fresh — reusing")
+            print("manifest_v2.yaml is fresh — reusing")
     else:
         print("--skip-generate: reusing existing manifest_v2.yaml")
 
@@ -133,23 +137,29 @@ async def run_all(args) -> tuple[list, list | None, list, object]:
 
             if not result.get("passed"):
                 heal_result = await healer.attempt_heal(
-                    case, result, reply or "",
+                    case,
+                    result,
+                    reply or "",
                     lambda c: run_ingest_case(c, client, img_b64),
                 )
                 result = heal_result.final_result
                 if heal_result.heal_type:
-                    heal_log.append({
-                        "case": case.get("name"),
-                        "heal_type": heal_result.heal_type,
-                        "attempts": heal_result.attempts,
-                        "original_bucket": heal_result.original_bucket,
-                    })
+                    heal_log.append(
+                        {
+                            "case": case.get("name"),
+                            "heal_type": heal_result.heal_type,
+                            "attempts": heal_result.attempts,
+                            "original_bucket": heal_result.original_bucket,
+                        }
+                    )
 
             results.append(result)
             print_progress(i, total, result)
 
     ingest_rate = sum(1 for r in results if r.get("passed")) / len(results) if results else 0
-    print(f"\nIngest path: {ingest_rate:.1%} ({sum(1 for r in results if r.get('passed'))}/{len(results)})")
+    print(
+        f"\nIngest path: {ingest_rate:.1%} ({sum(1 for r in results if r.get('passed'))}/{len(results)})"
+    )
 
     # Phase 3 — Telegram probe
     tele_results = None
@@ -185,6 +195,7 @@ def run_ingest_case(
 ) -> tuple[str | None, float]:
     """POST to ingest endpoint (multipart/form-data), return (reply_text, elapsed_seconds)."""
     import io
+
     asset_tag = case.get("name", "test_asset")
     notes = case.get("caption", "")
     t0 = time.time()
@@ -203,7 +214,9 @@ def run_ingest_case(
         elapsed = time.time() - t0
         if resp.status_code == 200:
             rdata = resp.json()
-            reply = rdata.get("description") or rdata.get("reply") or rdata.get("text") or str(rdata)
+            reply = (
+                rdata.get("description") or rdata.get("reply") or rdata.get("text") or str(rdata)
+            )
             return reply, elapsed
         return None, elapsed
     except Exception:
@@ -214,14 +227,15 @@ def print_progress(i: int, total: int, result: dict, window_size: int = 10):
     icon = "✅" if result.get("passed") else "❌"
     bucket = result.get("failure_bucket") or ""
     bucket_str = f" [{bucket}]" if bucket else ""
-    print(f"  [{i:3d}/{total}] {icon} {result.get('case','?')}{bucket_str}")
+    print(f"  [{i:3d}/{total}] {icon} {result.get('case', '?')}{bucket_str}")
 
 
 def git_tag_and_push(repo_path: str, tag: str) -> bool:
     # Check if tag already exists
     check = subprocess.run(
         ["git", "-C", repo_path, "tag", "-l", tag],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if check.stdout.strip() == tag:
         print(f"  Tag {tag} already exists in {repo_path}")
@@ -256,7 +270,8 @@ def _get_changed_files_since_v1() -> list[str]:
     for repo in [str(MIRA_BOTS_ROOT), str(MIRA_CORE_ROOT)]:
         result = subprocess.run(
             ["git", "-C", repo, "diff", "--name-only", "v1.0", "HEAD"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if result.returncode == 0:
             files.extend(result.stdout.strip().splitlines())

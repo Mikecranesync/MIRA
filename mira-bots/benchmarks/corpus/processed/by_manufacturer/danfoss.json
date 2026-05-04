@@ -1,0 +1,24 @@
+[
+  {
+    "id": "1r7er4d",
+    "title": "Error while trying to communicate with a VTL FC302",
+    "selftext": "I have a VTL FC 302 and I tried to connect it to the computer using the USB port, but a USB-related error appears in Windows, not recognizing it in MCT 10 .The USB ports on the PC are working.",
+    "score": 1,
+    "num_comments": 0,
+    "created_utc": 1771353790,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.25,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Danfoss",
+    "equipment_type": "",
+    "model_number": "FC302",
+    "fault_codes": []
+  }
+]

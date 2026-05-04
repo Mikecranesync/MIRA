@@ -80,6 +80,22 @@ def test_rewrite_question_contains_input_or_rewrite(message):
     assert len(result) > 0
 
 
+def test_rewrite_question_expand_abbreviations_empty_fallback():
+    """Regression: expand_abbreviations can return '' for some Unicode whitespace
+    strings that pass str.strip() but are split-consumed by str.split().
+    rewrite_question must fall back to the original message in that case.
+    Covers the hypothesis counter-example from issue #378."""
+    # \u2800 (Braille blank) passes ''.strip() as truthy in some Python builds
+    # but str.split() treats it as whitespace, yielding an empty word list.
+    # Use a known-safe synthetic case: patch expand_abbreviations for isolation.
+    import unittest.mock as mock
+    original_msg = "motor not working"
+    with mock.patch("shared.guardrails.expand_abbreviations", return_value=""):
+        result = rewrite_question(original_msg)
+    assert result, "rewrite_question must never return empty string"
+    assert original_msg in result or "failure to operate" in result
+
+
 # ---------------------------------------------------------------------------
 # Safety keywords: never missed (unless educational framing)
 # ---------------------------------------------------------------------------

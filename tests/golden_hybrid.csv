@@ -1,0 +1,21 @@
+query,subset,expected_substring
+"What does fault code F2 mean on PowerFlex 40?",fault_code,overcurrent
+"PowerFlex 40 fault F7",fault_code,overvoltage
+"GS20 VFD fault F23",fault_code,ground
+"GS20 OC fault",fault_code,overcurrent
+"CompactLogix 1769-L33ER major fault Type 6",fault_code,program
+"Yaskawa GS20 OL1 overload",fault_code,overload
+"Micro820 controller STI alarm",fault_code,alarm
+"SINAMICS F07801 motor overcurrent",fault_code,overcurrent
+"193-1EF overload relay keeps tripping",part_number,193-1EF
+"1756-BA2 battery low CompactLogix",part_number,1756-BA2
+"PowerFlex 40 25B-D2P3N104 parameter list",part_number,25B
+"GS20 VFD drive 2HP 480V",part_number,GS20
+"Allen-Bradley 2080-LC50 spec sheet",part_number,2080-LC50
+"Siemens 3RT2 contactor coil voltage",part_number,3RT2
+"parameters for basic motor control on VFD",conceptual,motor
+"how to reset an overload relay after a trip",conceptual,reset
+"troubleshoot a VFD that trips on startup",conceptual,startup
+"check motor FLA against drive rating",conceptual,FLA
+"why would phase imbalance cause overload",conceptual,phase
+"PLC I/O wiring best practices for 24VDC sinking inputs",conceptual,sinking

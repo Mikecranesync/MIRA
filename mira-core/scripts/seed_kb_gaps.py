@@ -13,6 +13,7 @@ Usage:
       uv run --with sqlalchemy --with psycopg2-binary --with httpx \\
       python mira-core/scripts/seed_kb_gaps.py [--dry-run]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -125,35 +126,46 @@ def embed_text(text: str) -> list[float] | None:
         return None
 
 
-def _insert_chunk(conn, text_fn, tenant_id: str, content: str,
-                  embedding: list[float], meta: dict, chunk_index: int) -> bool:
+def _insert_chunk(
+    conn,
+    text_fn,
+    tenant_id: str,
+    content: str,
+    embedding: list[float],
+    meta: dict,
+    chunk_index: int,
+) -> bool:
     """Insert one knowledge_entry row."""
     try:
-        conn.execute(text_fn(
-            "INSERT INTO knowledge_entries "
-            "(id, tenant_id, source_type, manufacturer, model_number, equipment_type, "
-            " content, embedding, source_url, source_page, metadata, is_private, "
-            " verified, chunk_type, created_at) "
-            "VALUES (:id, :tid, :stype, :mfr, :model, :eqt, "
-            "        :content, cast(:emb AS vector), :url, :page, cast(:meta AS jsonb), "
-            "        false, true, 'reference', now())"
-        ), {
-            "id": str(uuid.uuid4()),
-            "tid": tenant_id,
-            "stype": "reference_guide",
-            "mfr": meta.get("manufacturer", ""),
-            "model": meta.get("model_number", ""),
-            "eqt": meta.get("equipment_type", ""),
-            "content": content,
-            "emb": str(embedding),
-            "url": meta.get("source_url", ""),
-            "page": chunk_index,
-            "meta": "{}",
-        })
+        conn.execute(
+            text_fn(
+                "INSERT INTO knowledge_entries "
+                "(id, tenant_id, source_type, manufacturer, model_number, equipment_type, "
+                " content, embedding, source_url, source_page, metadata, is_private, "
+                " verified, chunk_type, created_at) "
+                "VALUES (:id, :tid, :stype, :mfr, :model, :eqt, "
+                "        :content, cast(:emb AS vector), :url, :page, cast(:meta AS jsonb), "
+                "        false, true, 'reference', now())"
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "tid": tenant_id,
+                "stype": "reference_guide",
+                "mfr": meta.get("manufacturer", ""),
+                "model": meta.get("model_number", ""),
+                "eqt": meta.get("equipment_type", ""),
+                "content": content,
+                "emb": str(embedding),
+                "url": meta.get("source_url", ""),
+                "page": chunk_index,
+                "meta": "{}",
+            },
+        )
         return True
     except Exception as e:
-        log.warning("Insert failed for chunk %d of %s: %s",
-                    chunk_index, meta.get("filename", "?"), e)
+        log.warning(
+            "Insert failed for chunk %d of %s: %s", chunk_index, meta.get("filename", "?"), e
+        )
         return False
 
 
@@ -162,8 +174,7 @@ def main() -> None:
     from sqlalchemy.pool import NullPool
 
     parser = argparse.ArgumentParser(description="Seed KB gaps for benchmark questions")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Print chunks without inserting")
+    parser.add_argument("--dry-run", action="store_true", help="Print chunks without inserting")
     args = parser.parse_args()
 
     if not all([NEON_DATABASE_URL, MIRA_TENANT_ID]):
@@ -172,8 +183,10 @@ def main() -> None:
     engine = None
     if not args.dry_run:
         engine = create_engine(
-            NEON_DATABASE_URL, poolclass=NullPool,
-            connect_args={"sslmode": "require"}, pool_pre_ping=True,
+            NEON_DATABASE_URL,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
         )
 
     total_chunks = 0

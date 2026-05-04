@@ -36,6 +36,9 @@ from feedback_sync import run_loop as feedback_sync_loop
 from memory import ConversationMemory
 from qr_bridge import build_clear_cookie_header, process_pending_scan
 from shared.engine import Supervisor
+from shared.telemetry import flush as _telemetry_flush
+from shared.telemetry import span as _telemetry_span
+from shared.telemetry import trace as _telemetry_trace
 
 # Explicit handler setup: logging.basicConfig() is a no-op once uvicorn has
 # already installed its own handlers on the root logger, so we configure our
@@ -52,6 +55,11 @@ logger.propagate = True
 
 PIPELINE_API_KEY = os.getenv("PIPELINE_API_KEY", "")
 DB_PATH = os.getenv("MIRA_DB_PATH", "/data/mira.db")
+_API_RATE_LIMIT_RPM = int(os.getenv("API_RATE_LIMIT_RPM", "100"))
+_API_RATE_WINDOW = 60  # seconds
+
+# {client_key: [monotonic_timestamp, ...]}
+_api_rate_windows: dict[str, list[float]] = {}
 OPENWEBUI_URL = os.getenv("OPENWEBUI_BASE_URL", "http://mira-core:8080")
 OPENWEBUI_API_KEY = os.getenv("OPENWEBUI_API_KEY", "")
 COLLECTION_ID = os.getenv("KNOWLEDGE_COLLECTION_ID", "")
@@ -111,9 +119,7 @@ async def _ingest_photo_background(photo_b64: str, asset_tag: str) -> None:
 # ── PDF ingest helper (P0-3) ─────────────────────────────────────────────────
 
 
-async def _ingest_pdf_background(
-    file_id: str, filename: str, tenant_id: str
-) -> None:
+async def _ingest_pdf_background(file_id: str, filename: str, tenant_id: str) -> None:
     """Fetch a PDF from OW's file API and forward it to mira-ingest.
 
     Runs as a background task — never raises, never blocks the chat response.
@@ -227,7 +233,9 @@ def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: st
 
         logger.info(
             "P0-2 REGENERATE chat_id=%s rolled back to state=%s (was: %s)",
-            chat_id, prior_state, last["fsm_state"],
+            chat_id,
+            prior_state,
+            last["fsm_state"],
         )
         return True
 
@@ -262,7 +270,11 @@ async def lifespan(app: FastAPI):
     # Start feedback sync background thread (polls Open WebUI DB for new ratings)
     sync_thread = threading.Thread(target=feedback_sync_loop, daemon=True)
     sync_thread.start()
-    logger.info("MIRA Pipeline started — Supervisor initialized (db=%s)", DB_PATH)
+    # Start PM midnight scheduler — fires daily at UTC midnight, creates WOs for due PMs
+    from shared.pm_scheduler import run_midnight_scheduler
+    asyncio.create_task(run_midnight_scheduler())
+    _ver = Path("/app/VERSION").read_text().strip() if Path("/app/VERSION").exists() else "unknown"
+    logger.info("MIRA Pipeline started — version=%s db=%s", _ver, DB_PATH)
     yield
     engine = None
     memory = None
@@ -271,6 +283,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="MIRA Pipeline", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 from eval_api import router as _eval_router  # noqa: E402
+
 app.include_router(_eval_router)
 
 
@@ -279,9 +292,18 @@ app.include_router(_eval_router)
 
 @app.middleware("http")
 async def _auth(request: Request, call_next):
-    if request.url.path in ("/health", "/v1/models", "/eval/latest", "/eval/list", "/webhook/signup"):
+    if request.url.path in (
+        "/health",
+        "/v1/models",
+        "/eval/latest",
+        "/eval/list",
+        "/webhook/signup",
+        "/api/agents/public-status",
+    ):
         return await call_next(request)
-    if PIPELINE_API_KEY:
+    # Localhost requests (docker-exec eval, internal health checks) skip auth
+    client_host = request.client.host if request.client else ""
+    if PIPELINE_API_KEY and client_host not in ("127.0.0.1", "::1"):
         auth = request.headers.get("Authorization", "")
         expected = f"Bearer {PIPELINE_API_KEY}"
         if auth != expected:
@@ -289,12 +311,56 @@ async def _auth(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def _rate_limit(request: Request, call_next):
+    """Per-client sliding-window rate limit: _API_RATE_LIMIT_RPM requests/minute."""
+    if request.url.path in ("/health", "/v1/models"):
+        return await call_next(request)
+
+    # Key by Authorization header (tenant) or remote IP
+    auth = request.headers.get("Authorization", "")
+    client_key = auth or (request.client.host if request.client else "unknown")
+
+    now = time.monotonic()
+    window = [ts for ts in _api_rate_windows.get(client_key, []) if now - ts < _API_RATE_WINDOW]
+
+    if len(window) >= _API_RATE_LIMIT_RPM:
+        _api_rate_windows[client_key] = window
+        reset_in = max(1, int(_API_RATE_WINDOW - (now - window[0])))
+        logger.warning(
+            "API_RATE_LIMIT_HIT client=%s requests=%d",
+            client_key[:30],
+            len(window),
+        )
+        return JSONResponse(
+            status_code=429,
+            content={"error": "Too Many Requests — slow down and retry"},
+            headers={
+                "X-RateLimit-Limit": str(_API_RATE_LIMIT_RPM),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": str(reset_in),
+                "Retry-After": str(reset_in),
+            },
+        )
+
+    window.append(now)
+    _api_rate_windows[client_key] = window
+
+    response = await call_next(request)
+    # Attach rate-limit headers to all non-429 responses
+    remaining = max(0, _API_RATE_LIMIT_RPM - len(window))
+    response.headers["X-RateLimit-Limit"] = str(_API_RATE_LIMIT_RPM)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    return response
+
+
 # ── Health ───────────────────────────────────────────────────────────────────
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "engine": engine is not None}
+    _ver = Path("/app/VERSION").read_text().strip() if Path("/app/VERSION").exists() else "unknown"
+    return {"status": "ok", "engine": engine is not None, "version": _ver}
 
 
 # ── OpenAI-compatible: GET /v1/models ────────────────────────────────────────
@@ -345,9 +411,9 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if engine is None:
         raise HTTPException(503, "Supervisor not initialized")
 
-    # Extract last user message (text content)
+    # Extract last user message (text + all images for multi-photo burst support)
     last_user_msg = ""
-    photo_b64 = None
+    photos_b64: list[str] = []
     for msg in reversed(req.messages):
         if msg.role != "user":
             continue
@@ -360,69 +426,102 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
                         last_user_msg = part.get("text", "")
                     elif part.get("type") == "image_url":
                         url = part.get("image_url", {}).get("url", "")
-                        if url.startswith("data:"):
-                            photo_b64 = url.split(",", 1)[-1] if "," in url else None
+                        if url.startswith("data:") and "," in url:
+                            photos_b64.append(url.split(",", 1)[-1])
         break
+    # Single-photo backward-compat alias
+    photo_b64 = photos_b64[0] if photos_b64 else None
 
     if not last_user_msg and not photo_b64:
         raise HTTPException(400, "No user message found")
 
-    # Open WebUI sends synthetic task messages that must NOT touch the GSD engine.
-    # There are two distinct subtypes with different correct responses:
+    # ── Open WebUI synthetic-task filter ────────────────────────────────────
+    # Open WebUI fires internal requests for: title generation, tag generation,
+    # follow-up suggestions, web-search query building, and the Continue button.
+    # These must NEVER reach the GSD engine (they would corrupt FSM state).
     #
-    # 1. "### Task: Continue generating …" — the Continue button.  OW expects the
-    #    response to be the continued text, not empty.  Return the last assistant
-    #    turn verbatim so the UI shows something and the FSM does not advance.
-    #
-    # 2. All other "### Task:" / "Suggest " variants — follow-up suggestions,
-    #    title generation, etc.  Return empty; OW discards these internally.
+    # Three detection layers:
+    #  A) "### Task: Continue …" — Continue button; echo last assistant turn.
+    #  B) Task directive anywhere in user message (OW appends after history too).
+    #  C) System-role message containing title/tag generation instructions.
+
+    def _owui_synthetic_reply(content: str = "") -> dict:
+        return {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "mira-diagnostic",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": content},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
+    # Layer A — Continue button
     stripped_msg = last_user_msg.lstrip()
     if stripped_msg.startswith("### Task: Continue"):
-        # P0-1 FIX: find the last assistant message in history and echo it back.
         last_assistant = ""
         for msg in reversed(req.messages):
             if msg.role == "assistant":
                 content = msg.content
                 if isinstance(content, list):
                     last_assistant = " ".join(
-                        p.get("text", "") for p in content
+                        p.get("text", "")
+                        for p in content
                         if isinstance(p, dict) and p.get("type") == "text"
                     ).strip()
                 else:
                     last_assistant = str(content)
                 break
-        logger.info("P0-1 CONTINUE intercepted — echoing last assistant turn (%d chars)", len(last_assistant))
-        return {
-            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": "mira-diagnostic",
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": last_assistant},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        }
+        logger.info(
+            "OWUI Continue intercepted — echoing last assistant turn (%d chars)",
+            len(last_assistant),
+        )
+        return _owui_synthetic_reply(last_assistant)
 
-    if stripped_msg.startswith("### Task:") or stripped_msg.startswith("Suggest "):
-        logger.info("SKIP synthetic follow-up request: %s", last_user_msg[:60])
-        return {
-            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": "mira-diagnostic",
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": ""},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        }
+    # Layer B — task directive anywhere in the user message (start OR appended)
+    _OWUI_TASK_PATTERNS = (
+        "### Task:",
+        "Suggest ",
+        "Generate a title",
+        "generate a title",
+        "Create a concise",
+        "create a concise",
+        "Generate 1-3 broad tags",
+        "generate 1-3 broad tags",
+        "Generate 3 questions",
+        "generate 3 questions",
+        "generate follow-up",
+        "Generate follow-up",
+        "Analyze the chat history to determine",
+        "analyze the chat history to determine",
+    )
+    if any(pat in last_user_msg for pat in _OWUI_TASK_PATTERNS):
+        logger.info("OWUI synthetic task filtered (user msg): %.60s", last_user_msg)
+        return _owui_synthetic_reply()
+
+    # Layer C — system message contains title/tag/search generation directives
+    _OWUI_SYSTEM_PATTERNS = (
+        "concise, 3-5 word title",
+        "Generate 1-3 broad tags",
+        "generate 1-3 broad tags",
+        "You are a title generator",
+        "you are a title generator",
+        "generate a search query",
+        "Generate a search query",
+    )
+    for msg in req.messages:
+        if msg.role != "system":
+            continue
+        sys_text = msg.content if isinstance(msg.content, str) else ""
+        if any(pat in sys_text for pat in _OWUI_SYSTEM_PATTERNS):
+            logger.info("OWUI synthetic task filtered (system msg): %.60s", sys_text)
+            return _owui_synthetic_reply()
+        break  # only inspect the first system message
 
     # Extract user identity from Open WebUI forwarded headers (per-conversation)
     chat_id = (
@@ -507,9 +606,10 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     # the engine so we don't advance the diagnostic state twice.
     _detect_and_rollback_regenerate(DB_PATH, chat_id, last_user_msg)
 
-    # Resize image for vision model (matches Telegram bot behavior)
-    if photo_b64:
-        photo_b64 = _resize_for_vision(photo_b64)
+    # Resize all images for vision model (matches Telegram bot behavior)
+    if photos_b64:
+        photos_b64 = [_resize_for_vision(b) for b in photos_b64]
+        photo_b64 = photos_b64[0]
 
     # Memory retrieval — inject past facts into the message context
     memory_block = ""
@@ -531,17 +631,34 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
         )
 
     t0 = time.monotonic()
+    _trace = _telemetry_trace(
+        "chat_completion",
+        user_id=chat_id,
+        metadata={"has_photo": bool(photo_b64), "photo_count": len(photos_b64)},
+    )
     try:
-        reply = await engine.process(
-            chat_id=chat_id,
-            message=effective_message,
-            photo_b64=photo_b64,
-            platform="openwebui",
-        )
+        with _telemetry_span(_trace, "engine_process", input={"message": last_user_msg[:200]}):
+            if len(photos_b64) > 1:
+                logger.info("MULTI_PHOTO chat_id=%s count=%d", chat_id, len(photos_b64))
+                reply = await engine.process_multi_photo(
+                    chat_id=chat_id,
+                    message=effective_message,
+                    photos_b64=photos_b64,
+                    platform="openwebui",
+                )
+            else:
+                reply = await engine.process(
+                    chat_id=chat_id,
+                    message=effective_message,
+                    photo_b64=photo_b64,
+                    platform="openwebui",
+                )
     except Exception as e:
         logger.error("ENGINE_ERROR chat_id=%s: %s", chat_id, e)
         reply = "MIRA encountered an error processing your request. Please try again."
     latency_ms = int((time.monotonic() - t0) * 1000)
+    _trace.update(output={"reply_preview": reply[:200], "latency_ms": latency_ms})
+    _telemetry_flush()
     logger.info("PIPELINE_CALL chat_id=%s latency_ms=%d len=%d", chat_id, latency_ms, len(reply))
 
     # Memory extraction — store facts from this turn (non-blocking)
@@ -584,6 +701,105 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
             headers={"Set-Cookie": build_clear_cookie_header()},
         )
     return response_dict
+
+
+# ── Admin: Briefing Profiles ─────────────────────────────────────────────────
+
+
+class BriefingProfileCreate(BaseModel):
+    user_id: str
+    tenant_id: str = "default"
+    role: str = "technician"
+    assigned_assets: list[str] = []
+    shift: str = "day"
+    preferred_channel: str = "push"
+    preferred_time: str = "06:00"
+    email: str = ""
+    language: str = "en"
+    include_kpis: bool = False
+    include_open_wos: bool = True
+    include_team_activity: bool = False
+    digest_length: str = "short"
+
+
+@app.post("/api/briefing/profiles", status_code=201)
+async def create_briefing_profile(profile: BriefingProfileCreate):
+    """Create or upsert a briefing profile in NeonDB."""
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        raise HTTPException(503, "NEON_DATABASE_URL not configured")
+    try:
+        from sqlalchemy import NullPool, create_engine, text
+
+        engine_db = create_engine(
+            neon_url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        with engine_db.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO briefing_profiles
+                        (user_id, tenant_id, role, assigned_assets, shift,
+                         preferred_channel, preferred_time, email, language,
+                         include_kpis, include_open_wos, include_team_activity, digest_length)
+                    VALUES
+                        (:user_id, :tenant_id, :role, :assigned_assets, :shift,
+                         :preferred_channel, :preferred_time, :email, :language,
+                         :include_kpis, :include_open_wos, :include_team_activity, :digest_length)
+                    ON CONFLICT (user_id, tenant_id) DO UPDATE SET
+                        role = EXCLUDED.role,
+                        assigned_assets = EXCLUDED.assigned_assets,
+                        shift = EXCLUDED.shift,
+                        preferred_channel = EXCLUDED.preferred_channel,
+                        preferred_time = EXCLUDED.preferred_time,
+                        email = EXCLUDED.email,
+                        language = EXCLUDED.language,
+                        include_kpis = EXCLUDED.include_kpis,
+                        include_open_wos = EXCLUDED.include_open_wos,
+                        include_team_activity = EXCLUDED.include_team_activity,
+                        digest_length = EXCLUDED.digest_length,
+                        updated_at = NOW()
+                    """
+                ),
+                {**profile.model_dump(), "assigned_assets": profile.assigned_assets},
+            )
+        return {"status": "ok", "user_id": profile.user_id, "tenant_id": profile.tenant_id}
+    except Exception as exc:
+        logger.error("create_briefing_profile failed: %s", exc)
+        raise HTTPException(500, f"DB error: {exc}") from exc
+
+
+@app.get("/api/briefing/profiles/{tenant_id}")
+async def list_briefing_profiles(tenant_id: str):
+    """List all briefing profiles for a tenant."""
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        raise HTTPException(503, "NEON_DATABASE_URL not configured")
+    try:
+        from sqlalchemy import NullPool, create_engine, text
+
+        engine_db = create_engine(
+            neon_url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        with engine_db.connect() as conn:
+            rows = (
+                conn.execute(
+                    text("SELECT * FROM briefing_profiles WHERE tenant_id = :tid ORDER BY user_id"),
+                    {"tid": tenant_id},
+                )
+                .mappings()
+                .all()
+            )
+        return {"tenant_id": tenant_id, "profiles": [dict(r) for r in rows]}
+    except Exception as exc:
+        logger.error("list_briefing_profiles failed: %s", exc)
+        raise HTTPException(500, f"DB error: {exc}") from exc
 
 
 # ── Debug: Session Photo — GET /v1/debug/photo/{chat_id} ────────────────────
@@ -679,12 +895,15 @@ async def api_spend():
         results = []
         for r in rows:
             model, calls, inp, out = r
-            if "claude" in (model or "").lower():
-                cost = (inp * 0.000003) + (out * 0.000015)
-            else:
-                cost = 0.0
+            cost = 0.0  # All current providers (Groq/Cerebras/Gemini) are free-tier
             results.append(
-                {"model": model, "calls": calls, "input": inp, "output": out, "cost": round(cost, 4)}
+                {
+                    "model": model,
+                    "calls": calls,
+                    "input": inp,
+                    "output": out,
+                    "cost": round(cost, 4),
+                }
             )
         return results
 
@@ -705,7 +924,11 @@ async def api_spend():
         "today": {"providers": today, "total_cost": _sum_cost(today)},
         "7_day": {"providers": week, "total_cost": _sum_cost(week)},
         "30_day": {"providers": month, "total_cost": _sum_cost(month)},
-        "all_time": {"calls": total_row[0], "input_tokens": total_row[1], "output_tokens": total_row[2]},
+        "all_time": {
+            "calls": total_row[0],
+            "input_tokens": total_row[1],
+            "output_tokens": total_row[2],
+        },
         "daily_cap": float(os.getenv("CLAUDE_DAILY_SPEND_CAP", "1.00")),
     }
 
@@ -837,6 +1060,7 @@ async def webhook_signup(request: Request):
     user_data = body.get("user", "{}")
     if isinstance(user_data, str):
         import json as _json
+
         try:
             user_data = _json.loads(user_data)
         except Exception:
@@ -873,3 +1097,358 @@ async def webhook_signup(request: Request):
     except Exception as e:
         logger.error("Failed to send signup notification: %s", e)
         return {"status": "error", "reason": str(e)}
+
+
+# ── Identity Admin API ────────────────────────────────────────────────────────
+
+
+def _get_identity_service():
+    """Return IdentityService or raise 503."""
+    import sys as _sys
+
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "mira-bots"))
+    try:
+        from shared.identity.service import get_identity_service
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail=f"identity module unavailable: {exc}") from exc
+
+    svc = get_identity_service()
+    if svc is None:
+        raise HTTPException(status_code=503, detail="NEON_DATABASE_URL not set")
+    return svc
+
+
+@app.get("/api/identity/users/{tenant_id}")
+async def identity_list_users(tenant_id: str, request: Request):
+    """List all canonical MIRA users for a tenant."""
+    _require_pipeline_key(request)
+    svc = _get_identity_service()
+    try:
+        users = await asyncio.to_thread(svc.list_users, tenant_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {
+        "tenant_id": tenant_id,
+        "users": [{"id": u.id, "display_name": u.display_name, "email": u.email} for u in users],
+    }
+
+
+@app.get("/api/identity/user/{mira_user_id}")
+async def identity_get_user(mira_user_id: str, request: Request):
+    """Fetch a canonical user and all linked platform identities."""
+    _require_pipeline_key(request)
+    svc = _get_identity_service()
+    try:
+        user = await asyncio.to_thread(svc.get_user, mira_user_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    try:
+        links = await asyncio.to_thread(svc.get_linked_platforms, mira_user_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {
+        "id": user.id,
+        "tenant_id": user.tenant_id,
+        "display_name": user.display_name,
+        "email": user.email,
+        "platforms": [
+            {"platform": lk.platform, "external_user_id": lk.external_user_id} for lk in links
+        ],
+    }
+
+
+class IdentityLinkRequest(BaseModel):
+    mira_user_id: str
+    platform: str
+    external_user_id: str
+    tenant_id: str
+
+
+@app.post("/api/identity/link")
+async def identity_link(body: IdentityLinkRequest, request: Request):
+    """Manually link a platform identity to an existing MIRA user."""
+    _require_pipeline_key(request)
+    svc = _get_identity_service()
+    try:
+        link = await asyncio.to_thread(
+            svc.link_identity,
+            body.mira_user_id,
+            body.platform,
+            body.external_user_id,
+            body.tenant_id,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"id": link.id, "mira_user_id": link.mira_user_id, "platform": link.platform}
+
+
+def _require_pipeline_key(request: Request) -> None:
+    if not PIPELINE_API_KEY:
+        return
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or auth[7:] != PIPELINE_API_KEY:
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+
+# ── Autonomous Agents Dashboard ───────────────────────────────────────────────
+
+_AGENT_LOG_DIR = Path(os.getenv("AGENT_LOG_DIR", "/opt/mira/data/agent-runs"))
+_KNOWN_AGENTS = ["kb_builder", "prompt_optimizer", "infra_guardian"]
+
+
+def _read_agent_ndjson(agent_name: str, limit: int = 10) -> list[dict]:
+    """Read the last `limit` run records from an agent's NDJSON log."""
+    path = _AGENT_LOG_DIR / f"{agent_name}.ndjson"
+    if not path.exists():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        runs = []
+        for line in reversed(lines):
+            line = line.strip()
+            if line:
+                try:
+                    runs.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+            if len(runs) >= limit:
+                break
+        return runs
+    except Exception:
+        return []
+
+
+@app.get("/api/agents/status")
+async def agent_status(request: Request):
+    """Dashboard: last 10 runs per agent with success/fail/escalation counts."""
+    _require_pipeline_key(request)
+    result = {}
+    for agent_name in _KNOWN_AGENTS:
+        runs = _read_agent_ndjson(agent_name, limit=10)
+        if runs:
+            latest = runs[0]
+            result[agent_name] = {
+                "last_run": latest.get("started"),
+                "last_duration_s": latest.get("duration_s"),
+                "last_detected": latest.get("detected", 0),
+                "last_succeeded": latest.get("succeeded", 0),
+                "last_failed": latest.get("failed", 0),
+                "last_escalated": latest.get("escalated", 0),
+                "total_runs": len(runs),
+                "runs": runs,
+            }
+        else:
+            result[agent_name] = {"last_run": None, "total_runs": 0, "runs": []}
+    return result
+
+
+@app.get("/api/agents/runs/{agent_name}")
+async def agent_runs(agent_name: str, request: Request, limit: int = 50):
+    """Detailed run history for one agent (up to 50 entries)."""
+    _require_pipeline_key(request)
+    if agent_name not in _KNOWN_AGENTS:
+        raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_name}")
+    runs = _read_agent_ndjson(agent_name, limit=min(limit, 200))
+    return {"agent": agent_name, "run_count": len(runs), "runs": runs}
+
+
+@app.get("/api/agents/public-status")
+async def agent_public_status():
+    """Public (no-auth) summary of agent status — used by the /agents dashboard."""
+    result = {}
+    for agent_name in _KNOWN_AGENTS:
+        runs = _read_agent_ndjson(agent_name, limit=10)
+        if runs:
+            latest = runs[0]
+            result[agent_name] = {
+                "last_run": latest.get("started"),
+                "last_duration_s": latest.get("duration_s"),
+                "last_detected": latest.get("detected", 0),
+                "last_succeeded": latest.get("succeeded", 0),
+                "last_failed": latest.get("failed", 0),
+                "last_escalated": latest.get("escalated", 0),
+                "total_runs": len(runs),
+                "runs": [
+                    {
+                        "started": r.get("started"),
+                        "succeeded": r.get("succeeded", 0),
+                        "failed": r.get("failed", 0),
+                        "detected": r.get("detected", 0),
+                        "duration_s": r.get("duration_s"),
+                    }
+                    for r in runs
+                ],
+            }
+        else:
+            result[agent_name] = {
+                "last_run": None,
+                "total_runs": 0,
+                "runs": [],
+            }
+    return result
+
+
+@app.post("/api/agents/run/{agent_name}")
+async def agent_run_now(agent_name: str, request: Request):
+    """Trigger an agent run immediately. Returns AgentRunReport as JSON. Auth required."""
+    _require_pipeline_key(request)
+    if agent_name not in _KNOWN_AGENTS:
+        raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_name}")
+    try:
+        if agent_name == "kb_builder":
+            from shared.agents.kb_builder import KBBuilderAgent
+
+            agent = KBBuilderAgent()
+        elif agent_name == "prompt_optimizer":
+            from shared.agents.prompt_optimizer import PromptOptimizerAgent
+
+            agent = PromptOptimizerAgent()
+        elif agent_name == "infra_guardian":
+            from shared.agents.infra_guardian import InfraGuardianAgent
+
+            agent = InfraGuardianAgent()
+        else:
+            raise HTTPException(status_code=400, detail="Unknown agent")
+        report = await asyncio.wait_for(agent.run(), timeout=300)
+        return {
+            "agent": report.agent_name,
+            "started_at": report.started_at,
+            "finished_at": report.finished_at,
+            "duration_seconds": report.duration_seconds,
+            "issues_detected": report.issues_detected,
+            "actions_taken": report.actions_taken,
+            "actions_succeeded": report.actions_succeeded,
+            "actions_failed": report.actions_failed,
+            "escalations": report.escalations,
+            "details": report.details,
+        }
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Agent run timed out (300s)")
+    except Exception as exc:
+        logger.error("AGENT_RUN_ERROR agent=%s error=%s", agent_name, exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ── PM Schedule Extractor — NORTH STAR FLYWHEEL CORE ────────────────────────
+# Auto-PM Pipeline step 4: chunks → structured PM schedules → NeonDB storage
+# POST /api/pm/extract  → run full extraction + store + return schedules
+# GET  /api/pm/schedules → query stored schedules for a model
+
+
+@app.post("/api/pm/extract")
+async def pm_extract(request: Request):
+    """Extract PM schedules from an equipment's indexed manual chunks.
+
+    Body JSON: { "manufacturer": "Yaskawa", "model_number": "GA500",
+                 "tenant_id": "mike", "equipment_id": null }
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON body")
+
+    manufacturer = str(body.get("manufacturer", "")).strip()
+    model_number = str(body.get("model_number", "")).strip()
+    tenant_id = str(body.get("tenant_id", "mike")).strip() or "mike"
+    equipment_id = body.get("equipment_id")
+
+    if not manufacturer or not model_number:
+        raise HTTPException(400, "manufacturer and model_number are required")
+
+    from shared.pm_extractor import (
+        extract_pm_schedules,
+        get_chunks_for_model,
+        store_pm_schedules,
+    )
+
+    chunks = get_chunks_for_model(manufacturer, model_number)
+    if not chunks:
+        return {
+            "manufacturer": manufacturer,
+            "model_number": model_number,
+            "chunks_found": 0,
+            "schedules": [],
+            "message": "No PM-relevant chunks found for this equipment model",
+        }
+
+    schedules = await extract_pm_schedules(chunks, manufacturer, model_number)
+    stored = store_pm_schedules(
+        schedules,
+        manufacturer=manufacturer,
+        model_number=model_number,
+        tenant_id=tenant_id,
+        equipment_id=equipment_id,
+    )
+
+    logger.info(
+        "PM_EXTRACT manufacturer=%s model=%s chunks=%d schedules=%d stored=%d",
+        manufacturer,
+        model_number,
+        len(chunks),
+        len(schedules),
+        stored,
+    )
+
+    return {
+        "manufacturer": manufacturer,
+        "model_number": model_number,
+        "chunks_found": len(chunks),
+        "schedules_extracted": len(schedules),
+        "schedules_stored": stored,
+        "schedules": schedules,
+    }
+
+
+@app.get("/api/pm/schedules")
+async def pm_schedules_list(
+    tenant_id: str = "mike",
+    manufacturer: str = "",
+    model_number: str = "",
+    equipment_id: str = "",
+):
+    """Return stored PM schedules from NeonDB for a tenant."""
+    from shared.pm_extractor import get_stored_pm_schedules
+
+    schedules = get_stored_pm_schedules(
+        tenant_id=tenant_id,
+        manufacturer=manufacturer or None,
+        model_number=model_number or None,
+        equipment_id=equipment_id or None,
+    )
+    return {
+        "tenant_id": tenant_id,
+        "count": len(schedules),
+        "schedules": schedules,
+    }
+
+
+# ── PM Work Order Auto-Generator — Auto-PM Pipeline step 5 ──────────────────
+# POST /api/pm/generate-work-orders → check due PMs, create WOs, advance schedule
+
+
+@app.post("/api/pm/generate-work-orders")
+async def pm_generate_work_orders(request: Request):
+    """Manually trigger PM work order generation for due schedules.
+
+    Body JSON (optional): { "tenant_id": "mike" }
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    tenant_id: str | None = body.get("tenant_id") or None
+
+    from shared.pm_scheduler import generate_due_work_orders
+
+    result = await generate_due_work_orders(tenant_id=tenant_id)
+    logger.info(
+        "PM_GENERATE_WO_MANUAL tenant=%s created=%d due=%d",
+        tenant_id,
+        result["work_orders_created"],
+        result["due_pms_found"],
+    )
+    return result
+

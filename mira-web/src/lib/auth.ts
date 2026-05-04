@@ -117,6 +117,14 @@ export async function requireActive(c: Context, next: Next) {
     );
   }
 
+  // Soft-deleted accounts (within 30-day grace window) lose product access
+  // immediately even though the tenant row still exists for audit + Stripe
+  // reconciliation. 410 Gone is the precise status — clients should treat
+  // it as terminal and not retry.
+  if ((tenant as { deleted_at?: string | null }).deleted_at) {
+    return c.json({ error: "Account deleted" }, 410);
+  }
+
   c.set("user", payload);
   await next();
 }

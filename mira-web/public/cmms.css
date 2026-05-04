@@ -714,3 +714,31 @@ body::after {
   margin-top: 8px;
 }
 .seo-list li { margin-bottom: 4px; }
+
+/* ── Tap targets ──────────────────────────────────────────────── */
+/* web-review #622 — WCAG 2.5.5 / Apple HIG: ≥44×44 px for touch.
+ * Topbar + footer nav links were 17–22 px tall on desktop. We target
+ * the nav/footer specifically; in-text links inside paragraphs are
+ * exempt under WCAG's inline-text exception. */
+
+.topbar a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+}
+.topbar .topbar-logo {
+  /* logo already uses `display:flex` from line 132; keep, just enforce min-height */
+  min-height: 44px;
+}
+
+footer[role="contentinfo"] ul {
+  /* keep the gap, but ensure list items host 44px tall hit areas */
+  align-items: center;
+}
+footer[role="contentinfo"] a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+}

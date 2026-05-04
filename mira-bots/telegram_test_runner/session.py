@@ -2,7 +2,9 @@
 Shared Telethon TelegramClient singleton.
 One connection, reused across all test cases in a run.
 """
+
 import os
+
 from telethon import TelegramClient
 
 _client: TelegramClient | None = None
@@ -22,7 +24,5 @@ async def get_client() -> TelegramClient:
         _client = TelegramClient(session_path, api_id, api_hash)
         await _client.connect()
         if not await _client.is_user_authorized():
-            raise RuntimeError(
-                "Telethon session not authorized. Run session_setup.py first."
-            )
+            raise RuntimeError("Telethon session not authorized. Run session_setup.py first.")
     return _client

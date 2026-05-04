@@ -1,6 +1,5 @@
 """Phase 5 tests — Kokoro TTS voice responses."""
 
-import asyncio
 import os
 import sqlite3
 import sys
@@ -14,10 +13,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "shared"))
 
 import tts
 
-
 # ---------------------------------------------------------------------------
 # test_tts_returns_none_on_error
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_tts_returns_none_on_error():
@@ -34,6 +33,7 @@ async def test_tts_returns_none_on_error():
 # ---------------------------------------------------------------------------
 # test_voice_command_on_sets_db_flag
 # ---------------------------------------------------------------------------
+
 
 def test_voice_command_on_sets_db_flag():
     """_set_voice_enabled(True) writes voice_enabled=1 to the DB."""
@@ -73,6 +73,7 @@ def test_voice_command_on_sets_db_flag():
 # test_voice_command_off_clears_db_flag
 # ---------------------------------------------------------------------------
 
+
 def test_voice_command_off_clears_db_flag():
     """_set_voice_enabled(False) writes voice_enabled=0 to the DB."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
@@ -111,6 +112,7 @@ def test_voice_command_off_clears_db_flag():
 # test_text_response_sent_even_when_tts_fails
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_text_response_sent_even_when_tts_fails():
     """Text reply is sent even when TTS returns None."""
@@ -133,9 +135,7 @@ async def test_text_response_sent_even_when_tts_fails():
            )"""
     )
     # Pre-insert with voice_enabled=1
-    db.execute(
-        "INSERT INTO conversation_state (chat_id, voice_enabled) VALUES ('chat_1', 1)"
-    )
+    db.execute("INSERT INTO conversation_state (chat_id, voice_enabled) VALUES ('chat_1', 1)")
     db.commit()
     db.close()
 
@@ -162,6 +162,7 @@ async def test_text_response_sent_even_when_tts_fails():
 # ---------------------------------------------------------------------------
 # test_tts_truncates_long_text
 # ---------------------------------------------------------------------------
+
 
 def test_tts_truncates_long_text():
     """_clean_text truncates text exceeding MAX_WORDS words."""

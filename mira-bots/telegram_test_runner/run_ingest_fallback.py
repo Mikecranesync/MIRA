@@ -4,12 +4,14 @@ MIRA Ingest Fallback Test Runner — standalone host script
 Sends photos directly to mira-ingest endpoint (localhost:8002)
 Scores results using 6-part pass condition
 """
+
 import asyncio
 import os
 import sys
 import time
-import yaml
+
 import httpx
+import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -43,10 +45,13 @@ async def run_ingest_fallback():
             async with httpx.AsyncClient(timeout=60) as client:
                 with open(image_path, "rb") as img:
                     resp = await client.post(
-                        os.environ.get("INGEST_URL",
-                            os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost") + ":8002/ingest/photo"),
+                        os.environ.get(
+                            "INGEST_URL",
+                            os.environ.get("MIRA_SERVER_BASE_URL", "http://localhost")
+                            + ":8002/ingest/photo",
+                        ),
                         files={"image": (os.path.basename(image_path), img, "image/jpeg")},
-                        data={"asset_tag": f"TEST-{case['name']}", "caption": caption}
+                        data={"asset_tag": f"TEST-{case['name']}", "caption": caption},
                     )
             elapsed = time.time() - t0
 
@@ -57,7 +62,7 @@ async def run_ingest_fallback():
                     words = len(reply.split())
                     print(f"  Response ({words} words, {elapsed:.1f}s): {reply[:80]}...")
                 else:
-                    print(f"  HTTP 200 but no description field")
+                    print("  HTTP 200 but no description field")
             else:
                 print(f"  HTTP {resp.status_code}: {resp.text[:100]}")
         except Exception as e:
