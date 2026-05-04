@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   X,
-  MessageSquare, AlertTriangle, BookOpen,
+  MessageSquare, AlertTriangle, BookOpen, Wrench,
   ClipboardList, CalendarDays, Inbox, Package, FileText,
   TrendingUp, Radio, Plug, BarChart2, Users,
 } from "lucide-react";
@@ -58,6 +58,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
     { label: t("actions"),       Icon: AlertTriangle, href: "/actions" },
     { label: t("alerts"),        Icon: AlertTriangle, href: "/alerts" },
     { label: t("knowledge"),     Icon: BookOpen,      href: "/knowledge" },
+    { label: t("assets"),        Icon: Wrench,        href: "/assets" },
     { label: t("workOrders"),    Icon: ClipboardList, href: "/workorders" },
     { label: t("schedule"),      Icon: CalendarDays,  href: "/schedule" },
     { label: t("requests"),      Icon: Inbox,         href: "/requests" },
