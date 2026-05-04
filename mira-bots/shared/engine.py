@@ -116,6 +116,85 @@ _PADDING_OPTION_RE = re.compile(
 )
 _PLACEHOLDER_OPTION_RE = re.compile(r"^[\"']?\d+[.):\-]?[\"']?$")
 
+# Vocabulary used by the cmms-pending bypass: short responses that are clearly a
+# WO confirmation, denial, or edit instruction. Anything outside this vocab AND
+# longer than the threshold is treated as a fresh question that should NOT be
+# routed into the WO confirmation flow.
+_WO_RESPONSE_VOCAB = frozenset(
+    {
+        "yes",
+        "yeah",
+        "yep",
+        "yup",
+        "y",
+        "sure",
+        "ok",
+        "okay",
+        "log",
+        "long",
+        "create",
+        "submit",
+        "confirm",
+        "do it",
+        "log it",
+        "create it",
+        "go ahead",
+        "please",
+        "1",
+        "no",
+        "nope",
+        "n",
+        "skip",
+        "cancel",
+        "abort",
+        "never mind",
+        "nevermind",
+    }
+)
+
+_WO_EDIT_RE = re.compile(
+    r"\b("
+    r"priority\s+(?:is|to)\s+(?:LOW|MEDIUM|HIGH|CRITICAL)"
+    r"|(?:asset|equipment|site|area|line|fault|resolution)\s+(?:is|:)"
+    r"|change\s+(?:priority|asset|site|area|line)"
+    r")",
+    re.IGNORECASE,
+)
+
+# Cues that the message is a fresh question, not a WO confirmation/edit.
+_NEW_QUESTION_RE = re.compile(
+    r"\b(what|how|why|when|where|which|who|tell me|explain|describe|"
+    r"diagnose|troubleshoot|help me|i need|can you|cause(?:s|d)?|"
+    r"causes?\s+of|caused\s+by|trigger(?:s|ed)?)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_fresh_question_during_wo(message: str) -> bool:
+    """True if message is a brand-new question, not a response to the WO preview.
+
+    Fixes the regression where a follow-up diagnostic question gets misrouted into
+    the cmms_pending flow because cmms_pending was set during a prior session.
+    """
+    msg = (message or "").strip()
+    if not msg:
+        return False
+    msg_lower = msg.lower()
+    # Short message that matches WO yes/no vocab → it's a WO response.
+    if msg_lower in _WO_RESPONSE_VOCAB:
+        return False
+    # Recognised edit instruction → WO response.
+    if _WO_EDIT_RE.search(msg):
+        return False
+    # Long message OR question marker OR question word → fresh question.
+    if "?" in msg:
+        return True
+    if _NEW_QUESTION_RE.search(msg):
+        return True
+    if len(msg) > 40:
+        return True
+    return False
+
 
 def _clean_option_list(options: list) -> list:
     """Strip leading numbers and drop padding/placeholder options.
@@ -354,7 +433,11 @@ class Supervisor:
         clear_photo: bool = False,
         target_state: str | None = None,
     ) -> dict:
-        """Drop stale diagnostic baggage when the user pivots to a new ask."""
+        """Drop stale diagnostic baggage when the user pivots to a new ask.
+
+        Also drops any pending WO draft + symptom/diagnosis summaries so a stale
+        WO from a prior conversation doesn't bleed into the next one.
+        """
         ctx = state.get("context") or {}
         sc = ctx.get("session_context") or {}
 
@@ -365,6 +448,11 @@ class Supervisor:
                 "last_question": None,
                 "last_options": [],
             }
+
+        # Clear any pending WO from a prior session — otherwise the next RESOLVED
+        # diagnosis re-uses the stale draft and shows wrong asset/fault to the user.
+        ctx.pop("cmms_pending", None)
+        ctx.pop("cmms_wo_draft", None)
 
         state["fault_category"] = None
         state["final_state"] = None
@@ -554,8 +642,24 @@ class Supervisor:
 
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
+        # Bypass guard: if the message is clearly a brand-new diagnostic question (not a
+        # yes/no/edit on the pending WO), drop the stale WO flag and fall through to
+        # normal routing. Without this, a fresh question after a prior RESOLVED session
+        # gets misrouted into _handle_cmms_pending and the user can't escape the WO flow.
         if (state.get("context") or {}).get("cmms_pending") and not photo_b64:
-            return await self._handle_cmms_pending(chat_id, message, state, trace_id)
+            if _is_fresh_question_during_wo(message):
+                ctx_clear = state.get("context") or {}
+                ctx_clear.pop("cmms_pending", None)
+                ctx_clear.pop("cmms_wo_draft", None)
+                state["context"] = ctx_clear
+                self._save_state(chat_id, state)
+                logger.info(
+                    "CMMS_PENDING_BYPASS chat_id=%s msg=%r — treating as fresh question",
+                    chat_id,
+                    message[:120],
+                )
+            else:
+                return await self._handle_cmms_pending(chat_id, message, state, trace_id)
 
         # PM suggestion pending: user is answering a follow-up PM proposal.
         if (state.get("context") or {}).get("pm_suggestion_pending") and not photo_b64:

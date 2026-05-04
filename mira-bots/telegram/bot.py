@@ -543,6 +543,14 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Conversation reset.")
 
 
+async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Hard-reset conversation state — no preview of WO, no carryover from prior sessions."""
+    chat_id = str(update.effective_chat.id)
+    engine.reset(chat_id)
+    logger.info("NEW_SESSION chat_id=%s user=%s", chat_id, update.effective_user.first_name)
+    await update.message.reply_text("🔄 Fresh start. What can I help with?")
+
+
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Query Open WebUI for an equipment status summary."""
     headers = {"Content-Type": "application/json"}
@@ -664,7 +672,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/status \u2014 AI equipment summary\n"
         "/voice on|off \u2014 Enable/disable spoken responses\n"
         "/bad [reason] \u2014 Flag this response as unhelpful\n"
-        "/reset \u2014 Reset conversation state\n"
+        "/new \u2014 Fresh start (clear conversation state)\n"
+        "/reset \u2014 Reset conversation state (alias for /new)\n"
         "/help \u2014 Show this help\n"
         "Or just type any maintenance question.\n"
         "Send a photo to identify equipment.\n"
@@ -716,48 +725,82 @@ def main():
     # Helper to bind admin command kwargs without subclassing PTB's CommandHandler.
     async def _wrap_invite(update, context):
         if _admin_db_engine is None:
-            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
             return
         await invite_command(
-            update, context,
-            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
     async def _wrap_team(update, context):
         if _admin_db_engine is None:
-            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
             return
         await team_command(
-            update, context,
-            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
     async def _wrap_revoke(update, context):
         if _admin_db_engine is None:
-            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
             return
         await revoke_command(
-            update, context,
-            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
     async def _wrap_invite_status(update, context):
         if _admin_db_engine is None:
-            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
             return
         await invite_status_command(
-            update, context,
-            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
     async def _wrap_start(update, context):
         if _admin_db_engine is None:
             await update.message.reply_text("MIRA isn't fully configured. Ask your admin.")
             return
+        # No-args /start from an already-enrolled user → behave like /new.
+        # Args present → invite-token consumption flow (unchanged).
+        if not (context.args or []):
+            chat_id = str(update.effective_chat.id)
+            engine.reset(chat_id)
+            logger.info(
+                "START_RESET chat_id=%s user=%s",
+                chat_id,
+                update.effective_user.first_name if update.effective_user else "?",
+            )
+            await update.message.reply_text("🔄 Fresh start. What can I help with?")
+            return
         await start_command(update, context, engine=_admin_db_engine)
 
-    # IMPORTANT: register /start FIRST so it wins over the legacy welcome.
+    # IMPORTANT: register /start and /new FIRST so they win over the legacy welcome
+    # AND so they always run before the message handler regardless of FSM state.
     app.add_handler(CommandHandler("start", _wrap_start))
+    app.add_handler(CommandHandler("new", new_command))
     app.add_handler(CommandHandler("invite", _wrap_invite))
     app.add_handler(CommandHandler("team", _wrap_team))
     app.add_handler(CommandHandler("revoke", _wrap_revoke))
@@ -776,8 +819,9 @@ def main():
     app.add_error_handler(_conflict_error_handler)
     _ver_path = os.path.join(os.path.dirname(__file__), "VERSION")
     _ver = open(_ver_path).read().strip() if os.path.exists(_ver_path) else "unknown"
-    logger.info("MIRA Telegram bot starting (polling) version=%s admins=%d",
-                _ver, _authorizer.admin_count())
+    logger.info(
+        "MIRA Telegram bot starting (polling) version=%s admins=%d", _ver, _authorizer.admin_count()
+    )
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
