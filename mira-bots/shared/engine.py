@@ -648,10 +648,11 @@ class Supervisor:
         # gets misrouted into _handle_cmms_pending and the user can't escape the WO flow.
         if (state.get("context") or {}).get("cmms_pending") and not photo_b64:
             if _is_fresh_question_during_wo(message):
-                ctx_clear = state.get("context") or {}
-                ctx_clear.pop("cmms_pending", None)
-                ctx_clear.pop("cmms_wo_draft", None)
-                state["context"] = ctx_clear
+                # Full diagnostic-carryover clear: pops cmms_pending + cmms_wo_draft,
+                # resets state["state"] off RESOLVED, clears fault_category and
+                # final_state. Without this, a poisoned RESOLVED state lands the
+                # message back in the RESOLVED hook which rebuilds a stale WO.
+                state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=False)
                 self._save_state(chat_id, state)
                 logger.info(
                     "CMMS_PENDING_BYPASS chat_id=%s msg=%r — treating as fresh question",
