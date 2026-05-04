@@ -457,12 +457,12 @@ class TestSessionPivotRouting:
                 ),
             ),
             patch("shared.engine.classify_intent", return_value="documentation"),
-            patch.object(supervisor, "_handle_session_followup", new_callable=AsyncMock) as followup,
+            patch.object(
+                supervisor, "_handle_session_followup", new_callable=AsyncMock
+            ) as followup,
             patch("shared.engine.kb_has_coverage", return_value=(True, "cached docs")),
         ):
-            result = asyncio.run(
-                supervisor.process_full(chat_id, "do they have a website")
-            )
+            result = asyncio.run(supervisor.process_full(chat_id, "do they have a website"))
 
         assert followup.await_count == 0
         assert result["next_state"] == "ASSET_IDENTIFIED"
@@ -769,6 +769,7 @@ class TestFreshQuestionDuringWO:
 
     def test_yes_is_wo_response(self):
         from shared.engine import _is_fresh_question_during_wo as f
+
         assert not f("yes")
         assert not f("Yes")
         assert not f("yeah")
@@ -776,6 +777,7 @@ class TestFreshQuestionDuringWO:
 
     def test_no_is_wo_response(self):
         from shared.engine import _is_fresh_question_during_wo as f
+
         assert not f("no")
         assert not f("nope")
         assert not f("skip")
@@ -783,6 +785,7 @@ class TestFreshQuestionDuringWO:
 
     def test_edits_are_wo_response(self):
         from shared.engine import _is_fresh_question_during_wo as f
+
         assert not f("change priority to HIGH")
         assert not f("asset is Pump-A3")
         assert not f("priority is HIGH")
@@ -790,21 +793,25 @@ class TestFreshQuestionDuringWO:
 
     def test_question_marks_are_fresh(self):
         from shared.engine import _is_fresh_question_during_wo as f
+
         assert f("What causes a VFD overcurrent fault?")
         assert f("How do I reset this drive?")
         assert f("why is my pump leaking?")
 
     def test_question_words_are_fresh(self):
         from shared.engine import _is_fresh_question_during_wo as f
+
         assert f("How do I diagnose this")
         assert f("Tell me about cooling tower maintenance")
         assert f("describe the fault category")
 
     def test_long_statements_are_fresh(self):
         from shared.engine import _is_fresh_question_during_wo as f
+
         assert f("My motor is making a strange grinding noise during startup")
 
     def test_empty_message_is_not_fresh(self):
         from shared.engine import _is_fresh_question_during_wo as f
+
         assert not f("")
         assert not f("   ")

@@ -119,12 +119,37 @@ _PLACEHOLDER_OPTION_RE = re.compile(r"^[\"']?\d+[.):\-]?[\"']?$")
 # WO confirmation, denial, or edit instruction. Anything outside this vocab AND
 # longer than the threshold is treated as a fresh question that should NOT be
 # routed into the WO confirmation flow.
-_WO_RESPONSE_VOCAB = frozenset({
-    "yes", "yeah", "yep", "yup", "y", "sure", "ok", "okay", "log", "long",
-    "create", "submit", "confirm", "do it", "log it", "create it", "go ahead",
-    "please", "1", "no", "nope", "n", "skip", "cancel", "abort",
-    "never mind", "nevermind",
-})
+_WO_RESPONSE_VOCAB = frozenset(
+    {
+        "yes",
+        "yeah",
+        "yep",
+        "yup",
+        "y",
+        "sure",
+        "ok",
+        "okay",
+        "log",
+        "long",
+        "create",
+        "submit",
+        "confirm",
+        "do it",
+        "log it",
+        "create it",
+        "go ahead",
+        "please",
+        "1",
+        "no",
+        "nope",
+        "n",
+        "skip",
+        "cancel",
+        "abort",
+        "never mind",
+        "nevermind",
+    }
+)
 
 _WO_EDIT_RE = re.compile(
     r"\b("
@@ -754,9 +779,7 @@ class Supervisor:
                         tenant_id=resolved_tenant,
                         honest_prefix=_honest_prefix,
                     )
-                return await self._handle_instructional_question(
-                    chat_id, message, state, trace_id
-                )
+                return await self._handle_instructional_question(chat_id, message, state, trace_id)
 
             if _router_intent == "continue_current" and detect_session_followup(
                 message, sc, state["state"]
@@ -820,7 +843,11 @@ class Supervisor:
                     kb_covered, _ = kb_has_coverage(mfr, combined, resolved_tenant or "")
                     if kb_covered:
                         return await self._do_documentation_lookup(
-                            chat_id, message, state, trace_id, resolved_tenant,
+                            chat_id,
+                            message,
+                            state,
+                            trace_id,
+                            resolved_tenant,
                             vendor_override=mfr,
                         )
                 return await self._enter_manual_lookup_gathering(
@@ -2547,7 +2574,11 @@ class Supervisor:
         # Phase 2 — KB pre-check: skip crawl when we already have coverage.
         kb_covered, kb_reason = kb_has_coverage(mfr, combined, resolved_tenant or "")
         if kb_covered:
-            reply = f"I have {mfr} documentation indexed." if mfr else "I already have documentation indexed for that equipment."
+            reply = (
+                f"I have {mfr} documentation indexed."
+                if mfr
+                else "I already have documentation indexed for that equipment."
+            )
             if url:
                 reply += f" Official source: {url}"
             reply += " Ask about fault codes, specs, or wiring."

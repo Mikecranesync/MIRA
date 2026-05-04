@@ -726,38 +726,58 @@ def main():
     # Helper to bind admin command kwargs without subclassing PTB's CommandHandler.
     async def _wrap_invite(update, context):
         if _admin_db_engine is None:
-            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
             return
         await invite_command(
-            update, context,
-            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
     async def _wrap_team(update, context):
         if _admin_db_engine is None:
-            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
             return
         await team_command(
-            update, context,
-            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
     async def _wrap_revoke(update, context):
         if _admin_db_engine is None:
-            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
             return
         await revoke_command(
-            update, context,
-            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
     async def _wrap_invite_status(update, context):
         if _admin_db_engine is None:
-            await update.message.reply_text("Admin commands unavailable: NEON_DATABASE_URL not set.")
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
             return
         await invite_status_command(
-            update, context,
-            engine=_admin_db_engine, auth=_authorizer, tenant_id=DEFAULT_TENANT_ID,
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
     async def _wrap_start(update, context):
@@ -800,8 +820,9 @@ def main():
     app.add_error_handler(_conflict_error_handler)
     _ver_path = os.path.join(os.path.dirname(__file__), "VERSION")
     _ver = open(_ver_path).read().strip() if os.path.exists(_ver_path) else "unknown"
-    logger.info("MIRA Telegram bot starting (polling) version=%s admins=%d",
-                _ver, _authorizer.admin_count())
+    logger.info(
+        "MIRA Telegram bot starting (polling) version=%s admins=%d", _ver, _authorizer.admin_count()
+    )
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
