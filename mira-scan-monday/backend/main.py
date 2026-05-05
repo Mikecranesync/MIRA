@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import html
 import logging
 import os
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import db, manual_search, mira_rag, monday_api, scan_queue, vision
+from . import (
+    db,
+    manual_search,
+    mira_rag,
+    monday_api,
+    oauth,
+    scan_queue,
+    session,
+    vision,
+)
 from .models import (
     AssetPlate,
     ChatMessageRequest,
@@ -29,6 +40,7 @@ logger = logging.getLogger("mira-scan")
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await db.ensure_scan_queue_table()
+    await db.ensure_monday_installations_table()
     yield
 
 
@@ -55,6 +67,98 @@ app.add_middleware(
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# ── OAuth install flow ─────────────────────────────────────────────────────
+# When a customer installs the app from monday.com's marketplace, Monday
+# redirects them through these two endpoints. The install URL is what
+# Monday calls; the callback exchanges the code for a per-account access
+# token we persist in `monday_installations`.
+
+
+@app.get("/oauth/monday/install")
+async def oauth_install(state: str = "") -> RedirectResponse:
+    """Redirect to Monday's consent screen.
+
+    Mainly used for the reinstall flow when a token has been revoked
+    (frontend `redirectToInstall()` lands here). Marketplace installs
+    typically jump straight to /oauth/monday/callback with a code from
+    Monday's authorize endpoint, but exposing /install lets us issue
+    the same URL for manual or automated reinstalls.
+    """
+    if not oauth.configured():
+        raise HTTPException(
+            status_code=503,
+            detail="OAuth is not configured (MONDAY_OAUTH_CLIENT_ID/SECRET missing)",
+        )
+    return RedirectResponse(oauth.install_url(state=state or None), status_code=302)
+
+
+@app.get("/oauth/monday/callback", response_class=HTMLResponse)
+async def oauth_callback(code: str = "", state: str = "") -> HTMLResponse:
+    """Trade Monday's auth code for an access token, persist by account_id."""
+    if not code:
+        raise HTTPException(status_code=400, detail="missing 'code' query parameter")
+    try:
+        token_data = await oauth.exchange_code_for_token(code)
+    except oauth.OAuthError as exc:
+        raise HTTPException(status_code=400, detail=f"token exchange failed: {exc}") from exc
+
+    access_token = token_data.get("access_token")
+    scope = token_data.get("scope", "")
+    if not access_token:
+        raise HTTPException(
+            status_code=502,
+            detail=f"monday returned no access_token: {token_data!r}",
+        )
+
+    try:
+        me = await oauth.whoami(access_token)
+    except oauth.OAuthError as exc:
+        raise HTTPException(status_code=502, detail=f"whoami failed: {exc}") from exc
+
+    account = (me or {}).get("account") or {}
+    account_id = str(account.get("id") or "")
+    user_id = str(me.get("id") or "") or None
+    slug = str(account.get("slug") or "app")
+    if not account_id:
+        raise HTTPException(
+            status_code=500,
+            detail="could not resolve installing account id from Monday whoami response",
+        )
+
+    try:
+        await oauth.save_installation(
+            account_id=account_id,
+            access_token=access_token,
+            scope=scope,
+            user_id=user_id,
+        )
+    except db.DBUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="cannot persist installation: NEON_DATABASE_URL not configured",
+        ) from exc
+
+    # Sanitize before interpolating into the HTML response. Monday's
+    # slug + account_id should already be safe (slug matches [a-z0-9_-]+
+    # and id is numeric) but we cheaply escape both for defense in depth.
+    safe_slug = html.escape(slug, quote=True)
+    safe_account = html.escape(account_id, quote=True)
+    redirect_back = f"https://{safe_slug}.monday.com/apps/installed_apps"
+    return HTMLResponse(
+        f"""<!doctype html>
+<html><head>
+<title>MIRA Scan installed</title>
+<meta http-equiv="refresh" content="2; url={redirect_back}">
+<style>body{{font-family:system-ui,sans-serif;padding:2rem;text-align:center}}</style>
+</head><body>
+<h2>MIRA Scan installed ✓</h2>
+<p>Account: <code>{safe_account}</code></p>
+<p>Redirecting back to monday.com…</p>
+<p><a href="{redirect_back}">Go now</a></p>
+</body></html>"""
+    )
 
 
 @app.post("/scan/extract", response_model=AssetPlate)
@@ -191,16 +295,21 @@ async def monday_update_item(
     if not req.columns:
         raise HTTPException(status_code=400, detail="columns must not be empty")
 
-    session_token = request.headers.get("x-monday-session-token")
-    if session_token:
-        logger.debug("received monday session token (len=%d)", len(session_token))
+    account_id = session.account_id_from_headers(request.headers)
+    if account_id:
+        await oauth.touch_last_seen(account_id)
 
     try:
         new_id = await monday_api.update_item_columns(
             board_id=req.board_id,
             item_id=req.item_id,
             columns=req.columns,
+            account_id=account_id,
         )
+    except monday_api.MondayTokenRevoked as exc:
+        # Specific code so the frontend can branch to redirectToInstall().
+        logger.warning("monday install revoked for account_id=%s: %s", account_id, exc)
+        return MondayUpdateResponse(ok=False, error=f"reinstall_required: {exc}")
     except monday_api.MondayError as exc:
         logger.warning("monday update failed: %s", exc)
         return MondayUpdateResponse(ok=False, error=str(exc))
