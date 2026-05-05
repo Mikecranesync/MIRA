@@ -17,6 +17,7 @@ from . import (
     oauth,
     scan_queue,
     session,
+    usage,
     vision,
 )
 from .models import (
@@ -41,6 +42,7 @@ logger = logging.getLogger("mira-scan")
 async def lifespan(_app: FastAPI):
     await db.ensure_scan_queue_table()
     await db.ensure_monday_installations_table()
+    await db.ensure_account_usage_table()
     yield
 
 
@@ -162,7 +164,7 @@ async def oauth_callback(code: str = "", state: str = "") -> HTMLResponse:
 
 
 @app.post("/scan/extract", response_model=AssetPlate)
-async def scan_extract(req: ScanRequest) -> AssetPlate:
+async def scan_extract(req: ScanRequest, request: Request) -> AssetPlate:
     if not req.image_base64:
         raise HTTPException(status_code=400, detail="image_base64 is required")
     try:
@@ -170,12 +172,18 @@ async def scan_extract(req: ScanRequest) -> AssetPlate:
     except Exception as exc:
         logger.exception("vision extract failed")
         raise HTTPException(status_code=502, detail=f"vision extract failed: {exc}") from exc
+    # Per-account billing signal — only count successful scans. Fire and
+    # forget; counter writes are best-effort and never block the response.
+    account_id = session.account_id_from_headers(request.headers)
+    if account_id:
+        await usage.bump_scan_count(account_id)
     return plate
 
 
 @app.get("/kb/lookup", response_model=KBResult)
 async def kb_lookup(
     background: BackgroundTasks,
+    request: Request,
     make: str = "",
     model: str = "",
 ) -> KBResult:
@@ -184,16 +192,22 @@ async def kb_lookup(
     On miss we enqueue (make, model) into mira_scan_queue AND fire a
     background task that runs a real-time web search for the manual.
     The frontend polls `/queue/status?make=&model=` for progress.
+
+    The KB itself stays shared (cooperative-by-design per NORTH_STAR.md);
+    `account_id` only stamps the queue row so we know which install the
+    miss came from.
     """
     if not make and not model:
         raise HTTPException(status_code=400, detail="make or model is required")
 
+    account_id = session.account_id_from_headers(request.headers)
     result = await mira_rag.lookup_asset(make=make, model=model)
     if not result.matched:
         ack = await scan_queue.enqueue(
             make=make,
             model=model,
             source="mira-scan",
+            tenant_id=account_id,
             notes="auto-enqueued from /kb/lookup miss",
         )
         if ack:
@@ -204,7 +218,9 @@ async def kb_lookup(
 
 
 @app.post("/queue/search-now", response_model=ManualRequestQueueResponse)
-async def queue_search_now(req: ManualRequestQueueRequest) -> ManualRequestQueueResponse:
+async def queue_search_now(
+    req: ManualRequestQueueRequest, request: Request
+) -> ManualRequestQueueResponse:
     """Synchronous variant of the background search.
 
     Enqueues if needed, runs the search inline, and returns the final
@@ -214,11 +230,13 @@ async def queue_search_now(req: ManualRequestQueueRequest) -> ManualRequestQueue
     if not (req.make.strip() and req.model.strip()):
         raise HTTPException(status_code=400, detail="make and model are required")
 
+    account_id = session.account_id_from_headers(request.headers)
     await scan_queue.enqueue(
         make=req.make,
         model=req.model,
         serial=req.serial,
         source=req.source or "mira-scan",
+        tenant_id=account_id,
         notes=req.notes,
     )
     await manual_search.run_search_and_update(req.make, req.model)
@@ -238,9 +256,16 @@ async def queue_search_now(req: ManualRequestQueueRequest) -> ManualRequestQueue
 
 
 @app.post("/chat/message", response_model=ChatMessageResponse)
-async def chat_message(req: ChatMessageRequest) -> ChatMessageResponse:
+async def chat_message(
+    req: ChatMessageRequest, request: Request
+) -> ChatMessageResponse:
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="message is required")
+    # Chat is downstream of scan — bump last_seen so we know the install
+    # is active, but don't bump scan_count (that would double-count).
+    account_id = session.account_id_from_headers(request.headers)
+    if account_id:
+        await oauth.touch_last_seen(account_id)
     reply, sources = await mira_rag.chat(
         message=req.message,
         asset_id=req.asset_id,
@@ -251,14 +276,18 @@ async def chat_message(req: ChatMessageRequest) -> ChatMessageResponse:
 
 
 @app.post("/queue/manual-request", response_model=ManualRequestQueueResponse)
-async def queue_manual_request(req: ManualRequestQueueRequest) -> ManualRequestQueueResponse:
+async def queue_manual_request(
+    req: ManualRequestQueueRequest, request: Request
+) -> ManualRequestQueueResponse:
     if not (req.make.strip() and req.model.strip()):
         raise HTTPException(status_code=400, detail="make and model are required")
+    account_id = session.account_id_from_headers(request.headers)
     ack = await scan_queue.enqueue(
         make=req.make,
         model=req.model,
         serial=req.serial,
         source=req.source or "mira-scan",
+        tenant_id=account_id,
         notes=req.notes,
     )
     if ack is None:
