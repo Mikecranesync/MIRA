@@ -1,3 +1,8 @@
+## eval-fixer run — 2026-05-05
+- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (same stale scorecard as 2026-05-04)
+- Action: no-op — duplicate of yesterday's run, existing issue #985 still open
+- Hard-stop: same 13 failures, same 3 file clusters (engine.py + guardrails.py + active.yaml). No fresh eval has run for 6 days. Need to either re-run the judge eval or merge a fix on issue #985.
+
 ## eval-fixer run — 2026-05-04
 - Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md`
 - Action: issue-filed (#985 — added to Kanban)
