@@ -6,6 +6,7 @@ import re
 
 import httpx
 
+from . import db
 from .known_equipment import get_equipment, match_equipment
 from .models import ChatSource, KBResult
 
@@ -23,31 +24,88 @@ def _auth_headers() -> dict[str, str]:
     return {}
 
 
-async def lookup_asset(make: str, model: str) -> KBResult:
-    """Match (make, model) against the curated MIRA KB allowlist.
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
 
-    Curated rather than live-queried: the MIRA KB schema/endpoint isn't
-    yet stable enough to safely hit on every scan, and the allowlist
-    covers the equipment families that actually have OEM manuals
-    ingested today (PowerFlex, Yaskawa, ABB, Siemens, etc.). Add new
-    families in `known_equipment.py` as the KB grows.
+
+def _slugify(*parts: str) -> str:
+    raw = "-".join(p for p in parts if p)
+    return _SLUG_RE.sub("-", raw.lower()).strip("-") or "asset"
+
+
+def _humanize(make: str, model: str) -> str:
+    bits = [b for b in (make.strip(), model.strip()) if b]
+    return " ".join(bits) or "Unknown asset"
+
+
+async def _live_kb_match(make: str, model: str) -> tuple[int, str | None] | None:
+    """Search the live kb_chunks table for chunks mentioning this asset.
+
+    Returns (doc_count, manufacturer_hint) on hit, None on miss, and
+    None on any DB error so the allowlist fallback can take over.
     """
-    entry = match_equipment(make, model)
-    if entry is None:
-        logger.info("kb lookup miss: make=%r model=%r", make, model)
-        return KBResult(matched=False, doc_count=0)
+    if not (make or model):
+        return None
+    # We require the model token to appear (it's specific) and let the
+    # make match either the indexed manufacturer column or the content.
+    sql = """
+        SELECT COUNT(*) AS hits,
+               MAX(manufacturer) AS mfg
+          FROM kb_chunks
+         WHERE content ILIKE %s
+           AND (
+                manufacturer ILIKE %s
+             OR content      ILIKE %s
+           )
+    """
+    model_pat = f"%{model.strip()}%" if model else "%"
+    make_pat = f"%{make.strip()}%" if make else "%"
+    try:
+        row = await db.fetch_one(sql, (model_pat, make_pat, make_pat))
+    except db.DBUnavailable:
+        return None
+    except Exception:
+        logger.exception("live kb_chunks lookup failed for %r %r", make, model)
+        return None
+    if row is None:
+        return None
+    hits = int(row[0] or 0)
+    if hits <= 0:
+        return None
+    return hits, (row[1] or None)
 
-    logger.info("kb lookup hit: %s for %r %r", entry["asset_id"], make, model)
-    return KBResult(matched=True, asset_id=entry["asset_id"], doc_count=1)
+
+async def lookup_asset(make: str, model: str) -> KBResult:
+    """Identify an asset against the live MIRA KB, then the curated
+    allowlist as a deterministic fallback for known families.
+    """
+    # 1) live kb_chunks search — picks up anything we've ever ingested
+    live = await _live_kb_match(make, model)
+    if live is not None:
+        hits, mfg_hint = live
+        asset_id = _slugify(mfg_hint or make, model)
+        label = _humanize(mfg_hint or make, model)
+        logger.info("kb live hit: %s (%d chunks) for %r %r", asset_id, hits, make, model)
+        return KBResult(matched=True, asset_id=asset_id, asset_label=label, doc_count=hits)
+
+    # 2) curated allowlist — guarantees a clean asset_id + friendly label
+    entry = match_equipment(make, model)
+    if entry is not None:
+        logger.info("kb allowlist hit: %s for %r %r", entry["asset_id"], make, model)
+        return KBResult(
+            matched=True,
+            asset_id=entry["asset_id"],
+            asset_label=entry["label"],
+            doc_count=1,
+        )
+
+    logger.info("kb miss: make=%r model=%r", make, model)
+    return KBResult(matched=False, doc_count=0)
 
 
 _SOURCE_LINE_RE = re.compile(r"^\s*\[(\d+)\]\s*(.+?)\s*$")
 
 
 def _split_sources(content: str) -> tuple[str, list[ChatSource]]:
-    """mira-pipeline embeds citations in the assistant content as a
-    `--- Sources ---` block followed by `[N] title` lines. Pull them out
-    so the frontend can render structured source tags."""
     if not content:
         return "", []
     parts = re.split(r"\n\s*-{3,}\s*Sources\s*-{3,}\s*\n", content, maxsplit=1)
@@ -61,21 +119,23 @@ def _split_sources(content: str) -> tuple[str, list[ChatSource]]:
     return reply, sources
 
 
-def _system_prompt(asset_id: str | None) -> str:
+def _system_prompt(asset_id: str | None, asset_label: str | None) -> str:
     base = (
         "You are MIRA, an industrial-maintenance diagnostic assistant. "
         "Answer concisely and cite the OEM manual when you reference one. "
         "If you don't know, say so — don't guess."
     )
-    if not asset_id:
-        return base
-    eq = get_equipment(asset_id)
-    if not eq:
+    label = asset_label
+    if not label and asset_id:
+        eq = get_equipment(asset_id)
+        if eq:
+            label = eq["label"]
+    if not label:
         return base
     return (
-        f"{base} The user is asking about a {eq['label']} "
-        f"({eq['category']}). Scope all retrieval and reasoning to that "
-        "equipment family unless the user explicitly asks otherwise."
+        f"{base} The user is asking about a {label}. "
+        "Scope all retrieval and reasoning to that equipment unless the "
+        "user explicitly asks otherwise."
     )
 
 
@@ -83,15 +143,15 @@ async def chat(
     message: str,
     asset_id: str | None,
     history: list[dict],
+    asset_label: str | None = None,
 ) -> tuple[str, list[ChatSource]]:
-    """Send a chat message to mira-pipeline (`/v1/chat/completions`)."""
     if not MIRA_KB_BASE_URL:
         return (
             "MIRA knowledge base is not configured. Set MIRA_KB_BASE_URL to enable grounded chat.",
             [],
         )
 
-    messages: list[dict] = [{"role": "system", "content": _system_prompt(asset_id)}]
+    messages: list[dict] = [{"role": "system", "content": _system_prompt(asset_id, asset_label)}]
     for h in history or []:
         role = h.get("role")
         content = h.get("content")
@@ -99,11 +159,7 @@ async def chat(
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": message})
 
-    payload = {
-        "model": MIRA_KB_MODEL,
-        "messages": messages,
-        "temperature": 0.2,
-    }
+    payload = {"model": MIRA_KB_MODEL, "messages": messages, "temperature": 0.2}
     headers = {"Content-Type": "application/json", **_auth_headers()}
 
     try:
@@ -125,5 +181,4 @@ async def chat(
         logger.warning("unexpected mira-pipeline payload: %r", data)
         return ("Chat backend returned an unexpected response.", [])
 
-    reply, sources = _split_sources(content)
-    return reply, sources
+    return _split_sources(content)

@@ -18,7 +18,9 @@ class AssetPlate(BaseModel):
 class KBResult(BaseModel):
     matched: bool
     asset_id: str | None = None
+    asset_label: str | None = None
     doc_count: int = 0
+    queued: QueueAck | None = None
 
 
 class ScanRequest(BaseModel):
@@ -34,8 +36,39 @@ class ChatSource(BaseModel):
 
 class ChatMessageRequest(BaseModel):
     asset_id: str | None = None
+    asset_label: str | None = None
     message: str
     history: list[dict] = Field(default_factory=list)
+
+
+class QueueAck(BaseModel):
+    id: int
+    status: str
+    times_seen: int
+    first_seen: str | None = None
+
+
+class ManualRequestQueueRequest(BaseModel):
+    make: str
+    model: str
+    serial: str | None = None
+    source: str = "mira-scan"
+    notes: str | None = None
+
+
+class ManualRequestQueueResponse(BaseModel):
+    ok: bool
+    queued: QueueAck | None = None
+    error: str | None = None
+
+
+class QueueStatusResponse(BaseModel):
+    available: bool
+    counts: dict[str, int] = Field(default_factory=dict)
+    items: list[dict] = Field(default_factory=list)
+
+
+KBResult.model_rebuild()
 
 
 class ChatMessageResponse(BaseModel):

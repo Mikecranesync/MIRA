@@ -60,10 +60,16 @@ export default function App() {
       {plate && lookupBusy && <p className="muted">Searching MIRA KB…</p>}
 
       {plate && kb?.matched && (
-        <MiraChat assetId={kb.asset_id} sessionToken={sessionToken} />
+        <MiraChat
+          assetId={kb.asset_id}
+          assetLabel={kb.asset_label}
+          sessionToken={sessionToken}
+        />
       )}
 
-      {plate && kb && !kb.matched && <UpsellCTA plate={plate} />}
+      {plate && kb && !kb.matched && (
+        <UpsellCTA plate={plate} queued={kb.queued} />
+      )}
     </div>
   );
 }

@@ -2,25 +2,37 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import mira_rag, monday_api, vision
+from . import db, mira_rag, monday_api, scan_queue, vision
 from .models import (
     AssetPlate,
     ChatMessageRequest,
     ChatMessageResponse,
     KBResult,
+    ManualRequestQueueRequest,
+    ManualRequestQueueResponse,
     MondayColumnUpdate,
     MondayUpdateResponse,
+    QueueAck,
+    QueueStatusResponse,
     ScanRequest,
 )
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("mira-scan")
 
-app = FastAPI(title="MIRA Scan", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await db.ensure_scan_queue_table()
+    yield
+
+
+app = FastAPI(title="MIRA Scan", version="0.2.0", lifespan=lifespan)
 
 _allowed_origins = [
     o.strip()
@@ -59,9 +71,27 @@ async def scan_extract(req: ScanRequest) -> AssetPlate:
 
 @app.get("/kb/lookup", response_model=KBResult)
 async def kb_lookup(make: str = "", model: str = "") -> KBResult:
+    """Identify the scanned asset against the live KB + curated allowlist.
+
+    On miss we *also* auto-enqueue the (make, model) into mira_scan_queue
+    so the flywheel runs without a separate frontend POST. The miss
+    response carries the queue ack so the upsell screen can show "we've
+    queued a search for this".
+    """
     if not make and not model:
         raise HTTPException(status_code=400, detail="make or model is required")
-    return await mira_rag.lookup_asset(make=make, model=model)
+
+    result = await mira_rag.lookup_asset(make=make, model=model)
+    if not result.matched:
+        ack = await scan_queue.enqueue(
+            make=make,
+            model=model,
+            source="mira-scan",
+            notes="auto-enqueued from /kb/lookup miss",
+        )
+        if ack:
+            result.queued = QueueAck(**ack)
+    return result
 
 
 @app.post("/chat/message", response_model=ChatMessageResponse)
@@ -71,9 +101,35 @@ async def chat_message(req: ChatMessageRequest) -> ChatMessageResponse:
     reply, sources = await mira_rag.chat(
         message=req.message,
         asset_id=req.asset_id,
+        asset_label=req.asset_label,
         history=req.history,
     )
     return ChatMessageResponse(reply=reply, sources=sources)
+
+
+@app.post("/queue/manual-request", response_model=ManualRequestQueueResponse)
+async def queue_manual_request(req: ManualRequestQueueRequest) -> ManualRequestQueueResponse:
+    if not (req.make.strip() and req.model.strip()):
+        raise HTTPException(status_code=400, detail="make and model are required")
+    ack = await scan_queue.enqueue(
+        make=req.make,
+        model=req.model,
+        serial=req.serial,
+        source=req.source or "mira-scan",
+        notes=req.notes,
+    )
+    if ack is None:
+        return ManualRequestQueueResponse(
+            ok=False,
+            error="queue unavailable (NEON_DATABASE_URL unset or DB unreachable)",
+        )
+    return ManualRequestQueueResponse(ok=True, queued=QueueAck(**ack))
+
+
+@app.get("/queue/status", response_model=QueueStatusResponse)
+async def queue_status(limit: int = 50) -> QueueStatusResponse:
+    data = await scan_queue.status(limit=limit)
+    return QueueStatusResponse(**data)
 
 
 @app.post("/monday/update-item", response_model=MondayUpdateResponse)

@@ -31,15 +31,41 @@ export async function kbLookup(make, model, sessionToken) {
   return jsonFetch(`/kb/lookup?${params.toString()}`, { method: "GET" }, sessionToken);
 }
 
-export async function chatMessage(message, assetId, history, sessionToken) {
+export async function chatMessage(
+  message,
+  assetId,
+  history,
+  sessionToken,
+  assetLabel,
+) {
   return jsonFetch(
     "/chat/message",
     {
       method: "POST",
-      body: JSON.stringify({ message, asset_id: assetId, history }),
+      body: JSON.stringify({
+        message,
+        asset_id: assetId,
+        asset_label: assetLabel,
+        history,
+      }),
     },
     sessionToken
   );
+}
+
+export async function queueManualRequest(make, model, serial, sessionToken) {
+  return jsonFetch(
+    "/queue/manual-request",
+    {
+      method: "POST",
+      body: JSON.stringify({ make, model, serial, source: "mira-scan" }),
+    },
+    sessionToken
+  );
+}
+
+export async function queueStatus(sessionToken) {
+  return jsonFetch("/queue/status", { method: "GET" }, sessionToken);
 }
 
 export async function mondayUpdateItem(boardId, itemId, columns, sessionToken) {

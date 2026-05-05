@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@vibe/core";
 import { chatMessage } from "../lib/api.js";
 
-export default function MiraChat({ assetId, sessionToken }) {
+export default function MiraChat({ assetId, assetLabel, sessionToken }) {
   const [input, setInput] = useState("");
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -17,7 +17,13 @@ export default function MiraChat({ assetId, sessionToken }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await chatMessage(text, assetId, history, sessionToken);
+      const res = await chatMessage(
+        text,
+        assetId,
+        history,
+        sessionToken,
+        assetLabel,
+      );
       setHistory([
         ...next,
         { role: "assistant", content: res.reply, sources: res.sources || [] },
