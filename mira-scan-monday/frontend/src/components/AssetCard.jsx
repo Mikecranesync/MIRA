@@ -1,4 +1,4 @@
-import { Button, Tooltip } from "@mondaydotcomorg/vibe";
+import { Button } from "@vibe/core";
 import { mondayUpdateItem } from "../lib/api.js";
 import { useState } from "react";
 
@@ -53,9 +53,12 @@ export default function AssetCard({ plate, mondayContext, sessionToken }) {
     <div className="card">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h3 style={{ margin: 0, fontSize: 16 }}>Extracted specs</h3>
-        <Tooltip content="Vision model self-reported confidence">
-          <span className="muted confidence">{conf}% confidence</span>
-        </Tooltip>
+        <span
+          className="muted confidence"
+          title="Vision model self-reported confidence"
+        >
+          {conf}% confidence
+        </span>
       </div>
       <dl className="spec-grid">
         {FIELDS.map(([k, label]) => (

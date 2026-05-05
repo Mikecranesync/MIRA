@@ -1,4 +1,4 @@
-import { Button } from "@mondaydotcomorg/vibe";
+import { Button } from "@vibe/core";
 
 export default function UpsellCTA({ plate }) {
   const signupUrl = import.meta.env.VITE_FACTORYLM_SIGNUP_URL || "https://app.factorylm.com/signup";

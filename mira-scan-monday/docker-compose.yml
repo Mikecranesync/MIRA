@@ -7,9 +7,11 @@ services:
     container_name: mira-scan-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8090:8000"
     env_file:
       - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx,sys; sys.exit(0 if httpx.get('http://127.0.0.1:8000/healthz', timeout=3).status_code==200 else 1)"]
       interval: 30s
@@ -22,13 +24,14 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/scanbe}
         VITE_FACTORYLM_SIGNUP_URL: ${VITE_FACTORYLM_SIGNUP_URL:-https://app.factorylm.com/signup}
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/scan/}
     image: mira-scan-frontend:0.1.0
     container_name: mira-scan-frontend
     restart: unless-stopped
     ports:
-      - "5173:80"
+      - "127.0.0.1:5180:80"
     depends_on:
       backend:
         condition: service_healthy

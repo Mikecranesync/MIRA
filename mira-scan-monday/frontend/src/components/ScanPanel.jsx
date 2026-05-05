@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Button, Loader } from "@mondaydotcomorg/vibe";
+import { Button } from "@vibe/core";
 import { fileToBase64 } from "../lib/image.js";
 import { scanExtract } from "../lib/api.js";
 
@@ -45,7 +45,7 @@ export default function ScanPanel({ sessionToken, onResult }) {
         >
           Upload photo
         </Button>
-        {busy && <Loader size="small" />}
+        {busy && <span className="muted">Reading nameplate…</span>}
       </div>
       <input
         ref={cameraInputRef}

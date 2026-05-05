@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, TextField } from "@mondaydotcomorg/vibe";
+import { Button } from "@vibe/core";
 import { chatMessage } from "../lib/api.js";
 
 export default function MiraChat({ assetId, sessionToken }) {
@@ -58,19 +58,26 @@ export default function MiraChat({ assetId, sessionToken }) {
           </div>
         ))}
       </div>
-      <div className="row" style={{ marginTop: 8 }}>
-        <div style={{ flex: 1 }}>
-          <TextField
-            placeholder="Ask about this asset…"
-            value={input}
-            onChange={setInput}
-            onKeyDown={(e) => e.key === "Enter" && send()}
-          />
-        </div>
-        <Button onClick={send} disabled={busy || !input.trim()}>
+      <form
+        className="row"
+        style={{ marginTop: 8 }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          send();
+        }}
+      >
+        <input
+          type="text"
+          className="text-input"
+          placeholder="Ask about this asset…"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: "1px solid var(--ui-border-color, #c3c6d4)", fontSize: 14 }}
+        />
+        <Button type="submit" disabled={busy || !input.trim()}>
           {busy ? "…" : "Send"}
         </Button>
-      </div>
+      </form>
       {error && (
         <p style={{ color: "var(--negative-color, #d83a52)", marginTop: 8 }}>
           {error}
