@@ -1,0 +1,17 @@
+{
+  "name": "mira-monday-marketplace-setup",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hybrid driver for monday.com Developer Center (Build tab) configuration of the MIRA Scan marketplace app. Walks the four sections, prints the exact values to enter, captures OAuth + webhook secrets via stdin, and pipes them into Doppler factorylm/prd. Browser automation NOT used — Defender on this Windows host blocks Playwright's CDP transports (see memory feedback_playwright_windows_cdp_websocket_blocked).",
+  "type": "module",
+  "scripts": {
+    "setup": "bun setup.ts",
+    "dry-run": "bun setup.ts --dry-run",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "20.12.7",
+    "typescript": "5.4.5"
+  }
+}

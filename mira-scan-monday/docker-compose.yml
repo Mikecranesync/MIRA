@@ -3,13 +3,22 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: mira-scan-backend:0.1.0
+    image: mira-scan-backend:0.2.0
     container_name: mira-scan-backend
     restart: unless-stopped
     ports:
       - "127.0.0.1:8090:8000"
     env_file:
       - .env
+    environment:
+      # Per CLAUDE.md feedback_compose_env_plumbing.md: Doppler-managed
+      # secrets only reach the container when explicitly listed here.
+      # `doppler run -- docker compose up` interpolates these from the
+      # shell env at compose-up time. env_file (above) covers local dev
+      # where Mike hand-edits .env; this block covers production deploys.
+      MONDAY_OAUTH_CLIENT_ID: ${MONDAY_OAUTH_CLIENT_ID:-}
+      MONDAY_OAUTH_CLIENT_SECRET: ${MONDAY_OAUTH_CLIENT_SECRET:-}
+      MONDAY_WEBHOOK_SIGNING_SECRET: ${MONDAY_WEBHOOK_SIGNING_SECRET:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

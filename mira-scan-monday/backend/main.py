@@ -5,6 +5,7 @@ import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import BackgroundTasks, Cookie, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +21,7 @@ from . import (
     session,
     usage,
     vision,
+    webhooks,
 )
 from .models import (
     AssetPlate,
@@ -413,3 +415,26 @@ async def monday_update_item(
         logger.exception("monday update unexpected error")
         return MondayUpdateResponse(ok=False, error=f"{exc.__class__.__name__}: {exc}")
     return MondayUpdateResponse(ok=True, monday_item_id=new_id)
+
+
+# ── monday.com app-lifecycle webhook ───────────────────────────────────────
+# Configured in Developer Center → Build → Webhooks. Subscribed to:
+# install, uninstall, app_subscription_*. Verification mirrors the
+# session-token JWT pattern in `session.verify_session_token`.
+@app.post("/monday/webhook")
+async def monday_webhook(request: Request) -> dict[str, Any]:
+    raw = await request.body()
+    try:
+        body = await request.json() if raw else {}
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json body")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="body must be a json object")
+
+    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    try:
+        result = await webhooks.handle_event(authorization_header=auth, body=body)
+    except webhooks.WebhookInvalid as exc:
+        logger.warning("webhook signature invalid: %s", exc)
+        raise HTTPException(status_code=401, detail="invalid webhook signature")
+    return result

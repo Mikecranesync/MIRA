@@ -186,3 +186,28 @@ async def touch_last_seen(account_id: str) -> None:
         await db.execute(sql, (account_id,))
     except Exception:
         pass
+
+
+async def update_subscription_status(account_id: str, status: str) -> None:
+    """Record the latest subscription_status reported by a billing webhook.
+
+    Best-effort — DB failures are swallowed so we never 500 on a webhook
+    delivery and trigger needless monday retries.
+    """
+    if not account_id or not status:
+        return
+    sql = """
+        UPDATE monday_installations
+           SET subscription_status = %s,
+               last_seen_at        = NOW()
+         WHERE account_id = %s
+    """
+    try:
+        await db.execute(sql, (status, account_id))
+        logger.info(
+            "monday_installations: subscription_status=%s account_id=%s",
+            status,
+            account_id,
+        )
+    except Exception:
+        logger.exception("update_subscription_status failed for %s", account_id)

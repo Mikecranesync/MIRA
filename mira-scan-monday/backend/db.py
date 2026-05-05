@@ -149,6 +149,24 @@ async def ensure_monday_installations_table() -> None:
                 )
                 """
             )
+            # Idempotent migration for the subscription billing webhook —
+            # added 2026-05-05 alongside the /monday/webhook route.
+            await cur.execute(
+                """
+                ALTER TABLE monday_installations
+                  ADD COLUMN IF NOT EXISTS subscription_status text DEFAULT 'free'
+                """
+            )
+            # access_token NOT NULL was the original schema; the lifecycle
+            # webhook needs to upsert install rows BEFORE the OAuth
+            # callback delivers the token, so relax the constraint. Safe
+            # to re-run on rows that already have a token.
+            await cur.execute(
+                """
+                ALTER TABLE monday_installations
+                  ALTER COLUMN access_token DROP NOT NULL
+                """
+            )
         _ENSURED_OAUTH = True
         logger.info("monday_installations table is ready")
     except Exception:
