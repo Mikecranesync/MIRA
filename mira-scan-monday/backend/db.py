@@ -68,6 +68,7 @@ async def execute(sql: str, params: tuple[Any, ...] = ()) -> None:
 
 
 _ENSURED = False
+_ENSURED_OAUTH = False
 
 
 async def ensure_scan_queue_table() -> None:
@@ -117,3 +118,37 @@ async def ensure_scan_queue_table() -> None:
         logger.info("mira_scan_queue table is ready")
     except Exception:
         logger.exception("ensure_scan_queue_table failed; queue writes will no-op")
+
+
+async def ensure_monday_installations_table() -> None:
+    """Idempotent: create the per-account OAuth-token storage table.
+
+    One row per Monday account that installs the marketplace app. The
+    `access_token` is the long-lived OAuth token issued by Monday;
+    `revoked_at` is set when a 401 from Monday's GraphQL says the user
+    uninstalled or rotated their grant.
+    """
+    global _ENSURED_OAUTH
+    if _ENSURED_OAUTH:
+        return
+    if not NEON_DATABASE_URL:
+        return
+    try:
+        async with await _connect() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS monday_installations (
+                    account_id    text PRIMARY KEY,
+                    access_token  text NOT NULL,
+                    scope         text,
+                    user_id       text,
+                    installed_at  timestamptz NOT NULL DEFAULT NOW(),
+                    last_seen_at  timestamptz NOT NULL DEFAULT NOW(),
+                    revoked_at    timestamptz
+                )
+                """
+            )
+        _ENSURED_OAUTH = True
+        logger.info("monday_installations table is ready")
+    except Exception:
+        logger.exception("ensure_monday_installations_table failed; OAuth writes will fail")

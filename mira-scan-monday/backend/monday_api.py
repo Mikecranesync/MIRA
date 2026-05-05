@@ -7,6 +7,8 @@ from typing import Any
 
 import httpx
 
+from . import oauth
+
 logger = logging.getLogger("mira-scan.monday")
 
 MONDAY_API_TOKEN = os.getenv("MONDAY_API_TOKEN", "")
@@ -18,25 +20,57 @@ class MondayError(RuntimeError):
     pass
 
 
-def _headers() -> dict[str, str]:
-    if not MONDAY_API_TOKEN:
-        raise MondayError("MONDAY_API_TOKEN is not configured")
-    return {
-        "Authorization": MONDAY_API_TOKEN,
+class MondayTokenRevoked(MondayError):
+    """Raised when a 401 indicates the customer's install was revoked.
+
+    Callers should surface a "please reinstall" UI state — see
+    `frontend/src/lib/monday.js: redirectToInstall()`.
+    """
+
+
+async def _resolve_token(account_id: str | None) -> str:
+    """Per-account token via OAuth storage, with the env-var fallback.
+
+    The fallback is used by the standalone path (`app.factorylm.com/scan/`
+    running without a Monday iframe context) so dev and standalone testing
+    keep working before any account has installed via OAuth.
+    """
+    if account_id:
+        token = await oauth.get_token_for_account(account_id)
+        if token:
+            return token
+    if MONDAY_API_TOKEN:
+        return MONDAY_API_TOKEN
+    raise MondayError(
+        "no Monday token available — neither account-scoped OAuth "
+        f"(account_id={account_id!r}) nor MONDAY_API_TOKEN fallback"
+    )
+
+
+async def _gql(
+    query: str,
+    variables: dict[str, Any],
+    account_id: str | None = None,
+) -> dict[str, Any]:
+    token = await _resolve_token(account_id)
+    headers = {
+        "Authorization": token,
         "Content-Type": "application/json",
         "API-Version": MONDAY_API_VERSION,
     }
-
-
-async def _gql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             MONDAY_API_URL,
-            headers=_headers(),
+            headers=headers,
             json={"query": query, "variables": variables},
         )
-        resp.raise_for_status()
-        data = resp.json()
+    if resp.status_code == 401 and account_id:
+        await oauth.mark_revoked(account_id)
+        raise MondayTokenRevoked(
+            f"monday returned 401 for account_id={account_id} — install revoked"
+        )
+    resp.raise_for_status()
+    data = resp.json()
     if data.get("errors"):
         raise MondayError(json.dumps(data["errors"]))
     return data.get("data") or {}
@@ -59,18 +93,22 @@ async def update_item_columns(
     board_id: str,
     item_id: str,
     columns: dict[str, Any],
+    account_id: str | None = None,
 ) -> str:
     """Update one or more column values on a monday.com item.
 
     `columns` keys are monday column ids; values follow the shape monday
     expects per column type (text → str, status → {"label": "..."}, etc.).
+
+    `account_id` selects the per-account OAuth token. When omitted, the
+    legacy `MONDAY_API_TOKEN` env-var fallback is used (standalone path).
     """
     variables = {
         "boardId": str(board_id),
         "itemId": str(item_id),
         "columnValues": json.dumps(columns),
     }
-    data = await _gql(UPDATE_QUERY, variables)
+    data = await _gql(UPDATE_QUERY, variables, account_id=account_id)
     payload = data.get("change_multiple_column_values") or {}
     new_id = payload.get("id")
     if not new_id:
