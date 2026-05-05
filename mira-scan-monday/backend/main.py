@@ -3,9 +3,10 @@ from __future__ import annotations
 import html
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Cookie, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -87,20 +88,63 @@ async def oauth_install(state: str = "") -> RedirectResponse:
     typically jump straight to /oauth/monday/callback with a code from
     Monday's authorize endpoint, but exposing /install lets us issue
     the same URL for manual or automated reinstalls.
+
+    Sets a short-lived `mira_oauth_state` cookie so /callback can verify
+    the round-tripped state matches (CSRF defense in depth). The cookie
+    is HTTPOnly + SameSite=Lax so it survives Monday's redirect back.
     """
     if not oauth.configured():
         raise HTTPException(
             status_code=503,
             detail="OAuth is not configured (MONDAY_OAUTH_CLIENT_ID/SECRET missing)",
         )
-    return RedirectResponse(oauth.install_url(state=state or None), status_code=302)
+    state_value = state or secrets.token_urlsafe(24)
+    redirect = RedirectResponse(oauth.install_url(state=state_value), status_code=302)
+    redirect.set_cookie(
+        key="mira_oauth_state",
+        value=state_value,
+        max_age=600,  # 10 min — generous window for slow consent flows
+        httponly=True,
+        # Plain HTTP only in local dev (set MIRA_DEV_MODE=1).
+        secure=os.getenv("MIRA_DEV_MODE") != "1",
+        samesite="lax",
+        path="/oauth/monday/",
+    )
+    return redirect
 
 
 @app.get("/oauth/monday/callback", response_class=HTMLResponse)
-async def oauth_callback(code: str = "", state: str = "") -> HTMLResponse:
-    """Trade Monday's auth code for an access token, persist by account_id."""
+async def oauth_callback(
+    code: str = "",
+    state: str = "",
+    mira_oauth_state: str | None = Cookie(default=None),
+) -> HTMLResponse:
+    """Trade Monday's auth code for an access token, persist by account_id.
+
+    CSRF defense: when state was set via /install, verify the round-
+    tripped value matches the cookie. Marketplace-direct callbacks
+    (Monday → /callback without going through /install) won't have a
+    cookie; that path is allowed since Monday originates the redirect
+    and the auth code itself is single-use + bound to our client_id.
+    """
     if not code:
         raise HTTPException(status_code=400, detail="missing 'code' query parameter")
+
+    # CSRF check — only enforced when /install set a cookie (i.e. when
+    # the user came through our reinstall flow). Marketplace installs
+    # land here directly with no cookie; that's a legitimate path.
+    if mira_oauth_state:
+        if not state:
+            raise HTTPException(
+                status_code=400,
+                detail="state cookie set but query 'state' missing — flow corrupted",
+            )
+        if not secrets.compare_digest(state, mira_oauth_state):
+            raise HTTPException(
+                status_code=400,
+                detail="state mismatch — possible CSRF attempt",
+            )
+
     try:
         token_data = await oauth.exchange_code_for_token(code)
     except oauth.OAuthError as exc:
@@ -167,14 +211,37 @@ async def oauth_callback(code: str = "", state: str = "") -> HTMLResponse:
 async def scan_extract(req: ScanRequest, request: Request) -> AssetPlate:
     if not req.image_base64:
         raise HTTPException(status_code=400, detail="image_base64 is required")
+
+    account_id = session.account_id_from_headers(request.headers)
+
+    # Free-tier quota gate — only enforced when authenticated via Monday.
+    # Standalone path (no header → no account_id) is exempt. Fail-open
+    # on DB error: usage.month_scan_count returns 0 silently when NeonDB
+    # is unavailable, so a transient outage never locks paying users out.
+    if account_id:
+        used = await usage.month_scan_count(account_id)
+        if used >= usage.FREE_TIER_MONTHLY_CAP:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "quota_exceeded",
+                    "message": (
+                        f"Free-tier limit of {usage.FREE_TIER_MONTHLY_CAP} scans/month "
+                        "reached. Email support@factorylm.com to upgrade."
+                    ),
+                    "used": used,
+                    "cap": usage.FREE_TIER_MONTHLY_CAP,
+                },
+            )
+
     try:
         plate = await vision.extract_asset_plate(req.image_base64, req.mime_type)
     except Exception as exc:
         logger.exception("vision extract failed")
         raise HTTPException(status_code=502, detail=f"vision extract failed: {exc}") from exc
+
     # Per-account billing signal — only count successful scans. Fire and
     # forget; counter writes are best-effort and never block the response.
-    account_id = session.account_id_from_headers(request.headers)
     if account_id:
         await usage.bump_scan_count(account_id)
     return plate
