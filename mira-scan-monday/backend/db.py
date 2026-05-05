@@ -69,6 +69,7 @@ async def execute(sql: str, params: tuple[Any, ...] = ()) -> None:
 
 _ENSURED = False
 _ENSURED_OAUTH = False
+_ENSURED_USAGE = False
 
 
 async def ensure_scan_queue_table() -> None:
@@ -152,3 +153,40 @@ async def ensure_monday_installations_table() -> None:
         logger.info("monday_installations table is ready")
     except Exception:
         logger.exception("ensure_monday_installations_table failed; OAuth writes will fail")
+
+
+async def ensure_account_usage_table() -> None:
+    """Idempotent: create the per-account daily-usage counter table.
+
+    One row per (account_id, usage_date). Used as the billing-tier signal
+    — `usage.bump_scan_count(account_id)` upserts on this PK and treats
+    failure as a no-op (telemetry must never break a scan flow).
+    """
+    global _ENSURED_USAGE
+    if _ENSURED_USAGE:
+        return
+    if not NEON_DATABASE_URL:
+        return
+    try:
+        async with await _connect() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS account_usage_daily (
+                    account_id   text NOT NULL,
+                    usage_date   date NOT NULL DEFAULT CURRENT_DATE,
+                    scan_count   integer NOT NULL DEFAULT 0,
+                    last_seen_at timestamptz NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (account_id, usage_date)
+                )
+                """
+            )
+            await cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS account_usage_daily_date_idx
+                  ON account_usage_daily (usage_date DESC)
+                """
+            )
+        _ENSURED_USAGE = True
+        logger.info("account_usage_daily table is ready")
+    except Exception:
+        logger.exception("ensure_account_usage_table failed; counter writes will no-op")
