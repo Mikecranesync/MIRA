@@ -12,6 +12,61 @@ const TERMINAL_STATUSES = new Set([
   "failed",
 ]);
 
+// Map of OEM-host substrings → friendly brand name. Picks up subdomains
+// (download.beckhoff.com, support.industry.siemens.com, etc.) without
+// having to enumerate them.
+const OEM_HOSTS = [
+  ["beckhoff.com", "Beckhoff"],
+  ["rockwellautomation.com", "Rockwell Automation"],
+  ["industry.siemens.com", "Siemens"],
+  ["siemens.com", "Siemens"],
+  ["abb.com", "ABB"],
+  ["yaskawa.com", "Yaskawa"],
+  ["automationdirect.com", "AutomationDirect"],
+  ["se.com", "Schneider Electric"],
+  ["schneider-electric.com", "Schneider Electric"],
+  ["omron.com", "Omron"],
+  ["mitsubishielectric.com", "Mitsubishi Electric"],
+  ["danfoss.com", "Danfoss"],
+  ["lenze.com", "Lenze"],
+  ["sew-eurodrive.com", "SEW-Eurodrive"],
+  ["eaton.com", "Eaton"],
+  ["fluke.com", "Fluke"],
+  ["panduit.com", "Panduit"],
+  ["phoenixcontact.com", "Phoenix Contact"],
+  ["meanwell.com", "MEAN WELL"],
+  ["festo.com", "Festo"],
+  ["ifm.com", "ifm"],
+];
+
+function brandFromUrl(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    for (const [needle, brand] of OEM_HOSTS) {
+      if (host === needle || host.endsWith("." + needle)) return brand;
+    }
+    // Strip "www." for display
+    return host.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+function isOemUrl(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return OEM_HOSTS.some(([n]) => host === n || host.endsWith("." + n));
+  } catch {
+    return false;
+  }
+}
+
+function titleFromNotes(notes) {
+  if (!notes) return null;
+  const first = notes.split(" | ")[0]?.trim();
+  return first || null;
+}
+
 function StatusBox({ status, item, label }) {
   const baseStyle = {
     marginTop: 8,
@@ -37,6 +92,15 @@ function StatusBox({ status, item, label }) {
   }
 
   if (status === "found") {
+    const brand = item.manual_url ? brandFromUrl(item.manual_url) : null;
+    const oem = item.manual_url ? isOemUrl(item.manual_url) : false;
+    const title = titleFromNotes(item.notes);
+    const headline = oem
+      ? `${brand} Official Manual`
+      : brand
+      ? `Manual on ${brand}`
+      : "Manual found";
+
     return (
       <div
         style={{
@@ -45,13 +109,23 @@ function StatusBox({ status, item, label }) {
           color: "var(--positive-color, #00854d)",
         }}
       >
-        ✓ Found <strong>{item.notes?.split(" | ")[0] || "a manual"}</strong>.
-        Queued for ingest — you should be able to chat about{" "}
-        <strong>{label}</strong> in ~10 minutes.
+        <div style={{ fontWeight: 600 }}>✓ {headline}</div>
+        {title && (
+          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.85 }}>{title}</div>
+        )}
+        <div style={{ marginTop: 4, fontSize: 12, opacity: 0.85 }}>
+          Queued for ingest — chat about <strong>{label}</strong> should
+          come online after the next ingest cycle.
+        </div>
         {item.manual_url && (
-          <div style={{ marginTop: 4, fontSize: 12, opacity: 0.8, wordBreak: "break-all" }}>
-            <a href={item.manual_url} target="_blank" rel="noopener noreferrer">
-              {item.manual_url}
+          <div style={{ marginTop: 6 }}>
+            <a
+              href={item.manual_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "var(--positive-color, #00854d)", fontWeight: 500 }}
+            >
+              Open manual ↗
             </a>
           </div>
         )}
@@ -60,6 +134,7 @@ function StatusBox({ status, item, label }) {
   }
 
   if (status === "candidate") {
+    const title = titleFromNotes(item.notes);
     return (
       <div
         style={{
@@ -68,9 +143,15 @@ function StatusBox({ status, item, label }) {
           color: "#9c6a00",
         }}
       >
-        Found a candidate (
-        <strong>{item.notes?.split(" | ")[0] || "result"}</strong>) but it
-        isn&apos;t a direct PDF — flagged for review.
+        <div style={{ fontWeight: 600 }}>
+          Found a candidate, but it didn&apos;t verify as a PDF
+        </div>
+        {title && (
+          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.85 }}>{title}</div>
+        )}
+        <div style={{ marginTop: 4, fontSize: 12, opacity: 0.85 }}>
+          Flagged for human review — not auto-queued for ingest.
+        </div>
       </div>
     );
   }
