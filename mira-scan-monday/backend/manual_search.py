@@ -26,7 +26,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from . import scan_queue
+from . import crawler_bridge, scan_queue
 
 logger = logging.getLogger("mira-scan.search")
 
@@ -193,6 +193,19 @@ async def run_search_and_update(make: str, model: str) -> dict | None:
             best["score"],
             best["is_direct_pdf"],
         )
+
+        # Hand off to the existing crawler infrastructure: write to
+        # manual_cache (NeonDB, picked up by tasks.ingest.ingest_all_pending)
+        # and append to manual_queue.json (drained daily by kb_growth_cron).
+        if manual_url:
+            handoff = await crawler_bridge.record_scan_discovery(
+                manufacturer=make,
+                model=model,
+                manual_url=manual_url,
+                manual_title=best["title"],
+                manual_type=best["doc_type"],
+            )
+            logger.info("crawler bridge: %s", handoff)
         return best
     except Exception as exc:
         logger.exception("manual search task crashed for %s %s", make, model)

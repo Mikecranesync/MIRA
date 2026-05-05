@@ -15,6 +15,12 @@ services:
     networks:
       - default
       - mira-net
+    # Mount the existing crawler queue so scan-discovered manuals are
+    # appended to the same file kb_growth_cron drains daily. The path
+    # only exists on the VPS — local dev sees a missing file and
+    # crawler_bridge.append_to_manual_queue_json no-ops gracefully.
+    volumes:
+      - ${MANUAL_QUEUE_HOST_DIR:-./_local-queue-stub}:/data/mira-crawler-cron:rw
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx,sys; sys.exit(0 if httpx.get('http://127.0.0.1:8000/healthz', timeout=3).status_code==200 else 1)"]
       interval: 30s
