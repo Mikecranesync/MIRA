@@ -64,8 +64,12 @@ export async function queueManualRequest(make, model, serial, sessionToken) {
   );
 }
 
-export async function queueStatus(sessionToken) {
-  return jsonFetch("/queue/status", { method: "GET" }, sessionToken);
+export async function queueStatus(sessionToken, make, model) {
+  const params = new URLSearchParams();
+  if (make) params.set("make", make);
+  if (model) params.set("model", model);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return jsonFetch(`/queue/status${qs}`, { method: "GET" }, sessionToken);
 }
 
 export async function mondayUpdateItem(boardId, itemId, columns, sessionToken) {

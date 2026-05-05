@@ -59,7 +59,22 @@ class ManualRequestQueueRequest(BaseModel):
 class ManualRequestQueueResponse(BaseModel):
     ok: bool
     queued: QueueAck | None = None
+    item: dict | None = None
     error: str | None = None
+
+
+class QueueItem(BaseModel):
+    id: int
+    make: str
+    model: str
+    serial: str | None = None
+    source: str
+    status: str
+    times_seen: int
+    first_seen: str | None = None
+    last_seen: str | None = None
+    manual_url: str | None = None
+    notes: str | None = None
 
 
 class QueueStatusResponse(BaseModel):

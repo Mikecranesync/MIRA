@@ -4,10 +4,10 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import db, mira_rag, monday_api, scan_queue, vision
+from . import db, manual_search, mira_rag, monday_api, scan_queue, vision
 from .models import (
     AssetPlate,
     ChatMessageRequest,
@@ -70,13 +70,16 @@ async def scan_extract(req: ScanRequest) -> AssetPlate:
 
 
 @app.get("/kb/lookup", response_model=KBResult)
-async def kb_lookup(make: str = "", model: str = "") -> KBResult:
+async def kb_lookup(
+    background: BackgroundTasks,
+    make: str = "",
+    model: str = "",
+) -> KBResult:
     """Identify the scanned asset against the live KB + curated allowlist.
 
-    On miss we *also* auto-enqueue the (make, model) into mira_scan_queue
-    so the flywheel runs without a separate frontend POST. The miss
-    response carries the queue ack so the upsell screen can show "we've
-    queued a search for this".
+    On miss we enqueue (make, model) into mira_scan_queue AND fire a
+    background task that runs a real-time web search for the manual.
+    The frontend polls `/queue/status?make=&model=` for progress.
     """
     if not make and not model:
         raise HTTPException(status_code=400, detail="make or model is required")
@@ -91,7 +94,43 @@ async def kb_lookup(make: str = "", model: str = "") -> KBResult:
         )
         if ack:
             result.queued = QueueAck(**ack)
+            # Don't block the scan response on a 5–15s search.
+            background.add_task(manual_search.run_search_and_update, make, model)
     return result
+
+
+@app.post("/queue/search-now", response_model=ManualRequestQueueResponse)
+async def queue_search_now(req: ManualRequestQueueRequest) -> ManualRequestQueueResponse:
+    """Synchronous variant of the background search.
+
+    Enqueues if needed, runs the search inline, and returns the final
+    queue row state so the caller can render the result without
+    polling. Slower (~5–15s) but useful for shell scripts and tests.
+    """
+    if not (req.make.strip() and req.model.strip()):
+        raise HTTPException(status_code=400, detail="make and model are required")
+
+    await scan_queue.enqueue(
+        make=req.make,
+        model=req.model,
+        serial=req.serial,
+        source=req.source or "mira-scan",
+        notes=req.notes,
+    )
+    await manual_search.run_search_and_update(req.make, req.model)
+    row = await scan_queue.find_one(req.make, req.model)
+    if row is None:
+        return ManualRequestQueueResponse(ok=False, error="queue row missing after search")
+    return ManualRequestQueueResponse(
+        ok=True,
+        queued=QueueAck(
+            id=row["id"],
+            status=row["status"],
+            times_seen=row["times_seen"],
+            first_seen=row["first_seen"],
+        ),
+        item=row,
+    )
 
 
 @app.post("/chat/message", response_model=ChatMessageResponse)
@@ -127,7 +166,17 @@ async def queue_manual_request(req: ManualRequestQueueRequest) -> ManualRequestQ
 
 
 @app.get("/queue/status", response_model=QueueStatusResponse)
-async def queue_status(limit: int = 50) -> QueueStatusResponse:
+async def queue_status(
+    limit: int = 50,
+    make: str = "",
+    model: str = "",
+) -> QueueStatusResponse:
+    """Queue summary, or — when both `make` and `model` are provided —
+    a single-row lookup so the upsell screen can poll for live updates."""
+    if make and model:
+        row = await scan_queue.find_one(make=make, model=model)
+        items = [row] if row else []
+        return QueueStatusResponse(available=row is not None, counts={}, items=items)
     data = await scan_queue.status(limit=limit)
     return QueueStatusResponse(**data)
 

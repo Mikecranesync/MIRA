@@ -68,7 +68,11 @@ export default function App() {
       )}
 
       {plate && kb && !kb.matched && (
-        <UpsellCTA plate={plate} queued={kb.queued} />
+        <UpsellCTA
+          plate={plate}
+          queued={kb.queued}
+          sessionToken={sessionToken}
+        />
       )}
     </div>
   );

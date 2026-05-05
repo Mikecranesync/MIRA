@@ -72,12 +72,115 @@ async def enqueue(
     }
 
 
+_ROW_COLS = (
+    "id, make, model, serial, source, status, times_seen, first_seen, last_seen, manual_url, notes"
+)
+
+
+def _row_to_dict(r: tuple) -> dict:
+    return {
+        "id": int(r[0]),
+        "make": r[1],
+        "model": r[2],
+        "serial": r[3],
+        "source": r[4],
+        "status": r[5],
+        "times_seen": int(r[6]),
+        "first_seen": r[7].isoformat() if r[7] else None,
+        "last_seen": r[8].isoformat() if r[8] else None,
+        "manual_url": r[9],
+        "notes": r[10],
+    }
+
+
+async def find_one(make: str, model: str) -> dict | None:
+    """Return the queue row for a specific (make, model), or None."""
+    if not (make and model):
+        return None
+    sql = f"""
+        SELECT {_ROW_COLS}
+          FROM mira_scan_queue
+         WHERE LOWER(make)  = LOWER(%s)
+           AND LOWER(model) = LOWER(%s)
+         LIMIT 1
+    """
+    try:
+        row = await db.fetch_one(sql, (make.strip(), model.strip()))
+    except db.DBUnavailable:
+        return None
+    except Exception:
+        logger.exception("queue: find_one failed for %r %r", make, model)
+        return None
+    return _row_to_dict(row) if row else None
+
+
+async def _set_status(
+    make: str,
+    model: str,
+    *,
+    status: str,
+    manual_url: str | None = None,
+    notes: str | None = None,
+) -> None:
+    """Update the queue row's status. No-op if the row doesn't exist or
+    the DB is unavailable — callers must not depend on the write
+    succeeding (this is best-effort progress reporting)."""
+    if not (make and model):
+        return
+    # Coalesce so passing manual_url=None doesn't clobber an earlier value.
+    sql = """
+        UPDATE mira_scan_queue
+           SET status     = %s,
+               manual_url = COALESCE(%s, manual_url),
+               notes      = COALESCE(%s, notes),
+               updated_at = NOW(),
+               last_seen  = NOW()
+         WHERE LOWER(make)  = LOWER(%s)
+           AND LOWER(model) = LOWER(%s)
+    """
+    try:
+        await db.execute(sql, (status, manual_url, notes, make.strip(), model.strip()))
+    except db.DBUnavailable:
+        return
+    except Exception:
+        logger.exception("queue: status update failed for %r %r", make, model)
+
+
+async def mark_searching(make: str, model: str) -> None:
+    await _set_status(make, model, status="searching")
+
+
+async def mark_found(
+    make: str,
+    model: str,
+    *,
+    manual_url: str | None,
+    title: str | None = None,
+    host: str | None = None,
+    doc_type: str | None = None,
+) -> None:
+    note_bits = [b for b in (title, host, doc_type) if b]
+    notes = " | ".join(note_bits) if note_bits else None
+    # If we got a candidate but no direct PDF, surface it as 'candidate'
+    # so the operator dashboard distinguishes "ready to ingest" from
+    # "needs human review".
+    status = "found" if manual_url else "candidate"
+    await _set_status(make, model, status=status, manual_url=manual_url, notes=notes)
+
+
+async def mark_no_match(make: str, model: str, notes: str | None = None) -> None:
+    await _set_status(make, model, status="no_match", notes=notes)
+
+
+async def mark_failed(make: str, model: str, err: str) -> None:
+    await _set_status(make, model, status="failed", notes=f"search error: {err[:300]}")
+
+
 async def status(limit: int = 50) -> dict:
     """Return queue summary: counts by status + most-recent N items."""
     counts_sql = "SELECT status, COUNT(*) FROM mira_scan_queue GROUP BY status"
-    items_sql = """
-        SELECT id, make, model, serial, source, status, times_seen,
-               first_seen, last_seen, manual_url
+    items_sql = f"""
+        SELECT {_ROW_COLS}
           FROM mira_scan_queue
          ORDER BY last_seen DESC
          LIMIT %s
@@ -92,19 +195,5 @@ async def status(limit: int = 50) -> dict:
         return {"available": False, "counts": {}, "items": []}
 
     counts = {str(r[0]): int(r[1]) for r in counts_rows}
-    items = [
-        {
-            "id": int(r[0]),
-            "make": r[1],
-            "model": r[2],
-            "serial": r[3],
-            "source": r[4],
-            "status": r[5],
-            "times_seen": int(r[6]),
-            "first_seen": r[7].isoformat() if r[7] else None,
-            "last_seen": r[8].isoformat() if r[8] else None,
-            "manual_url": r[9],
-        }
-        for r in item_rows
-    ]
+    items = [_row_to_dict(r) for r in item_rows]
     return {"available": True, "counts": counts, "items": items}
