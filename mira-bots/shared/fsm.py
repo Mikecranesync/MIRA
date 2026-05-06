@@ -160,6 +160,29 @@ def advance_state(state: dict, parsed: dict) -> dict:
 
     ctx_q = state.get("context") or {}
 
+    # CRA-8 Phase 2 — hard Q1 → Q2 promotion when asset+fault are both known.
+    # Cluster C's Rule 9 reword + Example 8 in active.yaml is LLM-stochastic;
+    # this rule guarantees the FSM moves past Q1 once the technician has named
+    # both an asset (asset_identified) AND a fault code/symptom (regex match on
+    # the most recent user message). Bypasses the LLM's next_state without
+    # touching any other transition. Spec §8 Risk 2 mitigation, accepted as a
+    # default by Mike on 2026-05-06.
+    if state["state"] == "Q1" and state.get("asset_identified"):
+        history_for_promotion = ctx_q.get("history") or []
+        last_user_msg = ""
+        for turn in reversed(history_for_promotion):
+            if turn.get("role") == "user":
+                last_user_msg = str(turn.get("content") or "")
+                break
+        if last_user_msg and _FAULT_INFO_RE.search(last_user_msg):
+            logger.info(
+                "Q1_TO_Q2_FORCE chat_id=%s asset=%r last_user=%r — asset+fault both known, bypassing LLM Q1",
+                state.get("chat_id", "?"),
+                state.get("asset_identified"),
+                last_user_msg[:120],
+            )
+            state["state"] = "Q2"
+
     # Q-trap escape: if FSM has been in Q-states for _MAX_Q_ROUNDS consecutive
     # turns, force a commit to DIAGNOSIS so the technician gets an answer.
     if state["state"] in _Q_STATES:
