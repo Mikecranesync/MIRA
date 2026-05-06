@@ -27,6 +27,10 @@ logger = logging.getLogger("mira-gsd")
 # Fault code patterns: F002, F-201, CE2, OC1, EF, E014, A501, etc.
 _FAULT_CODE_RE = re.compile(r"\b[A-Za-z]{1,3}[-]?\d{1,4}\b")
 
+# Compound alpha-alpha fault codes: E-OC, E-OV, E-UV, GF-A, etc.
+# Matches LETTER(1-2) DASH LETTER(1-3) — missed by _FAULT_CODE_RE (no digits).
+_COMPOUND_ALPHA_RE = re.compile(r"\b([A-Za-z]{1,2})-([A-Za-z]{1,3})\b")
+
 # VFD-specific alpha-only fault codes (Yaskawa, AutomationDirect, etc.)
 # These don't have trailing digits so _FAULT_CODE_RE misses them.
 # Only matched when near fault-context words to avoid false positives.
@@ -53,10 +57,17 @@ _VFD_ALPHA_CODES = frozenset(
         "AUF",
         "OPL",
         "PHL",
+        # Compound codes normalised to no-dash form for DB lookup
+        "EOC",
+        "EOV",
+        "EUV",
+        "ELF",
+        "EOF",
+        "EGF",
     }
 )
 _FAULT_CONTEXT_RE = re.compile(
-    r"\b(fault|error|alarm|trip|code|warning|drive|vfd|inverter)\b",
+    r"\b(fault|error|alarm|trip|code|warning|drive|vfd|inverter|showing|display|flashing|reading)\b",
     re.IGNORECASE,
 )
 
@@ -101,22 +112,148 @@ HYBRID_ENABLED = os.getenv("MIRA_RETRIEVAL_HYBRID_ENABLED", "true").lower() == "
 RRF_K = int(os.getenv("MIRA_RRF_K", "60"))
 
 
+_COMMON_WORDS = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "my",
+        "your",
+        "its",
+        "has",
+        "was",
+        "are",
+        "can",
+        "not",
+        "but",
+        "that",
+        "this",
+        "what",
+        "from",
+        "how",
+        "why",
+        "when",
+        "does",
+        "did",
+        "any",
+        "all",
+        "also",
+        "just",
+        "like",
+        "get",
+        "got",
+        "see",
+        "saw",
+        "too",
+        "our",
+        "now",
+        "try",
+        "fix",
+        "on",
+        "in",
+        "it",
+        "is",
+        "an",
+        "to",
+        "do",
+        "so",
+        "if",
+        "of",
+        "at",
+        "by",
+        "up",
+        "we",
+        "be",
+        "or",
+        "no",
+        "ok",
+        "as",
+        "he",
+        "she",
+        "they",
+        "them",
+        "his",
+        "her",
+        "its",
+        "out",
+        "off",
+        "had",
+        "may",
+        "will",
+        "let",
+        "run",
+        "set",
+        "use",
+    }
+)
+
+
+def _normalise_fault_query(query_text: str) -> str:
+    """Normalise user input before fault code extraction.
+
+    Targeted normalizations only — avoids converting normal English word pairs:
+      "E OC"  → "E-OC"  (single uppercase letter + space + alpha token)
+      "F 02"  → "F-02"  (letter + space + digit sequence)
+    """
+    # Letter + space + digits: "F 02" → "F-02", "E 014" → "E-014"
+    normalised = re.sub(r"\b([A-Za-z]{1,3})\s+(\d{1,4})\b", r"\1-\2", query_text)
+
+    # Single/double uppercase letter + space + uppercase alpha token: "E OC" → "E-OC"
+    # Only when left token is 1-2 chars and looks like a prefix (not a common word)
+    def _maybe_join(m: re.Match) -> str:
+        left, right = m.group(1), m.group(2)
+        if left.lower() in _COMMON_WORDS or right.lower() in _COMMON_WORDS:
+            return m.group(0)
+        if len(left) <= 2:
+            return f"{left}-{right}"
+        return m.group(0)
+
+    normalised = re.sub(r"\b([A-Za-z]{1,2})\s+([A-Za-z]{2,4})\b", _maybe_join, normalised)
+    return normalised
+
+
 def _extract_fault_codes(query_text: str) -> list[str]:
     """Extract fault code tokens from raw user query.
 
-    Matches two patterns:
-      1. Alphanumeric codes like F4, F012, OC1, A501 (via regex)
-      2. VFD-specific alpha-only codes like OC, GF, OH (only when
-         fault-context words appear in the same message)
+    Permissive — accepts common syntax errors and spacing variations:
+      1. Alphanumeric codes: F4, F-012, OC1, A501, E014
+      2. Compound alpha codes: E-OC, E-OV, GF-A (letter-dash-letter)
+      3. Alpha-only VFD codes: OC, GF, OH — with or without fault-context words
+      4. No-dash variants tried alongside dashed form for all of the above
     """
     if not query_text:
         return []
-    codes: set[str] = {m.upper() for m in _FAULT_CODE_RE.findall(query_text)}
 
-    # Check for alpha-only VFD codes when fault context is present
-    if _FAULT_CONTEXT_RE.search(query_text):
+    normalised = _normalise_fault_query(query_text)
+    codes: set[str] = set()
+
+    # Pattern 1: alphanumeric codes (original)
+    for m in _FAULT_CODE_RE.findall(normalised):
+        codes.add(m.upper())
+
+    # Pattern 2: compound alpha-alpha codes like E-OC, E-OV
+    for m in _COMPOUND_ALPHA_RE.finditer(normalised):
+        dashed = m.group(0).upper()  # "E-OC"
+        nodash = (m.group(1) + m.group(2)).upper()  # "EOC"
+        codes.add(dashed)
+        codes.add(nodash)
+
+    # Pattern 3: alpha-only VFD codes — check with and without fault context
+    has_fault_context = bool(_FAULT_CONTEXT_RE.search(query_text))
+    for word in normalised.upper().split():
+        cleaned = word.strip(".,!?:;()\"'-")
+        if cleaned in _VFD_ALPHA_CODES:
+            codes.add(cleaned)
+        # Also try stripping a leading "E-" prefix (Yaskawa E-series style)
+        if cleaned.startswith("E-") and cleaned[2:] in _VFD_ALPHA_CODES:
+            codes.add(cleaned)  # keep full "E-OC"
+            codes.add(cleaned[2:])  # also try bare "OC"
+
+    # Fallback: if still empty and fault context present, scan original text too
+    if not codes and has_fault_context:
         for word in query_text.upper().split():
-            cleaned = word.strip(".,!?:;()\"'")
+            cleaned = word.strip(".,!?:;()\"'-")
             if cleaned in _VFD_ALPHA_CODES:
                 codes.add(cleaned)
 

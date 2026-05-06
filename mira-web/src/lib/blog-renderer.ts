@@ -51,68 +51,72 @@ function htmlHead(opts: {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/public/blog.css">
-  <link rel="preload" href="/public/mira-chat.css" as="style" onload="this.rel='stylesheet'">
-  <noscript><link rel="stylesheet" href="/public/mira-chat.css"></noscript>
   ${opts.jsonLd ?? ""}
 </head>`;
 }
 
-// ── Shared nav (matches index.html structure exactly) ──
+// ── Shared nav + footer ──
+//
+// The blog uses its own CSS world (blog.css) but the topbar markup is now
+// the same standardized 5-link nav + "Sign in" CTA used by the marketing
+// pages. Drops the M-icon, uses the wordmark only — matches the post-v0.5.0
+// site standard. blog.css's `.nav-*` classes still provide the visual style.
 
-function nav(): string {
+interface BlogNavOpts {
+  /** Path of the current page, used for aria-current="page". */
+  currentPath?: string;
+}
+
+function navLink(href: string, label: string, currentPath?: string): string {
+  const current = currentPath === href ? ` aria-current="page"` : "";
+  return `<li><a href="${href}"${current}>${label}</a></li>`;
+}
+
+function nav(opts: BlogNavOpts = {}): string {
   return `<nav id="main-nav" role="navigation" aria-label="Main navigation">
   <div class="nav-inner">
-    <a href="/" class="nav-logo" aria-label="FactoryLM home">
-      ${LOGO_SVG}
-      FactoryLM
-    </a>
+    <a href="/" class="nav-logo" aria-label="FactoryLM home">FactoryLM</a>
     <ul class="nav-links" role="list">
-      <li><a href="/#features">Product</a></li>
-      <li><a href="/blog">Blog</a></li>
-      <li><a href="/blog/fault-codes">Fault Codes</a></li>
-      <li><a href="/cmms">CMMS</a></li>
+      ${navLink("/cmms", "CMMS", opts.currentPath)}
+      ${navLink("/pricing", "Pricing", opts.currentPath)}
+      ${navLink("/blog", "Blog", opts.currentPath)}
+      ${navLink("/limitations", "Limitations", opts.currentPath)}
+      ${navLink("/security", "Security", opts.currentPath)}
     </ul>
-    <a href="/cmms" class="nav-cta">Try free</a>
+    <a href="/cmms" class="nav-cta">Sign in</a>
   </div>
 </nav>`;
 }
-
-// ── Shared footer (matches index.html structure exactly) ──
 
 function siteFooter(): string {
   return `<footer role="contentinfo">
   <div class="inner">
     <div class="footer-inner">
-      <a href="/" class="footer-logo" aria-label="FactoryLM home">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
-          <rect width="24" height="24" rx="5" fill="#f0a000"/>
-          <path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        FactoryLM
-      </a>
+      <a href="/" class="footer-logo" aria-label="FactoryLM home">FactoryLM</a>
       <ul class="footer-links" role="list">
-        <li><a href="/blog">Blog</a></li>
-        <li><a href="/blog/fault-codes">Fault Codes</a></li>
-        <li><a href="/cmms">CMMS</a></li>
-        <li><a href="mailto:contact@factorylm.com">Contact</a></li>
+        <li><a href="/limitations">Limitations</a></li>
+        <li><a href="/trust">Trust</a></li>
+        <li><a href="/privacy">Privacy</a></li>
+        <li><a href="/terms">Terms</a></li>
       </ul>
     </div>
   </div>
 </footer>`;
 }
 
-// ── Mira FAB + scroll scripts (matches index.html) ──
+// ── Scroll + fade-in scripts (matches index.html) ──
+//
+// The Mira chat FAB used to live here, but it lazy-loaded /public/mira-chat.js
+// which calls POST /api/mira/session — an endpoint that was never implemented
+// on mira-web. Every blog visitor that opened the widget got a 404. The CTA
+// cards on each blog page already point readers at /cmms (the authenticated
+// chat). Removed the FAB until /api/mira/session has a real backend.
+// See CRA-60 / GitHub #992.
 
 function scripts(): string {
-  return `<button id="mira-fab" aria-label="Open Mira chat" aria-expanded="false" data-open="false">
-  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <path d="M4 18V7l4 6 4-5 4 5 4-6v11" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>
-</button>
-<script>
+  return `<script>
   (function(){var n=document.getElementById('main-nav');function u(){n.classList.toggle('scrolled',window.scrollY>10)}window.addEventListener('scroll',u,{passive:true});u()})();
   (function(){if(!window.IntersectionObserver)return;var o=new IntersectionObserver(function(e){e.forEach(function(x){if(x.isIntersecting)x.target.classList.add('visible')})},{threshold:0.08});document.querySelectorAll('.fade-in').forEach(function(el){o.observe(el)})})();
-  (function(){var l=false;function w(){if(l)return;l=true;var s=document.createElement('script');s.src='/public/mira-chat.js';s.defer=true;document.head.appendChild(s)}var f=document.getElementById('mira-fab');f.addEventListener('mouseenter',w,{once:true});f.addEventListener('touchstart',w,{once:true,passive:true});f.addEventListener('focus',w,{once:true});window.addEventListener('scroll',function g(){if(window.scrollY>300){w();window.removeEventListener('scroll',g)}},{passive:true})})();
 </script>`;
 }
 
@@ -155,7 +159,7 @@ export function renderBlogPost(
 
   return `${htmlHead({ title: `${post.title} | FactoryLM`, description: post.description, canonical, jsonLd })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <article class="article-wrap">
@@ -285,7 +289,7 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
 
   return `${htmlHead({ title: `${fc.title} | FactoryLM`, description: fc.metaDescription, canonical, jsonLd })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <article class="article-wrap">
@@ -374,7 +378,7 @@ export function renderBlogIndex(
     jsonLd,
   })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <div class="blog-hero">
@@ -472,7 +476,7 @@ ${codes
     jsonLd,
   })}
 <body>
-${nav()}
+${nav({ currentPath: "/blog" })}
 
 <main>
 <div class="blog-hero">

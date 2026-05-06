@@ -7,20 +7,36 @@ import os
 import re
 import sqlite3
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from . import quality_gate
 from .chat_tenant import resolve as resolve_tenant
+from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .conversation_router import route_intent
 from .detection.recurring_fault import check_recurring_and_annotate
+from .dialogue_state import (
+    DialogueState,
+)
+from .dialogue_tracker import (
+    DISPATCH_ACTION,
+    DISPATCH_ACTION_INTERRUPT,
+    DISPATCH_ASK_GENERAL,
+    DISPATCH_ASK_PROCEDURAL,
+    DISPATCH_GREET,
+    DISPATCH_META,
+    DISPATCH_SAFETY,
+    DISPATCH_SLOT_DONT_KNOW,
+    track_turn,
+)
 from .fallback_responses import (
     GENERIC_ENGINE_ERROR,
     INFERENCE_EXHAUSTED,
     PHOTO_FAILURE,
     RAG_FAILURE,
     TIMEOUT_WARNING,
-    work_order_failure,
 )
 from .fsm import (
     _FAULT_INFO_RE,  # noqa: F401 — re-exported for test_engine.py backward compat
@@ -115,6 +131,85 @@ _PADDING_OPTION_RE = re.compile(
 )
 _PLACEHOLDER_OPTION_RE = re.compile(r"^[\"']?\d+[.):\-]?[\"']?$")
 
+# Vocabulary used by the cmms-pending bypass: short responses that are clearly a
+# WO confirmation, denial, or edit instruction. Anything outside this vocab AND
+# longer than the threshold is treated as a fresh question that should NOT be
+# routed into the WO confirmation flow.
+_WO_RESPONSE_VOCAB = frozenset(
+    {
+        "yes",
+        "yeah",
+        "yep",
+        "yup",
+        "y",
+        "sure",
+        "ok",
+        "okay",
+        "log",
+        "long",
+        "create",
+        "submit",
+        "confirm",
+        "do it",
+        "log it",
+        "create it",
+        "go ahead",
+        "please",
+        "1",
+        "no",
+        "nope",
+        "n",
+        "skip",
+        "cancel",
+        "abort",
+        "never mind",
+        "nevermind",
+    }
+)
+
+_WO_EDIT_RE = re.compile(
+    r"\b("
+    r"priority\s+(?:is|to)\s+(?:LOW|MEDIUM|HIGH|CRITICAL)"
+    r"|(?:asset|equipment|site|area|line|fault|resolution)\s+(?:is|:)"
+    r"|change\s+(?:priority|asset|site|area|line)"
+    r")",
+    re.IGNORECASE,
+)
+
+# Cues that the message is a fresh question, not a WO confirmation/edit.
+_NEW_QUESTION_RE = re.compile(
+    r"\b(what|how|why|when|where|which|who|tell me|explain|describe|"
+    r"diagnose|troubleshoot|help me|i need|can you|cause(?:s|d)?|"
+    r"causes?\s+of|caused\s+by|trigger(?:s|ed)?)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_fresh_question_during_wo(message: str) -> bool:
+    """True if message is a brand-new question, not a response to the WO preview.
+
+    Fixes the regression where a follow-up diagnostic question gets misrouted into
+    the cmms_pending flow because cmms_pending was set during a prior session.
+    """
+    msg = (message or "").strip()
+    if not msg:
+        return False
+    msg_lower = msg.lower()
+    # Short message that matches WO yes/no vocab → it's a WO response.
+    if msg_lower in _WO_RESPONSE_VOCAB:
+        return False
+    # Recognised edit instruction → WO response.
+    if _WO_EDIT_RE.search(msg):
+        return False
+    # Long message OR question marker OR question word → fresh question.
+    if "?" in msg:
+        return True
+    if _NEW_QUESTION_RE.search(msg):
+        return True
+    if len(msg) > 40:
+        return True
+    return False
+
 
 def _clean_option_list(options: list) -> list:
     """Strip leading numbers and drop padding/placeholder options.
@@ -183,6 +278,90 @@ Rate each on 1-5 (5=excellent, 3=acceptable, <3=needs revision):
 # ACTIVE_DIAGNOSTIC_STATES, HISTORY_LIMIT, PHOTO_MEMORY_TURNS, _STATE_ALIASES
 # now live in fsm.py (imported above). _PROCESS_TIMEOUT defined below.
 _PROCESS_TIMEOUT = float(os.getenv("MIRA_PROCESS_TIMEOUT", "30"))
+
+# Replies the quality gate must not second-guess: hand-crafted fallback
+# strings the engine returns for known failure modes. They're intentionally
+# short and may trip generic heuristics (e.g. low n-gram diversity), but
+# they're trusted by definition.
+_TRUSTED_FALLBACKS: set[str] = {
+    s.strip()
+    for s in (
+        GENERIC_ENGINE_ERROR,
+        INFERENCE_EXHAUSTED,
+        PHOTO_FAILURE,
+        RAG_FAILURE,
+        TIMEOUT_WARNING,
+    )
+}
+
+# Dispatch kinds whose replies are structured/templated by hand and bypass
+# the quality gate. The fast-paths below set this on the result dict.
+# Stage 0 (2026-05-04): see PLAN.md §2 for the systemic dialogue-act fix.
+# Stage 1 (2026-05-04): the dialogue-tracker dispatch kinds for handler-
+# generated replies (greeting, meta-command, slot don't-know) join this set.
+_TRUSTED_DISPATCH_KINDS: frozenset[str] = frozenset(
+    {
+        # Stage 0
+        "action_request",
+        "dont_know",
+        "cmms_pending",
+        "session_followup",
+        # Stage 1 (DST handlers)
+        "dst_greet",
+        "dst_meta",
+        "dst_action_interrupt",
+    }
+)
+
+# Stage 1 (PLAN.md §2 / §4) feature flag — when enabled the dialogue
+# state tracker becomes the routing backbone. Default OFF to keep the
+# existing Stage 0 + route_intent path unchanged in production until the
+# flag flips on a clean week of dev/eval. Even when ON, the dispatch
+# block falls through to the existing route_intent flow on classifier
+# failure — see `_dispatch_dialogue_turn` below.
+_DST_ENABLED = os.getenv("MIRA_USE_DST", "0") == "1"
+
+# Stage 0 (2026-05-04) action-request fast-path. Catches imperative
+# work-order requests BEFORE `route_intent`, which currently sends them
+# into RAG (CRITICAL RULE 3 prefers continue_current mid-flow). Without
+# this fast-path the LLM produces garbled output that the quality gate
+# then substitutes with the GRACEFUL_FALLBACK ("rephrase your question…").
+_WO_ACTION_REQUEST_RE = re.compile(
+    r"\b(?:can\s+you\s+|please\s+|could\s+you\s+|would\s+you\s+)?"
+    r"(?:make|create|log|file|open|submit|put\s+in|generate|raise|start|need|want)\s+"
+    r"(?:a\s+|an\s+|the\s+|me\s+a\s+|me\s+an\s+|me\s+the\s+|us\s+a\s+)?"
+    r"(?:work\s*order|workorder|work[\s-]ticket|wo\b|"
+    r"maintenance\s+(?:request|ticket|order)|repair\s+ticket|"
+    r"service\s+(?:ticket|request|order))\b",
+    re.IGNORECASE,
+)
+
+# Stage 0 (2026-05-04) "I don't know" / short-answer fast-path. Fires only
+# when MIRA has a pending question (last_question populated) AND the user's
+# message is short. Prevents "I don't know. I was just given the new one
+# to put in" from being tokenized into "IDON" / "I-DON" and embedded into
+# the vector search as candidate fault codes.
+_DONT_KNOW_RE = re.compile(
+    r"^\s*(?:"
+    r"i\s+don'?t\s+know"
+    r"|i\s+do\s+not\s+know"
+    r"|don'?t\s+know"
+    r"|dont\s+know"
+    r"|not\s+sure"
+    r"|i'?m\s+not\s+sure"
+    r"|no\s+idea"
+    r"|i\s+have\s+no\s+(?:idea|clue)"
+    r"|haven'?t\s+(?:a\s+)?clue"
+    r"|can'?t\s+(?:tell|say)"
+    r"|cannot\s+(?:tell|say)"
+    r"|unsure"
+    r"|unclear"
+    r"|beats\s+me"
+    r"|who\s+knows"
+    r")\b",
+    re.IGNORECASE,
+)
+_DONT_KNOW_MAX_LEN = int(os.getenv("MIRA_DONT_KNOW_MAX_LEN", "200"))
 
 # ---------------------------------------------------------------------------
 # Manual-lookup gathering subroutine constants
@@ -285,6 +464,7 @@ class Supervisor:
     ):
         self.db_path = db_path
         self.vision_model = vision_model
+        self.tenant_id = tenant_id or ""
 
         # Service base URLs for nameplate downstream calls and reactive ingest
         self.mcp_base_url = (
@@ -317,6 +497,10 @@ class Supervisor:
         self.print_ = PrintWorker(openwebui_url, api_key)
         self.plc = PLCWorker()
 
+        # Per-call tenant context (overridden by process(tenant_id=...) when provided)
+        self._current_tenant_id: str = self.tenant_id
+        self._current_mira_user_id: str = ""
+
         self._ensure_table()
 
     # ------------------------------------------------------------------
@@ -334,6 +518,75 @@ class Supervisor:
     def _clear_session_photo(self, chat_id: str) -> None:
         """Remove the session photo when it expires or session resets."""
         clear_session_photo(self.db_path, chat_id)
+
+    @staticmethod
+    def _background_state_for(state: dict) -> str:
+        """Return the steady-state FSM node for non-diagnostic turns."""
+        return "ASSET_IDENTIFIED" if state.get("asset_identified") else "IDLE"
+
+    def _clear_diagnostic_carryover(
+        self,
+        chat_id: str,
+        state: dict,
+        *,
+        clear_photo: bool = False,
+        target_state: str | None = None,
+    ) -> dict:
+        """Drop stale diagnostic baggage when the user pivots to a new ask.
+
+        Also drops any pending WO draft + symptom/diagnosis summaries so a stale
+        WO from a prior conversation doesn't bleed into the next one.
+        """
+        ctx = state.get("context") or {}
+        sc = ctx.get("session_context") or {}
+
+        if sc:
+            ctx["session_context"] = {
+                "equipment_type": sc.get("equipment_type"),
+                "manufacturer": sc.get("manufacturer"),
+                "last_question": None,
+                "last_options": [],
+            }
+
+        # Clear any pending WO from a prior session — otherwise the next RESOLVED
+        # diagnosis re-uses the stale draft and shows wrong asset/fault to the user.
+        ctx.pop("cmms_pending", None)
+        ctx.pop("cmms_wo_draft", None)
+
+        state["fault_category"] = None
+        state["final_state"] = None
+        state["state"] = target_state or self._background_state_for(state)
+
+        if clear_photo:
+            ctx.pop("photo_turn", None)
+            self._clear_session_photo(chat_id)
+
+        state["context"] = ctx
+        return state
+
+    def _load_recent_session_photo(self, chat_id: str, state: dict) -> str | None:
+        """Load the prior photo only while it is still within the follow-up window."""
+        ctx = state.get("context") or {}
+        photo_turn = ctx.get("photo_turn", 0)
+        if photo_turn <= 0:
+            return None
+
+        turns_since_photo = state["exchange_count"] - photo_turn
+        if turns_since_photo >= PHOTO_MEMORY_TURNS:
+            self._clear_session_photo(chat_id)
+            ctx.pop("photo_turn", None)
+            state["context"] = ctx
+            return None
+
+        session_photo = self._load_session_photo(chat_id)
+        if session_photo:
+            logger.info(
+                "Session photo loaded for turn %d (photo at turn %d, %d turns ago)",
+                state["exchange_count"],
+                photo_turn,
+                turns_since_photo,
+            )
+        return session_photo
 
     def _build_print_reply(self, vision_data: dict) -> str:
         return build_print_reply(vision_data)
@@ -391,13 +644,21 @@ class Supervisor:
         confidence: str = "none",
         trace_id: str | None = None,
         next_state: str | None = None,
+        dispatch_kind: str = "",
     ) -> dict:
-        """Build a standard process_full() result dict."""
+        """Build a standard process_full() result dict.
+
+        dispatch_kind labels the routing decision so the runtime quality gate
+        can bypass replies it shouldn't second-guess (action_request,
+        cmms_pending, dont_know, session_followup). Empty string = default
+        diagnostic flow → gate runs normally.
+        """
         return {
             "reply": reply,
             "confidence": confidence,
             "trace_id": trace_id,
             "next_state": next_state,
+            "dispatch_kind": dispatch_kind,
         }
 
     # ------------------------------------------------------------------
@@ -411,6 +672,8 @@ class Supervisor:
         photo_b64: str = None,
         *,
         platform: str = "telegram",
+        tenant_id: str | None = None,
+        mira_user_id: str | None = None,
     ) -> str:
         """Main entry point. Returns reply string (backward-compatible).
 
@@ -418,6 +681,13 @@ class Supervisor:
         default 30s) and a top-level exception guard so every call returns a
         user-facing string — never raises to the adapter.
         """
+        # Per-call tenant overrides constructor default. Stash on self so workers
+        # can reach the current request's tenant via self._current_tenant_id.
+        # Existing callers that don't pass the kwargs continue to use self.tenant_id
+        # from __init__ (set as the fallback below).
+        self._current_tenant_id = tenant_id or self.tenant_id
+        self._current_mira_user_id = mira_user_id or ""
+
         t0 = time.monotonic()
         try:
             result = await asyncio.wait_for(
@@ -442,17 +712,223 @@ class Supervisor:
             )
             return GENERIC_ENGINE_ERROR
         elapsed_ms = int((time.monotonic() - t0) * 1000)
-        self._log_interaction(
+        reply = await self._apply_quality_gate(
             chat_id,
             message,
             result["reply"],
+            dispatch_kind=result.get("dispatch_kind", ""),
+        )
+        self._log_interaction(
+            chat_id,
+            message,
+            reply,
             fsm_state=result.get("next_state", ""),
             confidence=result.get("confidence", ""),
             has_photo=bool(photo_b64),
             response_time_ms=elapsed_ms,
             platform=platform,
         )
-        return result["reply"]
+        return reply
+
+    async def _apply_quality_gate(
+        self,
+        chat_id: str,
+        message: str,
+        reply: str,
+        *,
+        dispatch_kind: str = "",
+    ) -> str:
+        """Run the runtime quality gate; substitute a graceful fallback on failure.
+
+        Wrapped in a broad except: a buggy gate must never block the bot.
+
+        Stage 0 (2026-05-04): trusted dispatch kinds bypass the gate. Replies
+        for action-request, cmms_pending, dont_know, and session_followup are
+        structured/templated and the heuristic checks (n-gram repetition,
+        substring repetition) flag them spuriously — the WO preview has
+        intentional repeated bullet headers.
+        """
+        if not quality_gate.is_enabled():
+            return reply
+        if dispatch_kind in _TRUSTED_DISPATCH_KINDS:
+            logger.debug(
+                "QUALITY_GATE_BYPASS chat_id=%s dispatch_kind=%s",
+                chat_id,
+                dispatch_kind,
+            )
+            return reply
+        try:
+            gate = await quality_gate.evaluate(
+                reply,
+                user_message=message,
+                router=self.router,
+                skip_strings=_TRUSTED_FALLBACKS,
+            )
+        except Exception as exc:
+            logger.warning("QUALITY_GATE_INTERNAL_ERROR chat_id=%s err=%s", chat_id, exc)
+            return reply
+        if gate.verdict == "fail":
+            logger.warning(
+                "QUALITY_GATE_FAIL chat_id=%s reasons=%s elapsed_ms=%.1f original=%r",
+                chat_id,
+                ",".join(gate.reasons),
+                gate.elapsed_ms,
+                reply[:200],
+            )
+            return quality_gate.GRACEFUL_FALLBACK
+        if gate.judge_score is not None:
+            logger.info(
+                "QUALITY_GATE_PASS chat_id=%s judge_score=%.2f reason=%s elapsed_ms=%.1f",
+                chat_id,
+                gate.judge_score,
+                gate.judge_reason,
+                gate.elapsed_ms,
+            )
+        return reply
+
+    async def process_multi_photo(
+        self,
+        chat_id: str,
+        message: str,
+        photos_b64: list[str],
+        *,
+        platform: str = "telegram",
+        tenant_id: str | None = None,
+        mira_user_id: str | None = None,
+        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
+    ) -> str:
+        """Burst entry point. Returns combined reply for N photos (N >= 1).
+
+        Each photo runs through VisionWorker.process() sequentially because the
+        vision model is GPU-bound on a single Ollama node. Per-photo vision
+        failures degrade to a placeholder for that slot — the method never
+        raises to the caller. Combined results are sent through
+        InferenceRouter.complete() for synthesis; if the router returns empty
+        (every cascade provider down), the method falls back to a deterministic
+        numbered list. Only the LAST photo is persisted via _save_session_photo
+        so follow-up turns ("tell me more about photo 4") have a single anchor.
+
+        ``on_progress(idx_done, n_total)`` — optional async callback fired after
+        each photo's vision call completes (idx_done is 1-based, fires N times
+        across the burst). Callers (the photo-batch worker) use this to edit
+        the chat ack message ("Processing photo 2/4..."). Callback exceptions
+        are caught and logged so a flaky chat-edit can't take down the engine.
+        """
+        self._current_tenant_id = tenant_id or getattr(self, "tenant_id", "") or ""
+        self._current_mira_user_id = mira_user_id or ""
+
+        n = len(photos_b64)
+        t0 = time.monotonic()
+
+        try:
+            analyses: list[dict] = []
+            for idx, photo_b64 in enumerate(photos_b64, start=1):
+                try:
+                    vresult = await self.vision.process(photo_b64, message)
+                except Exception as exc:
+                    logger.warning(
+                        "MULTI_PHOTO_VISION_FAILURE chat_id=%s idx=%d/%d error=%s",
+                        chat_id,
+                        idx,
+                        n,
+                        exc,
+                    )
+                    vresult = {
+                        "classification": "UNCLEAR",
+                        "classification_confidence": 0.0,
+                        "vision_result": "unclear",
+                        "ocr_items": [],
+                        "tesseract_text": "",
+                        "drawing_type": None,
+                        "drawing_type_confidence": 0.0,
+                    }
+                analyses.append(vresult)
+                if on_progress is not None:
+                    try:
+                        await on_progress(idx, n)
+                    except Exception as cb_exc:
+                        logger.warning(
+                            "MULTI_PHOTO_PROGRESS_CALLBACK_FAILURE chat_id=%s idx=%d/%d error=%s",
+                            chat_id,
+                            idx,
+                            n,
+                            cb_exc,
+                        )
+
+            bullets = []
+            for idx, a in enumerate(analyses, start=1):
+                cls = str(a.get("classification", "")).strip()
+                vr = str(a.get("vision_result", "")).strip()
+                ocr = a.get("ocr_items") or []
+                ocr_str = ", ".join(str(o) for o in ocr[:6]) if ocr else ""
+                line = f"{idx}. [{cls}] {vr}" if cls else f"{idx}. {vr}"
+                if ocr_str:
+                    line += f" (OCR: {ocr_str})"
+                bullets.append(line)
+
+            system_prompt = (
+                "You are MIRA, an industrial maintenance assistant. The user just "
+                f"sent {n} photos in one burst. Below is each photo's vision/OCR "
+                "analysis. Briefly list each photo's content (numbered, one short "
+                "line each), then synthesize across them: if a nameplate and a "
+                "damage/fault photo are both present, connect the two; if photos "
+                "appear unrelated, ask which asset to troubleshoot first. Reference "
+                "photos by number. Keep under 300 words."
+            )
+            user_prompt = (
+                (f"User caption: {message}\n\n" if message else "")
+                + f"Photo analyses ({n}):\n"
+                + "\n".join(bullets)
+            )
+            try:
+                reply_text, _usage = await self.router.complete(
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    max_tokens=600,
+                    session_id=f"{chat_id}_multi_photo",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "MULTI_PHOTO_ROUTER_FAILURE chat_id=%s n=%d error=%s",
+                    chat_id,
+                    n,
+                    exc,
+                )
+                reply_text = ""
+
+            if reply_text and reply_text.strip():
+                reply = reply_text.strip()
+            else:
+                reply = f"📸 Processed {n} photos:\n\n" + "\n".join(
+                    f"{i}. {(str(a.get('vision_result', '')).strip() or 'unclear')}"
+                    for i, a in enumerate(analyses, start=1)
+                )
+
+            if photos_b64:
+                self._save_session_photo(chat_id, photos_b64[-1])
+
+        except Exception as exc:
+            logger.error(
+                "MULTI_PHOTO_PROCESS_ERROR chat_id=%s n=%d error=%s",
+                chat_id,
+                n,
+                exc,
+                exc_info=True,
+            )
+            return GENERIC_ENGINE_ERROR
+
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        self._log_interaction(
+            chat_id,
+            f"[multi-photo x{n}] {message}".strip(),
+            reply,
+            has_photo=True,
+            response_time_ms=elapsed_ms,
+            platform=platform,
+        )
+        return reply
 
     async def process_full(
         self,
@@ -479,32 +955,32 @@ class Supervisor:
 
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
+        # Bypass guard: if the message is clearly a brand-new diagnostic question (not a
+        # yes/no/edit on the pending WO), drop the stale WO flag and fall through to
+        # normal routing. Without this, a fresh question after a prior RESOLVED session
+        # gets misrouted into _handle_cmms_pending and the user can't escape the WO flow.
         if (state.get("context") or {}).get("cmms_pending") and not photo_b64:
-            return await self._handle_cmms_pending(chat_id, message, state, trace_id)
+            if _is_fresh_question_during_wo(message):
+                # Full diagnostic-carryover clear: pops cmms_pending + cmms_wo_draft,
+                # resets state["state"] off RESOLVED, clears fault_category and
+                # final_state. Without this, a poisoned RESOLVED state lands the
+                # message back in the RESOLVED hook which rebuilds a stale WO.
+                state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=False)
+                self._save_state(chat_id, state)
+                logger.info(
+                    "CMMS_PENDING_BYPASS chat_id=%s msg=%r — treating as fresh question",
+                    chat_id,
+                    message[:120],
+                )
+            else:
+                return await self._handle_cmms_pending(chat_id, message, state, trace_id)
 
         # PM suggestion pending: user is answering a follow-up PM proposal.
         if (state.get("context") or {}).get("pm_suggestion_pending") and not photo_b64:
             return await self._handle_pm_suggestion_pending(chat_id, message, state, trace_id)
 
-        # Photo persistence: load stored session photo for text follow-ups
-        _session_photo = None
-        if not photo_b64:
-            ctx = state.get("context") or {}
-            photo_turn = ctx.get("photo_turn", 0)
-            if photo_turn > 0 and state["exchange_count"] - photo_turn < PHOTO_MEMORY_TURNS:
-                _session_photo = self._load_session_photo(chat_id)
-                if _session_photo:
-                    logger.info(
-                        "Session photo loaded for turn %d (photo at turn %d, %d turns ago)",
-                        state["exchange_count"],
-                        photo_turn,
-                        state["exchange_count"] - photo_turn,
-                    )
-            elif photo_turn > 0:
-                # Photo memory expired
-                self._clear_session_photo(chat_id)
-                ctx.pop("photo_turn", None)
-                state["context"] = ctx
+        if message.strip() and state.get("final_state") == "RESOLVED":
+            state["final_state"] = None
 
         # Phase 3 — honest crawl-failure prefix: check if a prior doc-crawl exhausted
         _honest_prefix = ""
@@ -544,16 +1020,56 @@ class Supervisor:
                     state["context"] = _ctx_opt
                     self._save_state(chat_id, state)
 
-            # Session follow-up detection: now runs on the already-expanded message.
-            if detect_session_followup(message, sc, state["state"]):
-                return await self._handle_session_followup(
-                    message,
-                    state,
-                    chat_id,
-                    session_photo=_session_photo,
-                    tenant_id=resolved_tenant,
-                    honest_prefix=_honest_prefix,
+            # Stage 1 (2026-05-04) — Dialogue State Tracker dispatch. Behind
+            # MIRA_USE_DST flag; default OFF. When enabled the tracker is the
+            # single routing decision (PLAN.md §2.3): one Groq llama-3.1-8b
+            # call returning a typed DialogueTurn → DispatchPlan → handler.
+            # The Stage 0 regex fast-paths below stay in place as the OFF-flag
+            # path AND as the shortcircuit a DST tracker hits before the LLM
+            # call (see `dialogue_acts._shortcircuit_act`).
+            if _DST_ENABLED:
+                _dst_result = await self._maybe_dispatch_via_dst(
+                    chat_id, message, state, trace_id, sc, resolved_tenant
                 )
+                if _dst_result is not None:
+                    return _dst_result
+                # Fall through to legacy routing on classifier failure or
+                # default-RAG dispatch — the tracker explicitly returns None
+                # to signal "let the existing flow handle this turn".
+
+            # Stage 0 (2026-05-04) — action-request fast-path. Catches explicit
+            # imperative work-order requests BEFORE the LLM router, which
+            # currently returns continue_current mid-flow (CRITICAL RULE 3 in
+            # conversation_router.py) and lets the request fall into RAG. The
+            # LLM then garbles the response and the quality gate substitutes
+            # the GRACEFUL_FALLBACK ("rephrase your question…"). See PLAN.md
+            # §2.3 for the systemic fix; this is the targeted hot-fix.
+            if _WO_ACTION_REQUEST_RE.search(message):
+                logger.info(
+                    "ACTION_REQUEST_FAST_PATH chat_id=%s kind=work_order match=%r",
+                    chat_id,
+                    message[:80],
+                )
+                return await self._handle_wo_request(chat_id, message, state, trace_id)
+
+            # Stage 0 (2026-05-04) — "I don't know" / short-answer fast-path.
+            # Fires only when MIRA has a pending question (last_question
+            # populated) AND the user's reply is a short uncertainty
+            # admission. Prevents "I don't know. I was just given the new
+            # one to put in" from being tokenized into "IDON" / "I-DON" and
+            # embedded as candidate fault codes via the vector search.
+            if (
+                sc.get("last_question")
+                and len(message.strip()) <= _DONT_KNOW_MAX_LEN
+                and _DONT_KNOW_RE.search(message)
+            ):
+                logger.info(
+                    "DONT_KNOW_FAST_PATH chat_id=%s state=%s match=%r",
+                    chat_id,
+                    state.get("state"),
+                    message[:80],
+                )
+                return self._handle_dont_know_followup(chat_id, message, state, trace_id)
 
             # LLM conversation router — determines what the user wants THIS turn.
             # Runs in parallel with the synchronous keyword classifier as a fast fallback.
@@ -620,7 +1136,28 @@ class Supervisor:
             # Procedural how-to questions: answer from knowledge, skip doc crawl.
             # Keyword "instructional" also routes here via the fallback mapping above.
             if _router_intent == "answer_question" or _keyword_intent == "instructional":
+                if detect_session_followup(message, sc, state["state"]):
+                    return await self._handle_session_followup(
+                        message,
+                        state,
+                        chat_id,
+                        session_photo=self._load_recent_session_photo(chat_id, state),
+                        tenant_id=resolved_tenant,
+                        honest_prefix=_honest_prefix,
+                    )
                 return await self._handle_instructional_question(chat_id, message, state, trace_id)
+
+            if _router_intent == "continue_current" and detect_session_followup(
+                message, sc, state["state"]
+            ):
+                return await self._handle_session_followup(
+                    message,
+                    state,
+                    chat_id,
+                    session_photo=self._load_recent_session_photo(chat_id, state),
+                    tenant_id=resolved_tenant,
+                    honest_prefix=_honest_prefix,
+                )
 
             # find_documentation: let the existing specificity-gate block handle it below
             if _router_intent == "find_documentation":
@@ -657,7 +1194,10 @@ class Supervisor:
             if not self._is_doc_specific(mfr, combined):
                 # If nameplate was already scanned, asset_identified is "Vendor, Model".
                 # Skip gathering — we already know enough to crawl.
-                asset_id = state.get("asset_identified", "")
+                # NOTE: SQLite returns None for NULL columns, ignoring dict.get default,
+                # so coalesce explicitly to avoid `'NoneType' is not iterable` on the
+                # following `in` check (bug surfaced by tech-19 benchmark case).
+                asset_id = state.get("asset_identified") or ""
                 if "," in asset_id:
                     fallback_mfr = mfr or asset_id.split(",", 1)[0].strip()
                     return await self._do_documentation_lookup(
@@ -668,6 +1208,17 @@ class Supervisor:
                         resolved_tenant,
                         vendor_override=fallback_mfr,
                     )
+                if mfr:
+                    kb_covered, _ = kb_has_coverage(mfr, combined, resolved_tenant or "")
+                    if kb_covered:
+                        return await self._do_documentation_lookup(
+                            chat_id,
+                            message,
+                            state,
+                            trace_id,
+                            resolved_tenant,
+                            vendor_override=mfr,
+                        )
                 return await self._enter_manual_lookup_gathering(
                     chat_id, message, state, trace_id, mfr
                 )
@@ -804,6 +1355,8 @@ class Supervisor:
                 )
             else:
                 state["state"] = "ASSET_IDENTIFIED"
+                state["fault_category"] = None
+                state["final_state"] = None
                 existing_sc = ctx.get("session_context", {})
                 ctx["session_context"] = {
                     "equipment_type": str(vision_data["vision_result"])[:80],
@@ -928,7 +1481,10 @@ class Supervisor:
 
         # RAG worker with self-correction: text queries and photo+intent queries
         # Use session photo for follow-up text questions within PHOTO_MEMORY_TURNS
-        effective_photo = photo_b64 or _session_photo
+        session_photo = None
+        if not photo_b64 and state.get("state") != "IDLE":
+            session_photo = self._load_recent_session_photo(chat_id, state)
+        effective_photo = photo_b64 or session_photo
         try:
             with tl_span(t, "rag_worker"):
                 raw, parsed = await self._call_with_correction(
@@ -1102,31 +1658,15 @@ class Supervisor:
                 ctx_sc.pop("revision_critique", None)
                 state["context"] = ctx_sc
 
-        # RESOLVED hook: build UNS-structured WO draft and show preview.
-        # Amend parsed["reply"] now so both history and formatted output include it.
-        _wo_draft = None
+        # RESOLVED hook: previously this auto-appended a WO preview and set
+        # cmms_pending=True any time the FSM landed on RESOLVED. That made
+        # MIRA "uninvited" propose a work order after every diagnosis.
+        # The WO flow is now ONLY entered when the LLM router classifies
+        # intent as "log_work_order" → _handle_wo_request — i.e. the user
+        # explicitly says "create a work order", "log this", etc.
+        # We still run recurring-fault annotation on RESOLVED so persistent
+        # issues are flagged, but we do not push the WO preview.
         if state["state"] == "RESOLVED":
-            try:
-                _wo = build_uns_wo_from_state(state)
-                _wo_draft = _wo.to_dict()
-                _preview = format_wo_preview(_wo)
-                parsed["reply"] = parsed.get("reply", "").rstrip() + "\n\n" + _preview
-            except Exception as _woe:
-                logger.error(
-                    "WO_BUILD_ERROR chat_id=%s error=%s",
-                    chat_id,
-                    _woe,
-                    exc_info=True,
-                )
-                # Diagnosis text is already in parsed["reply"]; append manual WO note
-                diagnosis_summary = parsed.get("reply", "")[:300]
-                parsed["reply"] = (
-                    parsed.get("reply", "").rstrip()
-                    + "\n\n"
-                    + work_order_failure(diagnosis_summary)
-                )
-
-            # Recurring fault detection — annotate reply if same fault recurred
             try:
                 _annotated, _pushed = await check_recurring_and_annotate(
                     self.db_path, state, parsed["reply"]
@@ -1145,17 +1685,13 @@ class Supervisor:
 
         # Update session_context with latest question so off-topic replies can recap
         sc = ctx.get("session_context", {})
-        if sc:
-            sc["last_question"] = parsed["reply"][:200]
-            sc["last_options"] = parsed.get("options", [])
-            ctx["session_context"] = sc
+        sc["last_question"] = parsed["reply"][:200]
+        sc["last_options"] = parsed.get("options", [])
+        ctx["session_context"] = sc
 
-        # Persist work-order draft so _handle_cmms_pending can use it next turn.
-        if _wo_draft is not None:
-            ctx["cmms_pending"] = True
-            ctx["cmms_wo_draft"] = _wo_draft
-            logger.info("CMMS_WO_PENDING chat_id=%s title=%r", chat_id, _wo_draft.get("title"))
-
+        # No auto-persist of WO draft here — the WO flow is now opt-in via
+        # _handle_wo_request, which sets cmms_pending itself when the user
+        # explicitly asks to log a work order.
         state["context"] = ctx
 
         self._save_state(chat_id, state)
@@ -1164,6 +1700,17 @@ class Supervisor:
         # Phase 3 — prepend honest crawl-failure message if a prior doc-crawl exhausted.
         if _honest_prefix:
             formatted = _honest_prefix + formatted
+
+        # CRA-11 / Unit 2 — observational citation compliance check.
+        # Logs CITATION_COMPLIANCE_OK / _MISS so we can measure inline-cite
+        # rate over time. Never blocks the reply.
+        _check_citation_compliance(
+            formatted,
+            getattr(self.rag, "kb_status", {}),
+            fsm_state=state.get("state", ""),
+            chat_id=chat_id,
+        )
+
         tl_flush()
         return self._make_result(
             formatted,
@@ -1450,13 +1997,32 @@ class Supervisor:
         return self._make_result(reply, "none", trace_id, "RESOLVED")
 
     def reset(self, chat_id: str) -> None:
-        """Reset conversation to IDLE state."""
+        """Reset conversation to IDLE state.
+
+        Deletes any conversation_state row matching this chat_id under any of
+        the known key formats:
+          - exact match (legacy/internal callers passing the raw key)
+          - "telegram:<id>"           (current ChatDispatcher key, no thread)
+          - "telegram:<id>:..."       (current ChatDispatcher key with thread)
+        Same shape for slack/teams/etc. We delete via LIKE prefix so a /new
+        from any caller wipes all rows that could re-surface stale state.
+        """
         self._clear_session_photo(chat_id)
         db = sqlite3.connect(self.db_path)
         db.execute("PRAGMA journal_mode=WAL")
+        # Exact key
         db.execute("DELETE FROM conversation_state WHERE chat_id = ?", (chat_id,))
+        # Composite keys for known platforms ending in this raw chat id
+        for platform in ("telegram", "slack", "teams", "gchat", "webui"):
+            prefix = f"{platform}:{chat_id}"
+            db.execute(
+                "DELETE FROM conversation_state WHERE chat_id = ? OR chat_id LIKE ?",
+                (prefix, f"{prefix}:%"),
+            )
         db.commit()
+        deleted = db.total_changes
         db.close()
+        logger.info("ENGINE_RESET chat_id=%s rows_deleted=%d", chat_id, deleted)
 
     def log_feedback(self, chat_id: str, feedback: str, reason: str = "") -> None:
         state = self._load_state(chat_id)
@@ -1581,6 +2147,8 @@ class Supervisor:
             "last_question": None,
             "last_options": [],
         }
+        state["fault_category"] = None
+        state["final_state"] = None
         state["asset_identified"] = f"{manufacturer}, {model}"
         state["context"] = ctx
 
@@ -1736,16 +2304,23 @@ class Supervisor:
         ctx["history"] = history
 
         sc = ctx.get("session_context", {})
-        if sc:
-            sc["last_question"] = parsed["reply"][:200]
-            sc["last_options"] = parsed.get("options", [])
-            ctx["session_context"] = sc
+        sc["last_question"] = parsed["reply"][:200]
+        sc["last_options"] = parsed.get("options", [])
+        ctx["session_context"] = sc
 
         state["context"] = ctx
         self._save_state(chat_id, state)
         formatted = self._format_reply(parsed, user_message=message)
         if honest_prefix:
             formatted = honest_prefix + formatted
+
+        _check_citation_compliance(
+            formatted,
+            getattr(self.rag, "kb_status", {}),
+            fsm_state=state.get("state", ""),
+            chat_id=chat_id,
+        )
+
         return self._make_result(
             formatted,
             self._infer_confidence(formatted),
@@ -1766,6 +2341,7 @@ class Supervisor:
         initial_vendor: str,
     ) -> dict:
         """Set FSM to MANUAL_LOOKUP_GATHERING and ask for the first missing field."""
+        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         ctx = state.get("context") or {}
         gathered: dict = {}
         if initial_vendor:
@@ -1774,7 +2350,7 @@ class Supervisor:
         ctx["manual_lookup_gathering"] = {
             "collected": gathered,
             "attempts": 0,
-            "prior_state": state["state"],
+            "prior_state": self._background_state_for(state),
         }
         state["state"] = "MANUAL_LOOKUP_GATHERING"
         state["context"] = ctx
@@ -1836,13 +2412,20 @@ class Supervisor:
         if has_diagnosis_signal and not has_escape_phrase:
             # User is describing a fault, not answering our question.  Restore state
             # silently so the normal diagnostic flow handles this turn.
+            # Preserve any vendor/model already collected so the diagnostic FSM has context.
+            if not state.get("asset_identified"):
+                if collected.get("vendor") and collected.get("model"):
+                    state["asset_identified"] = f"{collected['vendor']}, {collected['model']}"
+                elif collected.get("vendor"):
+                    state["asset_identified"] = collected["vendor"]
             ctx.pop("manual_lookup_gathering", None)
             state["state"] = prior_state
             state["context"] = ctx
             self._save_state(chat_id, state)
             logger.info(
-                "MANUAL_LOOKUP_GATHERING_ESCAPED chat_id=%s reason=diagnosis_signal",
+                "MANUAL_LOOKUP_GATHERING_ESCAPED chat_id=%s reason=diagnosis_signal vendor=%r",
                 chat_id,
+                state.get("asset_identified"),
             )
             return None  # fall through
 
@@ -2048,6 +2631,7 @@ class Supervisor:
         self, chat_id: str, message: str, state: dict, trace_id: str
     ) -> dict:
         """Answer a general industrial question — uses RAG for equipment-specific specs."""
+        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         asset = state.get("asset_identified", "")
         msg_lower = message.lower()
         needs_rag = asset and any(kw in msg_lower for kw in self._SPEC_KEYWORDS)
@@ -2113,7 +2697,11 @@ class Supervisor:
         ctx.pop("cmms_pending", None)
         ctx.pop("cmms_wo_draft", None)
         ctx.pop("pending_doc_job", None)
+        ctx.pop("photo_turn", None)
+        state["fault_category"] = None
+        state["final_state"] = None
         state["context"] = ctx
+        self._clear_session_photo(chat_id)
         self._save_state(chat_id, state)
 
         if new_asset:
@@ -2191,7 +2779,206 @@ class Supervisor:
         preview = format_wo_preview(wo)
         self._record_exchange(chat_id, state, message, preview)
         tl_flush()
-        return self._make_result(preview, "none", trace_id, state.get("state", "IDLE"))
+        return self._make_result(
+            preview,
+            "none",
+            trace_id,
+            state.get("state", "IDLE"),
+            dispatch_kind="action_request",
+        )
+
+    def _handle_dont_know_followup(
+        self, chat_id: str, message: str, state: dict, trace_id: str
+    ) -> dict:
+        """Stage 0 (2026-05-04) handler for "I don't know" answers to MIRA's
+        pending question.
+
+        Acknowledges the uncertainty and offers a slot-aware alternative path
+        (photo of nameplate, describe symptom) — without embedding the user's
+        words as a vector-search query, which would otherwise tokenize "don't"
+        into spurious fault codes.
+        """
+        fsm = state.get("state", "IDLE")
+        asset = state.get("asset_identified", "")
+        if fsm in ("IDLE", "Q1") or not asset:
+            reply = (
+                "No problem. If you're at the equipment, send a photo of the "
+                "nameplate or fault display and I'll read the model and code "
+                "from it. Otherwise, describe what's happening — what does "
+                "the machine do or fail to do?"
+            )
+        elif fsm == "DIAGNOSIS_REVISION":
+            reply = (
+                "OK — let's work with what you have. Describe the symptom "
+                "in your own words: what does the equipment do (or not do) "
+                "when you try to run it?"
+            )
+        else:
+            reply = (
+                "OK. Tell me what you do see or hear instead — any noise, "
+                "smoke, lights, or behavior change. Even a rough description "
+                "narrows it down."
+            )
+        # Persist last_question so the next turn's session_followup logic
+        # treats further user replies as continuations of this prompt.
+        ctx = state.get("context") or {}
+        sc_dk = ctx.get("session_context") or {}
+        sc_dk["last_question"] = reply[:200]
+        sc_dk["last_options"] = []
+        ctx["session_context"] = sc_dk
+        state["context"] = ctx
+        self._record_exchange(chat_id, state, message, reply)
+        self._save_state(chat_id, state)
+        tl_flush()
+        return self._make_result(reply, "none", trace_id, fsm, dispatch_kind="dont_know")
+
+    # ------------------------------------------------------------------
+    # Stage 1 — Dialogue State Tracker dispatch (PLAN.md §2.3 / §10)
+    # ------------------------------------------------------------------
+
+    async def _maybe_dispatch_via_dst(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        sc: dict,
+        resolved_tenant,
+    ) -> dict | None:
+        """Run one turn through the dialogue state tracker.
+
+        Returns the engine's standard result dict when the tracker handles
+        the turn, or `None` when the legacy routing should take over (for
+        DEFAULT_RAG dispatches, classifier failures, slot-fill answers that
+        the existing flow already handles, etc.).
+
+        Three things happen here:
+
+        1. Build the typed `DialogueState` from the engine's state dict.
+        2. Run `track_turn()` — classify, merge entities, decide dispatch,
+           update pending question, snapshot interrupts.
+        3. Match on `plan.kind` and call the matching handler. The handler
+           list is intentionally small in Stage 1 — we only handle the
+           dispatch kinds where DST adds new value over Stage 0:
+           * SAFETY              → identical safety reply, but with a typed
+                                    hazard summary attached for telemetry
+           * ACTION_INTERRUPT    → WO / asset switch / reset
+           * SLOT_DONT_KNOW      → routes to _handle_dont_know_followup
+           * META                → reset / cancel acknowledgement
+           * GREET (in IDLE)     → _greeting_response
+           * ASK_PROCEDURAL      → _handle_instructional_question
+           * ASK_GENERAL         → _handle_general_question
+           * ACTION (other)      → _handle_check_equipment_history /
+                                    documentation flow / etc.
+           * Everything else (SLOT_ANSWER, SLOT_CONFIRM/DENY, DEFAULT_RAG,
+             classifier failure) → return None and let the legacy flow run.
+        """
+        # Build the tracker state from the existing engine state dict —
+        # session_manager has no schema knowledge of `dialogue`; we ride on
+        # the JSON `context` blob.
+        ds = DialogueState.from_engine_state(chat_id, state)
+
+        try:
+            new_ds, plan = await track_turn(ds, message)
+        except Exception as exc:  # noqa: BLE001 — bot must never raise
+            logger.warning("DST_TRACK_FAILURE chat_id=%s err=%s", chat_id, exc)
+            return None
+
+        # Persist the updated tracker state — the engine state dict gets
+        # written to SQLite by the existing _save_state path on whichever
+        # handler we end up calling.
+        new_ds.write_to_engine_state(state)
+
+        kind = plan.kind
+
+        # Priority 1 — safety
+        if kind == DISPATCH_SAFETY:
+            reply = (
+                "STOP — describe the hazard. De-energize the equipment first. "
+                "Do not proceed until the area is safe."
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            asset = state.get("asset_identified") or "Unknown equipment"
+            asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
+            return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
+
+        # Priority 2 — interrupt actions
+        if kind == DISPATCH_ACTION_INTERRUPT:
+            action = plan.payload.get("action")
+            if action == "log_work_order":
+                return await self._handle_wo_request(chat_id, message, state, trace_id)
+            if action == "switch_asset":
+                return await self._handle_asset_switch(chat_id, message, state, trace_id)
+            if action == "reset":
+                # Reset clears state in SQLite and returns a friendly
+                # acknowledgement. Mirrors the /reset bot command.
+                self.reset(chat_id)
+                reply = "Started a fresh session. What equipment can I help with?"
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "IDLE", dispatch_kind="dst_meta")
+
+        # Priority 3 — slot-level dispatches we own
+        if kind == DISPATCH_SLOT_DONT_KNOW:
+            return self._handle_dont_know_followup(chat_id, message, state, trace_id)
+
+        # Priority 4 — meta-control (cancel / reset / skip / back / stop)
+        if kind == DISPATCH_META:
+            command = plan.payload.get("command", "cancel")
+            if command in ("reset", "stop"):
+                self.reset(chat_id)
+                reply = "Started a fresh session. What equipment can I help with?"
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "IDLE", dispatch_kind="dst_meta")
+            # cancel / skip / back — clear pending question, acknowledge,
+            # let the next user turn drive the flow.
+            ctx = state.get("context") or {}
+            sc_meta = ctx.get("session_context") or {}
+            sc_meta.pop("last_question", None)
+            sc_meta.pop("last_options", None)
+            ctx["session_context"] = sc_meta
+            state["context"] = ctx
+            reply = "Got it — let's drop that. What would you like to do next?"
+            self._record_exchange(chat_id, state, message, reply)
+            self._save_state(chat_id, state)
+            tl_flush()
+            return self._make_result(
+                reply, "none", trace_id, state.get("state", "IDLE"), dispatch_kind="dst_meta"
+            )
+
+        # Priority 5 — non-interrupt action requests
+        if kind == DISPATCH_ACTION:
+            action = plan.payload.get("action")
+            if action == "check_equipment_history":
+                return await self._handle_check_equipment_history(chat_id, message, state, trace_id)
+            if action == "find_documentation":
+                # The existing post-router block handles `find_documentation`
+                # via the specificity gate + crawl pipeline. Returning None
+                # lets the legacy `route_intent` call re-classify it (cheap)
+                # and route to the same place. Stage 2 will short-circuit
+                # this when the legacy router is removed.
+                return None
+            if action == "schedule_maintenance":
+                # PM scheduling has a deep wizard already; let the existing
+                # path handle it. Set a hint so the keyword classifier on
+                # the legacy path knows what the user wanted.
+                return None
+
+        # Priority 6 — questions
+        if kind == DISPATCH_ASK_PROCEDURAL:
+            return await self._handle_instructional_question(chat_id, message, state, trace_id)
+        if kind == DISPATCH_ASK_GENERAL:
+            return await self._handle_general_question(chat_id, message, state, trace_id)
+
+        # Priority 7 — greeting in IDLE
+        if kind == DISPATCH_GREET and state.get("state", "IDLE") == "IDLE":
+            return self._greeting_response(state, chat_id, trace_id)
+
+        # Priority 8 — anything left (SLOT_ANSWER, SLOT_CONFIRM, SLOT_DENY,
+        # DEFAULT_RAG) → let the legacy router/classifier handle it. The
+        # existing flow already knows how to advance Q1→Q2→Q3 from a slot
+        # answer; rebuilding that here is Stage 2 work.
+        return None
 
     async def _handle_check_equipment_history(
         self, chat_id: str, message: str, state: dict, trace_id: str
@@ -2302,6 +3089,7 @@ class Supervisor:
         Bypasses the doc-crawl path and the Q1/Q2/Q3 diagnosis FSM. Injects
         the known asset context so the answer is equipment-specific when available.
         """
+        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         asset = state.get("asset_identified", "")
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
@@ -2364,6 +3152,7 @@ class Supervisor:
         direct (specific request) path and the gathering subroutine share one code path.
         Never raises.
         """
+        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         asset = state.get("asset_identified", "")
         combined = " ".join(filter(None, [vendor_override, model_override, message, asset])).strip()
         mfr = vendor_override or vendor_name_from_text(combined) or ""
@@ -2373,10 +3162,13 @@ class Supervisor:
         kb_covered, kb_reason = kb_has_coverage(mfr, combined, resolved_tenant or "")
         if kb_covered:
             reply = (
-                "I already have documentation indexed for that equipment — just "
-                "ask me about fault codes, specs, or wiring and I'll pull from "
-                "it directly."
+                f"I have {mfr} documentation indexed."
+                if mfr
+                else "I already have documentation indexed for that equipment."
             )
+            if url:
+                reply += f" Official source: {url}"
+            reply += " Ask about fault codes, specs, or wiring."
             logger.info(
                 "KB_PRE_CHECK_HIT chat_id=%s manufacturer=%r reason=%s",
                 chat_id,
@@ -2412,9 +3204,9 @@ class Supervisor:
                 f"information.{low_conf_note}"
             )
         else:
+            vendor_phrase = f" for {mfr}" if mfr else " for that equipment"
             reply = (
-                "I don't have documentation for that equipment in my knowledge "
-                "base yet.\n\n"
+                f"I don't have documentation{vendor_phrase} in my knowledge base yet.\n\n"
                 "Try searching the manufacturer's website for the model number "
                 "and document type.\n\n"
                 f"I've queued a search — ask me again shortly.{low_conf_note}"
