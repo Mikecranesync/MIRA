@@ -7,6 +7,52 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 to the component (`mira-web/vX.Y.Z`) so they don't collide with the MIRA
 monorepo's top-level tag progression.
 
+## [0.6.0] — 2026-05-03
+
+### Changed
+- **Site-wide topbar coherence — Phase 2 done.** The static HTML pages
+  (`pricing.html`, `privacy.html`, `terms.html`, `trust.html`,
+  `legal/dpa.html`) and the blog renderer (`src/lib/blog-renderer.ts`)
+  now serve the same standardized topbar as the TS-rendered marketing
+  views: plain "FactoryLM" wordmark (M-icon SVG dropped), the standard
+  5-link nav (CMMS / Pricing / Blog / Limitations / Security), and
+  the "Sign in" CTA. Per-page differences are limited to
+  `aria-current="page"`. This closes all six topbar variants flagged
+  in the 2026-05-03 style audit.
+- **Static HTML footers standardized.** Each footer now uses the same
+  4-link set as the marketing pages (Limitations / Trust / Privacy /
+  Terms) and drops the M-icon SVG from the footer logo. Previous
+  footers had inconsistent link sets (some had Blog + Fault Codes +
+  Troubleshooter + Contact, others omitted some).
+- **Blog renderer nav drops the M-icon and Mira-FAB-only branding
+  collision.** The 4 blog routes (/blog, /blog/fault-codes,
+  /blog/:slug for posts, /blog/:slug for fault codes) all render the
+  standardized topbar via the refactored `nav()` helper in
+  `blog-renderer.ts`.
+
+### Added
+- **56-test site-wide coherence suite** at
+  `src/__tests__/site-wide-topbar.test.ts`. Reads each rendered or
+  static HTML page and asserts:
+  - No M-icon SVG (`fill="#f0a000"`) in the topbar
+  - "Sign in" CTA copy (rejects "Get Started" / "Try free" /
+    "Join the Beta")
+  - All five standard nav links present
+  - M-icon-era labels gone ("Troubleshooter", "Product",
+    "Fault Codes" link in topbar)
+
+### Notes
+- /activated retains its own bespoke single-purpose post-payment
+  design (no topbar to standardize).
+- The static HTML pages keep their existing dark CSS world (their
+  own `--bg`/`--surface`/`--text` tokens). Only the nav/footer
+  markup was touched. Future Phase 3 could fully unify the design
+  tokens across blog + static pages with the marketing site, but
+  that's not needed to close the 2026-05-03 audit.
+- SW `CACHE_NAME` does not need to bump for this release — sw.js is
+  network-first for HTML navigations, so the changed static HTML
+  pages will reach returning visitors immediately on next nav.
+
 ## [0.5.2] — 2026-05-03
 
 ### Fixed

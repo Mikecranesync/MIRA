@@ -163,3 +163,31 @@ def test_list_users_scoped_to_tenant(svc):
     assert "Alice" in names
     assert "Bob" in names
     assert "Charlie" not in names
+
+
+# ---------------------------------------------------------------------------
+# lookup_only — strict, no auto-create
+# ---------------------------------------------------------------------------
+
+
+def test_lookup_only_returns_none_for_unknown_identity(svc):
+    assert svc.lookup_only("telegram", "999_unknown") is None
+
+
+def test_lookup_only_returns_user_for_known_identity(svc):
+    created = svc.resolve("telegram", "12345", "acme", display_name="Eve")
+    found = svc.lookup_only("telegram", "12345")
+    assert found is not None
+    assert found.id == created.id
+    assert found.tenant_id == "acme"
+    assert found.display_name == "Eve"
+
+
+def test_lookup_only_does_not_auto_create(svc):
+    """lookup_only must never insert rows — strangers stay strangers."""
+    from sqlalchemy import text
+
+    svc.lookup_only("telegram", "no_such_user")
+    with svc._engine.connect() as conn:
+        count = conn.execute(text("SELECT COUNT(*) FROM mira_users")).scalar()
+    assert count == 0

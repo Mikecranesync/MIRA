@@ -12,6 +12,7 @@
 | [[nodes/vps]] | DigitalOcean VPS — factorylm.com, SaaS v1, Atlas CMMS |
 | [[nodes/plc-laptop]] | PLC programming laptop — CCW, RSLinx, Factory I/O |
 | [[nodes/windows-dev]] | Windows 11 primary dev box — main Claude Code sessions |
+| [[nodes/wiki-sync]] | How the vault is shared across nodes + `~/MiraDrop/` auto-ingest |
 
 ## Gotchas
 
