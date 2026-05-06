@@ -1220,7 +1220,7 @@ class Supervisor:
                             vendor_override=mfr,
                         )
                 return await self._enter_manual_lookup_gathering(
-                    chat_id, message, state, trace_id, mfr
+                    chat_id, message, state, trace_id, mfr, resolved_tenant or ""
                 )
 
             # Specific enough — Phase 2 KB pre-check + crawl
@@ -2332,6 +2332,62 @@ class Supervisor:
     # Manual-lookup gathering subroutine
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _collect_session_entities(
+        state: dict, message: str, current_vendor: str
+    ) -> tuple[str, str]:
+        """Harvest (vendor, model) from session memory before gathering. Read-only.
+
+        Sources, in priority order:
+          1. ``state["asset_identified"]`` — engine's own pinned asset.
+          2. ``state["context"]["history"]`` — last 8 turns of user+assistant text.
+          3. ``state["context"]["dialogue"]["salient_entities"]`` — DST snapshot.
+          4. The current ``message`` itself.
+
+        Returns ``("", "")`` when nothing is found. Never mutates state or DST.
+        """
+        vendor = current_vendor or ""
+        model = ""
+
+        asset_id = state.get("asset_identified") or ""
+        if "," in asset_id:
+            parts = [p.strip() for p in asset_id.split(",", 1)]
+            if not vendor and parts[0]:
+                vendor = parts[0]
+            if len(parts) > 1 and parts[1]:
+                model = parts[1]
+        elif asset_id:
+            if not vendor:
+                vendor = vendor_name_from_text(asset_id) or ""
+            if not model:
+                model = _looks_like_model_number(asset_id) or ""
+
+        ctx = state.get("context") or {}
+        history = ctx.get("history") or []
+        if (not vendor or not model) and history:
+            for turn in reversed(history[-8:]):
+                text = str(turn.get("content") or "")
+                if not vendor:
+                    vendor = vendor_name_from_text(text) or ""
+                if not model:
+                    model = _looks_like_model_number(text) or ""
+                if vendor and model:
+                    break
+
+        if not vendor or not model:
+            dialogue = ctx.get("dialogue") or {}
+            ents = dialogue.get("salient_entities") or {}
+            if not vendor and ents.get("vendor"):
+                vendor = str(ents["vendor"])
+            if not model and ents.get("model"):
+                model = str(ents["model"])
+
+        if not vendor:
+            vendor = vendor_name_from_text(message) or ""
+        if not model:
+            model = _looks_like_model_number(message) or ""
+        return vendor, model
+
     async def _enter_manual_lookup_gathering(
         self,
         chat_id: str,
@@ -2339,8 +2395,33 @@ class Supervisor:
         state: dict,
         trace_id: str,
         initial_vendor: str,
+        resolved_tenant: str = "",
     ) -> dict:
         """Set FSM to MANUAL_LOOKUP_GATHERING and ask for the first missing field."""
+        # CRA-8 Cluster B: if the technician already named the vendor across the
+        # session (asset_identified, history, DST), skip the gather and queue a
+        # crawl directly. Asking "what's the brand?" after the user said "Pilz
+        # PNOZ" three turns ago is annoying and strands the FSM in MLG when the
+        # eval has no further turn to satisfy the question.
+        seeded_vendor, seeded_model = self._collect_session_entities(state, message, initial_vendor)
+        if seeded_vendor:
+            logger.info(
+                "MANUAL_LOOKUP_GATHERING_BYPASS chat_id=%s vendor=%r model=%r — entities from session",
+                chat_id,
+                seeded_vendor,
+                seeded_model,
+            )
+            return await self._do_documentation_lookup(
+                chat_id,
+                message,
+                state,
+                trace_id,
+                resolved_tenant,
+                vendor_override=seeded_vendor,
+                model_override=seeded_model or "",
+                low_confidence=not seeded_model,
+            )
+
         state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         ctx = state.get("context") or {}
         gathered: dict = {}
@@ -3072,7 +3153,9 @@ class Supervisor:
                     resolved_tenant,
                     vendor_override=fallback_mfr,
                 )
-            return await self._enter_manual_lookup_gathering(chat_id, message, state, trace_id, mfr)
+            return await self._enter_manual_lookup_gathering(
+                chat_id, message, state, trace_id, mfr, resolved_tenant or ""
+            )
         return await self._do_documentation_lookup(
             chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
         )
@@ -3161,14 +3244,18 @@ class Supervisor:
         # Phase 2 — KB pre-check: skip crawl when we already have coverage.
         kb_covered, kb_reason = kb_has_coverage(mfr, combined, resolved_tenant or "")
         if kb_covered:
-            reply = (
-                f"I have {mfr} documentation indexed."
-                if mfr
-                else "I already have documentation indexed for that equipment."
-            )
+            # CRA-8 Cluster A: include the model token (and the literal word "manual")
+            # so vendor-specific manual requests don't fall through the keyword check.
+            model_hint = model_override or _looks_like_model_number(combined) or ""
+            if mfr and model_hint:
+                reply = f"I have the {mfr} {model_hint} manual indexed."
+            elif mfr:
+                reply = f"I have {mfr} documentation indexed."
+            else:
+                reply = "I already have documentation indexed for that equipment."
             if url:
                 reply += f" Official source: {url}"
-            reply += " Ask about fault codes, specs, or wiring."
+            reply += " Ask about the manual, fault codes, specs, or wiring."
             logger.info(
                 "KB_PRE_CHECK_HIT chat_id=%s manufacturer=%r reason=%s",
                 chat_id,
