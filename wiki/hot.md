@@ -1,6 +1,32 @@
 # Hot Cache — 2026-05-06 — CHARLIE
 
-## Session — 2026-05-06 (CHARLIE, CRA-8 Phase 0 re-baseline)
+## Session — 2026-05-06 (CHARLIE, CRA-8 Phase 0 → 1 → 2, awaiting Mike review)
+
+**Final trajectory** (branch `fix/cra-8-fsm-eval-residual`, do NOT merge — Mike will review):
+
+| Phase | Pass rate | Scorecard | Net change |
+|---|---|---|---|
+| Stale (2026-04-29 baseline) | 44/57 (77%) | `runs/2026-04-29T0617.md` | — |
+| Phase 0 (fresh main, no code) | 40/57 (70%) | `runs/2026-05-06T0752-*.md` | −4 (regressions in main since stale) |
+| Phase 1 (Cluster A/B/C + pilz fixture reconcile) | **48/57 (84%)** | `runs/2026-05-06T0833-*.md` | **+8** |
+| Phase 2 (hard FSM Q1→Q2 promotion) | 46/57 (81%) | `runs/2026-05-06T0921-*.md` | −2 vs Phase 1 |
+
+**Phase 2 trade-off**: deterministically fixes the 2 spec'd Q1→Q2 fixtures (`vague_opener_stuck_state_05`, `vfd_danfoss_04_vlt_fc360_edge`) plus 2 bonuses (`reset_new_session_09`, `gs20_phase_loss_16`) — but **introduces stochastic regressions** on 4 Q-state fixtures that flip back-and-forth across runs (`pf525_ground_fault_19`, `self_critique_low_groundedness_34`, `vfd_siemens_01_sinamics_g120_f30001`, `vfd_siemens_04_v20_startup`) plus one transient `PROCESS_TIMEOUT` (`vfd_danfoss_01_vlt_fc102_alarm4`). Spec §8 Risk 2 anticipated this and recommended running the eval 3× to average out — only ran 1× of Phase 2 here due to time budget; second run would average closer to Phase 1's 48/57.
+
+**Decision points for Mike's review**:
+1. **Keep Phase 2** (commit `5437149` + `20cdbbe` + `9f9edd3`)? Pro: spec'd fixtures pass deterministically. Con: net 81% < 84% on this single run.
+2. **Revert Phase 2** and ship Phase 1 only at 84%? Pro: highest single-run number. Con: leaves the two Q1→Q2 fixtures LLM-stochastic.
+3. **Run Phase 2 eval 2 more times** to validate the spec's "3× to average" guarantee? Cost: ~60 min of eval runtime.
+
+**Cluster fix outcome (post-Phase 1)**:
+- **Cluster A** (3 vfd manual fixtures) — already RESOLVED on main by commit `28aba78` 2026-05-03; Phase 1 changes (model_hint + "manual" in closing phrase) were prophylactic per Mike's "apply all fixes" instruction.
+- **Cluster B** (pilz/distribution gather strand) — RESOLVED via session-entity bypass in `_enter_manual_lookup_gathering` + fixture state reconciliation (DIAGNOSIS → IDLE per the post-28aba78 doc-intent contract).
+- **Cluster C** (Q1→Q2 advancement) — RESOLVED via prescriptive Rule 9 reword + Example 8 in `active.yaml` AND the Phase 2 hard FSM rule. The two Q1→Q2 spec fixtures pass on Phase 2.
+- **Out-of-scope from spec §6.3** (still failing, separate tickets): `pf525_ground_fault_19` (RAG cross-vendor bleed), `cmms_wo_creation_32` (work-order intent flow), `gs3_ground_fault_14` (LLM never engages Q-flow), `vfd_abb_03_acs355_cross_load` (RAG bleed).
+
+**Eval-fixer follow-up**: per spec §6.3, file separate Linear ticket for the eval-fixer skill bug (re-files duplicate issues against stale scorecard). Not bundled into CRA-8.
+
+## Session — 2026-05-06 (CHARLIE, CRA-8 Phase 0 re-baseline — initial)
 
 - **Fresh eval scorecard**: `tests/eval/runs/2026-05-06T0752-offline-text.md` — `40/57 (70%)` on `main` HEAD (`90df74d`). Stale was `44/57 (77%)` on `2026-04-29T0617`. **4 net new regressions** since the stale scorecard.
 - **Cluster A (3 fixtures from spec) — RESOLVED on main**: `vfd_danfoss_02_aqua_drive_manual`, `vfd_mitsu_02_fr_e700_find_datasheet`, `vfd_siemens_02_micromaster_manual` all PASS now (commit `28aba78` did the work).
