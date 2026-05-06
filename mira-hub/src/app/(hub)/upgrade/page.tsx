@@ -42,8 +42,14 @@ const PLANS = [
 
 export default function UpgradePage() {
   function handleUpgrade(planId: string) {
-    // Stripe checkout — placeholder until Stripe is wired
-    window.open(`mailto:mike@factorylm.com?subject=FactoryLM%20${planId}%20plan%20signup`, "_blank");
+    // mira-web owns the Stripe billing surface (see deployment/nginx-phase2-live.conf
+    // — `/pricing` and `/api/checkout/*` both proxy to mira-web :3200). Sending the
+    // user to /pricing lets them pick a plan that matches the live Stripe price IDs;
+    // sending them to /api/checkout/session bypasses pricing and opens Stripe directly.
+    // We use /pricing because the hub plan list ($20 / $499) doesn't yet match the
+    // canonical mira-web tiers ($97 / $297) — defer the tier reconciliation to a
+    // follow-up. `planId` is logged via the query string so we can analyze drop-off.
+    window.location.href = `/pricing?from=hub-upgrade&plan=${encodeURIComponent(planId)}`;
   }
 
   return (

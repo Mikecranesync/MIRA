@@ -709,10 +709,15 @@ This is the to-do list. Work top-down. Update this list when items are done.
     - Confirm Doppler `NEXTAUTH_URL=https://app.factorylm.com/api/auth` (no `/hub/`)
     - Confirm Google authorized redirect URIs include the matching callback path
     - **Acceptance:** Google sign-in completes without `redirect_uri_mismatch`
-17. **Wire `/upgrade` to mira-web Stripe Checkout**
-    - Either: redirect "Upgrade" CTA to `https://app.factorylm.com/pricing` (mira-web)
-    - Or: proxy a `/api/checkout` call from hub through to mira-web
-    - **Acceptance:** Clicking "Upgrade" actually opens Stripe Checkout
+17. ~~**Wire `/upgrade` to mira-web Stripe Checkout**~~ — **DONE 2026-05-06**
+    - `mira-hub/src/app/(hub)/upgrade/page.tsx` now redirects to
+      `/pricing?from=hub-upgrade&plan=<id>`. nginx phase-2 routes `/pricing` and
+      `/api/checkout/*` to mira-web :3200, so the hub no longer needs its own
+      Stripe wiring.
+    - **Follow-up:** Hub plan list ($20 / $499) doesn't match mira-web's live
+      Stripe tiers ($97 / $297). Either reconcile the hub PLANS array to the
+      real prices, or have mira-web's `/pricing` accept a `plan=` hint to
+      pre-select. Filed as a separate item.
 
 ### P2 — Polish (visible quality, not blocking)
 
