@@ -34,6 +34,7 @@ import { cors } from "hono/cors";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
+import { renderSecurity } from "./views/security.js";
 import {
   createMagicLink,
   validateAndConsumeToken,
@@ -280,6 +281,13 @@ if (process.env.NODE_ENV !== "test" && process.env.MIRA_DISABLE_PURGE_WORKER !==
 // ---------------------------------------------------------------------------
 
 app.use("/public/*", serveStatic({ root: "./" }));
+// Marketing/site imagery served at the conventional /images/* path so the
+// landing page can reference assets the way every other web app does
+// (without a /public/ prefix). Without this route, anything under
+// public/images/ 404s — that's the bug PR #933 flagged for
+// /images/app-screenshot-desktop.png and that the v0.3.0 hero swap
+// also tripped on. Fixed here for v0.3.1.
+app.use("/images/*", serveStatic({ root: "./public" }));
 app.use("/manifest.json", serveStatic({ path: "./public/manifest.json" }));
 app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
 app.use("/robots.txt", serveStatic({ path: "./public/robots.txt" }));
@@ -288,7 +296,9 @@ app.use("/og-image.png", serveStatic({ path: "./public/og-image.png" }));
 // without the /public/ prefix (matches the head() helper's <link> output).
 app.use("/_tokens.css", serveStatic({ path: "./public/_tokens.css" }));
 app.use("/_components.css", serveStatic({ path: "./public/_components.css" }));
+app.use("/_dark-theme.css", serveStatic({ path: "./public/_dark-theme.css" }));
 app.use("/sun-toggle.js", serveStatic({ path: "./public/sun-toggle.js" }));
+app.use("/feature-cartoons.js", serveStatic({ path: "./public/feature-cartoons.js" }));
 app.use("/posthog-init.js", serveStatic({ path: "./public/posthog-init.js" }));
 app.use("/pwa-install.js", serveStatic({ path: "./public/pwa-install.js" }));
 
@@ -313,6 +323,7 @@ app.get("/sitemap.xml", (c) => {
       freq: "monthly" as const,
     })),
     { loc: "/limitations", priority: "0.5", freq: "monthly" },
+    { loc: "/security", priority: "0.5", freq: "monthly" },
     { loc: "/privacy", priority: "0.3", freq: "yearly" },
     { loc: "/terms", priority: "0.3", freq: "yearly" },
     { loc: "/trust", priority: "0.4", freq: "monthly" },
@@ -388,6 +399,11 @@ app.get("/cmms", (c) => {
 // Limitations page (#677 / #SO-005) — honest "what we don't do yet"
 app.get("/limitations", (c) => {
   return c.html(renderLimitations(c.req.url));
+});
+
+// Security page (#893) — infrastructure, data protection, AI safety, compliance roadmap
+app.get("/security", (c) => {
+  return c.html(renderSecurity(c.req.url));
 });
 
 // Sample workspace placeholder (#SO-070 AC4) — Phase-0 destination after sign-in.
@@ -879,7 +895,7 @@ app.get("/api/magic/login", async (c) => {
     }).catch(() => {});
 
     c.header("Set-Cookie", buildSessionCookie(sessionToken));
-    return c.redirect("/sample", 302);
+    return c.redirect(`/sample?token=${encodeURIComponent(sessionToken)}`, 302);
   } catch (err) {
     console.error("[magic-link/login] Error:", err);
     return c.html(magicLinkErrorPage("Something went wrong"), 500);

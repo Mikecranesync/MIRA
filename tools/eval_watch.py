@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime as dt
 import os
 import sys
 import time
@@ -82,7 +83,37 @@ async def run_subset(fixture_filenames: list[str]) -> int:
 
     passed = sum(1 for g in grades if all(g.checkpoints.values()))
     print(f"\n{passed}/{len(grades)} passed in {total_seconds:.1f}s")
+
+    if os.environ.get("MIRA_WIKI_DROP"):
+        _drop_report(grades, passed, total_seconds)
+
     return 0 if passed == len(grades) else 1
+
+
+def _drop_report(grades: list, passed: int, total_seconds: float) -> None:
+    """Write a markdown summary into ~/MiraDrop/ for the wiki raw-ingest hook."""
+    drop = Path(os.environ.get("MIRA_DROP_DIR", str(Path.home() / "MiraDrop")))
+    try:
+        drop.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
+    ts = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
+    lines = [
+        f"# eval-watch run {ts}",
+        "",
+        f"- result: **{passed}/{len(grades)}** passed in {total_seconds:.1f}s",
+        "",
+        "| fixture | passed |",
+        "|---|---|",
+    ]
+    for g in grades:
+        ok = all(g.checkpoints.values())
+        fid = getattr(g, "id", None) or getattr(g, "fixture_id", "?")
+        lines.append(f"| `{fid}` | {'YES' if ok else 'no'} |")
+    try:
+        (drop / f"eval-watch-{ts}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError:
+        pass
 
 
 def is_watched(path: Path) -> bool:

@@ -1,0 +1,5 @@
+# Rendered video artifacts (MP4) and TTS audio (MP3) are large and
+# regenerable from manifests under marketing/comic-pipeline/scripts/.
+# Track the directory structure itself, not the outputs.
+*
+!.gitignore
