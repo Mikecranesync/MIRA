@@ -451,7 +451,11 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
       # Atlas CMMS live stats (public URL — mira-hub is not on cmms-ext network)
-      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-https://cmms.factorylm.com}
+      # Internal docker URL — both mira-hub and cmms-backend share mira-net.
+      # The public https://cmms.factorylm.com is for user-facing links only;
+      # nginx there proxies /auth/ + /api/ but not /work-orders/* /assets/* etc,
+      # so the hub's stats endpoint must hit the backend directly.
+      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://cmms-backend:8080}
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
     networks:
