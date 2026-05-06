@@ -98,11 +98,25 @@ export async function GET() {
     });
   }
 
+  // Atlas (Grash) advanced search needs BOTH `values: [array]` and an empty
+  // `value: ""` — that's the exact shape the cmms-frontend uses. Sending
+  // only one of them returns 0 rows (filter applies but matches nothing) or
+  // returns the unfiltered total. enumName must be UPPERCASE per the
+  // backend's EnumName enum (STATUS / PRIORITY / JS_DATE).
+  // Verified live against cmms-backend 2026-05-06.
+  const woFilter = (status: string) => ({
+    pageSize: 1,
+    pageNum: 0,
+    filterFields: [
+      { field: "status", operation: "in", values: [status], value: "", enumName: "STATUS" },
+    ],
+  });
+
   try {
     const [openData, inProgressData, completeData, assetsData, pmsData] = await Promise.all([
-      atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "OPEN" }, token),
-      atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "IN_PROGRESS" }, token),
-      atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "COMPLETE" }, token),
+      atlasPost("/work-orders/search", woFilter("OPEN"), token),
+      atlasPost("/work-orders/search", woFilter("IN_PROGRESS"), token),
+      atlasPost("/work-orders/search", woFilter("COMPLETE"), token),
       atlasPost("/assets/search", { pageSize: 1, pageNum: 0 }, token),
       atlasPost("/preventive-maintenances/search", { pageSize: 1, pageNum: 0 }, token),
     ]);
