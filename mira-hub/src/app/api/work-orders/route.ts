@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
             $2, $3, $4,
             $5, $6, $7,
             ARRAY[]::TEXT[], ARRAY[]::TEXT[],
-            'open'::workorderstatus, $8::prioritylevel, 'Hub',
+            'open'::workorderstatus, $8::prioritylevel, NULL,
             $9, $10, NOW(), NOW()
           )
           RETURNING id, work_order_number, source, created_by_agent,
