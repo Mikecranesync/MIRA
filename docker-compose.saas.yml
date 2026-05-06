@@ -241,6 +241,7 @@ services:
       - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS:-}
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - INFERENCE_BACKEND=cloud
@@ -372,6 +373,11 @@ services:
       args:
         NEXT_PUBLIC_BASE_PATH: ""
         NEXT_PUBLIC_API_BASE: ""
+        # Baked into the client bundle at build time — Next.js inlines
+        # NEXT_PUBLIC_* vars during `next build`, runtime env is too late.
+        # Public URL because hubDataProvider runs in the browser; nginx on
+        # app.factorylm.com proxies /v1/ → mira-pipeline:9099.
+        NEXT_PUBLIC_PIPELINE_API_URL: ${NEXT_PUBLIC_PIPELINE_API_URL:-https://app.factorylm.com}
     container_name: mira-hub
     ports:
       - "127.0.0.1:3101:3000"
