@@ -87,6 +87,25 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # Checks failed payments, expiring cards, MRR — Closes #849
 0 12 * * 1    cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/tasks/billing_health.py >> \$LOG_DIR/billing_health.log 2>&1
 
+# ─── SELF-MAINTENANCE (Agentic OS) ───────────────────────────────────────────
+# See docs/agentic-os/README.md for architecture + runbook.
+
+# Heartbeat: every 15 min — checks containers, endpoints, NeonDB, KB cron, host
+# DOWN → exits 2; the wrapping shell triggers self_healer for the same probe.
+*/15 * * * *  cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/agents/heartbeat_monitor.py --quiet --json > /tmp/mira_heartbeat.json 2>> \$LOG_DIR/heartbeat.log; if [ \$? -eq 2 ]; then doppler run -- $PYTHON mira-crawler/agents/self_healer.py --stdin < /tmp/mira_heartbeat.json >> \$LOG_DIR/self_healer.log 2>&1; fi
+
+# Daily health summary: 08:00 UTC
+0 8 * * *     cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/agents/heartbeat_monitor.py --daily-summary >> \$LOG_DIR/heartbeat.log 2>&1
+
+# Learning capture: Saturday 03:00 UTC — runs after the weekly benchmark (02:00 UTC)
+0 3 * * 6     cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/agents/learning_capture.py >> \$LOG_DIR/learning_capture.log 2>&1
+
+# Funnel tracker: daily 13:00 UTC (snapshot)
+0 13 * * *    cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/agents/funnel_tracker.py >> \$LOG_DIR/funnel_tracker.log 2>&1
+
+# Funnel tracker: Monday 13:30 UTC (weekly Pulse + Telegram push)
+30 13 * * 1   cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/agents/funnel_tracker.py --weekly >> \$LOG_DIR/funnel_tracker.log 2>&1
+
 CRONTAB
 
 # Validate the temp file has content
