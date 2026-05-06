@@ -111,11 +111,16 @@ _FAULT_INFO_RE = re.compile(
 )
 
 
-def advance_state(state: dict, parsed: dict) -> dict:
+def advance_state(state: dict, parsed: dict, user_message: str = "") -> dict:
     """Advance FSM state based on parsed LLM response.
 
     Mutates and returns state dict.
     Caller is responsible for persisting the returned state.
+
+    ``user_message`` is the current turn's user input. It is optional for
+    backwards compatibility but required for the CRA-8 Phase 2 Q1→Q2 hard
+    promotion (history is appended *after* this function runs, so we need the
+    current message passed in explicitly to detect asset+fault both-known.)
     """
     current = state["state"]
     reply_lower = parsed.get("reply", "").lower()
@@ -163,23 +168,49 @@ def advance_state(state: dict, parsed: dict) -> dict:
     # CRA-8 Phase 2 — hard Q1 → Q2 promotion when asset+fault are both known.
     # Cluster C's Rule 9 reword + Example 8 in active.yaml is LLM-stochastic;
     # this rule guarantees the FSM moves past Q1 once the technician has named
-    # both an asset (asset_identified) AND a fault code/symptom (regex match on
-    # the most recent user message). Bypasses the LLM's next_state without
-    # touching any other transition. Spec §8 Risk 2 mitigation, accepted as a
-    # default by Mike on 2026-05-06.
-    if state["state"] == "Q1" and state.get("asset_identified"):
-        history_for_promotion = ctx_q.get("history") or []
-        last_user_msg = ""
-        for turn in reversed(history_for_promotion):
-            if turn.get("role") == "user":
-                last_user_msg = str(turn.get("content") or "")
-                break
-        if last_user_msg and _FAULT_INFO_RE.search(last_user_msg):
+    # both an asset AND a fault code/symptom. Bypasses the LLM's next_state
+    # without touching any other transition. Spec §8 Risk 2 mitigation,
+    # accepted as a default by Mike on 2026-05-06.
+    #
+    # Asset evidence comes from (in order):
+    #   1. state["asset_identified"]
+    #   2. context.dialogue.salient_entities.vendor / .model (DST, read-only)
+    #   3. vendor name OR model token in the current user message (covers
+    #      text-only fixtures where the engine never explicitly pins
+    #      asset_identified, e.g. "It's a GS20" — GS20 is a model, not a vendor)
+    # Fault evidence: _FAULT_INFO_RE matched in the current user message OR the
+    # most recent user message in history (whichever has it first).
+    if state["state"] == "Q1":
+        # Search for asset evidence
+        asset_evidence = state.get("asset_identified") or ""
+        if not asset_evidence:
+            dialogue_blob = ctx_q.get("dialogue") or {}
+            ents = dialogue_blob.get("salient_entities") or {}
+            asset_evidence = ents.get("vendor") or ents.get("model") or ""
+        if not asset_evidence and user_message:
+            from .guardrails import vendor_name_from_text  # local import: avoid cycle
+            from .response_formatter import _looks_like_model_number  # noqa: PLC0415
+
+            asset_evidence = (
+                vendor_name_from_text(user_message) or _looks_like_model_number(user_message) or ""
+            )
+        # Search for fault evidence — current message first, then history fallback
+        fault_msg = ""
+        if user_message and _FAULT_INFO_RE.search(user_message):
+            fault_msg = user_message
+        else:
+            for turn in reversed(ctx_q.get("history") or []):
+                if turn.get("role") == "user":
+                    text = str(turn.get("content") or "")
+                    if text and _FAULT_INFO_RE.search(text):
+                        fault_msg = text
+                    break
+        if asset_evidence and fault_msg:
             logger.info(
-                "Q1_TO_Q2_FORCE chat_id=%s asset=%r last_user=%r — asset+fault both known, bypassing LLM Q1",
+                "Q1_TO_Q2_FORCE chat_id=%s asset=%r fault=%r — bypassing LLM Q1",
                 state.get("chat_id", "?"),
-                state.get("asset_identified"),
-                last_user_msg[:120],
+                asset_evidence,
+                fault_msg[:120],
             )
             state["state"] = "Q2"
 

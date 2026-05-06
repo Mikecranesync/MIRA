@@ -1548,7 +1548,7 @@ class Supervisor:
                 else:
                     parsed["reply"] = f"{asset_key} — {parsed['reply']}"
 
-        state = self._advance_state(state, parsed)
+        state = self._advance_state(state, parsed, user_message=message or "")
 
         # ---------------------------------------------------------------------------
         # Diagnosis self-critique quality gate (AutoGen-style nudge loop)
@@ -2293,7 +2293,7 @@ class Supervisor:
             "industrial",
             has_photo=bool(session_photo),
         )
-        state = self._advance_state(state, parsed)
+        state = self._advance_state(state, parsed, user_message=message or "")
 
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
@@ -3644,9 +3644,9 @@ class Supervisor:
 
     _VALID_STATES = VALID_STATES  # re-exported from fsm for class-level access
 
-    def _advance_state(self, state: dict, parsed: dict) -> dict:
+    def _advance_state(self, state: dict, parsed: dict, user_message: str = "") -> dict:
         """Advance FSM state. Delegates to fsm.advance_state."""
-        return advance_state(state, parsed)
+        return advance_state(state, parsed, user_message=user_message)
 
     def _format_reply(self, parsed: dict, user_message: str = "") -> str:
         """Format parsed response for display. Delegates to response_formatter.format_reply."""
