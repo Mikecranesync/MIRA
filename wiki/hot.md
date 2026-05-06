@@ -38,10 +38,94 @@
 
 # Hot Cache — 2026-04-30 — CHARLIE
 
-## eval-fixer run — 2026-04-30
+---
+
+# Hot Cache — 2026-05-03 — CHARLIE
+
+## Session — 2026-05-03 (CHARLIE, Marketing Director audit)
+
+**What was done:**
+- Full marketing audit: MIRA + FactoryLM repos, Linear board (Cranesync), all open PRs
+- **PR #941 merged** — competitor analysis refresh (COMPETITOR_ANALYSIS.md)
+- **PR #927 merged** — gitignore audio/video outputs in marketing/videos
+- **PR #945 opened** — Unit 9a landing page rewrite (feat/mvp-unit-9a-landing) — 1,516-line index.html, three features above fold, $97/mo pricing
+- **PR #946 opened** — LinkedIn 6-part series + warm outreach DM templates (feat/marketing-content-clean)
+- **feature-cartoons.js** — already on main via PR #931, no action needed
+- **PR #790** — promo director playbook v1.0.0 — CI re-triggered (pushed YAML change), pending pass
+
+**New files:**
+- `marketing/content/linkedin-series-2am-vfd-problem.md` — 6 posts, weekly from 2026-05-10
+- `marketing/content/warm-outreach-dm-templates.md` — 6 DM templates + tracking sheet
+
+**Critical path (first paid demo May 4):**
+- Unit 9a: PR #945 open, CI pending, needs Lighthouse ≥90 + Stripe test charge
+- Unit 2 (citations): CRA-11, branch feat/mvp-unit-2-citations — TODO
+- Unit 6 (hybrid retrieval): CRA-15 — TODO
+
+## Next Actions (2026-05-03 priority order)
+
+1. **Merge PR #790** — watch CI on feat/promo-director-playbook; merge when lint green
+2. **Merge PR #946** — markdown-only, CI will skip, can merge now
+3. **Merge PR #945** — needs Lighthouse ≥90 + Stripe test charge
+4. **Start LinkedIn Post 1** — schedule "The 2 AM Call" for Tue 2026-05-10, 7-9 AM Eastern
+5. **HubSpot API key** — add `HUBSPOT_API_KEY` to Doppler `factorylm/prd` to unlock 330-prospect import
+6. **Unit 2 + 6** — needed for first paid demo May 4
+
+---
+
+# Hot Cache — 2026-05-02 — CHARLIE
+
+## Just Finished
+
+- **Linear board fully operational** — Cranesync workspace, 3 projects (MVP Build / Sales & GTM / Ops & Infra), 15 issues (CRA-5 through CRA-19), all labeled with `user-action` / `agent-action`. All 4 custom statuses created (Shaping, Reviewed, Ready to Deploy, Pending Deployed). Board cleaned up: FactoryLM stale project cancelled, all 3 active projects set to In Progress.
+- **Linear MCP plugin confirmed installed** — HTTP transport → `https://mcp.linear.app/mcp`. Config: `~/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/linear/.mcp.json`. Zero config changes needed.
+- **YouTube transcript researcher skill shipped** — `tools/youtube_transcript.py` + global skill `.claude/skills/youtube-transcript.md`. Triggers when YouTube URL is pasted and WebFetch would fail.
+- **Promo screenshots** — captured to `docs/promo-screenshots/` for video pipeline.
+- **Memory snapshot committed** — `docs/memory-snapshots/2026-05-02/` + tag `memory-rollback-2026-05-02`.
+
+## Machine State
+
+- **CHARLIE (this machine):** `main` @ `4c90bf1` — memory snapshot + wiki update. YouTube transcript skill + promo screenshots at `3ede8ef`.
+- **VPS:** last known `main` @ `eeb9a4b` (mira-bot-telegram) — not touched this session.
+- **Alpha / Bravo:** no changes this session.
+
+## Blocked
+
+- **"In Review" status** — Linear Settings → Workflow → delete it manually. The API cannot manage workflow states; this default status conflicts with the custom "Reviewed". One-minute manual fix.
+- **Eval FSM 77%** — CRA-8 (Ops & Infra). Same 13-failure cluster (engine.py + guardrails.py + active.yaml) has run 4 days without progress. Needs human triage — manual-lookup misroute is the highest-leverage fix.
+
+## Next (any machine)
+
+**All active work is tracked in Linear → linear.app/cranesync**
+
+Quick orientation:
+- `agent-action` issues = Claude can execute autonomously
+- `user-action` issues = needs Mike
+- Urgent/blocked: CRA-5 (SPF/DKIM DNS), CRA-6 (NEXTAUTH_SECRET to Doppler), CRA-8 (eval FSM fix)
+- In-flight branches: `feat/mvp-unit-4-exports` (CRA-13), `feat/mvp-unit-9a-landing` (CRA-18)
+
+---
+
+## Recent Eval-Fixer Runs (context for eval debugging)
+
+### eval-fixer run — 2026-05-03
+- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (stale for 5th day; no new run)
+- Action: issue-filed (#932)
+- Same 13-failure pattern persists. Issue groups failures into Cluster A (FSM, 5) and Cluster B (keyword/content, 8) with B1–B4 sub-patterns. B1 (manual-lookup canned "I already have documentation indexed" deflection, 4 fixtures) flagged as highest-leverage fix in `engine.py`. → **CRA-8**
+
+### eval-fixer run — 2026-05-02
+- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (stale for 4th day; no new run)
+- Action: issue-filed (#918)
+- Same 13-failure pattern as #884/#916 — engine.py FSM stuck (5) + guardrails/active.yaml content (8). Cluster spread blocks autopatch. Manual-lookup misroute first (3 fixtures get canned "documentation indexed" deflection instead of vendor URL + IDLE state). → **CRA-8 in Linear**
+
+### eval-fixer run — 2026-05-01
+- Scorecard: 44/57 passing (77%) — same stale scorecard
+- Action: issue-filed (#916)
+
+### eval-fixer run — 2026-04-30
 - Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md`
 - Action: issue-filed (#884)
-- 13 failures, all 13 patchable but spanning 3 files (engine.py + guardrails.py + active.yaml) — exceeds single-file autopatch limit. Four clusters: FSM stuck in MANUAL_LOOKUP_GATHERING (5), manual-lookup branch returns canned "documentation indexed" instead of vendor URL (3), cross-vendor RAG bleed (Yaskawa in Danfoss response, 1), and thin diagnosis content (4). Fresh scorecard is back — pipeline has recovered from the 3-day silent infra outage that produced #753/#803/#854.
+- 13 failures spanning 3 files — exceeds single-file autopatch limit. FSM stuck (5), manual-lookup canned reply (3), cross-vendor RAG bleed (1), thin diagnosis (4).
 
 ## eval-fixer run — 2026-04-29
 - Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0455.md` (stale, same scorecard as 2026-04-28 — no new run produced)
@@ -218,43 +302,9 @@
 Total chunks: ~68,000+
 Rockwell Automation: 13,686 chunks (main KB)
 ABB: 931 chunks — mostly NULL model_number
-Siemens: 905 (SINAMICS label) + 442 (other models)
+Siemens: 905 (SINAMICS) + 442 (other)
 AutomationDirect: 2,250 chunks (GS10, PF525, etc.)
 Yaskawa: 27 chunks (NULL model) + 1 (CIMR-AU4A0058AAA)
-SEW-Eurodrive: 6 chunks (R47 DRE80M4 gearmotor — NOT a VFD)
 Danfoss: 2 chunks (VLT FC302 only)
 Mitsubishi Electric: 16 chunks (NULL model)
 ```
-
-## Older sessions below
-
-## Session — 2026-04-19 (BRAVO)
-
-- **PR #418 merged** (`3559552`): `feat/citation-gate` → `main`. Landed citation gate (KB coverage enforcement with 🔴🟡🟢 banners + PROCEED override), eval timeout fix (360s → 4200s), all fixture updates for post-gate calibration.
-- **VPS on `main`**: switched from `feat/training-loop-v1`. Rebuilt + restarted `mira-pipeline-saas`, `mira-ingest-saas`, `mira-mcp-saas`. All healthy. Smoke test: HTTP 200.
-- **Eval watchdog restored**: Root cause found — `mira_eval_tasks.py` had `timeout=360s` hardcoded. Every Celery eval run since 2026-04-18 was timing out silently before writing a scorecard (13-21s/turn × 57 scenarios = ~49 min actual runtime). Fixed: 4200s timeout deployed + Celery worker restarted. Next hourly eval will be first real automated run in 36+ hours.
-- **Conflict resolution**: merged `main` into `feat/citation-gate` (15 files). engine.py kept both citation-gate KB fast-path AND main's `_safety_is_observational()`. Fixtures kept `skip_citation_check: true` from branch + updated keywords from main.
-- **OEM migration**: already complete (398/398 chunks in Open WebUI KB) — done in prior session on VPS directly.
-
-## Session — 2026-04-19 (CHARLIE)
-- **yaskawa_out_of_kb_04 fixed**: Added `skip_fsm_check: true` to fixture + `skip_fsm_check` support in grader. FSM state is stochastically IDLE or Q1/Q2 depending on Groq run — content honesty check (keywords: `knowledge base, documentation, Yaskawa, model`) validates behavior instead.
-- **Engine fix 1**: Added `NEEDS_MORE_INFO → Q1` alias (LLM proposes with trailing S, was unregistered).
-- **Engine fix 2**: Lowered `_MAX_Q_ROUNDS` from 3 → 2 (Q-trap fires on Turn 3 for 3-turn fixtures, fixes pf525_f004 stochastic failure).
-- **Eval: 54/57 stable floor** (7 runs: 52, 55, 53, 54, 54, 54 — average ~53-55/57).
-- **Commit**: `ec58bd4` → pushed to main.
-
-## Eval State
-
-| Run | Score | Notes |
-|-----|-------|-------|
-| v0.8-final (VPS) | 35/56 (62%) | pre-session baseline |
-| 0459 batch (2026-04-18) | 43/57 (75%) | PR merge threshold |
-| run 8 (2026-04-18) | 56/57 (98%) | engine aliases + fixture calibration |
-| VPS live (2026-04-19) | 53/57 (93%) | last confirmed on feat/training-loop-v1 |
-| **Target** | **40/57 (70%)** | ✅ CLEARED |
-| Next automated run | TBD | first real Celery run in 36h — pending |
-
-## eval-fixer run — 2026-04-21
-- Scorecard: 0/57 passing (0%) — scorecard `tests/eval/runs/2026-04-20T1011.md`
-- Action: issue-filed (#474)
-- All 57 fixtures returned empty responses (longest: 0 chars). `patchable_failures: 0`, `file_clusters: {}`. Pipeline outage / inference-backend issue during the LIVE eval run — not a guardrails/engine logic bug. Human needs to check Doppler secrets + inference cascade before re-running.

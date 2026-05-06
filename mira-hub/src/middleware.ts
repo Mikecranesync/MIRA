@@ -61,6 +61,6 @@ export default async function middleware(req: NextRequest, ev: NextFetchEvent) {
 
 export const config = {
   matcher: [
-    "/((?!login|signup|magic|api/auth|api/health|_next/static|_next/image|favicon\\.ico).*)",
+    "/((?!login|signup|magic|api/auth|api/health|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
   ],
 };

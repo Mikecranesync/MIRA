@@ -194,7 +194,18 @@ function idempotentResponse(existing: Upload, requestId: string): NextResponse {
 export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
-  const rows = await listUploads(ctx.tenantId);
-  return NextResponse.json(rows);
+  try {
+    const rows = await listUploads(ctx.tenantId);
+    return NextResponse.json(rows);
+  } catch (err) {
+    console.error("[api/uploads] listUploads failed", {
+      tenantId: ctx.tenantId,
+      error: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+    });
+    return NextResponse.json(
+      { error: "uploads_unavailable" },
+      { status: 503 },
+    );
+  }
 }
 
