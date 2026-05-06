@@ -179,6 +179,146 @@ def parse_response(raw: str) -> dict:
 # ── Reply formatting ──────────────────────────────────────────────────────────
 
 
+# Rockwell / Allen-Bradley document-type codes that show up in PDF filenames.
+# When a model_number arrives looking like "193 um011 en p" we map "um" → "User Manual"
+# and recognise the bulletin number so the user sees a readable label instead of the stem.
+_DOC_TYPE_CODES = {
+    "um": "User Manual",
+    "in": "Installation Instructions",
+    "sg": "Selection Guide",
+    "qs": "Quick Start",
+    "td": "Technical Data",
+    "rm": "Reference Manual",
+    "pp": "Product Profile",
+    "ds": "Data Sheet",
+    "wd": "Wiring Diagram",
+    "fl": "Family Listing",
+    "at": "Application Technique",
+    "rn": "Release Notes",
+    "ap": "Application Note",
+}
+
+# Bulletin / product-family hints we recognise from common Rockwell numbers.
+# Conservative — only the codes we've actually ingested. Add as KB grows.
+_BULLETIN_FAMILY = {
+    "193": "Bulletin 193 E1 Plus Overload Relay",
+    "1756": "ControlLogix 1756",
+    "1769": "CompactLogix 1769",
+    "1734": "POINT I/O 1734",
+    "150": "SMC Flex Soft Starter",
+    "pflex": "PowerFlex Drive",
+    "powerflex": "PowerFlex Drive",
+    "kinetix": "Kinetix Servo Drive",
+    "stratix": "Stratix Switch",
+}
+
+# Pattern: a bulletin/series number, optional space, doc-type letters + digits,
+# optional language code, optional trailing single letter. Matches "193 um011 en p",
+# "193-um011-en-p", "pflex_um001_en_p", and similar filename stems.
+_FILENAME_STEM_RE = re.compile(
+    r"^\s*"
+    r"(?P<series>[a-z0-9]+)"  # 193, pflex, 1756, etc.
+    r"[\s_\-]+"
+    r"(?P<doctype>[a-z]{2})"  # um, in, sg, etc.
+    r"(?P<docnum>\d{2,4})"  # document number (011, 001, etc.)
+    r"(?:[\s_\-]+(?:en|fr|de|es|it|jp|zh)\w?)?"  # optional language code
+    r"(?:[\s_\-]+[a-z])?"  # optional trailing single letter (p = print)
+    r"\s*$",
+    re.IGNORECASE,
+)
+
+
+# Domains where we can infer the manufacturer from the URL hostname.
+_DOMAIN_TO_MANUFACTURER = {
+    "rockwellautomation.com": "Allen-Bradley",
+    "ab.rockwellautomation.com": "Allen-Bradley",
+    "literature.rockwellautomation.com": "Allen-Bradley",
+    "siemens.com": "Siemens",
+    "support.industry.siemens.com": "Siemens",
+    "abb.com": "ABB",
+    "library.e.abb.com": "ABB",
+    "schneider-electric.com": "Schneider Electric",
+    "automationdirect.com": "AutomationDirect",
+    "factoryio.com": "Factory I/O",
+}
+
+
+def _manufacturer_from_url(src_url: str) -> str:
+    """Best-effort manufacturer inference from a documentation URL hostname."""
+    if not src_url:
+        return ""
+    m = re.match(r"^https?://([^/]+)/", src_url)
+    if not m:
+        return ""
+    host = m.group(1).lower()
+    for domain, mfr in _DOMAIN_TO_MANUFACTURER.items():
+        if host.endswith(domain):
+            return mfr
+    return ""
+
+
+def _parse_filename_stem(stem: str) -> str:
+    """If stem matches the bulletin/doc-type pattern, return a clean label.
+
+    Returns "" if no match — caller falls back to other strategies.
+    """
+    m = _FILENAME_STEM_RE.match(stem)
+    if not m:
+        return ""
+    series = m.group("series").lower()
+    doctype = m.group("doctype").lower()
+    docnum = m.group("docnum")
+    family = _BULLETIN_FAMILY.get(series, series.upper())
+    doc_label = _DOC_TYPE_CODES.get(doctype, doctype.upper())
+    return f"{family} — {doc_label} {docnum}".strip()
+
+
+def _format_citation_label(c: dict) -> str:
+    """Build a readable citation label from a chunk dict.
+
+    Strategy:
+    1. If model_number is set and matches the bulletin/filename pattern, expand it.
+    2. If model_number is set and looks human, keep it as-is.
+    3. If only source_url is set, parse the URL stem with the same pattern, and
+       infer manufacturer from the hostname when possible.
+    4. Otherwise, fall back to whatever non-empty pieces we have.
+    Always optionally append the section if present.
+    """
+    mfr = (c.get("manufacturer") or "").strip()
+    mdl = (c.get("model_number") or "").strip()
+    section = (c.get("section") or "").strip()
+    src_url = (c.get("source_url") or "").strip()
+
+    label = ""
+    if mdl:
+        cleaned = _parse_filename_stem(mdl)
+        # If the parser found a known bulletin number, use the expansion;
+        # otherwise keep model_number verbatim (already human, e.g. "PowerFlex 525").
+        label = cleaned or mdl
+    elif src_url:
+        # No model_number — derive from URL stem and try the same parser.
+        stub = src_url.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        cleaned = _parse_filename_stem(stub)
+        if cleaned:
+            label = cleaned
+        else:
+            label = re.sub(r"[_\-]+", " ", stub).strip().title() or "knowledge base"
+        # Infer manufacturer from the URL when missing.
+        if not mfr:
+            mfr = _manufacturer_from_url(src_url)
+
+    if mfr and label and not label.lower().startswith(mfr.lower()):
+        label = f"{mfr} {label}"
+    elif mfr and not label:
+        label = mfr
+    elif not label:
+        label = "knowledge base"
+
+    if section:
+        label = f"{label} — {section}"
+    return label
+
+
 def _maybe_append_citation_footer(reply: str, kb_status: dict | None = None) -> str:
     """Append a Sources footer if KB chunks were used but the reply doesn't cite them."""
     citations = (kb_status or {}).get("citations") or []
@@ -186,16 +326,17 @@ def _maybe_append_citation_footer(reply: str, kb_status: dict | None = None) -> 
         return reply
     if "[Source:" in reply or "--- Sources ---" in reply:
         return reply
+    # Deduplicate identical labels so we don't show the same source twice.
+    seen: set[str] = set()
     lines = ["", "", "--- Sources ---"]
-    for i, c in enumerate(citations, 1):
-        mfr = c.get("manufacturer", "") or ""
-        mdl = c.get("model_number", "") or ""
-        section = c.get("section", "") or ""
-        label_parts = [p for p in [mfr, mdl] if p]
-        label = " ".join(label_parts) if label_parts else "knowledge base"
-        if section:
-            label += f" — {section}"
-        lines.append(f"[{i}] {label}")
+    idx = 1
+    for c in citations:
+        label = _format_citation_label(c)
+        if label in seen:
+            continue
+        seen.add(label)
+        lines.append(f"[{idx}] {label}")
+        idx += 1
     return reply + "\n".join(lines)
 
 

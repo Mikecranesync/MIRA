@@ -264,6 +264,15 @@ class TestDetectEmotionalState:
 
 
 class TestDetectSessionFollowup:
+    def test_explicit_reference_in_active_session(self):
+        sc = {"equipment_type": "ABB VFD", "last_question": "Check the DC bus?"}
+        assert detect_session_followup("you said it was the DC bus earlier", sc, "Q2") is True
+        assert detect_session_followup("where did you get that information", sc, "Q2") is True
+
+    def test_documentation_terms_do_not_force_followup(self):
+        sc = {"equipment_type": "ABB VFD", "last_question": "Check the DC bus?"}
+        assert detect_session_followup("give me the manufacturer website", sc, "Q2") is False
+        assert detect_session_followup("do you have the manual for it", sc, "Q2") is False
     def test_idle_never_followup(self):
         assert detect_session_followup("you said check the fuse", {"asset": "VFD"}, "IDLE") is False
 
@@ -271,7 +280,7 @@ class TestDetectSessionFollowup:
         assert detect_session_followup("tell me more", {}, "Q2") is False
 
     def test_active_session_with_signal(self):
-        assert detect_session_followup("you mentioned a manual", {"asset": "pump"}, "Q2") is True
+        assert detect_session_followup("you mentioned that earlier", {"asset": "pump"}, "Q2") is True
 
     def test_active_session_no_signal(self):
         assert detect_session_followup("ok", {"asset": "pump"}, "Q2") is False
