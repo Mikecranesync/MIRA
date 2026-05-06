@@ -68,6 +68,8 @@ function rowToWO(r: Record<string, unknown>) {
     due,
     created_at: createdAt.toISOString(),
     tenant_id: r.tenant_id ? String(r.tenant_id) : null,
+    atlas_id: r.atlas_id ? String(r.atlas_id) : null,
+    cmms_synced_at: r.cmms_synced_at ? new Date(String(r.cmms_synced_at)).toISOString() : null,
   };
 }
 
@@ -93,7 +95,8 @@ export async function GET(
           title, description,
           suggested_actions, safety_warnings,
           status, priority, route_taken,
-          tenant_id, created_at, updated_at
+          tenant_id, created_at, updated_at,
+          atlas_id, cmms_synced_at
         FROM work_orders
         WHERE id = $1 AND tenant_id = $2
         LIMIT 1`,

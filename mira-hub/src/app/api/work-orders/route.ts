@@ -67,6 +67,8 @@ function rowToWO(r: Record<string, unknown>) {
     due,
     created_at: createdAt.toISOString(),
     tenant_id: r.tenant_id ? String(r.tenant_id) : null,
+    atlas_id: r.atlas_id ? String(r.atlas_id) : null,
+    cmms_synced_at: r.cmms_synced_at ? new Date(String(r.cmms_synced_at)).toISOString() : null,
   };
 }
 
@@ -105,7 +107,8 @@ export async function GET(req: NextRequest) {
           title, description,
           suggested_actions, safety_warnings,
           status, priority, route_taken,
-          tenant_id, created_at, updated_at
+          tenant_id, created_at, updated_at,
+          atlas_id, cmms_synced_at
         FROM work_orders
         WHERE ${where}
         ORDER BY
@@ -201,7 +204,8 @@ export async function POST(req: NextRequest) {
           RETURNING id, work_order_number, source, created_by_agent,
             manufacturer, model_number, equipment_id,
             title, description, suggested_actions, safety_warnings,
-            status, priority, route_taken, tenant_id, created_at, updated_at`,
+            status, priority, route_taken, tenant_id, created_at, updated_at,
+            atlas_id, cmms_synced_at`,
         [
           woNumber(),
           equipment.manufacturer,
