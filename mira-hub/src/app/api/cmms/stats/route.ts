@@ -11,7 +11,7 @@ function atlasBase(): string {
   return (process.env.HUB_CMMS_API_URL ?? "https://cmms.factorylm.com").replace(/\/$/, "");
 }
 
-async function getToken(): Promise<{ token: string | null; reason?: string }> {
+async function getToken(): Promise<{ token: string | null; reason?: string; detail?: string }> {
   const user = process.env.ATLAS_API_USER;
   const pass = process.env.ATLAS_API_PASSWORD;
   if (!user || !pass) {
@@ -26,11 +26,18 @@ async function getToken(): Promise<{ token: string | null; reason?: string }> {
     const res = await fetch(`${atlasBase()}/auth/signin`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: user, password: pass }),
+      // Atlas (Spring Boot) requires `type` — matches the Python client pattern in mira-mcp/cmms/atlas.py
+      body: JSON.stringify({ email: user, password: pass, type: "CLIENT" }),
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
-      return { token: null, reason: `signin_${res.status}` };
+      let bodySnippet = "";
+      try {
+        bodySnippet = (await res.text()).slice(0, 200);
+      } catch {
+        /* ignore */
+      }
+      return { token: null, reason: `signin_${res.status}`, detail: bodySnippet };
     }
     const data = (await res.json()) as { token?: string; accessToken?: string };
     const token = data.token ?? data.accessToken ?? null;
@@ -45,6 +52,12 @@ async function getToken(): Promise<{ token: string | null; reason?: string }> {
     return { token: null, reason: `network_${message}` };
   }
 }
+
+const EMPTY_STATS = {
+  workOrders: { open: 0, inprogress: 0, overdue: 0, completed: 0 },
+  assets: { total: 0 },
+  pms: { total: 0 },
+};
 
 async function atlasPost(path: string, payload: Record<string, unknown>, token: string): Promise<unknown> {
   const res = await fetch(`${atlasBase()}${path}`, {
@@ -71,13 +84,18 @@ export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
 
-  const { token, reason } = await getToken();
+  const { token, reason, detail } = await getToken();
   if (!token) {
-    console.warn("[api/cmms/stats] auth unavailable", { reason, base: atlasBase() });
-    return NextResponse.json(
-      { error: "cmms_unavailable", reason: reason ?? "unknown" },
-      { status: 503 },
-    );
+    console.warn("[api/cmms/stats] auth unavailable", { reason, detail, base: atlasBase() });
+    // Graceful degrade: return 200 with empty stats and a `cmmsAvailable: false` flag so
+    // the /cmms page renders without console errors. Real numbers flow through once Atlas
+    // creds are valid. (CRA-37 acceptance: 200 with `{ workOrders, assets, pms }` shape.)
+    return NextResponse.json({
+      ...EMPTY_STATS,
+      cmmsAvailable: false,
+      reason: reason ?? "unknown",
+      fetchedAt: new Date().toISOString(),
+    });
   }
 
   try {
@@ -102,13 +120,22 @@ export async function GET() {
       pms: {
         total: countFromResponse(pmsData),
       },
+      cmmsAvailable: true,
       fetchedAt: new Date().toISOString(),
     });
   } catch (err) {
     // Token may have expired — invalidate cache and let next request re-auth
     cachedToken = null;
     tokenExpiresAt = 0;
-    console.error("[api/cmms/stats]", err);
-    return NextResponse.json({ error: "CMMS fetch failed" }, { status: 502 });
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[api/cmms/stats] fetch failed", { error: message, base: atlasBase() });
+    // Graceful degrade rather than 502 — page already falls back on a non-200, but
+    // 200 keeps the browser console clean (CRA-37).
+    return NextResponse.json({
+      ...EMPTY_STATS,
+      cmmsAvailable: false,
+      reason: `fetch_failed: ${message}`,
+      fetchedAt: new Date().toISOString(),
+    });
   }
 }

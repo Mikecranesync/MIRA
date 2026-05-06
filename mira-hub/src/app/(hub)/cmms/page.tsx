@@ -22,6 +22,8 @@ interface CMMSStats {
   workOrders: { open: number; inprogress: number; overdue: number; completed: number };
   assets: { total: number };
   pms: { total: number };
+  cmmsAvailable?: boolean;
+  reason?: string;
   fetchedAt: string;
 }
 
