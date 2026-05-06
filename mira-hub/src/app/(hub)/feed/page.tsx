@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
@@ -12,12 +12,53 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-const KPI_CARDS = [
-  { label: "Open Work Orders", value: "12", icon: ClipboardList, color: "#2563EB", bg: "#EFF6FF", href: "/workorders" },
-  { label: "Overdue PMs",      value: "3",  icon: Calendar,      color: "#DC2626", bg: "#FEF2F2", href: "/schedule" },
-  { label: "Downtime Today",   value: "2.4h", icon: AlertTriangle, color: "#EAB308", bg: "#FEF9C3", href: "/reports" },
-  { label: "Wrench Time",      value: "67%", icon: Wrench,        color: "#16A34A", bg: "#DCFCE7", href: "/reports" },
-];
+interface DashboardKpis {
+  openWorkOrders: number;
+  overduePMs: number;
+  highPriorityOpen: number;
+  wrenchTimePct: number | null;
+}
+
+function buildKpiCards(kpis: DashboardKpis | null) {
+  const fmt = (n: number | null | undefined) =>
+    n == null ? "—" : String(n);
+  const fmtPct = (n: number | null | undefined) =>
+    n == null ? "—" : `${n}%`;
+  return [
+    {
+      label: "Open Work Orders",
+      value: fmt(kpis?.openWorkOrders),
+      icon: ClipboardList,
+      color: "#2563EB",
+      bg: "#EFF6FF",
+      href: "/workorders",
+    },
+    {
+      label: "Overdue PMs",
+      value: fmt(kpis?.overduePMs),
+      icon: Calendar,
+      color: "#DC2626",
+      bg: "#FEF2F2",
+      href: "/schedule",
+    },
+    {
+      label: "High-Priority Open",
+      value: fmt(kpis?.highPriorityOpen),
+      icon: AlertTriangle,
+      color: "#EAB308",
+      bg: "#FEF9C3",
+      href: "/workorders?priority=high",
+    },
+    {
+      label: "Throughput (7d)",
+      value: fmtPct(kpis?.wrenchTimePct),
+      icon: Wrench,
+      color: "#16A34A",
+      bg: "#DCFCE7",
+      href: "/reports",
+    },
+  ];
+}
 
 type FeedItem = {
   id: number;
@@ -134,18 +175,36 @@ export default function FeedPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
   const [read, setRead] = useState<Set<number>>(new Set());
+  const [kpis, setKpis] = useState<DashboardKpis | null>(null);
   const { speaking, speak } = useSpeech();
 
   const KPI_LABEL_MAP: Record<string, string> = {
-    "Open Work Orders": tFeed("kpi.openWorkOrders"),
-    "Overdue PMs":      tFeed("kpi.overduePMs"),
-    "Downtime Today":   tFeed("kpi.downtimeToday"),
-    "Wrench Time":      tFeed("kpi.wrenchTime"),
+    "Open Work Orders":     tFeed("kpi.openWorkOrders"),
+    "Overdue PMs":          tFeed("kpi.overduePMs"),
+    "High-Priority Open":   tFeed("kpi.downtimeToday"),
+    "Throughput (7d)":      tFeed("kpi.wrenchTime"),
   };
+
+  const KPI_CARDS = buildKpiCards(kpis);
+
+  async function loadKpis() {
+    try {
+      const res = await fetch("/api/dashboard/kpis");
+      if (res.ok) {
+        setKpis(await res.json());
+      }
+    } catch {
+      /* silently keep last successful values; cards render "—" until first load */
+    }
+  }
+
+  useEffect(() => {
+    void loadKpis();
+  }, []);
 
   function handleRefresh() {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 800);
+    void loadKpis().finally(() => setTimeout(() => setRefreshing(false), 400));
   }
 
   const visibleItems = FEED_ITEMS.filter(i => !dismissed.has(i.id));
