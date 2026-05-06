@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Activity, Zap, Radio, Users, MoreHorizontal } from "lucide-react";
+import { Activity, Zap, Wrench, Users, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MobileDrawer } from "./mobile-drawer";
 
@@ -15,7 +15,7 @@ export function BottomTabs() {
 
   const MOBILE_TABS = [
     { label: t("eventLog"), Icon: Activity, href: "/event-log" },
-    { label: t("channels"), Icon: Radio,    href: "/channels"  },
+    { label: t("assets"),   Icon: Wrench,   href: "/assets"    },
     { label: t("actions"),  Icon: Zap,      href: "/actions"   },
     { label: t("team"),     Icon: Users,    href: "/team"      },
   ];

@@ -13,10 +13,33 @@ const inter = Inter({
   display: "swap",
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://app.factorylm.com";
+
 export const metadata: Metadata = {
-  title: "FactoryLM Hub",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "FactoryLM Hub",
+    template: "%s · FactoryLM Hub",
+  },
   description: "AI-powered industrial maintenance platform",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "FactoryLM",
+    title: "FactoryLM Hub",
+    description: "AI-powered industrial maintenance platform",
+    url: SITE_URL,
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "FactoryLM" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "FactoryLM Hub",
+    description: "AI-powered industrial maintenance platform",
+    images: ["/og-image.png"],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

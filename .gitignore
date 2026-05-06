@@ -97,6 +97,9 @@ mira-core/data/manuals/
 # Crawler runtime data (cache, dedup DBs, logs, incoming docs)
 mira-crawler/data/
 
+# gdrive_photo_scanner idempotency state (per-VPS, regenerated on every run)
+mira-crawler/agents/gdrive_photo_scanner_state.json
+
 # Test photos (real equipment photos, synced separately)
 tests/regime1_telethon/photos/
 tests/regime3_nameplate/photos/real/
