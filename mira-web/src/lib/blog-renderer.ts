@@ -51,8 +51,6 @@ function htmlHead(opts: {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/public/blog.css">
-  <link rel="preload" href="/public/mira-chat.css" as="style" onload="this.rel='stylesheet'">
-  <noscript><link rel="stylesheet" href="/public/mira-chat.css"></noscript>
   ${opts.jsonLd ?? ""}
 </head>`;
 }
@@ -106,18 +104,19 @@ function siteFooter(): string {
 </footer>`;
 }
 
-// ── Mira FAB + scroll scripts (matches index.html) ──
+// ── Scroll + fade-in scripts (matches index.html) ──
+//
+// The Mira chat FAB used to live here, but it lazy-loaded /public/mira-chat.js
+// which calls POST /api/mira/session — an endpoint that was never implemented
+// on mira-web. Every blog visitor that opened the widget got a 404. The CTA
+// cards on each blog page already point readers at /cmms (the authenticated
+// chat). Removed the FAB until /api/mira/session has a real backend.
+// See CRA-60 / GitHub #992.
 
 function scripts(): string {
-  return `<button id="mira-fab" aria-label="Open Mira chat" aria-expanded="false" data-open="false">
-  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <path d="M4 18V7l4 6 4-5 4 5 4-6v11" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>
-</button>
-<script>
+  return `<script>
   (function(){var n=document.getElementById('main-nav');function u(){n.classList.toggle('scrolled',window.scrollY>10)}window.addEventListener('scroll',u,{passive:true});u()})();
   (function(){if(!window.IntersectionObserver)return;var o=new IntersectionObserver(function(e){e.forEach(function(x){if(x.isIntersecting)x.target.classList.add('visible')})},{threshold:0.08});document.querySelectorAll('.fade-in').forEach(function(el){o.observe(el)})})();
-  (function(){var l=false;function w(){if(l)return;l=true;var s=document.createElement('script');s.src='/public/mira-chat.js';s.defer=true;document.head.appendChild(s)}var f=document.getElementById('mira-fab');f.addEventListener('mouseenter',w,{once:true});f.addEventListener('touchstart',w,{once:true,passive:true});f.addEventListener('focus',w,{once:true});window.addEventListener('scroll',function g(){if(window.scrollY>300){w();window.removeEventListener('scroll',g)}},{passive:true})})();
 </script>`;
 }
 
