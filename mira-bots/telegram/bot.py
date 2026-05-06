@@ -638,12 +638,35 @@ async def _photo_batch_worker(application: Application) -> None:
             "PHOTO_QUEUE_WORKER processing batch_id=%d chat=%s n=%d",
             rec.id, rec.chat_id, n,
         )
+
+        async def _edit_ack(text: str) -> None:
+            if rec.ack_message_id is None:
+                return
+            try:
+                await application.bot.edit_message_text(
+                    chat_id=int(rec.chat_id),
+                    message_id=rec.ack_message_id,
+                    text=text,
+                )
+            except Exception as edit_exc:
+                logger.debug(
+                    "PHOTO_QUEUE_WORKER ack edit failed batch_id=%d: %s",
+                    rec.id, edit_exc,
+                )
+
+        async def _on_progress(idx_done: int, n_total: int) -> None:
+            if idx_done < n_total:
+                await _edit_ack(f"📸 Processing photo {idx_done + 1}/{n_total}…")
+            else:
+                await _edit_ack(f"📸 Synthesizing answer for {n_total} photos…")
+
         try:
             reply = await engine.process_multi_photo(
                 chat_id=rec.chat_id,
                 message=rec.caption,
                 photos_b64=rec.photos_b64,
                 platform=rec.platform,
+                on_progress=_on_progress,
             )
             if not reply:
                 reply = (
