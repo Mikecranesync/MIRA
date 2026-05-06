@@ -200,12 +200,22 @@ export async function GET() {
   } catch (err) {
     console.error("[api/uploads] listUploads failed", {
       tenantId: ctx.tenantId,
-      error: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      error:
+        err instanceof Error
+          ? { message: err.message, code: (err as { code?: string }).code, stack: err.stack }
+          : err,
     });
-    return NextResponse.json(
-      { error: "uploads_unavailable" },
-      { status: 503 },
-    );
+    // Graceful degrade (CRA-38): the /knowledge page consumes this list and
+    // breaks visibly on a non-200. Returning [] keeps the page rendering and
+    // the structured log above tells us what actually failed.
+    return NextResponse.json([], {
+      status: 200,
+      headers: {
+        "X-Uploads-Available": "false",
+        "X-Uploads-Error":
+          err instanceof Error ? err.message.slice(0, 200) : "unknown",
+      },
+    });
   }
 }
 
