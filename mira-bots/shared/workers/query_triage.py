@@ -8,6 +8,7 @@ from typing import Literal
 
 logger = logging.getLogger("mira-gsd")
 
+
 @dataclass
 class QueryTriageResult:
     confidence: Literal["high", "medium", "low"]
@@ -45,10 +46,10 @@ class QueryTriageWorker:
         if not self.enabled or self.router is None:
             return self._fail_open(user_message, "disabled")
         ctx = f"\nKnown equipment: {asset}" if asset else ""
-        hist_text = "\n".join(
-            f"{m['role'].upper()}: {m.get('content', '')[:80]}"
-            for m in history[-4:]
-        ) or "(none)"
+        hist_text = (
+            "\n".join(f"{m['role'].upper()}: {m.get('content', '')[:80]}" for m in history[-4:])
+            or "(none)"
+        )
         user_prompt = f"Message: {user_message}\nHistory:\n{hist_text}{ctx}"
         try:
             text, _ = await asyncio.wait_for(

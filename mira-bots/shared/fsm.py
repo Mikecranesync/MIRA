@@ -33,8 +33,14 @@ _MAX_TURNS_PER_STATE = int(os.getenv("MIRA_MAX_TURNS_PER_STATE", "6"))
 
 # All valid FSM states (used in transition validation)
 VALID_STATES = frozenset(
-    STATE_ORDER + ["ASSET_IDENTIFIED", "ELECTRICAL_PRINT", "SAFETY_ALERT", "DIAGNOSIS_REVISION",
-                   "QUERY_UNDERSTANDING"]
+    STATE_ORDER
+    + [
+        "ASSET_IDENTIFIED",
+        "ELECTRICAL_PRINT",
+        "SAFETY_ALERT",
+        "DIAGNOSIS_REVISION",
+        "QUERY_UNDERSTANDING",
+    ]
 )
 
 # Fuzzy-match common LLM-invented state names to valid FSM states

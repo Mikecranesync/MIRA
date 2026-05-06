@@ -111,9 +111,7 @@ def consume_invite(
             expires_at = expires_at.replace(tzinfo=timezone.utc)
 
         if consumed_at is not None:
-            raise InviteAlreadyConsumed(
-                f"Invite for {email} was already consumed at {consumed_at}"
-            )
+            raise InviteAlreadyConsumed(f"Invite for {email} was already consumed at {consumed_at}")
         if expires_at < now:
             raise InviteExpired(f"Invite for {email} expired at {expires_at}")
 
@@ -145,8 +143,7 @@ def consume_invite(
         # Mark the invite consumed
         conn.execute(
             text(
-                "UPDATE tenant_invites SET consumed_at = :now, consumed_by = :tg "
-                "WHERE token = :t"
+                "UPDATE tenant_invites SET consumed_at = :now, consumed_by = :tg WHERE token = :t"
             ),
             {"now": now, "tg": telegram_user_id, "t": token},
         )
