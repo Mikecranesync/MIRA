@@ -1,3 +1,14 @@
+# Hot Cache — 2026-05-06 — CHARLIE
+
+## Session — 2026-05-06 (CHARLIE, CRA-8 Phase 0 re-baseline)
+
+- **Fresh eval scorecard**: `tests/eval/runs/2026-05-06T0752-offline-text.md` — `40/57 (70%)` on `main` HEAD (`90df74d`). Stale was `44/57 (77%)` on `2026-04-29T0617`. **4 net new regressions** since the stale scorecard.
+- **Cluster A (3 fixtures from spec) — RESOLVED on main**: `vfd_danfoss_02_aqua_drive_manual`, `vfd_mitsu_02_fr_e700_find_datasheet`, `vfd_siemens_02_micromaster_manual` all PASS now (commit `28aba78` did the work).
+- **Cluster B residuals**: `pilz_manual_miss_11`, `distribution_block_forensic_36` still stuck in `MANUAL_LOOKUP_GATHERING`. `vfd_mitsu_03_a700_parameter` PASSES now.
+- **Cluster C residuals**: `vague_opener_stuck_state_05` PASSES now; `vfd_danfoss_04_vlt_fc360_edge` still stalls at `Q1`.
+- **NEW Q-state regressions (not in spec's 13)**: `pf525_f004_02`, `gs20_cross_vendor_03`, `asset_change_mid_session_08`, `reset_new_session_09`, `gs3_ground_fault_14`, `gs20_phase_loss_16`, `yaskawa_a1000_ov_23`, `yaskawa_ga700_encoder_26`, `vfd_abb_01_acs580_fault_2310`, `vfd_siemens_03_sinamics_cross_vendor`, `self_critique_low_instruction_35`. Mostly LLM-stochastic Q1↔Q2↔DIAGNOSIS stalls — Cluster C reword + Phase 2 hard FSM rule should mop these up.
+- **Branch**: `fix/cra-8-fsm-eval-residual` (from `main` `90df74d`). Phase 1 (apply all clusters per Mike) starting next.
+
 # Hot Cache — 2026-05-04 — CHARLIE
 
 ## Session — 2026-05-04 (CHARLIE, Stage 1 DST merge)
