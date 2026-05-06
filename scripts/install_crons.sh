@@ -41,9 +41,9 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 # ─── DATA ENGINEERING ───────────────────────────────────────────────────────
 
-# KB Growth: process one PDF from manual_queue.json every 6 hours
-# Closes #845 — CMMS/KB autonomous growth
-0 */6 * * *   cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/cron/kb_growth_cron.py >> \$LOG_DIR/kb_growth.log 2>&1
+# KB Growth: process up to KB_GROWTH_BATCH_SIZE (default 5) PDFs every hour.
+# Spec: docs/specs/kb-ingest-acceleration-spec.md  |  Closes #845
+0 * * * *     cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/cron/kb_growth_cron.py >> \$LOG_DIR/kb_growth.log 2>&1
 
 # Reddit corpus refresh: weekly Sunday 3 AM
 # Populates mira-bots/benchmarks/corpus/ with fresh Q&A for evals
