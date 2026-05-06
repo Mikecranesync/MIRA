@@ -1,20 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Search, QrCode, Camera, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTranslations } from "next-intl";
 
-/* ─── Mock asset search results ─────────────────────────────────────── */
-const ASSET_OPTIONS = [
-  { id: "1", name: "Air Compressor #1",  tag: "MC-AC-001", location: "Building A" },
-  { id: "2", name: "Conveyor Belt #3",   tag: "MC-CB-003", location: "Building B" },
-  { id: "3", name: "CNC Mill #7",        tag: "MC-CN-007", location: "Shop Floor" },
-  { id: "4", name: "HVAC Unit #2",       tag: "MC-HV-002", location: "Roof" },
-  { id: "5", name: "Pump Station A",     tag: "MC-PS-00A", location: "Basement" },
-];
+type AssetOption = { id: string; name: string; tag: string; location: string };
+
+type AssetRow = {
+  id: string;
+  tag: string | null;
+  name: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  location: string | null;
+};
+
+function toAssetOption(a: AssetRow): AssetOption {
+  const fallbackName =
+    [a.manufacturer, a.model].filter(Boolean).join(" ") || a.tag || "Asset";
+  return {
+    id: a.id,
+    name: (a.name && a.name.trim()) || fallbackName,
+    tag: a.tag ?? "",
+    location: a.location ?? "",
+  };
+}
 
 export default function NewWorkOrderPage() {
   const t = useTranslations("workorders");
@@ -30,21 +43,79 @@ export default function NewWorkOrderPage() {
 
   const [step, setStep] = useState(1);
   const [assetQuery, setAssetQuery] = useState("");
-  const [selectedAsset, setSelectedAsset] = useState<typeof ASSET_OPTIONS[0] | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<AssetOption | null>(null);
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("Medium");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [createdWO, setCreatedWO] = useState<{ id: string; work_order_number: string } | null>(null);
 
-  const filteredAssets = ASSET_OPTIONS.filter(a =>
-    !assetQuery || a.name.toLowerCase().includes(assetQuery.toLowerCase()) || a.tag.includes(assetQuery)
+  const [assets, setAssets] = useState<AssetOption[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(true);
+  const [assetsError, setAssetsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/assets");
+        if (!res.ok) {
+          if (!cancelled) setAssetsError("Could not load assets");
+          return;
+        }
+        const data = (await res.json()) as AssetRow[];
+        if (!cancelled) setAssets(data.map(toAssetOption));
+      } catch {
+        if (!cancelled) setAssetsError("Could not load assets");
+      } finally {
+        if (!cancelled) setAssetsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredAssets = assets.filter(a =>
+    !assetQuery ||
+    a.name.toLowerCase().includes(assetQuery.toLowerCase()) ||
+    a.tag.toLowerCase().includes(assetQuery.toLowerCase())
   );
 
-  function submit() {
-    setSubmitted(true);
-    setTimeout(() => {}, 1500);
+  async function submit() {
+    if (!selectedAsset || !description.trim() || submitting) return;
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/work-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          equipment_id: selectedAsset.id,
+          title: `Issue: ${selectedAsset.name}`,
+          description: description.trim(),
+          fault_description: description.trim(),
+          priority: priority.toLowerCase(),
+        }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setSubmitError(err.error ?? `Failed (${res.status})`);
+        setSubmitting(false);
+        return;
+      }
+      const data = (await res.json()) as { work_order: { id: string; work_order_number: string } };
+      setCreatedWO({ id: data.work_order.id, work_order_number: data.work_order.work_order_number });
+      setSubmitted(true);
+    } catch {
+      setSubmitError("Network error — please try again");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  if (submitted) {
+  if (submitted && createdWO) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center">
         <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
@@ -55,16 +126,28 @@ export default function NewWorkOrderPage() {
           {t("woCreated")}
         </h2>
         <p className="text-sm mb-1" style={{ color: "var(--foreground-muted)" }}>
-          WO-2026-{String(Math.floor(Math.random() * 900) + 100)}
+          {createdWO.work_order_number}
         </p>
         <p className="text-sm mb-8" style={{ color: "var(--foreground-muted)" }}>
           {selectedAsset?.name} · {priority} priority
         </p>
         <div className="flex gap-3">
+          <Link href={`/workorders/${createdWO.id}`}>
+            <Button>{tCommon("view")}</Button>
+          </Link>
           <Link href="/workorders">
             <Button variant="secondary">{t("title")}</Button>
           </Link>
-          <Button onClick={() => { setStep(1); setSubmitted(false); setSelectedAsset(null); setDescription(""); setPriority("Medium"); setAssetQuery(""); }}>
+          <Button variant="outline" onClick={() => {
+            setStep(1);
+            setSubmitted(false);
+            setCreatedWO(null);
+            setSelectedAsset(null);
+            setDescription("");
+            setPriority("Medium");
+            setAssetQuery("");
+            setSubmitError(null);
+          }}>
             {tCommon("create")}
           </Button>
         </div>
@@ -134,6 +217,36 @@ export default function NewWorkOrderPage() {
             </div>
 
             <div className="space-y-2">
+              {assetsLoading && (
+                <div className="flex items-center justify-center py-8 text-xs"
+                  style={{ color: "var(--foreground-subtle)" }}>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Loading assets…
+                </div>
+              )}
+              {!assetsLoading && assetsError && (
+                <div className="p-4 rounded-lg border text-xs"
+                  style={{ borderColor: "#FECACA", backgroundColor: "#FEF2F2", color: "#991B1B" }}>
+                  {assetsError}
+                </div>
+              )}
+              {!assetsLoading && !assetsError && assets.length === 0 && (
+                <div className="p-6 rounded-lg border-2 border-dashed text-center"
+                  style={{ borderColor: "var(--border)" }}>
+                  <p className="text-sm font-medium mb-1" style={{ color: "var(--foreground)" }}>No assets yet</p>
+                  <p className="text-xs mb-3" style={{ color: "var(--foreground-muted)" }}>
+                    Create an asset before logging a work order against it.
+                  </p>
+                  <Link href="/assets">
+                    <Button size="sm" variant="outline">Go to Assets</Button>
+                  </Link>
+                </div>
+              )}
+              {!assetsLoading && !assetsError && assets.length > 0 && filteredAssets.length === 0 && (
+                <p className="text-xs text-center py-4"
+                  style={{ color: "var(--foreground-subtle)" }}>
+                  No assets match &ldquo;{assetQuery}&rdquo;.
+                </p>
+              )}
               {filteredAssets.map((asset) => (
                 <button
                   key={asset.id}
@@ -148,7 +261,7 @@ export default function NewWorkOrderPage() {
                     <div>
                       <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{asset.name}</p>
                       <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
-                        {asset.tag} · {asset.location}
+                        {[asset.tag, asset.location].filter(Boolean).join(" · ") || "—"}
                       </p>
                     </div>
                     {selectedAsset?.id === asset.id && (
@@ -273,12 +386,20 @@ export default function NewWorkOrderPage() {
               </div>
             </div>
 
+            {submitError && (
+              <div className="p-3 rounded-lg border text-xs"
+                style={{ borderColor: "#FECACA", backgroundColor: "#FEF2F2", color: "#991B1B" }}>
+                {submitError}
+              </div>
+            )}
+
             <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setStep(2)} className="flex-1">
+              <Button variant="outline" onClick={() => setStep(2)} disabled={submitting} className="flex-1">
                 <ArrowLeft className="w-4 h-4 mr-1" /> {tCommon("edit")}
               </Button>
-              <Button className="flex-1" onClick={submit}>
-                {tCommon("create")} {t("title")}
+              <Button className="flex-1" onClick={submit} disabled={submitting}>
+                {submitting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+                {submitting ? tCommon("create") + "…" : `${tCommon("create")} ${t("title")}`}
               </Button>
             </div>
           </div>
