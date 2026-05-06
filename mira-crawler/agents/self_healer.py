@@ -49,18 +49,37 @@ logging.basicConfig(
 )
 logger = logging.getLogger("self_healer")
 
-try:
-    from mira_crawler.reporting.telegram_notify import notify
-except ImportError:
 
-    def notify(agent_key: str, message: str, **_: Any) -> bool:  # type: ignore[misc]
+def _load_notify():
+    try:
+        from mira_crawler.reporting.telegram_notify import notify as _n  # type: ignore
+
+        return _n
+    except ImportError:
+        pass
+    import importlib.util
+
+    tn_path = Path(__file__).resolve().parent.parent / "reporting" / "telegram_notify.py"
+    if tn_path.exists():
+        spec = importlib.util.spec_from_file_location("telegram_notify", tn_path)
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.notify
+
+    def _stub(agent_key: str, message: str, **_: Any) -> bool:
         print(f"[{agent_key}] {message}")
         return True
+
+    return _stub
+
+
+notify = _load_notify()
 
 
 # Re-use the heartbeat probes for the post-action re-check.
 try:
-    from mira_crawler.agents import heartbeat_monitor as hb
+    from mira_crawler.agents import heartbeat_monitor as hb  # type: ignore
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import heartbeat_monitor as hb  # type: ignore[no-redef]
