@@ -29,7 +29,10 @@ export default function CMMSPage() {
   const t = useTranslations("cmms");
   const tCommon = useTranslations("common");
   const { toast } = useToast();
-  const [configured, setConfigured] = useState(true);
+  // configured starts unknown (null) — flips to true/false once /api/cmms/health resolves.
+  // Avoids the prior bug where this was hardcoded `true` and the UI claimed "Connected"
+  // even when the env vars were absent.
+  const [configured, setConfigured] = useState<boolean | null>(null);
   const [config, setConfig] = useState<Config>({ url: DEFAULT_CMMS_URL, apiKey: "••••••••••••••••" });
   const [form, setForm] = useState<Config>({ url: "", apiKey: "" });
   const [showEdit, setShowEdit] = useState(false);
@@ -52,6 +55,30 @@ export default function CMMSPage() {
       setStatsLoading(false);
     }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/cmms/health");
+        if (!res.ok) {
+          if (!cancelled) setConfigured(false);
+          return;
+        }
+        const data = (await res.json()) as { configured: boolean; url: string | null };
+        if (cancelled) return;
+        setConfigured(data.configured);
+        if (data.configured && data.url) {
+          setConfig({ url: data.url, apiKey: "••••••••••••••••" });
+        }
+      } catch {
+        if (!cancelled) setConfigured(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (configured) fetchStats();
@@ -82,10 +109,10 @@ export default function CMMSPage() {
             <div>
               <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
               <p className="text-[11px] mt-0.5" style={{ color: "var(--foreground-subtle)" }}>
-                {configured ? t("connected") : t("notConfigured")}
+                {configured === null ? "…" : configured ? t("connected") : t("notConfigured")}
               </p>
             </div>
-            {configured && (
+            {configured === true && (
               <a href={config.url} target="_blank" rel="noopener noreferrer">
                 <Button size="sm" className="h-8 gap-1.5 text-xs">
                   <ExternalLink className="w-3.5 h-3.5" />{t("openAtlas")}
@@ -97,7 +124,12 @@ export default function CMMSPage() {
       </div>
 
       <div className="px-4 md:px-6 py-5 max-w-2xl space-y-4">
-        {configured ? (
+        {configured === null ? (
+          <div className="flex items-center justify-center py-16 text-xs"
+            style={{ color: "var(--foreground-subtle)" }}>
+            <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Checking CMMS connection…
+          </div>
+        ) : configured ? (
           <>
             {/* Connected banner */}
             <div className="card p-4 flex items-center gap-3">
