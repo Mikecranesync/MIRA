@@ -6,7 +6,12 @@ import sys
 
 sys.path.insert(0, "mira-bots")
 
-from shared.models.work_order import UNSWorkOrder, apply_wo_edit, format_wo_preview
+from shared.models.work_order import (
+    UNSWorkOrder,
+    apply_wo_edit,
+    build_uns_wo_from_state,
+    format_wo_preview,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +97,9 @@ class TestApplyWoEdit:
 
 class TestUNSWorkOrderValidation:
     def test_valid_when_all_required_fields_present(self):
-        wo = UNSWorkOrder(asset="Pump A3", title="[MIRA] Pump A3 action", fault_description="overheating")
+        wo = UNSWorkOrder(
+            asset="Pump A3", title="[MIRA] Pump A3 action", fault_description="overheating"
+        )
         assert wo.is_valid is True
 
     def test_invalid_when_asset_missing(self):
@@ -106,7 +113,9 @@ class TestUNSWorkOrderValidation:
         assert "fault_description" in wo.missing_fields
 
     def test_missing_fields_empty_when_valid(self):
-        wo = UNSWorkOrder(asset="Pump A3", title="[MIRA] Pump A3 action", fault_description="overheating")
+        wo = UNSWorkOrder(
+            asset="Pump A3", title="[MIRA] Pump A3 action", fault_description="overheating"
+        )
         assert wo.missing_fields == []
 
 
@@ -122,7 +131,9 @@ class TestFormatWoPreview:
         assert "Koolfog Pump" in preview
 
     def test_contains_fault_description(self):
-        wo = UNSWorkOrder(asset="A", title="T", fault_description="high differential filter pressure")
+        wo = UNSWorkOrder(
+            asset="A", title="T", fault_description="high differential filter pressure"
+        )
         preview = format_wo_preview(wo)
         assert "high differential filter pressure" in preview
 
@@ -130,3 +141,69 @@ class TestFormatWoPreview:
         wo = UNSWorkOrder(asset="A", title="T", fault_description="F")
         preview = format_wo_preview(wo)
         assert "yes/no" in preview.lower() or "yes" in preview.lower()
+
+
+# ---------------------------------------------------------------------------
+# build_uns_wo_from_state — resolution must NOT pull stale assistant turns
+# ---------------------------------------------------------------------------
+
+
+class TestBuildResolutionField:
+    """Mike 2026-05-04 — WO previews showed prior MIRA answers as resolution.
+    The builder must only use an explicit diagnosis_summary, never scrape the
+    last assistant turn from history."""
+
+    def test_resolution_empty_when_no_summary(self):
+        state = {
+            "chat_id": "x",
+            "state": "RESOLVED",
+            "asset_identified": "Pump A3",
+            "fault_category": "mechanical",
+            "context": {
+                "session_context": {},
+                "history": [
+                    {"role": "user", "content": "Pump is leaking"},
+                    {"role": "assistant", "content": "Inspect the seal"},
+                    {"role": "user", "content": "OK"},
+                    {"role": "assistant", "content": "And check the gasket too"},
+                ],
+            },
+        }
+        wo = build_uns_wo_from_state(state)
+        assert wo.resolution == ""
+
+    def test_resolution_uses_explicit_summary(self):
+        state = {
+            "chat_id": "x",
+            "state": "RESOLVED",
+            "asset_identified": "Pump A3",
+            "fault_category": "mechanical",
+            "context": {
+                "session_context": {"diagnosis_summary": "Replace mechanical seal"},
+                "history": [{"role": "assistant", "content": "Some other answer"}],
+            },
+        }
+        wo = build_uns_wo_from_state(state)
+        assert wo.resolution == "Replace mechanical seal"
+
+    def test_no_stale_resolution_from_unrelated_history(self):
+        # The bug Mike hit: "previous MIRA answer" leaked into a fresh WO.
+        state = {
+            "chat_id": "x",
+            "state": "RESOLVED",
+            "asset_identified": "VFD",
+            "fault_category": "power",
+            "context": {
+                "session_context": {},
+                "history": [
+                    {
+                        "role": "assistant",
+                        "content": "To check insulation: 1. Disconnect 2. Megger at 500V...",
+                    }
+                ],
+            },
+        }
+        wo = build_uns_wo_from_state(state)
+        # Old behaviour leaked the megger answer. New behaviour leaves blank.
+        assert "megger" not in wo.resolution.lower()
+        assert wo.resolution == ""

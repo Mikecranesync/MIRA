@@ -249,8 +249,16 @@ def step_extract(pdf_path: Path, report: PipelineReport) -> str:
                 md, method = _docling_sync(pdf_path)
             except Exception as exc:
                 if "504" in str(exc) or "timeout" in str(exc).lower():
-                    logger.info("Sync timed out — retrying with page splits")
-                    md, method = _docling_split(pdf_path)
+                    logger.info("Sync timed out — retrying with 15-page splits")
+                    md, method = _docling_split(pdf_path, chunk_pages=15)
+                    if not md:
+                        # 15-page chunks also 504'd (PowerFlex-525 saw this on
+                        # 2026-04-29 — heavy-image PDF). Retry with 5-page
+                        # chunks before giving up; smaller chunks usually
+                        # finish well under DOCLING_SERVE_MAX_SYNC_WAIT.
+                        logger.info("15-page split empty — retrying with 5-page chunks")
+                        md, method = _docling_split(pdf_path, chunk_pages=5)
+                        method = "split-5"
                 else:
                     raise
 

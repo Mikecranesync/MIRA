@@ -14,6 +14,57 @@ const FROM_EMAIL = () =>
 const FROM_NAME = "Mike at FactoryLM";
 const PUBLIC_URL = () => process.env.PUBLIC_URL || "https://factorylm.com";
 
+// ---------------------------------------------------------------------------
+// Resend rate limiter (free tier = 5 req/sec). Pace at one send per 250 ms
+// (= 4 req/sec) so a tight loop (drip dispatcher, inbox-receipt burst) doesn't
+// burn 429s. All Resend POSTs go through resendFetch() so this is global.
+// ---------------------------------------------------------------------------
+
+const MIN_SEND_INTERVAL_MS = 250;
+let _lastSendAt = 0;
+let _sendChain: Promise<void> = Promise.resolve();
+
+async function _throttle(): Promise<void> {
+  // Serialize through a chained promise so concurrent callers wait their turn.
+  const ticket = _sendChain.then(async () => {
+    const wait = MIN_SEND_INTERVAL_MS - (Date.now() - _lastSendAt);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    _lastSendAt = Date.now();
+  });
+  _sendChain = ticket.catch(() => undefined);
+  return ticket;
+}
+
+async function resendFetch(body: object): Promise<Response> {
+  await _throttle();
+  let resp = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (resp.status === 429) {
+    // Rate limit hit despite throttle (e.g. someone bypassed the helper or
+    // Resend is bursty). Back off once based on Retry-After header.
+    const retryAfter = Number(resp.headers.get("retry-after") || "1");
+    const backoff = Math.min(Math.max(retryAfter * 1000, 500), 5000);
+    console.warn(`[mailer] Resend 429 — backing off ${backoff}ms then retrying`);
+    await new Promise((r) => setTimeout(r, backoff));
+    await _throttle();
+    resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  }
+  return resp;
+}
+
 interface SendEmailOpts {
   to: string;
   subject: string;
@@ -50,18 +101,11 @@ export async function sendEmail(opts: SendEmailOpts): Promise<boolean> {
   }
 
   try {
-    const resp = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `${FROM_NAME} <${FROM_EMAIL()}>`,
-        to: [opts.to],
-        subject: opts.subject,
-        html,
-      }),
+    const resp = await resendFetch({
+      from: `${FROM_NAME} <${FROM_EMAIL()}>`,
+      to: [opts.to],
+      subject: opts.subject,
+      html,
     });
 
     if (!resp.ok) {
@@ -264,18 +308,11 @@ export async function sendInboxReceiptEmail(
   }
 
   try {
-    const resp = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `${FROM_NAME} <${FROM_EMAIL()}>`,
-        to: [toEmail],
-        subject,
-        text: body,
-      }),
+    const resp = await resendFetch({
+      from: `${FROM_NAME} <${FROM_EMAIL()}>`,
+      to: [toEmail],
+      subject,
+      text: body,
     });
     if (!resp.ok) {
       const err = await resp.text();
