@@ -70,4 +70,30 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 > ```
 
 <!-- BEGIN AUTOLOG -->
+
+### 2026-05-06 05:28 UTC — `docs/comprehensive-specs`
+**Last commit:** b9bfc8a docs(specs): add per-module specs, context system, session stop hook
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/settings.json
+- docs/context/ARCHITECTURE.md
+- docs/context/FILE_STRUCTURE.md
+- docs/context/PROGRESS.md
+- docs/context/PROJECT_BRIEF.md
+- docs/context/RULES.md
+- docs/context/TECH_STACK.md
+- docs/specs/SPEC_INDEX.md
+- docs/specs/agentic-os-spec.md
+- docs/specs/auth-tenancy-spec.md
+- docs/specs/deployment-spec.md
+- docs/specs/dialogue-state-tracker-spec.md
+- docs/specs/hub-mobile-spec.md
+- docs/specs/ignition-exchange-spec.md
+- docs/specs/knowledge-graph-spec.md
+- docs/specs/mira-bots-spec.md
+- docs/specs/mira-bridge-spec.md
+- docs/specs/mira-cmms-spec.md
+- docs/specs/mira-core-spec.md
+**Working tree:** clean
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
