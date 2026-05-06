@@ -38,11 +38,6 @@
 
 # Hot Cache — 2026-04-30 — CHARLIE
 
-## eval-fixer run — 2026-05-04
-- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md`
-- Action: issue-filed (#985 — added to Kanban)
-- Hard-stop: 13 failures span 3 file clusters (engine.py + guardrails.py + active.yaml). Top pattern: manual-lookup intent returns canned "already indexed" deflection instead of OEM URL across Danfoss/Mitsubishi/Siemens fixtures. Also: MANUAL_LOOKUP_GATHERING state leaking into non-manual fixtures, and Yaskawa content bleeding into Danfoss diagnosis (RAG cross-vendor leak).
-
 ---
 
 # Hot Cache — 2026-05-03 — CHARLIE
