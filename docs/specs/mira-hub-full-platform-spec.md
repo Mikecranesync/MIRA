@@ -612,7 +612,6 @@ Cross-reference: `https://linear.app/cranesync/team/Cranesync/all`. As of 2026-0
 | **CRA-25** | P0 | nginx routes `/sample` and `/activated` to Open WebUI | mira-web bypassed; PLG funnel broken. |
 | **CRA-62** | P2 | `app.factorylm.com/admin/` 404 — routes to mira-web with no /admin index | nginx Phase 2 conf line 132 still proxies `/admin/` to mira-web. |
 | **CRA-63** | P2 | `/pricing` Stripe Checkout asset ERR_CONNECTION_RESET | Conversion blocker (mira-web side, but visible at app domain). |
-| **CRA-6** | P1 | `NEXTAUTH_SECRET` hardcoded in `docker-compose.hub.yml` | Lost on next `git pull`; move to Doppler. |
 | **CRA-45** | P2 | Missing `<link rel="canonical">` on every hub page | SEO. Site-wide. |
 | **CRA-46** | P2 | Incomplete Open Graph tags on every hub page | Link previews broken. Site-wide. |
 | **CRA-48** | P2 | Heading hierarchy skips on 19 hub routes | a11y. h1 → h3 with no h2. |
@@ -629,6 +628,7 @@ Cross-reference: `https://linear.app/cranesync/team/Cranesync/all`. As of 2026-0
 - **CRA-40** — `/admin/users` RSC prefetch 404. Closed 2026-05-06.
 - **CRA-43** — `/admin/users` page 404. Closed 2026-05-06.
 - **CRA-60** — `/blog/fault-codes` widget calls `/api/mira/session` 404. Closed 2026-05-06.
+- **CRA-6** — `NEXTAUTH_SECRET` hardcoded in `docker-compose.hub.yml`. Closed 2026-05-06 — compose now uses `${AUTH_SECRET}`.
 
 ---
 
@@ -696,10 +696,11 @@ This is the to-do list. Work top-down. Update this list when items are done.
     - Schema: a `role_permissions` table or store in `hub_users` JSONB
     - Add CRUD endpoints
     - **Acceptance:** Admin can grant/revoke a permission and the change persists
-14. **Move `NEXTAUTH_SECRET` from compose to Doppler** (CRA-6)
-    - Remove the literal value from `docker-compose.hub.yml`
-    - Verify `factorylm/prd` has `AUTH_SECRET` (already does — just remove the duplicate)
-    - **Acceptance:** Compose file has `${AUTH_SECRET}` reference only
+14. ~~**Move `NEXTAUTH_SECRET` from compose to Doppler** (CRA-6)~~ — **DONE 2026-05-06**
+    - `docker-compose.hub.yml` now passes `AUTH_SECRET=${AUTH_SECRET}` (matches saas.yml).
+    - Hub code already prefers `AUTH_SECRET` over `NEXTAUTH_SECRET` in `auth.ts:141`,
+      `middleware.ts:44`, `lib/session.ts:47`. Doppler `NEXTAUTH_SECRET` duplicate
+      can now be retired (manual Doppler step, not part of this fix).
 15. **Verify `/login` magic-link flow end-to-end** (CRA-12)
     - Trigger from production
     - Inspect Resend logs
