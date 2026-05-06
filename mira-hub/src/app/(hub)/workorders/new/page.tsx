@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, ArrowRight, Search, QrCode, Camera, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OpenInCMMSButton } from "@/components/OpenInCMMSButton";
 import { useTranslations } from "next-intl";
 
 /* ─── Mock asset search results ─────────────────────────────────────── */
@@ -67,6 +68,12 @@ export default function NewWorkOrderPage() {
           <Button onClick={() => { setStep(1); setSubmitted(false); setSelectedAsset(null); setDescription(""); setPriority("Medium"); setAssetQuery(""); }}>
             {tCommon("create")}
           </Button>
+        </div>
+        {/* Deep-link to CMMS or "Connect a CMMS" CTA. atlasId is unset on a freshly
+            created WO — sync hasn't run yet — so when the tenant has CMMS configured
+            this button hides; tenants without CMMS see the connect CTA. */}
+        <div className="mt-4">
+          <OpenInCMMSButton entityType="work_order" atlasId={null} size="sm" />
         </div>
       </div>
     );

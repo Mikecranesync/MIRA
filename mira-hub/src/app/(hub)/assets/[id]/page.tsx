@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { AssetChat } from "@/components/AssetChat";
 import { AssetIntelligencePanel } from "@/components/AssetIntelligencePanel";
+import { OpenInCMMSButton } from "@/components/OpenInCMMSButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -79,6 +80,8 @@ type ApiAsset = {
   model: string | null; serialNumber: string | null; type: string | null;
   location: string | null; criticality: string; workOrderCount: number;
   lastMaintenance: string | null; lastFault: string | null; installDate: string | null;
+  /** External CMMS id used by OpenInCMMSButton; null until sync populates it. */
+  atlasId?: string | null;
 };
 
 function apiToDisplay(a: ApiAsset): typeof ASSETS["1"] {
@@ -140,9 +143,12 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
                 <Badge variant="outline" className="text-[10px]">{t("criticalityLabel", { level: asset.criticality })}</Badge>
               </div>
             </div>
-            <Button size="sm" variant="ghost">
-              <QrCode className="w-4 h-4" />
-            </Button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <OpenInCMMSButton entityType="asset" atlasId={apiAsset?.atlasId} size="sm" />
+              <Button size="sm" variant="ghost">
+                <QrCode className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
 
           {/* Tabs */}

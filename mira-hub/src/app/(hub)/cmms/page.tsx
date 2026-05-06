@@ -5,6 +5,7 @@ import { Database, ExternalLink, CheckCircle2, ClipboardList, Wrench, Calendar, 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { OpenInCMMSButton } from "@/components/OpenInCMMSButton";
 import { useToast } from "@/providers/toast-provider";
 import { useTranslations } from "next-intl";
 
@@ -86,11 +87,7 @@ export default function CMMSPage() {
               </p>
             </div>
             {configured && (
-              <a href={config.url} target="_blank" rel="noopener noreferrer">
-                <Button size="sm" className="h-8 gap-1.5 text-xs">
-                  <ExternalLink className="w-3.5 h-3.5" />{t("openAtlas")}
-                </Button>
-              </a>
+              <OpenInCMMSButton entityType="home" size="sm" variant="default" />
             )}
           </div>
         </div>

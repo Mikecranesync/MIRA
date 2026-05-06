@@ -24,6 +24,8 @@ function rowToAsset(r: Record<string, unknown>) {
     description: r.description ?? null,
     installDate: r.installation_date ?? null,
     createdAt: r.created_at ?? null,
+    // External CMMS id consumed by OpenInCMMSButton. Null until sync populates it.
+    atlasId: r.atlas_id ? String(r.atlas_id) : null,
   };
 }
 

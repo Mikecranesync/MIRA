@@ -54,6 +54,9 @@ function rowToWO(r: Record<string, unknown>) {
     manufacturer: r.manufacturer ?? null,
     model_number: r.model_number ?? null,
     equipment_id: r.equipment_id ? String(r.equipment_id) : null,
+    // External CMMS id used by OpenInCMMSButton for deep-linking. Null until
+    // the CMMS sync populates the column (added in a follow-up migration).
+    atlas_id: r.atlas_id ? String(r.atlas_id) : null,
     status: String(r.status ?? "open"),
     priority: String(r.priority ?? "medium"),
     source,
