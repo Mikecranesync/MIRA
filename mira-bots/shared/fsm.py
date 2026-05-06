@@ -181,20 +181,31 @@ def advance_state(state: dict, parsed: dict, user_message: str = "") -> dict:
     # Fault evidence: _FAULT_INFO_RE matched in the current user message OR the
     # most recent user message in history (whichever has it first).
     if state["state"] == "Q1":
-        # Search for asset evidence
+        from .guardrails import vendor_name_from_text  # local import: avoid cycle
+        from .response_formatter import _looks_like_model_number  # noqa: PLC0415
+
+        # Asset evidence — pinned state first, then DST, then current message,
+        # then any prior turn in history. Vendor OR model token both count.
         asset_evidence = state.get("asset_identified") or ""
         if not asset_evidence:
             dialogue_blob = ctx_q.get("dialogue") or {}
             ents = dialogue_blob.get("salient_entities") or {}
             asset_evidence = ents.get("vendor") or ents.get("model") or ""
         if not asset_evidence and user_message:
-            from .guardrails import vendor_name_from_text  # local import: avoid cycle
-            from .response_formatter import _looks_like_model_number  # noqa: PLC0415
-
             asset_evidence = (
                 vendor_name_from_text(user_message) or _looks_like_model_number(user_message) or ""
             )
-        # Search for fault evidence — current message first, then history fallback
+        if not asset_evidence:
+            for turn in reversed(ctx_q.get("history") or []):
+                if turn.get("role") == "user":
+                    text = str(turn.get("content") or "")
+                    asset_evidence = (
+                        vendor_name_from_text(text) or _looks_like_model_number(text) or ""
+                    )
+                    if asset_evidence:
+                        break
+        # Fault evidence — current message first, then any prior user turn in
+        # history (don't break on the first non-matching user msg — keep going).
         fault_msg = ""
         if user_message and _FAULT_INFO_RE.search(user_message):
             fault_msg = user_message
@@ -204,7 +215,7 @@ def advance_state(state: dict, parsed: dict, user_message: str = "") -> dict:
                     text = str(turn.get("content") or "")
                     if text and _FAULT_INFO_RE.search(text):
                         fault_msg = text
-                    break
+                        break
         if asset_evidence and fault_msg:
             logger.info(
                 "Q1_TO_Q2_FORCE chat_id=%s asset=%r fault=%r — bypassing LLM Q1",
