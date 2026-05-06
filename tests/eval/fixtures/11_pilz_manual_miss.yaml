@@ -2,10 +2,17 @@ id: pilz_manual_miss_11
 description: >
   Pilz distribution block forensic — user asks to "find a Pilz manual" mid-session.
   Reconstructed from chat b500953b (2026-04-14 incident).
-  Regression guard (citation-gate era): doc intent mid-session triggers citation gate
-  banner at DIAGNOSIS state ("No manual found") — NOT a diagnostic question asking
-  "what fault code?" Expected IDLE updated to DIAGNOSIS since KB miss fires citation gate.
-expected_final_state: DIAGNOSIS
+  Regression guard: doc intent mid-session must route to the documentation
+  handler — NOT to a diagnostic Q-question asking "what fault code?".
+  CRA-8 (2026-05-06): expected_final_state changed back to IDLE to match the
+  post-28aba78 doc-intent contract. The engine now lands at IDLE for KB-miss
+  manual requests (queues a crawl and tells the user to ask again shortly),
+  instead of the legacy citation-gate DIAGNOSIS landing. Engine is truth — the
+  fixture follows. Cluster B's session-entity bypass (CRA-8 fix) makes Turn 4
+  short-circuit straight to _do_documentation_lookup using the Pilz vendor
+  pinned across earlier turns, instead of stranding the FSM in
+  MANUAL_LOOKUP_GATHERING.
+expected_final_state: IDLE
 max_turns: 5
 expected_keywords: [pilz, manual, documentation, support, docs, indexed, searching]
 forbidden_keywords: []
