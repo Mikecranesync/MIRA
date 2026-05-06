@@ -140,6 +140,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
+- **Karpathy principles (behavior rules):** `.claude/rules/karpathy-principles.md`
 
 ---
 
