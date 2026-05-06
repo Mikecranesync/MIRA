@@ -1,4 +1,4 @@
--- Migration 006: NeonDB ↔ Atlas CMMS sync columns
+-- Migration 007: NeonDB ↔ Atlas CMMS sync columns
 --
 -- Decision: NeonDB is the source of truth (recorded 2026-05-06 in
 -- docs/specs/hub-cmms-integration-spec.md §3.4 #1). Atlas receives synced
