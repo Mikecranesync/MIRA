@@ -7,14 +7,30 @@ import os
 import re
 import sqlite3
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from . import quality_gate
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .conversation_router import route_intent
 from .detection.recurring_fault import check_recurring_and_annotate
+from .dialogue_state import (
+    DialogueState,
+)
+from .dialogue_tracker import (
+    DISPATCH_ACTION,
+    DISPATCH_ACTION_INTERRUPT,
+    DISPATCH_ASK_GENERAL,
+    DISPATCH_ASK_PROCEDURAL,
+    DISPATCH_GREET,
+    DISPATCH_META,
+    DISPATCH_SAFETY,
+    DISPATCH_SLOT_DONT_KNOW,
+    track_turn,
+)
 from .fallback_responses import (
     GENERIC_ENGINE_ERROR,
     INFERENCE_EXHAUSTED,
@@ -262,6 +278,90 @@ Rate each on 1-5 (5=excellent, 3=acceptable, <3=needs revision):
 # ACTIVE_DIAGNOSTIC_STATES, HISTORY_LIMIT, PHOTO_MEMORY_TURNS, _STATE_ALIASES
 # now live in fsm.py (imported above). _PROCESS_TIMEOUT defined below.
 _PROCESS_TIMEOUT = float(os.getenv("MIRA_PROCESS_TIMEOUT", "30"))
+
+# Replies the quality gate must not second-guess: hand-crafted fallback
+# strings the engine returns for known failure modes. They're intentionally
+# short and may trip generic heuristics (e.g. low n-gram diversity), but
+# they're trusted by definition.
+_TRUSTED_FALLBACKS: set[str] = {
+    s.strip()
+    for s in (
+        GENERIC_ENGINE_ERROR,
+        INFERENCE_EXHAUSTED,
+        PHOTO_FAILURE,
+        RAG_FAILURE,
+        TIMEOUT_WARNING,
+    )
+}
+
+# Dispatch kinds whose replies are structured/templated by hand and bypass
+# the quality gate. The fast-paths below set this on the result dict.
+# Stage 0 (2026-05-04): see PLAN.md §2 for the systemic dialogue-act fix.
+# Stage 1 (2026-05-04): the dialogue-tracker dispatch kinds for handler-
+# generated replies (greeting, meta-command, slot don't-know) join this set.
+_TRUSTED_DISPATCH_KINDS: frozenset[str] = frozenset(
+    {
+        # Stage 0
+        "action_request",
+        "dont_know",
+        "cmms_pending",
+        "session_followup",
+        # Stage 1 (DST handlers)
+        "dst_greet",
+        "dst_meta",
+        "dst_action_interrupt",
+    }
+)
+
+# Stage 1 (PLAN.md §2 / §4) feature flag — when enabled the dialogue
+# state tracker becomes the routing backbone. Default OFF to keep the
+# existing Stage 0 + route_intent path unchanged in production until the
+# flag flips on a clean week of dev/eval. Even when ON, the dispatch
+# block falls through to the existing route_intent flow on classifier
+# failure — see `_dispatch_dialogue_turn` below.
+_DST_ENABLED = os.getenv("MIRA_USE_DST", "0") == "1"
+
+# Stage 0 (2026-05-04) action-request fast-path. Catches imperative
+# work-order requests BEFORE `route_intent`, which currently sends them
+# into RAG (CRITICAL RULE 3 prefers continue_current mid-flow). Without
+# this fast-path the LLM produces garbled output that the quality gate
+# then substitutes with the GRACEFUL_FALLBACK ("rephrase your question…").
+_WO_ACTION_REQUEST_RE = re.compile(
+    r"\b(?:can\s+you\s+|please\s+|could\s+you\s+|would\s+you\s+)?"
+    r"(?:make|create|log|file|open|submit|put\s+in|generate|raise|start|need|want)\s+"
+    r"(?:a\s+|an\s+|the\s+|me\s+a\s+|me\s+an\s+|me\s+the\s+|us\s+a\s+)?"
+    r"(?:work\s*order|workorder|work[\s-]ticket|wo\b|"
+    r"maintenance\s+(?:request|ticket|order)|repair\s+ticket|"
+    r"service\s+(?:ticket|request|order))\b",
+    re.IGNORECASE,
+)
+
+# Stage 0 (2026-05-04) "I don't know" / short-answer fast-path. Fires only
+# when MIRA has a pending question (last_question populated) AND the user's
+# message is short. Prevents "I don't know. I was just given the new one
+# to put in" from being tokenized into "IDON" / "I-DON" and embedded into
+# the vector search as candidate fault codes.
+_DONT_KNOW_RE = re.compile(
+    r"^\s*(?:"
+    r"i\s+don'?t\s+know"
+    r"|i\s+do\s+not\s+know"
+    r"|don'?t\s+know"
+    r"|dont\s+know"
+    r"|not\s+sure"
+    r"|i'?m\s+not\s+sure"
+    r"|no\s+idea"
+    r"|i\s+have\s+no\s+(?:idea|clue)"
+    r"|haven'?t\s+(?:a\s+)?clue"
+    r"|can'?t\s+(?:tell|say)"
+    r"|cannot\s+(?:tell|say)"
+    r"|unsure"
+    r"|unclear"
+    r"|beats\s+me"
+    r"|who\s+knows"
+    r")\b",
+    re.IGNORECASE,
+)
+_DONT_KNOW_MAX_LEN = int(os.getenv("MIRA_DONT_KNOW_MAX_LEN", "200"))
 
 # ---------------------------------------------------------------------------
 # Manual-lookup gathering subroutine constants
@@ -544,13 +644,21 @@ class Supervisor:
         confidence: str = "none",
         trace_id: str | None = None,
         next_state: str | None = None,
+        dispatch_kind: str = "",
     ) -> dict:
-        """Build a standard process_full() result dict."""
+        """Build a standard process_full() result dict.
+
+        dispatch_kind labels the routing decision so the runtime quality gate
+        can bypass replies it shouldn't second-guess (action_request,
+        cmms_pending, dont_know, session_followup). Empty string = default
+        diagnostic flow → gate runs normally.
+        """
         return {
             "reply": reply,
             "confidence": confidence,
             "trace_id": trace_id,
             "next_state": next_state,
+            "dispatch_kind": dispatch_kind,
         }
 
     # ------------------------------------------------------------------
@@ -604,17 +712,79 @@ class Supervisor:
             )
             return GENERIC_ENGINE_ERROR
         elapsed_ms = int((time.monotonic() - t0) * 1000)
-        self._log_interaction(
+        reply = await self._apply_quality_gate(
             chat_id,
             message,
             result["reply"],
+            dispatch_kind=result.get("dispatch_kind", ""),
+        )
+        self._log_interaction(
+            chat_id,
+            message,
+            reply,
             fsm_state=result.get("next_state", ""),
             confidence=result.get("confidence", ""),
             has_photo=bool(photo_b64),
             response_time_ms=elapsed_ms,
             platform=platform,
         )
-        return result["reply"]
+        return reply
+
+    async def _apply_quality_gate(
+        self,
+        chat_id: str,
+        message: str,
+        reply: str,
+        *,
+        dispatch_kind: str = "",
+    ) -> str:
+        """Run the runtime quality gate; substitute a graceful fallback on failure.
+
+        Wrapped in a broad except: a buggy gate must never block the bot.
+
+        Stage 0 (2026-05-04): trusted dispatch kinds bypass the gate. Replies
+        for action-request, cmms_pending, dont_know, and session_followup are
+        structured/templated and the heuristic checks (n-gram repetition,
+        substring repetition) flag them spuriously — the WO preview has
+        intentional repeated bullet headers.
+        """
+        if not quality_gate.is_enabled():
+            return reply
+        if dispatch_kind in _TRUSTED_DISPATCH_KINDS:
+            logger.debug(
+                "QUALITY_GATE_BYPASS chat_id=%s dispatch_kind=%s",
+                chat_id,
+                dispatch_kind,
+            )
+            return reply
+        try:
+            gate = await quality_gate.evaluate(
+                reply,
+                user_message=message,
+                router=self.router,
+                skip_strings=_TRUSTED_FALLBACKS,
+            )
+        except Exception as exc:
+            logger.warning("QUALITY_GATE_INTERNAL_ERROR chat_id=%s err=%s", chat_id, exc)
+            return reply
+        if gate.verdict == "fail":
+            logger.warning(
+                "QUALITY_GATE_FAIL chat_id=%s reasons=%s elapsed_ms=%.1f original=%r",
+                chat_id,
+                ",".join(gate.reasons),
+                gate.elapsed_ms,
+                reply[:200],
+            )
+            return quality_gate.GRACEFUL_FALLBACK
+        if gate.judge_score is not None:
+            logger.info(
+                "QUALITY_GATE_PASS chat_id=%s judge_score=%.2f reason=%s elapsed_ms=%.1f",
+                chat_id,
+                gate.judge_score,
+                gate.judge_reason,
+                gate.elapsed_ms,
+            )
+        return reply
 
     async def process_multi_photo(
         self,
@@ -625,6 +795,7 @@ class Supervisor:
         platform: str = "telegram",
         tenant_id: str | None = None,
         mira_user_id: str | None = None,
+        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> str:
         """Burst entry point. Returns combined reply for N photos (N >= 1).
 
@@ -636,6 +807,12 @@ class Supervisor:
         (every cascade provider down), the method falls back to a deterministic
         numbered list. Only the LAST photo is persisted via _save_session_photo
         so follow-up turns ("tell me more about photo 4") have a single anchor.
+
+        ``on_progress(idx_done, n_total)`` — optional async callback fired after
+        each photo's vision call completes (idx_done is 1-based, fires N times
+        across the burst). Callers (the photo-batch worker) use this to edit
+        the chat ack message ("Processing photo 2/4..."). Callback exceptions
+        are caught and logged so a flaky chat-edit can't take down the engine.
         """
         self._current_tenant_id = tenant_id or getattr(self, "tenant_id", "") or ""
         self._current_mira_user_id = mira_user_id or ""
@@ -666,6 +843,15 @@ class Supervisor:
                         "drawing_type_confidence": 0.0,
                     }
                 analyses.append(vresult)
+                if on_progress is not None:
+                    try:
+                        await on_progress(idx, n)
+                    except Exception as cb_exc:
+                        logger.warning(
+                            "MULTI_PHOTO_PROGRESS_CALLBACK_FAILURE "
+                            "chat_id=%s idx=%d/%d error=%s",
+                            chat_id, idx, n, cb_exc,
+                        )
 
             bullets = []
             for idx, a in enumerate(analyses, start=1):
@@ -831,6 +1017,57 @@ class Supervisor:
                     _ctx_opt["session_context"] = _sc_opt
                     state["context"] = _ctx_opt
                     self._save_state(chat_id, state)
+
+            # Stage 1 (2026-05-04) — Dialogue State Tracker dispatch. Behind
+            # MIRA_USE_DST flag; default OFF. When enabled the tracker is the
+            # single routing decision (PLAN.md §2.3): one Groq llama-3.1-8b
+            # call returning a typed DialogueTurn → DispatchPlan → handler.
+            # The Stage 0 regex fast-paths below stay in place as the OFF-flag
+            # path AND as the shortcircuit a DST tracker hits before the LLM
+            # call (see `dialogue_acts._shortcircuit_act`).
+            if _DST_ENABLED:
+                _dst_result = await self._maybe_dispatch_via_dst(
+                    chat_id, message, state, trace_id, sc, resolved_tenant
+                )
+                if _dst_result is not None:
+                    return _dst_result
+                # Fall through to legacy routing on classifier failure or
+                # default-RAG dispatch — the tracker explicitly returns None
+                # to signal "let the existing flow handle this turn".
+
+            # Stage 0 (2026-05-04) — action-request fast-path. Catches explicit
+            # imperative work-order requests BEFORE the LLM router, which
+            # currently returns continue_current mid-flow (CRITICAL RULE 3 in
+            # conversation_router.py) and lets the request fall into RAG. The
+            # LLM then garbles the response and the quality gate substitutes
+            # the GRACEFUL_FALLBACK ("rephrase your question…"). See PLAN.md
+            # §2.3 for the systemic fix; this is the targeted hot-fix.
+            if _WO_ACTION_REQUEST_RE.search(message):
+                logger.info(
+                    "ACTION_REQUEST_FAST_PATH chat_id=%s kind=work_order match=%r",
+                    chat_id,
+                    message[:80],
+                )
+                return await self._handle_wo_request(chat_id, message, state, trace_id)
+
+            # Stage 0 (2026-05-04) — "I don't know" / short-answer fast-path.
+            # Fires only when MIRA has a pending question (last_question
+            # populated) AND the user's reply is a short uncertainty
+            # admission. Prevents "I don't know. I was just given the new
+            # one to put in" from being tokenized into "IDON" / "I-DON" and
+            # embedded as candidate fault codes via the vector search.
+            if (
+                sc.get("last_question")
+                and len(message.strip()) <= _DONT_KNOW_MAX_LEN
+                and _DONT_KNOW_RE.search(message)
+            ):
+                logger.info(
+                    "DONT_KNOW_FAST_PATH chat_id=%s state=%s match=%r",
+                    chat_id,
+                    state.get("state"),
+                    message[:80],
+                )
+                return self._handle_dont_know_followup(chat_id, message, state, trace_id)
 
             # LLM conversation router — determines what the user wants THIS turn.
             # Runs in parallel with the synchronous keyword classifier as a fast fallback.
@@ -2540,7 +2777,206 @@ class Supervisor:
         preview = format_wo_preview(wo)
         self._record_exchange(chat_id, state, message, preview)
         tl_flush()
-        return self._make_result(preview, "none", trace_id, state.get("state", "IDLE"))
+        return self._make_result(
+            preview,
+            "none",
+            trace_id,
+            state.get("state", "IDLE"),
+            dispatch_kind="action_request",
+        )
+
+    def _handle_dont_know_followup(
+        self, chat_id: str, message: str, state: dict, trace_id: str
+    ) -> dict:
+        """Stage 0 (2026-05-04) handler for "I don't know" answers to MIRA's
+        pending question.
+
+        Acknowledges the uncertainty and offers a slot-aware alternative path
+        (photo of nameplate, describe symptom) — without embedding the user's
+        words as a vector-search query, which would otherwise tokenize "don't"
+        into spurious fault codes.
+        """
+        fsm = state.get("state", "IDLE")
+        asset = state.get("asset_identified", "")
+        if fsm in ("IDLE", "Q1") or not asset:
+            reply = (
+                "No problem. If you're at the equipment, send a photo of the "
+                "nameplate or fault display and I'll read the model and code "
+                "from it. Otherwise, describe what's happening — what does "
+                "the machine do or fail to do?"
+            )
+        elif fsm == "DIAGNOSIS_REVISION":
+            reply = (
+                "OK — let's work with what you have. Describe the symptom "
+                "in your own words: what does the equipment do (or not do) "
+                "when you try to run it?"
+            )
+        else:
+            reply = (
+                "OK. Tell me what you do see or hear instead — any noise, "
+                "smoke, lights, or behavior change. Even a rough description "
+                "narrows it down."
+            )
+        # Persist last_question so the next turn's session_followup logic
+        # treats further user replies as continuations of this prompt.
+        ctx = state.get("context") or {}
+        sc_dk = ctx.get("session_context") or {}
+        sc_dk["last_question"] = reply[:200]
+        sc_dk["last_options"] = []
+        ctx["session_context"] = sc_dk
+        state["context"] = ctx
+        self._record_exchange(chat_id, state, message, reply)
+        self._save_state(chat_id, state)
+        tl_flush()
+        return self._make_result(reply, "none", trace_id, fsm, dispatch_kind="dont_know")
+
+    # ------------------------------------------------------------------
+    # Stage 1 — Dialogue State Tracker dispatch (PLAN.md §2.3 / §10)
+    # ------------------------------------------------------------------
+
+    async def _maybe_dispatch_via_dst(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        sc: dict,
+        resolved_tenant,
+    ) -> dict | None:
+        """Run one turn through the dialogue state tracker.
+
+        Returns the engine's standard result dict when the tracker handles
+        the turn, or `None` when the legacy routing should take over (for
+        DEFAULT_RAG dispatches, classifier failures, slot-fill answers that
+        the existing flow already handles, etc.).
+
+        Three things happen here:
+
+        1. Build the typed `DialogueState` from the engine's state dict.
+        2. Run `track_turn()` — classify, merge entities, decide dispatch,
+           update pending question, snapshot interrupts.
+        3. Match on `plan.kind` and call the matching handler. The handler
+           list is intentionally small in Stage 1 — we only handle the
+           dispatch kinds where DST adds new value over Stage 0:
+           * SAFETY              → identical safety reply, but with a typed
+                                    hazard summary attached for telemetry
+           * ACTION_INTERRUPT    → WO / asset switch / reset
+           * SLOT_DONT_KNOW      → routes to _handle_dont_know_followup
+           * META                → reset / cancel acknowledgement
+           * GREET (in IDLE)     → _greeting_response
+           * ASK_PROCEDURAL      → _handle_instructional_question
+           * ASK_GENERAL         → _handle_general_question
+           * ACTION (other)      → _handle_check_equipment_history /
+                                    documentation flow / etc.
+           * Everything else (SLOT_ANSWER, SLOT_CONFIRM/DENY, DEFAULT_RAG,
+             classifier failure) → return None and let the legacy flow run.
+        """
+        # Build the tracker state from the existing engine state dict —
+        # session_manager has no schema knowledge of `dialogue`; we ride on
+        # the JSON `context` blob.
+        ds = DialogueState.from_engine_state(chat_id, state)
+
+        try:
+            new_ds, plan = await track_turn(ds, message)
+        except Exception as exc:  # noqa: BLE001 — bot must never raise
+            logger.warning("DST_TRACK_FAILURE chat_id=%s err=%s", chat_id, exc)
+            return None
+
+        # Persist the updated tracker state — the engine state dict gets
+        # written to SQLite by the existing _save_state path on whichever
+        # handler we end up calling.
+        new_ds.write_to_engine_state(state)
+
+        kind = plan.kind
+
+        # Priority 1 — safety
+        if kind == DISPATCH_SAFETY:
+            reply = (
+                "STOP — describe the hazard. De-energize the equipment first. "
+                "Do not proceed until the area is safe."
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            asset = state.get("asset_identified") or "Unknown equipment"
+            asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
+            return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
+
+        # Priority 2 — interrupt actions
+        if kind == DISPATCH_ACTION_INTERRUPT:
+            action = plan.payload.get("action")
+            if action == "log_work_order":
+                return await self._handle_wo_request(chat_id, message, state, trace_id)
+            if action == "switch_asset":
+                return await self._handle_asset_switch(chat_id, message, state, trace_id)
+            if action == "reset":
+                # Reset clears state in SQLite and returns a friendly
+                # acknowledgement. Mirrors the /reset bot command.
+                self.reset(chat_id)
+                reply = "Started a fresh session. What equipment can I help with?"
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "IDLE", dispatch_kind="dst_meta")
+
+        # Priority 3 — slot-level dispatches we own
+        if kind == DISPATCH_SLOT_DONT_KNOW:
+            return self._handle_dont_know_followup(chat_id, message, state, trace_id)
+
+        # Priority 4 — meta-control (cancel / reset / skip / back / stop)
+        if kind == DISPATCH_META:
+            command = plan.payload.get("command", "cancel")
+            if command in ("reset", "stop"):
+                self.reset(chat_id)
+                reply = "Started a fresh session. What equipment can I help with?"
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, "IDLE", dispatch_kind="dst_meta")
+            # cancel / skip / back — clear pending question, acknowledge,
+            # let the next user turn drive the flow.
+            ctx = state.get("context") or {}
+            sc_meta = ctx.get("session_context") or {}
+            sc_meta.pop("last_question", None)
+            sc_meta.pop("last_options", None)
+            ctx["session_context"] = sc_meta
+            state["context"] = ctx
+            reply = "Got it — let's drop that. What would you like to do next?"
+            self._record_exchange(chat_id, state, message, reply)
+            self._save_state(chat_id, state)
+            tl_flush()
+            return self._make_result(
+                reply, "none", trace_id, state.get("state", "IDLE"), dispatch_kind="dst_meta"
+            )
+
+        # Priority 5 — non-interrupt action requests
+        if kind == DISPATCH_ACTION:
+            action = plan.payload.get("action")
+            if action == "check_equipment_history":
+                return await self._handle_check_equipment_history(chat_id, message, state, trace_id)
+            if action == "find_documentation":
+                # The existing post-router block handles `find_documentation`
+                # via the specificity gate + crawl pipeline. Returning None
+                # lets the legacy `route_intent` call re-classify it (cheap)
+                # and route to the same place. Stage 2 will short-circuit
+                # this when the legacy router is removed.
+                return None
+            if action == "schedule_maintenance":
+                # PM scheduling has a deep wizard already; let the existing
+                # path handle it. Set a hint so the keyword classifier on
+                # the legacy path knows what the user wanted.
+                return None
+
+        # Priority 6 — questions
+        if kind == DISPATCH_ASK_PROCEDURAL:
+            return await self._handle_instructional_question(chat_id, message, state, trace_id)
+        if kind == DISPATCH_ASK_GENERAL:
+            return await self._handle_general_question(chat_id, message, state, trace_id)
+
+        # Priority 7 — greeting in IDLE
+        if kind == DISPATCH_GREET and state.get("state", "IDLE") == "IDLE":
+            return self._greeting_response(state, chat_id, trace_id)
+
+        # Priority 8 — anything left (SLOT_ANSWER, SLOT_CONFIRM, SLOT_DENY,
+        # DEFAULT_RAG) → let the legacy router/classifier handle it. The
+        # existing flow already knows how to advance Q1→Q2→Q3 from a slot
+        # answer; rebuilding that here is Stage 2 work.
+        return None
 
     async def _handle_check_equipment_history(
         self, chat_id: str, message: str, state: dict, trace_id: str

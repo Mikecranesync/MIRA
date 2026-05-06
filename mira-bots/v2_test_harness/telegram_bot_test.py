@@ -169,8 +169,11 @@ def phase1_bot_health() -> dict:
             timeout=10,
         )
         status = r.stdout.strip()
+        # Empty status = no HEALTHCHECK defined; fall through to getMe/getUpdates checks
+        if not status:
+            status = "no-healthcheck"
         print(f"  Docker health: {status}")
-        if status != "healthy":
+        if status not in ("healthy", "no-healthcheck"):
             print("  ERROR: Container not healthy. Container logs (last 20 lines):")
             logs = subprocess.run(
                 ["docker", "logs", "--tail", "20", "mira-bot-telegram"],
@@ -260,9 +263,9 @@ def phase2_session_check() -> dict:
 
 async def _run_gsd_engine_smoke() -> list[dict]:
     """5 smoke cases via GSDEngine direct. 2-turn exchange to push FSM into DIAGNOSIS."""
-    sys.path.insert(0, str(_TELEGRAM_DIR))
+    sys.path.insert(0, str(_BOTS_ROOT))
     try:
-        from gsd_engine import GSDEngine  # type: ignore
+        from shared.engine import Supervisor as GSDEngine  # type: ignore
     except ImportError as e:
         print(f"  GSDEngine import failed: {e}")
         return []

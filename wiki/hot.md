@@ -1,3 +1,31 @@
+# Hot Cache — 2026-05-04 — CHARLIE
+
+## Session — 2026-05-04 (CHARLIE, Stage 1 DST merge)
+
+- **Stage 1 merged to main**: `feat/dialogue-state-tracker` → `main` fast-forward at `26b69ed`. No conflicts. 7 new files (dialogue_acts.py, dialogue_state.py, dialogue_tracker.py, 3 test files, +201 lines in engine.py).
+- **Tests**: 115/115 pass (0.16s). Full suite: 470 pass, 52 pre-existing adapter import failures (unchanged from before merge — not regressions).
+- **Flag-gated OFF**: `_DST_ENABLED = os.getenv("MIRA_USE_DST", "0") == "1"` — live behavior is **identical** to before until flag is enabled.
+- **To enable DST**: add `MIRA_USE_DST=1` to Doppler `factorylm/prd` → restart `mira-bots` container on VPS.
+- **After enabling**: run Mike's 5-question human test. Synthetic harness: `cd mira-bots && uv run pytest tests/test_dialogue_tracker.py tests/test_dialogue_acts_llm.py tests/test_engine_dst_integration.py -v`.
+- **Also merged today**: CRA-20 (Open CMMS button on /m/:tag/* scan pages — PR #975), CRA-21/22 (magic-link JWT). PRs open: CRA-23 (PR #959 — Atlas→MIRA floating button), CRA-18 (PR #945 — landing page rewrite).
+
+## Stage 2 — Next Actions (in order)
+
+1. **[user-action]** Enable DST on VPS: `doppler secrets set MIRA_USE_DST=1 --project factorylm --config prd` → `docker compose restart mira-bots` → run 5-question human test
+2. **[agent-action] Remove legacy `route_intent`** — once DST validated live, delete `mira-bots/shared/conversation_router.py` and all call sites except engine.py line 17 import (replace with DST-only path, remove `_DST_ENABLED` flag)
+3. **[agent-action] Slot-fill ladder** — when DST classifies `answering_question`, extract answer into slot (equipment/fault_code/symptom) instead of re-embedding as RAG query. Lives in `dialogue_tracker.py` dispatch handler.
+4. **[agent-action] Hard vendor filter on RAG** — if `SalientEntities.equipment_vendor = "Siemens"`, filter `recall_knowledge()` results to Siemens-sourced chunks only. Target: `neon_recall.py` WHERE clause + `dialogue_state.py` entity extraction.
+5. **[agent-action] Conversation repair** — when DST detects `action_interrupt` mid-diagnosis, acknowledge + handle interrupt + prompt to resume original thread. Lives in `_maybe_dispatch_via_dst()`.
+6. **[agent-action] CRA-11** — Source citations in RAG (extend `neon_recall.py:372-395`, inject `[Source:]` in `rag_worker.py:376`, compliance check in `engine.py Supervisor.process_full()`). Branch: `feat/mvp-unit-2-citations`.
+
+## PRs Open (as of 2026-05-04)
+
+| PR | Branch | What | Status |
+|----|--------|------|--------|
+| #975 | fix/cra-20-cmms-scan-buttons | Open CMMS button on scan pages | Open, ready to merge |
+| #959 | fix/cra-23-open-mira-from-cmms | "Open MIRA →" float on CMMS | In Review |
+| #945 | feat/unit-9a-landing | Landing page $97/mo rewrite | In Review |
+
 # Hot Cache — 2026-05-03 — BRAVO
 
 ## Session — 2026-05-03 (BRAVO, eval recovery engine fixes)
