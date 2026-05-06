@@ -60,13 +60,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger("heartbeat_monitor")
 
-try:
-    from mira_crawler.reporting.telegram_notify import notify
-except ImportError:
 
-    def notify(agent_key: str, message: str, **_: Any) -> bool:  # type: ignore[misc]
+def _load_notify():
+    """Import telegram_notify resiliently — the parent dir is `mira-crawler`
+    (hyphen, not a valid Python package name), so the dotted import only works
+    if a setup.py/pyproject installed it. We fall back to importing the file
+    by absolute path."""
+    try:
+        from mira_crawler.reporting.telegram_notify import notify as _n  # type: ignore
+
+        return _n
+    except ImportError:
+        pass
+    import importlib.util
+
+    tn_path = Path(__file__).resolve().parent.parent / "reporting" / "telegram_notify.py"
+    if tn_path.exists():
+        spec = importlib.util.spec_from_file_location("telegram_notify", tn_path)
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.notify
+
+    def _stub(agent_key: str, message: str, **_: Any) -> bool:
         print(f"[{agent_key}] {message}")
         return True
+
+    return _stub
+
+
+notify = _load_notify()
 
 
 # ── Status taxonomy ───────────────────────────────────────────────────────────
