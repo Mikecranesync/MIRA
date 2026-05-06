@@ -21,9 +21,7 @@ from telegram.ext import ContextTypes
 logger = logging.getLogger("mira-bot")
 
 
-async def start_command(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, *, engine: Any
-) -> None:
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE, *, engine: Any) -> None:
     """Handle /start, with optional invite token in context.args[0]."""
     args = context.args or []
     if not args:
@@ -50,9 +48,7 @@ async def start_command(
         )
         return
     except InviteExpired:
-        await update.message.reply_text(
-            "That invite has expired. Ask your admin for a fresh one."
-        )
+        await update.message.reply_text("That invite has expired. Ask your admin for a fresh one.")
         return
     except InviteAlreadyConsumed:
         await update.message.reply_text(

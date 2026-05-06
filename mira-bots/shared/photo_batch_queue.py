@@ -152,8 +152,7 @@ class PhotoBatchQueue:
                     "(chat_id, platform, status, caption, photos_json, "
                     " photo_count, ack_message_id, created_at) "
                     "VALUES (?, ?, 'collecting', ?, ?, ?, ?, ?)",
-                    (chat_id, platform, caption, json.dumps(photos), 1,
-                     ack_message_id, now),
+                    (chat_id, platform, caption, json.dumps(photos), 1, ack_message_id, now),
                 )
                 return int(cur.lastrowid), 1
 
@@ -161,8 +160,7 @@ class PhotoBatchQueue:
             new_count = photo_count + 1
             if new_count > MAX_PHOTOS_PER_BURST:
                 raise BurstFull(
-                    f"burst {batch_id} already at {photo_count} photos "
-                    f"(cap {MAX_PHOTOS_PER_BURST})"
+                    f"burst {batch_id} already at {photo_count} photos (cap {MAX_PHOTOS_PER_BURST})"
                 )
 
             photos = json.loads(photos_json)
@@ -197,8 +195,7 @@ class PhotoBatchQueue:
         """
         async with self._lock:
             depth = self._conn.execute(
-                "SELECT COUNT(*) FROM photo_batches "
-                "WHERE status IN ('queued', 'processing')"
+                "SELECT COUNT(*) FROM photo_batches WHERE status IN ('queued', 'processing')"
             ).fetchone()[0]
             if depth >= MAX_QUEUE_DEPTH:
                 raise QueueFull(f"queue depth {depth} >= cap {MAX_QUEUE_DEPTH}")
@@ -300,8 +297,7 @@ class PhotoBatchQueue:
             await self._notify.put(int(batch_id))
 
         if n_orphans:
-            logger.warning("PHOTO_QUEUE_RECOVER orphans=%d requeued=%d",
-                           n_orphans, len(queued))
+            logger.warning("PHOTO_QUEUE_RECOVER orphans=%d requeued=%d", n_orphans, len(queued))
         return n_orphans
 
     # ------------------------------------------------------------- diagnostics

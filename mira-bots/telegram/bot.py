@@ -126,8 +126,9 @@ FAULT_KEYWORDS = {
 _BURST_COLLECTOR: dict[int, dict] = {}
 _PHOTO_QUEUE_DB_PATH = os.environ.get(
     "PHOTO_QUEUE_DB_PATH",
-    os.path.join(os.path.dirname(os.environ.get("MIRA_DB_PATH", "/data/mira.db")),
-                 "photo_batches.db"),
+    os.path.join(
+        os.path.dirname(os.environ.get("MIRA_DB_PATH", "/data/mira.db")), "photo_batches.db"
+    ),
 )
 photo_queue = PhotoBatchQueue(_PHOTO_QUEUE_DB_PATH)
 
@@ -639,7 +640,9 @@ async def _photo_batch_worker(application: Application) -> None:
         n = len(rec.photos_b64)
         logger.info(
             "PHOTO_QUEUE_WORKER processing batch_id=%d chat=%s n=%d",
-            rec.id, rec.chat_id, n,
+            rec.id,
+            rec.chat_id,
+            n,
         )
 
         async def _edit_ack(text: str) -> None:
@@ -654,7 +657,8 @@ async def _photo_batch_worker(application: Application) -> None:
             except Exception as edit_exc:
                 logger.debug(
                     "PHOTO_QUEUE_WORKER ack edit failed batch_id=%d: %s",
-                    rec.id, edit_exc,
+                    rec.id,
+                    edit_exc,
                 )
 
         async def _on_progress(idx_done: int, n_total: int) -> None:
@@ -677,19 +681,16 @@ async def _photo_batch_worker(application: Application) -> None:
                     f"{n} photos. Please retry."
                 )
             try:
-                await application.bot.send_message(
-                    chat_id=int(rec.chat_id), text=reply
-                )
+                await application.bot.send_message(chat_id=int(rec.chat_id), text=reply)
             except Exception as send_exc:
                 logger.error(
                     "PHOTO_QUEUE_WORKER reply send failed batch_id=%d: %s",
-                    rec.id, send_exc,
+                    rec.id,
+                    send_exc,
                 )
             await photo_queue.mark_done(rec.id, reply)
         except Exception as exc:
-            logger.exception(
-                "PHOTO_QUEUE_WORKER processing error batch_id=%d", rec.id
-            )
+            logger.exception("PHOTO_QUEUE_WORKER processing error batch_id=%d", rec.id)
             try:
                 await application.bot.send_message(
                     chat_id=int(rec.chat_id),
@@ -698,7 +699,8 @@ async def _photo_batch_worker(application: Application) -> None:
             except Exception as send_exc:
                 logger.error(
                     "PHOTO_QUEUE_WORKER error-reply send failed batch_id=%d: %s",
-                    rec.id, send_exc,
+                    rec.id,
+                    send_exc,
                 )
             await photo_queue.mark_failed(rec.id, str(exc))
 

@@ -32,8 +32,8 @@ from .wo_outbox import enqueue as outbox_enqueue
 
 logger = logging.getLogger("mira-gsd")
 
-_TIMEOUT = 15        # seconds per attempt
-_MAX_ATTEMPTS = 3    # 1 + 2 retries
+_TIMEOUT = 15  # seconds per attempt
+_MAX_ATTEMPTS = 3  # 1 + 2 retries
 _BASE_BACKOFF = 1.0  # 1s, 2s between attempts
 
 
@@ -103,9 +103,7 @@ class AtlasCMMSClient:
             try:
                 return await self._post_work_order(payload)
             except httpx.HTTPStatusError as e:
-                last_error_repr = (
-                    f"HTTP {e.response.status_code}: {e.response.text[:100]}"
-                )
+                last_error_repr = f"HTTP {e.response.status_code}: {e.response.text[:100]}"
                 if e.response.status_code < 500:
                     logger.error(
                         "CMMS WO create HTTP %d (no retry — 4xx is permanent): %s",
@@ -115,19 +113,25 @@ class AtlasCMMSClient:
                     return {"error": last_error_repr}
                 logger.warning(
                     "CMMS WO create HTTP %d attempt=%d/%d — will retry",
-                    e.response.status_code, attempt, _MAX_ATTEMPTS,
+                    e.response.status_code,
+                    attempt,
+                    _MAX_ATTEMPTS,
                 )
             except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as e:
                 last_error_repr = f"{type(e).__name__}: {e}"
                 logger.warning(
                     "CMMS WO create %s attempt=%d/%d — will retry",
-                    type(e).__name__, attempt, _MAX_ATTEMPTS,
+                    type(e).__name__,
+                    attempt,
+                    _MAX_ATTEMPTS,
                 )
             except Exception as e:
                 last_error_repr = f"{type(e).__name__}: {e}"
                 logger.warning(
                     "CMMS WO create %s attempt=%d/%d — will retry",
-                    type(e).__name__, attempt, _MAX_ATTEMPTS,
+                    type(e).__name__,
+                    attempt,
+                    _MAX_ATTEMPTS,
                 )
 
             if attempt < _MAX_ATTEMPTS:
@@ -143,9 +147,10 @@ class AtlasCMMSClient:
             return {"error": last_error_repr}
 
         logger.error(
-            "CMMS WO create exhausted %d attempts — enqueued outbox_id=%d "
-            "last_error=%s",
-            _MAX_ATTEMPTS, outbox_id, last_error_repr,
+            "CMMS WO create exhausted %d attempts — enqueued outbox_id=%d last_error=%s",
+            _MAX_ATTEMPTS,
+            outbox_id,
+            last_error_repr,
         )
         return {"error": last_error_repr, "outbox_id": outbox_id}
 

@@ -41,8 +41,7 @@ async def invite_command(
 
     if not context.args:
         await update.message.reply_text(
-            "Usage: /invite <email> [Display Name]\n"
-            "Example: /invite alice@acme.com Alice Smith"
+            "Usage: /invite <email> [Display Name]\nExample: /invite alice@acme.com Alice Smith"
         )
         return
 

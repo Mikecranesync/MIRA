@@ -848,9 +848,11 @@ class Supervisor:
                         await on_progress(idx, n)
                     except Exception as cb_exc:
                         logger.warning(
-                            "MULTI_PHOTO_PROGRESS_CALLBACK_FAILURE "
-                            "chat_id=%s idx=%d/%d error=%s",
-                            chat_id, idx, n, cb_exc,
+                            "MULTI_PHOTO_PROGRESS_CALLBACK_FAILURE chat_id=%s idx=%d/%d error=%s",
+                            chat_id,
+                            idx,
+                            n,
+                            cb_exc,
                         )
 
             bullets = []

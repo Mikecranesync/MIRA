@@ -112,15 +112,81 @@ HYBRID_ENABLED = os.getenv("MIRA_RETRIEVAL_HYBRID_ENABLED", "true").lower() == "
 RRF_K = int(os.getenv("MIRA_RRF_K", "60"))
 
 
-_COMMON_WORDS = frozenset({
-    "the", "and", "for", "with", "my", "your", "its", "has", "was", "are",
-    "can", "not", "but", "that", "this", "what", "from", "how", "why", "when",
-    "does", "did", "any", "all", "also", "just", "like", "get", "got", "see",
-    "saw", "too", "our", "now", "try", "fix", "on", "in", "it", "is", "an",
-    "to", "do", "so", "if", "of", "at", "by", "up", "we", "be", "or", "no",
-    "ok", "as", "he", "she", "they", "them", "his", "her", "its", "out",
-    "off", "had", "may", "will", "let", "run", "set", "use",
-})
+_COMMON_WORDS = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "my",
+        "your",
+        "its",
+        "has",
+        "was",
+        "are",
+        "can",
+        "not",
+        "but",
+        "that",
+        "this",
+        "what",
+        "from",
+        "how",
+        "why",
+        "when",
+        "does",
+        "did",
+        "any",
+        "all",
+        "also",
+        "just",
+        "like",
+        "get",
+        "got",
+        "see",
+        "saw",
+        "too",
+        "our",
+        "now",
+        "try",
+        "fix",
+        "on",
+        "in",
+        "it",
+        "is",
+        "an",
+        "to",
+        "do",
+        "so",
+        "if",
+        "of",
+        "at",
+        "by",
+        "up",
+        "we",
+        "be",
+        "or",
+        "no",
+        "ok",
+        "as",
+        "he",
+        "she",
+        "they",
+        "them",
+        "his",
+        "her",
+        "its",
+        "out",
+        "off",
+        "had",
+        "may",
+        "will",
+        "let",
+        "run",
+        "set",
+        "use",
+    }
+)
 
 
 def _normalise_fault_query(query_text: str) -> str:
@@ -132,6 +198,7 @@ def _normalise_fault_query(query_text: str) -> str:
     """
     # Letter + space + digits: "F 02" → "F-02", "E 014" → "E-014"
     normalised = re.sub(r"\b([A-Za-z]{1,3})\s+(\d{1,4})\b", r"\1-\2", query_text)
+
     # Single/double uppercase letter + space + uppercase alpha token: "E OC" → "E-OC"
     # Only when left token is 1-2 chars and looks like a prefix (not a common word)
     def _maybe_join(m: re.Match) -> str:
@@ -141,6 +208,7 @@ def _normalise_fault_query(query_text: str) -> str:
         if len(left) <= 2:
             return f"{left}-{right}"
         return m.group(0)
+
     normalised = re.sub(r"\b([A-Za-z]{1,2})\s+([A-Za-z]{2,4})\b", _maybe_join, normalised)
     return normalised
 
@@ -166,7 +234,7 @@ def _extract_fault_codes(query_text: str) -> list[str]:
 
     # Pattern 2: compound alpha-alpha codes like E-OC, E-OV
     for m in _COMPOUND_ALPHA_RE.finditer(normalised):
-        dashed = m.group(0).upper()          # "E-OC"
+        dashed = m.group(0).upper()  # "E-OC"
         nodash = (m.group(1) + m.group(2)).upper()  # "EOC"
         codes.add(dashed)
         codes.add(nodash)
@@ -179,8 +247,8 @@ def _extract_fault_codes(query_text: str) -> list[str]:
             codes.add(cleaned)
         # Also try stripping a leading "E-" prefix (Yaskawa E-series style)
         if cleaned.startswith("E-") and cleaned[2:] in _VFD_ALPHA_CODES:
-            codes.add(cleaned)         # keep full "E-OC"
-            codes.add(cleaned[2:])     # also try bare "OC"
+            codes.add(cleaned)  # keep full "E-OC"
+            codes.add(cleaned[2:])  # also try bare "OC"
 
     # Fallback: if still empty and fault context present, scan original text too
     if not codes and has_fault_context:

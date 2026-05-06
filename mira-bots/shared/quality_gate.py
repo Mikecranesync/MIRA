@@ -105,6 +105,7 @@ _ALLOWED_CONTROL = {"\t", "\n", "\r"}
 # Heuristics
 # ---------------------------------------------------------------------------
 
+
 def _control_char_ratio(text: str) -> float:
     """Fraction of chars that are non-printable control chars (excluding tab/newline/CR)."""
     if not text:
@@ -230,11 +231,7 @@ _JUDGE_SYSTEM = (
 
 
 def _judge_user_msg(user_message: str, reply: str) -> str:
-    return (
-        f"USER: {user_message[:500]}\n"
-        f"REPLY: {reply[:1500]}\n"
-        "Score the reply."
-    )
+    return f"USER: {user_message[:500]}\nREPLY: {reply[:1500]}\nScore the reply."
 
 
 _JUDGE_JSON_RE = re.compile(r"\{[^{}]*\}", re.DOTALL)
@@ -296,6 +293,7 @@ async def llm_judge(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def is_known_fallback(text: str, fallbacks: set[str]) -> bool:
     """Skip gating known-trusted fallback strings (TIMEOUT_WARNING etc.)."""

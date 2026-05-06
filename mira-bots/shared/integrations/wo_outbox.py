@@ -37,9 +37,9 @@ from dataclasses import dataclass
 logger = logging.getLogger("mira-gsd")
 
 
-DRAIN_INTERVAL_SECONDS = 300.0   # 5 minutes between drain passes
-ALERT_AFTER_SECONDS = 3 * 3600   # admin alerted once when row > 3h unsent
-MAX_DRAIN_BATCH = 50             # safety: don't drain a runaway queue all at once
+DRAIN_INTERVAL_SECONDS = 300.0  # 5 minutes between drain passes
+ALERT_AFTER_SECONDS = 3 * 3600  # admin alerted once when row > 3h unsent
+MAX_DRAIN_BATCH = 50  # safety: don't drain a runaway queue all at once
 
 
 _SCHEMA = """
@@ -93,7 +93,9 @@ def enqueue(payload: dict, last_error: str, *, db_path: str | None = None) -> in
         row_id = int(cur.lastrowid)
         logger.warning(
             "WO_OUTBOX_ENQUEUE id=%d title=%r error=%s",
-            row_id, str(payload.get("title", ""))[:60], last_error[:200],
+            row_id,
+            str(payload.get("title", ""))[:60],
+            last_error[:200],
         )
         return row_id
     finally:
@@ -244,13 +246,17 @@ async def drain_once(
             except Exception as alert_exc:
                 logger.warning(
                     "WO_OUTBOX_ALERT_FAILED id=%d error=%s",
-                    row.id, alert_exc,
+                    row.id,
+                    alert_exc,
                 )
 
     if rows:
         logger.info(
             "WO_OUTBOX_DRAIN scanned=%d sent=%d still_pending=%d newly_alerted=%d",
-            len(rows), sent, still_pending, newly_alerted,
+            len(rows),
+            sent,
+            still_pending,
+            newly_alerted,
         )
     return {"sent": sent, "still_pending": still_pending, "newly_alerted": newly_alerted}
 
@@ -265,7 +271,8 @@ async def run_drain_forever(
     """Background-task driver. Spawn from bot startup; never returns."""
     logger.info(
         "WO_OUTBOX_DRAIN_START interval=%ds alert_after=%ds db=%s",
-        int(interval_seconds), ALERT_AFTER_SECONDS,
+        int(interval_seconds),
+        ALERT_AFTER_SECONDS,
         db_path or os.getenv("MIRA_DB_PATH", "/data/mira.db"),
     )
     while True:
