@@ -610,6 +610,148 @@ async def get_agent_status() -> dict:
         return {"error": str(exc)}
 
 
+# ── KG multi-hop tools (Phase 5 of #806) ──────────────────────────────────
+# Thin proxies to mira-hub's /api/internal/kg dispatch. Hub owns the database;
+# these tools just expose the multi-hop API to MCP clients (Open WebUI,
+# external agents, Claude Desktop). All require INTERNAL_KG_API_KEY.
+
+
+@mcp.tool
+def kg_maintenance_context(
+    tenant_id: str,
+    equipment_entity_id: str,
+    include_similar: bool = False,
+    fault_window_days: int = 90,
+) -> dict:
+    """Aggregated maintenance context for one piece of equipment.
+
+    Returns hierarchy (plant/area/line), components, recent faults (with
+    counts in window), recent work orders, parts, manuals, PM schedule,
+    optional similar equipment, and plan-vs-actual mismatches. Use this
+    before answering any question about a specific asset.
+    """
+    from kg_client import KgClientError, maintenance_context
+
+    try:
+        return {"ok": True, "result": maintenance_context(
+            tenant_id, equipment_entity_id,
+            include_similar=include_similar,
+            fault_window_days=fault_window_days,
+        )}
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def kg_impact_analysis(tenant_id: str, entity_id: str) -> dict:
+    """Walk `feeds` forward from this entity and return downstream nodes,
+    blocked lines, and partially-impacted lines (those with an alternate feed).
+    `entity_id` is the kg_entities.id UUID, not the human entity_id.
+    """
+    from kg_client import KgClientError, impact_analysis
+
+    try:
+        return {"ok": True, "result": impact_analysis(tenant_id, entity_id)}
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def kg_root_cause_chain(tenant_id: str, fault_entity_id: str) -> dict:
+    """Walk `caused_by` from a fault entity and return the cause chain plus
+    sibling alternates from prior conversations. `fault_entity_id` is the
+    kg_entities.id UUID for the fault.
+    """
+    from kg_client import KgClientError, root_cause_chain
+
+    try:
+        return {"ok": True, "result": root_cause_chain(tenant_id, fault_entity_id)}
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def kg_traverse_chain(
+    tenant_id: str,
+    start_entity_id: str,
+    relationship_chain: list[str],
+    max_depth: int = 0,
+) -> dict:
+    """Follow a fixed sequence of relationship types one hop at a time.
+
+    Example: starting at a Plant entity, chain ["parent_of","parent_of",
+    "has_component"] enumerates components on every line in that plant.
+    Pass max_depth=0 to use the chain length as the cap.
+    """
+    from kg_client import KgClientError, traverse_chain
+
+    try:
+        depth = None if max_depth == 0 else max_depth
+        return {"ok": True, "result": traverse_chain(
+            tenant_id, start_entity_id, relationship_chain, max_depth=depth,
+        )}
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def kg_flag_pm_mismatches(
+    tenant_id: str,
+    lookback_days: int = 365,
+    equipment_entity_id: str = "",
+) -> dict:
+    """List equipment + fault pairs where MTBF is meaningfully shorter than
+    the planned PM cadence. Returns advisory / warning rows with the offending
+    PM task. Pass equipment_entity_id to scope to one asset.
+    """
+    from kg_client import KgClientError, flag_pm_mismatches
+
+    try:
+        return {"ok": True, "result": flag_pm_mismatches(
+            tenant_id,
+            lookback_days=lookback_days,
+            equipment_entity_id=equipment_entity_id or None,
+        )}
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def kg_extract_schematic(
+    image_path: str,
+    parent_equipment_id: str = "",
+    drawing_ref: str = "",
+) -> dict:
+    """Read an electrical schematic image (IEC 60617 or ANSI/NFPA 79) and
+    return the detected components + connections in the KG payload shape.
+
+    Three vision passes: classify (IEC ladder vs ANSI one-line), detect
+    symbols (contactors, motors, overloads, PLC I/O, ...), trace wired
+    connections. Output is structured for direct ingestion into the KG.
+    Persistence is not done here — the caller posts the payload to mira-hub
+    when it's ready to commit.
+    """
+    from pathlib import Path
+
+    from schematic_intelligence import run_schematic_pipeline, to_kg_payload
+
+    p = Path(image_path)
+    if not p.exists() or not p.is_file():
+        return {"ok": False, "error": f"file not found: {image_path}"}
+    try:
+        image_bytes = p.read_bytes()
+    except OSError as exc:
+        return {"ok": False, "error": f"cannot read image: {exc}"}
+
+    result = run_schematic_pipeline(image_bytes)
+    payload = to_kg_payload(
+        result,
+        parent_equipment_id=parent_equipment_id or None,
+        drawing_ref=drawing_ref or None,
+    )
+    return {"ok": True, "result": payload}
+
+
 if __name__ == "__main__":
     import uvicorn
     from exports import export_assets, export_work_orders
