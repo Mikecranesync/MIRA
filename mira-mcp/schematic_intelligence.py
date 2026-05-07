@@ -82,7 +82,7 @@ class Symbol:
 @dataclass
 class Connection:
     from_ref: str  # "K1:A1"
-    to_ref: str    # "Q0.0:24V"
+    to_ref: str  # "Q0.0:24V"
     wire_number: Optional[str] = None
 
 
@@ -110,8 +110,8 @@ def detect_symbols_prompt(schematic_type: str) -> str:
     standard = "IEC 60617" if schematic_type == "iec_ladder" else "ANSI / NFPA 79"
     return (
         f"Identify every electrical symbol in this {standard} drawing. "
-        "Return JSON {\"symbols\":[{\"type\":\"contactor\",\"ref\":\"K1\","
-        "\"position\":{\"x\":0.4,\"y\":0.2},\"terminals\":[\"A1\",\"A2\"]}]}. "
+        'Return JSON {"symbols":[{"type":"contactor","ref":"K1",'
+        '"position":{"x":0.4,"y":0.2},"terminals":["A1","A2"]}]}. '
         "type must be one of: " + ", ".join(SYMBOL_TYPES) + ". "
         "ref is the reference designator visible in the drawing (K1, M1, OL1, Q0.0, etc.). "
         "position is normalized 0–1. terminals lists the labeled terminal points."
@@ -123,8 +123,8 @@ def trace_connections_prompt(symbols: list[Symbol]) -> str:
     return (
         "Trace every wired connection between the symbols below. "
         f"Symbols available: {refs}. "
-        "Return JSON {\"connections\":[{\"from\":\"K1:A1\",\"to\":\"Q0.0:24V\","
-        "\"wire_number\":\"100\"}]}. "
+        'Return JSON {"connections":[{"from":"K1:A1","to":"Q0.0:24V",'
+        '"wire_number":"100"}]}. '
         "from and to MUST be of the form REF:TERMINAL where REF is in the symbol "
         "list above. wire_number is the visible wire label (or null)."
     )
@@ -289,7 +289,9 @@ def run_schematic_pipeline(
     symbols = parse_symbols(raw2) if raw2 else []
     if not symbols:
         notes.append("no symbols detected")
-        return SchematicResult(schematic_type=schematic_type, symbols=[], connections=[], notes=notes)
+        return SchematicResult(
+            schematic_type=schematic_type, symbols=[], connections=[], notes=notes
+        )
 
     # Pass 3 — trace connections (only when we have ≥2 symbols)
     connections: list[Connection] = []
