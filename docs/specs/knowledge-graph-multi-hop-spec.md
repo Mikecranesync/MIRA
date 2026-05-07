@@ -1,6 +1,6 @@
 # Knowledge Graph: Multi-Hop Reasoning Upgrade — Spec
 
-**Status:** DRAFT — review pending
+**Status:** APPROVED 2026-05-07 — building begins
 **Author:** MIRA agent (Charlie node)
 **Date:** 2026-05-07
 **Owner:** Mike Harper
@@ -388,7 +388,49 @@ Materialized as a function `flagPmMismatches(tenantId)` returning rows `{ equipm
 - Dashboard tile (mira-web) — separate ticket.
 - **Done when:** Mike confirms ≥1 true-positive on real data.
 
-### Total: 8–11 working days.
+### Phase 5 — Schematic Intelligence (3–5 days)
+
+**Purpose.** MIRA reads European (IEC 60617) and American (ANSI / NFPA 79) electrical schematics, extracts circuit topology, and stores it in the KG. The graph then knows: "K1 controls M1", "OL1 protects M1", "Q0.0 drives K1 coil" — making electrical-fault reasoning multi-hop traversable just like mechanical assets.
+
+**Components:**
+
+1. **Schematic Type Classifier.** Single GPT-4o-vision call that classifies an uploaded image as one of: `iec_ladder`, `ansi_one_line`, `p_and_id`, `wiring_diagram`, `panel_layout`, `unknown`. Builds on the partial classification already in `mira-mcp` `PrintWorker`. Output drives which extraction prompt is used downstream.
+
+2. **Symbol Detection.** GPT-4o vision (NOT a YOLOv8 fine-tune — fine-tuning needs labeled training data we don't have at the v1 timeline). Prompt: identify each electrical symbol with `{type, reference_designator, approx_position, terminals}`. Returns structured JSON, validated against a fixed type allowlist (contactor, overload, fuse, motor, plc_io, sensor, transformer, breaker, etc.). Anything off-allowlist is dropped. Reference designator regex follows IEC 81346 (`K1`, `M1`, `Q1`, `OL1`, `KM2`) for IEC and the looser ANSI conventions (`CR1`, `MTR-1`, `TD-1`, `Q0.0`).
+
+3. **Connection / Wire Tracing.** Second GPT-4o vision pass over the same image, given the symbol list as context: trace electrical connections, return adjacency list `{from: "K1:A1", to: "Q0.0:24V", wire_number: "100"}`. Validation: each endpoint must reference a known symbol + terminal.
+
+4. **KG integration.** New entity type `electrical_component` (subtype property: `contactor` / `overload` / `motor` / `plc_io` / etc.). New relationship types:
+   - `electrically_connected` (component ↔ component, undirected, stored as two directed edges).
+   - `controls` (e.g. `K1 --controls--> M1` when K1's main contacts feed M1).
+   - `protects` (e.g. `OL1 --protects--> M1`).
+   - `feeds` (reuse existing — power flows from upstream to downstream).
+   - `references_drawing` (component → manual entity for drawing page citation).
+
+   Each schematic component is also linked to its parent equipment entity via `has_component` if a parent is known (e.g. all components from "VFD-07 schematic page 12" become children of VFD-07).
+
+5. **IEC vs ANSI handling.**
+   - **IEC 60617:** vertical layout, coil/contact cross-references (`K1:A1-A2` coil, `K1:13-14` aux contact), explicit wire numbers per IEC 60445.
+   - **ANSI / NFPA 79:** horizontal rung layout, alphanumeric line numbers (`L1` left rail, `L2` right rail), different motor symbol shape.
+   - The classifier output gates which extraction prompt is used; no shared "universal" prompt — the standards diverge enough that mixing them increases hallucination.
+
+6. **FastMCP exposure.** Phase 5 also wires the multi-hop traversal API to mira-mcp as FastMCP tools (deferred from Phase 1–4 per the resolved open question). Tools: `kg_traverse_chain`, `kg_impact_analysis`, `kg_root_cause_chain`, `kg_maintenance_context`, `kg_extract_schematic`. External agents and Open WebUI can then query the graph directly.
+
+**Open-source references — STUDY ONLY, do NOT import as dependencies:**
+- **FlowExtract** — YOLOv8 + EasyOCR pipeline turning maintenance flowcharts into directed graphs. Steal: their adjacency-list intermediate representation.
+- **kicad-tools** — schematic parsing + LLM reasoning + MCP server. Steal: prompt patterns for connection tracing.
+- **Schematika** — IEC 60617 symbol library. Steal: the canonical symbol→type mapping.
+- **CircuitSchematicImageInterpreter** — wire-tracing into a network graph. Steal: their two-pass detect-then-trace approach (we're already doing this).
+
+**Acceptance criteria:**
+- Classifier correctly identifies schematic type for ≥4 of 5 test images (mixed IEC/ANSI).
+- Symbol extraction captures ≥ 80% of components on a hand-labeled test schematic.
+- Connection tracing produces a valid adjacency graph (every endpoint references a known symbol+terminal).
+- Extracted components appear as KG entities with correct `controls` / `protects` / `feeds` relationships.
+- End-to-end test on Stardust Racers electrical prints (3,742 pages in Mike's Google Drive): ≥ 1 multi-page schematic processed cleanly with components correctly linked back to a parent equipment entity.
+- FastMCP tools callable from Open WebUI and return identical results to direct TypeScript calls.
+
+### Total: 11–16 working days across 5 phases.
 
 ---
 
@@ -429,14 +471,16 @@ The upgrade is **done** when ALL of these are true:
 
 ---
 
-## 12. Open Questions for Mike
+## 12. Resolved Decisions (Mike, 2026-05-07)
 
-1. **Hierarchy seed data.** Do we hand-author the Stardust Racers Plant→Area→Line tree, or scrape it from CMMS imports? (Recommendation: hand-author once, then mira-cmms keeps it in sync.)
-2. **`similar_to` / Knowledge Cooperative.** v1 within-tenant only? Cross-tenant deferred to a separate spec? (Recommendation: yes — cross-tenant has its own opt-in/anonymization concerns.)
-3. **Confidence thresholds.** Is 0.6 the right promotion bar from triple-only to structured relationship? Or do we want tenant-tunable thresholds?
-4. **Storage of historical faults.** `had_fault` is a relationship with timestamps. Alternative: a dedicated `kg_events` table for time-series. Spec assumes relationships; flag if you want a separate table.
-5. **LLM extractor cadence.** Run on every conversation close, or batch nightly? Spec assumes per-conversation. Per-conversation is faster feedback but ~10x the LLM cost.
-6. **mira-mcp surface.** Do we expose `maintenanceContext` and the multi-hop APIs via FastMCP tools so external agents can query the graph? (Recommendation: yes, but as Phase 5 — not in this spec.)
+| # | Question | Decision |
+|---|---|---|
+| 1 | Hierarchy seed data | **Hand-author** the Stardust Racers Plant→Area→Line tree once. mira-cmms takes over keeping it in sync. |
+| 2 | `similar_to` / Knowledge Cooperative | **Within-tenant only** in v1. Cross-tenant deferred to a separate spec. |
+| 3 | Confidence threshold | **0.6** for triple-to-structured-relationship promotion. Tenant-tunable deferred. |
+| 4 | Historical fault storage | Use the **relationship form (`had_fault` with timestamps)** — no separate `kg_events` table. |
+| 5 | LLM extractor cadence | **Per-conversation** (fire-and-forget on conversation close). Cost accepted. |
+| 6 | mira-mcp / FastMCP exposure | **Phase 5** — wired alongside schematic intelligence. |
 
 ---
 
@@ -449,16 +493,14 @@ The upgrade is **done** when ALL of these are true:
 
 ---
 
-## 14. Review Checklist (Mike)
+## 14. Build Plan
 
-Before any code is written, this spec needs Mike to sign off on:
+Approved 2026-05-07. One branch per phase, each pushed on completion.
 
-- [ ] §2 Scope — IN/OUT lists are correct.
-- [ ] §4.2/§4.3 Type names — naming convention matches Mike's mental model.
-- [ ] §5 Traversal API shape — function signatures match what the diagnostic engine wants to call.
-- [ ] §6.2 Pipeline — multi-hop expansion logic is the right default.
-- [ ] §7 Relationship extraction — Groq cascade is the right model choice.
-- [ ] §10 Acceptance criteria — pass/fail bars are realistic and measurable.
-- [ ] §12 Open questions — all answered.
-
-After sign-off, a separate `feat/kg-multi-hop-phase-1` branch is cut for Phase 1 only. No multi-phase mega-PRs.
+| Phase | Branch | Status |
+|---|---|---|
+| 1 | `feat/kg-multi-hop-phase-1` | in progress |
+| 2 | `feat/kg-multi-hop-phase-2` | pending Phase 1 |
+| 3 | `feat/kg-multi-hop-phase-3` | pending Phase 2 |
+| 4 | `feat/kg-multi-hop-phase-4` | pending Phase 3 |
+| 5 | `feat/kg-multi-hop-phase-5` | pending Phase 4 |
