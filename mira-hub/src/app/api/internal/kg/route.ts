@@ -16,6 +16,7 @@
  *   root_cause_chain     — args { faultEntityId }
  *   traverse_chain       — args { startEntityId, relationshipChain[], maxDepth? }
  *   flag_pm_mismatches   — args { lookbackDays?, equipmentEntityId? }
+ *   schematic_upsert     — args { entities[], relationships[], schematic_type?, parent_equipment_id? }
  */
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -26,6 +27,11 @@ import {
   traverseChain,
 } from "@/lib/knowledge-graph/traversal";
 import { flagPmMismatches } from "@/lib/knowledge-graph/plan-vs-actual";
+import {
+  upsertSchematicComponents,
+  type SchematicEntityInput,
+  type SchematicRelationshipInput,
+} from "@/lib/knowledge-graph/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -110,6 +116,48 @@ export async function POST(req: NextRequest) {
           lookbackDays: typeof args.lookbackDays === "number" ? args.lookbackDays : undefined,
           equipmentEntityId:
             typeof args.equipmentEntityId === "string" ? args.equipmentEntityId : undefined,
+        });
+        return NextResponse.json({ ok: true, result });
+      }
+      case "schematic_upsert": {
+        const entitiesArg = args.entities;
+        const relationshipsArg = args.relationships;
+        if (!Array.isArray(entitiesArg)) {
+          return NextResponse.json({ error: "entities array required" }, { status: 400 });
+        }
+        const entities: SchematicEntityInput[] = entitiesArg
+          .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
+          .map((e) => ({
+            entity_type: String(e.entity_type ?? ""),
+            entity_id: String(e.entity_id ?? ""),
+            name: String(e.name ?? e.entity_id ?? ""),
+            properties:
+              typeof e.properties === "object" && e.properties !== null
+                ? (e.properties as Record<string, unknown>)
+                : {},
+          }))
+          .filter((e) => e.entity_type && e.entity_id);
+        const relationships: SchematicRelationshipInput[] = Array.isArray(relationshipsArg)
+          ? relationshipsArg
+              .filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null)
+              .map((r) => ({
+                source_entity_id: String(r.source_entity_id ?? ""),
+                target_entity_id: String(r.target_entity_id ?? ""),
+                relationship_type: String(r.relationship_type ?? ""),
+                properties:
+                  typeof r.properties === "object" && r.properties !== null
+                    ? (r.properties as Record<string, unknown>)
+                    : {},
+              }))
+              .filter((r) => r.source_entity_id && r.target_entity_id && r.relationship_type)
+          : [];
+        const result = await upsertSchematicComponents(body.tenantId, {
+          schematic_type:
+            typeof args.schematic_type === "string" ? args.schematic_type : undefined,
+          parent_equipment_id:
+            typeof args.parent_equipment_id === "string" ? args.parent_equipment_id : null,
+          entities,
+          relationships,
         });
         return NextResponse.json({ ok: true, result });
       }

@@ -17,6 +17,7 @@ logger = logging.getLogger("mira-gsd")
 INTENTS = [
     "diagnose_equipment",  # User is describing a fault, asking for troubleshooting help
     "find_documentation",  # User wants to FETCH a manual, datasheet, or wiring diagram
+    "store_documentation",  # User wants to FILE this turn's photo/extraction under a named plant/equipment
     "answer_question",  # Procedural how-to question — answer from knowledge, no doc fetch needed
     "log_work_order",  # User wants to create/log a work order in the CMMS
     "check_equipment_history",  # User asking what happened with this asset before
@@ -41,6 +42,7 @@ Return ONLY a JSON object with these fields:
 Intent labels:
 - diagnose_equipment: user is describing a fault, symptom, error code, or asking for troubleshooting
 - find_documentation: user wants a manual, datasheet, wiring diagram, installation guide, setup steps, commissioning procedure
+- store_documentation: user wants MIRA to FILE the current turn's photo, schematic, or extraction under a named plant or equipment ("add this to documentation for plant A", "save this to chiller-7", "document this for line 3", "store this for boiler-2")
 - log_work_order: user wants to create, log, or file a work order or maintenance record
 - check_equipment_history: user is asking what happened before with this asset, past work orders, previous fixes
 - switch_asset: user is changing topic to a different machine or equipment ("now help me with the pump")
