@@ -20,6 +20,7 @@
     "team": "Equipo",
     "admin": "Administración",
     "more": "Más",
+    "help": "Ayuda",
     "signOut": "Cerrar sesión"
   },
   "app": {
@@ -563,7 +564,8 @@
       "usage": "Acciones usadas y nivel de facturación",
       "team": "Lista de técnicos y asignaciones",
       "cmms": "Integración Atlas CMMS",
-      "admin": "Usuarios, roles y configuración"
+      "admin": "Usuarios, roles y configuración",
+      "help": "Guías, preguntas frecuentes y soporte"
     },
     "exportData": {
       "label": "Exportar todos los datos",

@@ -8,7 +8,7 @@ import {
   X,
   MessageSquare, AlertTriangle, BookOpen,
   ClipboardList, CalendarDays, Inbox, Package, FileText,
-  TrendingUp, Radio, Plug, BarChart2, Users, Settings,
+  TrendingUp, Radio, Plug, BarChart2, Users, Settings, HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +69,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
     { label: t("usage"),         Icon: BarChart2,     href: "/usage" },
     { label: t("team"),          Icon: Users,         href: "/team" },
     { label: t("admin"),         Icon: Settings,      href: "/admin/users" },
+    { label: t("help"),          Icon: HelpCircle,    href: "/help" },
   ];
 
   return (

@@ -20,6 +20,7 @@
     "team": "Team",
     "admin": "Admin",
     "more": "More",
+    "help": "Help",
     "signOut": "Sign out"
   },
   "app": {
@@ -548,7 +549,8 @@
       "integrations": "CMMS, webhooks, and API settings",
       "usage": "Actions used and billing tier",
       "team": "Crew roster and assignments",
-      "admin": "Users, roles, and settings"
+      "admin": "Users, roles, and settings",
+      "help": "Guides, FAQ, and contact support"
     },
     "exportData": {
       "label": "Export All Data",

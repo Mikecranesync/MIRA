@@ -5,6 +5,7 @@ import {
   MessageSquare, AlertTriangle, BookOpen, Wrench,
   ClipboardList, CalendarDays, Inbox, Package, FileText,
   TrendingUp, Radio, Plug, BarChart2, Users, Settings, ChevronRight, Download,
+  HelpCircle,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -28,6 +29,7 @@ export default function MorePage() {
     { label: tNav("usage"),         desc: t("items.usage"),         Icon: BarChart2,     href: "/usage" },
     { label: tNav("team"),          desc: t("items.team"),          Icon: Users,         href: "/team" },
     { label: tNav("admin"),         desc: t("items.admin"),         Icon: Settings,      href: "/admin/users" },
+    { label: tNav("help"),          desc: t("items.help"),          Icon: HelpCircle,    href: "/help" },
   ];
 
   return (

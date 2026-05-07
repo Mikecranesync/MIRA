@@ -20,6 +20,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
+  HelpCircle,
 };
 
 type NavItemProps = {
@@ -106,6 +107,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "reports":       t("reports"),
       "admin/users":   t("admin"),
       "admin/roles":   t("admin"),
+      "help":          t("help"),
     };
     return map[key] ?? key;
   }
