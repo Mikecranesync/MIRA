@@ -7,6 +7,7 @@
 
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
+import { extractRelationships, type EntityRef, type ExtractionStats } from "./relationship-extractor";
 
 // ── Regex patterns ─────────────────────────────────────────────────────────
 
@@ -170,6 +171,17 @@ export interface ExtractionResult {
   actions: number;
   relationships: number;
   triples: number;
+  /** Phase 3: stats from the LLM relationship extractor pass. null if disabled. */
+  llmRelationships: ExtractionStats | null;
+}
+
+export interface ExtractAndStoreOpts {
+  /**
+   * Run Pass 2 (LLM relationship extractor) after the regex pass. Defaults
+   * to true when KG_LLM_EXTRACTOR_DISABLED is unset and any cascade key is
+   * available. Caller can force off (e.g. eval / offline tests).
+   */
+  llmRelationships?: boolean;
 }
 
 export async function extractAndStore(
@@ -177,6 +189,7 @@ export async function extractAndStore(
   assetId: string,
   conversationText: string,
   conversationId: string | null,
+  opts: ExtractAndStoreOpts = {},
 ): Promise<ExtractionResult> {
   const extracted = extractEntitiesFromText(conversationText);
 
@@ -220,12 +233,34 @@ export async function extractAndStore(
     }
   });
 
+  // Pass 2: LLM relationship extractor. Fire-and-forget — failures here must
+  // not break the regex-pass result. Skipped when KG_LLM_EXTRACTOR_DISABLED
+  // is set or when caller passes opts.llmRelationships === false.
+  const runLlm =
+    opts.llmRelationships !== false && process.env.KG_LLM_EXTRACTOR_DISABLED !== "1";
+  let llmStats: ExtractionStats | null = null;
+  if (runLlm) {
+    const refs: EntityRef[] = [
+      { ref: assetId, type: "equipment" },
+      ...extracted.equipment.map((e) => ({ ref: e, type: "equipment_tag" })),
+      ...extracted.faultCodes.map((f) => ({ ref: f, type: "fault_code" })),
+      ...extracted.parts.map((p) => ({ ref: p, type: "part" })),
+    ];
+    try {
+      llmStats = await extractRelationships(tenantId, conversationText, refs, conversationId);
+    } catch (err) {
+      // never break regex-pass results because Pass 2 misbehaved
+      console.warn("[kg-extractor] LLM Pass 2 failed:", err);
+    }
+  }
+
   return {
     equipment: extracted.equipment.length,
     faultCodes: extracted.faultCodes.length,
     parts: extracted.parts.length,
     actions: extracted.actions.length,
-    relationships: relCount,
-    triples: tripleCount,
+    relationships: relCount + (llmStats?.storedRelationships ?? 0),
+    triples: tripleCount + (llmStats?.storedTriples ?? 0),
+    llmRelationships: llmStats,
   };
 }
