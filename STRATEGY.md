@@ -27,11 +27,12 @@
 
 ## GTM Motion
 
-**Stage 1 (now → 60 days): LinkedIn-first PLG**
-- 6-part LinkedIn series: "The 2 AM VFD Problem" → build in public → technical proof posts
-- Each post ends with one CTA: try MIRA free or book a call
-- Target: 3 paid plants within 60 days
-- No agencies, no ads, no SEO yet
+**Stage 1 (now → 60 days): Marketplace distribution + standalone PLG** *(pivoted 2026-05-05 — see `~/.claude/plans/dev-api-key-for-optimized-badger.md`)*
+- monday.com marketplace listing live for `mira-scan-monday` (Phase 1 of the marketplace plan; OAuth install flow + listing artifacts + submission)
+- UpKeep Studio submission as a parallel track once monday is submitted (Phase 2)
+- Standalone web app at `app.factorylm.com/scan/` as the public-facing entry for techs without a CMMS — LinkedIn drives traffic here
+- 6-part LinkedIn series ("The 2 AM VFD Problem") repurposed as scan-demo content with a CTA to try the standalone app
+- Target by 2026-07-19: monday listing live + ≥3 non-Mike installs; UpKeep listing submitted
 
 **Stage 2 (60–120 days): Warm outbound**  
 - Direct message 20 maintenance managers/week on LinkedIn
