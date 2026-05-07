@@ -1036,9 +1036,7 @@ if __name__ == "__main__":
             Route("/api/cmms/health", rest_cmms_health),
             Route("/api/cmms/nameplate", rest_cmms_nameplate, methods=["POST"]),
             Route("/api/kg/schematic", rest_kg_schematic, methods=["POST"]),
-            Route(
-                "/api/kg/schematic/persist", rest_kg_schematic_persist, methods=["POST"]
-            ),
+            Route("/api/kg/schematic/persist", rest_kg_schematic_persist, methods=["POST"]),
             Route("/ingest/pdf", _rest_ingest_pdf, methods=["POST"]),
             Route("/api/embed", _rest_embed, methods=["POST"]),
             # Unit 4 — Excel/CSV live export (PLG-JWT-authed, no MCP_REST_API_KEY needed)

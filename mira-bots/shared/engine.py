@@ -650,7 +650,7 @@ class Supervisor:
         return (
             f"\n\nSchematic intelligence: {type_label} — {len(entities)} components"
             f" ({breakdown}); {n_relationships} connections traced."
-            f" Say \"add this to documentation for [plant/equipment]\" to store"
+            f' Say "add this to documentation for [plant/equipment]" to store'
             f" them in the knowledge graph."
         )
 
@@ -3259,7 +3259,7 @@ class Supervisor:
         if not target:
             reply = (
                 "Got it — but who should I file this under? "
-                "Try \"add this to documentation for [plant or equipment name]\"."
+                'Try "add this to documentation for [plant or equipment name]".'
             )
             self._record_exchange(chat_id, state, message, reply)
             self._save_state(chat_id, state)
@@ -3279,7 +3279,7 @@ class Supervisor:
             self._save_state(chat_id, state)
             reply = (
                 f"Noted — I'll file the next schematic or nameplate you send under "
-                f"\"{target}\". I don't have a schematic extracted yet for this session."
+                f'"{target}". I don\'t have a schematic extracted yet for this session.'
             )
             self._record_exchange(chat_id, state, message, reply)
             tl_flush()
@@ -3354,8 +3354,11 @@ class Supervisor:
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
         return self._make_result(
-            reply, "high" if persisted_summary else "none", trace_id,
-            state.get("state", "IDLE"), dispatch_kind="dst_action",
+            reply,
+            "high" if persisted_summary else "none",
+            trace_id,
+            state.get("state", "IDLE"),
+            dispatch_kind="dst_action",
         )
 
     async def _handle_documentation_intent(
