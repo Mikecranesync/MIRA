@@ -706,5 +706,13 @@
       "activeTechs": "活跃技术员",
       "avgPerDay": "日均操作"
     }
+  },
+  "cmmsLink": {
+    "loading": "加载中…",
+    "openCmms": "在CMMS中打开",
+    "openIn": "在 {provider} 中打开",
+    "syncing": "正在同步到CMMS…",
+    "syncingTooltip": "此工单正在推送到您的CMMS — 通常 <60秒",
+    "connectCmms": "连接CMMS →"
   }
 }

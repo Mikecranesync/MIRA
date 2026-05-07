@@ -691,5 +691,13 @@
       "activeTechs": "Active Techs",
       "avgPerDay": "Avg / Day"
     }
+  },
+  "cmmsLink": {
+    "loading": "Loading…",
+    "openCmms": "Open in CMMS",
+    "openIn": "Open in {provider}",
+    "syncing": "Syncing to CMMS…",
+    "syncingTooltip": "This work order is being pushed to your CMMS — typically <60s",
+    "connectCmms": "Connect a CMMS →"
   }
 }
