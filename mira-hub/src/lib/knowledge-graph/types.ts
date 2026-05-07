@@ -71,6 +71,7 @@ export interface KGEntity {
   entityId: string;
   name: string;
   properties: Record<string, unknown>;
+  unsPath: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

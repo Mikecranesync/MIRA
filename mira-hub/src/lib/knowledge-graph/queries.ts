@@ -9,6 +9,7 @@ function rowToEntity(row: Record<string, unknown>): KGEntity {
     entityId: row.entity_id as string,
     name: row.name as string,
     properties: (row.properties as Record<string, unknown>) ?? {},
+    unsPath: (row.uns_path as string | null) ?? null,
     createdAt: new Date(row.created_at as string),
     updatedAt: new Date(row.updated_at as string),
   };

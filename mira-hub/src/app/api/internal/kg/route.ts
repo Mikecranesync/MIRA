@@ -24,6 +24,9 @@ import {
   impactAnalysis,
   rootCauseChain,
   traverseChain,
+  resolveEntityByUnsPath,
+  entitiesUnderUnsPath,
+  isValidUnsPath,
 } from "@/lib/knowledge-graph/traversal";
 import { flagPmMismatches } from "@/lib/knowledge-graph/plan-vs-actual";
 
@@ -37,6 +40,38 @@ interface KgRequest {
 
 function isUuid(s: unknown): s is string {
   return typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+}
+
+/**
+ * Resolve a caller-supplied entity reference to a kg_entities.id.
+ *
+ * Accepts either a direct UUID/entity_id under `idArg` or an `unsPath` ltree
+ * address. The caller passes the field names so a single helper can serve
+ * impact_analysis (entityId), root_cause (faultEntityId),
+ * traverse_chain (startEntityId), maintenance_context (equipmentEntityId).
+ *
+ * Returns either { entityId } or { error, status } so the route handler can
+ * keep its terse switch style.
+ */
+async function resolveEntityArg(
+  tenantId: string,
+  args: Record<string, unknown>,
+  idField: string,
+): Promise<{ entityId: string } | { error: string; status: number }> {
+  const direct = args[idField];
+  if (typeof direct === "string" && direct.length > 0) {
+    return { entityId: direct };
+  }
+  const unsPath = args.unsPath;
+  if (typeof unsPath === "string" && unsPath.length > 0) {
+    if (!isValidUnsPath(unsPath)) {
+      return { error: "invalid unsPath (use dot.separated.alphanumeric_)", status: 400 };
+    }
+    const entity = await resolveEntityByUnsPath(tenantId, unsPath);
+    if (!entity) return { error: "no entity at unsPath", status: 404 };
+    return { entityId: entity.id };
+  }
+  return { error: `${idField} or unsPath required`, status: 400 };
 }
 
 export async function POST(req: NextRequest) {
@@ -63,11 +98,11 @@ export async function POST(req: NextRequest) {
   try {
     switch (body.op) {
       case "maintenance_context": {
-        const equipmentEntityId = args.equipmentEntityId;
-        if (typeof equipmentEntityId !== "string") {
-          return NextResponse.json({ error: "equipmentEntityId required" }, { status: 400 });
+        const resolved = await resolveEntityArg(body.tenantId, args, "equipmentEntityId");
+        if ("error" in resolved) {
+          return NextResponse.json({ error: resolved.error }, { status: resolved.status });
         }
-        const result = await maintenanceContext(body.tenantId, equipmentEntityId, {
+        const result = await maintenanceContext(body.tenantId, resolved.entityId, {
           includeSimilar: args.includeSimilar === true,
           faultWindowDays: typeof args.faultWindowDays === "number" ? args.faultWindowDays : undefined,
           maxWorkOrders: typeof args.maxWorkOrders === "number" ? args.maxWorkOrders : undefined,
@@ -75,31 +110,34 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, result });
       }
       case "impact_analysis": {
-        const entityId = args.entityId;
-        if (typeof entityId !== "string") {
-          return NextResponse.json({ error: "entityId required" }, { status: 400 });
+        const resolved = await resolveEntityArg(body.tenantId, args, "entityId");
+        if ("error" in resolved) {
+          return NextResponse.json({ error: resolved.error }, { status: resolved.status });
         }
-        const result = await impactAnalysis(body.tenantId, entityId);
+        const result = await impactAnalysis(body.tenantId, resolved.entityId);
         return NextResponse.json({ ok: true, result });
       }
       case "root_cause_chain": {
-        const faultEntityId = args.faultEntityId;
-        if (typeof faultEntityId !== "string") {
-          return NextResponse.json({ error: "faultEntityId required" }, { status: 400 });
+        const resolved = await resolveEntityArg(body.tenantId, args, "faultEntityId");
+        if ("error" in resolved) {
+          return NextResponse.json({ error: resolved.error }, { status: resolved.status });
         }
-        const result = await rootCauseChain(body.tenantId, faultEntityId);
+        const result = await rootCauseChain(body.tenantId, resolved.entityId);
         return NextResponse.json({ ok: true, result });
       }
       case "traverse_chain": {
-        const startEntityId = args.startEntityId;
         const chain = args.relationshipChain;
-        if (typeof startEntityId !== "string" || !Array.isArray(chain)) {
-          return NextResponse.json({ error: "startEntityId and relationshipChain required" }, { status: 400 });
+        if (!Array.isArray(chain)) {
+          return NextResponse.json({ error: "relationshipChain required" }, { status: 400 });
+        }
+        const resolved = await resolveEntityArg(body.tenantId, args, "startEntityId");
+        if ("error" in resolved) {
+          return NextResponse.json({ error: resolved.error }, { status: resolved.status });
         }
         const stringChain = chain.filter((c): c is string => typeof c === "string");
         const result = await traverseChain(
           body.tenantId,
-          startEntityId,
+          resolved.entityId,
           stringChain,
           typeof args.maxDepth === "number" ? args.maxDepth : undefined,
         );
@@ -111,6 +149,29 @@ export async function POST(req: NextRequest) {
           equipmentEntityId:
             typeof args.equipmentEntityId === "string" ? args.equipmentEntityId : undefined,
         });
+        return NextResponse.json({ ok: true, result });
+      }
+      case "resolve_uns_path": {
+        const unsPath = args.unsPath;
+        if (typeof unsPath !== "string") {
+          return NextResponse.json({ error: "unsPath required" }, { status: 400 });
+        }
+        if (!isValidUnsPath(unsPath)) {
+          return NextResponse.json({ error: "invalid unsPath" }, { status: 400 });
+        }
+        const result = await resolveEntityByUnsPath(body.tenantId, unsPath);
+        return NextResponse.json({ ok: true, result });
+      }
+      case "entities_under_uns_path": {
+        const unsPath = args.unsPath;
+        if (typeof unsPath !== "string") {
+          return NextResponse.json({ error: "unsPath required" }, { status: 400 });
+        }
+        if (!isValidUnsPath(unsPath)) {
+          return NextResponse.json({ error: "invalid unsPath" }, { status: 400 });
+        }
+        const limit = typeof args.limit === "number" ? args.limit : undefined;
+        const result = await entitiesUnderUnsPath(body.tenantId, unsPath, limit);
         return NextResponse.json({ ok: true, result });
       }
       default:
