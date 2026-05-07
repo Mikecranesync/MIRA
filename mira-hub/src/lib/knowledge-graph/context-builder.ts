@@ -15,6 +15,12 @@
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
 import { extractEntitiesFromText } from "./extractor";
+import {
+  maintenanceContext,
+  impactAnalysis,
+  rootCauseChain,
+  type MaintenanceContext,
+} from "./traversal";
 
 // ── DB helpers ─────────────────────────────────────────────────────────────
 
@@ -255,6 +261,113 @@ export function formatEntityContext(full: EntityFull): string {
   return lines.join("\n");
 }
 
+// ── Multi-hop intent classifier (Phase 2) ──────────────────────────────────
+
+export type KgIntent = "causal" | "impact" | "history" | "default";
+
+const CAUSAL_PATTERNS = [
+  /\bwhy\b/i,
+  /\broot cause\b/i,
+  /\bcaus(e|ed|es|ing)\b/i,
+  /\bbecause\b/i,
+  /\btripp(ed|ing)\b/i,
+  /\bfail(ed|ing|ure)?\b.*\bdue to\b/i,
+];
+
+const IMPACT_PATTERNS = [
+  /\bif .+ (goes? down|fails?|stops?|trips?)\b/i,
+  /\bdownstream\b/i,
+  /\bwhat (else|other) (stops?|fails?|breaks?)\b/i,
+  /\baffect(ed|s|ing)?\b/i,
+  /\bblock(ed|s|ing)?\b/i,
+];
+
+const HISTORY_PATTERNS = [
+  /\b(last|past|recent|previous)\s+\d+\s+(days?|weeks?|months?|quarters?)\b/i,
+  /\bhistory\b/i,
+  /\bover the past\b/i,
+  /\bin the last\b/i,
+];
+
+export function classifyKgIntent(text: string): KgIntent {
+  if (CAUSAL_PATTERNS.some((re) => re.test(text))) return "causal";
+  if (IMPACT_PATTERNS.some((re) => re.test(text))) return "impact";
+  if (HISTORY_PATTERNS.some((re) => re.test(text))) return "history";
+  return "default";
+}
+
+// ── MaintenanceContext formatter (Phase 2) ─────────────────────────────────
+
+export function formatMaintenanceContext(mc: MaintenanceContext): string {
+  const lines: string[] = [];
+  const e = mc.equipment;
+  lines.push(`[GRAPH CONTEXT for ${e.entityId}]`);
+
+  const p = e.properties;
+  const typeParts = [
+    p.manufacturer as string | null,
+    p.model_number as string | null,
+    p.equipment_type as string | null,
+  ].filter(Boolean);
+  if (typeParts.length > 0) lines.push(`Type: ${typeParts.join(" — ")}`);
+
+  // Hierarchy line
+  const h = mc.hierarchy;
+  const hParts: string[] = [];
+  if (h.plant) hParts.push(`Plant ${h.plant.entityId}`);
+  if (h.area) hParts.push(`Area ${h.area.entityId}`);
+  if (h.line) hParts.push(`Line ${h.line.entityId}`);
+  if (hParts.length > 0) lines.push(`Hierarchy: ${hParts.join(" → ")}`);
+  else if (p.location) lines.push(`Location: ${p.location}`);
+
+  if (p.criticality) lines.push(`Criticality: ${p.criticality}`);
+
+  if (mc.components.length > 0) {
+    lines.push(`Components: ${mc.components.slice(0, 6).map((c) => c.entityId).join(", ")}`);
+  }
+
+  if (mc.recentFaults.length > 0) {
+    const last = mc.recentFaults[0];
+    const faultStr = mc.recentFaults
+      .slice(0, 5)
+      .map((f) => (f.count > 1 ? `${f.code} ×${f.count}` : f.code))
+      .join(", ");
+    lines.push(`Recent faults: ${faultStr} (last: ${last?.lastSeen.toISOString().slice(0, 10) ?? ""})`);
+  }
+
+  if (mc.recentWorkOrders.length > 0) {
+    lines.push(`Recent work orders: ${mc.recentWorkOrders.map((wo) => wo.entityId).join(", ")}`);
+  }
+
+  if (mc.knownParts.length > 0) {
+    lines.push(`Parts on record: ${mc.knownParts.slice(0, 5).map((pt) => pt.entityId).join(", ")}`);
+  }
+
+  if (mc.manuals.length > 0) {
+    lines.push(`Manuals: ${mc.manuals.slice(0, 3).map((m) => m.name).join("; ")}`);
+  }
+
+  if (mc.pmSchedule.length > 0) {
+    const pmStr = mc.pmSchedule
+      .slice(0, 3)
+      .map((pm) => {
+        const interval = pm.intervalDays != null ? `${pm.intervalDays}d` : "?";
+        const next = pm.nextDue ? ` next ${pm.nextDue.toISOString().slice(0, 10)}` : "";
+        return `${pm.task} (${interval}${next})`;
+      })
+      .join("; ");
+    lines.push(`PM schedule: ${pmStr}`);
+  }
+
+  if (mc.similarEquipment.length > 0) {
+    lines.push(
+      `Similar equipment: ${mc.similarEquipment.slice(0, 3).map((s) => s.entityId).join(", ")}`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
 // ── Main entry point ────────────────────────────────────────────────────────
 
 export async function buildGraphContext(
@@ -265,6 +378,7 @@ export async function buildGraphContext(
   if (!process.env.NEON_DATABASE_URL) return "";
 
   const extracted = extractEntitiesFromText(questionText);
+  const intent = classifyKgIntent(questionText);
 
   // Combine all candidate entity_ids to look up
   const equipmentIds = [...new Set(extracted.equipment)];
@@ -282,12 +396,67 @@ export async function buildGraphContext(
   }
 
   try {
-    const contextBlocks = await withKgContext(tenantId, async (client) => {
-      // Batch-lookup all mentioned entities
-      const [equipRows, faultRows, partRows] = await Promise.all([
-        allEquipment.length > 0
-          ? fetchEntitiesByIds(client, tenantId, allEquipment, ["equipment", "equipment_tag"])
-          : Promise.resolve([] as EntityRow[]),
+    // Phase 2: when we have equipment anchors, use maintenanceContext for the
+    // primary equipment block. Faults/parts still go through the legacy path
+    // so the existing formatter keeps working.
+    const blocks: string[] = [];
+
+    // Primary equipment blocks via maintenanceContext (richer than legacy path)
+    const primaryEquipmentIds = allEquipment.slice(0, 3);
+    for (const eqId of primaryEquipmentIds) {
+      const mc = await maintenanceContext(tenantId, eqId, {
+        includeSimilar: true,
+      });
+      if (mc) blocks.push(formatMaintenanceContext(mc));
+    }
+
+    // Multi-hop expansion gated on intent
+    if (intent === "impact") {
+      for (const eqId of primaryEquipmentIds) {
+        const mc = await maintenanceContext(tenantId, eqId);
+        if (!mc) continue;
+        const impact = await impactAnalysis(tenantId, mc.equipment.id);
+        if (impact.downstream.length > 0) {
+          const downstreamLine = impact.downstream
+            .slice(0, 8)
+            .map((n) => n.entity.entityId)
+            .join(" → ");
+          blocks.push(
+            `[IMPACT ANALYSIS for ${mc.equipment.entityId}]\n` +
+              `Downstream: ${downstreamLine}` +
+              (impact.blockedLines.length > 0
+                ? `\nBlocked lines: ${impact.blockedLines.join(", ")}`
+                : "") +
+              (impact.partialImpact.length > 0
+                ? `\nPartial impact (alternate feed exists): ${impact.partialImpact.join(", ")}`
+                : ""),
+          );
+        }
+      }
+    }
+
+    if (intent === "causal") {
+      // Walk root-cause chain for each fault mentioned
+      for (const code of faultIds.slice(0, 3)) {
+        const blocks2 = await withKgContext(tenantId, async (client) => {
+          const found = await fetchEntitiesByIds(client, tenantId, [code], ["fault_code"]);
+          return found;
+        });
+        for (const f of blocks2) {
+          const rc = await rootCauseChain(tenantId, f.id);
+          if (rc.chain.length > 0) {
+            const chainStr = rc.chain
+              .map((s) => `${s.entity.entityId} (conf=${s.confidence.toFixed(2)})`)
+              .join(" ← ");
+            blocks.push(`[ROOT CAUSE for ${f.entity_id}]\n${f.entity_id} ← ${chainStr}`);
+          }
+        }
+      }
+    }
+
+    // Legacy formatter for fault/part anchors not already covered
+    const legacyBlocks = await withKgContext(tenantId, async (client) => {
+      const [faultRows, partRows] = await Promise.all([
         faultIds.length > 0
           ? fetchEntitiesByIds(client, tenantId, faultIds, ["fault_code"])
           : Promise.resolve([] as EntityRow[]),
@@ -295,23 +464,18 @@ export async function buildGraphContext(
           ? fetchEntitiesByIds(client, tenantId, partIds, ["part"])
           : Promise.resolve([] as EntityRow[]),
       ]);
-
-      // For each found entity, fetch relationships + triples
-      const allRows = [...equipRows, ...faultRows, ...partRows].slice(0, 6); // cap at 6 entities
-      const blocks: string[] = [];
-
-      for (const entity of allRows) {
+      const out: string[] = [];
+      for (const entity of [...faultRows, ...partRows].slice(0, 4)) {
         const { outgoing, incoming, triples } = await fetchEntityFull(
           client, tenantId, entity.id, entity.name,
         );
-        const block = formatEntityContext({ entity, outgoing, incoming, triples });
-        blocks.push(block);
+        out.push(formatEntityContext({ entity, outgoing, incoming, triples }));
       }
-
-      return blocks;
+      return out;
     });
+    blocks.push(...legacyBlocks);
 
-    return contextBlocks.length > 0 ? contextBlocks.join("\n\n") : "";
+    return blocks.length > 0 ? blocks.join("\n\n") : "";
   } catch {
     // KG not yet populated or table missing — graceful fallback
     return "";
