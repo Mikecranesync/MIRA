@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, develop, dev]
     paths-ignore:
-      - 'docs/context/PROGRESS.md'
+      - 'docs/context/PROGRESS.md'  # stop-hook autolog; no code to review
 
 permissions:
   contents: read
