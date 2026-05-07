@@ -47,6 +47,10 @@ interface EntityRow {
   entity_id: string;
   name: string;
   properties: Record<string, unknown> | null;
+  // Optional: the recursive CTEs in this file project a fixed column list
+  // that doesn't include uns_path. Direct equipment / hierarchy lookups DO
+  // select uns_path::text and surface it. Default to null when absent.
+  uns_path?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -59,9 +63,70 @@ function rowToEntity(row: EntityRow): KGEntity {
     entityId: row.entity_id,
     name: row.name,
     properties: row.properties ?? {},
+    unsPath: row.uns_path ?? null,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
+}
+
+// ── UNS path resolvers ─────────────────────────────────────────────────────
+
+/**
+ * Loose ltree label validator — same charset psql allows in an ltree literal
+ * label, plus wildcard segments are NOT permitted here. Callers needing
+ * lquery semantics should compose an lquery and pass it explicitly.
+ */
+const LTREE_PATH_RE = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
+
+export function isValidUnsPath(s: string): boolean {
+  return LTREE_PATH_RE.test(s);
+}
+
+/**
+ * Resolve a UNS path to an entity. Exact match — for prefix queries use
+ * entitiesUnderUnsPath. Returns null if no entity owns that path.
+ */
+export async function resolveEntityByUnsPath(
+  tenantId: string,
+  unsPath: string,
+): Promise<KGEntity | null> {
+  if (!isValidUnsPath(unsPath)) return null;
+  return withKgContext(tenantId, async (client) => {
+    const { rows } = await client.query<EntityRow>(
+      `SELECT id, tenant_id, entity_type, entity_id, name, properties,
+              uns_path::text AS uns_path, created_at, updated_at
+         FROM kg_entities
+         WHERE tenant_id = $1 AND uns_path = $2::ltree
+         LIMIT 1`,
+      [tenantId, unsPath],
+    );
+    return rows.length > 0 ? rowToEntity(rows[0] as EntityRow) : null;
+  });
+}
+
+/**
+ * Return every entity at-or-below the given UNS path, ordered by depth then
+ * name. Indexed: uses the GIST index on uns_path.
+ */
+export async function entitiesUnderUnsPath(
+  tenantId: string,
+  unsPath: string,
+  limit = 500,
+): Promise<KGEntity[]> {
+  if (!isValidUnsPath(unsPath)) return [];
+  return withKgContext(tenantId, async (client) => {
+    const { rows } = await client.query<EntityRow>(
+      `SELECT id, tenant_id, entity_type, entity_id, name, properties,
+              uns_path::text AS uns_path, created_at, updated_at
+         FROM kg_entities
+         WHERE tenant_id = $1
+           AND uns_path <@ $2::ltree
+         ORDER BY nlevel(uns_path), name
+         LIMIT $3`,
+      [tenantId, unsPath, limit],
+    );
+    return rows.map(rowToEntity);
+  });
 }
 
 // ── 1. traverseChain ───────────────────────────────────────────────────────

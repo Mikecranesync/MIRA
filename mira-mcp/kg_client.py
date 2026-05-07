@@ -63,7 +63,10 @@ def maintenance_context(
     fault_window_days: Optional[int] = None,
     max_work_orders: Optional[int] = None,
 ) -> Any:
-    args: dict[str, Any] = {"equipmentEntityId": equipment_entity_id, "includeSimilar": include_similar}
+    args: dict[str, Any] = {
+        "equipmentEntityId": equipment_entity_id,
+        "includeSimilar": include_similar,
+    }
     if fault_window_days is not None:
         args["faultWindowDays"] = fault_window_days
     if max_work_orders is not None:
