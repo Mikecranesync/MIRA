@@ -22,7 +22,6 @@ from schematic_intelligence import (
     to_kg_payload,
 )
 
-
 # ── parse_classification ──────────────────────────────────────────────────
 
 
