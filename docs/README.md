@@ -1,93 +1,114 @@
-# MIRA Documentation
+# Docs index
 
-**MIRA** — Maintenance Intelligence & Response Assistant
-**Version:** v0.4.1 (Config 1 MVP)
-**Status:** Phase 1 hardening complete · Phase 2 adapters built · Phase 3 prompt versioning locked · Phase 4 architecture docs complete
+A hand-curated map of the `docs/` tree. If something's missing here, it's drift — please add or remove the entry.
 
----
-
-## Architecture
-
-| Diagram | Description |
-|---------|-------------|
-| [System Context](architecture/c4-context.md) | MIRA as black box — actors and external systems |
-| [Container Map](architecture/c4-containers.md) | All 9 Docker containers, networks, Ollama on host |
-| [Component Detail](architecture/c4-components.md) | mira-bots internals — adapters, workers, FSM, inference router |
-| [Deployment](architecture/c4-deployment.md) | Physical topology — Mac Mini + cloud dependencies |
-| [Fault Flow](architecture/c4-dynamic-fault-flow.md) | End-to-end sequence: photo → diagnostic question |
+For repo-level files (README, CONTRIBUTING, SECURITY, SUPPORT), look at the [repository root](../).
 
 ---
 
-## Setup Guides
+## For customers and operators
 
-| Platform | Status | Guide |
-|----------|--------|-------|
-| Telegram | Live | Bot token in Doppler |
-| Slack | Live | Slack tokens in Doppler |
-| Microsoft Teams | Built — awaiting Azure setup | [SETUP_TEAMS.md](SETUP_TEAMS.md) |
-| WhatsApp | Built — awaiting Twilio setup | [SETUP_WHATSAPP.md](SETUP_WHATSAPP.md) |
+- [What is MIRA?](product/what-is-mira.md)
+- [Getting started](product/getting-started.md)
+- [QR asset tagging](product/qr-system.md)
+- [CMMS integration](product/cmms-integration.md)
+- [Troubleshooting](product/troubleshooting.md)
+
+The same content also lives **inside the product** at [app.factorylm.com/help](https://app.factorylm.com/help) — that's the fastest place for active customers.
+
+---
+
+## For developers
+
+- [Architecture overview](developer/architecture.md)
+- [Local setup](developer/local-setup.md)
+- [Deployment](developer/deployment.md)
+- [Contributing](developer/contributing.md) (also see [`CONTRIBUTING.md`](../CONTRIBUTING.md) at the repo root)
+- [All environment variables](env-vars.md) — 25 vars, all in Doppler `factorylm/prd`
+- [Known issues](known-issues.md) — what we know is broken or deferred
+- [Changelog](CHANGELOG.md) — released versions and what changed
+
+---
+
+## Architecture and design
+
+- [Architecture](ARCHITECTURE.md) — high-level system overview
+- [Adapter architecture](ADAPTER_ARCHITECTURE.md) — how Telegram/Slack/Teams/WhatsApp adapters share an engine
+- [Quality score](QUALITY_SCORE.md) — domain-by-domain code grade
+- [HNSW migration](HNSW_MIGRATION.md) — vector index migration plan
+- [Hardware independence](HARDWARE_INDEPENDENCE.md) — the path off Mac Mini cluster
+
+### Architecture Decision Records
+
+ADRs are short, immutable records of architectural decisions and the context that drove them.
+
+- [`adr/`](adr/) — full directory
+- [0001 — PLC protocol choice](adr/0001-plc-protocol-choice.md)
+- [0002 — Bot adapter pattern](adr/0002-bot-adapter-pattern.md)
+- [0003 — Edge inference strategy](adr/0003-edge-inference-strategy.md)
+- [0004 — Multi-machine sync](adr/0004-multi-machine-sync.md)
+- [0005 — AR HUD architecture](adr/0005-ar-hud-architecture.md)
+- [0006 — Paperclip dev orchestration](adr/0006-paperclip-dev-orchestration.md)
+- [0007 — Notebook intelligence layer](adr/0007-notebook-intelligence-layer.md)
+- [0008 — Sidecar deprecation](adr/0008-sidecar-deprecation.md)
+- [0009 — Crawl verification fallback](adr/0009-crawl-verification-fallback.md)
+- [0010 — Karpathy eval alignment](adr/0010-karpathy-eval-alignment.md)
+
+---
+
+## Specs
+
+Active and historical feature specs. New features start as a spec under `docs/specs/` before any code lands — see [CONTRIBUTING.md](../CONTRIBUTING.md#spec-first-rule).
+
+- [`specs/`](specs/) — full directory
+- [FactoryLM platform v2](specs/factorylm-platform-v2.md)
+- [Help documentation](specs/help-documentation-spec.md)
+
+---
+
+## Runbooks
+
+Operational procedures for things that need to be done, not just understood.
+
+- [`runbooks/`](runbooks/) — full directory
+- [VPS provisioning](runbooks/factorylm-vps.md)
+- [Edge deploy](runbooks/edge-deploy.md)
+- [CMMS onboarding](runbooks/cmms-onboarding.md)
+- [Inference router deploy](runbooks/2026-04-11-inference-router-deploy.md)
+- [PLC integration test](runbooks/plc-integration-test.md)
+- [HUD demo setup](runbooks/hud-demo-setup.md)
+- [Sidecar OEM migration](runbooks/sidecar-oem-migration.md)
+
+---
+
+## Brand and positioning
+
+- [Brand and positioning kit](brand-and-positioning-2026-04-26.md) — workspace + agent model, voice, color, type
+- [Design system](design-system-2026-04-26.md)
+- [Design handoff](design-handoff-2026-04-26.md)
+- [GitHub alignment](gh-alignment-2026-04-26.md)
 
 ---
 
 ## Reference
 
-| Document | Description |
-|----------|-------------|
-| [PRD v1.0](PRD_v1.0.md) | Config 1 MVP implementation plan — source of truth |
-| [AUDIT.md](AUDIT.md) | Baseline system state, risk register, hardening results |
-| [CHANGELOG](../CHANGELOG.md) | Root-level version history |
-| [Hardware Independence](HARDWARE_INDEPENDENCE.md) | MIRA runs on any Docker host |
-| [GitHub Setup](GITHUB_SETUP.md) | Repository and CI configuration |
-| [Test Results Baseline](TEST_RESULTS_BASELINE.md) | Baseline acceptance test results |
-| [Bottom Layer Tests](BOTTOM_LAYER_TEST_RESULTS.md) | Integration tests — all 7 pass |
+- [API reference](api-reference/)
+- [Integration implementation guide](INTEGRATION_IMPLEMENTATION_GUIDE.md)
+- [PRD v1.0](PRD_v1.0.md) — historical, retained for context
+- [Hub integrations PRD v1](PRD_Hub_Integrations_v1.md)
+- [Customer interviews](customer-interviews.md)
+- [Customer usability survey](customer-usability-survey-2026-04-26.md)
+- [Textbook sources](TEXTBOOK_SOURCES.md)
 
 ---
 
-## Prompt Versioning
+## Maintaining this index
 
-| File | Description |
-|------|-------------|
-| `mira-bots/prompts/diagnose/active.yaml` | **Live system prompt** — swap to roll out new version |
-| `mira-bots/prompts/diagnose/v0.1-baseline.yaml` | Locked baseline — do not edit |
-| `mira-bots/prompts/diagnose/CHANGELOG.md` | Prompt version history |
-| `mira-bots/prompts/golden_dataset/v0.1.json` | 8 locked acceptance test cases |
+This file is hand-curated. When you add or remove a doc:
 
----
+1. Update the relevant section above.
+2. Group by purpose, not by date.
+3. One line per pointer — title plus a short hook. No multi-line summaries here.
+4. Avoid stale links — if a doc gets archived, remove its entry.
 
-## System Summary
-
-```
-Technician (Slack / Telegram / Teams / WhatsApp)
-    │
-    ▼
-mira-bots (4 adapters) → Claude API (LLM inference)
-    │                          │
-    ▼                          ▼
-mira-ingest (:8002) ←→ NeonDB + PGVector (RAG)
-    │
-    ▼
-mira-bridge (Node-RED :1880) ← SQLite mira.db (shared state)
-    │
-    ▼
-mira-mcp (:8009/:8001) — 4 MCP tools
-    │
-    ▼
-mira-core (Open WebUI :3000) + mira-mcpo (:8000)
-    │
-    ▼
-Ollama on host :11434 (Metal GPU — qwen2.5vl:7b, glm-ocr, nomic-embed)
-```
-
----
-
-## Infrastructure Quick Reference
-
-| Resource | Value |
-|----------|-------|
-| Machine | Mac Mini M4 16 GB · 192.168.1.11 |
-| Tailscale | 100.86.236.11 |
-| NeonDB | ep-purple-hall-ahimeyn0-pooler.c-3.us-east-1.aws.neon.tech |
-| Tenant ID | 78917b56-f85f-43bb-9a08-1bb98a6cd6c3 |
-| GitHub | github.com/Mikecranesync/MIRA (private) |
-| Secrets | Doppler factorylm/prd |
-| Ollama | localhost:11434 (host, Metal GPU) |
+If the section a new doc belongs in doesn't exist yet, add it. Long-running drift makes the index useless; small frequent updates keep it accurate.

@@ -23,9 +23,12 @@ MIRA diagnoses equipment faults in conversation. Scan a QR code on a machine, te
   - [Architecture overview](docs/developer/architecture.md)
   - [Local setup](docs/developer/local-setup.md)
   - [Deployment](docs/developer/deployment.md)
-  - [Contributing](docs/developer/contributing.md)
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) — fork, branch, commit format, spec-first rule
+- **Where to get help:** [SUPPORT.md](SUPPORT.md)
+- **Reporting a security issue:** [SECURITY.md](SECURITY.md)
 
 ### 🔧 Reference material
+- [Documentation index](docs/README.md) — hand-curated map of `docs/`
 - [All environment variables](docs/env-vars.md)
 - [Architecture Decision Records](docs/adr/)
 - [Runbooks](docs/runbooks/)
