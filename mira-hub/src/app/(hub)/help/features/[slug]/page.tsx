@@ -30,10 +30,7 @@ export default async function FeatureDetailPage({
 }) {
   const { slug } = await params;
   const feature = getFeature(slug);
-  if (!feature) {
-    notFound();
-    return null;
-  }
+  if (!feature) notFound();
 
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
