@@ -591,6 +591,69 @@ class Supervisor:
     def _build_print_reply(self, vision_data: dict) -> str:
         return build_print_reply(vision_data)
 
+    async def _extract_schematic(self, photo_b64: str) -> dict:
+        """Call mira-mcp's /api/kg/schematic endpoint to run the schematic
+        intelligence pipeline (classify → detect symbols → trace connections).
+
+        Returns the KG-shaped payload (entities, relationships, schematic_type,
+        notes) on success, or ``{}`` when the endpoint is unreachable, the
+        bot is missing credentials, or the pipeline detected nothing useful.
+        Never raises — schematic extraction is opportunistic enrichment, not
+        a critical path.
+        """
+        if not photo_b64 or not self.mcp_base_url:
+            return {}
+        url = f"{self.mcp_base_url}/api/kg/schematic"
+        headers = {"Content-Type": "application/json"}
+        if self.mcp_api_key:
+            headers["Authorization"] = f"Bearer {self.mcp_api_key}"
+        body = {
+            "image_b64": photo_b64,
+            "tenant_id": self.tenant_id or "",
+            "persist": False,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(url, json=body, headers=headers)
+                if resp.status_code != 200:
+                    logger.warning(
+                        "SCHEMATIC_EXTRACT_HTTP_%s body=%s",
+                        resp.status_code,
+                        resp.text[:200],
+                    )
+                    return {}
+                data = resp.json() or {}
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("SCHEMATIC_EXTRACT_FAILED error=%s", exc)
+            return {}
+        if not data.get("ok"):
+            return {}
+        return data.get("result") or {}
+
+    @staticmethod
+    def _summarize_schematic(payload: dict) -> str:
+        """Render a one-paragraph summary of an extracted schematic — used to
+        augment the ELECTRICAL_PRINT reply."""
+        if not payload:
+            return ""
+        entities = payload.get("entities") or []
+        if not entities:
+            return ""
+        schematic_type = payload.get("schematic_type", "unknown")
+        type_counts: dict[str, int] = {}
+        for ent in entities:
+            sub = ((ent.get("properties") or {}).get("subtype")) or ent.get("entity_type", "")
+            type_counts[sub] = type_counts.get(sub, 0) + 1
+        breakdown = ", ".join(f"{n} {t}" for t, n in sorted(type_counts.items()))
+        n_relationships = len(payload.get("relationships") or [])
+        type_label = schematic_type.replace("_", " ")
+        return (
+            f"\n\nSchematic intelligence: {type_label} — {len(entities)} components"
+            f" ({breakdown}); {n_relationships} connections traced."
+            f' Say "add this to documentation for [plant/equipment]" to store'
+            f" them in the knowledge graph."
+        )
+
     # ------------------------------------------------------------------
     # Confidence inference
     # ------------------------------------------------------------------
@@ -1124,6 +1187,22 @@ class Supervisor:
             if _router_intent == "check_equipment_history":
                 return await self._handle_check_equipment_history(chat_id, message, state, trace_id)
 
+            if _router_intent == "store_documentation":
+                # Same target-extraction path the DST short-circuit uses, but
+                # surface the regex over the message directly since the LLM
+                # router doesn't return entities.
+                from .dialogue_acts import _RX_STORE_DOC
+
+                _store_match = _RX_STORE_DOC.search(message)
+                _target = ""
+                if _store_match:
+                    _target = (
+                        _store_match.group("target") or _store_match.group("target2") or ""
+                    ).strip()
+                return await self._handle_store_documentation(
+                    chat_id, message, state, trace_id, _target
+                )
+
             if _router_intent == "general_question" and _keyword_intent not in (
                 "safety",
                 "documentation",
@@ -1320,6 +1399,24 @@ class Supervisor:
                 state["context"] = ctx
 
                 reply = self._build_print_reply(vision_data)
+
+                # Phase 5 schematic intelligence — opportunistically run the
+                # IEC/ANSI symbol + connection extractor on the same photo.
+                # Result is held in state context so a follow-up
+                # "add this to documentation for X" can persist it scoped to
+                # the named plant/equipment.
+                schematic_payload = await self._extract_schematic(photo_b64)
+                if schematic_payload and schematic_payload.get("entities"):
+                    ctx["last_schematic_extraction"] = schematic_payload
+                    reply += self._summarize_schematic(schematic_payload)
+                    logger.info(
+                        "SCHEMATIC_EXTRACTED chat_id=%s type=%s entities=%d relationships=%d",
+                        chat_id,
+                        schematic_payload.get("schematic_type"),
+                        len(schematic_payload.get("entities") or []),
+                        len(schematic_payload.get("relationships") or []),
+                    )
+
                 history = ctx.get("history", [])
                 history.append({"role": "user", "content": message})
                 history.append({"role": "assistant", "content": reply})
@@ -3039,6 +3136,15 @@ class Supervisor:
                 # and route to the same place. Stage 2 will short-circuit
                 # this when the legacy router is removed.
                 return None
+            if action == "store_documentation":
+                target = ""
+                turn = getattr(plan, "turn", None)
+                turn_entities = getattr(turn, "entities", None)
+                if turn_entities is not None:
+                    target = (getattr(turn_entities, "asset_label", "") or "").strip()
+                return await self._handle_store_documentation(
+                    chat_id, message, state, trace_id, target
+                )
             if action == "schedule_maintenance":
                 # PM scheduling has a deep wizard already; let the existing
                 # path handle it. Set a hint so the keyword classifier on
@@ -3129,6 +3235,131 @@ class Supervisor:
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
         return self._make_result(reply, "none", trace_id, state.get("state", "IDLE"))
+
+    async def _handle_store_documentation(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        target_name: str,
+    ) -> dict:
+        """Handle "add this to documentation for [plant/equipment]" — pulls
+        the most-recent schematic extraction off session state, scopes it to
+        the named target, and persists to the KG via mira-mcp's
+        ``/api/kg/schematic?persist=true`` endpoint.
+
+        When no schematic has been extracted yet, falls back to recording
+        the asset_identified ↔ target association so a follow-up photo can
+        be auto-scoped. The user gets a friendly explanation either way.
+        """
+        ctx = state.get("context") or {}
+        target = (target_name or "").strip().rstrip(".!?,;:").strip()
+
+        if not target:
+            reply = (
+                "Got it — but who should I file this under? "
+                'Try "add this to documentation for [plant or equipment name]".'
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            self._save_state(chat_id, state)
+            tl_flush()
+            return self._make_result(
+                reply, "none", trace_id, state.get("state", "IDLE"), dispatch_kind="dst_action"
+            )
+
+        payload = ctx.get("last_schematic_extraction") or {}
+        if not payload or not payload.get("entities"):
+            # No schematic to persist — record the association in session
+            # state so the next photo can pick up the target as parent.
+            sc = ctx.get("session_context") or {}
+            sc["pending_doc_target"] = target
+            ctx["session_context"] = sc
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            reply = (
+                f"Noted — I'll file the next schematic or nameplate you send under "
+                f'"{target}". I don\'t have a schematic extracted yet for this session.'
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(
+                reply, "none", trace_id, state.get("state", "IDLE"), dispatch_kind="dst_action"
+            )
+
+        # Persist via mira-mcp /api/kg/schematic — same endpoint the bot used
+        # for extraction, this time with persist=true and an explicit
+        # parent_equipment_id derived from the user-supplied target.
+        n_entities = len(payload.get("entities") or [])
+        n_relationships = len(payload.get("relationships") or [])
+        schematic_type = payload.get("schematic_type", "schematic")
+
+        headers = {"Content-Type": "application/json"}
+        if self.mcp_api_key:
+            headers["Authorization"] = f"Bearer {self.mcp_api_key}"
+        body = {
+            "tenant_id": self.tenant_id or "",
+            "parent_equipment_id": target,
+            "payload": payload,
+        }
+
+        persisted_summary = ""
+        persisted_error = ""
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(
+                    f"{self.mcp_base_url}/api/kg/schematic/persist",
+                    json=body,
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    data = resp.json() or {}
+                    if data.get("ok"):
+                        result = data.get("result") or {}
+                        persisted_summary = (
+                            f"{result.get('entities_upserted', n_entities)} components stored, "
+                            f"{result.get('relationships_inserted', n_relationships)} connections linked"
+                        )
+                    else:
+                        persisted_error = str(data.get("error") or "persistence rejected")
+                else:
+                    persisted_error = f"HTTP {resp.status_code}"
+        except (httpx.HTTPError, ValueError) as exc:
+            persisted_error = str(exc)
+            logger.warning("STORE_DOC_PERSIST_FAILED error=%s", exc)
+
+        if persisted_summary:
+            reply = (
+                f"Added to {target} documentation. "
+                f"{schematic_type.replace('_', ' ').capitalize()}: {persisted_summary}."
+            )
+        else:
+            # Fall back to a "queued" reply when persistence is unreachable —
+            # the extraction still lives in session state for the user to
+            # retry later. Don't claim it was stored when it wasn't.
+            reply = (
+                f"Captured the {schematic_type.replace('_', ' ')} for {target} "
+                f"({n_entities} components, {n_relationships} connections). "
+                f"Persistence is offline right now ({persisted_error or 'unreachable'}); "
+                f"the extraction is held in this session — try again when connectivity returns."
+            )
+
+        # Clear the staged extraction so a fresh photo doesn't get re-saved.
+        ctx.pop("last_schematic_extraction", None)
+        sc = ctx.get("session_context") or {}
+        sc.pop("pending_doc_target", None)
+        ctx["session_context"] = sc
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(
+            reply,
+            "high" if persisted_summary else "none",
+            trace_id,
+            state.get("state", "IDLE"),
+            dispatch_kind="dst_action",
+        )
 
     async def _handle_documentation_intent(
         self,

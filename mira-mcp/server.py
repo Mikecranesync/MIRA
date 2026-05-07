@@ -885,6 +885,135 @@ if __name__ == "__main__":
             )
         )
 
+    async def rest_kg_schematic_persist(request):
+        """POST /api/kg/schematic/persist — persist a previously-extracted
+        schematic payload (the dict returned by ``/api/kg/schematic``) under
+        a named ``parent_equipment_id``. Used by the bot's
+        ``store_documentation`` action: the extraction has already happened
+        on a prior turn, the user has now supplied the target name, and we
+        want to commit the entities + relationships to the KG without
+        re-running the vision pipeline.
+
+        Body:
+            tenant_id           (str, optional) — falls back to MIRA_TENANT_ID
+            parent_equipment_id (str, required) — KG entity_id to scope under
+            payload             (dict, required) — the prior /api/kg/schematic
+                                  result (must contain entities[] and
+                                  optionally relationships[] / schematic_type)
+
+        Response:
+            { "ok": true, "result": { entities_upserted, relationships_inserted, ... } }
+            { "ok": false, "error": "..." }
+        """
+        from kg_client import KgClientError, upsert_schematic
+
+        body = await request.json()
+        tenant_id = body.get("tenant_id") or MIRA_TENANT_ID
+        parent_equipment_id = (body.get("parent_equipment_id") or "").strip()
+        payload = body.get("payload") or {}
+        if not tenant_id:
+            return JSONResponse(
+                {"ok": False, "error": "tenant_id required for persistence"}, status_code=400
+            )
+        if not parent_equipment_id:
+            return JSONResponse(
+                {"ok": False, "error": "parent_equipment_id required"}, status_code=400
+            )
+        if not isinstance(payload, dict) or not payload.get("entities"):
+            return JSONResponse(
+                {"ok": False, "error": "payload.entities required"}, status_code=400
+            )
+        try:
+            persisted = await asyncio.to_thread(
+                upsert_schematic,
+                tenant_id,
+                payload,
+                parent_equipment_id=parent_equipment_id,
+            )
+        except KgClientError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=502)
+        return JSONResponse({"ok": True, "result": persisted})
+
+    async def rest_kg_schematic(request):
+        """POST /api/kg/schematic — extract schematic components from an
+        electrical drawing and (optionally) persist to the KG.
+
+        Body:
+            image_b64           (str, required) — base64 PNG/JPEG bytes
+            tenant_id           (str, optional) — tenant for persistence;
+                                  falls back to MIRA_TENANT_ID env var
+            parent_equipment_id (str, optional) — KG entity_id to scope
+                                  components under (e.g. "PLANT-A:LINE-3")
+            drawing_ref         (str, optional) — drawing identifier echoed
+                                  into each component's properties
+            persist             (bool, optional, default False) — when True
+                                  AND a tenant_id is resolvable, the entities
+                                  + relationships are upserted to the KG via
+                                  the hub /api/internal/kg endpoint
+
+        Response:
+            {
+              "ok": true,
+              "result": {
+                "schematic_type": "...",
+                "entities": [...],
+                "relationships": [...],
+                "notes": [...],
+                "persisted": {                # only when persist=true
+                  "entities_upserted": N,
+                  "relationships_inserted": N,
+                  ...
+                } | {"error": "..."}
+              }
+            }
+        """
+        import base64
+
+        from kg_client import KgClientError, upsert_schematic
+        from schematic_intelligence import run_schematic_pipeline, to_kg_payload
+
+        body = await request.json()
+        image_b64 = body.get("image_b64", "")
+        if not isinstance(image_b64, str) or not image_b64:
+            return JSONResponse({"error": "image_b64 required"}, status_code=400)
+        try:
+            image_bytes = base64.b64decode(image_b64, validate=True)
+        except (ValueError, TypeError) as exc:
+            return JSONResponse({"error": f"invalid image_b64: {exc}"}, status_code=400)
+        if not image_bytes:
+            return JSONResponse({"error": "image_b64 decoded to empty bytes"}, status_code=400)
+
+        parent_equipment_id = body.get("parent_equipment_id") or None
+        drawing_ref = body.get("drawing_ref") or None
+        persist = bool(body.get("persist", False))
+        tenant_id = body.get("tenant_id") or MIRA_TENANT_ID
+
+        # Pipeline runs three blocking-but-quick vision calls; offload to a
+        # thread so the event loop stays responsive.
+        result = await asyncio.to_thread(run_schematic_pipeline, image_bytes)
+        payload = to_kg_payload(
+            result,
+            parent_equipment_id=parent_equipment_id,
+            drawing_ref=drawing_ref,
+        )
+
+        if persist:
+            if not tenant_id:
+                payload["persisted"] = {"error": "tenant_id required for persistence"}
+            else:
+                try:
+                    persisted = await asyncio.to_thread(
+                        upsert_schematic,
+                        tenant_id,
+                        payload,
+                        parent_equipment_id=parent_equipment_id,
+                    )
+                    payload["persisted"] = persisted
+                except KgClientError as exc:
+                    payload["persisted"] = {"error": str(exc)}
+
+        return JSONResponse({"ok": True, "result": payload})
+
     async def health(request):
         return JSONResponse({"status": "ok"})
 
@@ -906,6 +1035,8 @@ if __name__ == "__main__":
             Route("/api/cmms/invite", rest_cmms_invite, methods=["POST"]),
             Route("/api/cmms/health", rest_cmms_health),
             Route("/api/cmms/nameplate", rest_cmms_nameplate, methods=["POST"]),
+            Route("/api/kg/schematic", rest_kg_schematic, methods=["POST"]),
+            Route("/api/kg/schematic/persist", rest_kg_schematic_persist, methods=["POST"]),
             Route("/ingest/pdf", _rest_ingest_pdf, methods=["POST"]),
             Route("/api/embed", _rest_embed, methods=["POST"]),
             # Unit 4 — Excel/CSV live export (PLG-JWT-authed, no MCP_REST_API_KEY needed)

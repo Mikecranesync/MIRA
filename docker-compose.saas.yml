@@ -123,6 +123,10 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
       - PIPELINE_BASE_URL=http://mira-pipeline-saas:9099
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - MIRA_HUB_URL=${MIRA_HUB_URL:-http://mira-hub:3000}
+      - INTERNAL_KG_API_KEY=${INTERNAL_KG_API_KEY:-}
     volumes:
       - /opt/mira/data:/mira-db
     networks:

@@ -109,3 +109,24 @@ def flag_pm_mismatches(
     if equipment_entity_id is not None:
         args["equipmentEntityId"] = equipment_entity_id
     return _post("flag_pm_mismatches", tenant_id, args)
+
+
+def upsert_schematic(
+    tenant_id: str,
+    payload: dict[str, Any],
+    *,
+    parent_equipment_id: Optional[str] = None,
+) -> Any:
+    """Persist the entities + relationships from a schematic_intelligence
+    pipeline result. ``payload`` is the dict returned by ``to_kg_payload``.
+    ``parent_equipment_id`` overrides the value embedded in payload (used by
+    the bot's ``store_documentation`` action to scope a previously-extracted
+    schematic to a named plant/equipment).
+    """
+    args = {
+        "schematic_type": payload.get("schematic_type"),
+        "parent_equipment_id": parent_equipment_id or payload.get("parent_equipment_id"),
+        "entities": payload.get("entities", []),
+        "relationships": payload.get("relationships", []),
+    }
+    return _post("schematic_upsert", tenant_id, args)

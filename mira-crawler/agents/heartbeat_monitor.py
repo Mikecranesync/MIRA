@@ -111,13 +111,13 @@ DEGRADED_ALERT_AFTER_MIN = 30
 
 CRITICAL_CONTAINERS = [
     "mira-hub",
-    "mira-pipeline",
+    "mira-pipeline-saas",
     "mira-bot-telegram",
     "mira-scan-backend",
-    "atlas-api",
-    "mira-docling",
+    "cmms-backend",
+    "mira-docling-saas",
     "mira-web",
-    "mira-mcp",
+    "mira-mcp-saas",
 ]
 
 HTTP_ENDPOINTS = [

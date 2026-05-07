@@ -157,6 +157,21 @@ _RX_DOC_REQUEST = re.compile(
     re.IGNORECASE,
 )
 
+# "add this to documentation for line 3", "save this to plant A",
+# "document this for the chiller", "store this for boiler-2".
+# Matches the imperative; the engine's handler parses the target name from
+# the message and pulls the most-recent extraction off session state.
+_RX_STORE_DOC = re.compile(
+    r"\b(?:add|save|store|put|attach|file|log)\s+(?:this|that|it|these|them)?"
+    r"\s*(?:to|in|into|for|under|against)\s+"
+    r"(?:(?:the\s+)?(?:documentation|docs|kb|knowledge\s*(?:base|graph)|kg)\s+"
+    r"(?:for|of|under|against)\s+)?"
+    r"(?P<target>[\w][\w\s.\-/:#]{0,80}?)\s*[?.!]?\s*$"
+    r"|\bdocument\s+(?:this|that|it)\s+(?:for|under|as)\s+"
+    r"(?P<target2>[\w][\w\s.\-/:#]{0,80}?)\s*[?.!]?\s*$",
+    re.IGNORECASE,
+)
+
 _RX_SWITCH_ASSET = re.compile(
     r"\b(?:switch\s+to|now\s+(?:talk\s+about|help\s+(?:me\s+)?with)|let'?s\s+talk\s+about"
     r"|change\s+(?:asset|equipment|machine|topic)\s+to|forget\s+(?:that|the\s+\w+)"
@@ -429,6 +444,27 @@ def _shortcircuit_act(message: str, pending: PendingQuestion) -> Optional[Dialog
             reasoning="doc-request keyword (shortcircuit)",
         )
 
+    # "add this to documentation for plant A" — must come AFTER doc fetch so
+    # "send me the manual for plant A" doesn't get rerouted to store.
+    store_match = _RX_STORE_DOC.search(message)
+    if store_match:
+        target = (store_match.group("target") or store_match.group("target2") or "").strip()
+        # The salient asset_label carries the parsed target downstream; the
+        # store_documentation handler reads it off `entities.asset_label`.
+        ents = _entities_from_message(message)
+        if target:
+            ents = SalientEntities(
+                vendor=ents.vendor,
+                model=ents.model,
+                fault_code=ents.fault_code,
+                asset_label=target,
+            )
+        return RequestActionAct(
+            action="store_documentation",
+            entities=ents,
+            reasoning="store-documentation keyword (shortcircuit)",
+        )
+
     if _RX_SWITCH_ASSET.search(message):
         return RequestActionAct(
             action="switch_asset",
@@ -486,4 +522,5 @@ __all__ = [
     "_shortcircuit_act",
     "_fallback_act",
     "_parse_classifier_response",
+    "_RX_STORE_DOC",
 ]
