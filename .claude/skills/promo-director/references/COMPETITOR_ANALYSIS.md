@@ -1,8 +1,27 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-07
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-07
+
+*Cutoff: 2026-05-03. Three items found with new signal.*
+
+### Most actionable change for the playbook
+
+MaintainX published their own industry data confirming that AI adoption hasn't fixed downtime (79% of teams: same or worse). MIRA can cite a direct competitor's research to set up its own value prop — diagnostic reasoning vs workflow automation.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — "State of Industrial Maintenance 2026" webinar (May 5, 2026): https://www.getmaintainx.com/webinar/the-state-of-industrial-maintenance-2026-webinar — co-founder + SMRP Chairman; lead stat: 79% of teams saw downtime stay same or increase despite AI adoption; thought-leadership pivot
+
+**B2B SaaS / dev-tools**
+- **Anthropic** — Code w/ Claude 2026 developer conference (May 6, 2026): https://claude.com/code-with-claude/session/sf-opening-keynote — keynote launched Code Review (16%→54% substantive reviews), Remote Agents ("control your laptop from your phone"), CI auto-fix; confirms conference-as-launch-vehicle pattern
+- **Figma** — Release Notes 2026: May Edition EP-007 (May 6, 2026): https://www.youtube.com/watch?v=11mdb7lLclM — monthly release-notes video series (peer hosts, not CEO); AI agents on canvas; NEW cadence pattern vs annual Config keynote
 
 ---
 
@@ -85,6 +104,16 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - Voice-to-text work order feature: https://www.youtube.com/watch?v=GY3AGGukQM8
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
+
+**"State of Industrial Maintenance 2026" webinar (May 5, 2026)**
+- URL: https://www.getmaintainx.com/webinar/the-state-of-industrial-maintenance-2026-webinar
+- Speakers: Nick Haase (Co-Founder, MaintainX) + Dan Anderson (Chairman, SMRP) — credibility pair: product + industry body
+- Headline: "AI Goes Mainstream on the Factory Floor"
+- Survey base: 2,234 maintenance leaders
+- Key data: 58% of teams already using AI; 75% report measurable ROI in under 6 months
+- **Counter-intuitive hook: 79% saw unplanned downtime stay the same or INCREASE** despite AI adoption
+- No standalone YouTube promo; on-demand webinar + press release distribution
+- Pattern note: MaintainX is now authoring the industry narrative ("State of the Industry" authority role) — a significant move beyond feature-demo marketing. The 79% stat is the most useful counter-positioning fact found across all vendors; it validates that workflow AI ≠ diagnostic AI.
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
@@ -301,8 +330,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
-- 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**Code w/ Claude 2026 developer conference (May 6, 2026)**
+- Keynote URL: https://claude.com/code-with-claude/session/sf-opening-keynote
+- Speakers: Ami Vora (CPO), Cat Wu (Head of Product Claude Code), Boris Cherny (Head of Claude Code)
+- CNBC video (same day): https://www.cnbc.com/video/2026/05/06/head-of-claude-code-on-the-future-of-work-and-productivity.html — peer-engineer register, not corporate exec
+- Theme: "how we are making products work better for you" — zero model announcements; all workflow
+- Key launches: Code Review (multi-agent PR review; substantive comments 16%→54%; 84% of >1,000-line PRs flagged, avg 7.5 issues); Remote Agents ("control your laptop from your phone"); CI auto-fix (auto-files fixes against PRs)
+- Also: doubled 5-hour limits for Claude Code/API users; SpaceX Colossus data center partnership; SDK parity between IDE + Desktop apps
+- Format: full-day conference + livestream; 3-city series (SF May 6, London May 19, Tokyo Jun 10)
+- Pattern note: confirms developer conference = primary video launch vehicle for AI dev tools (mirrors Stripe Sessions, Figma Config, IA's ICC). The Code Review stat (16%→54%) is the strongest internal-evidence proof template seen in this refresh.
 
 ---
 
@@ -355,6 +392,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
 
+**Release Notes 2026: May Edition EP-007 (published May 6, 2026)**
+- URL: https://www.youtube.com/watch?v=11mdb7lLclM
+- Hosts: designer advocates @amylimabean and @adispezio — peer/community register, NOT CEO or exec
+- Content: AI agents generating designs on canvas with real components/variables/styles; MCP tool updates for FigJam (architecture diagrams, ERDs from coding agent); "vibe-coded prototypes"; design-system-to-code pipeline [transcript not verified — search-derived]
+- Series cadence: monthly live episodes (EP-007 = 7th in series, running since late 2025)
+- Pattern note: **Figma has shifted to a monthly release-notes video flywheel** alongside its annual Config keynote. The peer-advocate format (not CEO) gives a different voice and community feel. This cadence pattern — short monthly video + one big annual event — is worth tracking as a launch architecture.
+
 ---
 
 ### Replit
@@ -395,6 +439,8 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach. **May 2026 further drift:** pivoted to industry data authority — "State of Industrial Maintenance" report positions MaintainX as the arbiter of the AI-in-maintenance narrative, not just a software vendor.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Anthropic**: developer conference (Code w/ Claude) now the primary video launch vehicle — mirrors Stripe Sessions and Figma Config as the format for AI tool launches. Peer-engineer speakers (Boris Cherny, Cat Wu), not corporate executives.
+- **Figma**: added monthly Release Notes video series (EP-007 as of May 2026) alongside annual Config keynote — accelerated cadence; community/advocate hosts rather than CEO-led.
