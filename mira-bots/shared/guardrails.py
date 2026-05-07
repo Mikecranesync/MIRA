@@ -372,12 +372,22 @@ VENDOR_SUPPORT_URLS: dict[str, str] = {
     "rockwell": "rockwellautomation.com/support",
     "powerflex": "rockwellautomation.com/support",
     "siemens": "siemens.com/support",
+    # Product-line aliases — must be present so users who only mention the
+    # product line (and not the manufacturer name) still resolve to the right
+    # vendor URL. Mirrors _VENDOR_DISPLAY_NAMES below. CRA-8.
+    "micromaster": "siemens.com/support",
+    "sinamics": "siemens.com/support",
     "abb": "abb.com/support",
     "omron": "ia.omron.com/support",
     "schneider": "se.com/support",
     "schneider electric": "se.com/support",
     "mitsubishi": "mitsubishielectric.com/support",
+    "fr-e": "mitsubishielectric.com/support",
+    "fr-a": "mitsubishielectric.com/support",
+    "fr-d": "mitsubishielectric.com/support",
+    "fr-f": "mitsubishielectric.com/support",
     "danfoss": "danfoss.com/support",
+    "aqua drive": "danfoss.com/support",
     "eaton": "eaton.com/support",
     "delta": "deltaww.com/support",
     "lenze": "lenze.com/support",
@@ -514,6 +524,29 @@ _DOCUMENTATION_PHRASES = (
     "first time setup",
     "initial setup",
 )
+
+
+# CRA-8: catches retrieval verb + (intervening words) + doc-noun.
+# The substring list above only matches contiguous phrases, so requests like
+# "get me a manual for the Danfoss AQUA Drive FC 202" (model number between
+# verb and noun) fall through to "industrial" intent and get diagnosed instead
+# of routed to the doc-crawl path. This regex closes that gap.
+_DOC_RETRIEVAL_REQUEST_RE = re.compile(
+    r"\b(?:get|find|fetch|send|grab|pull(?:\s+up)?|locate|share|provide|"
+    r"need(?:s|ed)?|want(?:s|ed)?|"
+    r"looking\s+for|search(?:ing)?\s+for|"
+    r"where(?:'s|\s+is|\s+can|\s+to)|"
+    r"do\s+you\s+have|"
+    r"hand\s+me|show\s+me|give\s+me|"
+    r"i\s+need|i\s+want|i'?m\s+looking)"
+    r"\b[^.?!\n]{0,80}?\b"
+    r"(?:manual|datasheet|documentation|docs|"
+    r"pinout|pin\s*out|wiring\s+diagram|"
+    r"instruction(?:s|\s+manual)?|user\s+guide|spec\s+sheet|"
+    r"catalog)\b",
+    re.IGNORECASE,
+)
+
 
 # Procedural how-to questions — user wants step-by-step instructions from the LLM,
 # not a document to download. Checked before _DOCUMENTATION_PHRASES so "how to install"
@@ -771,6 +804,8 @@ def classify_intent(message: str) -> str:
     # Documentation retrieval — checked BEFORE industrial so "manual" in
     # INTENT_KEYWORDS doesn't swallow explicit document requests.
     if any(phrase in msg for phrase in _DOCUMENTATION_PHRASES):
+        return "documentation"
+    if _DOC_RETRIEVAL_REQUEST_RE.search(msg):
         return "documentation"
 
     # Industrial signals — check BEFORE greeting to avoid false positives on
