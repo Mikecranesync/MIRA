@@ -38,7 +38,7 @@ let schemaReady: Promise<void> | null = null;
 
 export function ensureUploadsSchema(): Promise<void> {
   if (schemaReady) return schemaReady;
-  schemaReady = (async () => {
+  const promise = (async () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS hub_uploads (
         id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -80,6 +80,13 @@ export function ensureUploadsSchema(): Promise<void> {
         WHERE external_file_id IS NOT NULL
     `);
   })();
+  // If migration fails, clear the cached promise so the next request retries
+  // instead of inheriting a permanently-rejected promise (the 2026-04 outage
+  // pattern where one bad migration broke /api/uploads until container restart).
+  promise.catch(() => {
+    if (schemaReady === promise) schemaReady = null;
+  });
+  schemaReady = promise;
   return schemaReady;
 }
 
