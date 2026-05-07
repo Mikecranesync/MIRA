@@ -30,6 +30,7 @@ from ingest.converter import extract_from_docling, extract_from_pdf
 from ingest.dedup import DedupStore
 from ingest.embedder import embed_batch
 from ingest.store import store_chunks
+from metrics.latency import IngestLatencyRecorder
 from watcher.folder_watcher import FolderWatcher
 
 from config import CrawlerConfig
@@ -44,47 +45,95 @@ logger = logging.getLogger("mira-crawler")
 def _ingest_file(path: Path, config: CrawlerConfig) -> None:
     """Ingest a single file from the incoming folder."""
     logger.info("Ingesting dropped file: %s", path.name)
+    parser_name = "docling" if config.use_docling else "pdfplumber"
+    recorder = IngestLatencyRecorder(
+        source_id=path.name,
+        parser=parser_name,
+        source_file=str(path),
+        delivered_at=path.stat().st_mtime if path.exists() else None,
+        metadata={"ingest_path": "folder_watcher"},
+    )
+    status = "ok"
+    error = ""
     try:
-        data = path.read_bytes()
+        with recorder.stage("read"):
+            data = path.read_bytes()
+        recorder.set_metric("bytes", len(data))
+
         dedup = DedupStore(db_path=config.dedup_db_path)
-        if dedup.is_already_indexed(data):
+        with recorder.stage("dedup"):
+            already_indexed = dedup.is_already_indexed(data)
+        if already_indexed:
+            status = "skipped"
+            recorder.set_metric("skip_reason", "already_indexed")
             logger.info("Skipping (already indexed): %s", path.name)
             return
 
-        if config.use_docling:
-            blocks = extract_from_docling(data, min_chars=config.chunk_min_chars)
-            if not blocks:
+        with recorder.stage("parse", parser=parser_name):
+            if config.use_docling:
+                blocks = extract_from_docling(data, min_chars=config.chunk_min_chars)
+                if not blocks:
+                    recorder.set_metric("parser_fallback", "pdfplumber")
+                    blocks = extract_from_pdf(data, min_chars=config.chunk_min_chars)
+            else:
                 blocks = extract_from_pdf(data, min_chars=config.chunk_min_chars)
-        else:
-            blocks = extract_from_pdf(data, min_chars=config.chunk_min_chars)
+        recorder.update_metrics(
+            blocks=len(blocks),
+            parsed_chars=sum(len(b.get("text", "")) for b in blocks),
+        )
+
+        if config.use_docling and recorder.metrics.get("parser_fallback") == "pdfplumber":
+            parser_name = "docling+pdfplumber_fallback"
+            recorder.parser = parser_name
+
         if not blocks:
+            status = "no_content"
+            recorder.set_metric("skip_reason", "no_blocks_extracted")
             logger.warning("No blocks extracted from %s", path.name)
             return
 
-        chunks = chunk_blocks(
-            blocks,
-            source_url=path.name,
-            source_file=path.name,
-            source_type="equipment_manual",
-            max_chars=config.chunk_max_chars,
-            min_chars=config.chunk_min_chars,
+        with recorder.stage("chunk"):
+            chunks = chunk_blocks(
+                blocks,
+                source_url=path.name,
+                source_file=path.name,
+                source_type="equipment_manual",
+                max_chars=config.chunk_max_chars,
+                min_chars=config.chunk_min_chars,
+            )
+        recorder.update_metrics(
+            chunks=len(chunks),
+            chunk_chars=sum(len(c.get("text", "")) for c in chunks),
         )
 
-        embedded = embed_batch(
-            chunks,
-            ollama_url=config.ollama_base_url,
-            model=config.embed_model,
-        )
+        with recorder.stage("embed", model=config.embed_model):
+            embedded = embed_batch(
+                chunks,
+                ollama_url=config.ollama_base_url,
+                model=config.embed_model,
+            )
         valid = [(c, v) for c, v in embedded if v is not None]
+        recorder.update_metrics(embeddings=len(valid), embedding_failures=len(chunks) - len(valid))
         if not valid:
+            status = "embed_failed"
+            recorder.set_metric("skip_reason", "all_embeddings_failed")
             logger.warning("All embeddings failed for %s", path.name)
             return
 
-        stored = store_chunks(valid, tenant_id=config.mira_tenant_id)
-        dedup.mark_indexed(data, source_url=path.name, chunk_count=stored)
+        with recorder.stage("store", backend="neon"):
+            stored = store_chunks(valid, tenant_id=config.mira_tenant_id)
+            dedup.mark_indexed(data, source_url=path.name, chunk_count=stored)
+        recorder.set_metric("stored_chunks", stored)
         logger.info("Ingested %s: %d chunks stored", path.name, stored)
     except Exception as e:
+        status = "error"
+        error = f"{type(e).__name__}: {e}"
         logger.error("Failed to ingest %s: %s", path.name, e)
+    finally:
+        try:
+            recorder.finish(status=status, error=error)
+        except Exception as metric_error:
+            logger.warning("Failed to write ingest latency metric: %s", metric_error)
 
 
 def _run_curriculum_crawl(config: CrawlerConfig, tiers: list[str] | None = None) -> None:

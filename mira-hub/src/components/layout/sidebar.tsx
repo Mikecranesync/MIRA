@@ -104,8 +104,6 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "parts":         t("parts"),
       "documents":     t("documents"),
       "reports":       t("reports"),
-      "admin/users":   t("admin"),
-      "admin/roles":   t("admin"),
     };
     return map[key] ?? key;
   }

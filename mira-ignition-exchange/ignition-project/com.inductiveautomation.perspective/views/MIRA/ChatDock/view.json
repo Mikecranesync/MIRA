@@ -1,0 +1,236 @@
+{
+  "custom": {
+    "questionCount": 0,
+    "upsellThreshold": 10,
+    "upsellShown": false
+  },
+  "params": {},
+  "props": {
+    "defaultSize": {
+      "width": 400,
+      "height": 800
+    }
+  },
+  "root": {
+    "type": "ia.container.flex",
+    "version": 0,
+    "props": {
+      "direction": "column",
+      "alignItems": "stretch",
+      "justifyContent": "flex-start",
+      "style": {
+        "backgroundColor": "#FFFFFF",
+        "borderLeft": "1px solid #E0E0E0",
+        "height": "100%"
+      }
+    },
+    "meta": {
+      "name": "root"
+    },
+    "position": {
+      "grow": 1
+    },
+    "children": [
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "row",
+          "alignItems": "center",
+          "justifyContent": "space-between",
+          "style": {
+            "backgroundColor": "#0E1A2B",
+            "color": "#FFFFFF",
+            "padding": "12px 16px",
+            "borderBottom": "1px solid #1B2A41"
+          }
+        },
+        "meta": {
+          "name": "headerBar"
+        },
+        "position": {
+          "basis": "56px",
+          "shrink": 0
+        },
+        "children": [
+          {
+            "type": "ia.container.flex",
+            "version": 0,
+            "props": {
+              "direction": "row",
+              "alignItems": "center",
+              "style": {
+                "gap": "10px"
+              }
+            },
+            "meta": {
+              "name": "logoGroup"
+            },
+            "position": {
+              "grow": 0
+            },
+            "children": [
+              {
+                "type": "ia.display.icon",
+                "version": 0,
+                "props": {
+                  "path": "material/chat",
+                  "color": "#5BC0EB",
+                  "style": {
+                    "width": "28px",
+                    "height": "28px"
+                  }
+                },
+                "meta": {
+                  "name": "miraLogo"
+                },
+                "position": {
+                  "basis": "28px",
+                  "shrink": 0
+                }
+              },
+              {
+                "type": "ia.display.label",
+                "version": 0,
+                "props": {
+                  "text": "MIRA",
+                  "style": {
+                    "color": "#FFFFFF",
+                    "fontSize": "18px",
+                    "fontWeight": "700",
+                    "letterSpacing": "1px"
+                  }
+                },
+                "meta": {
+                  "name": "miraTitle"
+                },
+                "position": {
+                  "shrink": 0
+                }
+              }
+            ]
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "Powered by FactoryLM",
+              "style": {
+                "color": "#A8B5C7",
+                "fontSize": "11px",
+                "fontWeight": "400",
+                "textTransform": "uppercase",
+                "letterSpacing": "0.5px"
+              }
+            },
+            "meta": {
+              "name": "poweredBy"
+            },
+            "position": {
+              "shrink": 0
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "column",
+          "style": {
+            "backgroundColor": "#5BC0EB",
+            "color": "#0E1A2B",
+            "padding": "12px 16px",
+            "cursor": "pointer"
+          },
+          "visible": false
+        },
+        "meta": {
+          "name": "upsellBanner"
+        },
+        "position": {
+          "basis": "auto",
+          "shrink": 0
+        },
+        "propConfig": {
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {
+                "expression": "{view.custom.questionCount} >= {view.custom.upsellThreshold}"
+              }
+            }
+          }
+        },
+        "events": {
+          "dom": {
+            "onClick": [
+              {
+                "type": "nav",
+                "scope": "C",
+                "config": {
+                  "page": "",
+                  "url": "{[default]MIRA/factorylm_onboard_url}",
+                  "newTab": true
+                }
+              }
+            ]
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "Unlock your plant's full knowledge base → FactoryLM",
+              "style": {
+                "color": "#0E1A2B",
+                "fontSize": "13px",
+                "fontWeight": "600",
+                "textAlign": "center"
+              }
+            },
+            "meta": {
+              "name": "upsellText"
+            },
+            "position": {
+              "shrink": 0
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.display.web-browser",
+        "version": 0,
+        "props": {
+          "url": "",
+          "style": {
+            "border": "none",
+            "height": "100%",
+            "width": "100%"
+          }
+        },
+        "meta": {
+          "name": "miraWebBrowser"
+        },
+        "position": {
+          "grow": 1,
+          "shrink": 1,
+          "basis": "0"
+        },
+        "propConfig": {
+          "props.url": {
+            "binding": {
+              "type": "tag",
+              "config": {
+                "fallbackDelay": 2.5,
+                "mode": "direct",
+                "tagPath": "[default]MIRA/endpoint_url"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

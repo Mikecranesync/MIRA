@@ -104,6 +104,72 @@ else
 fi
 
 # ------------------------------------------------------------------
+# 4. Spec staleness — warn (never block) when API code outpaces docs.
+#    Spec: docs/specs/enforcement-layer-spec.md §4.4
+# ------------------------------------------------------------------
+STAGED_API=$(git diff --cached --name-only --diff-filter=ACM | grep '^mira-hub/src/app/api/' || true)
+if [ -n "$STAGED_API" ]; then
+  bold "Checking spec freshness for staged API changes..."
+  TODAY_EPOCH=$(date -u +%s)
+  STALE_DAYS=7
+
+  # Collect unique top-level modules from the staged paths:
+  #   mira-hub/src/app/api/work-orders/route.ts → work-orders
+  #   mira-hub/src/app/api/assets/[id]/enrich/route.ts → assets
+  MODULES=$(echo "$STAGED_API" | sed -E 's|^mira-hub/src/app/api/([^/]+).*$|\1|' | sort -u)
+
+  STALE_FOUND=0
+  for module in $MODULES; do
+    # Map module → spec, falling back to the platform spec.
+    SPEC=""
+    for candidate in "docs/specs/${module}-spec.md" "docs/specs/${module}.md"; do
+      if [ -f "$candidate" ]; then
+        SPEC="$candidate"
+        break
+      fi
+    done
+    if [ -z "$SPEC" ]; then
+      SPEC="docs/specs/factorylm-platform-v2.md"
+    fi
+    [ ! -f "$SPEC" ] && continue
+
+    # Read frontmatter `last_updated:` (ISO date, YYYY-MM-DD).
+    LAST=$(awk '/^last_updated:/ { print $2; exit }' "$SPEC" 2>/dev/null || true)
+    if [ -z "$LAST" ]; then
+      yellow "  ⚠️  $SPEC has no \`last_updated:\` frontmatter — consider adding one"
+      WARNINGS=$((WARNINGS + 1))
+      continue
+    fi
+
+    # Cross-platform date diff (BSD `date` on macOS does not accept -d).
+    if LAST_EPOCH=$(date -j -u -f "%Y-%m-%d" "$LAST" +%s 2>/dev/null); then
+      :
+    elif LAST_EPOCH=$(date -u -d "$LAST" +%s 2>/dev/null); then
+      :
+    else
+      LAST_EPOCH=""
+    fi
+    if [ -z "$LAST_EPOCH" ]; then
+      yellow "  ⚠️  Could not parse last_updated:$LAST in $SPEC"
+      WARNINGS=$((WARNINGS + 1))
+      continue
+    fi
+
+    AGE_DAYS=$(( (TODAY_EPOCH - LAST_EPOCH) / 86400 ))
+    if [ "$AGE_DAYS" -gt "$STALE_DAYS" ]; then
+      yellow "  ⚠️  $SPEC last updated ${AGE_DAYS}d ago (>${STALE_DAYS}d)"
+      yellow "      Touched module \`$module\` — consider updating the spec."
+      STALE_FOUND=$((STALE_FOUND + 1))
+      WARNINGS=$((WARNINGS + 1))
+    fi
+  done
+  if [ $STALE_FOUND -eq 0 ]; then
+    green "  ✓ All matched specs are fresh (≤${STALE_DAYS}d)"
+    PASS=$((PASS + 1))
+  fi
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 bold ""

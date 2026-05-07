@@ -1,0 +1,28 @@
+# mira-hub CMMS sync worker — long-running NeonDB ↔ Atlas sync loop.
+#
+# Separate image from the Next.js runtime because:
+#   1. The hub uses next-standalone output (no scripts/ in the runner image).
+#   2. We want to invoke the worker via `bun run`, not `node server.js`.
+#
+# Image stays small — only what scripts/cmms-sync-worker.ts needs at runtime
+# (the @/lib/atlas chain + pg + AbortController fetch from Bun's stdlib).
+
+FROM oven/bun:1.3-alpine
+
+WORKDIR /app
+
+# Install deps from the hub's package.json so the worker shares a lockfile
+# with the Next.js app — same `pg`, same `next-auth`, no version drift.
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
+
+# Bring in the source the worker actually imports. Copying the whole src/
+# tree keeps tsconfig path resolution (@/lib/...) working without a build
+# step. The tree is small enough that the image stays under 300 MB.
+COPY tsconfig.json ./
+COPY scripts/ ./scripts/
+COPY src/ ./src/
+
+# Worker is the entry point. By default it loops every 60 seconds — pass
+# --once or --interval-ms to override at compose-time.
+CMD ["bun", "run", "scripts/cmms-sync-worker.ts"]

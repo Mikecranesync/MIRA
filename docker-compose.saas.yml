@@ -241,6 +241,7 @@ services:
       - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS:-}
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - INFERENCE_BACKEND=cloud
@@ -372,6 +373,11 @@ services:
       args:
         NEXT_PUBLIC_BASE_PATH: ""
         NEXT_PUBLIC_API_BASE: ""
+        # Baked into the client bundle at build time — Next.js inlines
+        # NEXT_PUBLIC_* vars during `next build`, runtime env is too late.
+        # Public URL because hubDataProvider runs in the browser; nginx on
+        # app.factorylm.com proxies /v1/ → mira-pipeline:9099.
+        NEXT_PUBLIC_PIPELINE_API_URL: ${NEXT_PUBLIC_PIPELINE_API_URL:-https://app.factorylm.com}
     container_name: mira-hub
     ports:
       - "127.0.0.1:3101:3000"
@@ -457,6 +463,32 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  # ─── mira-cmms-sync — NeonDB ↔ Atlas sync worker (P1) ───────────────────────
+  # Long-running loop that pushes NeonDB changes to Atlas every 60s and pulls
+  # Atlas-side edits back into NeonDB. Off by default via CMMS_SYNC_ENABLED so
+  # we don't accidentally mix tenants while shared-admin Atlas creds are in
+  # use. Flip to true in Doppler when one paying tenant is in scope OR per-
+  # tenant Atlas provisioning has shipped.
+  mira-cmms-sync:
+    build:
+      context: ./mira-hub
+      dockerfile: Dockerfile.sync-worker
+    container_name: mira-cmms-sync
+    environment:
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-https://cmms.factorylm.com}
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      - CMMS_SYNC_ENABLED=${CMMS_SYNC_ENABLED:-false}
+      # Override default 60s tick by setting CMMS_SYNC_INTERVAL_MS in Doppler.
+      - CMMS_SYNC_INTERVAL_MS=${CMMS_SYNC_INTERVAL_MS:-60000}
+    command: ["bun", "run", "scripts/cmms-sync-worker.ts", "--interval-ms", "${CMMS_SYNC_INTERVAL_MS:-60000}"]
+    networks:
+      - mira-net
+    restart: unless-stopped
+    depends_on:
+      - mira-hub
 
 networks:
   mira-net:

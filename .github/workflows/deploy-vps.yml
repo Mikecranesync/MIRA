@@ -58,7 +58,7 @@ jobs:
           git reset --hard origin/main
 
           # Resolve the rebuild list once so cleanup + build + up all agree.
-          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub}"
+          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync}"
           echo "Rebuild targets: $TARGETS"
 
           echo "=== Pre-deploy cleanup: remove any stale containers blocking recreate ==="
@@ -85,7 +85,12 @@ jobs:
           fi
 
           echo "=== mira-hub health check ==="
-          HUB_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/hub/api/health || echo "unreachable")
+          # Try empty-basePath path first (current Phase 2 deployment), fall back to /hub
+          # path so the check survives a future re-cutover. Mirrors the Dockerfile
+          # HEALTHCHECK fallback pattern. Closes #928.
+          HUB_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/api/health \
+            || curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/hub/api/health \
+            || echo "unreachable")
           echo "mira-hub health: $HUB_STATUS"
           if [ "$HUB_STATUS" != "200" ]; then
             echo "WARNING: mira-hub health returned $HUB_STATUS — check container logs"

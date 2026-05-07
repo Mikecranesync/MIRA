@@ -138,6 +138,23 @@ def record_exchange(db_path: str, chat_id: str, state: dict, message: str, reply
     save_state(db_path, chat_id, state)
 
 
+def get_recent_interactions(db_path: str, since_id: int = 0, limit: int = 500) -> list[dict]:
+    """Fetch interactions newer than since_id without a full table scan."""
+    try:
+        db = sqlite3.connect(db_path)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.row_factory = sqlite3.Row
+        rows = db.execute(
+            "SELECT * FROM interactions WHERE id > ? ORDER BY id LIMIT ?",
+            (since_id, limit),
+        ).fetchall()
+        db.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.warning("get_recent_interactions failed: %s", e)
+        return []
+
+
 def log_interaction(
     db_path: str,
     chat_id: str,
