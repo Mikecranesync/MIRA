@@ -3,6 +3,8 @@ name: Automated Code Review
 on:
   pull_request:
     branches: [main, develop, dev]
+    paths-ignore:
+      - 'docs/context/PROGRESS.md'
 
 permissions:
   contents: read
