@@ -365,6 +365,18 @@ export function formatMaintenanceContext(mc: MaintenanceContext): string {
     );
   }
 
+  // Phase 4 — plan vs actual mismatches surface inside the equipment block so
+  // the LLM sees them alongside the rest of the structured context.
+  if (mc.pmMismatches.length > 0) {
+    for (const m of mc.pmMismatches.slice(0, 3)) {
+      const tag = m.severity === "warning" ? "WARNING" : "ADVISORY";
+      lines.push(
+        `Plan vs actual [${tag}]: ${m.faultCode} every ~${m.mtbfDays.toFixed(0)}d ` +
+          `(${m.occurrences}x) but PM "${m.pmTask}" runs every ${m.pmIntervalDays}d → interval too long`,
+      );
+    }
+  }
+
   return lines.join("\n");
 }
 

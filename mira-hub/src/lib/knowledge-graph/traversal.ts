@@ -15,6 +15,7 @@
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
 import type { KGEntity } from "./types";
+import { flagPmMismatches, type PmMismatch } from "./plan-vs-actual";
 
 // ── Shared transaction helper ──────────────────────────────────────────────
 
@@ -310,6 +311,7 @@ export interface MaintenanceContext {
   manuals: KGEntity[];
   pmSchedule: PmScheduleSummary[];
   similarEquipment: KGEntity[];
+  pmMismatches: PmMismatch[];
 }
 
 export interface MaintenanceContextOpts {
@@ -448,6 +450,20 @@ export async function maintenanceContext(
         : Promise.resolve({ rows: [] as EntityRow[] }),
     ]);
 
+    // Phase 4: plan-vs-actual mismatches scoped to this equipment.
+    // Cheap follow-up query — no second transaction needed because we're
+    // already inside withKgContext via the outer caller. We do call into
+    // flagPmMismatches which opens its own context, which is fine
+    // (independent transaction, same RLS settings).
+    let pmMismatches: PmMismatch[] = [];
+    try {
+      pmMismatches = await flagPmMismatches(tenantId, {
+        equipmentEntityId: equipment.entityId,
+      });
+    } catch {
+      pmMismatches = [];
+    }
+
     return {
       equipment,
       hierarchy: {
@@ -474,6 +490,7 @@ export async function maintenanceContext(
         };
       }),
       similarEquipment: similar.rows.map(rowToEntity),
+      pmMismatches,
     };
   });
 }
