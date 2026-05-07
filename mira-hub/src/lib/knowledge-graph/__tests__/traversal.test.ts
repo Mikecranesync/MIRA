@@ -56,6 +56,7 @@ describe("formatMaintenanceContext", () => {
       manuals: [],
       pmSchedule: [],
       similarEquipment: [],
+      pmMismatches: [],
       ...overrides,
     };
   }
