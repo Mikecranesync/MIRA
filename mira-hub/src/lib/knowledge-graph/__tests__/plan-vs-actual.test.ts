@@ -74,7 +74,7 @@ describe("formatMaintenanceContext — pmMismatches surface", () => {
     return {
       equipment: {
         id: "uuid-eq-1", tenantId: "t", entityType: "equipment", entityId: "VFD-07",
-        name: "PowerFlex 525", properties: {}, createdAt: new Date(), updatedAt: new Date(),
+        name: "PowerFlex 525", properties: {}, unsPath: null, createdAt: new Date(), updatedAt: new Date(),
       },
       hierarchy: { plant: null, area: null, line: null },
       components: [],

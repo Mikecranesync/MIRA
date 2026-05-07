@@ -43,6 +43,7 @@ describe("formatMaintenanceContext", () => {
         equipment_type: "VFD",
         criticality: "high",
       },
+      unsPath: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -75,15 +76,15 @@ describe("formatMaintenanceContext", () => {
       hierarchy: {
         plant: {
           id: "p1", tenantId: "t1", entityType: "plant", entityId: "STARDUST",
-          name: "Stardust Racers", properties: {}, createdAt: new Date(), updatedAt: new Date(),
+          name: "Stardust Racers", properties: {}, unsPath: null, createdAt: new Date(), updatedAt: new Date(),
         },
         area: {
           id: "a1", tenantId: "t1", entityType: "area", entityId: "ZONE_A",
-          name: "Zone A", properties: {}, createdAt: new Date(), updatedAt: new Date(),
+          name: "Zone A", properties: {}, unsPath: null, createdAt: new Date(), updatedAt: new Date(),
         },
         line: {
           id: "l1", tenantId: "t1", entityType: "line", entityId: "LINE_3",
-          name: "Line 3", properties: {}, createdAt: new Date(), updatedAt: new Date(),
+          name: "Line 3", properties: {}, unsPath: null, createdAt: new Date(), updatedAt: new Date(),
         },
       },
     });

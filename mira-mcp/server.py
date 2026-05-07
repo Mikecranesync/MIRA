@@ -633,11 +633,15 @@ def kg_maintenance_context(
     from kg_client import KgClientError, maintenance_context
 
     try:
-        return {"ok": True, "result": maintenance_context(
-            tenant_id, equipment_entity_id,
-            include_similar=include_similar,
-            fault_window_days=fault_window_days,
-        )}
+        return {
+            "ok": True,
+            "result": maintenance_context(
+                tenant_id,
+                equipment_entity_id,
+                include_similar=include_similar,
+                fault_window_days=fault_window_days,
+            ),
+        }
     except KgClientError as exc:
         return {"ok": False, "error": str(exc)}
 
@@ -687,9 +691,15 @@ def kg_traverse_chain(
 
     try:
         depth = None if max_depth == 0 else max_depth
-        return {"ok": True, "result": traverse_chain(
-            tenant_id, start_entity_id, relationship_chain, max_depth=depth,
-        )}
+        return {
+            "ok": True,
+            "result": traverse_chain(
+                tenant_id,
+                start_entity_id,
+                relationship_chain,
+                max_depth=depth,
+            ),
+        }
     except KgClientError as exc:
         return {"ok": False, "error": str(exc)}
 
@@ -707,11 +717,14 @@ def kg_flag_pm_mismatches(
     from kg_client import KgClientError, flag_pm_mismatches
 
     try:
-        return {"ok": True, "result": flag_pm_mismatches(
-            tenant_id,
-            lookback_days=lookback_days,
-            equipment_entity_id=equipment_entity_id or None,
-        )}
+        return {
+            "ok": True,
+            "result": flag_pm_mismatches(
+                tenant_id,
+                lookback_days=lookback_days,
+                equipment_entity_id=equipment_entity_id or None,
+            ),
+        }
     except KgClientError as exc:
         return {"ok": False, "error": str(exc)}
 
