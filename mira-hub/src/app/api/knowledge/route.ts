@@ -11,17 +11,29 @@ export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   try {
+    // UNS+KG unification (spec §4.3, Phase 1): repoint from the empty
+    // `kb_chunks` stub to the real vector store (`knowledge_entries`).
+    // The shape matches what the UI consumes — fields that don't exist
+    // on knowledge_entries (system_category, subcategory, quality_score)
+    // are read from the JSONB metadata column or projected as NULL.
     const rows = await withTenantContext(ctx.tenantId, (c) =>
       c.query(
         `SELECT
-          system_category, subcategory, manufacturer, product_family,
-          doc_type, source, COUNT(*) as chunk_count,
-          AVG(quality_score) as avg_quality,
+          equipment_type AS system_category,
+          metadata->>'subcategory' AS subcategory,
+          manufacturer,
+          model_number AS product_family,
+          data_type AS doc_type,
+          source_type AS source,
+          COUNT(*) as chunk_count,
+          AVG((metadata->>'quality_score')::float) as avg_quality,
           MAX(created_at) as last_indexed,
-          array_agg(DISTINCT title ORDER BY title) FILTER (WHERE title IS NOT NULL) as sample_titles
-        FROM kb_chunks
+          array_agg(DISTINCT (metadata->>'title') ORDER BY (metadata->>'title'))
+            FILTER (WHERE metadata->>'title' IS NOT NULL) as sample_titles
+        FROM knowledge_entries
         WHERE tenant_id = $1
-        GROUP BY system_category, subcategory, manufacturer, product_family, doc_type, source
+        GROUP BY equipment_type, metadata->>'subcategory', manufacturer,
+                 model_number, data_type, source_type
         ORDER BY chunk_count DESC, avg_quality DESC NULLS LAST`,
         [ctx.tenantId],
       ).then((r) => r.rows),

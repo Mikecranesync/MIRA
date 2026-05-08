@@ -56,8 +56,12 @@ export async function GET() {
         ORDER BY count DESC LIMIT 10`,
         [ctx.tenantId],
       );
+      // UNS+KG unification (spec §4.3, Phase 1): the legacy `kb_chunks`
+      // table is empty in production; the real vector store is
+      // `knowledge_entries` (74K+ rows). Reading from the wrong table
+      // is what made the Hub "Total KB Chunks" tile show 0 forever.
       const { rows: kbRows } = await c.query(
-        `SELECT COUNT(*) as total_chunks FROM kb_chunks WHERE tenant_id = $1`,
+        `SELECT COUNT(*) as total_chunks FROM knowledge_entries WHERE tenant_id = $1`,
         [ctx.tenantId],
       );
       return { monthRows, allTimeRows, dailyRows, bySourceRows, byTechRows, kbRows };

@@ -140,8 +140,47 @@ def store_chunks(
     Skips chunks that already exist (dedup by source_url + chunk_index).
     Returns number of chunks inserted.
     image_embedding: optional 768-dim visual vector stored alongside text embedding.
+
+    UNS+KG flywheel (spec §4.4): when manufacturer+model are known, this
+    upserts an `equipment` and a `manual` entity, links the chunk row to
+    the equipment via `equipment_entity_id`, and runs the fault-code
+    extractor over chunk text to densify the KG. All entity writes are
+    idempotent (UNIQUE on tenant_id+entity_type+name).
     """
+    # Lazy-import KG modules so a misconfigured KG layer cannot break
+    # the chunk-insert hot path. Failures degrade to "we still wrote
+    # the vectors, we just didn't densify the graph this batch."
+    try:
+        from . import kg_writer
+        from .extractors.fault_codes import extract_fault_codes
+    except Exception as e:  # pragma: no cover — defensive
+        logger.warning("KG modules unavailable, skipping graph densification: %s", e)
+        kg_writer = None  # type: ignore[assignment]
+        extract_fault_codes = None  # type: ignore[assignment]
+
     inserted = 0
+    equipment_id: str | None = None
+    manual_id: str | None = None
+
+    # Step 1 (per-batch): register the equipment + manual once. The same
+    # batch always carries chunks for one (mfr, model) combination — the
+    # caller is the per-URL processor in mira-crawler/tasks/ingest.py.
+    if kg_writer is not None and manufacturer and model_number:
+        manual_url = next(
+            (c.get("source_url") for c, _ in chunks_with_embeddings if c.get("source_url")),
+            None,
+        )
+        manual_title = next(
+            (c.get("title") for c, _ in chunks_with_embeddings if c.get("title")),
+            None,
+        )
+        equipment_id, manual_id = kg_writer.register_equipment_and_manual(
+            tenant_id=tenant_id,
+            manufacturer=manufacturer,
+            model=model_number,
+            manual_title=manual_title,
+            manual_url=manual_url,
+        )
 
     for chunk, embedding in chunks_with_embeddings:
         source_url = chunk.get("source_url", "")
@@ -166,8 +205,35 @@ def store_chunks(
             chunk_type=chunk.get("chunk_type", "text"),
             image_embedding=image_embedding,
         )
-        if entry_id:
-            inserted += 1
+        if not entry_id:
+            continue
+        inserted += 1
 
-    logger.info("Stored %d/%d chunks", inserted, len(chunks_with_embeddings))
+        # Step 2: bridge the chunk row to its equipment entity, if known.
+        if kg_writer is not None and equipment_id:
+            kg_writer.link_chunk_to_equipment(entry_id, equipment_id)
+
+            # Step 3: extract fault codes from chunk text and densify the KG.
+            if extract_fault_codes is not None:
+                for match in extract_fault_codes(chunk.get("text", "")):
+                    kg_writer.register_fault_code(
+                        tenant_id=tenant_id,
+                        equipment_id=equipment_id,
+                        manufacturer=manufacturer,
+                        fault_code=match.normalized(),
+                        # Anchoring the fault under its model in the KB
+                        # tree gives the Hub a navigable
+                        # mfr/family/model/fault_codes/<code> path.
+                        model=model_number,
+                        confidence=0.85,
+                        source_chunk_id=entry_id,
+                    )
+
+    logger.info(
+        "Stored %d/%d chunks (equipment_id=%s, manual_id=%s)",
+        inserted,
+        len(chunks_with_embeddings),
+        equipment_id,
+        manual_id,
+    )
     return inserted
