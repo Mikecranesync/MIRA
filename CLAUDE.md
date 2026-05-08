@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v3.4.0 | **Updated:** 2026-04-17
+**Version:** v3.4.0 | **Updated:** 2026-05-07
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Gemini (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
@@ -140,6 +140,8 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
+- **Claude Code v2.1+ defaults (Opus 4.7, xhigh, /effort, /autofix-pr, Routines):** `wiki/references/claude-code-v2.1.md`
+- **MIRA Routines (cloud-side scheduled work):** `wiki/references/routines.md`
 
 ---
 

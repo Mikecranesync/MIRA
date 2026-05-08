@@ -15,6 +15,15 @@ bold()   { printf '\033[1m%s\033[0m\n' "$*"; }
 
 bold "=== MIRA pre-commit checks ==="
 
+# Trace which Claude Code session ran the hook (v2.1+ auto-injects this).
+# Empty when invoked from a human terminal — that's expected.
+if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+  echo "  ↳ Claude Code session: ${CLAUDE_CODE_SESSION_ID}"
+  mkdir -p .git/claude-sessions
+  echo "$(date -u +%FT%TZ) ${CLAUDE_CODE_SESSION_ID} pre-commit" \
+    >> .git/claude-sessions/log 2>/dev/null || true
+fi
+
 # Staged files
 STAGED_SH=$(git diff --cached --name-only --diff-filter=ACM | grep '\.sh$' || true)
 STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
