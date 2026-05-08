@@ -10,6 +10,9 @@ export const fetchCache = "force-no-store";
 // Manufacturer name is matched case-insensitively to handle case variants
 // in the legacy data ('siemens' vs 'Siemens', 'Yaskawa' vs 'Yaskawa Electric Corporation').
 // 'Uncategorized' matches NULL or empty manufacturer rows.
+//
+// No tenant filter — KB is universal (see /api/knowledge/route.ts comment).
+// Auth still enforced via sessionOr401 so anonymous callers cannot reach data.
 export async function GET(req: NextRequest) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
@@ -26,10 +29,9 @@ export async function GET(req: NextRequest) {
     const isUncategorized = name.toLowerCase() === "uncategorized";
     const mfrFilter = isUncategorized
       ? "(manufacturer IS NULL OR TRIM(manufacturer) = '')"
-      : "LOWER(TRIM(COALESCE(manufacturer, ''))) = LOWER($2)";
+      : "LOWER(TRIM(COALESCE(manufacturer, ''))) = LOWER($1)";
 
-    const params: (string | number)[] = [ctx.tenantId];
-    if (!isUncategorized) params.push(name);
+    const params: string[] = isUncategorized ? [] : [name];
 
     const { rows } = await pool.query(
       `SELECT
@@ -41,8 +43,7 @@ export async function GET(req: NextRequest) {
          MAX(created_at) AS last_indexed,
          MAX(metadata->>'title') AS title
        FROM knowledge_entries
-       WHERE tenant_id = $1
-         AND ${mfrFilter}
+       WHERE ${mfrFilter}
        GROUP BY source_url
        ORDER BY chunk_count DESC
        LIMIT 500`,
