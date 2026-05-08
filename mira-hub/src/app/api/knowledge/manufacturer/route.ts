@@ -3,6 +3,8 @@ import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 // Returns documents (grouped by source_url) for a manufacturer.
 // Manufacturer name is matched case-insensitively to handle case variants
@@ -61,7 +63,15 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ manufacturer: name, docs });
+    return NextResponse.json(
+      { manufacturer: name, docs, fetchedAt: new Date().toISOString() },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          Pragma: "no-cache",
+        },
+      },
+    );
   } catch (err) {
     console.error("[api/knowledge/manufacturer]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });

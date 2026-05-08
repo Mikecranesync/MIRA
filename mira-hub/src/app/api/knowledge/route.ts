@@ -3,12 +3,19 @@ import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 // Returns the knowledge library rolled up by manufacturer.
 // Queries knowledge_entries directly (bypasses RLS via neondb_owner) with an
 // explicit tenant_id filter — factorylm_app lacks SELECT on this legacy table,
 // and the table's RLS policy reads app.current_tenant_id which withTenantContext
 // does not set. Programmatic tenant filter preserves isolation.
+//
+// LIVE — no server-side cache (force-dynamic + force-no-store + revalidate=0).
+// Each request hits Neon directly so newly-ingested chunks from the Celery
+// worker / kb_growth_cron appear immediately. Response also returns no-store
+// headers so the browser/proxy never serves stale snapshots.
 export async function GET() {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
@@ -16,41 +23,61 @@ export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   try {
-    const { rows } = await pool.query(
-      `SELECT
-         CASE
-           WHEN manufacturer IS NULL OR TRIM(manufacturer) = '' THEN 'Uncategorized'
-           ELSE INITCAP(LOWER(TRIM(manufacturer)))
-         END AS manufacturer,
-         COUNT(*)::bigint AS chunk_count,
-         COUNT(DISTINCT source_url)::bigint AS doc_count,
-         MAX(created_at) AS last_indexed
-       FROM knowledge_entries
-       WHERE tenant_id = $1
-       GROUP BY 1
-       ORDER BY chunk_count DESC`,
-      [ctx.tenantId],
-    );
+    const [{ rows: mfrRows }, { rows: globalRows }] = await Promise.all([
+      pool.query(
+        `SELECT
+           CASE
+             WHEN manufacturer IS NULL OR TRIM(manufacturer) = '' THEN 'Uncategorized'
+             ELSE INITCAP(LOWER(TRIM(manufacturer)))
+           END AS manufacturer,
+           COUNT(*)::bigint AS chunk_count,
+           COUNT(DISTINCT source_url)::bigint AS doc_count,
+           MAX(created_at) AS last_indexed
+         FROM knowledge_entries
+         WHERE tenant_id = $1
+         GROUP BY 1
+         ORDER BY chunk_count DESC`,
+        [ctx.tenantId],
+      ),
+      pool.query(
+        `SELECT
+           COUNT(*)::bigint AS total_chunks,
+           COUNT(DISTINCT source_url)::bigint AS total_docs,
+           MAX(created_at) AS last_ingested
+         FROM knowledge_entries
+         WHERE tenant_id = $1`,
+        [ctx.tenantId],
+      ),
+    ]);
 
     type Mfr = { name: string; chunkCount: number; docCount: number; lastIndexed: unknown };
-    const manufacturers: Mfr[] = rows.map((r: Record<string, unknown>) => ({
+    const manufacturers: Mfr[] = mfrRows.map((r: Record<string, unknown>) => ({
       name: r.manufacturer as string,
       chunkCount: Number(r.chunk_count),
       docCount: Number(r.doc_count),
       lastIndexed: r.last_indexed,
     }));
 
-    const totalChunks = manufacturers.reduce((s: number, m: Mfr) => s + m.chunkCount, 0);
-    const totalDocs = manufacturers.reduce((s: number, m: Mfr) => s + m.docCount, 0);
+    const g = globalRows[0] ?? { total_chunks: 0, total_docs: 0, last_ingested: null };
 
-    return NextResponse.json({
-      manufacturers,
-      stats: {
-        totalChunks,
-        totalDocs,
-        manufacturerCount: manufacturers.length,
+    return NextResponse.json(
+      {
+        manufacturers,
+        stats: {
+          totalChunks: Number(g.total_chunks),
+          totalDocs: Number(g.total_docs),
+          manufacturerCount: manufacturers.length,
+          lastIngested: g.last_ingested,
+          fetchedAt: new Date().toISOString(),
+        },
       },
-    });
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          Pragma: "no-cache",
+        },
+      },
+    );
   } catch (err) {
     console.error("[api/knowledge]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });

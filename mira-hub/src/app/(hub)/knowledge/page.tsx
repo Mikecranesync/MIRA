@@ -18,7 +18,31 @@ type LibraryStats = {
   totalChunks: number;
   totalDocs: number;
   manufacturerCount: number;
+  lastIngested: string | null;
+  fetchedAt: string | null;
 };
+
+const LIVE_POLL_MS = 30_000;
+
+const EMPTY_STATS: LibraryStats = {
+  totalChunks: 0,
+  totalDocs: 0,
+  manufacturerCount: 0,
+  lastIngested: null,
+  fetchedAt: null,
+};
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return "never";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return "just now";
+  const min = Math.floor(ms / 60_000);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const days = Math.floor(hr / 24);
+  return `${days}d ago`;
+}
 
 type ManualDoc = {
   sourceUrl: string;
@@ -44,11 +68,7 @@ function formatNumber(n: number): string {
 export default function KnowledgePage() {
   const t = useTranslations("knowledge");
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
-  const [stats, setStats] = useState<LibraryStats>({
-    totalChunks: 0,
-    totalDocs: 0,
-    manufacturerCount: 0,
-  });
+  const [stats, setStats] = useState<LibraryStats>(EMPTY_STATS);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [uploads, setUploads] = useState<UploadBlockData[]>([]);
@@ -58,24 +78,59 @@ export default function KnowledgePage() {
   const [docs, setDocs] = useState<ManualDoc[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
 
+  // Tick every 15s so "Last updated" relative time stays current between polls.
+  const [, setNowTick] = useState(0);
   useEffect(() => {
-    fetch(`${API_BASE}/api/knowledge`)
-      .then((r) => r.json())
-      .then((data) => {
-        setManufacturers(data.manufacturers ?? []);
-        setStats(
-          data.stats ?? { totalChunks: 0, totalDocs: 0, manufacturerCount: 0 },
-        );
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    const iv = setInterval(() => setNowTick((n) => n + 1), 15_000);
+    return () => clearInterval(iv);
   }, []);
+
+  const fetchManufacturers = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/knowledge`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setManufacturers(data.manufacturers ?? []);
+      setStats(data.stats ?? EMPTY_STATS);
+    } catch {
+      /* swallow — next poll retries */
+    }
+  }, []);
+
+  // Initial load.
+  useEffect(() => {
+    void fetchManufacturers().finally(() => setLoading(false));
+  }, [fetchManufacturers]);
+
+  // Live polling: refresh on focus + tab-visibility, plus a 30s heartbeat.
+  // Ensures newly-ingested chunks (Celery worker, kb_growth_cron) appear
+  // without manual reload. Pauses while drilled into a manufacturer detail
+  // view to avoid re-fetching the list mid-interaction.
+  useEffect(() => {
+    if (selectedMfr) return;
+    const onFocus = () => void fetchManufacturers();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void fetchManufacturers();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    const iv = setInterval(() => {
+      if (document.visibilityState === "visible") void fetchManufacturers();
+    }, LIVE_POLL_MS);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(iv);
+    };
+  }, [selectedMfr, fetchManufacturers]);
 
   const openManufacturer = useCallback((name: string) => {
     setSelectedMfr(name);
     setDocs([]);
     setDocsLoading(true);
-    fetch(`${API_BASE}/api/knowledge/manufacturer?name=${encodeURIComponent(name)}`)
+    fetch(`${API_BASE}/api/knowledge/manufacturer?name=${encodeURIComponent(name)}`, {
+      cache: "no-store",
+    })
       .then((r) => r.json())
       .then((data) => setDocs(data.docs ?? []))
       .catch(console.error)
@@ -200,7 +255,7 @@ export default function KnowledgePage() {
         : `${selectedMfr} · ${docs.length} ${docs.length === 1 ? "document" : "documents"}`
       : stats.totalChunks === 0
         ? t("emptyStateOnboarding")
-        : `${stats.totalChunks.toLocaleString()} ${t("chunks")} · ${stats.manufacturerCount} manufacturers`;
+        : `${stats.totalChunks.toLocaleString()} ${t("chunks")} · ${stats.manufacturerCount} manufacturers · last ingest ${timeAgo(stats.lastIngested)}`;
 
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
