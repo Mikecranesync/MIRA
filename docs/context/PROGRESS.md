@@ -94458,4 +94458,57 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 **Working tree:**
 - M docs/context/PROGRESS.md
 **Next:** _set by next session_
+
+### 2026-05-08 07:35 UTC — `chore/promo-director-refresh-2026-05-07`
+**Last commit:** 600c5c4 chore: update PROGRESS.md session autolog 2026-05-08
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/code-review.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- CLAUDE.md
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docs/agentic-os/README.md
+- docs/audits/2026-05-07-audit-v3.15.0.md
+- docs/audits/README.md
+- docs/audits/TEMPLATE.md
+- docs/context/ARCHITECTURE.md
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-08 07:35 UTC — `chore/promo-director-refresh-2026-05-07`
+**Last commit:** 600c5c4 chore: update PROGRESS.md session autolog 2026-05-08
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/code-review.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- CLAUDE.md
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docs/agentic-os/README.md
+- docs/audits/2026-05-07-audit-v3.15.0.md
+- docs/audits/README.md
+- docs/audits/TEMPLATE.md
+- docs/context/ARCHITECTURE.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
