@@ -181,6 +181,27 @@ jobs:
           # the other. Requires renaming one module to fix properly (tracked in
           # known-issues.md). Run locally with: pytest mira-bots/tests/test_email_adapter.py
 
+  kb-ingest-tests:
+    # Spec gate: docs/specs/kb-ingest-hardening-spec.md §12.3
+    # Runs on every PR that touches the ingest pipeline or its consumers.
+    name: KB Ingest Hardening Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-type-check
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install minimal deps
+        # Pure-Python tests — no live Ollama / Docling / NeonDB.
+        # httpx + pyyaml are imported by kb_growth_cron at module load.
+        run: pip install pytest httpx pyyaml psycopg2-binary
+
+      - name: Run KB ingest hardening tests
+        run: pytest mira-crawler/tests/test_kb_ingest_hardening.py -v
+
   architecture-check:
     name: Architecture Check
     runs-on: ubuntu-latest

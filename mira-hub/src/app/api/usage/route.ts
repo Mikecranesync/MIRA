@@ -56,8 +56,10 @@ export async function GET() {
         ORDER BY count DESC LIMIT 10`,
         [ctx.tenantId],
       );
+      // KB total — authoritative table is `knowledge_entries`.
+      // See docs/specs/kb-ingest-hardening-spec.md §11.
       const { rows: kbRows } = await c.query(
-        `SELECT COUNT(*) as total_chunks FROM kb_chunks WHERE tenant_id = $1`,
+        `SELECT COUNT(*) as total_chunks FROM knowledge_entries WHERE tenant_id = $1`,
         [ctx.tenantId],
       );
       return { monthRows, allTimeRows, dailyRows, bySourceRows, byTechRows, kbRows };

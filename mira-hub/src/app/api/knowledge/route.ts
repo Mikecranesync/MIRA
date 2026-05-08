@@ -11,17 +11,31 @@ export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   try {
+    // Authoritative table: `knowledge_entries` (kb_chunks deprecated).
+    // Field mapping in docs/specs/kb-ingest-hardening-spec.md §11.2.
     const rows = await withTenantContext(ctx.tenantId, (c) =>
       c.query(
         `SELECT
-          system_category, subcategory, manufacturer, product_family,
-          doc_type, source, COUNT(*) as chunk_count,
-          AVG(quality_score) as avg_quality,
-          MAX(created_at) as last_indexed,
-          array_agg(DISTINCT title ORDER BY title) FILTER (WHERE title IS NOT NULL) as sample_titles
-        FROM kb_chunks
+          metadata->>'system_category' AS system_category,
+          metadata->>'subcategory'     AS subcategory,
+          manufacturer                  AS manufacturer,
+          metadata->>'product_family'  AS product_family,
+          chunk_type                    AS doc_type,
+          metadata->>'source'          AS source,
+          COUNT(*)                      AS chunk_count,
+          AVG((metadata->>'quality_score')::float) AS avg_quality,
+          MAX(created_at)               AS last_indexed,
+          array_agg(DISTINCT metadata->>'title' ORDER BY metadata->>'title')
+            FILTER (WHERE metadata->>'title' IS NOT NULL)  AS sample_titles
+        FROM knowledge_entries
         WHERE tenant_id = $1
-        GROUP BY system_category, subcategory, manufacturer, product_family, doc_type, source
+        GROUP BY
+          metadata->>'system_category',
+          metadata->>'subcategory',
+          manufacturer,
+          metadata->>'product_family',
+          chunk_type,
+          metadata->>'source'
         ORDER BY chunk_count DESC, avg_quality DESC NULLS LAST`,
         [ctx.tenantId],
       ).then((r) => r.rows),

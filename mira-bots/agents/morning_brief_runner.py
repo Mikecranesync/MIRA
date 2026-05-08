@@ -67,16 +67,73 @@ def _pm_section() -> str:
 
 
 def _kb_section() -> str:
-    """Read the latest KB growth report if available."""
+    """Live KB metrics from NeonDB (knowledge_entries + pipeline_runs).
+
+    Spec: docs/specs/kb-ingest-hardening-spec.md §9. Falls back to file-based
+    report if DB is unreachable so heartbeat never goes silent.
+    """
+    db_url = os.environ.get("NEON_DATABASE_URL", "")
+    if db_url:
+        try:
+            import psycopg2  # type: ignore
+            with psycopg2.connect(db_url, connect_timeout=5, sslmode="require") as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT
+                          COUNT(*)                                                          AS total,
+                          COUNT(*) FILTER (WHERE created_at > now() - interval '1 day')    AS today,
+                          COUNT(*) FILTER (WHERE created_at > now() - interval '7 days')   AS week
+                        FROM knowledge_entries
+                        """
+                    )
+                    row = cur.fetchone() or (0, 0, 0)
+                    total, today, week = row
+                    runs_today = runs_ok = runs_failed = 0
+                    last_run_at = None
+                    try:
+                        cur.execute(
+                            """
+                            SELECT
+                              COUNT(*)::int                                                   AS total,
+                              COUNT(*) FILTER (WHERE status = 'ok')::int                      AS ok,
+                              COUNT(*) FILTER (WHERE status IN ('failed','partial'))::int     AS failed,
+                              MAX(started_at)                                                 AS last_run_at
+                            FROM pipeline_runs
+                            WHERE started_at > now() - interval '1 day'
+                            """
+                        )
+                        run_row = cur.fetchone() or (0, 0, 0, None)
+                        runs_today, runs_ok, runs_failed, last_run_at = run_row
+                    except Exception:
+                        pass
+            stale = ""
+            if last_run_at is not None:
+                age = (datetime.now(timezone.utc) - last_run_at).total_seconds() / 3600
+                if age > 24:
+                    stale = " ⚠️ no runs in 24h"
+            success = (
+                f"  · {runs_today} runs today ({runs_ok}✓ / {runs_failed}✗){stale}"
+                if runs_today
+                else f"  · 0 runs today{stale}"
+            )
+            return (
+                f"• Total: *{int(total):,}* chunks\n"
+                f"• Today: *+{int(today):,}* (7d: +{int(week):,})\n"
+                f"{success}"
+            )
+        except Exception as exc:
+            logger.debug("KB DB query failed: %s — using file fallback", exc)
+
+    # File-based fallback (legacy report scraper)
     report_dir = Path("/opt/mira/reports/kb-growth-cron")
     if not report_dir.exists():
-        return "_No KB report available_"
+        return "_No KB metrics available_"
     reports = sorted(report_dir.glob("*.md"), reverse=True)
     if not reports:
-        return "_No KB report available_"
+        return "_No KB metrics available_"
     try:
         text = reports[0].read_text(encoding="utf-8")
-        # Extract first metric line
         for line in text.splitlines():
             if "| Done" in line or "PDFs Ingested" in line:
                 parts = [p.strip() for p in line.split("|") if p.strip()]

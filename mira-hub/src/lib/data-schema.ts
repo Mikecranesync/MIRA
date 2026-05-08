@@ -11,11 +11,12 @@ let dataSchemaReady: Promise<void> | null = null;
 export function ensureDataSchema(): Promise<void> {
   if (dataSchemaReady) return dataSchemaReady;
   dataSchemaReady = (async () => {
+    // kb_chunks deprecated — see docs/specs/kb-ingest-hardening-spec.md §11.
+    // Authoritative table is `knowledge_entries` (managed by mira-pipeline).
     const pipelineTables = [
       "work_orders",
       "pm_schedules",
       "cmms_equipment",
-      "kb_chunks",
       "telegram_messages",
     ] as const;
 

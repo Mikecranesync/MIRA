@@ -266,9 +266,29 @@ def step_extract(pdf_path: Path, report: PipelineReport) -> str:
         return md
 
     except Exception as exc:
-        report.docling_method = "failed"
+        logger.error("Docling failed: %s — attempting fallback extractor", exc)
         report.errors.append(f"Docling: {exc}")
-        logger.error("Docling failed: %s", exc)
+        # Fallback path — pdfplumber → pypdf. Spec §7.
+        if os.getenv("KB_FALLBACK_EXTRACT_ENABLED", "true").lower() != "false":
+            try:
+                try:
+                    from tasks.extract_fallback import fallback_extract
+                except ImportError:
+                    from mira_crawler.tasks.extract_fallback import fallback_extract  # type: ignore[no-redef]
+                fb_text, fb_method = fallback_extract(pdf_path)
+                if fb_text:
+                    report.docling_method = fb_method
+                    report.docling_chars = len(fb_text)
+                    report.docling_pages = max(1, fb_text.count("\f") + 1)
+                    logger.warning("Fallback extractor used: %s (%d chars)",
+                                   fb_method, len(fb_text))
+                    return fb_text
+                report.docling_method = "fallback_failed"
+                return ""
+            except Exception as fb_exc:
+                logger.error("Fallback extractor errored: %s", fb_exc)
+                report.errors.append(f"Fallback: {fb_exc}")
+        report.docling_method = "failed"
         return ""
 
 

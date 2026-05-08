@@ -1,0 +1,47 @@
+# KB ingest URL allowlist — see docs/specs/kb-ingest-hardening-spec.md §6.1
+#
+# Hosts on this list are eligible for download by kb_growth_cron.py.
+# Subdomain match: 'foo.com' allows 'cdn.foo.com', 'images.foo.com', etc.
+# Add new hosts here, then re-deploy. PRs that bypass the allowlist fail review.
+
+oem_domains:
+  - cdn.automationdirect.com
+  - automationdirect.com
+  - literature.rockwellautomation.com
+  - rockwellautomation.com
+  - assets.omron.com
+  - omron.com
+  - assets.schneider-electric.com
+  - se.com
+  - schneider-electric.com
+  - support.industry.siemens.com
+  - siemens.com
+  - mitsubishielectric.com
+  - support.fanuc.com
+  - fanuc.com
+  - allen-bradley.com
+  - downloads.eaton.com
+  - eaton.com
+  - downloads.banner-engineering.com
+  - bannerengineering.com
+  - downloads.parker.com
+  - parker.com
+  - sick.com
+  - balluff.com
+  - turck.com
+  - ifm.com
+
+distributors:
+  - automationdirect.com
+  - galco.com
+  - mcmaster.com
+  - grainger.com
+  - newark.com
+  - digikey.com
+  - mouser.com
+
+public_libraries:
+  - manualslib.com
+  - manualslib.us
+  - manualzz.com
+  - manualowl.com
