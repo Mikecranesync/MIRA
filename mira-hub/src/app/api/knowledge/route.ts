@@ -7,10 +7,15 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 // Returns the knowledge library rolled up by manufacturer.
-// Queries knowledge_entries directly (bypasses RLS via neondb_owner) with an
-// explicit tenant_id filter — factorylm_app lacks SELECT on this legacy table,
-// and the table's RLS policy reads app.current_tenant_id which withTenantContext
-// does not set. Programmatic tenant filter preserves isolation.
+// Queries knowledge_entries directly (bypasses RLS via neondb_owner) with no
+// tenant filter — OEM manuals, datasheets, and reference documentation are
+// UNIVERSAL: every authenticated user sees the full corpus regardless of
+// session tenant. The legacy ingest pipeline tagged rows with whatever
+// MIRA_TENANT_ID was set in env (typically literal 'mike'), which does not
+// match the per-user UUID tenantIds minted by the multi-tenant signup flow
+// (migration 008). Filtering by ctx.tenantId returned 0 rows of 83K+ ingested
+// chunks. If per-tenant private docs are added later, switch to filtering on
+// is_private rather than tenant_id.
 //
 // LIVE — no server-side cache (force-dynamic + force-no-store + revalidate=0).
 // Each request hits Neon directly so newly-ingested chunks from the Celery
@@ -34,19 +39,15 @@ export async function GET() {
            COUNT(DISTINCT source_url)::bigint AS doc_count,
            MAX(created_at) AS last_indexed
          FROM knowledge_entries
-         WHERE tenant_id = $1
          GROUP BY 1
          ORDER BY chunk_count DESC`,
-        [ctx.tenantId],
       ),
       pool.query(
         `SELECT
            COUNT(*)::bigint AS total_chunks,
            COUNT(DISTINCT source_url)::bigint AS total_docs,
            MAX(created_at) AS last_ingested
-         FROM knowledge_entries
-         WHERE tenant_id = $1`,
-        [ctx.tenantId],
+         FROM knowledge_entries`,
       ),
     ]);
 
