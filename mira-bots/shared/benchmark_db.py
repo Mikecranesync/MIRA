@@ -9,6 +9,8 @@ Six tables:
   - prejudged_conversations: per-case transcripts + judge scores
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os

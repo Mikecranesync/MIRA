@@ -5,6 +5,8 @@ are forwarded to a Langfuse instance.  Otherwise all calls silently no-op
 so the rest of the codebase never needs to guard imports.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import uuid
