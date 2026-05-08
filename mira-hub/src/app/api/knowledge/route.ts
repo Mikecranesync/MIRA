@@ -11,6 +11,12 @@ export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   try {
+    // Knowledge base (OEM manuals, datasheets, etc.) is UNIVERSAL reference
+    // material — every authenticated user sees the full corpus, regardless
+    // of tenant. Tenant-specific docs (uploaded by a customer) are still
+    // surfaced because we do not filter at all here. If per-tenant scoping
+    // is later required, switch to:
+    //   WHERE tenant_id = $1 OR tenant_id IS NULL OR tenant_id = 'mike'
     const rows = await withTenantContext(ctx.tenantId, (c) =>
       c.query(
         `SELECT
@@ -20,10 +26,8 @@ export async function GET() {
           MAX(created_at) as last_indexed,
           array_agg(DISTINCT title ORDER BY title) FILTER (WHERE title IS NOT NULL) as sample_titles
         FROM kb_chunks
-        WHERE tenant_id = $1
         GROUP BY system_category, subcategory, manufacturer, product_family, doc_type, source
         ORDER BY chunk_count DESC, avg_quality DESC NULLS LAST`,
-        [ctx.tenantId],
       ).then((r) => r.rows),
     );
 
