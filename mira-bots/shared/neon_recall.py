@@ -18,6 +18,8 @@ This is the read-only recall path. The write path (ingest) lives in
 mira-core/mira-ingest/db/neon.py and is never called from bots.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import re
