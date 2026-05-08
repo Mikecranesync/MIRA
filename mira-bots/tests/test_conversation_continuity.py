@@ -6,6 +6,11 @@ Covers: photo batching, session continuation, follow-up detection, deduplication
 import os
 import sys
 
+# Pre-import stdlib `email` BEFORE adding mira-bots/ to sys.path. The repo
+# contains a `mira-bots/email/` adapter directory that would otherwise shadow
+# the stdlib package via httpx → urllib.request → email.
+import email  # noqa: F401
+
 # Minimal env vars needed for shared module imports
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "dummy-token-for-testing")
 os.environ.setdefault("OPENWEBUI_BASE_URL", "http://localhost:8080")
@@ -14,31 +19,41 @@ os.environ.setdefault("KNOWLEDGE_COLLECTION_ID", "dummy-collection")
 os.environ.setdefault("VISION_MODEL", "qwen2.5vl:7b")
 os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira_test.db")
 
-# Allow importing from telegram/ directory
+# Allow importing from telegram/ directory and mira-bots/ root.
+# bot.py imports admin_commands → shared.tenant.invites, which needs
+# `mira-bots/` on sys.path so the `shared` package resolves.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
 
 
 def test_photo_buffer_groups_photos():
-    """PHOTO_BUFFER accumulates multiple photos for same chat_id."""
-    from bot import PHOTO_BUFFER, PHOTO_BUFFER_WINDOW
+    """_BURST_COLLECTOR accumulates multiple photos for same chat_id within
+    the 4-second burst window before they're routed to single/multi handlers.
+
+    The legacy in-memory ``PHOTO_BUFFER`` was replaced by a SQLite-backed
+    ``PhotoBatchQueue`` with a smaller ``_BURST_COLLECTOR`` pre-collector
+    (commit cbde671). This test pins the pre-collector behaviour the original
+    test was verifying.
+    """
+    from bot import _BURST_COLLECTOR
+    from shared.photo_batch_queue import BURST_WINDOW_SECONDS
 
     chat_id = 99991
-    PHOTO_BUFFER[chat_id] = {
+    _BURST_COLLECTOR[chat_id] = {
         "photos": ["b64_photo_1"],
         "raw_bytes_list": [b"bytes1"],
         "caption": "test equipment",
         "update": None,
         "task": None,
     }
-    PHOTO_BUFFER[chat_id]["photos"].append("b64_photo_2")
-    PHOTO_BUFFER[chat_id]["raw_bytes_list"].append(b"bytes2")
+    _BURST_COLLECTOR[chat_id]["photos"].append("b64_photo_2")
+    _BURST_COLLECTOR[chat_id]["raw_bytes_list"].append(b"bytes2")
 
-    assert len(PHOTO_BUFFER[chat_id]["photos"]) == 2
-    assert len(PHOTO_BUFFER[chat_id]["raw_bytes_list"]) == 2
-    assert PHOTO_BUFFER_WINDOW == 4.0
+    assert len(_BURST_COLLECTOR[chat_id]["photos"]) == 2
+    assert len(_BURST_COLLECTOR[chat_id]["raw_bytes_list"]) == 2
+    assert BURST_WINDOW_SECONDS == 4.0
 
-    # Cleanup
-    del PHOTO_BUFFER[chat_id]
+    del _BURST_COLLECTOR[chat_id]
 
 
 def test_non_industrial_continues_session():

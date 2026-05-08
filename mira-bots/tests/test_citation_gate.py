@@ -20,7 +20,10 @@ os.environ.setdefault("OPENWEBUI_BASE_URL", "http://localhost:8080")
 os.environ.setdefault("OPENWEBUI_API_KEY", "")
 os.environ.setdefault("KNOWLEDGE_COLLECTION_ID", "dummy")
 os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira_citation_gate_test.db")
-os.environ.setdefault("MIRA_TENANT_ID", "test-tenant")
+# NOTE: do NOT setdefault MIRA_TENANT_ID at module scope — it pollutes env for
+# every other test in the pytest session (e.g. test_telegram_adapter expects
+# tenant_id to fall back to ""). Tests here that need a tenant should set it
+# locally via monkeypatch.
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
