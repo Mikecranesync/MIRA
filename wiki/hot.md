@@ -1,3 +1,8 @@
+## eval-fixer run — 2026-05-08
+- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (same stale scorecard, 9 days old)
+- Action: issue-filed (#1074 — added to Kanban)
+- Hard-stop: 3 file_clusters keys (engine.py + guardrails.py + active.yaml). Identical 13 failures as 2026-05-04/05/06/07 runs. Prior issues #985, #1017, #1044 still open. Underlying scorecard hasn't been regenerated in 9 days — fresh judge eval is overdue, or one of the prior issues needs to land a fix before another run will produce signal.
+
 ## eval-fixer run — 2026-05-07
 - Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (same stale scorecard, 8 days old)
 - Action: issue-filed (#1044 — added to Kanban)
