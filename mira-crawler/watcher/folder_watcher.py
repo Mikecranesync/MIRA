@@ -25,20 +25,30 @@ SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".html", ".htm", ".txt", ".md"}
 class _IncomingHandler(FileSystemEventHandler):
     """Handle new files in the watched directory."""
 
-    def __init__(self, on_file: callable) -> None:
+    def __init__(self, on_file: callable, seen: set[str]) -> None:
         super().__init__()
         self.on_file = on_file
+        # Shared with FolderWatcher so the startup scan and the FSEvents
+        # observer don't double-fire on the same path. macOS replays recent
+        # creates when the observer attaches, which would re-trigger ingest
+        # for every file already handled by _scan_existing.
+        self.seen = seen
 
     def on_created(self, event):
         if event.is_directory:
             return
         path = Path(event.src_path)
-        if path.suffix.lower() in SUPPORTED_EXTENSIONS:
-            logger.info("New file detected: %s", path.name)
-            try:
-                self.on_file(path)
-            except Exception as e:
-                logger.error("Error processing %s: %s", path.name, e)
+        if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+            return
+        key = str(path.resolve())
+        if key in self.seen:
+            return
+        self.seen.add(key)
+        logger.info("New file detected: %s", path.name)
+        try:
+            self.on_file(path)
+        except Exception as e:
+            logger.error("Error processing %s: %s", path.name, e)
 
 
 class FolderWatcher:
@@ -53,12 +63,36 @@ class FolderWatcher:
         self.watch_dir.mkdir(parents=True, exist_ok=True)
         self.on_file = on_file
         self._observer: Observer | None = None
+        self._seen: set[str] = set()
+
+    def _scan_existing(self) -> None:
+        """Process files already present in watch_dir before the observer attaches.
+
+        Without this, files dropped while the watcher was offline are stranded
+        until something modifies them — the bug that left 16 PDFs untouched in
+        data/incoming/ for six weeks.
+        """
+        for path in sorted(self.watch_dir.iterdir()):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
+            key = str(path.resolve())
+            if key in self._seen:
+                continue
+            self._seen.add(key)
+            logger.info("Existing file at startup: %s", path.name)
+            try:
+                self.on_file(path)
+            except Exception as e:
+                logger.error("Error processing %s: %s", path.name, e)
 
     def start(self) -> None:
         """Start watching (non-blocking — runs in background thread)."""
         if self._observer is not None:
             return
-        handler = _IncomingHandler(on_file=self.on_file)
+        self._scan_existing()
+        handler = _IncomingHandler(on_file=self.on_file, seen=self._seen)
         self._observer = Observer()
         self._observer.schedule(handler, str(self.watch_dir), recursive=False)
         self._observer.start()
