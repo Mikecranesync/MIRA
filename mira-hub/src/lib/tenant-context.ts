@@ -5,8 +5,11 @@ import type { PoolClient } from "pg";
  * Run a database callback inside a transaction that:
  *   1. Switches the session role to `factorylm_app` (SET LOCAL ROLE — limited,
  *      no BYPASSRLS) so RLS tenant_isolation policies are enforced.
- *   2. Sets app.tenant_id = tenantId (transaction-local) so RLS policies
- *      can read it via current_setting('app.tenant_id', true).
+ *   2. Sets app.tenant_id AND app.current_tenant_id (transaction-local). The
+ *      project has both setting keys in the wild — newer code reads
+ *      app.tenant_id, older policies (migrations 001–003) read
+ *      app.current_tenant_id. Writing both keeps every RLS policy happy
+ *      regardless of which it was authored against.
  *
  * neondb_owner has BYPASSRLS=true. Without the SET LOCAL ROLE switch the
  * owner connection skips every RLS policy. SET LOCAL ROLE scopes the
@@ -25,6 +28,7 @@ export async function withTenantContext<T>(
     await client.query("BEGIN");
     await client.query("SET LOCAL ROLE factorylm_app");
     await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+    await client.query("SELECT set_config('app.current_tenant_id', $1, true)", [tenantId]);
     const result = await fn(client);
     await client.query("COMMIT");
     return result;
