@@ -38,6 +38,10 @@ If all seven pass, ack with a single tight message: branch name, worktree path, 
 
 Work in tight loops: re-read PLAN → execute the next item → commit → check stop conditions.
 
+**Pair with Claude Code v2.1+ Outcomes (public beta) when available.** Outcomes lets the runtime keep iterating until a structured success condition is met. The PLAN.md scope-list IS the outcome — translate each numbered item into an Outcome row before kicking off. Outcomes does NOT replace this skill's discipline (HANDOFF, scope-lock, hard stops); it complements it by giving the runtime a deterministic "are we done yet" check. If Outcomes is not available in the session, fall back to manually verifying each PLAN row at HANDOFF time — same contract, more friction.
+
+**Auto Mode (research preview) is acceptable here, with caveats.** Auto Mode's classifier handles routine permission prompts so the run isn't gated on every tool approval — exactly what unattended sessions need. Caveats: Auto Mode does NOT bypass the prod-guard hook, the Stop hook, or the deny-list permissions in `.claude/settings.json`. Anything destructive (force-push to main/develop, prod SSH, kubectl) still gets blocked. Treat Auto Mode as "remove the friction on safe actions" not as "remove the safety net."
+
 **Re-read PLAN.md scope before starting each new numbered item.** Not the whole PLAN every turn — but before each task transition, glance at the scope and OUT-of-scope. If your next move would touch an OUT-of-scope path, STOP and write HANDOFF. Do not "expand the plan" mid-session — that's how 2026-04-25 produced 14 branches when it was asked for fewer.
 
 **Commit every 20–30 turns of useful work, even if a task is mid-flight.** Conventional commits (`feat/fix/security/docs/refactor/test/chore/BREAKING`). Push to your branch every commit. CI fires (`.github/workflows/code-review.yml`); if 🔴 IMPORTANT comments appear on the PR, run `bash scripts/pr_self_fix.sh <PR>` *once*. If still red after one self-fix round, STOP and write HANDOFF — do not loop forever on review fixes.
