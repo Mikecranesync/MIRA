@@ -40,7 +40,7 @@ export async function GET() {
            MAX(created_at) AS last_indexed
          FROM knowledge_entries
          GROUP BY 1
-         ORDER BY chunk_count DESC`,
+         ORDER BY manufacturer ASC`,
       ),
       pool.query(
         `SELECT
