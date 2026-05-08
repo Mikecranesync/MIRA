@@ -221,6 +221,10 @@ def store_chunks(
                         equipment_id=equipment_id,
                         manufacturer=manufacturer,
                         fault_code=match.normalized(),
+                        # Anchoring the fault under its model in the KB
+                        # tree gives the Hub a navigable
+                        # mfr/family/model/fault_codes/<code> path.
+                        model=model_number,
                         confidence=0.85,
                         source_chunk_id=entry_id,
                     )

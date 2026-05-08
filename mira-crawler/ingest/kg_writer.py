@@ -24,7 +24,12 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from uuid import UUID
 
-from .uns import equipment_unassigned_path, fault_code_path, is_valid_path, manual_path
+from .uns import (
+    equipment_unassigned_path,
+    fault_code_path,
+    is_valid_path,
+    manual_path,
+)
 
 logger = logging.getLogger("mira-crawler.kg_writer")
 
@@ -205,19 +210,33 @@ def register_equipment_and_manual(
     model: str,
     manual_title: str | None = None,
     manual_url: str | None = None,
+    family: str | None = None,
     source_chunk_id: str | UUID | None = None,
     conn=None,
 ) -> tuple[str | None, str | None]:
-    """Upsert an `equipment` entity, a `manual` entity, and a HAS_MANUAL
-    edge between them. All idempotent. Returns (equipment_id, manual_id)."""
+    """Upsert an `equipment` entity (the catalog/model node in the
+    knowledge_base branch), a `manual` entity, and a HAS_MANUAL edge.
+    All idempotent. Returns (equipment_id, manual_id).
 
-    eq_path = equipment_unassigned_path(manufacturer, model)
+    Per the broadened spec, the equipment node lives at
+        enterprise.knowledge_base.{mfr}.{family?}.{model}
+    NOT at enterprise.unassigned.* — equipment learned from manuals
+    permanently lives in the manufacturer-organized catalog. Site-side
+    instances are linked back to this catalog node via INSTANCE_OF when
+    the user assigns the model to a physical location.
+    """
+
+    eq_path = equipment_unassigned_path(manufacturer, model, family=family)
     eq_id = upsert_entity(
         tenant_id=tenant_id,
         entity_type="equipment",
         name=model,
         uns_path=eq_path,
-        properties={"manufacturer": manufacturer},
+        properties={
+            "manufacturer": manufacturer,
+            "family": family,
+            "catalog_node": True,
+        },
         source_chunk_id=source_chunk_id,
         conn=conn,
     )
@@ -225,13 +244,21 @@ def register_equipment_and_manual(
         return None, None
 
     title = manual_title or f"{manufacturer} {model} Manual"
+    # Manuals live as children of the model node; encode the title slug
+    # so two distinct manuals (user manual + service manual) don't
+    # collide on the parent collection node.
+    from .uns import slug as _slug
+
     man_id = upsert_entity(
         tenant_id=tenant_id,
         entity_type="manual",
         name=title,
-        uns_path=manual_path(manufacturer, model),
+        uns_path=manual_path(
+            manufacturer, model, family=family, manual_slug=_slug(title)
+        ),
         properties={
             "manufacturer": manufacturer,
+            "family": family,
             "model": model,
             "source_url": manual_url,
         },
@@ -258,19 +285,33 @@ def register_fault_code(
     equipment_id: str | UUID,
     manufacturer: str,
     fault_code: str,
+    model: str | None = None,
+    family: str | None = None,
     confidence: float = 0.85,
     source_chunk_id: str | UUID | None = None,
     conn=None,
 ) -> str | None:
     """Upsert a `fault_code` entity tied to an existing `equipment` via a
-    HAS_FAULT edge. Returns the fault entity id."""
+    HAS_FAULT edge. Returns the fault entity id.
+
+    The fault lives under its model in the kb tree when model is
+    provided, otherwise directly under the manufacturer (a model-agnostic
+    fault). Either way, the HAS_FAULT edge ties it to the specific
+    equipment entity that was the carrier of this extraction so the bot
+    can ask "what faults exist on PowerFlex 525?" via graph traversal.
+    """
     name = f"{manufacturer} / {fault_code}".strip(" /")
     fc_id = upsert_entity(
         tenant_id=tenant_id,
         entity_type="fault_code",
         name=name,
-        uns_path=fault_code_path(manufacturer, fault_code),
-        properties={"manufacturer": manufacturer, "code": fault_code},
+        uns_path=fault_code_path(manufacturer, fault_code, model=model, family=family),
+        properties={
+            "manufacturer": manufacturer,
+            "family": family,
+            "model": model,
+            "code": fault_code,
+        },
         source_chunk_id=source_chunk_id,
         conn=conn,
     )

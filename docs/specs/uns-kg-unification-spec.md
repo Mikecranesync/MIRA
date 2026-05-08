@@ -208,36 +208,118 @@ Four logical layers, all backed by Postgres.
 
 ### 3.1 Layer 1 — UNS Tree (the address system)
 
-Every entity has a path:
-`enterprise.{site}.{area}.{line}.{equipment}.{component}.{datapoint}`
+> **Schema broadened 2026-05-08 per Mike directive.** The original spec
+> proposed an `enterprise.unassigned.*` subtree for kb-only equipment
+> and a flat `enterprise.{site}.{area}.{line}.{equipment}.{component}.{datapoint}`
+> for placed assets. Mike's direction: define the BROADEST possible
+> ISA-95-shaped tree now, with literal type-marker labels at every
+> level, even when most branches are empty. The tree below is the new
+> canonical structure; older paths are migrated forward in
+> `docs/migrations/007_uns_path.sql`.
 
-Stored as a Postgres `ltree`. Two states for any entity:
+Stored as a Postgres `ltree`. The full canonical tree:
 
-**Unassigned (default at ingest):**
-`enterprise.unassigned.{manufacturer_slug}.{model_slug}`
-e.g. `enterprise.unassigned.allen_bradley.powerflex_525`
+```
+enterprise/
+├── {company}/                               ← per-customer branch
+│   ├── site/{site_name}/
+│   │   ├── area/{area_name}/
+│   │   │   ├── line/{line_name}/
+│   │   │   │   ├── work_cell/{cell_name}/
+│   │   │   │   │   └── equipment/{equipment_id}/   ← assigned instance
+│   │   │   │   │       ├── component/{component_name}
+│   │   │   │   │       ├── datapoint/{tag_name}            ← Layer 4 (future)
+│   │   │   │   │       ├── maintenance/
+│   │   │   │   │       │   ├── pm_schedule/{slug}
+│   │   │   │   │       │   ├── fault_history/{event_id}
+│   │   │   │   │       │   ├── work_orders/{wo_number}
+│   │   │   │   │       │   └── parts_inventory/{sku}
+│   │   │   │   │       └── documentation/
+│   │   │   │   │           ├── manuals/{slug}
+│   │   │   │   │           ├── schematics/{slug}
+│   │   │   │   │           └── procedures/{slug}
+│   │   │   │   └── equipment/{equipment_id}        ← directly on line (no cell)
+│   │   │   └── equipment/{equipment_id}            ← directly in area (no line)
+│   │   ├── utilities/
+│   │   ├── safety_systems/
+│   │   └── environmental/
+│   ├── fleet/                               ← mobile / field equipment
+│   └── shared_services/
+├── knowledge_base/                          ← manufacturer-organized catalog
+│   ├── {manufacturer}/
+│   │   └── {family?}/                       ← optional; collapses if unknown
+│   │       └── {model}/
+│   │           ├── manuals/
+│   │           ├── fault_codes/
+│   │           ├── pm_schedules/
+│   │           └── parts_lists/
+│   └── community/                           ← Knowledge Cooperative shared data
+│       └── {equipment_class}/
+│           ├── common_faults/
+│           ├── mtbf_benchmarks/
+│           └── resolution_patterns/
+└── operations/
+    ├── work_orders/
+    ├── technicians/
+    ├── inventory/
+    └── compliance/
+```
 
-This is what the ingest pipeline writes when it learns about a new piece of equipment from a manual but the user hasn't placed it on the floor yet. It is a real, valid address.
+**Equipment that hasn't been assigned to a site lives in
+`enterprise.knowledge_base.{manufacturer}.{family?}.{model}`** — the
+manufacturer-organized catalog. Manuals, fault codes, PM schedules and
+parts lists are children of the model node. There is no
+`enterprise.unassigned.*` subtree anymore; the catalog is not a "to be
+placed" list, it's the durable model registry.
 
-**Assigned (placed by user):**
-`enterprise.stardust_racers.pump_station.sump.xylem_flygt.multismart_controller`
+**When a customer assigns a model to a site, the catalog node is NOT
+moved.** A new `equipment` instance is created at the site path (e.g.
+`enterprise.factorylm.site.orlando_plant.area.pump_station.line.line_3.equipment.vfd_07`)
+and linked to the catalog model via an `INSTANCE_OF` relationship.
+Same model, multiple sites — no duplication.
 
-Built by the user via the Hub UNS browser (out of scope for this spec, see §7 Phase 4).
+**Type markers vs instance labels.** ISA-95 segment names like `site`,
+`area`, `line`, `work_cell`, `equipment`, `component`, `datapoint`,
+`maintenance`, `documentation`, `manuals`, `fault_codes` appear
+LITERALLY in the path as type markers, alternated with dynamic
+instance labels. This makes the tree explorable: walk one level deep
+and the segment alone tells you what kind of children to expect. It
+also lets the Hub UI render the full skeleton even when no entities
+exist under a branch (Mike: "Most branches will be empty/theoretical
+— that's intentional").
+
+**Skippable middle segments (site side).** Equipment can attach at
+three depths: in a `work_cell`, on a `line` (no cell), or directly in
+an `area` (no line). The `line.{l}.work_cell.{c}` segments are
+optional. ltree path depth is variable and that's fine.
+
+**Reserved labels.** The literal type-marker words are reserved — a
+manufacturer / site / equipment slug must never collide with one. The
+list is enforced by `mira-crawler/ingest/uns.py:RESERVED_LABELS`.
 
 **Path normalization rules:**
 - Lowercase only.
 - Spaces → `_`. Hyphens → `_`. Slashes → `_`.
 - Strip non-`[a-z0-9_]` after normalization.
 - `.` is a path separator, never appears inside a label.
-- Validation: `uns_path ~ '^[a-z0-9_]+(\.[a-z0-9_]+)*$'` (Postgres CHECK constraint, in addition to ltree's own validation).
+- Validation: `uns_path ~ '^[a-z0-9_]+(\.[a-z0-9_]+)*$'` (Postgres
+  CHECK constraint, in addition to ltree's own validation).
 
 **Storage:**
-- Add column `uns_path ltree NOT NULL` to `kg_entities`.
-- Add a GiST index for ancestor/descendant queries: `CREATE INDEX kg_entities_uns_path_gist ON kg_entities USING gist (uns_path);`
-- Add a btree index for exact lookup: `CREATE INDEX kg_entities_uns_path_btree ON kg_entities (uns_path);`
-- `CREATE EXTENSION IF NOT EXISTS ltree;` — pre-flight check during migration that Neon supports it (§9 Q2).
+- `uns_path ltree NOT NULL DEFAULT 'enterprise.knowledge_base'` on `kg_entities`.
+- GiST index on `uns_path` for ancestor/descendant queries.
+- Btree index on `uns_path` for exact lookup.
+- `CREATE EXTENSION IF NOT EXISTS ltree` — pre-flight check during
+  migration that Neon supports it (§9 Q2).
 
-**The default path is meaningful, not a placeholder.** The UNS browser displays an "Unassigned" virtual subtree showing every piece of equipment we've learned about that hasn't been placed yet. This is *also* the worklist for asset onboarding.
+**Skeleton-aware browse API.** `GET /api/uns/browse?path=...` merges
+two sources of children: (1) the static SKELETON of literal type
+markers (defined in `mira-hub/src/lib/uns/skeleton.ts`) so empty
+branches still show structure, and (2) dynamic instance labels from
+`kg_entities` for the tenant. Each child is tagged
+`kind: "literal" | "dynamic" | "both"` so the UI can distinguish a
+type-marker placeholder ("site") from an actual data node
+("orlando_plant") from a marker that has data directly under it.
 
 ### 3.2 Layer 2 — Knowledge Graph (the relationship system)
 
