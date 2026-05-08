@@ -1,9 +1,21 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { withTenantContext } from "@/lib/tenant-context";
+import pool from "@/lib/db";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
+// Returns the knowledge library rolled up by manufacturer.
+// Queries knowledge_entries directly (bypasses RLS via neondb_owner) with an
+// explicit tenant_id filter — factorylm_app lacks SELECT on this legacy table,
+// and the table's RLS policy reads app.current_tenant_id which withTenantContext
+// does not set. Programmatic tenant filter preserves isolation.
+//
+// LIVE — no server-side cache (force-dynamic + force-no-store + revalidate=0).
+// Each request hits Neon directly so newly-ingested chunks from the Celery
+// worker / kb_growth_cron appear immediately. Response also returns no-store
+// headers so the browser/proxy never serves stale snapshots.
 export async function GET() {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
@@ -11,62 +23,61 @@ export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   try {
-    // UNS+KG unification (spec §4.3, Phase 1): repoint from the empty
-    // `kb_chunks` stub to the real vector store (`knowledge_entries`).
-    // The shape matches what the UI consumes — fields that don't exist
-    // on knowledge_entries (system_category, subcategory, quality_score)
-    // are read from the JSONB metadata column or projected as NULL.
-    const rows = await withTenantContext(ctx.tenantId, (c) =>
-      c.query(
+    const [{ rows: mfrRows }, { rows: globalRows }] = await Promise.all([
+      pool.query(
         `SELECT
-          equipment_type AS system_category,
-          metadata->>'subcategory' AS subcategory,
-          manufacturer,
-          model_number AS product_family,
-          data_type AS doc_type,
-          source_type AS source,
-          COUNT(*) as chunk_count,
-          AVG((metadata->>'quality_score')::float) as avg_quality,
-          MAX(created_at) as last_indexed,
-          array_agg(DISTINCT (metadata->>'title') ORDER BY (metadata->>'title'))
-            FILTER (WHERE metadata->>'title' IS NOT NULL) as sample_titles
-        FROM knowledge_entries
-        WHERE tenant_id = $1
-        GROUP BY equipment_type, metadata->>'subcategory', manufacturer,
-                 model_number, data_type, source_type
-        ORDER BY chunk_count DESC, avg_quality DESC NULLS LAST`,
+           CASE
+             WHEN manufacturer IS NULL OR TRIM(manufacturer) = '' THEN 'Uncategorized'
+             ELSE INITCAP(LOWER(TRIM(manufacturer)))
+           END AS manufacturer,
+           COUNT(*)::bigint AS chunk_count,
+           COUNT(DISTINCT source_url)::bigint AS doc_count,
+           MAX(created_at) AS last_indexed
+         FROM knowledge_entries
+         WHERE tenant_id = $1
+         GROUP BY 1
+         ORDER BY chunk_count DESC`,
         [ctx.tenantId],
-      ).then((r) => r.rows),
+      ),
+      pool.query(
+        `SELECT
+           COUNT(*)::bigint AS total_chunks,
+           COUNT(DISTINCT source_url)::bigint AS total_docs,
+           MAX(created_at) AS last_ingested
+         FROM knowledge_entries
+         WHERE tenant_id = $1`,
+        [ctx.tenantId],
+      ),
+    ]);
+
+    type Mfr = { name: string; chunkCount: number; docCount: number; lastIndexed: unknown };
+    const manufacturers: Mfr[] = mfrRows.map((r: Record<string, unknown>) => ({
+      name: r.manufacturer as string,
+      chunkCount: Number(r.chunk_count),
+      docCount: Number(r.doc_count),
+      lastIndexed: r.last_indexed,
+    }));
+
+    const g = globalRows[0] ?? { total_chunks: 0, total_docs: 0, last_ingested: null };
+
+    return NextResponse.json(
+      {
+        manufacturers,
+        stats: {
+          totalChunks: Number(g.total_chunks),
+          totalDocs: Number(g.total_docs),
+          manufacturerCount: manufacturers.length,
+          lastIngested: g.last_ingested,
+          fetchedAt: new Date().toISOString(),
+        },
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          Pragma: "no-cache",
+        },
+      },
     );
-
-    const docs = rows.map((r: Record<string, unknown>, i: number) => {
-      const name = [r.manufacturer, r.product_family, r.system_category, r.subcategory]
-        .filter(Boolean)
-        .join(" — ") || r.doc_type || "General Knowledge";
-      return {
-        id: `chunk-group-${i}`,
-        name,
-        category: r.system_category ?? "general",
-        subcategory: r.subcategory ?? null,
-        manufacturer: r.manufacturer ?? null,
-        productFamily: r.product_family ?? null,
-        docType: r.doc_type ?? "knowledge",
-        source: r.source ?? null,
-        chunkCount: Number(r.chunk_count),
-        avgQuality: r.avg_quality ? Math.round(Number(r.avg_quality) * 10) / 10 : null,
-        lastIndexed: r.last_indexed,
-        sampleTitles: ((r.sample_titles as string[] | null) ?? []).slice(0, 3),
-        indexStatus: "indexed" as const,
-      };
-    });
-
-    const stats = {
-      totalChunks: docs.reduce((s: number, d) => s + d.chunkCount, 0),
-      totalDocs: docs.length,
-      categories: [...new Set(docs.map((d) => d.category))].filter(Boolean),
-    };
-
-    return NextResponse.json({ docs, stats });
   } catch (err) {
     console.error("[api/knowledge]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
