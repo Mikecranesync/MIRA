@@ -14,10 +14,9 @@ VPS_HOST="${VPS_HOST:-root@100.68.120.99}"
 NGINX_CONF="${NGINX_CONF:-/etc/nginx/sites-enabled/factorylm-landing}"
 DRY_RUN="${DRY_RUN:-0}"
 
-# Marker — used both as the "already applied?" sentinel and as the anchor
-# we splice the new lines below. The apex factorylm.com 443 block lives
-# in factorylm-landing (verified 2026-05-09).
-MARKER='server_name factorylm.com www.factorylm.com;'
+# The apex factorylm.com 443 block lives in factorylm-landing (verified
+# 2026-05-09). The remote awk in remote_apply() anchors on its
+# `server_name factorylm.com www.factorylm.com;` line.
 NEW_BLOCK=$'    # apex login/signup → app subdomain (added 2026-05-09)\n    location = /login  { return 301 https://app.factorylm.com/login; }\n    location = /signup { return 301 https://app.factorylm.com/signup; }'
 
 remote_apply() {
