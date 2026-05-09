@@ -474,12 +474,17 @@ services:
       - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      # Atlas CMMS live stats (public URL — mira-hub is not on cmms-ext network)
-      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-https://cmms.factorylm.com}
+      # Atlas CMMS live stats — internal docker URL via shared cmms network.
+      # Public cmms.factorylm.com nginx only proxies /auth/ + /api/ + /license/
+      # to the Spring backend; /work-orders/*, /assets/*, /preventive-maintenances/*
+      # fall through to the SPA and 405 on POST. Direct backend access bypasses
+      # nginx. (Re-applies fix dc10a10f, regressed by 08db78e0.)
+      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://cmms-backend:8080}
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
     networks:
       - mira-net
+      - cmms-ext
     restart: unless-stopped
     deploy:
       resources:
@@ -505,7 +510,7 @@ services:
     container_name: mira-cmms-sync
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
-      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-https://cmms.factorylm.com}
+      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://cmms-backend:8080}
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
       - CMMS_SYNC_ENABLED=${CMMS_SYNC_ENABLED:-false}
@@ -514,6 +519,7 @@ services:
     command: ["bun", "run", "scripts/cmms-sync-worker.ts", "--interval-ms", "${CMMS_SYNC_INTERVAL_MS:-60000}"]
     networks:
       - mira-net
+      - cmms-ext
     restart: unless-stopped
     depends_on:
       - mira-hub

@@ -119,6 +119,20 @@ def _split_sources(content: str) -> tuple[str, list[ChatSource]]:
     return reply, sources
 
 
+def _split_make_model(label: str | None, asset_id: str | None) -> tuple[str | None, str | None]:
+    """Best-effort split of a label like 'Allen-Bradley PowerFlex 525' into
+    (make, model). Falls back to splitting the slugified asset_id."""
+    src = (label or "").strip()
+    if not src and asset_id:
+        src = asset_id.replace("-", " ").strip()
+    if not src:
+        return None, None
+    parts = src.split(None, 1)
+    if len(parts) == 1:
+        return parts[0], None
+    return parts[0], parts[1]
+
+
 def _system_prompt(asset_id: str | None, asset_label: str | None) -> str:
     base = (
         "You are MIRA, an industrial-maintenance diagnostic assistant. "
@@ -132,11 +146,24 @@ def _system_prompt(asset_id: str | None, asset_label: str | None) -> str:
             label = eq["label"]
     if not label:
         return base
-    return (
-        f"{base} The user is asking about a {label}. "
-        "Scope all retrieval and reasoning to that equipment unless the "
-        "user explicitly asks otherwise."
+    make, _ = _split_make_model(label, asset_id)
+    constraint = (
+        f"The user is asking about a {label}. "
+        f"Answer ONLY about the {label}. "
     )
+    if make:
+        constraint += (
+            f"Use ONLY documentation, parameter codes, and terminology from {make}. "
+            f"Do NOT reference, compare to, or cite documentation from other manufacturers "
+            f"(e.g. Yaskawa, ABB, Siemens, Automation Direct, Danfoss, Mitsubishi, Fuji) "
+            f"unless the user explicitly asks. "
+        )
+    constraint += (
+        "If the question cannot be answered from the OEM manual for this exact equipment, "
+        "say 'I don't have the relevant section of the manual for this' rather than guessing "
+        "from a similar product."
+    )
+    return f"{base} {constraint}"
 
 
 async def chat(

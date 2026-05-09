@@ -26,7 +26,7 @@ async function getToken(): Promise<{ token: string | null; reason?: string }> {
     const res = await fetch(`${atlasBase()}/auth/signin`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: user, password: pass }),
+      body: JSON.stringify({ email: user, password: pass, type: "CLIENT" }),
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
