@@ -495,7 +495,18 @@ class RAGWorker:
                         state.get("asset_identified", "unknown"),
                     )
                     triage_data = (state.get("context") or {}).get("triage_result", {})
-                    if triage_data.get("is_answerable_from_general_knowledge"):
+                    # Use general-knowledge mode (with disclaimer) rather than a hard
+                    # "I don't have docs" refusal when the LLM can likely answer from
+                    # training data: triage flagged it, an asset is already identified,
+                    # or the message contains a recognisable fault-code pattern.
+                    _has_industrial_signal = bool(
+                        state.get("asset_identified")
+                        or re.search(r"\b[A-Za-z]{1,4}[-_]?\d{2,4}\b", message)
+                    )
+                    if (
+                        triage_data.get("is_answerable_from_general_knowledge")
+                        or _has_industrial_signal
+                    ):
                         messages = self._build_prompt(
                             state, rewritten, photo_b64, no_kb_coverage="general_knowledge"
                         )
