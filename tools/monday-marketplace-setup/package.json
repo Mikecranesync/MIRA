@@ -1,0 +1,19 @@
+{
+  "name": "mira-monday-marketplace-setup",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Monday.com Developer Center configuration driver for MIRA Scan. Connects to Chrome via CDP and auto-fills all four Build-tab sections (Features, OAuth, Webhooks, App Onboarding), scrapes generated credentials, and writes them to Doppler factorylm/prd. Falls back to hybrid manual-assist mode if CDP is unavailable.",
+  "type": "module",
+  "scripts": {
+    "setup": "bun setup.ts",
+    "dry-run": "bun setup.ts --dry-run",
+    "hybrid": "bun setup.ts --hybrid",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "20.12.7",
+    "playwright": "^1.59.1",
+    "typescript": "5.4.5"
+  }
+}

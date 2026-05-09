@@ -182,3 +182,9 @@ wiki/.smart-env/
 **/* 2.txt
 
 .claire/
+
+# Playwright marketplace-setup runs (screenshots-on-failure, never commit)
+tools/monday-marketplace-setup/runs/
+tools/monday-marketplace-setup/node_modules/
+tools/monday-marketplace-setup/playwright-report/
+tools/monday-marketplace-setup/.chrome-profile/

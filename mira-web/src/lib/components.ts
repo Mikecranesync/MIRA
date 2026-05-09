@@ -96,7 +96,7 @@ export function stopCard(headline: string, body: string, ctas: StopCta[]): strin
     })
     .join("\n    ");
   return `<div class="fl-stop-card" role="alert">
-  <h4>${safeHeadline}</h4>
+  <h3>${safeHeadline}</h3>
   <p>${body}</p>
   <div class="fl-stop-cta">
     ${ctaHtml}

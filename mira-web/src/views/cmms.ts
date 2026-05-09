@@ -330,6 +330,25 @@ export function renderCmms(reqUrl?: string): string {
       description:
         "Send yourself a one-time sign-in link. No password, no demo call, no credit card. Upload your first manual and ask MIRA a question.",
       canonical: "https://factorylm.com/cmms",
+      jsonLd: {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "@id": "https://factorylm.com/cmms#app",
+        name: "FactoryLM CMMS",
+        applicationCategory: "BusinessApplication",
+        operatingSystem: "Web",
+        url: "https://factorylm.com/cmms",
+        description: "AI-powered CMMS for industrial maintenance. Work orders, PM scheduling, asset registry, and MIRA AI answers from cited OEM documentation.",
+        offers: {
+          "@type": "Offer",
+          name: "MIRA Troubleshooter",
+          price: "97",
+          priceCurrency: "USD",
+          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "per plant per month" },
+          url: "https://factorylm.com/pricing",
+        },
+        publisher: { "@id": "https://factorylm.com/#org" },
+      },
     },
     reqUrl
   );

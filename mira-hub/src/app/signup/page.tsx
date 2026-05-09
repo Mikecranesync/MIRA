@@ -124,8 +124,9 @@ export default function SignupPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Name (optional)</label>
+              <label htmlFor="signup-name" className="block text-xs font-medium text-slate-400 mb-1.5">Name (optional)</label>
               <Input
+                id="signup-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -136,8 +137,9 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
+              <label htmlFor="signup-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
               <Input
+                id="signup-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -149,9 +151,10 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
+              <label htmlFor="signup-password" className="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
               <div className="relative">
                 <Input
+                  id="signup-password"
                   type={showPw ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -163,6 +166,7 @@ export default function SignupPage() {
                 />
                 <button
                   type="button"
+                  aria-label={showPw ? "Hide password" : "Show password"}
                   onClick={() => setShowPw((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
                 >
