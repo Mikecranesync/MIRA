@@ -1,0 +1,5 @@
+---
+name: MIRA stack down
+command: doppler run --project factorylm --config prd -- docker compose down
+tags: [mira, docker, ops]
+description: Stop all MIRA containers
