@@ -39,7 +39,7 @@ async function atlasAdminToken(): Promise<string | null> {
     const res = await fetch(`${ATLAS_URL}/auth/signin`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: user, password: pass }),
+      body: JSON.stringify({ email: user, password: pass, type: "CLIENT" }),
       signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) return null;
