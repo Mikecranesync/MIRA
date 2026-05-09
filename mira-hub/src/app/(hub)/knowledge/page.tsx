@@ -1,11 +1,22 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, BookOpen, FileText, Upload, Clock, ChevronRight, ArrowLeft, Factory } from "lucide-react";
+import {
+  Search,
+  BookOpen,
+  FileText,
+  Upload,
+  Clock,
+  ChevronRight,
+  ArrowLeft,
+  Factory,
+  Layers,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { UploadPicker } from "@/components/UploadPicker";
 import { UploadBlock, type UploadBlockData } from "@/components/UploadBlock";
 import { API_BASE } from "@/lib/config";
+import { KbGrowthDashboard } from "./KbGrowthDashboard";
 
 type Manufacturer = {
   name: string;
@@ -49,9 +60,26 @@ type ManualDoc = {
   title: string;
   modelNumber: string | null;
   sourceType: string | null;
-  equipmentType: string | null;
+  equipmentType: string;
   chunkCount: number;
   lastIndexed: string | null;
+};
+
+type ManualModel = {
+  modelNumber: string;
+  chunkCount: number;
+  docCount: number;
+  docs: ManualDoc[];
+  unsPath: string;
+};
+
+type ManualGroup = {
+  equipmentType: string;
+  chunkCount: number;
+  docCount: number;
+  modelCount: number;
+  models: ManualModel[];
+  unsPath: string;
 };
 
 const NON_TERMINAL: ReadonlyArray<UploadBlockData["status"]> = [
@@ -75,8 +103,9 @@ export default function KnowledgePage() {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const [selectedMfr, setSelectedMfr] = useState<string | null>(null);
-  const [docs, setDocs] = useState<ManualDoc[]>([]);
+  const [groups, setGroups] = useState<ManualGroup[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
+  const [openTypes, setOpenTypes] = useState<Set<string>>(new Set());
 
   // Tick every 15s so "Last updated" relative time stays current between polls.
   const [, setNowTick] = useState(0);
@@ -90,7 +119,12 @@ export default function KnowledgePage() {
       const res = await fetch(`${API_BASE}/api/knowledge`, { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
-      setManufacturers(data.manufacturers ?? []);
+      // API now returns A-Z; sort defensively in case any caller mutates.
+      const list: Manufacturer[] = data.manufacturers ?? [];
+      list.sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+      );
+      setManufacturers(list);
       setStats(data.stats ?? EMPTY_STATS);
     } catch {
       /* swallow — next poll retries */
@@ -103,9 +137,8 @@ export default function KnowledgePage() {
   }, [fetchManufacturers]);
 
   // Live polling: refresh on focus + tab-visibility, plus a 30s heartbeat.
-  // Ensures newly-ingested chunks (Celery worker, kb_growth_cron) appear
-  // without manual reload. Pauses while drilled into a manufacturer detail
-  // view to avoid re-fetching the list mid-interaction.
+  // Pauses while drilled into a manufacturer detail view to avoid re-fetching
+  // the list mid-interaction.
   useEffect(() => {
     if (selectedMfr) return;
     const onFocus = () => void fetchManufacturers();
@@ -126,15 +159,33 @@ export default function KnowledgePage() {
 
   const openManufacturer = useCallback((name: string) => {
     setSelectedMfr(name);
-    setDocs([]);
+    setGroups([]);
+    setOpenTypes(new Set());
     setDocsLoading(true);
     fetch(`${API_BASE}/api/knowledge/manufacturer?name=${encodeURIComponent(name)}`, {
       cache: "no-store",
     })
       .then((r) => r.json())
-      .then((data) => setDocs(data.docs ?? []))
+      .then((data) => {
+        const incoming: ManualGroup[] = data.groups ?? [];
+        setGroups(incoming);
+        // Auto-open the first (largest) category so the user sees content
+        // immediately rather than a row of collapsed accordions.
+        if (incoming.length > 0) {
+          setOpenTypes(new Set([incoming[0].equipmentType]));
+        }
+      })
       .catch(console.error)
       .finally(() => setDocsLoading(false));
+  }, []);
+
+  const toggleType = useCallback((equipmentType: string) => {
+    setOpenTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(equipmentType)) next.delete(equipmentType);
+      else next.add(equipmentType);
+      return next;
+    });
   }, []);
 
   const fetchUploads = useCallback(async () => {
@@ -239,12 +290,29 @@ export default function KnowledgePage() {
     (m) => search === "" || m.name.toLowerCase().includes(search.toLowerCase()),
   );
 
-  const filteredDocs = docs.filter(
-    (d) =>
-      search === "" ||
-      d.title.toLowerCase().includes(search.toLowerCase()) ||
-      (d.modelNumber?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-      d.sourceUrl.toLowerCase().includes(search.toLowerCase()),
+  const filteredGroups = groups
+    .map((g) => ({
+      ...g,
+      models: g.models
+        .map((m) => ({
+          ...m,
+          docs: m.docs.filter(
+            (d) =>
+              search === "" ||
+              d.title.toLowerCase().includes(search.toLowerCase()) ||
+              (d.modelNumber?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+              d.sourceUrl.toLowerCase().includes(search.toLowerCase()) ||
+              m.modelNumber.toLowerCase().includes(search.toLowerCase()) ||
+              g.equipmentType.toLowerCase().includes(search.toLowerCase()),
+          ),
+        }))
+        .filter((m) => m.docs.length > 0),
+    }))
+    .filter((g) => g.models.length > 0);
+
+  const visibleDocCount = filteredGroups.reduce(
+    (s, g) => s + g.models.reduce((ms, m) => ms + m.docs.length, 0),
+    0,
   );
 
   const headerSubtitle = loading
@@ -252,7 +320,11 @@ export default function KnowledgePage() {
     : selectedMfr
       ? docsLoading
         ? `Loading ${selectedMfr}…`
-        : `${selectedMfr} · ${docs.length} ${docs.length === 1 ? "document" : "documents"}`
+        : `${selectedMfr} · ${visibleDocCount} ${
+            visibleDocCount === 1 ? "document" : "documents"
+          } across ${filteredGroups.length} ${
+            filteredGroups.length === 1 ? "category" : "categories"
+          }`
       : stats.totalChunks === 0
         ? t("emptyStateOnboarding")
         : `${stats.totalChunks.toLocaleString()} ${t("chunks")} · ${stats.manufacturerCount} manufacturers · last ingest ${timeAgo(stats.lastIngested)}`;
@@ -272,7 +344,8 @@ export default function KnowledgePage() {
               <button
                 onClick={() => {
                   setSelectedMfr(null);
-                  setDocs([]);
+                  setGroups([]);
+                  setOpenTypes(new Set());
                   setSearch("");
                 }}
                 className="flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0"
@@ -289,6 +362,14 @@ export default function KnowledgePage() {
               >
                 {selectedMfr ?? t("title")}
               </h1>
+              {selectedMfr ? (
+                <p
+                  className="text-[11px] mt-0.5 truncate font-mono"
+                  style={{ color: "var(--foreground-subtle)" }}
+                >
+                  knowledge_base &gt; {selectedMfr}
+                </p>
+              ) : null}
               <p
                 className="text-xs mt-0.5 truncate"
                 style={{ color: "var(--foreground-muted)" }}
@@ -329,6 +410,8 @@ export default function KnowledgePage() {
       </div>
 
       <div className="px-4 md:px-6 py-4 pb-24 max-w-5xl mx-auto">
+        {!selectedMfr && <KbGrowthDashboard />}
+
         {!selectedMfr && (
           <div className="space-y-2 mb-4">
             {uploads.map((u) => (
@@ -338,120 +421,203 @@ export default function KnowledgePage() {
         )}
 
         {!selectedMfr && !loading && filteredMfrs.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {filteredMfrs.map((m) => (
-              <button
-                key={m.name}
-                onClick={() => openManufacturer(m.name)}
-                className="card p-4 text-left hover:scale-[1.02] active:scale-[0.98] transition-transform"
-                style={{ backgroundColor: "var(--surface-1)" }}
+          <>
+            <div className="flex items-center justify-between mb-2">
+              <h2
+                className="text-[11px] uppercase tracking-wider font-semibold"
+                style={{ color: "var(--foreground-subtle)" }}
               >
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
-                  style={{ backgroundColor: "var(--surface-2)" }}
-                >
-                  <Factory
-                    className="w-4 h-4"
-                    style={{ color: "var(--brand-blue)" }}
-                  />
-                </div>
-                <p
-                  className="text-sm font-semibold leading-tight line-clamp-2"
-                  style={{ color: "var(--foreground)" }}
-                >
-                  {m.name}
-                </p>
-                <p
-                  className="text-[11px] mt-1"
-                  style={{ color: "var(--foreground-muted)" }}
-                >
-                  {formatNumber(m.chunkCount)} {t("chunks")}
-                </p>
-                <p
-                  className="text-[11px]"
-                  style={{ color: "var(--foreground-subtle)" }}
-                >
-                  {m.docCount.toLocaleString()}{" "}
-                  {m.docCount === 1 ? "manual" : "manuals"}
-                </p>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {selectedMfr && !docsLoading && filteredDocs.length > 0 && (
-          <div className="space-y-2">
-            {filteredDocs.map((d) => (
-              <div
-                key={d.sourceUrl + d.title}
-                className="card p-4 flex items-start gap-3"
-              >
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                Manufacturers (A–Z)
+              </h2>
+              <p className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>
+                {filteredMfrs.length} of {manufacturers.length}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {filteredMfrs.map((m) => (
+                <button
+                  key={m.name}
+                  onClick={() => openManufacturer(m.name)}
+                  className="card p-4 text-left hover:scale-[1.02] active:scale-[0.98] transition-transform"
                   style={{ backgroundColor: "var(--surface-1)" }}
                 >
-                  <FileText
-                    className="w-4 h-4"
-                    style={{ color: "var(--brand-blue)" }}
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p
-                    className="text-sm font-semibold leading-snug"
-                    style={{ color: "var(--foreground)" }}
+                  <div
+                    className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+                    style={{ backgroundColor: "var(--surface-2)" }}
                   >
-                    {d.title}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    {d.modelNumber && (
-                      <span
-                        className="text-[11px] font-medium"
-                        style={{ color: "var(--brand-blue)" }}
-                      >
-                        {d.modelNumber}
-                      </span>
-                    )}
-                    {d.equipmentType && (
-                      <span
-                        className="text-[11px]"
-                        style={{ color: "var(--foreground-subtle)" }}
-                      >
-                        · {d.equipmentType}
-                      </span>
-                    )}
-                    {d.sourceType && (
-                      <span
-                        className="text-[11px]"
-                        style={{ color: "var(--foreground-subtle)" }}
-                      >
-                        · {d.sourceType}
-                      </span>
-                    )}
+                    <Factory
+                      className="w-4 h-4"
+                      style={{ color: "var(--brand-blue)" }}
+                    />
                   </div>
                   <p
-                    className="text-[11px] mt-1.5"
+                    className="text-sm font-semibold leading-tight line-clamp-2"
+                    style={{ color: "var(--foreground)" }}
+                  >
+                    {m.name}
+                  </p>
+                  <p
+                    className="text-[11px] mt-1"
                     style={{ color: "var(--foreground-muted)" }}
                   >
-                    {d.chunkCount.toLocaleString()} {t("chunks")}
+                    {formatNumber(m.chunkCount)} {t("chunks")}
                   </p>
-                </div>
-                {d.sourceUrl && (
-                  <a
-                    href={d.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0"
-                    style={{ backgroundColor: "var(--surface-1)" }}
-                    aria-label="Open source"
+                  <p
+                    className="text-[11px]"
+                    style={{ color: "var(--foreground-subtle)" }}
                   >
+                    {m.docCount.toLocaleString()}{" "}
+                    {m.docCount === 1 ? "manual" : "manuals"}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {selectedMfr && !docsLoading && filteredGroups.length > 0 && (
+          <div className="space-y-3">
+            {filteredGroups.map((g) => {
+              const isOpen = openTypes.has(g.equipmentType);
+              return (
+                <div
+                  key={g.equipmentType}
+                  className="card overflow-hidden"
+                  style={{ backgroundColor: "var(--surface-1)" }}
+                >
+                  <button
+                    onClick={() => toggleType(g.equipmentType)}
+                    className="w-full flex items-center gap-3 p-3 text-left hover:bg-black/5 transition-colors"
+                    aria-expanded={isOpen}
+                  >
+                    <div
+                      className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: "var(--surface-2)" }}
+                    >
+                      <Layers
+                        className="w-4 h-4"
+                        style={{ color: "var(--brand-blue)" }}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-sm font-semibold leading-tight"
+                        style={{ color: "var(--foreground)" }}
+                      >
+                        {g.equipmentType}
+                      </p>
+                      <p
+                        className="text-[11px] mt-0.5 truncate font-mono"
+                        style={{ color: "var(--foreground-subtle)" }}
+                      >
+                        {g.unsPath}
+                      </p>
+                      <p
+                        className="text-[11px] mt-0.5"
+                        style={{ color: "var(--foreground-muted)" }}
+                      >
+                        {g.modelCount} {g.modelCount === 1 ? "model" : "models"} ·{" "}
+                        {g.docCount} {g.docCount === 1 ? "manual" : "manuals"} ·{" "}
+                        {formatNumber(g.chunkCount)} {t("chunks")}
+                      </p>
+                    </div>
                     <ChevronRight
-                      className="w-4 h-4"
-                      style={{ color: "var(--foreground-muted)" }}
+                      className="w-4 h-4 flex-shrink-0 transition-transform"
+                      style={{
+                        color: "var(--foreground-muted)",
+                        transform: isOpen ? "rotate(90deg)" : "none",
+                      }}
                     />
-                  </a>
-                )}
-              </div>
-            ))}
+                  </button>
+
+                  {isOpen && (
+                    <div
+                      className="border-t px-3 py-2 space-y-3"
+                      style={{ borderColor: "var(--border)" }}
+                    >
+                      {g.models.map((m) => (
+                        <div key={`${g.equipmentType}-${m.modelNumber}`}>
+                          <div className="flex items-baseline gap-2 mb-1">
+                            <p
+                              className="text-xs font-semibold"
+                              style={{ color: "var(--foreground)" }}
+                            >
+                              {m.modelNumber}
+                            </p>
+                            <p
+                              className="text-[11px]"
+                              style={{ color: "var(--foreground-subtle)" }}
+                            >
+                              {m.docCount} {m.docCount === 1 ? "manual" : "manuals"} ·{" "}
+                              {formatNumber(m.chunkCount)} {t("chunks")}
+                            </p>
+                          </div>
+                          <p
+                            className="text-[10px] mb-2 font-mono truncate"
+                            style={{ color: "var(--foreground-subtle)" }}
+                          >
+                            {m.unsPath}
+                          </p>
+                          <div className="space-y-1.5">
+                            {m.docs.map((d) => (
+                              <div
+                                key={d.sourceUrl + d.title}
+                                className="flex items-start gap-2 p-2 rounded-md"
+                                style={{ backgroundColor: "var(--surface-2)" }}
+                              >
+                                <FileText
+                                  className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
+                                  style={{ color: "var(--brand-blue)" }}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p
+                                    className="text-xs leading-snug font-medium"
+                                    style={{ color: "var(--foreground)" }}
+                                  >
+                                    {d.title}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    {d.sourceType && (
+                                      <span
+                                        className="text-[10px]"
+                                        style={{ color: "var(--foreground-subtle)" }}
+                                      >
+                                        {d.sourceType}
+                                      </span>
+                                    )}
+                                    <span
+                                      className="text-[10px]"
+                                      style={{ color: "var(--foreground-subtle)" }}
+                                    >
+                                      · {d.chunkCount.toLocaleString()} {t("chunks")}
+                                    </span>
+                                  </div>
+                                </div>
+                                {d.sourceUrl && (
+                                  <a
+                                    href={d.sourceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center justify-center w-7 h-7 rounded-md flex-shrink-0"
+                                    style={{ backgroundColor: "var(--surface-1)" }}
+                                    aria-label="Open source"
+                                  >
+                                    <ChevronRight
+                                      className="w-3.5 h-3.5"
+                                      style={{ color: "var(--foreground-muted)" }}
+                                    />
+                                  </a>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -465,7 +631,7 @@ export default function KnowledgePage() {
           </div>
         )}
 
-        {selectedMfr && !docsLoading && filteredDocs.length === 0 && (
+        {selectedMfr && !docsLoading && filteredGroups.length === 0 && (
           <div className="text-center py-16">
             <FileText
               className="w-10 h-10 mx-auto mb-3"
