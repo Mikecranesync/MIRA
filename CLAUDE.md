@@ -156,6 +156,14 @@ To restore an archived module: `git checkout archive/<branch> -- <module-dir>` t
 
 ---
 
+## Verification Workflow
+
+After every VPS deploy, run smoke tests against affected routes before claiming success:
+```bash
+bash install/smoke_test.sh
+```
+Report concrete results (status codes, container logs, or Playwright screenshots). Save screenshots to `docs/promo-screenshots/`. If smoke fails, rollback before reporting.
+
 ## Automated Code Review Pipeline
 
 Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
