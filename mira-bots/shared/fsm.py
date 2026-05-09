@@ -137,6 +137,20 @@ def advance_state(state: dict, parsed: dict) -> dict:
     if parsed.get("next_state"):
         proposed = _STATE_ALIASES.get(parsed["next_state"], parsed["next_state"])
         if proposed in VALID_STATES:
+            # Phase 2 hard FSM rule: once we've reached DIAGNOSIS or beyond,
+            # don't allow the LLM to regress back into Q-states. LLM stochasticity
+            # causes Q1↔Q2↔DIAGNOSIS oscillation that blocks the technician from
+            # ever getting an answer. Hold at current state instead.
+            _DIAGNOSIS_IDX = STATE_ORDER.index("DIAGNOSIS")
+            _current_idx = STATE_ORDER.index(current) if current in STATE_ORDER else -1
+            if proposed in _Q_STATES and _current_idx >= _DIAGNOSIS_IDX:
+                logger.info(
+                    "BACKWARD_GUARD chat_id=%s current=%s proposed=%s → holding",
+                    state.get("chat_id", "?"),
+                    current,
+                    proposed,
+                )
+                proposed = current
             state["state"] = proposed
         else:
             logger.warning(

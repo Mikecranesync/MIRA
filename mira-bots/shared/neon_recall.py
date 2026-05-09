@@ -585,7 +585,7 @@ def _merge_results(
 def recall_knowledge(
     embedding: list[float],
     tenant_id: str,
-    limit: int = 3,
+    limit: int = 5,
     query_text: str = "",
 ) -> list[dict]:
     """Three-stage retrieval: vector + fault code ILIKE + product name ILIKE.
