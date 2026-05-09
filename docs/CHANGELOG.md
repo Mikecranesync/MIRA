@@ -3,6 +3,10 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### mira-hub/v1.5.3 (2026-05-09) — Allow /pricing in robots.txt + nginx HTTP/2 (closes #1104, #1106)
+- **`mira-hub/src/app/robots.ts`** — Added `/pricing` to allow list so crawlers can index the pricing/conversion page.
+- **`nginx-phase2-live.conf`** — Added `http2` to both `listen 443 ssl` directives (app.factorylm.com + chat.factorylm.com). Estimated 1,440ms savings on login page LCP.
+
 ### v2.7.0 (2026-04-14) — Active learning loop: production 👎 → fixtures → draft PR (closes #219)
 - **`mira-bots/tools/active_learner.py`** — `ActiveLearner` class: scans `feedback_log` for `/bad` entries, reconstructs conversations from `interactions`, anonymizes via Claude (PII stripped, vendor/model preserved), infers eval pass criteria with confidence gate (default: 0.6), generates YAML fixtures matching existing eval schema.
 - **`tests/eval/active_learning_tasks.py`** — Celery `shared_task` `mira_active_learning.run_nightly` at 04:00 UTC. File-based lock (30-min stale timeout). Honors `ACTIVE_LEARNING_DISABLED=1` env var.
