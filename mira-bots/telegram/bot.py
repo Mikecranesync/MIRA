@@ -915,6 +915,26 @@ async def _startup(application: Application) -> None:
     # alert fires once via ntfy.sh.
     _outbox_client = AtlasCMMSClient()  # reads MCP_BASE_URL + MCP_REST_API_KEY
 
+    # Startup connectivity check — surfaces Atlas/MCP misconfiguration before demo.
+    try:
+        async with httpx.AsyncClient(timeout=5) as _probe:
+            _probe_url = _outbox_client.base_url.rstrip("/") + "/health"
+            _r = await _probe.get(_probe_url, headers=_outbox_client._headers())
+            if _r.status_code < 300:
+                logger.info("Atlas/MCP probe OK (%s)", _probe_url)
+            else:
+                logger.warning(
+                    "Atlas/MCP probe returned HTTP %d — WO creation may fail. "
+                    "Check MCP_BASE_URL and MCP_REST_API_KEY in Doppler.",
+                    _r.status_code,
+                )
+    except Exception as _probe_exc:
+        logger.warning(
+            "Atlas/MCP probe failed (%s) — WO creation will use outbox fallback. "
+            "Check that mira-mcp is running and MCP_BASE_URL is correct.",
+            _probe_exc,
+        )
+
     async def _outbox_submit(payload: dict) -> dict:
         try:
             return await _outbox_client._post_work_order(payload)
@@ -939,19 +959,42 @@ async def _startup(application: Application) -> None:
     )
 
 
+_conflict_count = 0
+_CONFLICT_EXIT_THRESHOLD = 5  # 5 × 15s = 75s of silence before hard exit
+
+
 async def _conflict_error_handler(update: object, context) -> None:
-    """On 409 Conflict sleep 15s and let PTB retry — avoids crash-restart loop."""
+    """On 409 Conflict: sleep 15s and retry, but exit after 5 consecutive conflicts.
+
+    Without a hard exit the bot loops silently forever and drops every message —
+    a demo killer if a stale CHARLIE poller is running. After _CONFLICT_EXIT_THRESHOLD
+    consecutive conflicts the container exits so restart: unless-stopped surfaces the
+    problem to ops and the log makes the fix obvious.
+    """
     import asyncio
 
     from telegram.error import Conflict as TGConflict
 
+    global _conflict_count
     if isinstance(context.error, TGConflict):
+        _conflict_count += 1
         logger.warning(
-            "409 Conflict during polling — another session is active. "
-            "Sleeping 15s and retrying (do NOT call getUpdates externally while bot is running)."
+            "409 Conflict during polling (%d/%d) — another session is active. "
+            "Fix: SSH to each node and run: docker stop mira-bot-telegram. "
+            "Then restart this container only on the primary node (VPS).",
+            _conflict_count,
+            _CONFLICT_EXIT_THRESHOLD,
         )
+        if _conflict_count >= _CONFLICT_EXIT_THRESHOLD:
+            logger.error(
+                "409 Conflict limit reached (%d) — exiting so restart:unless-stopped "
+                "surfaces this to ops. Kill the competing poller on CHARLIE first.",
+                _CONFLICT_EXIT_THRESHOLD,
+            )
+            raise SystemExit(1)
         await asyncio.sleep(15)
         return  # let PTB retry getUpdates
+    _conflict_count = 0  # reset on any successful update
     raise context.error
 
 
