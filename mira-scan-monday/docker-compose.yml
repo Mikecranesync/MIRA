@@ -19,6 +19,14 @@ services:
       MONDAY_OAUTH_CLIENT_ID: ${MONDAY_OAUTH_CLIENT_ID:-}
       MONDAY_OAUTH_CLIENT_SECRET: ${MONDAY_OAUTH_CLIENT_SECRET:-}
       MONDAY_WEBHOOK_SIGNING_SECRET: ${MONDAY_WEBHOOK_SIGNING_SECRET:-}
+      # Manufacturer-scoped RAG (vendor_rag.py) — direct LLM cascade.
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+      CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      MIRA_SHARED_TENANT_ID: ${MIRA_SHARED_TENANT_ID:-78917b56-f85f-43bb-9a08-1bb98a6cd6c3}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
