@@ -10,6 +10,7 @@ export const metadata: Metadata = {
     description: "Sign in to FactoryLM Hub.",
     url: "/login",
     type: "website",
+    images: ["https://factorylm.com/og-image.png"],
   },
   robots: { index: true, follow: true },
 };
