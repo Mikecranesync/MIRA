@@ -6,7 +6,7 @@ import re
 
 import httpx
 
-from . import db
+from . import db, vendor_rag
 from .known_equipment import get_equipment, match_equipment
 from .models import ChatSource, KBResult
 
@@ -172,6 +172,20 @@ async def chat(
     history: list[dict],
     asset_label: str | None = None,
 ) -> tuple[str, list[ChatSource]]:
+    # Manufacturer-scoped path: when the scan matched a known asset, we
+    # retrieve from `knowledge_entries` filtered by manufacturer and call
+    # the LLM cascade directly. This stops cross-vendor leakage where
+    # mira-pipeline would otherwise pull (e.g.) Yaskawa chunks into a
+    # PowerFlex 525 conversation.
+    vendor_result = await vendor_rag.vendor_chat(
+        message=message,
+        asset_id=asset_id,
+        asset_label=asset_label,
+        history=history,
+    )
+    if vendor_result is not None:
+        return vendor_result
+
     if not MIRA_KB_BASE_URL:
         return (
             "MIRA knowledge base is not configured. Set MIRA_KB_BASE_URL to enable grounded chat.",
