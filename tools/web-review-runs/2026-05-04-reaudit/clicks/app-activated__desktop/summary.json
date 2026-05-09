@@ -1,0 +1,19 @@
+{
+  "url": "https://app.factorylm.com/activated",
+  "viewport": "desktop",
+  "initial_status": 200,
+  "initial_console_errors": [
+    {
+      "type": "error",
+      "text": "[hubDataProvider] NEXT_PUBLIC_PIPELINE_API_URL is unset in production — set it in docker-compose.saas.yml mira-hub env block"
+    }
+  ],
+  "initial_network_failures": [],
+  "total_clickables_enumerated": 4,
+  "skipped_external_or_destructive": 0,
+  "overflow_uncovered": 0,
+  "interactions_run": 4,
+  "interactions_with_console_errors": 1,
+  "interactions_with_network_failures": 0,
+  "interactions_with_navigation": 1
+}

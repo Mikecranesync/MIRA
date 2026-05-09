@@ -1,0 +1,19 @@
+{
+  "url": "https://factorylm.com/",
+  "viewport": "mobile",
+  "initial_status": 200,
+  "initial_console_errors": [
+    {
+      "type": "error",
+      "text": "Error: <rect> attribute rx: Expected length, \"0 0 12 12\"."
+    }
+  ],
+  "initial_network_failures": [],
+  "total_clickables_enumerated": 30,
+  "skipped_external_or_destructive": 1,
+  "overflow_uncovered": 0,
+  "interactions_run": 29,
+  "interactions_with_console_errors": 1,
+  "interactions_with_network_failures": 0,
+  "interactions_with_navigation": 8
+}

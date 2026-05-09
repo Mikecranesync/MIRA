@@ -1,0 +1,56 @@
+=== https://app.factorylm.com/admin/ ===
+HTTP/1.1 404 Not Found
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:01:15 GMT
+Content-Type: text/plain; charset=UTF-8
+Content-Length: 13
+Connection: keep-alive
+
+=== https://app.factorylm.com/feed/ ===
+HTTP/1.1 307 Temporary Redirect
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:01:16 GMT
+Connection: keep-alive
+location: /login?callbackUrl=%2Ffeed%2F
+Cache-Control: no-store
+
+=== https://factorylm.com/sitemap.xml ===
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:01:16 GMT
+Content-Type: application/xml; charset=utf-8
+Content-Length: 12610
+Connection: keep-alive
+
+=== https://factorylm.com/robots.txt ===
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:01:16 GMT
+Content-Type: text/plain; charset=utf-8
+Content-Length: 867
+Connection: keep-alive
+
+=== https://factorylm.com/api/health ===
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:01:16 GMT
+Content-Type: application/json
+Content-Length: 54
+Connection: keep-alive
+
+=== https://factorylm.com/api/magic ===
+HTTP/1.1 404 Not Found
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:01:16 GMT
+Content-Type: text/plain; charset=UTF-8
+Content-Length: 13
+Connection: keep-alive
+
+=== https://factorylm.com/__webreview_404_1777888875 ===
+HTTP/1.1 404 Not Found
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:01:17 GMT
+Content-Type: text/plain; charset=UTF-8
+Content-Length: 13
+Connection: keep-alive
+

@@ -1,0 +1,14 @@
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:42 GMT
+Content-Type: text/html; charset=UTF-8
+Content-Length: 17904
+Connection: keep-alive
+Access-Control-Allow-Origin: *
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+

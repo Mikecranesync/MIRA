@@ -1,0 +1,14 @@
+{
+  "url": "https://factorylm.com/blog",
+  "viewport": "mobile",
+  "initial_status": 200,
+  "initial_console_errors": [],
+  "initial_network_failures": [],
+  "total_clickables_enumerated": 23,
+  "skipped_external_or_destructive": 0,
+  "overflow_uncovered": 0,
+  "interactions_run": 23,
+  "interactions_with_console_errors": 13,
+  "interactions_with_network_failures": 12,
+  "interactions_with_navigation": 16
+}

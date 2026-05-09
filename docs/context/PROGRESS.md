@@ -96,4 +96,355 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - docs/specs/mira-core-spec.md
 **Working tree:** clean
 **Next:** _set by next session_
+
+### 2026-05-09 12:36 UTC — `feat/mira-scan-monday-webhook-and-builder`
+**Last commit:** 45bd95e7 security: bind all saas ports to loopback — prevent Docker UFW bypass
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- .warp/MCP_SETUP.md
+- .warp/README.md
+- .warp/workflows/cluster-ssh.yaml
+- .warp/workflows/mira-enum-drift.yaml
+- .warp/workflows/mira-eval.yaml
+- .warp/workflows/mira-logs.yaml
+- .warp/workflows/mira-pr-review.yaml
+- .warp/workflows/mira-rebuild-service.yaml
+- .warp/workflows/mira-smoke-remote.yaml
+- .warp/workflows/mira-smoke-test.yaml
+**Working tree:**
+- M .claude/settings.json
+- ?? .claude/settings.local.json
+- ?? .claude/skills/audit-site/
+- ?? .playwright-cache/
+- ?? docs/ideation/2026-05-07-trade-show-strategy-automate-tampa.md
+- ?? "docs/promo-screenshots/(Mike)Screenshot 2026-05-03 040306.jpg"
+- ?? mira-hub/dom-crawl-app.mjs
+- ?? mira-hub/dom-crawl.mjs
+- ?? mira-hub/tests/e2e/reaudit-2026-05-04.spec.ts
+- ?? mira-hub/tools/
+- ?? mira-hud/
+- ?? test-results/
+- ?? tools/web-review-runs/2026-05-03-pr-940-proof/desktop${name}.png
+- ?? tools/web-review-runs/2026-05-04-reaudit/
+**Next:** _set by next session_
+
+### 2026-05-09 12:36 UTC — `feat/mira-scan-monday-webhook-and-builder`
+**Last commit:** 45bd95e7 security: bind all saas ports to loopback — prevent Docker UFW bypass
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- .warp/MCP_SETUP.md
+- .warp/README.md
+- .warp/workflows/cluster-ssh.yaml
+- .warp/workflows/mira-enum-drift.yaml
+- .warp/workflows/mira-eval.yaml
+- .warp/workflows/mira-logs.yaml
+- .warp/workflows/mira-pr-review.yaml
+- .warp/workflows/mira-rebuild-service.yaml
+- .warp/workflows/mira-smoke-remote.yaml
+- .warp/workflows/mira-smoke-test.yaml
+**Working tree:**
+- M .claude/settings.json
+-  M docs/context/PROGRESS.md
+- ?? .claude/settings.local.json
+- ?? .claude/skills/audit-site/
+- ?? .playwright-cache/
+- ?? docs/ideation/2026-05-07-trade-show-strategy-automate-tampa.md
+- ?? "docs/promo-screenshots/(Mike)Screenshot 2026-05-03 040306.jpg"
+- ?? mira-hub/dom-crawl-app.mjs
+- ?? mira-hub/dom-crawl.mjs
+- ?? mira-hub/tests/e2e/reaudit-2026-05-04.spec.ts
+- ?? mira-hub/tools/
+- ?? mira-hud/
+- ?? test-results/
+- ?? tools/web-review-runs/2026-05-03-pr-940-proof/desktop${name}.png
+- ?? tools/web-review-runs/2026-05-04-reaudit/
+**Next:** _set by next session_
+
+### 2026-05-09 12:41 UTC — `feat/mira-scan-monday-webhook-and-builder`
+**Last commit:** 45bd95e7 security: bind all saas ports to loopback — prevent Docker UFW bypass
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- .warp/MCP_SETUP.md
+- .warp/README.md
+- .warp/workflows/cluster-ssh.yaml
+- .warp/workflows/mira-enum-drift.yaml
+- .warp/workflows/mira-eval.yaml
+- .warp/workflows/mira-logs.yaml
+- .warp/workflows/mira-pr-review.yaml
+- .warp/workflows/mira-rebuild-service.yaml
+- .warp/workflows/mira-smoke-remote.yaml
+- .warp/workflows/mira-smoke-test.yaml
+**Working tree:**
+- M .claude/settings.json
+-  M docs/context/PROGRESS.md
+- ?? .claude/settings.local.json
+- ?? .claude/skills/audit-site/
+- ?? .playwright-cache/
+- ?? docs/ideation/2026-05-07-trade-show-strategy-automate-tampa.md
+- ?? "docs/promo-screenshots/(Mike)Screenshot 2026-05-03 040306.jpg"
+- ?? mira-hub/dom-crawl-app.mjs
+- ?? mira-hub/dom-crawl.mjs
+- ?? mira-hub/tests/e2e/reaudit-2026-05-04.spec.ts
+- ?? mira-hub/tools/
+- ?? mira-hud/
+- ?? test-results/
+- ?? tools/web-review-runs/2026-05-03-pr-940-proof/desktop${name}.png
+- ?? tools/web-review-runs/2026-05-04-reaudit/
+**Next:** _set by next session_
+
+### 2026-05-09 12:44 UTC — `feat/mira-scan-monday-webhook-and-builder`
+**Last commit:** 45bd95e7 security: bind all saas ports to loopback — prevent Docker UFW bypass
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- .warp/MCP_SETUP.md
+- .warp/README.md
+- .warp/workflows/cluster-ssh.yaml
+- .warp/workflows/mira-enum-drift.yaml
+- .warp/workflows/mira-eval.yaml
+- .warp/workflows/mira-logs.yaml
+- .warp/workflows/mira-pr-review.yaml
+- .warp/workflows/mira-rebuild-service.yaml
+- .warp/workflows/mira-smoke-remote.yaml
+- .warp/workflows/mira-smoke-test.yaml
+**Working tree:**
+- M .claude/settings.json
+-  M docs/context/PROGRESS.md
+- ?? .claude/settings.local.json
+- ?? .claude/skills/audit-site/
+- ?? .playwright-cache/
+- ?? docs/ideation/2026-05-07-trade-show-strategy-automate-tampa.md
+- ?? "docs/promo-screenshots/(Mike)Screenshot 2026-05-03 040306.jpg"
+- ?? mira-hub/dom-crawl-app.mjs
+- ?? mira-hub/dom-crawl.mjs
+- ?? mira-hub/tests/e2e/reaudit-2026-05-04.spec.ts
+- ?? mira-hub/tools/
+- ?? mira-hud/
+- ?? test-results/
+- ?? tools/web-review-runs/2026-05-03-pr-940-proof/desktop${name}.png
+- ?? tools/web-review-runs/2026-05-04-reaudit/
+**Next:** _set by next session_
+
+### 2026-05-09 13:04 UTC — `feat/mira-scan-monday-webhook-and-builder`
+**Last commit:** 45bd95e7 security: bind all saas ports to loopback — prevent Docker UFW bypass
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- .warp/MCP_SETUP.md
+- .warp/README.md
+- .warp/workflows/cluster-ssh.yaml
+- .warp/workflows/mira-enum-drift.yaml
+- .warp/workflows/mira-eval.yaml
+- .warp/workflows/mira-logs.yaml
+- .warp/workflows/mira-pr-review.yaml
+- .warp/workflows/mira-rebuild-service.yaml
+- .warp/workflows/mira-smoke-remote.yaml
+- .warp/workflows/mira-smoke-test.yaml
+**Working tree:**
+- M .claude/settings.json
+-  M docs/context/PROGRESS.md
+- ?? .claude/settings.local.json
+- ?? .claude/skills/audit-site/
+- ?? .playwright-cache/
+- ?? docs/ideation/2026-05-07-trade-show-strategy-automate-tampa.md
+- ?? "docs/promo-screenshots/(Mike)Screenshot 2026-05-03 040306.jpg"
+- ?? mira-hub/dom-crawl-app.mjs
+- ?? mira-hub/dom-crawl.mjs
+- ?? mira-hub/tests/e2e/reaudit-2026-05-04.spec.ts
+- ?? mira-hub/tools/
+- ?? mira-hud/
+- ?? test-results/
+- ?? tools/web-review-runs/2026-05-03-pr-940-proof/desktop${name}.png
+- ?? tools/web-review-runs/2026-05-04-reaudit/
+**Next:** _set by next session_
+
+### 2026-05-09 13:20 UTC — `feat/mira-scan-monday-webhook-and-builder`
+**Last commit:** b52ae6e9 fix(hub): add og:image to /login metadata + fix QA spec (CRA-115/113/126)
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- .warp/MCP_SETUP.md
+- .warp/README.md
+- .warp/workflows/cluster-ssh.yaml
+- .warp/workflows/mira-enum-drift.yaml
+- .warp/workflows/mira-eval.yaml
+- .warp/workflows/mira-logs.yaml
+- .warp/workflows/mira-pr-review.yaml
+- .warp/workflows/mira-rebuild-service.yaml
+- .warp/workflows/mira-smoke-remote.yaml
+- .warp/workflows/mira-smoke-test.yaml
+**Working tree:**
+- M .claude/settings.json
+-  M docs/context/PROGRESS.md
+- ?? .claude/settings.local.json
+- ?? .claude/skills/audit-site/
+- ?? .playwright-cache/
+- ?? docs/ideation/2026-05-07-trade-show-strategy-automate-tampa.md
+- ?? "docs/promo-screenshots/(Mike)Screenshot 2026-05-03 040306.jpg"
+- ?? mira-hub/dom-crawl-app.mjs
+- ?? mira-hub/dom-crawl.mjs
+- ?? mira-hub/tests/e2e/reaudit-2026-05-04.spec.ts
+- ?? mira-hub/tools/
+- ?? mira-hud/
+- ?? test-results/
+- ?? tools/web-review-runs/2026-05-03-pr-940-proof/desktop${name}.png
+- ?? tools/web-review-runs/2026-05-04-reaudit/
+**Next:** _set by next session_
+
+### 2026-05-09 13:58 UTC — `feat/mira-scan-monday-webhook-and-builder`
+**Last commit:** b52ae6e9 fix(hub): add og:image to /login metadata + fix QA spec (CRA-115/113/126)
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- .warp/MCP_SETUP.md
+- .warp/README.md
+- .warp/workflows/cluster-ssh.yaml
+- .warp/workflows/mira-enum-drift.yaml
+- .warp/workflows/mira-eval.yaml
+- .warp/workflows/mira-logs.yaml
+- .warp/workflows/mira-pr-review.yaml
+- .warp/workflows/mira-rebuild-service.yaml
+- .warp/workflows/mira-smoke-remote.yaml
+- .warp/workflows/mira-smoke-test.yaml
+**Working tree:**
+- M .claude/settings.json
+-  M docs/context/PROGRESS.md
+- ?? .claude/settings.local.json
+- ?? .claude/skills/audit-site/
+- ?? .playwright-cache/
+- ?? docs/ideation/2026-05-07-trade-show-strategy-automate-tampa.md
+- ?? "docs/promo-screenshots/(Mike)Screenshot 2026-05-03 040306.jpg"
+- ?? mira-hub/dom-crawl-app.mjs
+- ?? mira-hub/dom-crawl.mjs
+- ?? mira-hub/tests/e2e/reaudit-2026-05-04.spec.ts
+- ?? mira-hub/tools/
+- ?? mira-hud/
+- ?? test-results/
+- ?? tools/web-review-runs/2026-05-03-pr-940-proof/desktop${name}.png
+- ?? tools/web-review-runs/2026-05-04-reaudit/
+**Next:** _set by next session_
+
+### 2026-05-09 15:24 UTC — `feat/mira-scan-monday-webhook-and-builder`
+**Last commit:** b52ae6e9 fix(hub): add og:image to /login metadata + fix QA spec (CRA-115/113/126)
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- .warp/MCP_SETUP.md
+- .warp/README.md
+- .warp/workflows/cluster-ssh.yaml
+- .warp/workflows/mira-enum-drift.yaml
+- .warp/workflows/mira-eval.yaml
+- .warp/workflows/mira-logs.yaml
+- .warp/workflows/mira-pr-review.yaml
+- .warp/workflows/mira-rebuild-service.yaml
+- .warp/workflows/mira-smoke-remote.yaml
+- .warp/workflows/mira-smoke-test.yaml
+**Working tree:**
+- M .claude/settings.json
+-  M docs/context/PROGRESS.md
+- ?? .claude/settings.local.json
+- ?? .claude/skills/audit-site/
+- ?? .playwright-cache/
+- ?? docs/ideation/2026-05-07-trade-show-strategy-automate-tampa.md
+- ?? "docs/promo-screenshots/(Mike)Screenshot 2026-05-03 040306.jpg"
+- ?? mira-hub/dom-crawl-app.mjs
+- ?? mira-hub/dom-crawl.mjs
+- ?? mira-hub/tests/e2e/reaudit-2026-05-04.spec.ts
+- ?? mira-hub/tools/
+- ?? mira-hud/
+- ?? test-results/
+- ?? tools/web-review-runs/2026-05-03-pr-940-proof/desktop${name}.png
+- ?? tools/web-review-runs/2026-05-04-reaudit/
+**Next:** _set by next session_
+
+### 2026-05-09 16:26 UTC — `feat/mira-scan-monday-webhook-and-builder`
+**Last commit:** b52ae6e9 fix(hub): add og:image to /login metadata + fix QA spec (CRA-115/113/126)
+**Changed (vs. fork point):**
+- mira-hub/package.json
+- mira-hub/src/app/login/page.tsx
+- mira-hub/tests/e2e/audit-fixes-2026-05-09.spec.ts
+**Working tree:**
+- M .claude/settings.json
+-  M docs/context/PROGRESS.md
+- ?? .claude/settings.local.json
+- ?? .claude/skills/audit-site/
+- ?? .playwright-cache/
+- ?? docs/ideation/2026-05-07-trade-show-strategy-automate-tampa.md
+- ?? "docs/promo-screenshots/(Mike)Screenshot 2026-05-03 040306.jpg"
+- ?? mira-hub/dom-crawl-app.mjs
+- ?? mira-hub/dom-crawl.mjs
+- ?? mira-hub/tests/e2e/reaudit-2026-05-04.spec.ts
+- ?? mira-hub/tools/
+- ?? mira-hud/
+- ?? test-results/
+- ?? tools/web-review-runs/2026-05-03-pr-940-proof/desktop${name}.png
+- ?? tools/web-review-runs/2026-05-04-reaudit/
+**Next:** _set by next session_
 <!-- END AUTOLOG -->

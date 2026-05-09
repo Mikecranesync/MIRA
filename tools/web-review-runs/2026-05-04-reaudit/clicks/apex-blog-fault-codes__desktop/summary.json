@@ -1,0 +1,14 @@
+{
+  "url": "https://factorylm.com/blog/fault-codes",
+  "viewport": "desktop",
+  "initial_status": 200,
+  "initial_console_errors": [],
+  "initial_network_failures": [],
+  "total_clickables_enumerated": 64,
+  "skipped_external_or_destructive": 0,
+  "overflow_uncovered": 14,
+  "interactions_run": 50,
+  "interactions_with_console_errors": 28,
+  "interactions_with_network_failures": 21,
+  "interactions_with_navigation": 50
+}

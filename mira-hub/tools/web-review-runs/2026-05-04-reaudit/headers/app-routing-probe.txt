@@ -1,0 +1,77 @@
+=== https://app.factorylm.com/sample ===
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:55 GMT
+Content-Type: text/html; charset=UTF-8
+Content-Length: 9199
+
+=== https://app.factorylm.com/activated ===
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:55 GMT
+Content-Type: text/html; charset=utf-8
+Content-Length: 41450
+
+=== https://app.factorylm.com/pricing ===
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:56 GMT
+Content-Type: text/html; charset=utf-8
+Content-Length: 17661
+
+=== https://app.factorylm.com/m/test-asset ===
+HTTP/1.1 302 Found
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:56 GMT
+Content-Length: 0
+Connection: keep-alive
+
+=== https://app.factorylm.com/admin ===
+HTTP/1.1 301 Moved Permanently
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:56 GMT
+Content-Type: text/html
+Content-Length: 178
+
+=== https://app.factorylm.com/qr-test ===
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:57 GMT
+Content-Type: text/html; charset=UTF-8
+Content-Length: 18158
+
+=== https://app.factorylm.com/api/health ===
+HTTP/1.1 308 Permanent Redirect
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:57 GMT
+Connection: keep-alive
+location: /api/health/
+
+=== https://app.factorylm.com/api/magic ===
+HTTP/1.1 404 Not Found
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:57 GMT
+Content-Type: text/plain; charset=UTF-8
+Content-Length: 13
+
+=== https://app.factorylm.com/login ===
+HTTP/1.1 308 Permanent Redirect
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:57 GMT
+Connection: keep-alive
+location: /login/
+
+=== https://app.factorylm.com/sitemap.xml ===
+HTTP/1.1 307 Temporary Redirect
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:58 GMT
+Connection: keep-alive
+location: /login?callbackUrl=%2Fsitemap.xml
+
+=== https://app.factorylm.com/robots.txt ===
+HTTP/1.1 307 Temporary Redirect
+Server: nginx/1.24.0 (Ubuntu)
+Date: Mon, 04 May 2026 10:00:58 GMT
+Connection: keep-alive
+location: /login?callbackUrl=%2Frobots.txt
+

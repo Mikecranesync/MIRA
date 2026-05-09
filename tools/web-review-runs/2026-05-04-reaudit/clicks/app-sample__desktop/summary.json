@@ -1,0 +1,31 @@
+{
+  "url": "https://app.factorylm.com/sample",
+  "viewport": "desktop",
+  "initial_status": 200,
+  "initial_console_errors": [
+    {
+      "type": "pageerror",
+      "text": "SyntaxError: Unexpected token '<'"
+    },
+    {
+      "type": "pageerror",
+      "text": "SyntaxError: Unexpected token '<'"
+    },
+    {
+      "type": "pageerror",
+      "text": "SyntaxError: Unexpected token '<'"
+    },
+    {
+      "type": "error",
+      "text": "The script resource is behind a redirect, which is disallowed."
+    }
+  ],
+  "initial_network_failures": [],
+  "total_clickables_enumerated": 14,
+  "skipped_external_or_destructive": 0,
+  "overflow_uncovered": 0,
+  "interactions_run": 14,
+  "interactions_with_console_errors": 13,
+  "interactions_with_network_failures": 0,
+  "interactions_with_navigation": 13
+}

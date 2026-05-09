@@ -50,6 +50,15 @@
             "command": "echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'git commit|git push' && gitleaks protect --staged --config .gitleaks.toml 2>/dev/null || true"
           }
         ]
+      },
+      {
+        "matcher": "Bash(git commit*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run lint && bun run typecheck"
+          }
+        ]
       }
     ],
     "SessionStart": [
