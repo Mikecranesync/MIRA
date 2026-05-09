@@ -1,0 +1,5 @@
+---
+name: MIRA stack up
+command: bash install/up.sh
+tags: [mira, docker, ops]
+description: Start full MIRA stack (creates networks + doppler-injected compose up)
