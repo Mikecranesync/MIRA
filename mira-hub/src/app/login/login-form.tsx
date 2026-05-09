@@ -159,6 +159,7 @@ function LoginFormInner() {
                 />
                 <button
                   type="submit"
+                  aria-label="Send magic link"
                   disabled={magicLoading || !magicEmail}
                   className="px-4 h-11 rounded-md font-medium text-white text-sm disabled:opacity-50 flex items-center gap-1.5"
                   style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)" }}
@@ -214,6 +215,7 @@ function LoginFormInner() {
                   />
                   <button
                     type="button"
+                    aria-label={showPw ? "Hide password" : "Show password"}
                     onClick={() => setShowPw((v) => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
                   >

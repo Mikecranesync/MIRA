@@ -1650,6 +1650,42 @@ app.get("/api/connect/status", requireActive, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// 404 — custom page with home link (CRA-109)
+// ---------------------------------------------------------------------------
+
+app.notFound((c) => {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page not found — FactoryLM</title>
+  <link rel="stylesheet" href="/_tokens.css">
+  <link rel="stylesheet" href="/_dark-theme.css">
+  <style>
+    body { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           background: var(--fl-bg-50); margin: 0; font-family: system-ui, sans-serif; }
+    .wrap { text-align: center; padding: 2rem; }
+    .code { font-size: 5rem; font-weight: 700; color: var(--fl-navy-900); margin: 0; }
+    .msg  { color: var(--fl-muted-600); font-size: 1.125rem; margin: 0.5rem 0 2rem; }
+    .home { display: inline-block; padding: 0.75rem 1.5rem; border-radius: 0.5rem;
+            background: var(--fl-navy-900); color: #fff; text-decoration: none;
+            font-weight: 600; font-size: 0.9375rem; }
+    .home:hover { opacity: 0.85; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="code">404</p>
+    <p class="msg">This page doesn't exist.</p>
+    <a class="home" href="/">Back to home</a>
+  </div>
+</body>
+</html>`;
+  return c.html(html, 404);
+});
+
+// ---------------------------------------------------------------------------
 // Startup
 // ---------------------------------------------------------------------------
 
