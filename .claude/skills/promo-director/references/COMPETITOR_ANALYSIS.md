@@ -1,8 +1,27 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-09
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-09
+
+*3 meaningful new items. No playbook edits auto-applied — see PR body for human action.*
+
+### Most actionable change for MIRA playbook
+
+Anthropic's "Dreaming" launch at Code with Claude introduced the tightest enterprise proof template found this cycle: [named customer] + [N× multiplier] + [mechanism] ("not from a model change — from agents carrying institutional knowledge across sessions"). Harvey's ~6x completion rate lifts the bar for any MIRA case study claim. Template: "[named plant] + [OEM library in context] + [X× faster fault-to-fix] + ['not from a new sensor — from every prior repair already in memory']".
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — "The State of Industrial Maintenance 2026" webinar (May 5, 2026): https://www.youtube.com/watch?v=b7SPyhyY9-c — data-authority format; key claims: 58% of teams now using AI, 75% report measurable ROI in under 6 months (2,234 respondents); co-founder + SMRP industry chair credibility pairing
+
+**B2B SaaS / dev-tools**
+- **Anthropic** — "Code with Claude 2026: Opening Keynote" (May 6, 2026): https://www.youtube.com/watch?v=GMIWm5y90xA — "Dreaming" launch (agents self-improve between sessions; Harvey ~6x task completion); API volume 70x YoY (planned 10x, got 80x); Orbit proactive assistant; conference expanded to 3 cities (SF/London/Tokyo)
+- **Figma** — "Release Notes 2026: May Edition" (May 5–6, 2026): https://www.youtube.com/watch?v=11mdb7lLclM — monthly release-notes video series format; AI agents on Figma canvas; "vibe-coded prototype as starting point" framing
 
 ---
 
@@ -80,6 +99,16 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - Title: "MaintainX Year in Review 2025"
 - Hook: "In 2025, thousands of maintenance teams used AI to cut downtime and costs" [search-derived]
 - Social proof format; preview of 2026 roadmap
+
+**State of Industrial Maintenance 2026 (May 5, 2026)**
+- URL: https://www.youtube.com/watch?v=b7SPyhyY9-c
+- Title: "The State of Industrial Maintenance 2026"
+- Format: webinar — co-founder Nick Haase + Dan Anderson (SMRP Chairman), ~60 min [length not verified]
+- Opening hook: "2,200+ maintenance leaders shared what's working and what's failing on the shop floor" [search-derived]
+- Key claims: 58% of teams now using AI; 75% report measurable ROI in under 6 months; survey of 2,234 maintenance and operations leaders (US + Canada)
+- VO register: co-founder + industry association authority (SMRP partnership adds credibility)
+- CTA: soft — report download
+- Pattern note: MaintainX is now running an annual research-report-as-content-vehicle. No product is being sold; the play is data authority. The 75% ROI in 6 months stat is a direct competitive challenge — MIRA needs a counter-claim with a specific number or a more precise mechanism.
 
 **Additional 2025 videos:**
 - Voice-to-text work order feature: https://www.youtube.com/watch?v=GY3AGGukQM8
@@ -299,10 +328,26 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 ### Anthropic
 
+**Code with Claude 2026 Opening Keynote (May 6, 2026)**
+- URL: https://www.youtube.com/watch?v=GMIWm5y90xA
+- Title: "Code with Claude 2026: Opening Keynote"
+- Length: [not verified]
+- Format: on-stage developer conference, San Francisco (+ London May 19, Tokyo Jun 10)
+- Presenters: Ami Vora (CPO) keynote + Dario Amodei (CEO) fireside chat
+- Register: CPO-led product launch + founder peer/fireside — matches Inductive Automation's CTO-educational pattern but adds growth-stat credibility
+- Key launches:
+  - **Dreaming** — agents review past sessions and curate institutional memory; Harvey (legal AI) saw ~6x task completion increase purely from session memory, no model change
+  - **Outcomes** — agents self-evaluate and retry based on results
+  - **Multi-agent orchestration** — lead agent decomposes tasks, delegates to specialist agents with independent context windows
+  - **Orbit** — proactive briefing assistant syncing Gmail, Slack, GitHub, Calendar, Figma [transcript not verified]
+- Key stat: API volume 70x YoY; planned 10x, actual 80x growth (Dario Amodei fireside) — updates prior ~17x reference in earlier cache entry
+- Infrastructure: SpaceX Colossus 1 deal, 220K+ NVIDIA GPUs
+- CTA: rate limit doubling for all paid plans — hard developer action
+- Pattern note: conference-as-launch-vehicle is now confirmed Anthropic primary channel, 3 cities. The Harvey "6x from memory, not model change" framing is the most steal-worthy proof template this cycle — it attributes the gain to mechanism (institutional knowledge) not to raw model power, which makes the claim feel earned.
+
+**Earlier reference (pre-May 2026)**
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
-- Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
-- 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+- No standalone promo video before Code with Claude 2026; analyst/conference appearances were primary channel
 
 ---
 
@@ -343,6 +388,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 ---
 
 ### Figma
+
+**Release Notes 2026: May Edition (May 5–6, 2026)**
+- URL: https://www.youtube.com/watch?v=11mdb7lLclM
+- Title: "Release Notes 2026: May Edition"
+- Format: monthly recurring video series — released alongside a live demo livestream; a cadence pattern between annual Config keynotes
+- Key content: AI agents design directly on Figma canvas; "vibe-coded prototype as starting point for refinement" framing; MCP skills for FigJam (architecture diagrams, ERDs from coding agent); agent "skills" learn team's design decisions and intent [transcript not verified]
+- VO register: product team, peer/accessible [not verified]
+- Pattern note: Figma now runs a monthly "Release Notes" video series alongside the annual Config keynote. High-cadence video touchpoints (12 videos/year vs. 1 keynote) normalise incremental product motion. Each episode includes a live demo component. This is distinct from their Config keynote strategy and could inform MIRA's content cadence.
 
 **Config 2025 keynote (May 6–8, 2025)**
 - URL: https://www.youtube.com/watch?v=5q8YAUTYAyk
@@ -385,6 +438,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Mechanism claim: "not from X — from Y" | Anthropic/Harvey: "~6x completion — not from a model change, from agents carrying institutional knowledge across sessions" | "not from a new sensor — from every prior repair already in memory" |
+| Data-authority report as video vehicle | MaintainX: annual survey → webinar → report with proof numbers (75% ROI in 6 months, 2,234 respondents) | Annual "State of Industrial Maintenance" style report with MIRA-specific benchmark data |
 
 ### Anti-patterns (avoid)
 
@@ -398,3 +453,6 @@ No video content surfaced for 2025–2026.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Figma**: added monthly "Release Notes" video series (2026) alongside annual Config keynote — normalising product motion at 12×/year cadence. Each episode includes a live demo livestream component.
+- **MaintainX**: added annual research-report video/webinar as primary 2026 content vehicle — data authority play rather than product demo. SMRP partnership gives industry-association credibility.
+- **Anthropic**: confirmed developer conference (Code with Claude, 3 cities) as primary launch vehicle for major product announcements — no longer using analyst/media appearances as sole channel.
