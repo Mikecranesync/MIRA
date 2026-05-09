@@ -30,6 +30,9 @@ mira-hud/vision_backend/logs/
 *.session
 *.session-journal
 
+# Playwright auth fixtures — contain logged-in session cookies
+mira-hub/tests/e2e/fixtures/storageState.json
+
 # Python
 __pycache__/
 *.pyc
