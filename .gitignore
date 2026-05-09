@@ -188,3 +188,4 @@ tools/monday-marketplace-setup/runs/
 tools/monday-marketplace-setup/node_modules/
 tools/monday-marketplace-setup/playwright-report/
 tools/monday-marketplace-setup/.chrome-profile/
+.warp/mcp.json
