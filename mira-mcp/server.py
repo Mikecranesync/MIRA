@@ -1056,8 +1056,11 @@ if __name__ == "__main__":
         # env if set; fall back to container defaults.
         sse_host = os.environ.get("FASTMCP_HOST", "0.0.0.0")
         sse_port = int(os.environ.get("FASTMCP_PORT", "8000"))
+        # streamable-http on port 8002 for Warp/modern MCP clients (/mcp endpoint)
+        http_port = int(os.environ.get("FASTMCP_HTTP_PORT", "8002"))
         await asyncio.gather(
             mcp.run_http_async(transport="sse", host=sse_host, port=sse_port),
+            mcp.run_http_async(transport="streamable-http", host=sse_host, port=http_port),
             rest_server.serve(),
         )
 
