@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { AssetChat } from "@/components/AssetChat";
 import { AssetIntelligencePanel } from "@/components/AssetIntelligencePanel";
+import { QrCodeImage } from "@/components/qr-code";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -102,6 +103,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
   const t = useTranslations("assets");
   const { id } = use(params);
   const [activeTab, setActiveTab] = useState("overview");
+  const [showQr, setShowQr] = useState(false);
   const [apiAsset, setApiAsset] = useState<ApiAsset | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -140,7 +142,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
                 <Badge variant="outline" className="text-[10px]">{t("criticalityLabel", { level: asset.criticality })}</Badge>
               </div>
             </div>
-            <Button size="sm" variant="ghost">
+            <Button size="sm" variant="ghost" onClick={() => setShowQr(true)} aria-label="Show QR code">
               <QrCode className="w-4 h-4" />
             </Button>
           </div>
@@ -190,6 +192,34 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
           {activeTab === "documents"     && <DocumentsTab />}
           {activeTab === "parts"         && <PartsTab />}
           {activeTab === "intelligence"  && <AssetIntelligencePanel assetId={id} />}
+        </div>
+      )}
+
+      {showQr && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Asset QR code"
+          onClick={() => setShowQr(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-xs font-mono uppercase tracking-wide text-slate-500 mb-1">{asset.tag}</div>
+            <h2 className="text-lg font-semibold mb-4">{asset.name}</h2>
+            <div className="flex justify-center mb-4">
+              <QrCodeImage
+                value={typeof window !== "undefined" ? `${window.location.origin}/m/${asset.tag}` : `/m/${asset.tag}`}
+                size={224}
+              />
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Scan to open the mobile asset page. Print and post on the equipment.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => setShowQr(false)}>Close</Button>
+          </div>
         </div>
       )}
     </div>
