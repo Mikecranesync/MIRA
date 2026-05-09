@@ -1,0 +1,37 @@
+# Known-safe enum values cast in code but not declared in this repo's migrations.
+#
+# Format: <enum_name>:<value>          (one per line, lowercase)
+# Comments: anything after `#`
+#
+# Reason an entry belongs here:
+#   - The enum is declared in a sibling repo (atlas-cmms backend, mira-pipeline
+#     internal types) and not in mira-hub/db/migrations/.
+#   - The value pre-dates the enforcement layer and has been in production
+#     long enough that we trust it.
+#
+# Reason something does NOT belong here:
+#   - You added a new value last week. Add a migration instead.
+#   - The drift checker complained on your PR. Add a migration instead.
+#
+# Spec: docs/specs/enforcement-layer-spec.md §4.3
+
+# workorderstatus is declared in atlas-cmms backend (not in mira-hub/db/migrations).
+# These values pre-date the enforcement layer; adding migrations for them is tracked
+# under the Atlas → Hub schema unification effort (see docs/known-issues.md).
+workorderstatus:open
+workorderstatus:in_progress
+workorderstatus:completed
+workorderstatus:cancelled
+workorderstatus:on_hold
+
+# prioritylevel — same story as workorderstatus.
+prioritylevel:low
+prioritylevel:medium
+prioritylevel:high
+prioritylevel:critical
+
+# criticalitylevel — used in mira-hub/src/app/api/assets/route.ts.
+criticalitylevel:low
+criticalitylevel:medium
+criticalitylevel:high
+criticalitylevel:critical

@@ -4,7 +4,7 @@ import Link from "next/link";
 import {
   MessageSquare, AlertTriangle, BookOpen, Wrench,
   ClipboardList, CalendarDays, Inbox, Package, FileText,
-  TrendingUp, Radio, Plug, BarChart2, Users, Settings, ChevronRight, Download,
+  TrendingUp, Radio, Plug, BarChart2, Users, ChevronRight, Download,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -27,7 +27,6 @@ export default function MorePage() {
     { label: tNav("integrations"),  desc: t("items.integrations"),  Icon: Plug,          href: "/integrations" },
     { label: tNav("usage"),         desc: t("items.usage"),         Icon: BarChart2,     href: "/usage" },
     { label: tNav("team"),          desc: t("items.team"),          Icon: Users,         href: "/team" },
-    { label: tNav("admin"),         desc: t("items.admin"),         Icon: Settings,      href: "/admin/users" },
   ];
 
   return (

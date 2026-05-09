@@ -1,38 +1,57 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, BookOpen, FileText, Upload, CheckCircle2, Clock } from "lucide-react";
+import { Search, BookOpen, FileText, Upload, Clock, ChevronRight, ArrowLeft, Factory } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { UploadPicker } from "@/components/UploadPicker";
 import { UploadBlock, type UploadBlockData } from "@/components/UploadBlock";
 import { API_BASE } from "@/lib/config";
 
-type IndexStatus = "indexed";
-
-type KnowledgeDoc = {
-  id: string;
+type Manufacturer = {
   name: string;
-  category: string;
-  subcategory: string | null;
-  manufacturer: string | null;
-  docType: string;
-  source: string | null;
   chunkCount: number;
-  avgQuality: number | null;
-  lastIndexed: string;
-  sampleTitles: string[];
-  indexStatus: IndexStatus;
+  docCount: number;
+  lastIndexed: string | null;
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  all: "All",
-  electrical: "Electrical",
-  mechanical: "Mechanical",
-  pneumatic: "Pneumatic",
-  safety: "Safety",
-  general: "General",
-  plc: "PLC",
-  hvac: "HVAC",
+type LibraryStats = {
+  totalChunks: number;
+  totalDocs: number;
+  manufacturerCount: number;
+  lastIngested: string | null;
+  fetchedAt: string | null;
+};
+
+const LIVE_POLL_MS = 30_000;
+
+const EMPTY_STATS: LibraryStats = {
+  totalChunks: 0,
+  totalDocs: 0,
+  manufacturerCount: 0,
+  lastIngested: null,
+  fetchedAt: null,
+};
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return "never";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return "just now";
+  const min = Math.floor(ms / 60_000);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const days = Math.floor(hr / 24);
+  return `${days}d ago`;
+}
+
+type ManualDoc = {
+  sourceUrl: string;
+  title: string;
+  modelNumber: string | null;
+  sourceType: string | null;
+  equipmentType: string | null;
+  chunkCount: number;
+  lastIndexed: string | null;
 };
 
 const NON_TERMINAL: ReadonlyArray<UploadBlockData["status"]> = [
@@ -41,25 +60,81 @@ const NON_TERMINAL: ReadonlyArray<UploadBlockData["status"]> = [
   "parsing",
 ];
 
+function formatNumber(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K`;
+  return n.toLocaleString();
+}
+
 export default function KnowledgePage() {
   const t = useTranslations("knowledge");
-  const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
-  const [stats, setStats] = useState({ totalChunks: 0, totalDocs: 0, categories: [] as string[] });
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
+  const [stats, setStats] = useState<LibraryStats>(EMPTY_STATS);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("all");
   const [uploads, setUploads] = useState<UploadBlockData[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  const [selectedMfr, setSelectedMfr] = useState<string | null>(null);
+  const [docs, setDocs] = useState<ManualDoc[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+
+  // Tick every 15s so "Last updated" relative time stays current between polls.
+  const [, setNowTick] = useState(0);
   useEffect(() => {
-    fetch(`${API_BASE}/api/knowledge`)
+    const iv = setInterval(() => setNowTick((n) => n + 1), 15_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const fetchManufacturers = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/knowledge`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setManufacturers(data.manufacturers ?? []);
+      setStats(data.stats ?? EMPTY_STATS);
+    } catch {
+      /* swallow — next poll retries */
+    }
+  }, []);
+
+  // Initial load.
+  useEffect(() => {
+    void fetchManufacturers().finally(() => setLoading(false));
+  }, [fetchManufacturers]);
+
+  // Live polling: refresh on focus + tab-visibility, plus a 30s heartbeat.
+  // Ensures newly-ingested chunks (Celery worker, kb_growth_cron) appear
+  // without manual reload. Pauses while drilled into a manufacturer detail
+  // view to avoid re-fetching the list mid-interaction.
+  useEffect(() => {
+    if (selectedMfr) return;
+    const onFocus = () => void fetchManufacturers();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void fetchManufacturers();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    const iv = setInterval(() => {
+      if (document.visibilityState === "visible") void fetchManufacturers();
+    }, LIVE_POLL_MS);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(iv);
+    };
+  }, [selectedMfr, fetchManufacturers]);
+
+  const openManufacturer = useCallback((name: string) => {
+    setSelectedMfr(name);
+    setDocs([]);
+    setDocsLoading(true);
+    fetch(`${API_BASE}/api/knowledge/manufacturer?name=${encodeURIComponent(name)}`, {
+      cache: "no-store",
+    })
       .then((r) => r.json())
-      .then((data) => {
-        setDocs(data.docs ?? []);
-        setStats(data.stats ?? { totalChunks: 0, totalDocs: 0, categories: [] });
-      })
+      .then((data) => setDocs(data.docs ?? []))
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => setDocsLoading(false));
   }, []);
 
   const fetchUploads = useCallback(async () => {
@@ -113,17 +188,20 @@ export default function KnowledgePage() {
       const form = new FormData();
       form.append("file", file);
       if (assetTag) form.append("assetTag", assetTag);
-      const res = await fetch(`${API_BASE}/api/uploads/local`, { method: "POST", body: form });
+      const res = await fetch(`${API_BASE}/api/uploads/local`, {
+        method: "POST",
+        body: form,
+      });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+        const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         const msg =
           body.error === "unsupported_mime"
             ? `Unsupported file type: ${(body.got as string | undefined) || file.type || "unknown"}`
             : body.error === "exceeds_20mb_limit"
-            ? `File too large (max 20 MB): ${file.name}`
-            : typeof body.error === "string"
-            ? body.error
-            : `Upload failed (${res.status})`;
+              ? `File too large (max 20 MB): ${file.name}`
+              : typeof body.error === "string"
+                ? body.error
+                : `Upload failed (${res.status})`;
         throw new Error(msg);
       }
     }
@@ -157,42 +235,71 @@ export default function KnowledgePage() {
     await fetchUploads();
   }
 
-  const categories = [
-    { label: "All", key: "all" },
-    ...stats.categories.map((c) => ({ label: CATEGORY_LABELS[c] ?? c, key: c })),
-  ];
-
-  const filtered = docs.filter(
-    (d) =>
-      (category === "all" || d.category === category) &&
-      (search === "" ||
-        d.name.toLowerCase().includes(search.toLowerCase()) ||
-        (d.manufacturer?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-        d.sampleTitles.some((t) => t.toLowerCase().includes(search.toLowerCase()))),
+  const filteredMfrs = manufacturers.filter(
+    (m) => search === "" || m.name.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const filteredDocs = docs.filter(
+    (d) =>
+      search === "" ||
+      d.title.toLowerCase().includes(search.toLowerCase()) ||
+      (d.modelNumber?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+      d.sourceUrl.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const headerSubtitle = loading
+    ? "Loading…"
+    : selectedMfr
+      ? docsLoading
+        ? `Loading ${selectedMfr}…`
+        : `${selectedMfr} · ${docs.length} ${docs.length === 1 ? "document" : "documents"}`
+      : stats.totalChunks === 0
+        ? t("emptyStateOnboarding")
+        : `${stats.totalChunks.toLocaleString()} ${t("chunks")} · ${stats.manufacturerCount} manufacturers · last ingest ${timeAgo(stats.lastIngested)}`;
 
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
       <div
         className="sticky top-0 z-20 border-b"
-        style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}
+        style={{
+          backgroundColor: "var(--surface-0)",
+          borderColor: "var(--border)",
+        }}
       >
         <div className="flex items-center justify-between px-4 md:px-6 py-3">
-          <div>
-            <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-              {t("title")}
-            </h1>
-            <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
-              {loading
-                ? "Loading…"
-                : stats.totalDocs === 0
-                ? t("emptyStateOnboarding")
-                : `${stats.totalDocs} ${t("indexed")} · ${stats.totalChunks.toLocaleString()} ${t("chunks")} ${t("inRAG")}`}
-            </p>
+          <div className="flex items-center gap-2 min-w-0">
+            {selectedMfr && (
+              <button
+                onClick={() => {
+                  setSelectedMfr(null);
+                  setDocs([]);
+                  setSearch("");
+                }}
+                className="flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0"
+                style={{ backgroundColor: "var(--surface-1)" }}
+                aria-label="Back"
+              >
+                <ArrowLeft className="w-4 h-4" style={{ color: "var(--foreground)" }} />
+              </button>
+            )}
+            <div className="min-w-0">
+              <h1
+                className="text-base font-semibold truncate"
+                style={{ color: "var(--foreground)" }}
+              >
+                {selectedMfr ?? t("title")}
+              </h1>
+              <p
+                className="text-xs mt-0.5 truncate"
+                style={{ color: "var(--foreground-muted)" }}
+              >
+                {headerSubtitle}
+              </p>
+            </div>
           </div>
           <button
             onClick={() => setPickerOpen(true)}
-            className="flex items-center gap-1.5 text-xs font-medium h-8 px-3 rounded-lg"
+            className="flex items-center gap-1.5 text-xs font-medium h-8 px-3 rounded-lg flex-shrink-0"
             style={{ backgroundColor: "var(--brand-blue)", color: "white" }}
           >
             <Upload className="w-3.5 h-3.5" />
@@ -201,7 +308,7 @@ export default function KnowledgePage() {
         </div>
 
         <div className="px-4 md:px-6 pb-2">
-          <div className="relative mb-2">
+          <div className="relative">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
               style={{ color: "var(--foreground-subtle)" }}
@@ -209,7 +316,7 @@ export default function KnowledgePage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("search")}
+              placeholder={selectedMfr ? `Search ${selectedMfr} documents…` : t("search")}
               className="w-full h-9 pl-9 pr-3 rounded-lg border text-sm"
               style={{
                 backgroundColor: "var(--surface-1)",
@@ -218,99 +325,164 @@ export default function KnowledgePage() {
               }}
             />
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {categories.map((cat) => (
-              <button
-                key={cat.key}
-                onClick={() => setCategory(cat.key)}
-                className="flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all"
-                style={
-                  category === cat.key
-                    ? { backgroundColor: "var(--brand-blue)", color: "white" }
-                    : { backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }
-                }
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
-      <div className="px-4 md:px-6 py-4 pb-24 max-w-3xl mx-auto space-y-2">
-        {uploads.map((u) => (
-          <UploadBlock key={u.id} upload={u} onDelete={handleDeleteUpload} />
-        ))}
-
-        {filtered.map((doc) => (
-          <div key={doc.id} className="card p-4 flex items-start gap-3">
-            <div
-              className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-              style={{ backgroundColor: "var(--surface-1)" }}
-            >
-              <FileText className="w-4 h-4" style={{ color: "var(--brand-blue)" }} />
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold leading-snug" style={{ color: "var(--foreground)" }}>
-                {doc.name}
-              </p>
-              {doc.sampleTitles.length > 0 && (
-                <p className="text-xs mt-0.5 truncate" style={{ color: "var(--foreground-subtle)" }}>
-                  e.g. {doc.sampleTitles[0]}
-                </p>
-              )}
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <span className="text-[11px] capitalize" style={{ color: "var(--foreground-subtle)" }}>
-                  {doc.category}
-                </span>
-                {doc.manufacturer && (
-                  <span className="text-[11px] font-medium" style={{ color: "var(--brand-blue)" }}>
-                    · {doc.manufacturer}
-                  </span>
-                )}
-                {doc.docType && (
-                  <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>
-                    · {doc.docType}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 mt-2">
-                <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#16A34A" }} />
-                <span className="text-[11px] font-medium" style={{ color: "#16A34A" }}>
-                  {t("indexed")}
-                </span>
-                <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>
-                  {doc.chunkCount.toLocaleString()} {t("chunks")}
-                  {doc.avgQuality ? ` · Q${doc.avgQuality}` : ""}
-                </span>
-              </div>
-            </div>
-
-            <div className="text-right flex-shrink-0">
-              <span className="text-[10px]" style={{ color: "var(--foreground-subtle)" }}>
-                {doc.chunkCount}
-              </span>
-              <p className="text-[10px]" style={{ color: "var(--foreground-subtle)" }}>
-                {t("chunks")}
-              </p>
-            </div>
+      <div className="px-4 md:px-6 py-4 pb-24 max-w-5xl mx-auto">
+        {!selectedMfr && (
+          <div className="space-y-2 mb-4">
+            {uploads.map((u) => (
+              <UploadBlock key={u.id} upload={u} onDelete={handleDeleteUpload} />
+            ))}
           </div>
-        ))}
+        )}
 
-        {!loading && filtered.length === 0 && uploads.length === 0 && (
+        {!selectedMfr && !loading && filteredMfrs.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {filteredMfrs.map((m) => (
+              <button
+                key={m.name}
+                onClick={() => openManufacturer(m.name)}
+                className="card p-4 text-left hover:scale-[1.02] active:scale-[0.98] transition-transform"
+                style={{ backgroundColor: "var(--surface-1)" }}
+              >
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+                  style={{ backgroundColor: "var(--surface-2)" }}
+                >
+                  <Factory
+                    className="w-4 h-4"
+                    style={{ color: "var(--brand-blue)" }}
+                  />
+                </div>
+                <p
+                  className="text-sm font-semibold leading-tight line-clamp-2"
+                  style={{ color: "var(--foreground)" }}
+                >
+                  {m.name}
+                </p>
+                <p
+                  className="text-[11px] mt-1"
+                  style={{ color: "var(--foreground-muted)" }}
+                >
+                  {formatNumber(m.chunkCount)} {t("chunks")}
+                </p>
+                <p
+                  className="text-[11px]"
+                  style={{ color: "var(--foreground-subtle)" }}
+                >
+                  {m.docCount.toLocaleString()}{" "}
+                  {m.docCount === 1 ? "manual" : "manuals"}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {selectedMfr && !docsLoading && filteredDocs.length > 0 && (
+          <div className="space-y-2">
+            {filteredDocs.map((d) => (
+              <div
+                key={d.sourceUrl + d.title}
+                className="card p-4 flex items-start gap-3"
+              >
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                  style={{ backgroundColor: "var(--surface-1)" }}
+                >
+                  <FileText
+                    className="w-4 h-4"
+                    style={{ color: "var(--brand-blue)" }}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p
+                    className="text-sm font-semibold leading-snug"
+                    style={{ color: "var(--foreground)" }}
+                  >
+                    {d.title}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    {d.modelNumber && (
+                      <span
+                        className="text-[11px] font-medium"
+                        style={{ color: "var(--brand-blue)" }}
+                      >
+                        {d.modelNumber}
+                      </span>
+                    )}
+                    {d.equipmentType && (
+                      <span
+                        className="text-[11px]"
+                        style={{ color: "var(--foreground-subtle)" }}
+                      >
+                        · {d.equipmentType}
+                      </span>
+                    )}
+                    {d.sourceType && (
+                      <span
+                        className="text-[11px]"
+                        style={{ color: "var(--foreground-subtle)" }}
+                      >
+                        · {d.sourceType}
+                      </span>
+                    )}
+                  </div>
+                  <p
+                    className="text-[11px] mt-1.5"
+                    style={{ color: "var(--foreground-muted)" }}
+                  >
+                    {d.chunkCount.toLocaleString()} {t("chunks")}
+                  </p>
+                </div>
+                {d.sourceUrl && (
+                  <a
+                    href={d.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0"
+                    style={{ backgroundColor: "var(--surface-1)" }}
+                    aria-label="Open source"
+                  >
+                    <ChevronRight
+                      className="w-4 h-4"
+                      style={{ color: "var(--foreground-muted)" }}
+                    />
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && !selectedMfr && filteredMfrs.length === 0 && uploads.length === 0 && (
           <div className="text-center py-16">
-            <BookOpen className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
+            <BookOpen
+              className="w-10 h-10 mx-auto mb-3"
+              style={{ color: "var(--foreground-subtle)" }}
+            />
             <p style={{ color: "var(--foreground-muted)" }}>{t("noDocuments")}</p>
           </div>
         )}
 
-        {loading && (
+        {selectedMfr && !docsLoading && filteredDocs.length === 0 && (
           <div className="text-center py-16">
-            <Clock className="w-8 h-8 mx-auto mb-3 animate-spin" style={{ color: "var(--foreground-subtle)" }} />
+            <FileText
+              className="w-10 h-10 mx-auto mb-3"
+              style={{ color: "var(--foreground-subtle)" }}
+            />
+            <p style={{ color: "var(--foreground-muted)" }}>{t("noDocuments")}</p>
+          </div>
+        )}
+
+        {(loading || docsLoading) && (
+          <div className="text-center py-16">
+            <Clock
+              className="w-8 h-8 mx-auto mb-3 animate-spin"
+              style={{ color: "var(--foreground-subtle)" }}
+            />
             <p className="text-sm" style={{ color: "var(--foreground-muted)" }}>
-              Loading knowledge base…
+              Loading…
             </p>
           </div>
         )}

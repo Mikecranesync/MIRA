@@ -1,20 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Search, QrCode, Camera, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Search, QrCode, Camera, CheckCircle2, Loader2, X, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTranslations } from "next-intl";
 
-/* ─── Mock asset search results ─────────────────────────────────────── */
-const ASSET_OPTIONS = [
-  { id: "1", name: "Air Compressor #1",  tag: "MC-AC-001", location: "Building A" },
-  { id: "2", name: "Conveyor Belt #3",   tag: "MC-CB-003", location: "Building B" },
-  { id: "3", name: "CNC Mill #7",        tag: "MC-CN-007", location: "Shop Floor" },
-  { id: "4", name: "HVAC Unit #2",       tag: "MC-HV-002", location: "Roof" },
-  { id: "5", name: "Pump Station A",     tag: "MC-PS-00A", location: "Basement" },
-];
+type AssetOption = { id: string; name: string; tag: string; location: string };
+
+type PhotoState = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  status: "queued" | "uploading" | "uploaded" | "failed";
+  error?: string;
+  uploadId?: string;
+};
+
+type AssetRow = {
+  id: string;
+  tag: string | null;
+  name: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  location: string | null;
+};
+
+function toAssetOption(a: AssetRow): AssetOption {
+  const fallbackName =
+    [a.manufacturer, a.model].filter(Boolean).join(" ") || a.tag || "Asset";
+  return {
+    id: a.id,
+    name: (a.name && a.name.trim()) || fallbackName,
+    tag: a.tag ?? "",
+    location: a.location ?? "",
+  };
+}
 
 export default function NewWorkOrderPage() {
   const t = useTranslations("workorders");
@@ -30,21 +52,137 @@ export default function NewWorkOrderPage() {
 
   const [step, setStep] = useState(1);
   const [assetQuery, setAssetQuery] = useState("");
-  const [selectedAsset, setSelectedAsset] = useState<typeof ASSET_OPTIONS[0] | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<AssetOption | null>(null);
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("Medium");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [createdWO, setCreatedWO] = useState<{ id: string; work_order_number: string } | null>(null);
 
-  const filteredAssets = ASSET_OPTIONS.filter(a =>
-    !assetQuery || a.name.toLowerCase().includes(assetQuery.toLowerCase()) || a.tag.includes(assetQuery)
-  );
+  const [assets, setAssets] = useState<AssetOption[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(true);
+  const [assetsError, setAssetsError] = useState<string | null>(null);
 
-  function submit() {
-    setSubmitted(true);
-    setTimeout(() => {}, 1500);
+  const [photos, setPhotos] = useState<PhotoState[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  function uploadPhoto(p: PhotoState, assetTag: string) {
+    setPhotos((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: "uploading" } : x)));
+    const fd = new FormData();
+    fd.append("file", p.file);
+    if (assetTag) fd.append("assetTag", assetTag);
+    fetch("/api/uploads/local", { method: "POST", body: fd })
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(err.error ?? `upload_failed_${res.status}`);
+        }
+        return res.json() as Promise<{ id: string }>;
+      })
+      .then((data) => {
+        setPhotos((prev) =>
+          prev.map((x) => (x.id === p.id ? { ...x, status: "uploaded", uploadId: data.id } : x)),
+        );
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : "upload_failed";
+        setPhotos((prev) =>
+          prev.map((x) => (x.id === p.id ? { ...x, status: "failed", error: message } : x)),
+        );
+      });
   }
 
-  if (submitted) {
+  function onFilesPicked(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const tag = selectedAsset?.tag ?? "";
+    const queued: PhotoState[] = Array.from(files).map((file) => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      status: "queued" as const,
+    }));
+    setPhotos((prev) => [...prev, ...queued]);
+    queued.forEach((p) => uploadPhoto(p, tag));
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removePhoto(id: string) {
+    setPhotos((prev) => {
+      const target = prev.find((x) => x.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((x) => x.id !== id);
+    });
+  }
+
+  useEffect(() => {
+    return () => {
+      photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/assets");
+        if (!res.ok) {
+          if (!cancelled) setAssetsError("Could not load assets");
+          return;
+        }
+        const data = (await res.json()) as AssetRow[];
+        if (!cancelled) setAssets(data.map(toAssetOption));
+      } catch {
+        if (!cancelled) setAssetsError("Could not load assets");
+      } finally {
+        if (!cancelled) setAssetsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredAssets = assets.filter(a =>
+    !assetQuery ||
+    a.name.toLowerCase().includes(assetQuery.toLowerCase()) ||
+    a.tag.toLowerCase().includes(assetQuery.toLowerCase())
+  );
+
+  async function submit() {
+    if (!selectedAsset || !description.trim() || submitting) return;
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/work-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          equipment_id: selectedAsset.id,
+          title: `Issue: ${selectedAsset.name}`,
+          description: description.trim(),
+          fault_description: description.trim(),
+          priority: priority.toLowerCase(),
+        }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setSubmitError(err.error ?? `Failed (${res.status})`);
+        setSubmitting(false);
+        return;
+      }
+      const data = (await res.json()) as { work_order: { id: string; work_order_number: string } };
+      setCreatedWO({ id: data.work_order.id, work_order_number: data.work_order.work_order_number });
+      setSubmitted(true);
+    } catch {
+      setSubmitError("Network error — please try again");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (submitted && createdWO) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center">
         <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
@@ -55,16 +193,28 @@ export default function NewWorkOrderPage() {
           {t("woCreated")}
         </h2>
         <p className="text-sm mb-1" style={{ color: "var(--foreground-muted)" }}>
-          WO-2026-{String(Math.floor(Math.random() * 900) + 100)}
+          {createdWO.work_order_number}
         </p>
         <p className="text-sm mb-8" style={{ color: "var(--foreground-muted)" }}>
           {selectedAsset?.name} · {priority} priority
         </p>
         <div className="flex gap-3">
+          <Link href={`/workorders/${createdWO.id}`}>
+            <Button>{tCommon("view")}</Button>
+          </Link>
           <Link href="/workorders">
             <Button variant="secondary">{t("title")}</Button>
           </Link>
-          <Button onClick={() => { setStep(1); setSubmitted(false); setSelectedAsset(null); setDescription(""); setPriority("Medium"); setAssetQuery(""); }}>
+          <Button variant="outline" onClick={() => {
+            setStep(1);
+            setSubmitted(false);
+            setCreatedWO(null);
+            setSelectedAsset(null);
+            setDescription("");
+            setPriority("Medium");
+            setAssetQuery("");
+            setSubmitError(null);
+          }}>
             {tCommon("create")}
           </Button>
         </div>
@@ -134,6 +284,36 @@ export default function NewWorkOrderPage() {
             </div>
 
             <div className="space-y-2">
+              {assetsLoading && (
+                <div className="flex items-center justify-center py-8 text-xs"
+                  style={{ color: "var(--foreground-subtle)" }}>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Loading assets…
+                </div>
+              )}
+              {!assetsLoading && assetsError && (
+                <div className="p-4 rounded-lg border text-xs"
+                  style={{ borderColor: "#FECACA", backgroundColor: "#FEF2F2", color: "#991B1B" }}>
+                  {assetsError}
+                </div>
+              )}
+              {!assetsLoading && !assetsError && assets.length === 0 && (
+                <div className="p-6 rounded-lg border-2 border-dashed text-center"
+                  style={{ borderColor: "var(--border)" }}>
+                  <p className="text-sm font-medium mb-1" style={{ color: "var(--foreground)" }}>No assets yet</p>
+                  <p className="text-xs mb-3" style={{ color: "var(--foreground-muted)" }}>
+                    Create an asset before logging a work order against it.
+                  </p>
+                  <Link href="/assets">
+                    <Button size="sm" variant="outline">Go to Assets</Button>
+                  </Link>
+                </div>
+              )}
+              {!assetsLoading && !assetsError && assets.length > 0 && filteredAssets.length === 0 && (
+                <p className="text-xs text-center py-4"
+                  style={{ color: "var(--foreground-subtle)" }}>
+                  No assets match &ldquo;{assetQuery}&rdquo;.
+                </p>
+              )}
               {filteredAssets.map((asset) => (
                 <button
                   key={asset.id}
@@ -148,7 +328,7 @@ export default function NewWorkOrderPage() {
                     <div>
                       <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{asset.name}</p>
                       <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
-                        {asset.tag} · {asset.location}
+                        {[asset.tag, asset.location].filter(Boolean).join(" · ") || "—"}
                       </p>
                     </div>
                     {selectedAsset?.id === asset.id && (
@@ -202,17 +382,94 @@ export default function NewWorkOrderPage() {
               </p>
             </div>
 
-            {/* Photo upload placeholder */}
+            {/* Photo upload */}
             <div>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--foreground-muted)" }}>Photos ({tCommon("optional")})</label>
-              <button
-                className="w-full border-2 border-dashed rounded-lg p-6 flex flex-col items-center gap-2 transition-colors hover:border-blue-400"
-                style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)" }}
-              >
-                <Camera className="w-8 h-8" style={{ color: "var(--foreground-subtle)" }} />
-                <span className="text-sm" style={{ color: "var(--foreground-muted)" }}>{t("tapPhotos")}</span>
-                <span className="text-xs" style={{ color: "var(--foreground-subtle)" }}>{t("photoFormats")}</span>
-              </button>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--foreground-muted)" }}>
+                Photos ({tCommon("optional")})
+              </label>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                className="hidden"
+                onChange={(e) => onFilesPicked(e.target.files)}
+              />
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (fileInputRef.current) {
+                      fileInputRef.current.setAttribute("capture", "environment");
+                      fileInputRef.current.click();
+                    }
+                  }}
+                  className="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed p-5 transition-colors hover:border-blue-400 active:scale-[0.98]"
+                  style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)", minHeight: 96 }}
+                >
+                  <Camera className="w-7 h-7" style={{ color: "var(--brand-blue)" }} />
+                  <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>Take photo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (fileInputRef.current) {
+                      fileInputRef.current.removeAttribute("capture");
+                      fileInputRef.current.click();
+                    }
+                  }}
+                  className="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed p-5 transition-colors hover:border-blue-400 active:scale-[0.98]"
+                  style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)", minHeight: 96 }}
+                >
+                  <ImagePlus className="w-7 h-7" style={{ color: "var(--brand-blue)" }} />
+                  <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>Upload photo</span>
+                </button>
+              </div>
+
+              {photos.length > 0 && (
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {photos.map((p) => (
+                    <div
+                      key={p.id}
+                      className="relative aspect-square rounded-lg overflow-hidden border"
+                      style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-1)" }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={p.previewUrl} alt="" className="w-full h-full object-cover" />
+                      {p.status === "uploading" && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                          <Loader2 className="w-5 h-5 text-white animate-spin" />
+                        </div>
+                      )}
+                      {p.status === "uploaded" && (
+                        <div className="absolute bottom-1 right-1 rounded-full bg-emerald-600 p-0.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                        </div>
+                      )}
+                      {p.status === "failed" && (
+                        <div className="absolute inset-0 flex items-center justify-center text-[10px] text-white text-center px-1 bg-red-600/80">
+                          {p.error ?? "Failed"}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(p.id)}
+                        aria-label="Remove photo"
+                        className="absolute top-1 right-1 rounded-full bg-black/60 p-1 hover:bg-black/80"
+                      >
+                        <X className="w-3 h-3 text-white" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <p className="text-[11px] mt-2" style={{ color: "var(--foreground-subtle)" }}>
+                Photos attach to {selectedAsset?.tag ? `asset ${selectedAsset.tag}` : "the selected asset"} in MIRA&apos;s knowledge base.
+              </p>
             </div>
 
             {/* Priority */}
@@ -273,12 +530,31 @@ export default function NewWorkOrderPage() {
               </div>
             </div>
 
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setStep(2)} className="flex-1">
-                <ArrowLeft className="w-4 h-4 mr-1" /> {tCommon("edit")}
-              </Button>
-              <Button className="flex-1" onClick={submit}>
-                {tCommon("create")} {t("title")}
+            {submitError && (
+              <div className="p-3 rounded-lg border text-xs"
+                style={{ borderColor: "#FECACA", backgroundColor: "#FEF2F2", color: "#991B1B" }}>
+                {submitError}
+              </div>
+            )}
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={submit}
+                disabled={submitting}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-6 text-base font-semibold text-white shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                style={{ minHeight: 56 }}
+              >
+                {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+                {submitting ? "Saving…" : "Save Work Order"}
+              </button>
+              <Button
+                variant="ghost"
+                onClick={() => setStep(2)}
+                disabled={submitting}
+                className="w-full"
+              >
+                <ArrowLeft className="w-4 h-4 mr-1" /> {tCommon("edit")} details
               </Button>
             </div>
           </div>

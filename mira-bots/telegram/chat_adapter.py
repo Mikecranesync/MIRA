@@ -7,6 +7,7 @@ import logging
 import httpx
 from renderers import render_telegram
 from shared.chat.types import NormalizedAttachment, NormalizedChatEvent, NormalizedChatResponse
+from shared.chat_tenant import resolve as chat_tenant_resolve
 
 logger = logging.getLogger("mira-bot")
 
@@ -95,7 +96,7 @@ class TelegramChatAdapter:
         return NormalizedChatEvent(
             event_id=event_id,
             platform="telegram",
-            tenant_id="",
+            tenant_id=chat_tenant_resolve(external_user_id),
             user_id="",
             external_user_id=external_user_id,
             external_channel_id=chat_id,

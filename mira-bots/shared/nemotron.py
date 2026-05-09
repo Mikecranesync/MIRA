@@ -4,6 +4,8 @@ All methods fall back gracefully when NVIDIA_API_KEY is not set.
 Zero external dependencies beyond httpx (already installed).
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
