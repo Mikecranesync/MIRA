@@ -9,7 +9,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "3010:8080"
+      - "127.0.0.1:3010:8080"
     environment:
       - WEBUI_AUTH=true
       - ENABLE_SIGNUP=true
@@ -151,7 +151,7 @@ services:
     build: ./mira-web
     container_name: mira-web
     ports:
-      - "3200:3000"
+      - "127.0.0.1:3200:3000"
     environment:
       - PORT=3000
       - PLG_JWT_SECRET=${PLG_JWT_SECRET}
