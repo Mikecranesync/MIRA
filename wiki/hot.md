@@ -1,5 +1,24 @@
 # Hot Cache — 2026-05-10 — ALPHA
 
+## Session — 2026-05-10 (demo video story scripts + pipeline extension)
+
+**Iteration 2 additions:**
+- **`build_video_v2.py` extended** with `--storyboard`, `--story`, `--recordings`, `--dry-run` flags; full backwards-compatible with original `storyboard_v2.yaml`
+- **Dry-run validated**: all 5 stories, 49 total beats, all screenshots resolve `✓` (zero missing)
+- **`--recordings` mode**: reads `beat-01.mp3...beat-NN.mp3` from a folder; user records voice, pipeline assembles video without OpenAI TTS
+- **`_compute_pivot()`**: replaces hardcoded shot-3 pivot with `shots[min(2, len(shots)-1)]` for story length safety
+- **Per-story isolated `output/` cache dirs**: multiple stories don't clobber each other's renders
+- **Image path resolution**: `docs/promo-screenshots/*` paths resolve from MIRA_ROOT, legacy `reference/*` paths still work
+
+**To build immediately (TTS voice):**
+```bash
+cd marketing/comic-pipeline
+doppler run --project factorylm --config prd -- \
+  .venv/bin/python build_video_v2.py \
+  --storyboard ../demo-videos/story-scripts.yaml \
+  --story 60-second-setup --skip-verify
+```
+
 ## Session — 2026-05-10 (demo video story scripts)
 
 - **5 demo video story scripts written**: `marketing/demo-videos/story-scripts.yaml` + `README.md`
