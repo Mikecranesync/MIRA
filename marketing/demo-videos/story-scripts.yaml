@@ -1,0 +1,570 @@
+# MIRA Demo Video Story Scripts
+# Format: storyboard_v2.yaml-compatible, adapted for real app screenshots + user-recorded voiceover
+#
+# PIPELINE NOTES:
+#   - Images: real screenshots from docs/promo-screenshots/ (not AI panels)
+#   - Audio: user records their own voice; narration= is the script they read
+#   - focal: canvas-normalized coords (0-1) for Ken Burns camera; same zoompan model as v2
+#   - Each "story" is an independent video (~60-120s) suitable for YouTube, LinkedIn, or email
+#   - Build with: build_video_v2.py --storyboard marketing/demo-videos/story-scripts.yaml --story <story_id>
+#
+# RECORDING TIPS for the user:
+#   - Speak at 85% normal speed — the 0.9x TTS speed in v2 was tuned for this pace
+#   - Pause 1 full second between sentences (the pipeline inserts silence between beats)
+#   - Record in a quiet room with no background hum — factory ambience is added in post
+#   - One take per beat is ideal; the assembler matches audio duration to screen hold time
+#
+# SCREENSHOT STATUS (as of 2026-05-10):
+#   docs/promo-screenshots/2026-05-10_homepage-hero_desktop.png       ✓ captured
+#   docs/promo-screenshots/2026-05-10_cmms-signin_desktop.png         ✓ captured
+#   docs/promo-screenshots/2026-05-10_pricing-page_desktop.png        ✓ captured
+#   docs/promo-screenshots/2026-05-10_qr-asset-sheet_desktop.png      ✓ captured
+#   docs/promo-screenshots/2026-05-10_atlas-cmms-login_desktop.png    ✓ captured
+#   docs/promo-screenshots/2026-04-27_knowledge-indexed-manuals_desktop.png  ✓ existing
+#   docs/promo-screenshots/2026-04-27_workorders-auto-generated_desktop.png  ✓ existing
+#   docs/promo-screenshots/2026-04-27_schedule-calendar-with-pms_desktop.png ✓ existing
+#   docs/promo-screenshots/2026-04-27_assets-with-pm-count_desktop.png       ✓ existing
+#   docs/promo-screenshots/2026-04-27_workorder-detail-from-manual_desktop.png ✓ existing
+#   docs/promo-screenshots/2026-04-30_hub-login_desktop.png           ✓ existing
+#
+# SCREENSHOTS STILL NEEDED (capture authenticated flows after login):
+#   hub-chat-fault-question.png       — MIRA chat window, question typed
+#   hub-chat-fault-answer.png         — MIRA response streaming with citation
+#   hub-chat-citation-expanded.png    — Citation panel open (manual §, date)
+#   hub-upload-pdf-progress.png       — PDF upload in progress (progress bar)
+#   hub-upload-pdf-complete.png       — "Manual indexed" success state
+#   hub-qr-channel-chooser.png        — /m/:tag/choose page on mobile
+#   hub-qr-report-form.png            — /m/:tag/report guest form on mobile
+#   atlas-work-orders-list.png        — Atlas CMMS work order list (authenticated)
+#   atlas-asset-detail.png            — Atlas asset detail page with PM history
+#   atlas-schedule-calendar.png       — Atlas PM calendar view
+#   hub-activated-onboarding.png      — /activated page with Loom video
+
+---
+
+stories:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # STORY 1: "The 60-Second Setup"
+  # Audience: plant managers evaluating new software
+  # Duration: ~75 seconds
+  # Value prop: zero IT, no training needed, live in one email
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: "60-second-setup"
+    title: "The 60-Second Setup"
+    description: >
+      Full product tour: problem awareness → sign-up → upload manual → AI answer
+      with citation → auto work orders → PM calendar → QR floor access → pricing CTA.
+      Designed for LinkedIn / cold email. Shows every major feature.
+    output: "marketing/videos/demo-60-second-setup.mp4"
+    target_duration_seconds: 110
+
+    video:
+      width: 1920
+      height: 1080
+      fps: 24
+      shot_xfade_duration: 0.5
+      intra_beat_pan_duration: 0.5
+
+    audio:
+      recording_folder: "marketing/demo-videos/recordings/60-second-setup/"
+      style_note: "Calm, direct, no buzzwords. Like a senior tech explaining to a peer."
+
+    shots:
+      - id: 1
+        file: "docs/promo-screenshots/2026-05-10_homepage-hero_desktop.png"
+        role: "Landing — the hook"
+        beats:
+          - narration: "Your team knows the fault codes. But they can't find the answers fast enough."
+            focal: {cx: 0.50, cy: 0.35, zoom: 1.2}
+            target: "Hero headline area"
+            duration: 5.5
+
+          - narration: "FactoryLM gives maintenance teams an AI that actually knows your machines."
+            focal: {cx: 0.50, cy: 0.55, zoom: 1.4}
+            target: "Feature tagline below hero"
+            duration: 5.5
+
+      - id: 2
+        file: "docs/promo-screenshots/2026-05-10_cmms-signin_desktop.png"
+        role: "Sign-up — magic link"
+        beats:
+          - narration: "Getting started takes one email address. No credit card. No demo call."
+            focal: {cx: 0.50, cy: 0.40, zoom: 1.3}
+            target: "Email input and magic link form"
+            duration: 5.0
+
+          - narration: "We send you a link. You click it. You're in."
+            focal: {cx: 0.50, cy: 0.60, zoom: 1.8}
+            target: "3-step onboarding steps"
+            duration: 3.5
+
+      - id: 3
+        file: "docs/promo-screenshots/2026-04-27_knowledge-indexed-manuals_desktop.png"
+        role: "Knowledge base — upload your manuals"
+        beats:
+          - narration: "Upload your OEM manuals. VFD datasheets, PLC guides, inspection procedures."
+            focal: {cx: 0.30, cy: 0.50, zoom: 1.5}
+            target: "Document list / upload area"
+            duration: 5.5
+
+          - narration: "MIRA indexes everything. Searchable in under two minutes."
+            focal: {cx: 0.70, cy: 0.50, zoom: 1.8}
+            target: "Indexed status badge / document count"
+            duration: 4.5
+
+      - id: 4
+        file: "docs/promo-screenshots/2026-04-27_workorder-detail-from-manual_desktop.png"
+        role: "AI diagnostic — cited answer"
+        beats:
+          - narration: "Ask MIRA about a fault code. It finds the answer in your manual."
+            focal: {cx: 0.50, cy: 0.30, zoom: 1.4}
+            target: "Chat question area"
+            duration: 4.5
+
+          - narration: "Not a guess. A citation — chapter, section, page. You can verify it yourself."
+            focal: {cx: 0.50, cy: 0.65, zoom: 2.0}
+            target: "Citation block / manual reference"
+            duration: 5.5
+
+      - id: 5
+        file: "docs/promo-screenshots/2026-04-27_workorders-auto-generated_desktop.png"
+        role: "Work orders — auto-generated from the diagnosis"
+        beats:
+          - narration: "The diagnosis becomes a work order automatically. Assigned, prioritized, tracked."
+            focal: {cx: 0.50, cy: 0.40, zoom: 1.4}
+            target: "Work order list with auto-generated badge"
+            duration: 5.5
+
+          - narration: "No re-typing. No copy-paste between systems."
+            focal: {cx: 0.40, cy: 0.60, zoom: 1.9}
+            target: "Work order detail / assignee column"
+            duration: 4.0
+
+      - id: 6
+        file: "docs/promo-screenshots/2026-04-27_schedule-calendar-with-pms_desktop.png"
+        role: "PM calendar — preventive maintenance scheduled"
+        beats:
+          - narration: "MIRA reads your OEM manuals and extracts PM intervals — lubrication schedules, belt checks, filter changes."
+            focal: {cx: 0.50, cy: 0.35, zoom: 1.3}
+            target: "Calendar header / month view"
+            duration: 6.5
+
+          - narration: "The calendar builds itself. Everyone works from the same board."
+            focal: {cx: 0.50, cy: 0.60, zoom: 1.5}
+            target: "Calendar PM event rows"
+            duration: 4.5
+
+      - id: 7
+        file: "docs/promo-screenshots/2026-05-10_qr-asset-sheet_desktop.png"
+        role: "QR floor access — any phone, no app"
+        beats:
+          - narration: "On the floor, it's a QR code. Stick it on the machine."
+            focal: {cx: 0.50, cy: 0.40, zoom: 1.3}
+            target: "QR code sheet / asset tags"
+            duration: 4.5
+
+          - narration: "Any tech scans it with their phone. No app install. MIRA knows which machine they're standing next to."
+            focal: {cx: 0.35, cy: 0.60, zoom: 1.9}
+            target: "Individual QR code label"
+            duration: 6.0
+
+      - id: 8
+        file: "docs/promo-screenshots/2026-05-10_pricing-page_desktop.png"
+        role: "Pricing — CTA close"
+        beats:
+          - narration: "MIRA Troubleshooter starts at ninety-seven dollars a month. Full CMMS included at two ninety-seven."
+            focal: {cx: 0.50, cy: 0.45, zoom: 1.4}
+            target: "Pricing plan cards"
+            duration: 6.0
+
+          - narration: "Start free. Your first manual is on us."
+            focal: {cx: 0.50, cy: 0.70, zoom: 1.8}
+            target: "CTA button / free trial"
+            duration: 4.0
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # STORY 2: "Fault Code in 30 Seconds"
+  # Audience: maintenance technicians, floor-level demos
+  # Duration: ~60 seconds
+  # Value prop: faster answer than any manual, with a source you can trust
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: "fault-code-30-seconds"
+    title: "Fault Code in 30 Seconds"
+    description: >
+      The core AI diagnostic loop: a real fault code (PowerFlex 755 F005 DC bus
+      undervoltage) gets typed into MIRA chat, answer streams back in seconds
+      with a manual citation. Shows the technician's POV.
+    output: "marketing/videos/demo-fault-code-30s.mp4"
+    target_duration_seconds: 60
+
+    audio:
+      recording_folder: "marketing/demo-videos/recordings/fault-code-30s/"
+      style_note: "Fast-paced. Like a tech talking on the radio. Short sentences."
+
+    shots:
+      - id: 1
+        file: "docs/promo-screenshots/2026-04-27_workorder-detail-from-manual_desktop.png"
+        role: "The fault — real scenario"
+        beats:
+          - narration: "PowerFlex 755. F005 fault. DC bus undervoltage."
+            focal: {cx: 0.50, cy: 0.25, zoom: 1.5}
+            target: "Fault code display or work order header"
+            duration: 4.0
+
+          - narration: "Normally you'd pull the manual. Flip to section six. Scan three pages."
+            focal: {cx: 0.50, cy: 0.50, zoom: 1.2}
+            target: "Mid-page content"
+            duration: 5.0
+
+      - id: 2
+        # NEEDS CAPTURE: hub-chat-fault-question.png
+        file: "docs/promo-screenshots/2026-04-27_knowledge-indexed-manuals_desktop.png"
+        role: "MIRA chat — question typed"
+        screenshot_needed: true
+        screenshot_url: "https://app.factorylm.com (authenticated) — MIRA chat window with F005 question typed"
+        beats:
+          - narration: "Instead, open MIRA. Type the fault code."
+            focal: {cx: 0.50, cy: 0.70, zoom: 1.8}
+            target: "Chat input / query box"
+            duration: 4.0
+
+      - id: 3
+        # NEEDS CAPTURE: hub-chat-fault-answer.png
+        file: "docs/promo-screenshots/2026-04-27_workorders-auto-generated_desktop.png"
+        role: "MIRA response — streaming answer"
+        screenshot_needed: true
+        screenshot_url: "https://app.factorylm.com (authenticated) — MIRA response streaming with citation"
+        beats:
+          - narration: "In seconds: DC bus undervoltage. Check input line voltage at L1, L2, L3."
+            focal: {cx: 0.50, cy: 0.40, zoom: 1.6}
+            target: "AI response text"
+            duration: 6.0
+
+          - narration: "Verify the pre-charge resistor. Check drive parameter A544."
+            focal: {cx: 0.50, cy: 0.55, zoom: 1.8}
+            target: "Detailed steps in response"
+            duration: 5.0
+
+          - narration: "Source: PowerFlex 755 Installation Manual, Section 6-2, Page 184."
+            focal: {cx: 0.50, cy: 0.80, zoom: 2.2}
+            target: "Citation block at bottom of response"
+            duration: 5.5
+
+      - id: 4
+        file: "docs/promo-screenshots/2026-04-27_workorders-auto-generated_desktop.png"
+        role: "Work order auto-generated"
+        beats:
+          - narration: "MIRA creates the work order automatically. Assigned. Tracked. Done."
+            focal: {cx: 0.50, cy: 0.40, zoom: 1.3}
+            target: "Work order list / auto-generated badge"
+            duration: 5.0
+
+          - narration: "That's thirty seconds from fault to fix."
+            focal: {cx: 0.50, cy: 0.50, zoom: 1.0}
+            target: "Full pull-back"
+            duration: 4.0
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # STORY 3: "Scan to Diagnose — QR Code Demo"
+  # Audience: plant managers doing floor demos, trade shows
+  # Duration: ~70 seconds
+  # Value prop: phone-based, no app install, any worker can use it
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: "qr-scan-to-diagnose"
+    title: "Scan to Diagnose"
+    description: >
+      Shows the QR asset tag workflow: print tags → stick to machine →
+      tech scans with phone → MIRA asks about the asset → diagnostic answer
+      on screen. Most visually compelling demo for trade shows.
+    output: "marketing/videos/demo-qr-scan.mp4"
+    target_duration_seconds: 70
+
+    audio:
+      recording_folder: "marketing/demo-videos/recordings/qr-scan/"
+      style_note: "Conversational. Walking the viewer through it like a product tour."
+
+    shots:
+      - id: 1
+        file: "docs/promo-screenshots/2026-05-10_qr-asset-sheet_desktop.png"
+        role: "QR labels — the physical layer"
+        beats:
+          - narration: "Every piece of equipment gets a QR code. Print it. Stick it on."
+            focal: {cx: 0.50, cy: 0.40, zoom: 1.3}
+            target: "QR code sheet / asset tags"
+            duration: 5.0
+
+          - narration: "Conveyor belt. VFD panel. Air compressor. It doesn't matter what you have."
+            focal: {cx: 0.30, cy: 0.60, zoom: 1.8}
+            target: "Individual QR code label"
+            duration: 5.5
+
+      - id: 2
+        file: "docs/promo-screenshots/2026-04-27_assets-with-pm-count_desktop.png"
+        role: "Asset registry — CMMS side"
+        beats:
+          - narration: "Each tag is linked to the machine's history in your CMMS."
+            focal: {cx: 0.50, cy: 0.35, zoom: 1.4}
+            target: "Asset list with equipment names"
+            duration: 5.0
+
+          - narration: "PM history. Open work orders. Last inspection date."
+            focal: {cx: 0.60, cy: 0.60, zoom: 1.8}
+            target: "PM count column / asset detail"
+            duration: 5.0
+
+      - id: 3
+        # NEEDS CAPTURE: hub-qr-channel-chooser.png (mobile viewport)
+        file: "docs/promo-screenshots/2026-04-30_hub-login_desktop.png"
+        role: "Phone scan — channel chooser"
+        screenshot_needed: true
+        screenshot_url: "https://app.factorylm.com/m/DEMO-VFD-001/choose — mobile viewport 390x844"
+        beats:
+          - narration: "A tech scans the code with their phone. No app download."
+            focal: {cx: 0.50, cy: 0.40, zoom: 1.3}
+            target: "Phone / mobile interface"
+            duration: 4.5
+
+          - narration: "MIRA appears instantly. It knows which machine they're standing next to."
+            focal: {cx: 0.50, cy: 0.60, zoom: 1.6}
+            target: "Channel choice or MIRA chat opener"
+            duration: 5.5
+
+      - id: 4
+        file: "docs/promo-screenshots/2026-04-27_workorder-detail-from-manual_desktop.png"
+        role: "Diagnosis — AI answer on phone"
+        beats:
+          - narration: "They describe the problem. MIRA diagnoses it."
+            focal: {cx: 0.50, cy: 0.35, zoom: 1.5}
+            target: "AI response header"
+            duration: 4.5
+
+          - narration: "With context from the manual. And from past repairs on that exact machine."
+            focal: {cx: 0.50, cy: 0.60, zoom: 1.8}
+            target: "Citation / history reference in response"
+            duration: 6.0
+
+          - narration: "No radio calls to the office. No waiting for the engineer."
+            focal: {cx: 0.50, cy: 0.80, zoom: 1.5}
+            target: "Action items at bottom of response"
+            duration: 5.0
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # STORY 4: "PM Scheduling on Autopilot"
+  # Audience: maintenance managers, reliability engineers
+  # Duration: ~80 seconds
+  # Value prop: AI generates PM work orders from manual intervals, no manual entry
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: "pm-scheduling-autopilot"
+    title: "PM Scheduling on Autopilot"
+    description: >
+      Shows the preventive maintenance loop: upload OEM manual → MIRA extracts
+      PM intervals → work orders appear on the calendar → techs execute →
+      history builds up. For maintenance managers obsessed with uptime.
+    output: "marketing/videos/demo-pm-scheduling.mp4"
+    target_duration_seconds: 80
+
+    audio:
+      recording_folder: "marketing/demo-videos/recordings/pm-scheduling/"
+      style_note: >
+        Measured, authoritative. Speak like a reliability engineer who has seen
+        too many missed PMs cost a line six figures.
+
+    shots:
+      - id: 1
+        file: "docs/promo-screenshots/2026-04-27_knowledge-indexed-manuals_desktop.png"
+        role: "Manual upload — PM intervals extracted"
+        beats:
+          - narration: "Every OEM manual has PM intervals buried in it. Lubrication every 2000 hours. Belt inspection every six months."
+            focal: {cx: 0.50, cy: 0.35, zoom: 1.3}
+            target: "Document list / indexed manuals"
+            duration: 7.0
+
+          - narration: "MIRA reads the manual and extracts those intervals automatically."
+            focal: {cx: 0.65, cy: 0.55, zoom: 1.8}
+            target: "Indexed status / document metadata"
+            duration: 5.5
+
+      - id: 2
+        file: "docs/promo-screenshots/2026-04-27_workorders-auto-generated_desktop.png"
+        role: "Work orders — auto-generated from PM schedule"
+        beats:
+          - narration: "It creates the work orders for you. No spreadsheet. No manual entry."
+            focal: {cx: 0.50, cy: 0.35, zoom: 1.4}
+            target: "Work order list header / count"
+            duration: 5.5
+
+          - narration: "Assigned to the right technician. Marked with the right priority."
+            focal: {cx: 0.35, cy: 0.55, zoom: 1.8}
+            target: "Assignee and priority columns"
+            duration: 5.5
+
+          - narration: "Every work order links back to the page in the manual that created it."
+            focal: {cx: 0.65, cy: 0.65, zoom: 2.0}
+            target: "Manual citation link on work order"
+            duration: 6.0
+
+      - id: 3
+        file: "docs/promo-screenshots/2026-04-27_schedule-calendar-with-pms_desktop.png"
+        role: "Calendar — PMs visible across the month"
+        beats:
+          - narration: "The calendar shows everything. What's due. What's overdue. What's been done."
+            focal: {cx: 0.50, cy: 0.40, zoom: 1.3}
+            target: "Calendar header / month view"
+            duration: 5.5
+
+          - narration: "Shift supervisors see it. Managers see it. Everyone's working from the same board."
+            focal: {cx: 0.50, cy: 0.60, zoom: 1.5}
+            target: "Calendar event rows / PM items"
+            duration: 6.0
+
+      - id: 4
+        file: "docs/promo-screenshots/2026-04-27_assets-with-pm-count_desktop.png"
+        role: "Asset registry — PM history accumulates"
+        beats:
+          - narration: "Over time, your asset history builds itself."
+            focal: {cx: 0.50, cy: 0.35, zoom: 1.4}
+            target: "Asset list with PM count column"
+            duration: 5.0
+
+          - narration: "Every completed PM. Every replaced part. Every technician note."
+            focal: {cx: 0.60, cy: 0.55, zoom: 1.9}
+            target: "PM count numbers in column"
+            duration: 5.5
+
+          - narration: "This is how plants stop reacting to failures and start preventing them."
+            focal: {cx: 0.50, cy: 0.50, zoom: 1.0}
+            target: "Full pull-back — complete asset screen"
+            duration: 6.0
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # STORY 5: "Your Team. Your Manuals. Your AI."
+  # Audience: decision-makers, YouTube pre-roll, top of funnel
+  # Duration: ~90 seconds
+  # Value prop: brand story — FactoryLM vs. generic AI
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: "your-team-your-manuals"
+    title: "Your Team. Your Manuals. Your AI."
+    description: >
+      Brand story arc: the problem with generic AI for maintenance → MIRA's
+      approach (your documents, your history, cited answers) → the full stack
+      (chat + CMMS + QR). Suitable for YouTube ads, investor decks, trade media.
+    output: "marketing/videos/demo-brand-story.mp4"
+    target_duration_seconds: 90
+
+    audio:
+      recording_folder: "marketing/demo-videos/recordings/brand-story/"
+      style_note: >
+        Documentary pace. This is the most scripted of the five. Think Ken Burns
+        narration meets factory floor. No filler words. Every sentence earns its time.
+
+    shots:
+      - id: 1
+        file: "docs/promo-screenshots/2026-05-10_homepage-hero_desktop.png"
+        role: "Opening — the gap"
+        beats:
+          - narration: "Maintenance teams have two problems with AI."
+            focal: {cx: 0.50, cy: 0.30, zoom: 1.1}
+            target: "Hero area — top of page"
+            duration: 4.5
+
+          - narration: "Generic models don't know your machines. And they can't cite their sources."
+            focal: {cx: 0.50, cy: 0.55, zoom: 1.4}
+            target: "Feature description area"
+            duration: 6.0
+
+      - id: 2
+        file: "docs/promo-screenshots/2026-04-27_knowledge-indexed-manuals_desktop.png"
+        role: "Solution — your documents"
+        beats:
+          - narration: "FactoryLM is trained on your manuals. Not the internet."
+            focal: {cx: 0.40, cy: 0.45, zoom: 1.5}
+            target: "Document library / indexed manuals"
+            duration: 5.5
+
+          - narration: "Upload your OEM datasheets. Your maintenance procedures. Your inspection records."
+            focal: {cx: 0.60, cy: 0.55, zoom: 1.8}
+            target: "Document list items"
+            duration: 6.5
+
+      - id: 3
+        file: "docs/promo-screenshots/2026-04-27_workorder-detail-from-manual_desktop.png"
+        role: "Cited answers — trust"
+        beats:
+          - narration: "Every answer MIRA gives you includes a citation."
+            focal: {cx: 0.50, cy: 0.35, zoom: 1.4}
+            target: "AI answer text area"
+            duration: 5.0
+
+          - narration: "Which manual. Which section. Which page. You can verify it yourself."
+            focal: {cx: 0.50, cy: 0.70, zoom: 2.0}
+            target: "Citation block / manual reference footer"
+            duration: 6.0
+
+      - id: 4
+        file: "docs/promo-screenshots/2026-04-27_workorders-auto-generated_desktop.png"
+        role: "CMMS — closed loop"
+        beats:
+          - narration: "The diagnosis becomes a work order. Automatically."
+            focal: {cx: 0.50, cy: 0.35, zoom: 1.3}
+            target: "Work order list"
+            duration: 5.0
+
+          - narration: "Assigned. Scheduled. Tracked. Without anyone re-typing anything."
+            focal: {cx: 0.50, cy: 0.55, zoom: 1.6}
+            target: "Work order detail / status"
+            duration: 5.5
+
+      - id: 5
+        file: "docs/promo-screenshots/2026-05-10_qr-asset-sheet_desktop.png"
+        role: "QR — the physical layer"
+        beats:
+          - narration: "On the floor, it's a QR code. Any phone. No app to install."
+            focal: {cx: 0.50, cy: 0.45, zoom: 1.4}
+            target: "QR code labels"
+            duration: 5.0
+
+          - narration: "Your team doesn't change how they work. MIRA meets them where they are."
+            focal: {cx: 0.35, cy: 0.60, zoom: 1.8}
+            target: "Individual QR tag closeup"
+            duration: 6.0
+
+      - id: 6
+        file: "docs/promo-screenshots/2026-05-10_pricing-page_desktop.png"
+        role: "Closing — pricing / CTA"
+        beats:
+          - narration: "MIRA Troubleshooter. Ninety-seven dollars a month."
+            focal: {cx: 0.35, cy: 0.45, zoom: 1.5}
+            target: "Troubleshooter plan card"
+            duration: 5.0
+
+          - narration: "MIRA Integrated, with full CMMS. Two ninety-seven."
+            focal: {cx: 0.65, cy: 0.45, zoom: 1.5}
+            target: "Integrated plan card"
+            duration: 5.0
+
+          - narration: "Start free. Your first manual is on us."
+            focal: {cx: 0.50, cy: 0.70, zoom: 1.8}
+            target: "CTA button / free trial"
+            duration: 4.5
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCREENSHOTS NEEDED BEFORE FILMING
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# These require authenticated access to app.factorylm.com and cmms.factorylm.com.
+# Capture at 1440x900 desktop and 390x844 mobile as needed.
+#
+# Priority order:
+#   1. hub-chat-fault-question.png  (Story 2, Shot 2)
+#   2. hub-chat-fault-answer.png    (Story 2, Shot 3)
+#   3. hub-chat-citation-expanded.png  (Story 2, Story 4)
+#   4. hub-qr-channel-chooser.png   (Story 3, Shot 3) — mobile
+#   5. hub-upload-pdf-progress.png  (Story 1, Story 4)
+#   6. atlas-work-orders-list.png   (Story 2, Story 4)
+#   7. atlas-schedule-calendar.png  (Story 4, Story 5)
+#
+# How to capture (run locally after `doppler run --config prd`):
+#   python tools/capture-screenshots.py --base-url https://app.factorylm.com
+#
+# Or capture manually using Playwright in a logged-in browser session.
