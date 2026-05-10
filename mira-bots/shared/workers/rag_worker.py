@@ -11,6 +11,11 @@ import httpx
 import yaml
 
 from .. import neon_recall as _neon_recall
+from ..agentic_retrieval import (
+    decompose_query,
+    is_decompose_enabled,
+    merge_subquery_results,
+)
 from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
 from ..inference.router import InferenceRouter
 from ..langfuse_setup import trace_rag_query
@@ -314,13 +319,42 @@ class RAGWorker:
                         embed_query = message
                         if photo_b64 and state.get("asset_identified"):
                             embed_query = f"{state['asset_identified']} {message}"
-                        embedding = await self._embed_ollama(embed_query)
-                        if embedding:
-                            neon_chunks = _neon_recall.recall_knowledge(
-                                embedding,
-                                effective_tenant,
-                                query_text=embed_query,
+
+                        sub_queries: list[str] = [embed_query]
+                        if is_decompose_enabled():
+                            try:
+                                sub_queries = await decompose_query(embed_query)
+                            except Exception as exc:
+                                logger.warning("DECOMPOSE_CALL_FAILED %s", exc)
+                                sub_queries = [embed_query]
+
+                        if len(sub_queries) > 1:
+                            per_sub: list[list[dict]] = []
+                            for sq in sub_queries:
+                                sq_emb = await self._embed_ollama(sq)
+                                if not sq_emb:
+                                    continue
+                                per_sub.append(
+                                    _neon_recall.recall_knowledge(
+                                        sq_emb,
+                                        effective_tenant,
+                                        query_text=sq,
+                                    )
+                                )
+                            neon_chunks = merge_subquery_results(per_sub, limit=6)
+                            logger.info(
+                                "DECOMPOSE_RECALL n_subq=%d n_chunks=%d",
+                                len(sub_queries),
+                                len(neon_chunks),
                             )
+                        else:
+                            embedding = await self._embed_ollama(embed_query)
+                            if embedding:
+                                neon_chunks = _neon_recall.recall_knowledge(
+                                    embedding,
+                                    effective_tenant,
+                                    query_text=embed_query,
+                                )
 
             # Extract chunk texts for reranking / telemetry
             chunk_texts = [c["content"] for c in neon_chunks]
