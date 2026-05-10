@@ -1017,7 +1017,12 @@ def main():
             )
             await update.message.reply_text("🔄 Fresh start. What can I help with?")
             return
-        await start_command(update, context, engine=_admin_db_engine)
+        await start_command(
+            update,
+            context,
+            engine=_admin_db_engine,
+            diagnostic_engine=engine,
+        )
 
     # IMPORTANT: register /start and /new FIRST so they win over the legacy welcome
     # AND so they always run before the message handler regardless of FSM state.
