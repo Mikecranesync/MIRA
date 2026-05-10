@@ -71,4 +71,5 @@ export const NAV_ITEMS = [
   { key: "parts",         label: "Parts",         icon: "Package",       href: "/parts",         roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
   { key: "documents",     label: "Documents",     icon: "FileText",      href: "/documents",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
   { key: "reports",       label: "Reports",       icon: "TrendingUp",    href: "/reports",       roles: ["manager", "scheduler", "admin", "owner"],                           group: "secondary" },
+  { key: "plc",           label: "Ladder Logic",  icon: "Cpu",           href: "/plc",           roles: ["technician", "manager", "admin", "owner"],                          group: "secondary" },
 ] as const;
