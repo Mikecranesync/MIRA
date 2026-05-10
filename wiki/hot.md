@@ -1,3 +1,8 @@
+## eval-fixer run — 2026-05-10
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md`
+- Action: issue-filed (#1144 — added to Kanban)
+- Hard-stop: 3 file_clusters keys (engine.py + guardrails.py + active.yaml). 9 failures: 7 FSM state advancement regressions in engine.py (Q1→Q2 and Q2→DIAGNOSIS gates too conservative, plus 3 IDLE fallback cases), 1 cross-vendor leak (GS20 PHL fixture returning PowerFlex content), 1 CMMS WO flow not surfacing keywords. Scorecard is fresher than prior runs (2026-05-06, 84% vs prior 77%). Suggested fix order: engine.py FSM first (unblocks 7/9), then guardrails+prompt.
+
 ## eval-fixer run — 2026-05-09
 - Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (same stale scorecard, 10 days old)
 - Action: issue-filed (#1103 — added to Kanban)
