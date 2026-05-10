@@ -58,6 +58,8 @@ type WO = {
   source_citation: string | null;
   due: string;
   created_at: string;
+  // Populated once the NeonDB→Atlas sync worker (P1) runs and Atlas returns its ID.
+  atlas_id?: string | null;
 };
 
 function formatTimer(s: number) {
@@ -237,11 +239,13 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
               <Bot className="w-4 h-4" />{t("viewMira")}
             </Button>
           </a>
-          <a href={`https://cmms.factorylm.com/workorders/${wo.id}`} target="_blank" rel="noopener noreferrer">
-            <Button variant="outline" className="h-10 gap-1.5 text-sm px-3">
-              <ExternalLink className="w-4 h-4" />{t("openCmms")}
-            </Button>
-          </a>
+          {wo.atlas_id ? (
+            <a href={`https://cmms.factorylm.com/workorders/${wo.atlas_id}`} target="_blank" rel="noopener noreferrer">
+              <Button variant="outline" className="h-10 gap-1.5 text-sm px-3">
+                <ExternalLink className="w-4 h-4" />{t("openCmms")}
+              </Button>
+            </a>
+          ) : null}
         </div>
 
         {/* Auto-PM source citation */}

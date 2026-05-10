@@ -43,3 +43,36 @@ export function validateAssetTag(raw: unknown): AssetTagValidation {
   }
   return { ok: true, value: trimmed };
 }
+
+// Crockford base32 (no I/L/O/U) — readable when printed on a label, no
+// case-confusion when typed back in by hand.
+const BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/**
+ * Generate a permanent asset tag. Format: `{prefix}-{8 base32 chars}`,
+ * where the prefix defaults to "EQ" but can be derived from the
+ * manufacturer for human readability (e.g. "AB-9X4K2P7Q" for Allen-Bradley).
+ *
+ * The result conforms to ASSET_TAG_REGEX so it round-trips through every
+ * existing validator. Collision space is 32^8 ≈ 1.1 × 10^12 per prefix —
+ * the unique partial index on (tenant_id, equipment_number) catches the
+ * astronomically rare clash and the caller retries.
+ */
+export function generateAssetTag(opts: { manufacturer?: string | null } = {}): string {
+  const prefix = derivePrefix(opts.manufacturer ?? null);
+  let suffix = "";
+  const buf = new Uint8Array(8);
+  crypto.getRandomValues(buf);
+  for (let i = 0; i < 8; i++) suffix += BASE32[buf[i] % 32];
+  return `${prefix}-${suffix}`;
+}
+
+function derivePrefix(manufacturer: string | null): string {
+  if (!manufacturer) return "EQ";
+  const cleaned = manufacturer
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 4);
+  return cleaned.length >= 2 ? cleaned : "EQ";
+}
+

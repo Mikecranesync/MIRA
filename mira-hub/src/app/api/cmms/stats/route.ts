@@ -11,30 +11,38 @@ function atlasBase(): string {
   return (process.env.HUB_CMMS_API_URL ?? "https://cmms.factorylm.com").replace(/\/$/, "");
 }
 
-async function getToken(): Promise<string | null> {
+async function getToken(): Promise<{ token: string | null; reason?: string }> {
   const user = process.env.ATLAS_API_USER;
   const pass = process.env.ATLAS_API_PASSWORD;
-  if (!user || !pass) return null;
+  if (!user || !pass) {
+    return { token: null, reason: "credentials_missing" };
+  }
 
-  if (cachedToken && Date.now() < tokenExpiresAt) return cachedToken;
+  if (cachedToken && Date.now() < tokenExpiresAt) {
+    return { token: cachedToken };
+  }
 
   try {
     const res = await fetch(`${atlasBase()}/auth/signin`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: user, password: pass }),
+      body: JSON.stringify({ email: user, password: pass, type: "CLIENT" }),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      return { token: null, reason: `signin_${res.status}` };
+    }
     const data = (await res.json()) as { token?: string; accessToken?: string };
     const token = data.token ?? data.accessToken ?? null;
     if (token) {
       cachedToken = token;
       tokenExpiresAt = Date.now() + 23 * 60 * 60 * 1000;
+      return { token };
     }
-    return token;
-  } catch {
-    return null;
+    return { token: null, reason: "no_token_in_response" };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { token: null, reason: `network_${message}` };
   }
 }
 
@@ -63,9 +71,13 @@ export async function GET() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
 
-  const token = await getToken();
+  const { token, reason } = await getToken();
   if (!token) {
-    return NextResponse.json({ error: "CMMS credentials not configured" }, { status: 503 });
+    console.warn("[api/cmms/stats] auth unavailable", { reason, base: atlasBase() });
+    return NextResponse.json(
+      { error: "cmms_unavailable", reason: reason ?? "unknown" },
+      { status: 503 },
+    );
   }
 
   try {

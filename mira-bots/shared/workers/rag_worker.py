@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -10,9 +11,52 @@ import httpx
 import yaml
 
 from .. import neon_recall as _neon_recall
+from ..agentic_retrieval import (
+    decompose_query,
+    evaluate_retrieval,
+    is_decompose_enabled,
+    is_self_eval_enabled,
+    merge_subquery_results,
+)
 from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
 from ..inference.router import InferenceRouter
 from ..langfuse_setup import trace_rag_query
+
+# CRA-11 / Unit 2 — citation infrastructure.
+#
+# CITATION_TAG_RE matches the "[Source: ...]" markers we inject in retrieval
+# headers and instruct the LLM to echo. Used by post-LLM compliance checks.
+#
+# format_source_label(chunk) builds the human-readable label for one chunk.
+# Honesty constraint (per fe916de commit): we DO NOT render a page number.
+# The DB column "source_page" actually holds chunk_index (a sequential ID
+# from the chunker), not a real PDF page number. Showing "p. 47" when we
+# mean "chunk 47" would mislead techs reading the citation. Backfilling
+# real page numbers from PDF re-extraction is a separate task.
+CITATION_TAG_RE = re.compile(r"\[Source:[^\]]+\]", re.IGNORECASE)
+
+
+def format_source_label(chunk: dict | None) -> str:
+    """Build the "Manufacturer Model — Section" label for a citation tag.
+
+    Returns "" when no usable metadata is present so callers can decide
+    whether to emit a [Source:] tag at all. Page numbers are intentionally
+    omitted — see module docstring above.
+    """
+    if not chunk:
+        return ""
+    mfr = (chunk.get("manufacturer") or "").strip()
+    mdl = (chunk.get("model_number") or "").strip()
+    meta = chunk.get("metadata") or {}
+    section = (meta.get("section") or "").strip()
+
+    head = " ".join(p for p in (mfr, mdl) if p)
+    if head and section:
+        return f"{head} — {section}"
+    if head:
+        return head
+    return section
+
 
 # Max tokens to allocate for conversation history in the prompt.
 # Prevents late-conversation latency spikes from unbounded context growth.
@@ -35,6 +79,54 @@ def _load_prompt_meta() -> dict:
 
 
 logger = logging.getLogger("mira-gsd")
+
+_FAULT_MENTION_RE = re.compile(
+    r"\b(fault|error|alarm|trip|code|warning|showing|display|flashing|reading)\b",
+    re.IGNORECASE,
+)
+
+
+def _build_clarification_request(message: str, asset_identified: str) -> str | None:
+    """Return a targeted clarification question when the KB has no coverage.
+
+    Uses the same fault code extractor as neon_recall so the codes quoted back
+    to the user are exactly what was searched — no false positives from generic
+    English words. Returns None for non-fault queries so the LLM honesty path
+    fires instead.
+    """
+    has_fault_mention = bool(_FAULT_MENTION_RE.search(message))
+    # Use the same extractor the recall path used — what it found is what failed
+    attempted_codes = _neon_recall._extract_fault_codes(message)
+
+    if not has_fault_mention and not attempted_codes:
+        return None
+
+    parts: list[str] = []
+
+    if attempted_codes:
+        quoted = ", ".join(f"**{c}**" for c in attempted_codes[:3])
+        parts.append(f"I searched for {quoted} but couldn't find it in my knowledge base.")
+    else:
+        parts.append("I couldn't find anything matching your description in my knowledge base.")
+
+    parts.append("To look this up I need a bit more info:\n")
+
+    if not asset_identified:
+        parts.append(
+            "1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Rockwell)"
+        )
+        parts.append(
+            "2. **Model number** — shown on the nameplate or display (e.g. GS20, PowerFlex 40)"
+        )
+        parts.append("3. **Exact code** — copy it exactly as it appears on the screen")
+    else:
+        parts.append(f"Equipment: {asset_identified}")
+        parts.append("1. **Exact code** — copy it exactly as it appears on the screen")
+        parts.append(
+            "2. **What were you doing** when it appeared? (starting up, running, decelerating, idle)"
+        )
+
+    return "\n".join(parts)
 
 
 def _trim_history_by_tokens(
@@ -127,8 +219,11 @@ source manual for your specific configuration." Do not pad incomplete \
 retrieval with generic explanations. Set confidence to MEDIUM.
 16. CITATION REQUIRED. You MUST cite your source for any technical advice \
 (parameter values, fault codes, torque specs, timing, electrical specs). \
-Format: "According to [Manual Name], [Section]: ..." and end with \
-"[Source: {manufacturer} {model_number}, {section}]". \
+Echo the exact "[Source: ...]" tag from the RETRIEVED REFERENCE DOCUMENTS \
+section, inline with the fact you are citing. The tag format is \
+"[Source: {manufacturer} {model_number} — {section}]" — copy it verbatim \
+from what you were given. Never invent or fabricate a [Source: ...] tag for \
+content that did not arrive with one. \
 If no retrieved documents appear in the RETRIEVED REFERENCE DOCUMENTS section \
 above, do NOT give technical advice. Instead say exactly: \
 "I don't have documentation for this equipment in my records — searching now. \
@@ -226,22 +321,97 @@ class RAGWorker:
                         embed_query = message
                         if photo_b64 and state.get("asset_identified"):
                             embed_query = f"{state['asset_identified']} {message}"
-                        embedding = await self._embed_ollama(embed_query)
-                        if embedding:
-                            neon_chunks = _neon_recall.recall_knowledge(
-                                embedding,
-                                effective_tenant,
-                                query_text=embed_query,
+
+                        sub_queries: list[str] = [embed_query]
+                        if is_decompose_enabled():
+                            try:
+                                sub_queries = await decompose_query(embed_query)
+                            except Exception as exc:
+                                logger.warning("DECOMPOSE_CALL_FAILED %s", exc)
+                                sub_queries = [embed_query]
+
+                        if len(sub_queries) > 1:
+                            per_sub: list[list[dict]] = []
+                            for sq in sub_queries:
+                                sq_emb = await self._embed_ollama(sq)
+                                if not sq_emb:
+                                    continue
+                                per_sub.append(
+                                    _neon_recall.recall_knowledge(
+                                        sq_emb,
+                                        effective_tenant,
+                                        query_text=sq,
+                                    )
+                                )
+                            neon_chunks = merge_subquery_results(per_sub, limit=6)
+                            logger.info(
+                                "DECOMPOSE_RECALL n_subq=%d n_chunks=%d",
+                                len(sub_queries),
+                                len(neon_chunks),
                             )
+                        else:
+                            embedding = await self._embed_ollama(embed_query)
+                            if embedding:
+                                neon_chunks = _neon_recall.recall_knowledge(
+                                    embedding,
+                                    effective_tenant,
+                                    query_text=embed_query,
+                                )
+
+                        if is_self_eval_enabled() and neon_chunks:
+                            try:
+                                eq_ctx = state.get("asset_identified") or None
+                                is_rel, score, reformulated = await evaluate_retrieval(
+                                    embed_query,
+                                    neon_chunks,
+                                    equipment_context=eq_ctx,
+                                )
+                                logger.info(
+                                    "RAG_SELF_EVAL score=%.2f relevant=%s reformulated=%s",
+                                    score,
+                                    is_rel,
+                                    bool(reformulated),
+                                )
+                                if not is_rel and reformulated:
+                                    retry_emb = await self._embed_ollama(reformulated)
+                                    if retry_emb:
+                                        retry_chunks = _neon_recall.recall_knowledge(
+                                            retry_emb,
+                                            effective_tenant,
+                                            query_text=reformulated,
+                                        )
+                                        if retry_chunks:
+                                            logger.info(
+                                                "RAG_SELF_EVAL_RETRY n_chunks=%d query=%r",
+                                                len(retry_chunks),
+                                                reformulated[:80],
+                                            )
+                                            neon_chunks = retry_chunks
+                            except Exception as exc:
+                                logger.warning("SELF_EVAL_CALL_FAILED %s", exc)
 
             # Extract chunk texts for reranking / telemetry
             chunk_texts = [c["content"] for c in neon_chunks]
 
             # Quality gate: only use retrieval when top chunk is genuinely relevant
             top_score = max((c.get("similarity", 0) for c in neon_chunks), default=0)
-            if neon_chunks and top_score < 0.70:
-                logger.info("RAG_QUALITY_GATE top_score=%.3f — chunks suppressed", top_score)
+            _triage_conf = (state.get("context") or {}).get("triage_result", {}).get("confidence")
+            _enriched = (state.get("context") or {}).get("triage_enriched", False)
+            if _triage_conf == "medium" or _enriched:
+                _min_sim = 0.55
+            elif _triage_conf == "low":
+                _min_sim = 0.45
+            else:
+                _min_sim = 0.70
+            if neon_chunks and top_score < _min_sim:
+                logger.info(
+                    "RAG_QUALITY_GATE top_score=%.3f min=%.2f triage=%s — suppressed",
+                    top_score,
+                    _min_sim,
+                    _triage_conf or "none",
+                )
                 chunk_texts = []
+                neon_chunks = []
 
             # Cross-vendor filter: drop chunks whose manufacturer doesn't match the
             # identified vendor.  Chunks with no manufacturer tag are kept (they may be
@@ -321,10 +491,25 @@ class RAGWorker:
                 self._last_no_kb = no_kb
                 if no_kb:
                     logger.info(
-                        "NO_KB_COVERAGE asset=%r — honesty directive injected",
+                        "NO_KB_COVERAGE asset=%r — checking for clarification shortcut",
                         state.get("asset_identified", "unknown"),
                     )
-                messages = self._build_prompt(state, rewritten, photo_b64, no_kb_coverage=no_kb)
+                    triage_data = (state.get("context") or {}).get("triage_result", {})
+                    if triage_data.get("is_answerable_from_general_knowledge"):
+                        messages = self._build_prompt(
+                            state, rewritten, photo_b64, no_kb_coverage="general_knowledge"
+                        )
+                    else:
+                        clarification = _build_clarification_request(
+                            message, state.get("asset_identified", "")
+                        )
+                        if clarification:
+                            return clarification
+                        messages = self._build_prompt(
+                            state, rewritten, photo_b64, no_kb_coverage=True
+                        )
+                else:
+                    messages = self._build_prompt(state, rewritten, photo_b64)
             t0 = time.monotonic()
             raw = await self._call_llm(messages, model=model)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -366,10 +551,17 @@ class RAGWorker:
         self,
         state: dict,
         message: str,
-        chunks: list[str],
+        chunks: list,
         photo_b64: str = None,
     ) -> list[dict]:
-        """Build prompt with explicitly injected reranked chunks."""
+        """Build prompt with explicitly injected reranked chunks.
+
+        ``chunks`` may be either a list of plain strings (legacy callers) or
+        a list of chunk dicts. When a dict is passed, the [Source: ...] tag
+        comes from that dict directly so reranking does not mis-pair labels
+        with text. When a string is passed, the parallel ``_last_neon_chunks``
+        list is used as the metadata source.
+        """
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
@@ -386,22 +578,26 @@ class RAGWorker:
                 "the technician explicitly switches topic.\n"
             )
 
-        # Inject reranked chunks as reference context with source headers
+        # Inject reranked chunks as reference context with source headers.
+        # Each chunk gets a [Source: Mfr Mdl — Section] tag the LLM is
+        # instructed (rule 16) to echo inline next to facts it cites.
+        # Rerank-stable: when `chunks` is a list of dicts, label comes from
+        # that dict directly so reordering doesn't mis-pair labels with text.
+        # When chunks are bare strings (legacy callers), fall back to the
+        # parallel _last_neon_chunks list.
         system_content += "\n--- RETRIEVED REFERENCE DOCUMENTS ---\n"
         for i, chunk in enumerate(chunks, 1):
-            nc = self._last_neon_chunks[i - 1] if i - 1 < len(self._last_neon_chunks) else {}
-            meta = nc.get("metadata") or {}
-            mfr = nc.get("manufacturer", "")
-            mdl = nc.get("model_number", "")
-            section = meta.get("section", "")
-            label_parts = [p for p in [mfr, mdl] if p]
-            label = " ".join(label_parts)
-            if section:
-                label += f" — {section}"
-            if label:
-                system_content += f"[{i}] [Source: {label}] {chunk}\n"
+            if isinstance(chunk, dict):
+                nc = chunk
+                text = chunk.get("content", "")
             else:
-                system_content += f"[{i}] {chunk}\n"
+                nc = self._last_neon_chunks[i - 1] if i - 1 < len(self._last_neon_chunks) else {}
+                text = chunk
+            label = format_source_label(nc)
+            if label:
+                system_content += f"[{i}] [Source: {label}] {text}\n"
+            else:
+                system_content += f"[{i}] {text}\n"
         system_content += "--- END REFERENCES ---\n"
 
         messages = [{"role": "system", "content": system_content}]
@@ -452,14 +648,15 @@ class RAGWorker:
         message: str,
         photo_b64: str = None,
         neon_chunks: list[dict] = None,
-        no_kb_coverage: bool = False,
+        no_kb_coverage: bool | str = False,
     ) -> list[dict]:
         """Build message list for LLM with GSD system prompt and state context.
 
         Args:
-            no_kb_coverage: True when retrieval was attempted but returned zero results.
-                Injects an explicit honesty directive so the LLM admits it has no
-                documentation rather than hallucinating specifics.
+            no_kb_coverage: True when retrieval ran but returned zero results (injects
+                honesty directive). "general_knowledge" when triage flagged the query as
+                answerable from general engineering knowledge — LLM answers with a prefix
+                instead of refusing.
         """
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
@@ -477,8 +674,19 @@ class RAGWorker:
                 "the technician explicitly switches topic.\n"
             )
 
+        # General knowledge mode: triage says answerable without equipment-specific docs
+        if no_kb_coverage == "general_knowledge":
+            system_content += (
+                "\n\n--- GENERAL KNOWLEDGE MODE ---\n"
+                "No equipment-specific documentation found in the knowledge base.\n"
+                "You MUST prefix your answer with: "
+                '"Based on general industrial knowledge (not from specific documentation for this equipment): "\n'
+                "Then give your best answer. Do NOT refuse to answer.\n"
+                "End by asking ONE specific question that would help find the right documentation.\n"
+                "--- END GENERAL KNOWLEDGE MODE ---\n"
+            )
         # Honesty directive: retrieval ran but found nothing relevant
-        if no_kb_coverage:
+        elif no_kb_coverage:
             asset = state.get("asset_identified", "")
             support_url = vendor_support_url(asset) or vendor_support_url(message)
             url_hint = (
@@ -505,11 +713,11 @@ class RAGWorker:
         if neon_chunks:
             system_content += "\n--- NEONDB KNOWLEDGE BASE (retrieved) ---\n"
             for i, chunk in enumerate(neon_chunks, 1):
-                mfr = chunk.get("manufacturer") or ""
-                model = chunk.get("model_number") or ""
                 score = chunk.get("similarity") or 0.0
-                label = f"{mfr} {model}".strip() or chunk.get("equipment_type") or "unknown"
-                system_content += f"[{i}] [{label}] (score={score:.3f})\n{chunk['content']}\n\n"
+                label = format_source_label(chunk) or (chunk.get("equipment_type") or "unknown")
+                system_content += (
+                    f"[{i}] [Source: {label}] (score={score:.3f})\n{chunk['content']}\n\n"
+                )
             system_content += "--- END NEONDB CONTEXT ---\n"
 
         messages = [{"role": "system", "content": system_content}]

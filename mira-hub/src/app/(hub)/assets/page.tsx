@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import {
   Search, QrCode, Wind, Zap, Cog, Thermometer, Droplets,
   Factory, Gauge, AlertCircle, CheckCircle2, AlertTriangle,
-  Plus, X, Loader2, Wrench,
+  Plus, X, Loader2, Wrench, Printer,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -471,6 +471,14 @@ function AssetsPageInner() {
               <Plus className="w-4 h-4" />
               New Asset
             </button>
+            <Link
+              href="/assets/print-qr"
+              className="hidden md:inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium border transition-colors hover:bg-slate-50"
+              style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+            >
+              <Printer className="w-3.5 h-3.5" />
+              Print QR Labels
+            </Link>
             <Button size="sm" className="gap-1.5">
               <QrCode className="w-3.5 h-3.5" />
               {tCommon("scanQr")}

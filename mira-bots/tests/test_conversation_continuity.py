@@ -18,28 +18,6 @@ os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira_test.db")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
 
 
-def test_photo_buffer_groups_photos():
-    """PHOTO_BUFFER accumulates multiple photos for same chat_id."""
-    from bot import PHOTO_BUFFER, PHOTO_BUFFER_WINDOW
-
-    chat_id = 99991
-    PHOTO_BUFFER[chat_id] = {
-        "photos": ["b64_photo_1"],
-        "raw_bytes_list": [b"bytes1"],
-        "caption": "test equipment",
-        "update": None,
-        "task": None,
-    }
-    PHOTO_BUFFER[chat_id]["photos"].append("b64_photo_2")
-    PHOTO_BUFFER[chat_id]["raw_bytes_list"].append(b"bytes2")
-
-    assert len(PHOTO_BUFFER[chat_id]["photos"]) == 2
-    assert len(PHOTO_BUFFER[chat_id]["raw_bytes_list"]) == 2
-    assert PHOTO_BUFFER_WINDOW == 4.0
-
-    # Cleanup
-    del PHOTO_BUFFER[chat_id]
-
 
 def test_non_industrial_continues_session():
     """off_topic reply references last_question when session is active."""
@@ -69,13 +47,16 @@ def test_non_industrial_continues_session():
 
 
 def test_session_followup_detection():
-    """detect_session_followup returns True for signal words in active session."""
+    """detect_session_followup only fires for explicit references to earlier context."""
     from shared.guardrails import detect_session_followup
 
     sc = {"equipment_type": "ABB VFD", "last_question": "Check the DC bus?"}
 
-    # Should detect follow-up in active session
-    assert detect_session_followup("give me the manufacturer website", sc, "Q2") is True
+    # Documentation pivots should not get trapped in stale follow-up state
+    assert detect_session_followup("give me the manufacturer website", sc, "Q2") is False
+    assert detect_session_followup("user manual", sc, "Q2") is False
+
+    # Explicit recap questions should still detect follow-up in active session
     assert detect_session_followup("where did you get that information", sc, "Q3") is True
     assert detect_session_followup("you said it was the DC bus earlier", sc, "DIAGNOSIS") is True
 

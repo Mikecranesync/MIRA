@@ -9,6 +9,7 @@ function rowToEntity(row: Record<string, unknown>): KGEntity {
     entityId: row.entity_id as string,
     name: row.name as string,
     properties: (row.properties as Record<string, unknown>) ?? {},
+    unsPath: (row.uns_path as string | null) ?? null,
     createdAt: new Date(row.created_at as string),
     updatedAt: new Date(row.updated_at as string),
   };
@@ -201,6 +202,107 @@ export async function getEntityContext(
           extractedAt: new Date(row.extracted_at as string),
         };
       }),
+    };
+  });
+}
+
+export interface SchematicEntityInput {
+  entity_type: string;
+  entity_id: string;
+  name: string;
+  properties?: Record<string, unknown>;
+}
+
+export interface SchematicRelationshipInput {
+  source_entity_id: string;
+  target_entity_id: string;
+  relationship_type: string;
+  properties?: Record<string, unknown>;
+}
+
+export interface SchematicUpsertPayload {
+  schematic_type?: string;
+  parent_equipment_id?: string | null;
+  entities: SchematicEntityInput[];
+  relationships: SchematicRelationshipInput[];
+}
+
+export interface SchematicUpsertResult {
+  entities_upserted: number;
+  relationships_inserted: number;
+  parent_equipment_id: string | null;
+  schematic_type: string;
+}
+
+/**
+ * Bulk-upsert the entities + relationships produced by the schematic
+ * intelligence pipeline (mira-mcp/schematic_intelligence.py). Idempotent on
+ * entities (ON CONFLICT updates) and best-effort dedup on relationships
+ * (skip when an identical source/target/type triple already exists).
+ */
+export async function upsertSchematicComponents(
+  tenantId: string,
+  payload: SchematicUpsertPayload,
+): Promise<SchematicUpsertResult> {
+  return withTenantContext(tenantId, async (client) => {
+    const idByEntityId = new Map<string, string>();
+    let entitiesUpserted = 0;
+
+    for (const ent of payload.entities) {
+      const properties = {
+        ...(ent.properties ?? {}),
+        ...(payload.parent_equipment_id
+          ? { parent_equipment_id: payload.parent_equipment_id }
+          : {}),
+        ...(payload.schematic_type ? { schematic_type: payload.schematic_type } : {}),
+      };
+      const { rows } = await client.query(
+        `INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, properties)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (tenant_id, entity_type, entity_id) DO UPDATE SET
+           name       = EXCLUDED.name,
+           properties = kg_entities.properties || EXCLUDED.properties,
+           updated_at = now()
+         RETURNING id`,
+        [tenantId, ent.entity_type, ent.entity_id, ent.name, JSON.stringify(properties)],
+      );
+      const internalId = (rows[0] as Record<string, unknown>).id as string;
+      idByEntityId.set(ent.entity_id, internalId);
+      entitiesUpserted++;
+    }
+
+    let relationshipsInserted = 0;
+    for (const rel of payload.relationships) {
+      const sourceInternalId = idByEntityId.get(rel.source_entity_id);
+      const targetInternalId = idByEntityId.get(rel.target_entity_id);
+      if (!sourceInternalId || !targetInternalId) continue;
+      const { rowCount } = await client.query(
+        `INSERT INTO kg_relationships
+           (tenant_id, source_id, target_id, relationship_type, properties, confidence)
+         SELECT $1, $2, $3, $4, $5, 1.0
+         WHERE NOT EXISTS (
+           SELECT 1 FROM kg_relationships
+           WHERE tenant_id = $1
+             AND source_id = $2
+             AND target_id = $3
+             AND relationship_type = $4
+         )`,
+        [
+          tenantId,
+          sourceInternalId,
+          targetInternalId,
+          rel.relationship_type,
+          JSON.stringify(rel.properties ?? {}),
+        ],
+      );
+      if (rowCount && rowCount > 0) relationshipsInserted++;
+    }
+
+    return {
+      entities_upserted: entitiesUpserted,
+      relationships_inserted: relationshipsInserted,
+      parent_equipment_id: payload.parent_equipment_id ?? null,
+      schematic_type: payload.schematic_type ?? "unknown",
     };
   });
 }

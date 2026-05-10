@@ -52,7 +52,6 @@ async def test_normalize_incoming_text_message(adapter):
     event = await adapter.normalize_incoming(raw)
 
     assert event.platform == "telegram"
-    assert event.tenant_id == ""
     assert event.external_user_id == "789"
     assert event.external_channel_id == "789"
     assert event.text == "VFD tripped on Line 3"
@@ -77,7 +76,6 @@ async def test_normalize_incoming_group_message(adapter):
 
     assert event.event_type == "mention"  # group chat
     assert event.external_channel_id == "-100123456"
-    assert event.tenant_id == ""
 
 
 @pytest.mark.asyncio

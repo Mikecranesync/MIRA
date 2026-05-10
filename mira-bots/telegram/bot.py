@@ -5,13 +5,39 @@ import base64
 import io as _io
 import logging
 import os
+import re
 
 import httpx
+from admin_commands import (
+    invite_command,
+    invite_status_command,
+    revoke_command,
+    team_command,
+)
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
 from shared import tts
 from shared.chat.dispatcher import ChatDispatcher
 from shared.engine import Supervisor
+from shared.identity.service import get_identity_service
+from shared.integrations.atlas_cmms import AtlasCMMSClient
+from shared.integrations.wo_outbox import OutboxRow, run_drain_forever
+from shared.notifications.push import send_push
+from shared.photo_batch_queue import (
+    BURST_WINDOW_SECONDS,
+    BurstFull,
+    PhotoBatchQueue,
+    PhotoBatchRecord,
+    QueueFull,
+)
+from shared.photo_handler import (
+    DEFAULT_PHOTO_CAPTION,
+    preserve_first_meaningful_caption,
+)
+from shared.tenant.authorizer import Authorizer
+from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
+from start_command import start_command
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.error import Conflict
@@ -51,9 +77,28 @@ engine = Supervisor(
     mcp_base_url=MCP_BASE_URL,
 )
 
+# Multi-tenant infra (NeonDB-backed)
+ADMIN_TELEGRAM_IDS = os.environ.get("ADMIN_TELEGRAM_IDS", "")
+DEFAULT_TENANT_ID = os.environ.get("MIRA_TENANT_ID", "")
+
+_identity_service = get_identity_service()
+_authorizer = Authorizer(admin_telegram_ids=ADMIN_TELEGRAM_IDS)
+
+_neon_url = os.environ.get("NEON_DATABASE_URL", "")
+_admin_db_engine = (
+    create_engine(
+        _neon_url,
+        poolclass=NullPool,
+        connect_args={"sslmode": "require"},
+        pool_pre_ping=True,
+    )
+    if _neon_url
+    else None
+)
+
 # Chat Abstraction Layer — wraps engine in platform-agnostic protocol
 adapter = TelegramChatAdapter(bot_token=TELEGRAM_BOT_TOKEN)
-dispatcher = ChatDispatcher(engine)
+dispatcher = ChatDispatcher(engine, identity_service=_identity_service)
 
 FAULT_KEYWORDS = {
     "fault",
@@ -69,9 +114,23 @@ FAULT_KEYWORDS = {
     "warning",
 }
 
-# Photo batching: accumulate rapid-fire multi-photo messages before processing
-PHOTO_BUFFER: dict[int, dict] = {}
-PHOTO_BUFFER_WINDOW = 4.0  # seconds to wait for additional photos in same burst
+# Photo batching: in-memory pre-collector decides single vs multi after a 4s
+# window. Single-photo bursts go through the FSM-aware ChatDispatcher (the
+# existing path, unchanged). Multi-photo bursts (2+) are enqueued to the
+# durable PhotoBatchQueue and drained by a single async worker — vision is
+# GPU-bound on one Ollama node, so worker concurrency is 1.
+#
+# Pre-collector state lives in memory and is dropped on bot restart (max
+# data loss = the 4s burst window). Anything that makes it into the durable
+# queue survives restarts.
+_BURST_COLLECTOR: dict[int, dict] = {}
+_PHOTO_QUEUE_DB_PATH = os.environ.get(
+    "PHOTO_QUEUE_DB_PATH",
+    os.path.join(
+        os.path.dirname(os.environ.get("MIRA_DB_PATH", "/data/mira.db")), "photo_batches.db"
+    ),
+)
+photo_queue = PhotoBatchQueue(_PHOTO_QUEUE_DB_PATH)
 
 
 class typing_action:
@@ -385,93 +444,147 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(f"MIRA error: {exc}")
 
 
-async def _process_photo_batch(
-    batches: list[tuple[bytes, bytes]],
+async def _dispatch_single_photo(
+    raw_bytes: bytes,
+    vision_bytes: bytes,
     caption: str,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Process buffered (raw_bytes, vision_bytes) pairs.
+    """Single-photo path — FSM-aware dispatch through ChatDispatcher.
 
-    Single photo: dispatches through ChatDispatcher (FSM-aware, unchanged path).
-    Multi-photo burst: sends acknowledgment immediately, runs each photo through
-    VisionWorker sequentially, then combines results into one intelligent reply.
+    Unchanged behaviour from the previous in-memory PHOTO_BUFFER. Single
+    photos still need work-order / FSM context, so they bypass the durable
+    queue and run synchronously while we still hold the original Update.
     """
     chat_id = str(update.effective_chat.id)
+    await update.message.reply_text("Analyzing equipment...")
+    update_dict = update.to_dict()
 
-    if len(batches) == 1:
-        # Single-photo path — unchanged; goes through ChatDispatcher for FSM routing
-        await update.message.reply_text("Analyzing equipment...")
-        _raw_bytes, vision_bytes = batches[0]
-        update_dict = update.to_dict()
-        async with typing_action(context, update.effective_chat.id):
+    async with typing_action(context, update.effective_chat.id):
+        try:
+            normalized = await adapter.normalize_incoming(update_dict)
+            normalized.text = caption
+            if normalized.attachments:
+                normalized.attachments[0].data = vision_bytes
+            process_task = asyncio.create_task(dispatcher.dispatch(normalized))
             try:
-                normalized = await adapter.normalize_incoming(update_dict)
-                normalized.text = caption
-                if normalized.attachments:
-                    normalized.attachments[0].data = vision_bytes
-                process_task = asyncio.create_task(dispatcher.dispatch(normalized))
-                try:
-                    response = await asyncio.wait_for(asyncio.shield(process_task), timeout=10.0)
-                except asyncio.TimeoutError:
-                    await update.message.reply_text(
-                        "Processing equipment photo — this may take up to 90 seconds"
-                        " for detailed images..."
-                    )
-                    response = await process_task
-                final_reply = response.text or "MIRA error: no response from vision pipeline."
-            except Exception as e:
-                logger.error("Photo processing error: %s", e)
-                final_reply = f"MIRA error: {e}"
-    else:
-        # Multi-photo burst — ack immediately, process sequentially, combine
-        n = len(batches)
-        await update.message.reply_text(
-            f"📸 Processing {n} photos — I'll have results for you shortly."
-        )
-        async with typing_action(context, update.effective_chat.id):
-            photos_b64 = [base64.b64encode(vision_bytes).decode() for _, vision_bytes in batches]
-            try:
-                final_reply = await engine.process_multi_photo(
-                    chat_id=chat_id,
-                    message=caption,
-                    photos_b64=photos_b64,
-                    platform="telegram",
+                response = await asyncio.wait_for(asyncio.shield(process_task), timeout=10.0)
+            except asyncio.TimeoutError:
+                await update.message.reply_text(
+                    "Processing equipment photo — this may take up to 90 seconds"
+                    " for detailed images..."
                 )
-            except Exception as e:
-                logger.error("Multi-photo processing error: %s", e)
-                final_reply = f"MIRA error processing {n} photos: {e}"
+                response = await process_task
+            final_reply = response.text or "MIRA error: no response from vision pipeline."
+        except Exception as e:
+            logger.error("Photo processing error: %s", e)
+            final_reply = f"MIRA error: {e}"
 
     if INGEST_SERVICE_URL:
         asset_tag = caption.split()[0] if caption else "UNKNOWN"
-        for raw_bytes, _ in batches:
-            asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
-        final_reply += "\n\nPhoto(s) queued for knowledge base."
+        asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
+        final_reply += "\n\nPhoto queued for knowledge base."
 
     await update.message.reply_text(final_reply)
     await _maybe_send_voice(update, context, chat_id, final_reply)
 
 
-async def _flush_photos(
+async def _enqueue_multi_photo_burst(
+    batches: list[tuple[bytes, bytes]],
+    caption: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Multi-photo path — push every photo into the durable queue, ack now.
+
+    The actual processing happens later inside ``_photo_batch_worker``, so
+    a bot restart between burst-close and worker-pickup is recoverable. We
+    still need the Update here only to send the immediate ack message;
+    everything else (vision, synthesis, reply) happens worker-side using
+    only ``application.bot``.
+    """
+    chat_id = str(update.effective_chat.id)
+    n = len(batches)
+    ack = await update.message.reply_text(
+        f"📸 Queued {n} photos — I'll have results for you shortly."
+    )
+
+    batch_id: int | None = None
+    rejected = 0
+    for raw_bytes, vision_bytes in batches:
+        photo_b64 = base64.b64encode(vision_bytes).decode()
+        try:
+            batch_id, _ = await photo_queue.add_photo_to_burst(
+                chat_id=chat_id,
+                platform="telegram",
+                photo_b64=photo_b64,
+                caption=caption,
+                ack_message_id=ack.message_id,
+            )
+        except BurstFull:
+            rejected += 1
+            continue
+
+    if batch_id is None:
+        await update.message.reply_text(
+            "MIRA: every photo in this burst was rejected — please retry."
+        )
+        return
+
+    if rejected:
+        await update.message.reply_text(
+            f"⚠️ Burst capped at {n - rejected}/{n} photos "
+            f"({rejected} dropped — try fewer photos at once)."
+        )
+
+    try:
+        await photo_queue.close_burst(batch_id)
+    except QueueFull:
+        await update.message.reply_text(
+            "🚧 The photo queue is full right now. Please retry in a moment."
+        )
+        await photo_queue.mark_failed(batch_id, "queue full at close_burst")
+        return
+
+    if INGEST_SERVICE_URL:
+        asset_tag = caption.split()[0] if caption else "UNKNOWN"
+        for raw_bytes, _ in batches:
+            asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
+
+
+async def _flush_collector(
     chat_id_int: int,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Wait for buffer window, then process all buffered photos as a batch."""
-    await asyncio.sleep(PHOTO_BUFFER_WINDOW)
-    buf = PHOTO_BUFFER.pop(chat_id_int, None)
+    """After the burst window closes, route to single or multi path."""
+    try:
+        await asyncio.sleep(BURST_WINDOW_SECONDS)
+    except asyncio.CancelledError:
+        return
+
+    buf = _BURST_COLLECTOR.pop(chat_id_int, None)
     if not buf:
         return
-    await _process_photo_batch(buf["batches"], buf["caption"], update, context)
+
+    batches = buf["batches"]
+    caption = buf["caption"]
+    last_update = buf["update"]
+
+    if len(batches) == 1:
+        raw_bytes, vision_bytes = batches[0]
+        await _dispatch_single_photo(raw_bytes, vision_bytes, caption, last_update, context)
+    else:
+        await _enqueue_multi_photo_burst(batches, caption, last_update, context)
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Buffer photos and process as a batch after PHOTO_BUFFER_WINDOW seconds."""
+    """Collect photos for ``BURST_WINDOW_SECONDS``, then route single/multi."""
     chat_id_int = update.effective_chat.id
-    caption = update.message.caption or "Analyze this equipment photo"
+    caption = update.message.caption or DEFAULT_PHOTO_CAPTION
     logger.info("Photo from %s: %s", update.effective_user.first_name, caption)
 
-    # Download and resize immediately; store raw bytes for KB ingest
     try:
         photo = update.message.photo[-1]
         await context.bot.send_chat_action(
@@ -485,25 +598,111 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"MIRA error: {e}")
         return
 
-    # Add to buffer; cancel and restart the flush timer
-    buf = PHOTO_BUFFER.get(chat_id_int)
+    buf = _BURST_COLLECTOR.get(chat_id_int)
     if buf:
         existing_task = buf.get("task")
         if existing_task:
             existing_task.cancel()
         buf["batches"].append((raw_bytes, vision_bytes))
-        buf["caption"] = caption  # last caption wins
+        buf["caption"] = preserve_first_meaningful_caption(buf["caption"], caption)
         buf["update"] = update
     else:
-        PHOTO_BUFFER[chat_id_int] = {
+        _BURST_COLLECTOR[chat_id_int] = {
             "batches": [(raw_bytes, vision_bytes)],
             "caption": caption,
             "update": update,
             "task": None,
         }
 
-    flush_task = asyncio.create_task(_flush_photos(chat_id_int, update, context))
-    PHOTO_BUFFER[chat_id_int]["task"] = flush_task
+    flush_task = asyncio.create_task(_flush_collector(chat_id_int, update, context))
+    _BURST_COLLECTOR[chat_id_int]["task"] = flush_task
+
+
+async def _photo_batch_worker(application: Application) -> None:
+    """Drain the durable photo-batch queue forever.
+
+    Vision is GPU-bound on a single Ollama node, so concurrency = 1 by
+    design. On every iteration: dequeue (blocks), process via
+    ``engine.process_multi_photo``, deliver reply via ``application.bot``,
+    mark done/failed. Worker exceptions are logged but never propagated —
+    the loop must outlive any single bad batch.
+    """
+    logger.info("PHOTO_QUEUE_WORKER starting (db=%s)", _PHOTO_QUEUE_DB_PATH)
+    while True:
+        rec: PhotoBatchRecord
+        try:
+            rec = await photo_queue.dequeue()
+        except Exception as exc:
+            logger.error("PHOTO_QUEUE_WORKER dequeue error: %s", exc)
+            await asyncio.sleep(1.0)
+            continue
+
+        n = len(rec.photos_b64)
+        logger.info(
+            "PHOTO_QUEUE_WORKER processing batch_id=%d chat=%s n=%d",
+            rec.id,
+            rec.chat_id,
+            n,
+        )
+
+        async def _edit_ack(text: str) -> None:
+            if rec.ack_message_id is None:
+                return
+            try:
+                await application.bot.edit_message_text(
+                    chat_id=int(rec.chat_id),
+                    message_id=rec.ack_message_id,
+                    text=text,
+                )
+            except Exception as edit_exc:
+                logger.debug(
+                    "PHOTO_QUEUE_WORKER ack edit failed batch_id=%d: %s",
+                    rec.id,
+                    edit_exc,
+                )
+
+        async def _on_progress(idx_done: int, n_total: int) -> None:
+            if idx_done < n_total:
+                await _edit_ack(f"📸 Processing photo {idx_done + 1}/{n_total}…")
+            else:
+                await _edit_ack(f"📸 Synthesizing answer for {n_total} photos…")
+
+        try:
+            reply = await engine.process_multi_photo(
+                chat_id=rec.chat_id,
+                message=rec.caption,
+                photos_b64=rec.photos_b64,
+                platform=rec.platform,
+                on_progress=_on_progress,
+            )
+            if not reply:
+                reply = (
+                    f"MIRA error: vision pipeline returned no response for "
+                    f"{n} photos. Please retry."
+                )
+            try:
+                await application.bot.send_message(chat_id=int(rec.chat_id), text=reply)
+            except Exception as send_exc:
+                logger.error(
+                    "PHOTO_QUEUE_WORKER reply send failed batch_id=%d: %s",
+                    rec.id,
+                    send_exc,
+                )
+            await photo_queue.mark_done(rec.id, reply)
+        except Exception as exc:
+            logger.exception("PHOTO_QUEUE_WORKER processing error batch_id=%d", rec.id)
+            try:
+                await application.bot.send_message(
+                    chat_id=int(rec.chat_id),
+                    text=f"MIRA error processing {n} photos: {exc}",
+                )
+            except Exception as send_exc:
+                logger.error(
+                    "PHOTO_QUEUE_WORKER error-reply send failed batch_id=%d: %s",
+                    rec.id,
+                    send_exc,
+                )
+            await photo_queue.mark_failed(rec.id, str(exc))
 
 
 async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -511,6 +710,29 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     engine.reset(chat_id)
     await update.message.reply_text("Conversation reset.")
+
+
+async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Hard-reset conversation state — no preview of WO, no carryover from prior sessions."""
+    chat_id = str(update.effective_chat.id)
+    engine.reset(chat_id)
+    logger.info("NEW_SESSION chat_id=%s user=%s", chat_id, update.effective_user.first_name)
+    await update.message.reply_text("🔄 Fresh start. What can I help with?")
+
+
+# Tolerant /new matcher: catches "/new", "/ new", "/New", "/  new", "/NEW", etc.
+# Telegram normally only fires CommandHandler on exact "/new"; users on shaky
+# autocorrect or copy-paste end up with stray spaces or capitalised variants
+# that fall through to the message handler and confuse the engine.
+_NEW_VARIANT_RE = re.compile(r"^\s*/\s*new(?:@\w+)?\s*$", re.IGNORECASE)
+
+
+async def new_command_variant(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text-message variants of /new that don't match PTB's CommandHandler."""
+    text = update.message.text or ""
+    if not _NEW_VARIANT_RE.match(text):
+        return
+    await new_command(update, context)
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -625,12 +847,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Return static command list."""
     await update.message.reply_text(
         "MIRA Commands:\n"
+        "/invite <email> \u2014 (admin) mint enrollment link\n"
+        "/team \u2014 (admin) list enrolled members\n"
+        "/revoke <telegram_id> \u2014 (admin) remove a member\n"
+        "/invite_status \u2014 (admin) list pending/used invites\n"
         "/equipment [id] \u2014 Live equipment status (instant)\n"
         "/faults \u2014 Active fault list (instant)\n"
         "/status \u2014 AI equipment summary\n"
         "/voice on|off \u2014 Enable/disable spoken responses\n"
         "/bad [reason] \u2014 Flag this response as unhelpful\n"
-        "/reset \u2014 Reset conversation state\n"
+        "/new \u2014 Fresh start (clear conversation state)\n"
+        "/reset \u2014 Reset conversation state (alias for /new)\n"
         "/help \u2014 Show this help\n"
         "Or just type any maintenance question.\n"
         "Send a photo to identify equipment.\n"
@@ -639,7 +866,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _startup(application: Application) -> None:
-    """Clear any competing webhook/poller and verify bot identity before polling."""
+    """Clear any competing webhook/poller, verify identity, start photo worker + outbox drain."""
     try:
         await application.bot.delete_webhook(drop_pending_updates=True)
         logger.info("Webhook cleared (drop_pending_updates=True)")
@@ -658,6 +885,44 @@ async def _startup(application: Application) -> None:
             exc,
         )
         raise SystemExit(1) from exc
+
+    # --- Photo batch worker (multi-photo queue / #987) ----------------------
+    n_recovered = await photo_queue.recover_orphans()
+    if n_recovered:
+        logger.warning(
+            "PHOTO_QUEUE recovered %d orphan batch(es) from previous shutdown",
+            n_recovered,
+        )
+    application.create_task(_photo_batch_worker(application), name="photo_batch_worker")
+
+    # --- Atlas WO outbox drain (Unit 8 / CRA-17) ----------------------------
+    # Re-attempts every 5 minutes. Each pass tries one POST per pending row;
+    # the row's `attempts` counter increments. After 3h unsent, an admin
+    # alert fires once via ntfy.sh.
+    _outbox_client = AtlasCMMSClient()  # reads MCP_BASE_URL + MCP_REST_API_KEY
+
+    async def _outbox_submit(payload: dict) -> dict:
+        try:
+            return await _outbox_client._post_work_order(payload)
+        except Exception as exc:
+            return {"error": f"{type(exc).__name__}: {exc}"}
+
+    async def _outbox_alert(row: OutboxRow) -> None:
+        title = str(row.payload.get("title", ""))[:60]
+        await send_push(
+            message=(
+                f"Atlas WO unsent for 3h+ (outbox_id={row.id}, attempts={row.attempts}). "
+                f"Title: {title!r}. Last error: {row.last_error!r}"
+            ),
+            title="MIRA WO Outbox Stuck",
+            priority="high",
+            tags=["warning", "construction"],
+        )
+
+    application.create_task(
+        run_drain_forever(_outbox_submit, _outbox_alert),
+        name="wo_outbox_drain",
+    )
 
 
 async def _conflict_error_handler(update: object, context) -> None:
@@ -678,6 +943,95 @@ async def _conflict_error_handler(update: object, context) -> None:
 
 def main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(_startup).build()
+
+    # Helper to bind admin command kwargs without subclassing PTB's CommandHandler.
+    async def _wrap_invite(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
+            return
+        await invite_command(
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_team(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
+            return
+        await team_command(
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_revoke(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
+            return
+        await revoke_command(
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_invite_status(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text(
+                "Admin commands unavailable: NEON_DATABASE_URL not set."
+            )
+            return
+        await invite_status_command(
+            update,
+            context,
+            engine=_admin_db_engine,
+            auth=_authorizer,
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+
+    async def _wrap_start(update, context):
+        if _admin_db_engine is None:
+            await update.message.reply_text("MIRA isn't fully configured. Ask your admin.")
+            return
+        # No-args /start from an already-enrolled user → behave like /new.
+        # Args present → invite-token consumption flow (unchanged).
+        if not (context.args or []):
+            chat_id = str(update.effective_chat.id)
+            engine.reset(chat_id)
+            logger.info(
+                "START_RESET chat_id=%s user=%s",
+                chat_id,
+                update.effective_user.first_name if update.effective_user else "?",
+            )
+            await update.message.reply_text("🔄 Fresh start. What can I help with?")
+            return
+        await start_command(
+            update,
+            context,
+            engine=_admin_db_engine,
+            diagnostic_engine=engine,
+        )
+
+    # IMPORTANT: register /start and /new FIRST so they win over the legacy welcome
+    # AND so they always run before the message handler regardless of FSM state.
+    app.add_handler(CommandHandler("start", _wrap_start))
+    app.add_handler(CommandHandler("new", new_command))
+    app.add_handler(CommandHandler("invite", _wrap_invite))
+    app.add_handler(CommandHandler("team", _wrap_team))
+    app.add_handler(CommandHandler("revoke", _wrap_revoke))
+    app.add_handler(CommandHandler("invite_status", _wrap_invite_status))
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))
     app.add_handler(CommandHandler("status", status_command))
@@ -685,6 +1039,15 @@ def main():
     app.add_handler(CommandHandler("voice", voice_command))
     app.add_handler(CommandHandler("bad", bad_command))
     app.add_handler(CommandHandler("help", help_command))
+    # /new variant matcher: catches "/ new", "/New", " /new ", etc. that PTB's
+    # CommandHandler doesn't match. Must be registered BEFORE the catch-all
+    # text handler so a stray-space /new doesn't get diagnosed as a question.
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\s*/\s*new(?:@\w+)?\s*$") & ~filters.COMMAND,
+            new_command_variant,
+        )
+    )
     app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
@@ -692,7 +1055,9 @@ def main():
     app.add_error_handler(_conflict_error_handler)
     _ver_path = os.path.join(os.path.dirname(__file__), "VERSION")
     _ver = open(_ver_path).read().strip() if os.path.exists(_ver_path) else "unknown"
-    logger.info("MIRA Telegram bot starting (polling) version=%s", _ver)
+    logger.info(
+        "MIRA Telegram bot starting (polling) version=%s admins=%d", _ver, _authorizer.admin_count()
+    )
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 

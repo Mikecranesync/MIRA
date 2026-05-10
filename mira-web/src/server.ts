@@ -282,6 +282,13 @@ if (process.env.NODE_ENV !== "test" && process.env.MIRA_DISABLE_PURGE_WORKER !==
 // ---------------------------------------------------------------------------
 
 app.use("/public/*", serveStatic({ root: "./" }));
+// Marketing/site imagery served at the conventional /images/* path so the
+// landing page can reference assets the way every other web app does
+// (without a /public/ prefix). Without this route, anything under
+// public/images/ 404s — that's the bug PR #933 flagged for
+// /images/app-screenshot-desktop.png and that the v0.3.0 hero swap
+// also tripped on. Fixed here for v0.3.1.
+app.use("/images/*", serveStatic({ root: "./public" }));
 app.use("/manifest.json", serveStatic({ path: "./public/manifest.json" }));
 app.use("/sw.js", serveStatic({ path: "./public/sw.js" }));
 app.use("/robots.txt", serveStatic({ path: "./public/robots.txt" }));
@@ -290,7 +297,9 @@ app.use("/og-image.png", serveStatic({ path: "./public/og-image.png" }));
 // without the /public/ prefix (matches the head() helper's <link> output).
 app.use("/_tokens.css", serveStatic({ path: "./public/_tokens.css" }));
 app.use("/_components.css", serveStatic({ path: "./public/_components.css" }));
+app.use("/_dark-theme.css", serveStatic({ path: "./public/_dark-theme.css" }));
 app.use("/sun-toggle.js", serveStatic({ path: "./public/sun-toggle.js" }));
+app.use("/feature-cartoons.js", serveStatic({ path: "./public/feature-cartoons.js" }));
 app.use("/posthog-init.js", serveStatic({ path: "./public/posthog-init.js" }));
 app.use("/pwa-install.js", serveStatic({ path: "./public/pwa-install.js" }));
 
@@ -903,7 +912,7 @@ app.get("/api/magic/login", async (c) => {
     }).catch(() => {});
 
     c.header("Set-Cookie", buildSessionCookie(sessionToken));
-    return c.redirect("/sample", 302);
+    return c.redirect(`/sample?token=${encodeURIComponent(sessionToken)}`, 302);
   } catch (err) {
     console.error("[magic-link/login] Error:", err);
     return c.html(magicLinkErrorPage("Something went wrong"), 500);
@@ -1692,6 +1701,42 @@ app.get("/api/connect/status", requireActive, async (c) => {
     console.error("[connect] Status check failed:", err);
     return c.json({ error: "Status check failed" }, 500);
   }
+});
+
+// ---------------------------------------------------------------------------
+// 404 — custom page with home link (CRA-109)
+// ---------------------------------------------------------------------------
+
+app.notFound((c) => {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page not found — FactoryLM</title>
+  <link rel="stylesheet" href="/_tokens.css">
+  <link rel="stylesheet" href="/_dark-theme.css">
+  <style>
+    body { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           background: var(--fl-bg-50); margin: 0; font-family: system-ui, sans-serif; }
+    .wrap { text-align: center; padding: 2rem; }
+    .code { font-size: 5rem; font-weight: 700; color: var(--fl-navy-900); margin: 0; }
+    .msg  { color: var(--fl-muted-600); font-size: 1.125rem; margin: 0.5rem 0 2rem; }
+    .home { display: inline-block; padding: 0.75rem 1.5rem; border-radius: 0.5rem;
+            background: var(--fl-navy-900); color: #fff; text-decoration: none;
+            font-weight: 600; font-size: 0.9375rem; }
+    .home:hover { opacity: 0.85; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="code">404</p>
+    <p class="msg">This page doesn't exist.</p>
+    <a class="home" href="/">Back to home</a>
+  </div>
+</body>
+</html>`;
+  return c.html(html, 404);
 });
 
 // ---------------------------------------------------------------------------

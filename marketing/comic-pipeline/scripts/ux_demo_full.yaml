@@ -1,0 +1,58 @@
+# Full UX session demo — 19 frames, one narration line per screenshot.
+# Story: maintenance tech finds a black-box drive with an OC fault, walks
+# MIRA through the diagnostic, and ends with the root cause + next step
+# documented in a single chat thread.
+slug: ux-demo-full-2026-04-27
+output_dir: marketing/videos/ux-demo-full-2026-04-27
+width: 1920
+height: 1080
+zoom_amount: 0.02       # subtle Ken Burns; UI text must stay sharp
+transition_duration: 0.4
+fit_mode: letterbox     # preserve all source pixels
+tts_voice: onyx
+tts_model: gpt-4o-mini-tts
+voiceover_style: |
+  Speak as a confident industrial maintenance product narrator.
+  Clear, matter-of-fact, slightly conversational — like one tech
+  walking another tech through how the tool works. No theatrics,
+  no marketing voice. Pause briefly between sentences.
+
+frames:
+  - image: tools/audit/app-screenshots/ux-00-initial-load.png
+    narration: "This is MIRA — a diagnostic copilot for industrial maintenance."
+  - image: tools/audit/app-screenshots/ux-00b-new-chat.png
+    narration: "You start a new chat from the field, on whatever phone you have on you."
+  - image: tools/audit/app-screenshots/ux-01-photo-upload.png
+    narration: "Snap a photo of the equipment that just went down."
+  - image: tools/audit/app-screenshots/ux-02-select-1.png
+    narration: "MIRA reads the nameplate, and asks what kind of equipment this is."
+  - image: tools/audit/app-screenshots/ux-03-oc-fault.png
+    narration: "You tell it the drive is throwing an overcurrent fault on startup."
+  - image: tools/audit/app-screenshots/ux-04-select-2.png
+    narration: "It asks the right next question — is the current limit parameter too low for the load?"
+  - image: tools/audit/app-screenshots/ux-05-every-start.png
+    narration: "You confirm the fault happens every time you start the motor."
+  - image: tools/audit/app-screenshots/ux-06-motor-specs.png
+    narration: "MIRA pulls the motor specs — five horsepower, four-sixty volt, three-phase induction."
+  - image: tools/audit/app-screenshots/ux-07-select-1-again.png
+    narration: "It cross-checks the wiring assumption against the input voltage diagram."
+  - image: tools/audit/app-screenshots/ux-08-replaced-drive.png
+    narration: "You add context — you already replaced the drive last month, same fault."
+  - image: tools/audit/app-screenshots/ux-09-wiring-question.png
+    narration: "So MIRA pivots to the wiring — L1, L2, L3, and the four-sixty supply."
+  - image: tools/audit/app-screenshots/ux-10-select-3.png
+    narration: "It walks you through phase sequence, voltage rating, and ground integrity."
+  - image: tools/audit/app-screenshots/ux-11-cable-length.png
+    narration: "You note the cable run is two hundred feet."
+  - image: tools/audit/app-screenshots/ux-12-voltage-reading.png
+    narration: "And the voltage at the input terminals reads four-fifty-eight — close to rated."
+  - image: tools/audit/app-screenshots/ux-13-natural-select.png
+    narration: "MIRA narrows the suspect list down to long-cable effects."
+  - image: tools/audit/app-screenshots/ux-14-no-reactor.png
+    narration: "You confirm there's no line reactor or DV-DT filter installed."
+  - image: tools/audit/app-screenshots/ux-15-param-settings.png
+    narration: "It pulls the drive parameter settings you should adjust."
+  - image: tools/audit/app-screenshots/ux-16-summary.png
+    narration: "And gives you a clear root cause and the next step to take."
+  - image: tools/audit/app-screenshots/ux-17-full-thread.png
+    narration: "All in one thread, ready to attach to the work order."

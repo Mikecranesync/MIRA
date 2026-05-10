@@ -610,6 +610,161 @@ async def get_agent_status() -> dict:
         return {"error": str(exc)}
 
 
+# ── KG multi-hop tools (Phase 5 of #806) ──────────────────────────────────
+# Thin proxies to mira-hub's /api/internal/kg dispatch. Hub owns the database;
+# these tools just expose the multi-hop API to MCP clients (Open WebUI,
+# external agents, Claude Desktop). All require INTERNAL_KG_API_KEY.
+
+
+@mcp.tool
+def kg_maintenance_context(
+    tenant_id: str,
+    equipment_entity_id: str,
+    include_similar: bool = False,
+    fault_window_days: int = 90,
+) -> dict:
+    """Aggregated maintenance context for one piece of equipment.
+
+    Returns hierarchy (plant/area/line), components, recent faults (with
+    counts in window), recent work orders, parts, manuals, PM schedule,
+    optional similar equipment, and plan-vs-actual mismatches. Use this
+    before answering any question about a specific asset.
+    """
+    from kg_client import KgClientError, maintenance_context
+
+    try:
+        return {
+            "ok": True,
+            "result": maintenance_context(
+                tenant_id,
+                equipment_entity_id,
+                include_similar=include_similar,
+                fault_window_days=fault_window_days,
+            ),
+        }
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def kg_impact_analysis(tenant_id: str, entity_id: str) -> dict:
+    """Walk `feeds` forward from this entity and return downstream nodes,
+    blocked lines, and partially-impacted lines (those with an alternate feed).
+    `entity_id` is the kg_entities.id UUID, not the human entity_id.
+    """
+    from kg_client import KgClientError, impact_analysis
+
+    try:
+        return {"ok": True, "result": impact_analysis(tenant_id, entity_id)}
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def kg_root_cause_chain(tenant_id: str, fault_entity_id: str) -> dict:
+    """Walk `caused_by` from a fault entity and return the cause chain plus
+    sibling alternates from prior conversations. `fault_entity_id` is the
+    kg_entities.id UUID for the fault.
+    """
+    from kg_client import KgClientError, root_cause_chain
+
+    try:
+        return {"ok": True, "result": root_cause_chain(tenant_id, fault_entity_id)}
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def kg_traverse_chain(
+    tenant_id: str,
+    start_entity_id: str,
+    relationship_chain: list[str],
+    max_depth: int = 0,
+) -> dict:
+    """Follow a fixed sequence of relationship types one hop at a time.
+
+    Example: starting at a Plant entity, chain ["parent_of","parent_of",
+    "has_component"] enumerates components on every line in that plant.
+    Pass max_depth=0 to use the chain length as the cap.
+    """
+    from kg_client import KgClientError, traverse_chain
+
+    try:
+        depth = None if max_depth == 0 else max_depth
+        return {
+            "ok": True,
+            "result": traverse_chain(
+                tenant_id,
+                start_entity_id,
+                relationship_chain,
+                max_depth=depth,
+            ),
+        }
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def kg_flag_pm_mismatches(
+    tenant_id: str,
+    lookback_days: int = 365,
+    equipment_entity_id: str = "",
+) -> dict:
+    """List equipment + fault pairs where MTBF is meaningfully shorter than
+    the planned PM cadence. Returns advisory / warning rows with the offending
+    PM task. Pass equipment_entity_id to scope to one asset.
+    """
+    from kg_client import KgClientError, flag_pm_mismatches
+
+    try:
+        return {
+            "ok": True,
+            "result": flag_pm_mismatches(
+                tenant_id,
+                lookback_days=lookback_days,
+                equipment_entity_id=equipment_entity_id or None,
+            ),
+        }
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def kg_extract_schematic(
+    image_path: str,
+    parent_equipment_id: str = "",
+    drawing_ref: str = "",
+) -> dict:
+    """Read an electrical schematic image (IEC 60617 or ANSI/NFPA 79) and
+    return the detected components + connections in the KG payload shape.
+
+    Three vision passes: classify (IEC ladder vs ANSI one-line), detect
+    symbols (contactors, motors, overloads, PLC I/O, ...), trace wired
+    connections. Output is structured for direct ingestion into the KG.
+    Persistence is not done here — the caller posts the payload to mira-hub
+    when it's ready to commit.
+    """
+    from pathlib import Path
+
+    from schematic_intelligence import run_schematic_pipeline, to_kg_payload
+
+    p = Path(image_path)
+    if not p.exists() or not p.is_file():
+        return {"ok": False, "error": f"file not found: {image_path}"}
+    try:
+        image_bytes = p.read_bytes()
+    except OSError as exc:
+        return {"ok": False, "error": f"cannot read image: {exc}"}
+
+    result = run_schematic_pipeline(image_bytes)
+    payload = to_kg_payload(
+        result,
+        parent_equipment_id=parent_equipment_id or None,
+        drawing_ref=drawing_ref or None,
+    )
+    return {"ok": True, "result": payload}
+
+
 if __name__ == "__main__":
     import uvicorn
     from exports import export_assets, export_work_orders
@@ -730,6 +885,135 @@ if __name__ == "__main__":
             )
         )
 
+    async def rest_kg_schematic_persist(request):
+        """POST /api/kg/schematic/persist — persist a previously-extracted
+        schematic payload (the dict returned by ``/api/kg/schematic``) under
+        a named ``parent_equipment_id``. Used by the bot's
+        ``store_documentation`` action: the extraction has already happened
+        on a prior turn, the user has now supplied the target name, and we
+        want to commit the entities + relationships to the KG without
+        re-running the vision pipeline.
+
+        Body:
+            tenant_id           (str, optional) — falls back to MIRA_TENANT_ID
+            parent_equipment_id (str, required) — KG entity_id to scope under
+            payload             (dict, required) — the prior /api/kg/schematic
+                                  result (must contain entities[] and
+                                  optionally relationships[] / schematic_type)
+
+        Response:
+            { "ok": true, "result": { entities_upserted, relationships_inserted, ... } }
+            { "ok": false, "error": "..." }
+        """
+        from kg_client import KgClientError, upsert_schematic
+
+        body = await request.json()
+        tenant_id = body.get("tenant_id") or MIRA_TENANT_ID
+        parent_equipment_id = (body.get("parent_equipment_id") or "").strip()
+        payload = body.get("payload") or {}
+        if not tenant_id:
+            return JSONResponse(
+                {"ok": False, "error": "tenant_id required for persistence"}, status_code=400
+            )
+        if not parent_equipment_id:
+            return JSONResponse(
+                {"ok": False, "error": "parent_equipment_id required"}, status_code=400
+            )
+        if not isinstance(payload, dict) or not payload.get("entities"):
+            return JSONResponse(
+                {"ok": False, "error": "payload.entities required"}, status_code=400
+            )
+        try:
+            persisted = await asyncio.to_thread(
+                upsert_schematic,
+                tenant_id,
+                payload,
+                parent_equipment_id=parent_equipment_id,
+            )
+        except KgClientError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=502)
+        return JSONResponse({"ok": True, "result": persisted})
+
+    async def rest_kg_schematic(request):
+        """POST /api/kg/schematic — extract schematic components from an
+        electrical drawing and (optionally) persist to the KG.
+
+        Body:
+            image_b64           (str, required) — base64 PNG/JPEG bytes
+            tenant_id           (str, optional) — tenant for persistence;
+                                  falls back to MIRA_TENANT_ID env var
+            parent_equipment_id (str, optional) — KG entity_id to scope
+                                  components under (e.g. "PLANT-A:LINE-3")
+            drawing_ref         (str, optional) — drawing identifier echoed
+                                  into each component's properties
+            persist             (bool, optional, default False) — when True
+                                  AND a tenant_id is resolvable, the entities
+                                  + relationships are upserted to the KG via
+                                  the hub /api/internal/kg endpoint
+
+        Response:
+            {
+              "ok": true,
+              "result": {
+                "schematic_type": "...",
+                "entities": [...],
+                "relationships": [...],
+                "notes": [...],
+                "persisted": {                # only when persist=true
+                  "entities_upserted": N,
+                  "relationships_inserted": N,
+                  ...
+                } | {"error": "..."}
+              }
+            }
+        """
+        import base64
+
+        from kg_client import KgClientError, upsert_schematic
+        from schematic_intelligence import run_schematic_pipeline, to_kg_payload
+
+        body = await request.json()
+        image_b64 = body.get("image_b64", "")
+        if not isinstance(image_b64, str) or not image_b64:
+            return JSONResponse({"error": "image_b64 required"}, status_code=400)
+        try:
+            image_bytes = base64.b64decode(image_b64, validate=True)
+        except (ValueError, TypeError) as exc:
+            return JSONResponse({"error": f"invalid image_b64: {exc}"}, status_code=400)
+        if not image_bytes:
+            return JSONResponse({"error": "image_b64 decoded to empty bytes"}, status_code=400)
+
+        parent_equipment_id = body.get("parent_equipment_id") or None
+        drawing_ref = body.get("drawing_ref") or None
+        persist = bool(body.get("persist", False))
+        tenant_id = body.get("tenant_id") or MIRA_TENANT_ID
+
+        # Pipeline runs three blocking-but-quick vision calls; offload to a
+        # thread so the event loop stays responsive.
+        result = await asyncio.to_thread(run_schematic_pipeline, image_bytes)
+        payload = to_kg_payload(
+            result,
+            parent_equipment_id=parent_equipment_id,
+            drawing_ref=drawing_ref,
+        )
+
+        if persist:
+            if not tenant_id:
+                payload["persisted"] = {"error": "tenant_id required for persistence"}
+            else:
+                try:
+                    persisted = await asyncio.to_thread(
+                        upsert_schematic,
+                        tenant_id,
+                        payload,
+                        parent_equipment_id=parent_equipment_id,
+                    )
+                    payload["persisted"] = persisted
+                except KgClientError as exc:
+                    payload["persisted"] = {"error": str(exc)}
+
+        return JSONResponse({"ok": True, "result": payload})
+
     async def health(request):
         return JSONResponse({"status": "ok"})
 
@@ -751,6 +1035,8 @@ if __name__ == "__main__":
             Route("/api/cmms/invite", rest_cmms_invite, methods=["POST"]),
             Route("/api/cmms/health", rest_cmms_health),
             Route("/api/cmms/nameplate", rest_cmms_nameplate, methods=["POST"]),
+            Route("/api/kg/schematic", rest_kg_schematic, methods=["POST"]),
+            Route("/api/kg/schematic/persist", rest_kg_schematic_persist, methods=["POST"]),
             Route("/ingest/pdf", _rest_ingest_pdf, methods=["POST"]),
             Route("/api/embed", _rest_embed, methods=["POST"]),
             # Unit 4 — Excel/CSV live export (PLG-JWT-authed, no MCP_REST_API_KEY needed)
@@ -770,8 +1056,11 @@ if __name__ == "__main__":
         # env if set; fall back to container defaults.
         sse_host = os.environ.get("FASTMCP_HOST", "0.0.0.0")
         sse_port = int(os.environ.get("FASTMCP_PORT", "8000"))
+        # streamable-http on port 8002 for Warp/modern MCP clients (/mcp endpoint)
+        http_port = int(os.environ.get("FASTMCP_HTTP_PORT", "8002"))
         await asyncio.gather(
             mcp.run_http_async(transport="sse", host=sse_host, port=sse_port),
+            mcp.run_http_async(transport="streamable-http", host=sse_host, port=http_port),
             rest_server.serve(),
         )
 

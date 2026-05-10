@@ -105,6 +105,29 @@ class IdentityService:
             conn.commit()
             return MiraUser(id=user_id, tenant_id=tenant_id, display_name=display_name, email=email)
 
+    def lookup_only(self, platform: str, external_user_id: str) -> MiraUser | None:
+        """Strict lookup: return MiraUser if (platform, external_user_id) has
+        an explicit identity_links row, else None. Never inserts. Never falls
+        back to env vars. Used by the dispatcher gate to keep strangers out.
+        """
+        from sqlalchemy import text
+
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT u.id, u.tenant_id, u.display_name, u.email "
+                    "FROM mira_users u "
+                    "JOIN identity_links l ON l.mira_user_id = u.id "
+                    "WHERE l.platform = :platform "
+                    "  AND l.external_user_id = :ext_id "
+                    "LIMIT 1"
+                ),
+                {"platform": platform, "ext_id": external_user_id},
+            ).fetchone()
+        if not row:
+            return None
+        return MiraUser(id=str(row[0]), tenant_id=row[1], display_name=row[2], email=row[3])
+
     def get_user(self, mira_user_id: str) -> MiraUser | None:
         from sqlalchemy import text
 

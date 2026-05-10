@@ -61,6 +61,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/stop.sh"
+          }
+        ]
+      }
     ]
   },
   "enabledPlugins": {
@@ -75,6 +85,7 @@
     "compound-engineering@compound-engineering-plugin": true,
     "pyright-lsp@claude-plugins-official": true,
     "context-mode@context-mode": true,
-    "ralph-loop@claude-plugins-official": true
+    "ralph-loop@claude-plugins-official": true,
+    "linear@claude-plugins-official": true
   }
 }
