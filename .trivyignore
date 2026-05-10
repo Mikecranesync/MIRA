@@ -14,3 +14,10 @@
 # releasing a version compatible with patched litellm. Re-evaluate every
 # fastmcp bump.
 GHSA-xqmj-j6mv-4862
+
+# CVE-2026-42208 — LiteLLM Unauthorized data access and modification
+# Severity: CRITICAL. Fixed in litellm 1.83.7+.
+# Same upgrade-path blocker as GHSA-xqmj-j6mv-4862 above (python-dotenv conflict
+# with fastmcp 3.2.0). mira-mcp does NOT use litellm's data API paths.
+# Re-evaluate every fastmcp bump.
+CVE-2026-42208

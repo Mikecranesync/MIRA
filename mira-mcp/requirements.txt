@@ -1,5 +1,4 @@
 fastmcp==3.2.*
-litellm>=1.83.7  # CVE-2026-42208 (CRITICAL) + CVE-2026-42203 (HIGH); transitive via fastmcp
 uvicorn==0.44.0
 starlette==0.52.1
 openviking==0.3.9
