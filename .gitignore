@@ -175,3 +175,18 @@ wiki/.smart-env/
 **/* 2.txt
 
 .claire/
+
+# Third-party AI tool runtime dirs (local config, not code)
+.agents/
+.codex/
+.serena/
+
+# Comic-pipeline reference images (large generated PNGs, regenerable)
+marketing/comic-pipeline/reference/*.png
+marketing/comic-pipeline/reference/*.v*.png
+
+# Video frame proof-of-work jpegs (root-level, regenerable)
+frame-shot*.jpeg
+
+# Ralph loop local config
+.claude/ralph-loop.local.md
