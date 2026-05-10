@@ -441,9 +441,7 @@ class TestEvaluateRetrieval:
         reform_resp = _mock_groq_response({"query": "same question"})
         ctx, _ = _patch_async_client(post_side_effect=[eval_resp, reform_resp])
         try:
-            is_rel, _, reformulated = await evaluate_retrieval(
-                "same question", [{"content": "c"}]
-            )
+            is_rel, _, reformulated = await evaluate_retrieval("same question", [{"content": "c"}])
         finally:
             ctx.stop()
         assert is_rel is False

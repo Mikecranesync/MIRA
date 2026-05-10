@@ -219,9 +219,8 @@ async def evaluate_retrieval(
     if not sample:
         return (True, 0.5, None)
 
-    user_msg = (
-        f"Question: {q}\n\nChunks:\n"
-        + "\n---\n".join(f"[{i + 1}] {t}" for i, t in enumerate(sample))
+    user_msg = f"Question: {q}\n\nChunks:\n" + "\n---\n".join(
+        f"[{i + 1}] {t}" for i, t in enumerate(sample)
     )
 
     try:
@@ -298,11 +297,7 @@ async def _reformulate_query(
     equipment_context: str | None,
     groq_key: str,
 ) -> str | None:
-    ctx_line = (
-        f"Equipment context: {equipment_context}\n"
-        if equipment_context
-        else ""
-    )
+    ctx_line = f"Equipment context: {equipment_context}\n" if equipment_context else ""
     user_msg = f"{ctx_line}Original question: {question}"
     try:
         async with httpx.AsyncClient(timeout=GROQ_TIMEOUT) as client:
