@@ -24,6 +24,7 @@ function rowToAsset(r: Record<string, unknown>) {
     description: r.description ?? null,
     installDate: r.installation_date ?? null,
     createdAt: r.created_at ?? null,
+    qrGeneratedAt: r.qr_generated_at ?? null,
   };
 }
 
@@ -47,7 +48,8 @@ export async function GET(
           equipment_type, location, department, criticality,
           work_order_count, total_downtime_hours,
           last_maintenance_date, last_work_order_at,
-          last_reported_fault, description, installation_date, created_at
+          last_reported_fault, description, installation_date, created_at,
+          qr_generated_at
         FROM cmms_equipment
         WHERE id = $1 AND tenant_id = $2
         LIMIT 1`,

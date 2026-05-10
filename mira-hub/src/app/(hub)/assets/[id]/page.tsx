@@ -13,6 +13,7 @@ import { AssetIntelligencePanel } from "@/components/AssetIntelligencePanel";
 import { QrCodeModal } from "@/components/qr-code-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/providers/toast-provider";
 
 /* ─── Mock data ─────────────────────────────────────────────────────── */
 const ASSETS: Record<string, {
@@ -109,6 +110,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
   const [loading, setLoading] = useState(true);
   const [generatingQr, setGeneratingQr] = useState(false);
   const isQrBound = !!(apiAsset?.qrGeneratedAt);
+  const { toast } = useToast();
 
   async function handleGenerateQr() {
     if (generatingQr || isQrBound) return;
@@ -119,7 +121,13 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
       if (res.ok && data.tag) {
         setApiAsset((prev) => prev ? { ...prev, tag: data.tag, qrGeneratedAt: data.qrGeneratedAt } : prev);
         setShowQr(true);
+      } else {
+        console.error("[generate-qr] failed", res.status, data);
+        toast(data?.error ?? "Failed to generate QR code", "error");
       }
+    } catch (err) {
+      console.error("[generate-qr] exception", err);
+      toast("Could not reach server", "error");
     } finally {
       setGeneratingQr(false);
     }
