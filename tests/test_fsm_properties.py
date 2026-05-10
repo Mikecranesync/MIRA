@@ -17,30 +17,32 @@ sys.path.insert(0, "mira-bots")
 from unittest.mock import patch
 
 import pytest
-from hypothesis import given, settings, strategies as st
-
-from shared.engine import STATE_ORDER, Supervisor, _STATE_ALIASES
+from hypothesis import given
+from hypothesis import strategies as st
+from shared.engine import _STATE_ALIASES, Supervisor
 from shared.fsm import VALID_STATES
-from shared.guardrails import SAFETY_KEYWORDS
 
 
 @pytest.fixture(scope="module")
 def supervisor(tmp_path_factory):
     db_path = str(tmp_path_factory.mktemp("fsm") / "test.db")
     with patch.dict("os.environ", {"INFERENCE_BACKEND": "local"}):
-        with patch("shared.engine.VisionWorker"), \
-             patch("shared.engine.NameplateWorker"), \
-             patch("shared.engine.RAGWorker"), \
-             patch("shared.engine.PrintWorker"), \
-             patch("shared.engine.PLCWorker"), \
-             patch("shared.engine.NemotronClient"), \
-             patch("shared.engine.InferenceRouter"):
+        with (
+            patch("shared.engine.VisionWorker"),
+            patch("shared.engine.NameplateWorker"),
+            patch("shared.engine.RAGWorker"),
+            patch("shared.engine.PrintWorker"),
+            patch("shared.engine.PLCWorker"),
+            patch("shared.engine.NemotronClient"),
+            patch("shared.engine.InferenceRouter"),
+        ):
             return Supervisor(
                 db_path=db_path,
                 openwebui_url="http://localhost:3000",
                 api_key="test",
                 collection_id="test",
             )
+
 
 # Strategy: valid FSM states
 st_state = st.sampled_from(sorted(VALID_STATES))
@@ -76,9 +78,7 @@ def test_safety_always_reachable(supervisor, current):
     state = _make_state(current)
     parsed = {"reply": "there is exposed wire near the panel", "next_state": None}
     result = supervisor._advance_state(state, parsed)
-    assert result["state"] == "SAFETY_ALERT", (
-        f"Safety not reachable from {current}"
-    )
+    assert result["state"] == "SAFETY_ALERT", f"Safety not reachable from {current}"
 
 
 @given(current=st_state, next_state=st_next_state, reply=st.text(min_size=0, max_size=100))
