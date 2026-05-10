@@ -1,20 +1,17 @@
-"""Agentic retrieval primitives — Component 1: query decomposition.
+"""Agentic retrieval primitives — Components 1 + 2.
 
-Spec: docs/specs/agentic-rag-upgrade-spec.md (Component 1).
+Spec: docs/specs/agentic-rag-upgrade-spec.md.
 
-Splits a complex user question into 2-4 focused sub-queries via a cheap
-Groq llama-3.1-8b-instant call so each concern hits the existing retrieval
-pipeline (`neon_recall.recall_knowledge`) independently. Per-sub-query
-results are merged via Reciprocal Rank Fusion (same RRF_K as
-`neon_recall._merge_results`) and deduplicated using the repo's existing
-key (`content[:100]`).
+C1 (``decompose_query``): splits a complex question into 2-4 focused
+sub-queries via Groq llama-3.1-8b-instant; per-sub-query results merged
+via RRF in ``merge_subquery_results``. Flag-gated by
+``MIRA_QUERY_DECOMPOSE`` (default ``0``). Fail-open to ``[question]``.
 
-Flag-gated by ``MIRA_QUERY_DECOMPOSE`` (default ``0``). Fail-open: any Groq
-or parse error returns ``[question]`` so callers behave identically to
-today.
-
-C2 (hybrid retrieval) and C3 (self-evaluation) are deferred to follow-up
-PRs per the spec rollout plan.
+C2 (``evaluate_retrieval``): scores retrieved chunks 1-10 for relevance
+to the question via Groq; below threshold, returns a reformulated query
+the caller can retry with (1 retry max). Flag-gated by
+``MIRA_RAG_SELF_EVAL`` (default ``0``). Fail-open to
+``(True, 5.0, None)`` so retrieval is never blocked on Groq errors.
 """
 
 from __future__ import annotations
@@ -158,6 +155,189 @@ def _parse_subqueries(raw: str) -> list[str]:
 def _chunk_key(chunk: dict) -> str:
     """Repo-canonical dedup key — matches ``neon_recall._merge_results``."""
     return (chunk.get("content") or "")[:100]
+
+
+# ---------------------------------------------------------------------------
+# Component 2 — retrieval self-evaluation
+# ---------------------------------------------------------------------------
+
+SELF_EVAL_THRESHOLD = float(os.getenv("MIRA_RAG_SELF_EVAL_THRESHOLD", "0.4"))
+SELF_EVAL_CHUNKS = int(os.getenv("MIRA_RAG_SELF_EVAL_CHUNKS", "5"))
+SELF_EVAL_CHUNK_CHARS = int(os.getenv("MIRA_RAG_SELF_EVAL_CHARS", "500"))
+
+_EVAL_SYSTEM_PROMPT = (
+    "You rate how relevant retrieved document chunks are to an industrial "
+    "maintenance question. Output JSON only: "
+    '{"score": <1-10 integer>, "reason": "<short>"}. '
+    "10 = chunks directly answer the question. 1 = chunks are unrelated. "
+    "Be strict: chunks about a different manufacturer or unrelated equipment "
+    "score below 4."
+)
+
+_REFORMULATE_SYSTEM_PROMPT = (
+    "You rewrite an industrial maintenance question into a better search "
+    "query, using equipment context when provided. Output JSON only: "
+    '{"query": "<rewritten search phrase>"}. '
+    "Rules: keep manufacturer, model, and fault codes verbatim; use specific "
+    "technical terms; produce a single self-contained search phrase."
+)
+
+
+def is_self_eval_enabled() -> bool:
+    return os.getenv("MIRA_RAG_SELF_EVAL", "0") == "1"
+
+
+async def evaluate_retrieval(
+    question: str,
+    chunks: list[dict],
+    threshold: float = SELF_EVAL_THRESHOLD,
+    equipment_context: str | None = None,
+) -> tuple[bool, float, str | None]:
+    """Score retrieved chunks 1-10 (normalized to 0-1) for relevance.
+
+    Returns ``(is_relevant, normalized_score, reformulated_query_or_None)``.
+
+    Fail-open: any Groq/parse error returns ``(True, 0.5, None)`` so the
+    caller proceeds with the original chunks. When ``score < threshold`` and
+    Groq successfully proposes a reformulation, the third tuple element is
+    the new query; otherwise ``None``.
+    """
+    q = (question or "").strip()
+    if not q or not chunks:
+        return (True, 0.5, None)
+
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    if not groq_key:
+        logger.debug("SELF_EVAL_SKIPPED reason=no_groq_key")
+        return (True, 0.5, None)
+
+    sample = []
+    for c in chunks[:SELF_EVAL_CHUNKS]:
+        text = (c.get("content") or "")[:SELF_EVAL_CHUNK_CHARS]
+        if text:
+            sample.append(text)
+    if not sample:
+        return (True, 0.5, None)
+
+    user_msg = f"Question: {q}\n\nChunks:\n" + "\n---\n".join(
+        f"[{i + 1}] {t}" for i, t in enumerate(sample)
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=GROQ_TIMEOUT) as client:
+            resp = await client.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {groq_key}"},
+                json={
+                    "model": GROQ_MODEL,
+                    "messages": [
+                        {"role": "system", "content": _EVAL_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 128,
+                    "response_format": {"type": "json_object"},
+                },
+            )
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
+    except Exception as exc:
+        logger.warning("SELF_EVAL_FAILED error=%s", str(exc)[:200])
+        return (True, 0.5, None)
+
+    raw_score = _parse_eval_score(content)
+    if raw_score is None:
+        logger.warning("SELF_EVAL_PARSE_FAILED raw=%s", content[:200])
+        return (True, 0.5, None)
+
+    normalized = max(0.0, min(1.0, raw_score / 10.0))
+    is_relevant = normalized >= threshold
+    logger.info(
+        "SELF_EVAL score=%.2f relevant=%s threshold=%.2f",
+        normalized,
+        is_relevant,
+        threshold,
+    )
+
+    if is_relevant:
+        return (True, normalized, None)
+
+    reformulated = await _reformulate_query(q, equipment_context, groq_key)
+    return (False, normalized, reformulated)
+
+
+def _parse_eval_score(raw: str) -> float | None:
+    if not raw:
+        return None
+    candidate = raw.strip()
+    fenced = re.search(r"\{.*\}", candidate, re.DOTALL)
+    if fenced:
+        candidate = fenced.group(0)
+    try:
+        data = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    score = data.get("score")
+    if isinstance(score, bool):
+        return None
+    if isinstance(score, (int, float)):
+        return float(score)
+    if isinstance(score, str):
+        try:
+            return float(score)
+        except ValueError:
+            return None
+    return None
+
+
+async def _reformulate_query(
+    question: str,
+    equipment_context: str | None,
+    groq_key: str,
+) -> str | None:
+    ctx_line = f"Equipment context: {equipment_context}\n" if equipment_context else ""
+    user_msg = f"{ctx_line}Original question: {question}"
+    try:
+        async with httpx.AsyncClient(timeout=GROQ_TIMEOUT) as client:
+            resp = await client.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {groq_key}"},
+                json={
+                    "model": GROQ_MODEL,
+                    "messages": [
+                        {"role": "system", "content": _REFORMULATE_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 128,
+                    "response_format": {"type": "json_object"},
+                },
+            )
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
+    except Exception as exc:
+        logger.warning("REFORMULATE_FAILED error=%s", str(exc)[:200])
+        return None
+
+    candidate = content.strip()
+    fenced = re.search(r"\{.*\}", candidate, re.DOTALL)
+    if fenced:
+        candidate = fenced.group(0)
+    try:
+        data = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    new_q = data.get("query")
+    if not isinstance(new_q, str):
+        return None
+    new_q = new_q.strip()
+    if not new_q or new_q.lower() == question.lower():
+        return None
+    return new_q
 
 
 def merge_subquery_results(
