@@ -50,6 +50,42 @@ curl -s --max-time 3 http://localhost:8009/sse \
 # expect: streaming connection opens
 ```
 
+---
+
+## Linear MCP (for Oz to query issues)
+
+Lets Oz read and create Linear issues directly in Warp.
+
+### Prerequisites
+- Linear personal API key: Linear app → **Settings** → **API** → **Personal API keys** → **Create key**
+- Add to Doppler: `doppler secrets set LINEAR_API_KEY=<key> --project factorylm --config prd`
+
+### Warp Setup
+1. Warp → **Settings** → **AI** → **MCP Servers** → **+ Add**
+2. Paste:
+   ```json
+   {
+     "mcpServers": {
+       "linear": {
+         "url": "https://mcp.linear.app/mcp",
+         "headers": {
+           "Authorization": "Bearer <LINEAR_API_KEY>"
+         }
+       }
+     }
+   }
+   ```
+3. Save. Ask Oz: *"What Linear teams are available?"*
+
+### Usage with Ralph Loop
+Once configured, Oz can find the next issue to work on:
+- *"What's the highest priority In Progress issue in MVP Build?"*
+- *"List the backlog for Cranesync"*
+
+Then run the `mira-dev-loop` Warp workflow with the issue ID (`Ctrl-Shift-R` → `mira-dev-loop` → enter `MIR-456`).
+
+---
+
 ## Port Reference
 
 | Host port | Container port | What |

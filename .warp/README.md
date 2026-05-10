@@ -18,6 +18,7 @@ Warp terminal config for the MIRA project. All nodes that clone this repo get th
 | `mira-eval` | Golden eval cases only |
 | `mira-enum-drift` | Enum drift check |
 | `mira-pr-review` | PR self-fix script (parameterized PR#) |
+| `mira-dev-loop` | **Ralph Loop dev session from Linear issue** (parameterized issue ID) |
 | `plc-health` | PLC API health check |
 | `cluster-ssh` | SSH to cluster node (parameterized) |
 

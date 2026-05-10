@@ -1,0 +1,65 @@
+---
+name: MIRA dev loop (Linear)
+command: |
+  ISSUE="{{issue_id}}"
+  LINEAR_KEY=$(doppler secrets get LINEAR_API_KEY --project factorylm --config prd --plain 2>/dev/null || echo "${LINEAR_API_KEY:-}")
+
+  if [ -z "$LINEAR_KEY" ]; then
+    echo "ERROR: LINEAR_API_KEY not set in Doppler (factorylm/prd). Run: doppler secrets set LINEAR_API_KEY=<key>"
+    exit 1
+  fi
+
+  # Fetch issue by identifier (e.g. MIR-456) via Linear GraphQL
+  ISSUE_DATA=$(curl -s -X POST https://api.linear.app/graphql \
+    -H "Authorization: $LINEAR_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{\"query\":\"{ issues(filter: { identifier: { eq: \\\"$ISSUE\\\" } }) { nodes { id title description priority { label } state { name } } } }\"}")
+
+  TITLE=$(echo "$ISSUE_DATA" | python3 -c "import sys,json; nodes=json.load(sys.stdin)['data']['issues']['nodes']; print(nodes[0]['title'] if nodes else 'ISSUE NOT FOUND')")
+  DESC=$(echo "$ISSUE_DATA" | python3 -c "import sys,json; nodes=json.load(sys.stdin)['data']['issues']['nodes']; print((nodes[0].get('description') or 'No description provided.') if nodes else '')")
+  PRIORITY=$(echo "$ISSUE_DATA" | python3 -c "import sys,json; nodes=json.load(sys.stdin)['data']['issues']['nodes']; print((nodes[0].get('priority') or {}).get('label','Unknown') if nodes else '')")
+
+  if [ "$TITLE" = "ISSUE NOT FOUND" ]; then
+    echo "ERROR: Issue $ISSUE not found in Linear. Check the ID and try again."
+    exit 1
+  fi
+
+  echo "Issue: $ISSUE — $TITLE (Priority: $PRIORITY)"
+  echo "Writing ralph prompt..."
+
+  BRANCH="feat/$(echo "$ISSUE-$TITLE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-' | sed 's/-*$//' | cut -c1-50)"
+
+  cat > .claude/RALPH_PROMPT.md << RALPH_EOF
+# Ralph Loop: $ISSUE — $TITLE
+
+## Task
+$DESC
+
+## Branch
+$BRANCH
+
+## Acceptance Criteria
+- Implementation complete and correct
+- All tests pass: `bash tests/test_offline.sh` (or relevant subset)
+- Branch `$BRANCH` cut from main, commits in conventional format
+- PR open against main with issue ID in title
+
+## Constraints
+- MIRA repo conventions: see CLAUDE.md
+- Python 3.12, uv, ruff, httpx (see .claude/rules/python-standards.md)
+- No Anthropic SDK. No LangChain. No .env files with secrets.
+- Secrets via Doppler (factorylm/prd)
+
+## Done Signal
+When a PR is open and CI is green, output exactly:
+<promise>PR OPEN</promise>
+RALPH_EOF
+
+  echo "Prompt written to .claude/RALPH_PROMPT.md"
+  echo "Starting Ralph Loop (max 25 iterations)..."
+  claude "Read .claude/RALPH_PROMPT.md and use the ralph-loop:ralph-loop skill to start an autonomous dev loop. Max iterations: 25. Completion promise: PR OPEN."
+tags: [mira, linear, ralph, autonomous]
+description: "Fetch Linear issue and start Ralph Loop. Iterates until PR is open. Pass issue ID (e.g. MIR-456)."
+arguments:
+  - name: issue_id
+    description: "Linear issue identifier (e.g. MIR-456)"
