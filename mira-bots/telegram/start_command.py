@@ -87,9 +87,7 @@ def _lookup_asset_by_tag(tag: str, telegram_user_id: str) -> Optional[AssetConte
             with conn.cursor() as cur:
                 tenant_id = _resolve_tenant_for_telegram_user(cur, telegram_user_id)
                 if not tenant_id:
-                    logger.info(
-                        "ASSET_LOOKUP_NO_TENANT telegram_user_id=%s", telegram_user_id
-                    )
+                    logger.info("ASSET_LOOKUP_NO_TENANT telegram_user_id=%s", telegram_user_id)
                     return None
                 cur.execute(
                     """SELECT equipment_number, manufacturer, model_number,
@@ -142,7 +140,7 @@ async def _handle_asset_deep_link(
     payload: str,
 ) -> None:
     """Resolve an ``asset_<tag>`` /start payload and seed conversation state."""
-    tag = payload[len(ASSET_PAYLOAD_PREFIX):].strip()
+    tag = payload[len(ASSET_PAYLOAD_PREFIX) :].strip()
     if not tag:
         await update.message.reply_text(
             "That QR code didn't include an asset tag. Try scanning again."
