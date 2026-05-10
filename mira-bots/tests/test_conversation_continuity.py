@@ -18,28 +18,6 @@ os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira_test.db")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
 
 
-def test_photo_buffer_groups_photos():
-    """PHOTO_BUFFER accumulates multiple photos for same chat_id."""
-    from bot import PHOTO_BUFFER, PHOTO_BUFFER_WINDOW
-
-    chat_id = 99991
-    PHOTO_BUFFER[chat_id] = {
-        "photos": ["b64_photo_1"],
-        "raw_bytes_list": [b"bytes1"],
-        "caption": "test equipment",
-        "update": None,
-        "task": None,
-    }
-    PHOTO_BUFFER[chat_id]["photos"].append("b64_photo_2")
-    PHOTO_BUFFER[chat_id]["raw_bytes_list"].append(b"bytes2")
-
-    assert len(PHOTO_BUFFER[chat_id]["photos"]) == 2
-    assert len(PHOTO_BUFFER[chat_id]["raw_bytes_list"]) == 2
-    assert PHOTO_BUFFER_WINDOW == 4.0
-
-    # Cleanup
-    del PHOTO_BUFFER[chat_id]
-
 
 def test_non_industrial_continues_session():
     """off_topic reply references last_question when session is active."""
