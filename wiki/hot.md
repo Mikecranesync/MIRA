@@ -1,3 +1,39 @@
+# Hot Cache — 2026-05-10 — ALPHA
+
+## Session — 2026-05-10 (PostHog PLG funnel + merge to main)
+
+- **PostHog server-side telemetry shipped**: `mira-web/src/lib/posthog-server.ts` + 5 funnel events wired in `server.ts` (register_submitted, checkout_started, checkout_completed, activation_completed, chat_sent)
+- **PR #1167** merged to main. Branch: `fix/mira-hub-lockfile`.
+- **Next**: fix Atlas seed data (CRA-248 — duplicate work orders) + CRA-249 (PM calendar empty) before demo reshoot
+
+## Session — 2026-05-10 (demo video story scripts + pipeline extension)
+
+**Iteration 2 additions:**
+- **`build_video_v2.py` extended** with `--storyboard`, `--story`, `--recordings`, `--dry-run` flags; full backwards-compatible with original `storyboard_v2.yaml`
+- **Dry-run validated**: all 5 stories, 49 total beats, all screenshots resolve `✓` (zero missing)
+- **`--recordings` mode**: reads `beat-01.mp3...beat-NN.mp3` from a folder; user records voice, pipeline assembles video without OpenAI TTS
+- **`_compute_pivot()`**: replaces hardcoded shot-3 pivot with `shots[min(2, len(shots)-1)]` for story length safety
+- **Per-story isolated `output/` cache dirs**: multiple stories don't clobber each other's renders
+- **Image path resolution**: `docs/promo-screenshots/*` paths resolve from MIRA_ROOT, legacy `reference/*` paths still work
+
+**To build immediately (TTS voice):**
+```bash
+cd marketing/comic-pipeline
+doppler run --project factorylm --config prd -- \
+  .venv/bin/python build_video_v2.py \
+  --storyboard ../demo-videos/story-scripts.yaml \
+  --story 60-second-setup --skip-verify
+```
+
+## Session — 2026-05-10 (demo video story scripts)
+
+- **5 demo video story scripts written**: `marketing/demo-videos/story-scripts.yaml` + `README.md`
+- **Stories**: 60-second-setup, fault-code-30s, qr-scan-to-diagnose, pm-scheduling-autopilot, your-team-your-manuals
+- **Format**: storyboard_v2.yaml-compatible — real screenshots + user-recorded voiceover, Ken Burns focal points per beat
+- **8 new screenshots captured**: homepage-hero, cmms-signin, pricing-page, qr-asset-sheet, atlas-cmms-login, security-page (all 2026-05-10, docs/promo-screenshots/)
+- **Pipeline gap**: `build_video_v2.py` needs `--storyboard`, `--story`, `--recordings` flags added before user-recorded voice works. TTS mode works today via Option A (swap shots into storyboard_v2.yaml). See README for details.
+- **Hub login**: app.factorylm.com uses Google OAuth only — no password login; Playwright can't automate auth. Authenticated screenshots (chat, upload, QR chooser) still needed — capture manually.
+
 ## eval-fixer run — 2026-05-10
 - Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md`
 - Action: issue-filed (#1144 — added to Kanban)

@@ -70,6 +70,7 @@ import {
   ensureSchema,
 } from "./lib/quota.js";
 import { finalizeActivation } from "./lib/activation.js";
+import { captureServerEvent } from "./lib/posthog-server.js";
 import {
   queryMira,
   buildSSEStream,
@@ -692,9 +693,19 @@ app.post("/api/register", async (c) => {
           atlasRole: "USER",
         });
         c.header("Set-Cookie", buildSessionCookie(token));
+        captureServerEvent({
+          event: "register_submitted",
+          distinctId: existing.id,
+          properties: { tier: "active", path: "returning_active", company },
+        });
         return c.json({ success: true, token, tenantId: existing.id });
       }
       // Pending/churned — still in nurture or needs to resubscribe
+      captureServerEvent({
+        event: "register_submitted",
+        distinctId: existing.id,
+        properties: { tier: existing.tier, path: "returning_pending_or_churned", company },
+      });
       return c.json({ success: true, pending: true, message: "Check your email for next steps" });
     }
 
@@ -727,6 +738,12 @@ app.post("/api/register", async (c) => {
       firstName || email.split("@")[0],
       company
     ).catch((err) => console.error("[register] Welcome email failed:", err));
+
+    captureServerEvent({
+      event: "register_submitted",
+      distinctId: tenantId,
+      properties: { tier: "pending", path: "new_tenant", company },
+    });
 
     return c.json({ success: true, pending: true, message: "Check your email" });
   } catch (err) {
@@ -958,6 +975,11 @@ app.get("/api/checkout", async (c) => {
     }
 
     const checkoutUrl = await createCheckoutSession(tid, email);
+    captureServerEvent({
+      event: "checkout_started",
+      distinctId: tid,
+      properties: { source: "email_link" },
+    });
     return c.redirect(checkoutUrl, 303);
   } catch (err) {
     console.error("[checkout] Error:", err);
@@ -1006,6 +1028,11 @@ app.post("/api/checkout/start", async (c) => {
     }
 
     const checkoutUrl = await createCheckoutSession(tenantId, email);
+    captureServerEvent({
+      event: "checkout_started",
+      distinctId: tenantId,
+      properties: { source: "pricing_page" },
+    });
     return c.json({ url: checkoutUrl });
   } catch (err) {
     console.error("[checkout/start] Error:", err);
@@ -1082,6 +1109,12 @@ app.post("/api/stripe/webhook", async (c) => {
       await updateTenantTier(tenantId, "active");
       console.log("[stripe-webhook] Tenant activated:", tenantId);
 
+      captureServerEvent({
+        event: "checkout_completed",
+        distinctId: tenantId,
+        properties: { subscription_id: subscriptionId },
+      });
+
       void recordAuditEvent({
         tenantId,
         actorType: "system",
@@ -1109,6 +1142,18 @@ app.post("/api/stripe/webhook", async (c) => {
         deriveAtlasPassword,
       });
       console.log("[stripe-webhook] Activation result for %s:", tenantId, result);
+
+      if (result.atlas === "ok") {
+        captureServerEvent({
+          event: "activation_completed",
+          distinctId: tenantId,
+          properties: {
+            atlas: result.atlas,
+            demo: result.demo,
+            email: result.email,
+          },
+        });
+      }
       break;
     }
 
@@ -1557,6 +1602,15 @@ app.post("/api/mira/chat", requireActive, async (c) => {
   try {
     // Log query and decrement quota
     await logQuery(user.sub, query);
+
+    captureServerEvent({
+      event: "chat_sent",
+      distinctId: user.sub,
+      properties: {
+        query_length: query.length,
+        has_asset_id: Boolean(body.assetId),
+      },
+    });
 
     // Call mira-pipeline
     const response = await queryMira({
