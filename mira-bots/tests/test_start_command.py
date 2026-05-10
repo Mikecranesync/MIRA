@@ -98,6 +98,63 @@ async def test_start_with_expired_token_rejects(engine):
 
 
 @pytest.mark.asyncio
+async def test_start_with_asset_deeplink_greets_with_context(monkeypatch, engine):
+    """asset_<tag> payload should look up the asset and greet with make/model.
+
+    The DB lookup is patched out so the test runs without NeonDB.
+    """
+    import start_command as mod
+
+    fake_asset = mod.AssetContext(
+        tag="EQ-AB12CD34",
+        name="Air Compressor",
+        manufacturer="Ingersoll Rand",
+        model="R55n",
+        location="Bldg A, Bay 3",
+    )
+    monkeypatch.setattr(mod, "_lookup_asset_by_tag", lambda tag, telegram_user_id: fake_asset)
+
+    diag_engine = MagicMock()
+    diag_engine._load_state = MagicMock(return_value={})
+    diag_engine.reset = MagicMock()
+    diag_engine._save_state = MagicMock()
+
+    update, context = _mock("555", ["asset_EQ-AB12CD34"])
+    await mod.start_command(
+        update,
+        context,
+        engine=engine,
+        diagnostic_engine=diag_engine,
+    )
+    msg = update.message.reply_text.call_args[0][0]
+    assert "Air Compressor" in msg
+    assert "Ingersoll Rand" in msg or "R55n" in msg
+    diag_engine.reset.assert_called_once()
+    saved = diag_engine._save_state.call_args[0][1]
+    assert saved["asset_identified"]
+    assert saved["context"]["asset_tag"] == "EQ-AB12CD34"
+
+
+@pytest.mark.asyncio
+async def test_start_with_asset_deeplink_unknown_tag_is_graceful(monkeypatch, engine):
+    import start_command as mod
+
+    monkeypatch.setattr(mod, "_lookup_asset_by_tag", lambda tag, telegram_user_id: None)
+    diag_engine = MagicMock()
+
+    update, context = _mock("555", ["asset_DOES-NOT-EXIST"])
+    await mod.start_command(
+        update,
+        context,
+        engine=engine,
+        diagnostic_engine=diag_engine,
+    )
+    msg = update.message.reply_text.call_args[0][0]
+    assert "DOES-NOT-EXIST" in msg
+    assert "couldn't find" in msg.lower() or "not find" in msg.lower()
+
+
+@pytest.mark.asyncio
 async def test_start_with_consumed_token_rejects(engine):
     from start_command import start_command  # noqa: F401
 

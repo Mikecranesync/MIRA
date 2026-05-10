@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { AssetChat } from "@/components/AssetChat";
 import { AssetIntelligencePanel } from "@/components/AssetIntelligencePanel";
-import { QrCodeImage } from "@/components/qr-code";
+import { QrCodeModal } from "@/components/qr-code-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -80,6 +80,7 @@ type ApiAsset = {
   model: string | null; serialNumber: string | null; type: string | null;
   location: string | null; criticality: string; workOrderCount: number;
   lastMaintenance: string | null; lastFault: string | null; installDate: string | null;
+  qrGeneratedAt: string | null;
 };
 
 function apiToDisplay(a: ApiAsset): typeof ASSETS["1"] {
@@ -106,6 +107,23 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
   const [showQr, setShowQr] = useState(false);
   const [apiAsset, setApiAsset] = useState<ApiAsset | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generatingQr, setGeneratingQr] = useState(false);
+  const isQrBound = !!(apiAsset?.qrGeneratedAt);
+
+  async function handleGenerateQr() {
+    if (generatingQr || isQrBound) return;
+    setGeneratingQr(true);
+    try {
+      const res = await fetch(`/hub/api/assets/${id}/qr`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.tag) {
+        setApiAsset((prev) => prev ? { ...prev, tag: data.tag, qrGeneratedAt: data.qrGeneratedAt } : prev);
+        setShowQr(true);
+      }
+    } finally {
+      setGeneratingQr(false);
+    }
+  }
 
   useEffect(() => {
     fetch(`/hub/api/assets/${id}`)
@@ -142,8 +160,18 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
                 <Badge variant="outline" className="text-[10px]">{t("criticalityLabel", { level: asset.criticality })}</Badge>
               </div>
             </div>
-            <Button size="sm" variant="ghost" onClick={() => setShowQr(true)} aria-label="Show QR code">
+            <Button
+              size="sm"
+              variant={isQrBound ? "ghost" : "outline"}
+              onClick={isQrBound ? () => setShowQr(true) : handleGenerateQr}
+              disabled={generatingQr}
+              aria-label={isQrBound ? "Show QR code" : "Generate QR code"}
+              title={isQrBound ? "Show QR code" : "Generate permanent QR code for this asset"}
+            >
               <QrCode className="w-4 h-4" />
+              {!isQrBound && !loading ? (
+                <span className="ml-1.5 text-xs">{generatingQr ? "…" : "Generate"}</span>
+              ) : null}
             </Button>
           </div>
 
@@ -195,33 +223,13 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
-      {showQr && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Asset QR code"
-          onClick={() => setShowQr(false)}
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 text-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-xs font-mono uppercase tracking-wide text-slate-500 mb-1">{asset.tag}</div>
-            <h2 className="text-lg font-semibold mb-4">{asset.name}</h2>
-            <div className="flex justify-center mb-4">
-              <QrCodeImage
-                value={typeof window !== "undefined" ? `${window.location.origin}/m/${asset.tag}` : `/m/${asset.tag}`}
-                size={224}
-              />
-            </div>
-            <p className="text-xs text-slate-500 mb-4">
-              Scan to open the mobile asset page. Print and post on the equipment.
-            </p>
-            <Button variant="outline" size="sm" onClick={() => setShowQr(false)}>Close</Button>
-          </div>
-        </div>
-      )}
+      <QrCodeModal
+        open={showQr}
+        onClose={() => setShowQr(false)}
+        value={typeof window !== "undefined" ? `${window.location.origin}/m/${asset.tag}` : `/m/${asset.tag}`}
+        assetName={asset.name}
+        assetTag={asset.tag}
+      />
     </div>
   );
 }

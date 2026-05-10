@@ -24,6 +24,8 @@ function rowToAsset(r: Record<string, unknown>) {
     description: r.description ?? null,
     installDate: r.installation_date ?? null,
     createdAt: r.created_at ?? null,
+    parentAssetId: r.parent_asset_id ?? null,
+    qrGeneratedAt: r.qr_generated_at ?? null,
   };
 }
 
@@ -51,7 +53,8 @@ export async function GET(
           equipment_type, location, department, criticality,
           work_order_count, total_downtime_hours,
           last_maintenance_date, last_work_order_at,
-          last_reported_fault, description, installation_date, created_at
+          last_reported_fault, description, installation_date, created_at,
+          parent_asset_id, qr_generated_at
         FROM cmms_equipment
         WHERE equipment_number = $1 AND tenant_id = $2
         LIMIT 1`,
@@ -63,7 +66,28 @@ export async function GET(
       return NextResponse.json({ error: "Asset not found" }, { status: 404 });
     }
 
-    return NextResponse.json(rowToAsset(row));
+    // Include sub-component children (assets whose parent_asset_id points
+    // here). Compact shape — full detail is reachable via /m/{tag}.
+    const children = await withTenantContext(ctx.tenantId, (c) =>
+      c.query(
+        `SELECT id, equipment_number, manufacturer, model_number, description, equipment_type
+           FROM cmms_equipment
+          WHERE parent_asset_id = $1 AND tenant_id = $2
+          ORDER BY equipment_number ASC NULLS LAST`,
+        [row.id, ctx.tenantId],
+      ).then((r) => r.rows),
+    );
+
+    return NextResponse.json({
+      ...rowToAsset(row),
+      children: children.map((c: Record<string, unknown>) => ({
+        id: c.id,
+        tag: c.equipment_number ?? null,
+        name: (c.description as string) || [c.manufacturer, c.model_number, c.equipment_type].filter(Boolean).join(" "),
+        manufacturer: c.manufacturer ?? null,
+        model: c.model_number ?? null,
+      })),
+    });
   } catch (err) {
     console.error("[api/assets/by-tag/[tag] GET]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
