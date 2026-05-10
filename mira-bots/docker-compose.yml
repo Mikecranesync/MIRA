@@ -15,6 +15,9 @@ x-bot-common-env: &bot-common-env
   GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
   CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
   CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+  OPENROUTER_VISION_MODEL: ${OPENROUTER_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct:free}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
   GEMINI_API_KEY: ${GEMINI_API_KEY:-}
