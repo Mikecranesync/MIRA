@@ -13,7 +13,9 @@ import yaml
 from .. import neon_recall as _neon_recall
 from ..agentic_retrieval import (
     decompose_query,
+    evaluate_retrieval,
     is_decompose_enabled,
+    is_self_eval_enabled,
     merge_subquery_results,
 )
 from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
@@ -355,6 +357,38 @@ class RAGWorker:
                                     effective_tenant,
                                     query_text=embed_query,
                                 )
+
+                        if is_self_eval_enabled() and neon_chunks:
+                            try:
+                                eq_ctx = state.get("asset_identified") or None
+                                is_rel, score, reformulated = await evaluate_retrieval(
+                                    embed_query,
+                                    neon_chunks,
+                                    equipment_context=eq_ctx,
+                                )
+                                logger.info(
+                                    "RAG_SELF_EVAL score=%.2f relevant=%s reformulated=%s",
+                                    score,
+                                    is_rel,
+                                    bool(reformulated),
+                                )
+                                if not is_rel and reformulated:
+                                    retry_emb = await self._embed_ollama(reformulated)
+                                    if retry_emb:
+                                        retry_chunks = _neon_recall.recall_knowledge(
+                                            retry_emb,
+                                            effective_tenant,
+                                            query_text=reformulated,
+                                        )
+                                        if retry_chunks:
+                                            logger.info(
+                                                "RAG_SELF_EVAL_RETRY n_chunks=%d query=%r",
+                                                len(retry_chunks),
+                                                reformulated[:80],
+                                            )
+                                            neon_chunks = retry_chunks
+                            except Exception as exc:
+                                logger.warning("SELF_EVAL_CALL_FAILED %s", exc)
 
             # Extract chunk texts for reranking / telemetry
             chunk_texts = [c["content"] for c in neon_chunks]
