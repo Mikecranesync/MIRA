@@ -49,13 +49,33 @@ class AssetContext:
     location: Optional[str]
 
 
-def _lookup_asset_by_tag(tag: str) -> Optional[AssetContext]:
-    """Look up an asset by ``equipment_number`` across all tenants.
+def _resolve_tenant_for_telegram_user(cur, telegram_user_id: str) -> Optional[str]:
+    """Return the tenant_id linked to this Telegram user, or None.
 
-    The tag itself is an unguessable random identifier (see
-    ``mira-hub/src/lib/asset-tag.ts:generateAssetTag``), so the public
-    bearer-style lookup is acceptable. Returns ``None`` on any DB error
-    or miss; the caller falls back to a generic welcome.
+    Mirrors the hub's auth check: a Telegram user can only see assets in
+    the tenant they were enrolled into via the invite flow.
+    """
+    cur.execute(
+        """SELECT tenant_id
+             FROM identity_links
+            WHERE platform = 'telegram'
+              AND external_user_id = %s
+            LIMIT 1""",
+        (telegram_user_id,),
+    )
+    row = cur.fetchone()
+    return str(row[0]) if row else None
+
+
+def _lookup_asset_by_tag(tag: str, telegram_user_id: str) -> Optional[AssetContext]:
+    """Look up an asset by ``equipment_number`` scoped to the user's tenant.
+
+    The technician must already be enrolled (invite flow) for this lookup
+    to resolve — the same authorization rule the hub's /m/{tag} page
+    enforces for browser scans. Returns ``None`` on any DB error, miss,
+    or cross-tenant access attempt. The caller falls back to a generic
+    "couldn't find that tag" message; we never reveal that the tag
+    belongs to another tenant.
     """
     url = os.getenv("NEON_DATABASE_URL", "")
     if not url:
@@ -65,14 +85,20 @@ def _lookup_asset_by_tag(tag: str) -> Optional[AssetContext]:
         conn = psycopg2.connect(url)
         try:
             with conn.cursor() as cur:
+                tenant_id = _resolve_tenant_for_telegram_user(cur, telegram_user_id)
+                if not tenant_id:
+                    logger.info(
+                        "ASSET_LOOKUP_NO_TENANT telegram_user_id=%s", telegram_user_id
+                    )
+                    return None
                 cur.execute(
                     """SELECT equipment_number, manufacturer, model_number,
                               equipment_type, description, location
                          FROM cmms_equipment
-                        WHERE equipment_number = %s
+                        WHERE equipment_number = %s AND tenant_id = %s
                         ORDER BY qr_generated_at ASC NULLS LAST, created_at ASC
                         LIMIT 1""",
-                    (tag,),
+                    (tag, tenant_id),
                 )
                 row = cur.fetchone()
         finally:
@@ -123,7 +149,8 @@ async def _handle_asset_deep_link(
         )
         return
 
-    asset = _lookup_asset_by_tag(tag)
+    telegram_user_id = str(update.effective_user.id)
+    asset = _lookup_asset_by_tag(tag, telegram_user_id)
     chat_id = str(update.effective_chat.id)
 
     # Wipe stale state regardless of whether the lookup succeeds — a fresh QR

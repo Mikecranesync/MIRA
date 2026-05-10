@@ -24,7 +24,7 @@ type ChildAsset = {
   model: string | null;
 };
 
-type PublicAsset = {
+type AssetView = {
   id: string;
   tag: string;
   name: string;
@@ -56,10 +56,12 @@ export default function MobileAssetPage({
   const assetTag = decodeURIComponent(rawTag);
   const session = useSession();
   const isAuthed = session.status === "authenticated";
+  const sessionStatus = session.status;
 
-  const [asset, setAsset] = useState<PublicAsset | null>(null);
+  const [asset, setAsset] = useState<AssetView | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // 401 = no session, 403 = wrong tenant, 404 = not visible to this tenant
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [recentWos, setRecentWos] = useState<RecentWorkOrder[]>([]);
   const [shareUrl, setShareUrl] = useState("");
 
@@ -69,21 +71,36 @@ export default function MobileAssetPage({
     }
   }, [assetTag]);
 
+  // Bounce unauthenticated visitors to the login page with a callback that
+  // brings them straight back to this asset after sign-in. NextAuth's
+  // middleware would do this for non-API page routes too, but we want the
+  // tech to land on the same /m/{tag} URL after auth so the QR scan flow
+  // is uninterrupted.
   useEffect(() => {
+    if (sessionStatus !== "unauthenticated") return;
+    if (typeof window === "undefined") return;
+    const callbackUrl = `${window.location.pathname}${window.location.search}`;
+    window.location.replace(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  }, [sessionStatus]);
+
+  useEffect(() => {
+    if (sessionStatus !== "authenticated") return;
     let cancelled = false;
-    fetch(`${API_BASE}/api/public/assets/by-tag/${encodeURIComponent(assetTag)}`)
+    setLoading(true);
+    setErrorStatus(null);
+    fetch(`${API_BASE}/api/assets/by-tag/${encodeURIComponent(assetTag)}`)
       .then(async (res) => {
         if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.error ?? `HTTP ${res.status}`);
+          if (!cancelled) setErrorStatus(res.status);
+          return null;
         }
         return res.json();
       })
-      .then((data: PublicAsset) => {
-        if (!cancelled) setAsset(data);
+      .then((data: AssetView | null) => {
+        if (!cancelled && data) setAsset(data);
       })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load");
+      .catch(() => {
+        if (!cancelled) setErrorStatus(500);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -91,9 +108,9 @@ export default function MobileAssetPage({
     return () => {
       cancelled = true;
     };
-  }, [assetTag]);
+  }, [assetTag, sessionStatus]);
 
-  // Authed-only enrichment: pull recent work orders for this asset.
+  // Recent work orders for this asset (same tenant, RLS-scoped).
   useEffect(() => {
     if (!isAuthed || !asset?.id) return;
     let cancelled = false;
@@ -110,6 +127,14 @@ export default function MobileAssetPage({
     };
   }, [isAuthed, asset?.id]);
 
+  if (sessionStatus === "loading" || sessionStatus === "unauthenticated") {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-6">
+        <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen p-6">
@@ -118,20 +143,45 @@ export default function MobileAssetPage({
     );
   }
 
-  if (error || !asset) {
+  if (errorStatus || !asset) {
+    // The /api/assets/by-tag endpoint is RLS-scoped, so a 404 means the
+    // asset is either non-existent OR belongs to another tenant. We don't
+    // distinguish in the UI to avoid confirming the existence of another
+    // tenant's data — the same "no access" copy covers both.
+    const isAccessIssue = errorStatus === 404 || errorStatus === 403;
     return (
       <div className="max-w-md mx-auto p-6 pt-12">
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex gap-3">
-          <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 flex gap-3">
+          <AlertCircle className="h-5 w-5 text-amber-700 shrink-0" />
           <div>
-            <h1 className="font-semibold text-red-900">Asset not found</h1>
-            <p className="text-sm text-red-800 mt-1">
-              No asset matches tag <code className="font-mono">{assetTag}</code>
-              {error ? ` (${error})` : ""}.
+            <h1 className="font-semibold text-amber-900">
+              {isAccessIssue ? "You don't have access to this asset" : "Couldn't load this asset"}
+            </h1>
+            <p className="text-sm text-amber-800 mt-1">
+              {isAccessIssue ? (
+                <>
+                  Tag <code className="font-mono">{assetTag}</code> isn't part of your
+                  workspace. Ask your admin to add you to the right tenant or to
+                  share the asset.
+                </>
+              ) : (
+                <>
+                  Something went wrong loading <code className="font-mono">{assetTag}</code>{" "}
+                  (HTTP {errorStatus ?? "?"}). Try again in a moment.
+                </>
+              )}
             </p>
-            <Link href="/" className="text-sm text-red-700 underline mt-2 inline-block">
-              factorylm.com
-            </Link>
+            <div className="mt-3 flex gap-3 text-sm">
+              <Link href="/feed" className="text-amber-900 underline">
+                Back to dashboard
+              </Link>
+              <a
+                href="mailto:support@factorylm.com?subject=Access%20request%20for%20asset%20{assetTag}"
+                className="text-amber-900 underline"
+              >
+                Contact your admin
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -143,12 +193,9 @@ export default function MobileAssetPage({
   // handler distinguish from invite tokens.
   const tgDeepLink = `https://t.me/${TELEGRAM_BOT}?start=asset_${encodeURIComponent(asset.tag)}`;
 
-  // Work-order creation requires login. Pass returnTo so the user lands
-  // back on the WO form once authenticated.
-  const newWoUrl = `/workorders/new?assetId=${encodeURIComponent(asset.id)}&assetTag=${encodeURIComponent(asset.tag)}`;
-  const newWoHref = isAuthed
-    ? newWoUrl
-    : `/login?callbackUrl=${encodeURIComponent(newWoUrl)}`;
+  // The page is auth-gated upstream, so we only get here with a valid
+  // tenant-scoped session. WO creation links straight to the form.
+  const newWoHref = `/workorders/new?assetId=${encodeURIComponent(asset.id)}&assetTag=${encodeURIComponent(asset.tag)}`;
 
   // Manual lookup: filter the library by manufacturer + model. Public for
   // anyone with an asset tag — manuals live outside the tenant boundary.
@@ -211,7 +258,6 @@ export default function MobileAssetPage({
           <Link href={newWoHref}>
             <Wrench className="h-5 w-5 mr-2" />
             Create Work Order
-            {!isAuthed ? <span className="ml-2 text-xs font-normal text-slate-500">(login)</span> : null}
           </Link>
         </Button>
 
@@ -283,25 +329,10 @@ export default function MobileAssetPage({
         </div>
       ) : null}
 
-      {/* Footer — branded CTA for unauthenticated visitors */}
       <footer className="mt-10 border-t pt-6 text-center text-xs text-slate-500">
-        {isAuthed ? (
-          <Link href="/feed" className="font-medium text-slate-700">
-            ← Back to dashboard
-          </Link>
-        ) : (
-          <>
-            <div>
-              Powered by <span className="font-semibold text-slate-700">FactoryLM</span>
-            </div>
-            <Link
-              href="/signup"
-              className="mt-2 inline-block text-blue-600 font-medium underline-offset-2 hover:underline"
-            >
-              Get MIRA for your plant →
-            </Link>
-          </>
-        )}
+        <Link href="/feed" className="font-medium text-slate-700">
+          ← Back to dashboard
+        </Link>
       </footer>
     </div>
   );
