@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { enrichAsset } from "@/lib/agents/asset-intelligence";
+import { generateAssetTag, validateAssetTag } from "@/lib/asset-tag";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,8 @@ function rowToAsset(r: Record<string, unknown>) {
     lastFault: r.last_reported_fault ?? null,
     description: r.description ?? null,
     createdAt: r.created_at ?? null,
+    parentAssetId: r.parent_asset_id ?? null,
+    qrGeneratedAt: r.qr_generated_at ?? null,
   };
 }
 
@@ -63,7 +66,7 @@ export async function POST(req: Request) {
   if (ctx instanceof NextResponse) return ctx;
   try {
     const body = await req.json();
-    const { name, tag, manufacturer, model, serialNumber, location, criticality, installDate } = body;
+    const { name, tag, manufacturer, model, serialNumber, location, criticality, installDate, parentAssetId } = body;
 
     if (!manufacturer?.trim()) {
       return NextResponse.json({ error: "manufacturer is required" }, { status: 400 });
@@ -73,28 +76,71 @@ export async function POST(req: Request) {
       ? (criticality as string).toLowerCase()
       : "medium";
 
-    const row = await withTenantContext(ctx.tenantId, (c) =>
-      c.query(
-        `INSERT INTO cmms_equipment
-           (tenant_id, equipment_number, manufacturer, model_number, serial_number,
-            location, criticality, installation_date, description)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::criticalitylevel, $8, $9)
-         RETURNING
-           id, equipment_number, manufacturer, model_number, serial_number,
-           equipment_type, location, criticality, description, created_at`,
-        [
-          ctx.tenantId,
-          tag?.trim() || null,
-          manufacturer.trim(),
-          model?.trim() || null,
-          serialNumber?.trim() || null,
-          location?.trim() || null,
-          safeLevel,
-          installDate || null,
-          name?.trim() || null,
-        ],
-      ).then((r) => r.rows[0]),
-    );
+    // Permanent QR identity: every asset gets an equipment_number on create.
+    // If the caller supplied one, validate; otherwise auto-generate from the
+    // manufacturer prefix. Retry on the rare collision against the unique
+    // partial index from migration 012.
+    let resolvedTag: string;
+    if (tag?.trim()) {
+      const v = validateAssetTag(tag);
+      if (!v.ok || !v.value) {
+        return NextResponse.json({ error: v.reason ?? "invalid tag" }, { status: 400 });
+      }
+      resolvedTag = v.value;
+    } else {
+      resolvedTag = generateAssetTag({ manufacturer });
+    }
+
+    const insert = (assetTag: string) =>
+      withTenantContext(ctx.tenantId, (c) =>
+        c.query(
+          `INSERT INTO cmms_equipment
+             (tenant_id, equipment_number, manufacturer, model_number, serial_number,
+              location, criticality, installation_date, description,
+              parent_asset_id, qr_generated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::criticalitylevel, $8, $9, $10, NOW())
+           RETURNING
+             id, equipment_number, manufacturer, model_number, serial_number,
+             equipment_type, location, criticality, description, created_at,
+             parent_asset_id, qr_generated_at`,
+          [
+            ctx.tenantId,
+            assetTag,
+            manufacturer.trim(),
+            model?.trim() || null,
+            serialNumber?.trim() || null,
+            location?.trim() || null,
+            safeLevel,
+            installDate || null,
+            name?.trim() || null,
+            parentAssetId || null,
+          ],
+        ).then((r) => r.rows[0]),
+      );
+
+    let row: Record<string, unknown> | undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        row = await insert(resolvedTag);
+        break;
+      } catch (e) {
+        const msg = (e as { code?: string; message?: string })?.code === "23505"
+          ? "unique_violation"
+          : (e as Error)?.message ?? "";
+        if (msg === "unique_violation" && !tag?.trim()) {
+          // collision on auto-gen — retry with a fresh tag
+          resolvedTag = generateAssetTag({ manufacturer });
+          continue;
+        }
+        if ((e as { code?: string })?.code === "23505") {
+          return NextResponse.json({ error: "tag already exists" }, { status: 409 });
+        }
+        throw e;
+      }
+    }
+    if (!row) {
+      return NextResponse.json({ error: "Failed to allocate asset tag" }, { status: 500 });
+    }
 
     // Fire-and-forget enrichment — don't await, never block the 201 response
     void enrichAsset(ctx.tenantId, String(row.id)).catch((e) =>

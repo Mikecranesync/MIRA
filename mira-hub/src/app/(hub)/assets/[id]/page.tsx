@@ -80,6 +80,7 @@ type ApiAsset = {
   model: string | null; serialNumber: string | null; type: string | null;
   location: string | null; criticality: string; workOrderCount: number;
   lastMaintenance: string | null; lastFault: string | null; installDate: string | null;
+  qrGeneratedAt: string | null;
 };
 
 function apiToDisplay(a: ApiAsset): typeof ASSETS["1"] {
@@ -106,6 +107,23 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
   const [showQr, setShowQr] = useState(false);
   const [apiAsset, setApiAsset] = useState<ApiAsset | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generatingQr, setGeneratingQr] = useState(false);
+  const isQrBound = !!(apiAsset?.qrGeneratedAt);
+
+  async function handleGenerateQr() {
+    if (generatingQr || isQrBound) return;
+    setGeneratingQr(true);
+    try {
+      const res = await fetch(`/hub/api/assets/${id}/qr`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.tag) {
+        setApiAsset((prev) => prev ? { ...prev, tag: data.tag, qrGeneratedAt: data.qrGeneratedAt } : prev);
+        setShowQr(true);
+      }
+    } finally {
+      setGeneratingQr(false);
+    }
+  }
 
   useEffect(() => {
     fetch(`/hub/api/assets/${id}`)
@@ -142,8 +160,18 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
                 <Badge variant="outline" className="text-[10px]">{t("criticalityLabel", { level: asset.criticality })}</Badge>
               </div>
             </div>
-            <Button size="sm" variant="ghost" onClick={() => setShowQr(true)} aria-label="Show QR code">
+            <Button
+              size="sm"
+              variant={isQrBound ? "ghost" : "outline"}
+              onClick={isQrBound ? () => setShowQr(true) : handleGenerateQr}
+              disabled={generatingQr}
+              aria-label={isQrBound ? "Show QR code" : "Generate QR code"}
+              title={isQrBound ? "Show QR code" : "Generate permanent QR code for this asset"}
+            >
               <QrCode className="w-4 h-4" />
+              {!isQrBound && !loading ? (
+                <span className="ml-1.5 text-xs">{generatingQr ? "…" : "Generate"}</span>
+              ) : null}
             </Button>
           </div>
 

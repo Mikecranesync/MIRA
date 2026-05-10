@@ -15,6 +15,14 @@ import { Button } from "@/components/ui/button";
 import { QrCodeImage } from "@/components/qr-code";
 import { API_BASE } from "@/lib/config";
 
+type ChildAsset = {
+  id: string;
+  tag: string | null;
+  name: string;
+  manufacturer: string | null;
+  model: string | null;
+};
+
 type Asset = {
   id: string;
   tag: string;
@@ -27,6 +35,7 @@ type Asset = {
   criticality: string;
   lastWorkOrder: string | null;
   lastMaintenance: string | null;
+  children?: ChildAsset[];
 };
 
 const TELEGRAM_BOT = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? "MiraFactoryBot";
@@ -163,6 +172,30 @@ export default function MobileAssetPage({
           <Link href={`/assets/${asset.id}`}>Open full asset detail</Link>
         </Button>
       </div>
+
+      {/* Sub-components */}
+      {asset.children && asset.children.length > 0 ? (
+        <div className="mt-6">
+          <h2 className="text-xs uppercase tracking-wide text-slate-500 mb-2">Sub-components</h2>
+          <div className="rounded-lg border bg-white divide-y">
+            {asset.children.map((child) => (
+              <Link
+                key={child.id}
+                href={child.tag ? `/m/${encodeURIComponent(child.tag)}` : `/assets/${child.id}`}
+                className="flex items-center justify-between gap-3 p-3 hover:bg-slate-50"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">{child.name || "Unnamed"}</div>
+                  {child.tag ? (
+                    <div className="text-xs font-mono text-slate-500">{child.tag}</div>
+                  ) : null}
+                </div>
+                <Package className="h-4 w-4 text-slate-400 shrink-0" />
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* QR for sharing this page */}
       {shareUrl ? (
