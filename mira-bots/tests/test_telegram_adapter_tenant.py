@@ -8,9 +8,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-sys.modules.pop("chat_adapter", None)  # isolate from other bot adapters
 
 import pytest
+import shared.chat_tenant as _chat_tenant
 from chat_adapter import TelegramChatAdapter
 
 
@@ -26,7 +26,8 @@ async def test_adapter_populates_tenant_id_from_resolver():
             "text": "hello",
         },
     }
-    with patch("chat_adapter.chat_tenant_resolve", return_value="t_acme"):
+    with patch.dict(os.environ, {"MIRA_TENANT_ID": "t_acme"}):
+        _chat_tenant._db_lookup.cache_clear()
         evt = await adapter.normalize_incoming(raw)
     assert evt.tenant_id == "t_acme"
     assert evt.external_user_id == "555"
@@ -44,6 +45,7 @@ async def test_adapter_empty_tenant_when_resolver_returns_empty():
             "text": "stranger",
         },
     }
-    with patch("chat_adapter.chat_tenant_resolve", return_value=""):
+    with patch.dict(os.environ, {"MIRA_TENANT_ID": ""}):
+        _chat_tenant._db_lookup.cache_clear()
         evt = await adapter.normalize_incoming(raw)
     assert evt.tenant_id == ""

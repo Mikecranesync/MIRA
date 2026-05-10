@@ -63,7 +63,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install deps
-        run: pip install httpx pytest pytest-timeout
+        run: pip install httpx pytest pytest-timeout pyyaml
       - name: Run write-path tests
         env:
           BASE_URL: ${{ vars.ENFORCEMENT_BASE_URL || 'https://app.factorylm.com' }}
