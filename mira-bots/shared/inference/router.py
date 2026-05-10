@@ -1,6 +1,6 @@
 """MIRA Inference Router — Multi-provider LLM cascade.
 
-Cascade order: Groq → Cerebras → Gemini → (caller falls back to Open WebUI).
+Cascade order: Groq → Cerebras → OpenRouter → Gemini → (caller falls back to Open WebUI).
 
 Each provider is tried in sequence. On any failure (rate limit, billing,
 timeout, service error), the next provider is attempted. The caller
@@ -8,7 +8,10 @@ timeout, service error), the next provider is attempted. The caller
 providers failed" and falls through to the local Open WebUI/Ollama path.
 
 Provider enablement is key-based: if GROQ_API_KEY is set, Groq is in the
-cascade. Same for CEREBRAS_API_KEY and GEMINI_API_KEY. Order is fixed.
+cascade. Same for CEREBRAS_API_KEY, OPENROUTER_API_KEY, and GEMINI_API_KEY.
+Order is fixed. OpenRouter (slot 3) is preferred over Gemini because its
+free-tier key never expires; Gemini is kept as a 4th-slot fallback for
+vision capability but is not load-bearing.
 
 INFERENCE_BACKEND controls the master switch:
   "cloud" → run the cascade (default when any cloud key is set)
@@ -25,7 +28,7 @@ import os
 import re
 import sqlite3
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
@@ -124,6 +127,7 @@ class _Provider:
     model: str
     timeout: float = 60.0
     vision_model: str = ""  # If set, use this model for image requests
+    extra_headers: dict = field(default_factory=dict)  # Provider-specific request headers
 
     @property
     def enabled(self) -> bool:
@@ -133,9 +137,10 @@ class _Provider:
 def _build_providers() -> list[_Provider]:
     """Build the ordered provider list from environment variables.
 
-    Cascade order: Groq → Cerebras → Gemini.
-    Groq leads because it's fastest and most reliable. Gemini moved to third
-    position after persistent 503s in prod (2026-04-21 latency audit).
+    Cascade order: Groq → Cerebras → OpenRouter → Gemini.
+    Groq leads because it's fastest and most reliable.
+    OpenRouter (slot 3) is preferred over Gemini because its free-tier key
+    never expires; Gemini is slot 4 for vision fallback only.
     """
     providers: list[_Provider] = []
 
@@ -163,6 +168,25 @@ def _build_providers() -> list[_Provider]:
                 api_key=cerebras_key,
                 model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
                 timeout=30.0,
+            )
+        )
+
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
+    if openrouter_key:
+        providers.append(
+            _Provider(
+                name="openrouter",
+                api_url="https://openrouter.ai/api/v1/chat/completions",
+                api_key=openrouter_key,
+                model=os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
+                timeout=45.0,
+                vision_model=os.getenv(
+                    "OPENROUTER_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct:free"
+                ),
+                extra_headers={
+                    "HTTP-Referer": "https://factorylm.com",
+                    "X-Title": "MIRA",
+                },
             )
         )
 
@@ -196,6 +220,7 @@ class InferenceRouter:
     _PROVIDER_HOURLY_LIMITS: dict[str, int] = {
         "groq": 1800,  # 30 RPM × 60 min
         "cerebras": 1800,
+        "openrouter": 1200,  # 20 RPM × 60 min (free-tier estimate)
         "gemini": 900,  # 15 RPM × 60 min
     }
 
@@ -334,7 +359,7 @@ class InferenceRouter:
         session_id: str,
         has_image: bool,
     ) -> tuple[str, dict]:
-        """Call an OpenAI-compatible provider (Groq, Cerebras, Gemini)."""
+        """Call an OpenAI-compatible provider (Groq, Cerebras, OpenRouter, Gemini)."""
         # Use vision model for image requests if available
         model = provider.vision_model if (has_image and provider.vision_model) else provider.model
         payload: dict = {
@@ -349,6 +374,7 @@ class InferenceRouter:
         headers = {
             "Authorization": f"Bearer {provider.api_key}",
             "Content-Type": "application/json",
+            **provider.extra_headers,
         }
 
         try:
@@ -436,7 +462,7 @@ class InferenceRouter:
 
     @staticmethod
     def log_usage(usage: dict) -> None:
-        """Log token usage. All current providers (Groq/Cerebras/Gemini) are free-tier."""
+        """Log token usage. All current providers (Groq/Cerebras/OpenRouter/Gemini) are free-tier."""
         inp = usage.get("input_tokens", 0)
         out = usage.get("output_tokens", 0)
         provider = usage.get("provider", "unknown")

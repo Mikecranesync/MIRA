@@ -13,7 +13,10 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: meta-llama/llama-4-scout-17b-16e-instruct |
 | `CEREBRAS_API_KEY`   | mira-bots, mira-pipeline (Cerebras — second in cascade) |
 | `CEREBRAS_MODEL`     | mira-bots, mira-pipeline — default: llama3.1-8b |
-| `GEMINI_API_KEY`     | mira-bots, mira-pipeline (Gemini — third in cascade, vision-capable) |
+| `OPENROUTER_API_KEY` | mira-bots (OpenRouter — third in cascade; free-tier key never expires; get at openrouter.ai/keys) |
+| `OPENROUTER_MODEL`   | mira-bots — default: meta-llama/llama-3.3-70b-instruct:free |
+| `OPENROUTER_VISION_MODEL` | mira-bots — default: meta-llama/llama-4-scout-17b-16e-instruct:free |
+| `GEMINI_API_KEY`     | mira-bots, mira-pipeline (Gemini — fourth in cascade, vision fallback; key expires periodically) |
 | `GEMINI_MODEL`       | mira-bots, mira-pipeline — default: gemini-2.5-flash |
 | `GEMINI_VISION_MODEL`| mira-bots, mira-pipeline — default: gemini-2.5-flash |
 | ~~`ANTHROPIC_API_KEY`~~ | **REMOVED PR #610** — Anthropic dependency ripped out 2026-04-25; runtime silently ignores this key if set |

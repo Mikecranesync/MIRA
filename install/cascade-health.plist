@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mira.cascade-health</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/doppler</string>
+        <string>run</string>
+        <string>--project</string>
+        <string>factorylm</string>
+        <string>--config</string>
+        <string>prd</string>
+        <string>--</string>
+        <string>/bin/bash</string>
+        <string>/Users/bravonode/Mira/scripts/cascade_health_cron.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>21600</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/bravonode/Library/Logs/mira-cascade-health.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/bravonode/Library/Logs/mira-cascade-health.log</string>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

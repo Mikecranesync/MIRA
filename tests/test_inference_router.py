@@ -29,16 +29,38 @@ class TestBuildProviders:
         assert len(providers) == 1
         assert providers[0].name == "groq"
 
-    def test_all_three_providers_in_order(self):
+    def test_all_four_providers_in_order(self):
         env = {
             "GROQ_API_KEY": "gsk_test",
             "CEREBRAS_API_KEY": "csk_test",
+            "OPENROUTER_API_KEY": "sk-or-test",
             "GEMINI_API_KEY": "gem_test",
         }
         with patch.dict(os.environ, env, clear=True):
             providers = _build_providers()
-        assert len(providers) == 3
-        assert [p.name for p in providers] == ["groq", "cerebras", "gemini"]
+        assert len(providers) == 4
+        assert [p.name for p in providers] == ["groq", "cerebras", "openrouter", "gemini"]
+
+    def test_openrouter_has_extra_headers(self):
+        env = {"OPENROUTER_API_KEY": "sk-or-test"}
+        with patch.dict(os.environ, env, clear=True):
+            providers = _build_providers()
+        assert providers[0].name == "openrouter"
+        assert providers[0].extra_headers.get("HTTP-Referer") == "https://factorylm.com"
+        assert providers[0].extra_headers.get("X-Title") == "MIRA"
+
+    def test_openrouter_resolves_without_gemini(self):
+        """OpenRouter in slot 3 means cascade succeeds even if GEMINI_API_KEY is absent."""
+        env = {
+            "GROQ_API_KEY": "gsk_test",
+            "CEREBRAS_API_KEY": "csk_test",
+            "OPENROUTER_API_KEY": "sk-or-test",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            providers = _build_providers()
+        names = [p.name for p in providers]
+        assert "openrouter" in names
+        assert "gemini" not in names
 
     def test_cerebras_and_gemini_no_groq(self):
         env = {
