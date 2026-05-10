@@ -82,3 +82,7 @@
 ## 2026-04-25T16:13:25Z — session auto-commit
 
 Changed: `wiki/reviews/`
+
+## 2026-05-10T13:31:47Z — session auto-commit
+
+Changed: `wiki/hot.md`

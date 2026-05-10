@@ -1,3 +1,14 @@
+# Hot Cache — 2026-05-10 — ALPHA
+
+## Session — 2026-05-10 (demo video story scripts)
+
+- **5 demo video story scripts written**: `marketing/demo-videos/story-scripts.yaml` + `README.md`
+- **Stories**: 60-second-setup, fault-code-30s, qr-scan-to-diagnose, pm-scheduling-autopilot, your-team-your-manuals
+- **Format**: storyboard_v2.yaml-compatible — real screenshots + user-recorded voiceover, Ken Burns focal points per beat
+- **8 new screenshots captured**: homepage-hero, cmms-signin, pricing-page, qr-asset-sheet, atlas-cmms-login, security-page (all 2026-05-10, docs/promo-screenshots/)
+- **Pipeline gap**: `build_video_v2.py` needs `--storyboard`, `--story`, `--recordings` flags added before user-recorded voice works. TTS mode works today via Option A (swap shots into storyboard_v2.yaml). See README for details.
+- **Hub login**: app.factorylm.com uses Google OAuth only — no password login; Playwright can't automate auth. Authenticated screenshots (chat, upload, QR chooser) still needed — capture manually.
+
 # Hot Cache — 2026-04-30 — CHARLIE
 
 ## eval-fixer run — 2026-04-30
