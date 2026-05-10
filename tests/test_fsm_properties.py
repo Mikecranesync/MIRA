@@ -19,7 +19,7 @@ from unittest.mock import patch
 import pytest
 from hypothesis import given, settings, strategies as st
 
-from shared.engine import STATE_ORDER, Supervisor, _STATE_ALIASES
+from shared.engine import STATE_ORDER, Supervisor, _STATE_ALIASES, VALID_STATES
 from shared.guardrails import SAFETY_KEYWORDS
 
 
@@ -40,11 +40,6 @@ def supervisor(tmp_path_factory):
                 api_key="test",
                 collection_id="test",
             )
-
-
-VALID_STATES = frozenset(
-    STATE_ORDER + ["ASSET_IDENTIFIED", "ELECTRICAL_PRINT", "SAFETY_ALERT", "DIAGNOSIS_REVISION"]
-)
 
 # Strategy: valid FSM states
 st_state = st.sampled_from(sorted(VALID_STATES))
