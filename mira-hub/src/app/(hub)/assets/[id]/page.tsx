@@ -116,10 +116,12 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
     if (generatingQr || isQrBound) return;
     setGeneratingQr(true);
     try {
-      const res = await fetch(`/hub/api/assets/${id}/qr`, { method: "POST" });
+      // Trailing slash matches next.config trailingSlash:true — without it,
+      // Next.js issues a 308 redirect, fetch follows it, and res.redirected
+      // becomes true even though no auth-redirect happened.
+      const res = await fetch(`/hub/api/assets/${id}/qr/`, { method: "POST" });
       // Middleware redirects unauthenticated requests to /login, returning HTML.
-      // res.redirected captures that even after fetch follows the redirect.
-      if (res.redirected || res.url.includes("/login")) {
+      if (res.url.includes("/login")) {
         window.location.href = "/hub/login";
         return;
       }
@@ -132,7 +134,11 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
         return;
       }
       if (res.ok && data.tag) {
-        setApiAsset((prev) => prev ? { ...prev, tag: data.tag!, qrGeneratedAt: data.qrGeneratedAt ?? null } : prev);
+        setApiAsset((prev) =>
+          prev
+            ? { ...prev, tag: data.tag!, qrGeneratedAt: data.qrGeneratedAt ?? null }
+            : prev,
+        );
         setShowQr(true);
       } else {
         console.error("[generate-qr] failed", res.status, data);
@@ -147,8 +153,8 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   useEffect(() => {
-    fetch(`/hub/api/assets/${id}`)
-      .then(r => (r.ok && !r.redirected && !r.url.includes("/login")) ? r.json() : null)
+    fetch(`/hub/api/assets/${id}/`)
+      .then(r => (r.ok && !r.url.includes("/login")) ? r.json() : null)
       .then(data => { if (data && !data.error) setApiAsset(data); })
       .finally(() => setLoading(false));
   }, [id]);
