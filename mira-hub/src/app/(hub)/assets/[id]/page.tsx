@@ -117,17 +117,30 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
     setGeneratingQr(true);
     try {
       const res = await fetch(`/hub/api/assets/${id}/qr`, { method: "POST" });
-      const data = await res.json();
+      // Middleware redirects unauthenticated requests to /login, returning HTML.
+      // res.redirected captures that even after fetch follows the redirect.
+      if (res.redirected || res.url.includes("/login")) {
+        window.location.href = "/hub/login";
+        return;
+      }
+      let data: { tag?: string; qrGeneratedAt?: string; error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        console.error("[generate-qr] non-JSON response", res.status, res.url);
+        toast("Session expired — sign in again", "error");
+        return;
+      }
       if (res.ok && data.tag) {
-        setApiAsset((prev) => prev ? { ...prev, tag: data.tag, qrGeneratedAt: data.qrGeneratedAt } : prev);
+        setApiAsset((prev) => prev ? { ...prev, tag: data.tag!, qrGeneratedAt: data.qrGeneratedAt ?? null } : prev);
         setShowQr(true);
       } else {
         console.error("[generate-qr] failed", res.status, data);
         toast(data?.error ?? "Failed to generate QR code", "error");
       }
     } catch (err) {
-      console.error("[generate-qr] exception", err);
-      toast("Could not reach server", "error");
+      console.error("[generate-qr] network error", err);
+      toast("Network error — check your connection", "error");
     } finally {
       setGeneratingQr(false);
     }
@@ -135,7 +148,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
 
   useEffect(() => {
     fetch(`/hub/api/assets/${id}`)
-      .then(r => r.ok ? r.json() : null)
+      .then(r => (r.ok && !r.redirected && !r.url.includes("/login")) ? r.json() : null)
       .then(data => { if (data && !data.error) setApiAsset(data); })
       .finally(() => setLoading(false));
   }, [id]);
