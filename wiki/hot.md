@@ -34,6 +34,12 @@ doppler run --project factorylm --config prd -- \
 - **Pipeline gap**: `build_video_v2.py` needs `--storyboard`, `--story`, `--recordings` flags added before user-recorded voice works. TTS mode works today via Option A (swap shots into storyboard_v2.yaml). See README for details.
 - **Hub login**: app.factorylm.com uses Google OAuth only — no password login; Playwright can't automate auth. Authenticated screenshots (chat, upload, QR chooser) still needed — capture manually.
 
+## eval-fixer run — 2026-05-11
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md`
+- Action: issue-filed (#1170 — added to Kanban)
+- 9 failures across 3 file clusters (engine.py×7, guardrails.py×3, prompts×3); multi-file span blocked autopatch
+- Dominant pattern: FSM stuck at Q-states / not advancing to DIAGNOSIS; also PowerFlex cross-vendor bleed + CMMS WO keyword miss
+
 ## eval-fixer run — 2026-05-10
 - Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md`
 - Action: issue-filed (#1144 — added to Kanban)
