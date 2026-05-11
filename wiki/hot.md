@@ -1,10 +1,33 @@
 # Hot Cache — 2026-05-10 — ALPHA
 
+## Session — 2026-05-10 (printing-press toolchain bootstrap + Linear/Stripe CLIs)
+
+- **Bootstrapped `mksglu/context-mode` Claude Code plugin** (user scope). `/plugin marketplace add mksglu/context-mode` → `/plugin install context-mode@context-mode`. Registers `PreToolUse`/`PostToolUse`/`PreCompact`/`SessionStart` hooks + 11 ctx_* MCP tools. Now intercepts `WebFetch`/`Bash` large-output calls and routes through `ctx_execute` + FTS5 sandbox. Healthy v1.0.111 → v1.0.118 patch updates available; non-urgent.
+- **Installed Go 1.26.3** via `brew install go` and added `export PATH="$HOME/go/bin:$PATH"` to `~/.zprofile` (line 2, after `brew shellenv`).
+- **Printing Press generator installed** (`mvanhorn/cli-printing-press` v4.2.2). Binary at `~/go/bin/printing-press`; 9 skills under `~/.claude/skills/printing-press*`. Drives `/printing-press <api>` slash command. MIT-licensed.
+- **Linear CLI installed via the npm orchestrator** (`npx -y @mvanhorn/printing-press install linear`). Binary `linear-pp-cli` 1.0.0; skill `pp-linear` symlinked from `~/.agents/skills/pp-linear`. Local SQLite mirror path: `~/.config/linear-pp-cli/store.db` (not hydrated yet — `sync` will pull it). Auth: env-only via `LINEAR_API_KEY` already in Doppler `factorylm/prd`. `doctor` 4/4 green; `me` returned `mike @ Cranesync (Admin)`.
+- **Stripe CLI installed same orchestrator** (`stripe-pp-cli` 1.0.0). Skill `pp-stripe`. Local DB path: `~/.local/share/stripe-pp-cli/data.db` (XDG split — Stripe uses `share/`, Linear used `config/`). `doctor` 5/5 green via Doppler-injected `STRIPE_SECRET_KEY`. Live `balance` call returned `meta.source: "live"`. Sync NOT yet run (Stripe event volume could be large — recommend `--dry-run` first).
+- **Doppler-wrapped invocation pattern is canonical for printed CLIs**: `doppler run --project factorylm --config prd -- <pp-cli> <cmd>`. Both CLIs honor `auth_source: env:<KEY>` ahead of file auth — no on-disk plaintext.
+- **Updated `~/.claude/CLAUDE.md`**: removed stale "`gh` CLI auth is broken (keyring token invalid)" note. Verified `gh 2.87.2` logged in as `Mikecranesync` via keyring with `gist`, `read:org`, `repo`, `workflow` scopes; auth-required API calls succeed. CLAUDE.md `## Secrets` section now only mentions the real-remaining gotcha (`TS_AUTH_KEY`).
+- **Plan file with full analysis**: `~/.claude/plans/polymorphic-hugging-parnas.md`. Current contents: cross-referenced Doppler × MIRA env-vars × printing-press registry → ranked candidate API list (3 tiers). Tier 1 prebuilt + key-in-Doppler: Stripe ✅ (installed), OpenRouter (backlog), DigitalOcean (backlog). Tier 3 fresh-print candidates: NeonDB, Groq, Telegram Bot API, Atlassian, Mautic, Monday, YouTube Data.
+
+**To resume:** the plan file's "Recommended next install" and "Backlog" sections are the menu. Easiest next steps: bundle install (`npx -y @mvanhorn/printing-press install openrouter digitalocean`) or kick a fresh print (`/printing-press NeonDB`, 30–60 min). Stripe `sync --dry-run` and Linear `sync` are also pending if you want the local mirrors hydrated.
+
+## Session — 2026-05-10 (Atlas seed data fixes + session handoff)
+
+- **PR #1169 merged** (`fix/atlas-seed-data-cra248-cra249`): fixed CRA-248 + CRA-249
+  - **CRA-248**: Removed 3 of 4 duplicate KG triples (`PowerFlex 755 → exhibited_fault → F005`) in `mira-hub/scripts/seed-synthetic-users.ts` — was causing 3 duplicate work orders in demo
+  - **CRA-249**: Expanded PM_SCHEDULES from 3 → 8 entries: added PUMP-01 seal inspection (overdue -5d, critical), HVAC-02 filter (+30d, low), VFD-07 annual thermal (+60d, high), CONV-03 belt splice (+75d, medium), PUMP-01 annual overhaul (+85d, critical). Calendar now spans -5 to +85 days with 5 equipment covered.
+- **PR #1168 closed** (superseded by #1167 — FSM + multipart CVE fixes already merged)
+- **Eval Offline pre-existing fail**: `rich.errors.MarkupError` in pytest sessionfinish when `[/new]` bracket appears in output — pre-existing on main, not blocking merges. Track in known-issues.md.
+- **PROGRESS.md updated** to 2026-05-10 state
+- **Next (IMMEDIATE)**: Re-run `bun run scripts/seed-synthetic-users.ts` against staging NeonDB → reshoot Atlas CMMS demo screens (work orders list, PM calendar, asset list). Then CRA-250: wire MIRA chat interface into demo flow.
+
 ## Session — 2026-05-10 (PostHog PLG funnel + merge to main)
 
 - **PostHog server-side telemetry shipped**: `mira-web/src/lib/posthog-server.ts` + 5 funnel events wired in `server.ts` (register_submitted, checkout_started, checkout_completed, activation_completed, chat_sent)
 - **PR #1167** merged to main. Branch: `fix/mira-hub-lockfile`.
-- **Next**: fix Atlas seed data (CRA-248 — duplicate work orders) + CRA-249 (PM calendar empty) before demo reshoot
+- ~~**Next**: fix Atlas seed data (CRA-248 — duplicate work orders) + CRA-249 (PM calendar empty) before demo reshoot~~ ✅ Done in PR #1169
 
 ## Session — 2026-05-10 (demo video story scripts + pipeline extension)
 

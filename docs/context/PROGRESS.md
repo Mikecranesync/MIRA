@@ -11,12 +11,12 @@ This is the file that **updates every session**. Top of the file is current stat
 **90-day MVP** (locked window: **2026-04-19 → 2026-07-19**).
 Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently in-flight" section + run the 3-command coordination check before claiming new work.
 
-### Where we are right now (2026-05-05)
-- **Main branch tip:** `3637023 docs(wiki): eval-fixer run 2026-05-05`.
-- **Recent shipped:** Open CMMS button on all asset-scan pages (CRA-20, 2026-05-04). Magic-link JWT fix (CRA-22, CRA-21, 2026-05-04). nginx routes `/sample` + `/activated` to mira-web (2026-04-26).
-- **In-flight branches:** `feat/mvp-unit-4-exports`, `feat/mvp-unit-9a-landing` (per memory `project_mira_state`).
-- **Eval pass rate:** 77 % (last recorded — stale per memory, re-run after retrieval/prompt changes).
-- **Anthropic removal:** complete (PR #610 + #649); `mira-bots/shared/inference/router.py` cascades Groq → Cerebras → Gemini. Do not reintroduce.
+### Where we are right now (2026-05-10)
+- **Main branch tip:** `11c358b1 fix(atlas): remove duplicate KG triples + expand PM schedule seed (CRA-248, CRA-249)` — merged PR #1169.
+- **Recent shipped:** PostHog server-side PLG funnel + video pipeline extensions (PR #1167). Atlas seed data fixes — duplicate KG triples (CRA-248) + sparse PM calendar (CRA-249) (PR #1169). QR permanent binding (PR #1166). Agentic RAG components 2+3 (PR #1165).
+- **Demo reshoot unblocked:** CRA-248 (3 duplicate VFD-07 work orders) and CRA-249 (PM calendar with 3 entries) are fixed. Re-run seed script then reshoot Atlas screens.
+- **Eval pass rate:** 77 % (stale — `rich.errors.MarkupError` crashing pytest sessionfinish is pre-existing, not a real regression; track in known-issues.md).
+- **Anthropic removal:** complete (PR #610 + #649); cascade Groq → Cerebras → Gemini. Do not reintroduce.
 - **mira-sidecar:** still legacy; OEM migration to Open WebUI KB is the cutover gate (issue #195).
 
 ### What's done — broad strokes
@@ -29,9 +29,10 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - Knowledge graph schema: `kg_entities / kg_relationships / kg_triples_log` with RLS (#791) — runtime extraction not yet wired.
 
 ### What's next (top of backlog)
+- **Demo reshoot (IMMEDIATE):** Re-run `bun run scripts/seed-synthetic-users.ts` → reshoot Atlas CMMS screens (work orders, PM calendar, asset list). CRA-248 + CRA-249 are merged. Also CRA-250: MIRA chat interface not shown in demo yet.
 - **Auto-PM pipeline #1:** Extract PM schedules from manuals → structured JSON → auto-create PM work orders → push to downstream CMMS. Without this, the flywheel doesn't close.
 - **Triple extractor at runtime:** Wire conversation → KG triples to feed GraphRAG.
-- **Eval ratchet:** Pass rate 77 % → ≥ 90 %; refresh with current cascade.
+- **Eval ratchet:** Pass rate 77 % → ≥ 90 %; refresh with current cascade. Fix `rich.errors.MarkupError` sessionfinish crash blocking clean eval output.
 - **mira-sidecar sunset:** Migrate ChromaDB OEM corpus to Open WebUI KB; cut `mira-web` to `mira-pipeline` (PR #197).
 - **mira-pipeline test coverage:** 0 → ≥ 5 unit tests (currently grade F).
 - **Funnel digest weekly automation:** wire Cowork Sunday 02:00 to Discord `#weekly-review`.
@@ -95,5 +96,32 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - docs/specs/mira-cmms-spec.md
 - docs/specs/mira-core-spec.md
 **Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-10 20:44 UTC — `fix/atlas-seed-data-cra248-cra249`
+**Last commit:** f5f3e72c fix(atlas): remove duplicate KG triples + expand PM schedule seed (CRA-248, CRA-249)
+**Changed (vs. fork point):**
+- mira-hub/scripts/seed-synthetic-users.ts
+**Working tree:**
+- ?? marketing/comic-pipeline/reference/vfd_shot_01.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_01.v1.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_01.v2.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_01.v3.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_01.v4.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_02.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_02.v1.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_02.v2.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_02.v3.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_02.v4.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_03.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_03.v1.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_03.v2.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_03.v3.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_03.v4.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_04.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_04.v1.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_04.v2.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_04.v3.png
+- ?? marketing/comic-pipeline/reference/vfd_shot_04.v4.png
 **Next:** _set by next session_
 <!-- END AUTOLOG -->
