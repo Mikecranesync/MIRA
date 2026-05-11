@@ -90,9 +90,26 @@ This is the symbol set used in every rung below. The right-hand column maps to t
 | `[MOV s d]` | move source → dest | MOV instruction |
 | `[ADD a b r]` | r := a + b | ADD instruction |
 | `[MUL a b r]` | r := a × b | MUL instruction |
+| `[NEQ a b]` | not-equal compare contact | NEQ instruction |
+| `[GEQ a b]` | greater-or-equal compare contact | GEQ instruction |
+| `[LEQ a b]` | less-or-equal compare contact | LEQ instruction |
+| `[LES a b]` | less-than compare contact | LES instruction |
+| `[LIM lo val hi]` | limit test (lo ≤ val ≤ hi) | LIM instruction |
+| `[SUB a b r]` | r := a − b | SUB instruction |
+| `[DIV a b r]` | r := a ÷ b | DIV instruction |
+| `[MOD a b r]` | r := a mod b | MOD instruction |
+| `[COP src dst N]` | copy N elements src → dst | COP instruction |
+| `[CTU C PRE=N]` | up-counter | CTU function block |
+| `[RES C]` | reset timer/counter | RES instruction |
+| `[OSR A B]` | rising-edge one-shot (A→B for 1 scan) | OSR instruction |
+| `[OSF A B]` | falling-edge one-shot | OSF instruction |
+| `[JSR routine]` | jump to subroutine | JSR instruction |
+| `[JMP lbl]` / `[LBL lbl]` | skip / label | JMP / LBL |
+| `[AFI]` | always-false instruction (debug disable) | AFI |
 | `[TON: name PT=T#1000ms]` | on-delay timer | TON function block |
 | `[FB: blockname]` | function block placeholder | drag from FB toolbox |
-| `+--..--+` | parallel branch | branch open / close |
+| `+--..--+` | parallel branch (ASCII) | branch open / close |
+| `BST … NXB … BND` | explicit branch mnemonics (L5X-portable) | equivalent to `+--..--+`; emit alongside ASCII when targeting Studio 5000 export |
 
 **On function blocks** (MSG_MODBUS, TON, COP): rather than try to draw the boxes in ASCII, each FB rung is shown as `--[ enable ]--[FB: name]--` and the parameter bindings are listed as bullets immediately underneath. When you place the block in CCW, you'll see the parameter pins on the block face — bind each pin to the variable named in the bullets.
 
