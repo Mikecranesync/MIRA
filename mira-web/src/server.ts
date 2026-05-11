@@ -5,6 +5,7 @@
  *   GET  /                        → Homepage
  *   GET  /cmms                    → Serve CMMS landing / dashboard page
  *   GET  /limitations             → Honest "what we don't do yet" page (#677)
+ *   GET  /assess                  → Digital Transformation Scorecard (lead magnet)
  *   GET  /activated               → Post-payment single-purpose upload page
  *   GET  /blog                    → Blog index (articles + fault codes link)
  *   GET  /blog/fault-codes        → Fault code library index
@@ -436,6 +437,13 @@ app.get("/activated", async (c) => {
 
 app.get("/pricing", async (c) => {
   const file = Bun.file("./public/pricing.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
+app.get("/assess", async (c) => {
+  const file = Bun.file("./public/assess.html");
   return new Response(await file.text(), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
