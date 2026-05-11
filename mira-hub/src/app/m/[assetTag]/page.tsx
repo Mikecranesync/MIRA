@@ -24,16 +24,28 @@ type ChildAsset = {
   model: string | null;
 };
 
+type ExternalIds = {
+  cmmsId: string | null;
+  plcTag: string | null;
+  scadaPath: string | null;
+  manufacturerPartNumber: string | null;
+  unsTopicPath: string | null;
+  erpAssetId: string | null;
+  drawingReference: string | null;
+};
+
 type AssetView = {
   id: string;
   tag: string;
   name: string;
   manufacturer: string | null;
   model: string | null;
+  serialNumber: string | null;
   type: string | null;
   location: string | null;
   criticality: string;
   qrGeneratedAt: string | null;
+  externalIds?: ExternalIds;
   children?: ChildAsset[];
 };
 
@@ -240,6 +252,41 @@ export default function MobileAssetPage({
         ) : null}
       </div>
 
+      {/* External IDs (i3X interop) — collapsed by default, shown only when populated */}
+      {asset.externalIds && Object.values(asset.externalIds).some(Boolean) ? (
+        <details className="mt-4 rounded-lg border bg-white">
+          <summary className="cursor-pointer px-4 py-3 text-xs uppercase tracking-wide text-slate-500 select-none">
+            External IDs
+          </summary>
+          <dl className="px-4 pb-3 space-y-2 text-sm">
+            {asset.externalIds.cmmsId ? (
+              <ExtId label="CMMS ID" value={asset.externalIds.cmmsId} />
+            ) : null}
+            {asset.externalIds.plcTag ? (
+              <ExtId label="PLC Tag" value={asset.externalIds.plcTag} />
+            ) : null}
+            {asset.externalIds.scadaPath ? (
+              <ExtId label="SCADA Path" value={asset.externalIds.scadaPath} />
+            ) : null}
+            {asset.serialNumber ? (
+              <ExtId label="Serial Number" value={asset.serialNumber} />
+            ) : null}
+            {asset.externalIds.manufacturerPartNumber ? (
+              <ExtId label="Mfr Part #" value={asset.externalIds.manufacturerPartNumber} />
+            ) : null}
+            {asset.externalIds.unsTopicPath ? (
+              <ExtId label="UNS Topic" value={asset.externalIds.unsTopicPath} />
+            ) : null}
+            {asset.externalIds.erpAssetId ? (
+              <ExtId label="ERP Asset ID" value={asset.externalIds.erpAssetId} />
+            ) : null}
+            {asset.externalIds.drawingReference ? (
+              <ExtId label="Drawing Ref" value={asset.externalIds.drawingReference} />
+            ) : null}
+          </dl>
+        </details>
+      ) : null}
+
       {/* Three primary actions — large, thumb-friendly */}
       <div className="mt-5 grid gap-3">
         <Button
@@ -334,6 +381,15 @@ export default function MobileAssetPage({
           ← Back to dashboard
         </Link>
       </footer>
+    </div>
+  );
+}
+
+function ExtId({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-3">
+      <dt className="text-xs uppercase tracking-wide text-slate-500 sm:w-32 shrink-0">{label}</dt>
+      <dd className="font-mono text-slate-900 break-all">{value}</dd>
     </div>
   );
 }
