@@ -162,6 +162,78 @@
   .footer-actions { display: flex; gap: 12px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
   footer.brand-foot { text-align: center; padding: 24px 16px; color: var(--muted); font-size: 13px; }
   footer.brand-foot a { color: var(--navy-700); text-decoration: none; }
+  /* Lead-gate form */
+  .lead-gate-headline {
+    font-size: 22px;
+    color: var(--navy-900);
+    margin: 0 0 6px;
+    line-height: 1.25;
+  }
+  .lead-gate-sub {
+    color: var(--muted);
+    font-size: 15px;
+    margin: 0 0 20px;
+  }
+  .lead-preview {
+    background: var(--sky-100);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    margin: 0 0 20px;
+    font-size: 14px;
+    color: var(--navy-900);
+  }
+  .lead-preview strong { color: var(--orange-600); }
+  .form-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+  .form-row label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: .2px;
+  }
+  .form-row label .req { color: var(--bad); }
+  .form-row label .opt { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .form-row input {
+    appearance: none;
+    border: 2px solid var(--rule);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    font-size: 16px; /* prevent iOS zoom */
+    font-family: inherit;
+    color: var(--ink);
+    background: white;
+    transition: border-color .15s;
+  }
+  .form-row input:focus { outline: none; border-color: var(--orange-500); }
+  .form-row input.invalid { border-color: var(--bad); }
+  .form-err {
+    font-size: 12px;
+    color: var(--bad);
+    min-height: 16px;
+    margin-top: 2px;
+  }
+  .lead-submit-row {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .lead-fineprint {
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    margin: 8px 0 0;
+  }
+  .lead-fineprint a { color: var(--navy-700); }
+  .results-emailed {
+    background: #DCEFE3;
+    color: #16623F;
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    margin: 0 0 16px;
+    text-align: center;
+    font-weight: 600;
+  }
   /* Mobile tweaks */
   @media (max-width: 600px) {
     .hero h1 { font-size: 24px; }
@@ -219,8 +291,50 @@
     </div>
   </section>
 
+  <!-- Lead-gate screen (between Q20 and results) -->
+  <section id="lead-gate" style="display:none">
+    <div class="card">
+      <h2 class="lead-gate-headline">Your scorecard is ready.</h2>
+      <p class="lead-gate-sub">Tell us where to send it. We'll show your radar chart, your maturity tier, and your top 3 next steps on the next screen — and email a copy you can share with your team.</p>
+      <div class="lead-preview">
+        Preview: you scored <strong id="preview-overall">—</strong> / 5.0 across <strong id="preview-dims">6 dimensions</strong>. Industry average is around 2.5.
+      </div>
+      <form id="lead-form" novalidate>
+        <div class="form-row">
+          <label for="lead-name">Full name <span class="req">*</span></label>
+          <input id="lead-name" name="name" type="text" autocomplete="name" required />
+          <div class="form-err" id="err-name"></div>
+        </div>
+        <div class="form-row">
+          <label for="lead-email">Business email <span class="req">*</span> <span class="opt">(no gmail / yahoo / hotmail / outlook)</span></label>
+          <input id="lead-email" name="email" type="email" autocomplete="email" inputmode="email" required />
+          <div class="form-err" id="err-email"></div>
+        </div>
+        <div class="form-row">
+          <label for="lead-phone">Phone <span class="req">*</span></label>
+          <input id="lead-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required />
+          <div class="form-err" id="err-phone"></div>
+        </div>
+        <div class="form-row">
+          <label for="lead-company">Company <span class="req">*</span></label>
+          <input id="lead-company" name="company" type="text" autocomplete="organization" required />
+          <div class="form-err" id="err-company"></div>
+        </div>
+        <div class="form-row">
+          <label for="lead-title">Job title <span class="opt">(optional)</span></label>
+          <input id="lead-title" name="title" type="text" autocomplete="organization-title" />
+        </div>
+        <div class="lead-submit-row">
+          <button class="btn btn-primary" type="submit" id="lead-submit">Show my results →</button>
+          <p class="lead-fineprint">By submitting, you agree to FactoryLM contacting you about your results. We don't sell your info. See our <a href="/privacy.html">privacy policy</a>.</p>
+        </div>
+      </form>
+    </div>
+  </section>
+
   <!-- Results screen -->
   <section id="results" class="results" style="display:none">
+    <div class="results-emailed" id="results-emailed" style="display:none">✓ Your results have been emailed to you.</div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px">
         <span class="tier-badge" id="tier-badge">—</span>
@@ -242,9 +356,10 @@
     </div>
 
     <div class="cta">
-      <h3>Want a hand prioritizing this?</h3>
-      <p>I do 30-minute on-site assessments at facilities in Central Florida. I walk your floor, look at your maintenance setup, and give you a written plan. $500 flat, no upsell.</p>
-      <a class="btn" href="mailto:mike@factorylm.com?subject=On-site%20assessment%20—%20Digital%20Transformation%20Scorecard">Email Mike →</a>
+      <h3>Book a free 30-minute Digital Readiness Review</h3>
+      <p>Get on a call with Mike — 15 years on the maintenance floor, now building MIRA. We'll walk through your scorecard, talk through your real pain points, and identify 2-3 quick wins you can ship in 30 days. No pitch, no obligation.</p>
+      <a class="btn" id="book-cta" href="https://calendly.com/factorylm/readiness-review" target="_blank" rel="noopener">Book my free review →</a>
+      <p style="margin:14px 0 0;font-size:13px;color:#cdd5e0">Prefer email? <a style="color:#fff;text-decoration:underline" href="mailto:mike@factorylm.com?subject=Digital%20Readiness%20Review">mike@factorylm.com</a></p>
     </div>
 
     <div class="footer-actions">
@@ -503,8 +618,110 @@ $("start-btn").addEventListener("click", () => { idx = 0; renderQuestion(); });
 $("back-btn").addEventListener("click", () => { if (idx > 0) { idx--; persist(); renderQuestion(); } });
 $("next-btn").addEventListener("click", () => {
   if (answers[idx] === null) return;
-  if (idx === TOTAL - 1) { renderResults(); }
+  if (idx === TOTAL - 1) { showLeadGate(); }
   else { idx++; persist(); renderQuestion(); }
+});
+
+// --- Lead gate (between Q20 and results) ---
+const FREE_EMAIL_DOMAINS = new Set([
+  "gmail.com","yahoo.com","hotmail.com","outlook.com",
+  "aol.com","icloud.com","me.com","mac.com","msn.com",
+  "live.com","ymail.com","protonmail.com","proton.me",
+  "gmx.com","gmx.net","mail.com","yandex.com","zoho.com",
+  "googlemail.com","rocketmail.com","hey.com","fastmail.com",
+]);
+
+function showLeadGate() {
+  $("quiz").style.display = "none";
+  $("intro").style.display = "none";
+  $("results").style.display = "none";
+  $("lead-gate").style.display = "block";
+  $("progress-bar").style.width = "100%";
+  // Preview overall score
+  const scored = dimScores();
+  const overall = +(DIMS.reduce((acc, d) => acc + scored[d.key], 0) / DIMS.length).toFixed(1);
+  $("preview-overall").textContent = overall.toFixed(1);
+  $("preview-dims").textContent = "6 dimensions";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function validateEmail(email) {
+  const e = (email || "").trim().toLowerCase();
+  if (!e) return "Email is required.";
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!re.test(e)) return "Enter a valid email.";
+  const domain = e.split("@")[1];
+  if (FREE_EMAIL_DOMAINS.has(domain)) {
+    return "Please use your work email — personal addresses (gmail, yahoo, hotmail, outlook) aren't accepted.";
+  }
+  return null;
+}
+
+function validatePhone(phone) {
+  const digits = (phone || "").replace(/\D/g, "");
+  if (digits.length < 7) return "Enter a valid phone number.";
+  return null;
+}
+
+function setErr(field, msg) {
+  $("err-" + field).textContent = msg || "";
+  const input = $("lead-" + field);
+  if (input) input.classList.toggle("invalid", !!msg);
+}
+
+$("lead-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = $("lead-name").value.trim();
+  const email = $("lead-email").value.trim();
+  const phone = $("lead-phone").value.trim();
+  const company = $("lead-company").value.trim();
+  const title = $("lead-title").value.trim();
+
+  let ok = true;
+  if (!name) { setErr("name", "Full name is required."); ok = false; } else setErr("name", null);
+  const emailErr = validateEmail(email);
+  if (emailErr) { setErr("email", emailErr); ok = false; } else setErr("email", null);
+  const phoneErr = validatePhone(phone);
+  if (phoneErr) { setErr("phone", phoneErr); ok = false; } else setErr("phone", null);
+  if (!company) { setErr("company", "Company is required."); ok = false; } else setErr("company", null);
+
+  if (!ok) return;
+
+  const submitBtn = $("lead-submit");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Submitting…";
+
+  const scored = dimScores();
+  const overall = +(DIMS.reduce((acc, d) => acc + scored[d.key], 0) / DIMS.length).toFixed(1);
+  const tier = tierFor(overall);
+
+  const payload = {
+    name, email, phone, company, title,
+    overall_score: overall,
+    tier: tier.name,
+    dimension_scores: scored,
+    answers,
+    page_uri: location.href,
+    page_name: "Digital Transformation Scorecard",
+  };
+
+  let submitted = false;
+  try {
+    const resp = await fetch("/api/assess/lead", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    submitted = resp.ok;
+  } catch (_) { submitted = false; }
+
+  // Render results regardless — we already have the lead in the request (best-effort log on server)
+  try { sessionStorage.setItem("factorylm_assess_lead_submitted", submitted ? "1" : "0"); } catch (_) {}
+  $("lead-gate").style.display = "none";
+  renderResults();
+  if (submitted) {
+    $("results-emailed").style.display = "block";
+  }
 });
 
 // --- Results ---

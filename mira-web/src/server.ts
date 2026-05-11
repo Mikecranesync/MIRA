@@ -457,6 +457,96 @@ app.get("/buy", async (c) => {
   });
 });
 
+// Digital Transformation Scorecard — lead capture (gates results page)
+// Forwards to HubSpot Forms API. Free-email domains are rejected client-side AND server-side.
+const ASSESS_FREE_EMAIL_DOMAINS = new Set([
+  "gmail.com","yahoo.com","hotmail.com","outlook.com",
+  "aol.com","icloud.com","me.com","mac.com","msn.com",
+  "live.com","ymail.com","protonmail.com","proton.me",
+  "gmx.com","gmx.net","mail.com","yandex.com","zoho.com",
+  "googlemail.com","rocketmail.com","hey.com","fastmail.com",
+]);
+
+app.post("/api/assess/lead", async (c) => {
+  let body: any;
+  try { body = await c.req.json(); } catch { return c.json({ error: "invalid_json" }, 400); }
+
+  const name = String(body?.name || "").trim();
+  const email = String(body?.email || "").trim().toLowerCase();
+  const phone = String(body?.phone || "").trim();
+  const company = String(body?.company || "").trim();
+  const title = String(body?.title || "").trim();
+
+  if (!name || !email || !phone || !company) {
+    return c.json({ error: "missing_required_fields" }, 400);
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: "invalid_email" }, 400);
+  }
+  const domain = email.split("@")[1];
+  if (ASSESS_FREE_EMAIL_DOMAINS.has(domain)) {
+    return c.json({ error: "business_email_required" }, 400);
+  }
+
+  const overall = Number(body?.overall_score) || 0;
+  const tier = String(body?.tier || "");
+  const dims = body?.dimension_scores || {};
+
+  // First/last name split for HubSpot
+  const nameParts = name.split(/\s+/);
+  const firstname = nameParts[0] || name;
+  const lastname = nameParts.slice(1).join(" ") || "";
+
+  const portalId = process.env.HUBSPOT_PORTAL_ID;
+  const formId = process.env.HUBSPOT_ASSESS_FORM_ID;
+
+  let hubspotOk = false;
+  if (portalId && formId) {
+    try {
+      const hsResp = await fetch(
+        `https://api.hsforms.com/submissions/v3/integration/submit/${portalId}/${formId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fields: [
+              { name: "firstname", value: firstname },
+              { name: "lastname", value: lastname },
+              { name: "email", value: email },
+              { name: "phone", value: phone },
+              { name: "company", value: company },
+              { name: "jobtitle", value: title },
+              { name: "dt_scorecard_overall", value: String(overall) },
+              { name: "dt_scorecard_tier", value: tier },
+              { name: "dt_scorecard_data", value: String(dims.data ?? "") },
+              { name: "dt_scorecard_wo", value: String(dims.wo ?? "") },
+              { name: "dt_scorecard_pm", value: String(dims.pm ?? "") },
+              { name: "dt_scorecard_asset", value: String(dims.asset ?? "") },
+              { name: "dt_scorecard_knowledge", value: String(dims.knowledge ?? "") },
+              { name: "dt_scorecard_tech", value: String(dims.tech ?? "") },
+            ],
+            context: {
+              pageUri: String(body?.page_uri || "https://factorylm.com/assess"),
+              pageName: String(body?.page_name || "Digital Transformation Scorecard"),
+            },
+          }),
+        }
+      );
+      hubspotOk = hsResp.ok;
+      if (!hsResp.ok) {
+        console.error("[assess/lead] HubSpot rejected:", hsResp.status, await hsResp.text());
+      }
+    } catch (err) {
+      console.error("[assess/lead] HubSpot error:", err);
+    }
+  } else {
+    console.warn("[assess/lead] HUBSPOT_PORTAL_ID / HUBSPOT_ASSESS_FORM_ID not set — skipping HubSpot submit");
+  }
+
+  console.log(`[assess/lead] ${email} (${company}) overall=${overall} tier=${tier} hubspot=${hubspotOk}`);
+  return c.json({ ok: true, hubspot: hubspotOk });
+});
+
 // GEO foundation (#681) — llmstxt.org standard for AI-crawler content disclosure
 app.get("/llms.txt", async (c) => {
   const file = Bun.file("./public/llms.txt");
