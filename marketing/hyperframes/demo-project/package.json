@@ -1,0 +1,19 @@
+{
+  "name": "demo-project",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.5.7 preview",
+    "check": "npx --yes hyperframes@0.5.7 lint && npx --yes hyperframes@0.5.7 validate && npx --yes hyperframes@0.5.7 inspect",
+    "render": "npx --yes hyperframes@0.5.7 render",
+    "publish": "npx --yes hyperframes@0.5.7 publish"
+  },
+  "devDependencies": {
+    "hyperframes": "0.5.7",
+    "@hyperframes/core": "0.5.7",
+    "@hyperframes/player": "0.5.7"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
