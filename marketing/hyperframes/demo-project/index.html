@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+      }
+      .clip { position: absolute; inset: 0; }
+      .shot {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        opacity: 0;
+      }
+      .shot img {
+        width: 1920px;
+        height: 1080px;
+        object-fit: cover;
+        display: block;
+        will-change: transform;
+      }
+      .caption {
+        position: absolute;
+        left: 80px;
+        right: 80px;
+        bottom: 80px;
+        padding: 28px 40px;
+        background: rgba(0, 0, 0, 0.72);
+        color: #fff;
+        font-size: 44px;
+        line-height: 1.25;
+        font-weight: 500;
+        border-left: 6px solid #ffb454;
+        border-radius: 8px;
+        opacity: 0;
+        backdrop-filter: blur(6px);
+      }
+      .role-tag {
+        position: absolute;
+        left: 80px;
+        top: 80px;
+        padding: 12px 24px;
+        background: rgba(255, 180, 84, 0.92);
+        color: #1a1a1a;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        border-radius: 4px;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="80.5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- Shot 1: Landing — the hook (0.0 → 11.0) -->
+      <div class="clip shot" id="shot-1" data-start="0" data-duration="11" data-track-index="1">
+        <img src="assets/2026-05-10_homepage-hero_desktop.png" alt="Landing hero" />
+      </div>
+      <div class="clip role-tag" id="role-1" data-start="0" data-duration="11" data-track-index="2">Shot 1 — Landing</div>
+      <div class="clip caption" id="cap-1a" data-start="0" data-duration="5.5" data-track-index="3">
+        Your team knows the fault codes. But they can't find the answers fast enough.
+      </div>
+      <div class="clip caption" id="cap-1b" data-start="5.5" data-duration="5.5" data-track-index="3">
+        FactoryLM gives maintenance teams an AI that actually knows your machines.
+      </div>
+
+      <!-- Shot 2: Sign-up — magic link (11.0 → 19.5) -->
+      <div class="clip shot" id="shot-2" data-start="11" data-duration="8.5" data-track-index="1">
+        <img src="assets/2026-05-10_cmms-signin_desktop.png" alt="Sign-in" />
+      </div>
+      <div class="clip role-tag" id="role-2" data-start="11" data-duration="8.5" data-track-index="2">Shot 2 — Sign-up</div>
+      <div class="clip caption" id="cap-2a" data-start="11" data-duration="5" data-track-index="3">
+        Getting started takes one email address. No credit card. No demo call.
+      </div>
+      <div class="clip caption" id="cap-2b" data-start="16" data-duration="3.5" data-track-index="3">
+        We send you a link. You click it. You're in.
+      </div>
+
+      <!-- Shot 3: Knowledge base (19.5 → 29.5) -->
+      <div class="clip shot" id="shot-3" data-start="19.5" data-duration="10" data-track-index="1">
+        <img src="assets/2026-04-27_knowledge-indexed-manuals_desktop.png" alt="Indexed manuals" />
+      </div>
+      <div class="clip role-tag" id="role-3" data-start="19.5" data-duration="10" data-track-index="2">Shot 3 — Knowledge base</div>
+      <div class="clip caption" id="cap-3a" data-start="19.5" data-duration="5.5" data-track-index="3">
+        Upload your OEM manuals. VFD datasheets, PLC guides, inspection procedures.
+      </div>
+      <div class="clip caption" id="cap-3b" data-start="25" data-duration="4.5" data-track-index="3">
+        MIRA indexes everything. Searchable in under two minutes.
+      </div>
+
+      <!-- Shot 4: AI diagnostic (29.5 → 39.5) -->
+      <div class="clip shot" id="shot-4" data-start="29.5" data-duration="10" data-track-index="1">
+        <img src="assets/2026-04-27_workorder-detail-from-manual_desktop.png" alt="Cited diagnosis" />
+      </div>
+      <div class="clip role-tag" id="role-4" data-start="29.5" data-duration="10" data-track-index="2">Shot 4 — AI diagnostic</div>
+      <div class="clip caption" id="cap-4a" data-start="29.5" data-duration="4.5" data-track-index="3">
+        Ask MIRA about a fault code. It finds the answer in your manual.
+      </div>
+      <div class="clip caption" id="cap-4b" data-start="34" data-duration="5.5" data-track-index="3">
+        Not a guess. A citation — chapter, section, page. You can verify it yourself.
+      </div>
+
+      <!-- Shot 5: Work orders (39.5 → 49.0) -->
+      <div class="clip shot" id="shot-5" data-start="39.5" data-duration="9.5" data-track-index="1">
+        <img src="assets/2026-04-27_workorders-auto-generated_desktop.png" alt="Auto work orders" />
+      </div>
+      <div class="clip role-tag" id="role-5" data-start="39.5" data-duration="9.5" data-track-index="2">Shot 5 — Work orders</div>
+      <div class="clip caption" id="cap-5a" data-start="39.5" data-duration="5.5" data-track-index="3">
+        The diagnosis becomes a work order automatically. Assigned, prioritized, tracked.
+      </div>
+      <div class="clip caption" id="cap-5b" data-start="45" data-duration="4" data-track-index="3">
+        No re-typing. No copy-paste between systems.
+      </div>
+
+      <!-- Shot 6: PM calendar (49.0 → 60.0) -->
+      <div class="clip shot" id="shot-6" data-start="49" data-duration="11" data-track-index="1">
+        <img src="assets/2026-04-27_schedule-calendar-with-pms_desktop.png" alt="PM calendar" />
+      </div>
+      <div class="clip role-tag" id="role-6" data-start="49" data-duration="11" data-track-index="2">Shot 6 — PM calendar</div>
+      <div class="clip caption" id="cap-6a" data-start="49" data-duration="6.5" data-track-index="3">
+        MIRA reads your OEM manuals and extracts PM intervals — lubrication, belt checks, filter changes.
+      </div>
+      <div class="clip caption" id="cap-6b" data-start="55.5" data-duration="4.5" data-track-index="3">
+        The calendar builds itself. Everyone works from the same board.
+      </div>
+
+      <!-- Shot 7: QR floor access (60.0 → 70.5) -->
+      <div class="clip shot" id="shot-7" data-start="60" data-duration="10.5" data-track-index="1">
+        <img src="assets/2026-05-10_qr-asset-sheet_desktop.png" alt="QR asset sheet" />
+      </div>
+      <div class="clip role-tag" id="role-7" data-start="60" data-duration="10.5" data-track-index="2">Shot 7 — QR floor access</div>
+      <div class="clip caption" id="cap-7a" data-start="60" data-duration="4.5" data-track-index="3">
+        On the floor, it's a QR code. Stick it on the machine.
+      </div>
+      <div class="clip caption" id="cap-7b" data-start="64.5" data-duration="6" data-track-index="3">
+        Any tech scans it with their phone. No app install. MIRA knows the asset.
+      </div>
+
+      <!-- Shot 8: Pricing CTA (70.5 → 80.5) -->
+      <div class="clip shot" id="shot-8" data-start="70.5" data-duration="10" data-track-index="1">
+        <img src="assets/2026-05-10_pricing-page_desktop.png" alt="Pricing" />
+      </div>
+      <div class="clip role-tag" id="role-8" data-start="70.5" data-duration="10" data-track-index="2">Shot 8 — Pricing CTA</div>
+      <div class="clip caption" id="cap-8a" data-start="70.5" data-duration="6" data-track-index="3">
+        MIRA Troubleshooter starts at ninety-seven dollars a month.
+      </div>
+      <div class="clip caption" id="cap-8b" data-start="76.5" data-duration="4" data-track-index="3">
+        Start free. Your first manual is on us.
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Ken-burns focal data per beat (from story-scripts.yaml).
+      // Each shot has two beats; we drive transform-origin + scale on the <img>.
+      const shotBeats = [
+        { id: 1, img: "#shot-1 img", start: 0,    beats: [
+          { dur: 5.5, cx: 0.50, cy: 0.35, zoom: 1.20 },
+          { dur: 5.5, cx: 0.50, cy: 0.55, zoom: 1.40 },
+        ]},
+        { id: 2, img: "#shot-2 img", start: 11,   beats: [
+          { dur: 5.0, cx: 0.50, cy: 0.40, zoom: 1.30 },
+          { dur: 3.5, cx: 0.50, cy: 0.60, zoom: 1.80 },
+        ]},
+        { id: 3, img: "#shot-3 img", start: 19.5, beats: [
+          { dur: 5.5, cx: 0.30, cy: 0.50, zoom: 1.50 },
+          { dur: 4.5, cx: 0.70, cy: 0.50, zoom: 1.80 },
+        ]},
+        { id: 4, img: "#shot-4 img", start: 29.5, beats: [
+          { dur: 4.5, cx: 0.50, cy: 0.30, zoom: 1.40 },
+          { dur: 5.5, cx: 0.50, cy: 0.65, zoom: 2.00 },
+        ]},
+        { id: 5, img: "#shot-5 img", start: 39.5, beats: [
+          { dur: 5.5, cx: 0.50, cy: 0.40, zoom: 1.40 },
+          { dur: 4.0, cx: 0.40, cy: 0.60, zoom: 1.90 },
+        ]},
+        { id: 6, img: "#shot-6 img", start: 49,   beats: [
+          { dur: 6.5, cx: 0.50, cy: 0.35, zoom: 1.30 },
+          { dur: 4.5, cx: 0.50, cy: 0.60, zoom: 1.50 },
+        ]},
+        { id: 7, img: "#shot-7 img", start: 60,   beats: [
+          { dur: 4.5, cx: 0.50, cy: 0.40, zoom: 1.40 },
+          { dur: 6.0, cx: 0.50, cy: 0.50, zoom: 1.80 },
+        ]},
+        { id: 8, img: "#shot-8 img", start: 70.5, beats: [
+          { dur: 6.0, cx: 0.50, cy: 0.40, zoom: 1.30 },
+          { dur: 4.0, cx: 0.50, cy: 0.55, zoom: 1.60 },
+        ]},
+      ];
+
+      // Shot fade-in + ken-burns timeline
+      shotBeats.forEach((s) => {
+        // fade the shot wrapper in over 0.5s at shot start
+        tl.to(`#shot-${s.id}`, { opacity: 1, duration: 0.5, ease: "power1.out" }, s.start);
+        // hold; then fade out at shot end (next shot covers it, but explicit for safety)
+        const shotEnd = s.start + s.beats.reduce((a, b) => a + b.dur, 0);
+        tl.to(`#shot-${s.id}`, { opacity: 1, duration: 0 }, shotEnd - 0.01);
+
+        // role tag fade in/out
+        tl.fromTo(`#role-${s.id}`,
+          { opacity: 0, x: -20 },
+          { opacity: 1, x: 0, duration: 0.6, ease: "power2.out" }, s.start + 0.2);
+        tl.to(`#role-${s.id}`, { opacity: 0, duration: 0.4 }, shotEnd - 0.4);
+
+        // ken-burns: animate transform-origin + scale across the two beats
+        let t = s.start;
+        s.beats.forEach((b, i) => {
+          const originPct = `${b.cx * 100}% ${b.cy * 100}%`;
+          // snap origin at beat start (no transition between origins; smooth via scale)
+          tl.set(s.img, { transformOrigin: originPct }, t);
+          // animate scale across the beat duration
+          tl.fromTo(s.img,
+            { scale: i === 0 ? 1.0 : b.zoom * 0.92 },
+            { scale: b.zoom, duration: b.dur, ease: "none" },
+            t);
+          t += b.dur;
+        });
+      });
+
+      // Caption fade in/out — each caption fades in 0.3s, holds, fades out 0.3s
+      document.querySelectorAll(".caption").forEach((cap) => {
+        const start = parseFloat(cap.dataset.start);
+        const dur = parseFloat(cap.dataset.duration);
+        tl.fromTo(cap,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, start);
+        tl.to(cap, { opacity: 0, duration: 0.3, ease: "power2.in" }, start + dur - 0.3);
+      });
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
