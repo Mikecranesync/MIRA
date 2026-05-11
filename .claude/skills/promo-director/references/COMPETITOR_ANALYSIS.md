@@ -1,8 +1,22 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-11
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-11
+
+### Most actionable change for MIRA playbook
+
+Anthropic's "Outcomes" framing from Code with Claude 2026: agents define their own success criteria and iterate autonomously until they meet them. Directly portable to industrial diagnostics — "Tell MIRA which fault signature to confirm. It won't stop until it has an answer." Anthropic also shifted from no-standalone-video to full developer-conference keynote on YouTube; adds a new channel pattern to watch.
+
+### New findings
+
+**B2B SaaS / dev-tools**
+- **Anthropic** — "Everything new from Code with Claude 2026" (May 6, 2026): https://www.youtube.com/watch?v=0ZyqYPBQ7nc — first developer conference keynote posted to YouTube; "Outcomes" hook (define success, agent iterates until done); SpaceX/Colossus compute deal announced as supply-removal narrative; API volume up 17x YoY [transcript not verified]
+- **Stripe** — Sessions 2026 opening keynote (April 29, 2026; stub was in cache without details): https://www.youtube.com/watch?v=Nadf3MdJS-8 — 288 launches in one event; "Agentic Commerce Suite" grants AI agents autonomous wallet + transaction capability inside Google AI Mode and Meta; dimensional pricing + streaming payments introduced as new revenue primitives for AI-native businesses [transcript not verified]
 
 ---
 
@@ -254,9 +268,15 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 (April 29, 2026 — Moscone West, San Francisco)**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8
+- Full keynote: https://www.youtube.com/watch?v=e13-s0p1tfE
+- 12-min summary: https://www.youtube.com/watch?v=8F4XyWYqZi8
+- Scale: 288 products and features announced; 9,000+ attendees; framing: "building economic infrastructure for AI"
+- Headline launches: Agentic Commerce Suite (Meta + Google partnerships; AI agents granted Link wallets, can transact inside Google AI Mode and Gemini app); Checkout Studio; Radar upgrades (token abuse + account fraud); dimensional pricing + streaming payments for AI-native business models; Terminal in 15 new markets; Stripe Reader T600
+- VO register: founder (Collison brothers) + product executive
+- CTA: soft — "available now" callouts per product; no hard URL
+- Pattern note: "Agentic Commerce" positions Stripe as infrastructure for AI agents buying and selling autonomously on behalf of humans. Dimensional pricing is a B2B SaaS revenue primitive worth tracking for MIRA's tier design. Scale-of-launch (288 at once) is itself a brand signal — communicates velocity over individual feature value. [transcript not verified]
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -302,7 +322,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**Code with Claude 2026 developer conference (May 6, 2026)**
+- YouTube: https://www.youtube.com/watch?v=0ZyqYPBQ7nc [transcript not verified — description-derived]
+- Title: "Everything new from Code with Claude 2026"
+- Format: first annual developer conference; San Francisco (May 6), London (May 19), Tokyo (June 10); all sessions posted to Anthropic YouTube channel
+- Key announcements: Multiagent Orchestration (fleet coordination for complex tasks); Outcomes (agents define + verify their own success criteria, iterate until done); Dreaming (cross-session recall, build on prior work); Claude Code rate limits doubled via SpaceX/Colossus deal (220K+ NVIDIA GPUs)
+- VO register: executive + engineer-to-engineer
+- Key claim: "API volume up 17x year-on-year"
+- CTA: session recordings free on YouTube; soft brand
+- Pattern note: Anthropic shifted from analyst/conference appearances to owned developer conference with full YouTube distribution. "Outcomes" framing — tell the agent what done looks like, it iterates autonomously — is the sharpest new hook pattern of this scan. Directly portable to industrial diagnostics.
 
 ---
 
@@ -398,3 +427,4 @@ No video content surfaced for 2025–2026.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Anthropic**: shifted from zero owned video (analyst/conference appearances only) to full developer conference with YouTube-distributed keynote (May 2026). Introduced "Outcomes" as a product-naming and hook pattern for autonomous agents.
