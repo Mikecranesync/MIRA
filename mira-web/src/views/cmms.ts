@@ -273,6 +273,10 @@ function hero(plan?: string): string {
       ✓ Check your inbox — your magic link is on its way (it expires in 10 minutes).
     </div>
 
+    <p class="fl-cmms-buy-cta" style="margin-top:1.5rem;font-size:0.9rem;color:var(--text-dim,#888);">
+      Ready to buy? ${btnGhost("View plans →", { href: "/buy", cta: "cmms-hero-buy" })}
+    </p>
+
     <p class="fl-reassurance">No credit card. No call. No demo.</p>
   </div>
 </section>`;
