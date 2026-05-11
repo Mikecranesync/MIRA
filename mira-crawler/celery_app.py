@@ -49,15 +49,18 @@ try:
     import mira_crawler.tasks.freshness  # noqa: F401
     import mira_crawler.tasks.gdrive  # noqa: F401
     import mira_crawler.tasks.ingest  # noqa: F401
+    import mira_crawler.tasks.intent_digest  # noqa: F401
     import mira_crawler.tasks.linkedin  # noqa: F401
     import mira_crawler.tasks.patents  # noqa: F401
     import mira_crawler.tasks.playwright_crawler  # noqa: F401
     import mira_crawler.tasks.reddit  # noqa: F401
+    import mira_crawler.tasks.reddit_intent  # noqa: F401
     import mira_crawler.tasks.report  # noqa: F401
     import mira_crawler.tasks.rss  # noqa: F401
     import mira_crawler.tasks.sitemaps  # noqa: F401
     import mira_crawler.tasks.social  # noqa: F401
     import mira_crawler.tasks.youtube  # noqa: F401
+    import mira_crawler.tasks.youtube_intent  # noqa: F401
 except ImportError:
     import tasks.blog  # noqa: F401
     import tasks.content  # noqa: F401
@@ -66,15 +69,18 @@ except ImportError:
     import tasks.freshness  # noqa: F401
     import tasks.gdrive  # noqa: F401
     import tasks.ingest  # noqa: F401
+    import tasks.intent_digest  # noqa: F401
     import tasks.linkedin  # noqa: F401
     import tasks.patents  # noqa: F401
     import tasks.playwright_crawler  # noqa: F401
     import tasks.reddit  # noqa: F401
+    import tasks.reddit_intent  # noqa: F401
     import tasks.report  # noqa: F401
     import tasks.rss  # noqa: F401
     import tasks.sitemaps  # noqa: F401
     import tasks.social  # noqa: F401
     import tasks.youtube  # noqa: F401
+    import tasks.youtube_intent  # noqa: F401
 
 if __name__ == "__main__":
     app.start()

@@ -5,6 +5,8 @@ All settings overridable via environment variables where noted.
 
 from __future__ import annotations
 
+from celery.schedules import crontab
+
 # ---------------------------------------------------------------------------
 # Serialization
 # ---------------------------------------------------------------------------
@@ -51,6 +53,9 @@ task_routes = {
     "mira_crawler.tasks.patents.*": {"queue": "discovery"},
     "mira_crawler.tasks.playwright_crawler.*": {"queue": "discovery"},
     "mira_crawler.tasks.youtube.*": {"queue": "ingest"},
+    "mira_crawler.tasks.reddit_intent.*": {"queue": "discovery"},
+    "mira_crawler.tasks.youtube_intent.*": {"queue": "discovery"},
+    "mira_crawler.tasks.intent_digest.*": {"queue": "default"},
     "mira_crawler.tasks.gdrive.*": {"queue": "ingest"},
     "mira_crawler.tasks.freshness.*": {"queue": "freshness"},
     # --- LinkedIn draft generation ---
@@ -79,10 +84,39 @@ task_annotations = {
     "tasks.gdrive.sync_google_drive": {"rate_limit": "10/m"},
     "tasks.freshness.audit_stale_content": {"rate_limit": "60/m"},
     "tasks.playwright_crawler.crawl_js_site": {"rate_limit": "5/m"},
+    # Intent monitor — defensive rate limits; beat owns cadence.
+    "tasks.reddit_intent.scan_reddit_intent": {"rate_limit": "1/h"},
+    "tasks.youtube_intent.scan_youtube_intent": {"rate_limit": "1/h"},
+    "tasks.intent_digest.send_daily_digest": {"rate_limit": "1/h"},
 }
 
-# Beat schedule removed — Trigger.dev Cloud owns all scheduling. See mira-crawler/trigger/
-# LinkedIn draft (linkedin.draft_post) also scheduled via Trigger.dev: Mon/Wed/Fri 12:00 UTC
+# ---------------------------------------------------------------------------
+# Beat schedule
+# ---------------------------------------------------------------------------
+# Most ingest tasks are scheduled by Trigger.dev Cloud (see mira-crawler/trigger/).
+# The intent monitor trio is re-enabled here in Celery Beat to keep its operational
+# loop self-contained — Trigger.dev parity can be mirrored later if needed. Run
+# `celery -A mira_crawler.celery_app beat` alongside the worker to activate.
+#
+# Hours are UTC. 06:00 ET ≈ 10:00 UTC (EDT) / 11:00 UTC (EST). Single cron entry
+# at 10:00 UTC accepts ±1h DST drift, per spec.
+
+beat_schedule = {
+    "reddit-intent-scan": {
+        "task": "tasks.reddit_intent.scan_reddit_intent",
+        "schedule": crontab(minute=0, hour="*/6"),
+    },
+    "youtube-intent-scan": {
+        "task": "tasks.youtube_intent.scan_youtube_intent",
+        "schedule": crontab(minute=0, hour=4),  # 00:00 ET (EDT)
+    },
+    "intent-daily-digest": {
+        "task": "tasks.intent_digest.send_daily_digest",
+        "schedule": crontab(minute=0, hour=10),  # 06:00 ET (EDT)
+    },
+}
+
+# LinkedIn draft (linkedin.draft_post) still scheduled via Trigger.dev: Mon/Wed/Fri 12:00 UTC
 
 # ---------------------------------------------------------------------------
 # Result expiry
