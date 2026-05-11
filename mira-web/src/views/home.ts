@@ -79,6 +79,21 @@ const ORG_AND_SITE_LD = {
   ],
 };
 
+function assessBanner(): string {
+  return `<aside class="fl-assess-banner" aria-label="Digital Transformation Scorecard promo">
+  <div class="fl-assess-inner">
+    <div class="fl-assess-copy">
+      <p class="fl-assess-eyebrow">Free · 10 minutes · No signup to take it</p>
+      <h2 class="fl-assess-h">How ready is your facility for digital transformation?</h2>
+      <p class="fl-assess-sub">20 questions across 6 dimensions. Get a benchmarked radar chart, a maturity tier, and your top 3 next steps — based on the CESMII Smart Manufacturing framework.</p>
+    </div>
+    <div class="fl-assess-cta">
+      <a class="fl-assess-btn" href="/assess" data-cta="assess-banner">Take the free assessment →</a>
+    </div>
+  </div>
+</aside>`;
+}
+
 function hero(): string {
   return `<section class="fl-hero" aria-labelledby="fl-hero-h1">
   <div class="fl-hero-inner">
@@ -242,6 +257,63 @@ function pricingTeaser(): string {
 }
 
 const PAGE_STYLES = `
+.fl-assess-banner {
+  max-width: 1100px;
+  margin: 24px auto;
+  padding: 22px 28px;
+  background: linear-gradient(135deg, #FFF6EE 0%, #FFEBD9 100%);
+  border: 1px solid #F0C9A5;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(201,83,28,0.08);
+}
+.fl-assess-inner {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.fl-assess-copy { flex: 1 1 360px; min-width: 0; }
+.fl-assess-eyebrow {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #C9531C;
+}
+.fl-assess-h {
+  margin: 0 0 6px;
+  font-size: 22px;
+  line-height: 1.25;
+  color: #1B365D;
+}
+.fl-assess-sub {
+  margin: 0;
+  color: #5C6770;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.fl-assess-cta { flex: 0 0 auto; }
+.fl-assess-btn {
+  display: inline-block;
+  background: #E67139;
+  color: #fff;
+  padding: 14px 22px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 15px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .15s, transform .05s;
+}
+.fl-assess-btn:hover { background: #C9531C; }
+.fl-assess-btn:active { transform: scale(.98); }
+@media (max-width: 600px) {
+  .fl-assess-banner { padding: 18px 18px; margin: 16px 12px; }
+  .fl-assess-h { font-size: 19px; }
+  .fl-assess-btn { width: 100%; text-align: center; }
+}
+
 /* Page-specific styles for the home view. Dark theme tokens are
    inherited from /_dark-theme.css (linked from <head>) so this block
    only carries layout and typography rules unique to the home page. */
@@ -451,6 +523,7 @@ export function renderHome(reqUrl?: string): string {
   ${navbar({ currentPath: "/" })}
   <main>
     ${hero()}
+    ${assessBanner()}
     ${trustBand("68,000+ chunks of OEM documentation indexed", OEMS)}
     ${projectCardRow()}
     ${compareSection()}
