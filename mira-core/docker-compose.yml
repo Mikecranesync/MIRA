@@ -19,7 +19,7 @@ services:
       # RAG embedding: nomic-embed-text via Ollama (matches mira-ingest NeonDB embeddings)
       # Default all-MiniLM-L6-v2 truncates at 256 tokens; nomic handles 8192
       - RAG_EMBEDDING_ENGINE=ollama
-      - RAG_EMBEDDING_MODEL=nomic-embed-text:latest
+      - RAG_EMBEDDING_MODEL=nomic-embed-text:v1.5
       - RAG_CHUNK_SIZE=1000
       - RAG_CHUNK_OVERLAP=100
       # Pipeline connection — MIRA Diagnostic model via mira-pipeline
