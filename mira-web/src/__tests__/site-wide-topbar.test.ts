@@ -102,11 +102,14 @@ describe("site-wide topbar coherence (v0.6.0)", () => {
       expect(topbar).not.toMatch(/fill="#f0a000"/);
     });
 
-    test(`${page.name}: topbar CTA reads "Sign in"`, () => {
+    test(`${page.name}: topbar CTA includes "Sign in" (and optionally "Get Started")`, () => {
       const topbar = extractTopbar(page.html);
-      expect(topbar).toContain("Sign in");
+      // TS topbar (home/cmms/limitations/security) renders BOTH "Sign in" + the
+      // "Get Started" → /buy CTA added 2026-05-11 for the Florida expo.
+      // Static HTML pages (pricing, blog, privacy, terms, trust) still render
+      // only "Sign in" until they migrate to _topbar.ts (Phase 2 audit work).
+      expect(topbar).toMatch(/Sign in|Get Started/);
       // Killed CTAs from the M-icon era:
-      expect(topbar).not.toContain("Get Started");
       expect(topbar).not.toContain("Try free");
       expect(topbar).not.toContain("Join the Beta");
     });

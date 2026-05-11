@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buy FactoryLM — Subscribe Now</title>
+  <meta name="description" content="Subscribe to FactoryLM. Flat site license, unlimited queries, 14-day money-back guarantee.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://factorylm.com/buy">
+  <meta property="og:title" content="Buy FactoryLM — Subscribe Now">
+  <meta property="og:description" content="Flat site license. Unlimited queries. 14-day money-back guarantee.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://factorylm.com/buy">
+  <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0e11;
+      --surface: #14161d;
+      --surface-hi: #1c1e27;
+      --border: rgba(255,255,255,0.08);
+      --border-hi: rgba(255,255,255,0.18);
+      --text: #f1f3f8;
+      --text-dim: rgba(255,255,255,0.62);
+      --text-faint: rgba(255,255,255,0.35);
+      --amber: #f0a000;
+      --amber-hot: #ffb320;
+      --teal: #00d4aa;
+      --font: 'Inter', system-ui, sans-serif;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 16px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100dvh;
+    }
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(240,160,0,0.10) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    main { position: relative; z-index: 1; }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 28px 20px 80px; }
+
+    /* Mini-nav (mobile-first, just brand + sign in) */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(13,14,17,0.85);
+      backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .topbar a.brand {
+      font-weight: 700; font-size: 16px; color: var(--text); text-decoration: none;
+      letter-spacing: -0.01em;
+    }
+    .topbar a.signin {
+      font-size: 13px; color: var(--text-dim); text-decoration: none;
+      padding: 6px 10px; border-radius: 6px;
+    }
+    .topbar a.signin:hover { color: var(--text); background: var(--surface); }
+
+    /* Hero */
+    .hero { text-align: center; padding: 36px 0 28px; }
+    .eyebrow {
+      display: inline-block;
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--amber); font-weight: 700;
+      background: rgba(240,160,0,0.10);
+      padding: 5px 10px; border-radius: 999px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: clamp(28px, 7vw, 36px);
+      font-weight: 700; letter-spacing: -0.02em; line-height: 1.15;
+      margin-bottom: 12px;
+    }
+    .sub {
+      font-size: 15px; color: var(--text-dim);
+      max-width: 420px; margin: 0 auto;
+    }
+    .guarantee {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 16px; padding: 6px 12px;
+      background: rgba(0,212,170,0.10);
+      border: 1px solid rgba(0,212,170,0.25);
+      border-radius: 999px;
+      font-size: 13px; color: var(--teal); font-weight: 500;
+    }
+
+    /* Cards */
+    .cards { display: flex; flex-direction: column; gap: 16px; margin-top: 28px; }
+    .card {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 22px;
+      position: relative;
+    }
+    .card.featured {
+      border-color: var(--amber);
+      box-shadow: 0 0 40px rgba(240,160,0,0.15);
+    }
+    .card.featured::before {
+      content: 'MOST POPULAR';
+      position: absolute; top: -10px; left: 20px;
+      background: var(--amber); color: #0a0a08;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+      padding: 3px 10px; border-radius: 4px;
+    }
+    .tier {
+      font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--amber); font-weight: 700; margin-bottom: 6px;
+    }
+    .price {
+      font-size: 40px; font-weight: 800; letter-spacing: -0.03em;
+      line-height: 1; margin-bottom: 4px;
+    }
+    .price .unit { font-size: 15px; font-weight: 500; color: var(--text-dim); }
+    .desc { font-size: 14px; color: var(--text-dim); margin-bottom: 18px; }
+    .feats { list-style: none; margin-bottom: 22px; }
+    .feats li {
+      font-size: 14px; color: var(--text);
+      padding: 6px 0;
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .feats li::before {
+      content: '';
+      width: 16px; height: 16px; flex-shrink: 0; margin-top: 3px;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 8l3.5 3.5L13 5' stroke='%2300d4aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center;
+    }
+    .cta {
+      display: block;
+      width: 100%;
+      padding: 16px;
+      border-radius: 10px;
+      font-size: 16px; font-weight: 700;
+      text-align: center; text-decoration: none;
+      transition: transform 80ms, opacity 120ms;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .cta:active { transform: scale(0.98); }
+    .cta-primary {
+      background: linear-gradient(180deg, var(--amber-hot) 0%, var(--amber) 100%);
+      color: #0a0a08;
+      box-shadow: 0 4px 16px rgba(240,160,0,0.25);
+    }
+    .cta-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1.5px solid var(--border-hi);
+    }
+    .cta-secondary:active { background: var(--surface-hi); }
+
+    /* Trust strip */
+    .trust {
+      margin-top: 32px;
+      padding: 18px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      text-align: center;
+    }
+    .trust-row {
+      display: flex; justify-content: center; gap: 22px; flex-wrap: wrap;
+      font-size: 12px; color: var(--text-dim);
+    }
+    .trust-row span { display: inline-flex; align-items: center; gap: 6px; }
+    .trust-row span::before { content: '✓'; color: var(--teal); font-weight: 700; }
+
+    /* Footer */
+    footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 12px; color: var(--text-faint);
+    }
+    footer a { color: var(--text-faint); text-decoration: none; margin: 0 6px; }
+    footer a:hover { color: var(--text-dim); }
+
+    /* Mobile tweaks */
+    @media (max-width: 380px) {
+      .card { padding: 20px 18px; }
+      .price { font-size: 34px; }
+    }
+  </style>
+  <script src="/posthog-init.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a href="/" class="brand">FactoryLM</a>
+    <a href="/cmms" class="signin">Sign in</a>
+  </header>
+
+  <main>
+    <div class="wrap">
+
+      <section class="hero">
+        <span class="eyebrow">Subscribe now</span>
+        <h1>Pick your plan.<br>Get started in 60 seconds.</h1>
+        <p class="sub">Flat site license — your whole team, one price. Cancel anytime.</p>
+        <div class="guarantee">14-day money-back guarantee</div>
+      </section>
+
+      <section class="cards">
+
+        <!-- Troubleshooter — featured -->
+        <article class="card featured">
+          <div class="tier">MIRA Troubleshooter</div>
+          <div class="price">$97 <span class="unit">/mo</span></div>
+          <div class="desc">Unlimited queries. Whole team. AI-powered fault diagnosis.</div>
+          <ul class="feats">
+            <li>AI fault diagnosis with cited OEM answers</li>
+            <li>Upload your equipment manuals</li>
+            <li>Maintenance history import (CSV)</li>
+            <li>Telegram, Slack, and web chat</li>
+            <li>Photo-to-diagnosis</li>
+          </ul>
+          <a href="/api/checkout/session?plan=troubleshooter&amp;src=buy"
+             class="cta cta-primary"
+             data-cta="buy-troubleshooter">
+            Subscribe — $97/mo →
+          </a>
+        </article>
+
+        <!-- Integrated -->
+        <article class="card">
+          <div class="tier">MIRA Integrated</div>
+          <div class="price">$297 <span class="unit">/mo</span></div>
+          <div class="desc">Everything above + CMMS write-back to MaintainX, Limble, UpKeep.</div>
+          <ul class="feats">
+            <li>Everything in Troubleshooter</li>
+            <li>Bidirectional CMMS sync</li>
+            <li>All 3 adapters bundled</li>
+            <li>Priority support</li>
+          </ul>
+          <a href="/api/checkout/session?plan=integrated&amp;src=buy"
+             class="cta cta-secondary"
+             data-cta="buy-integrated">
+            Subscribe — $297/mo →
+          </a>
+        </article>
+
+        <!-- Enterprise -->
+        <article class="card">
+          <div class="tier">Enterprise</div>
+          <div class="price">Custom</div>
+          <div class="desc">Multi-site, SSO, on-prem option, white-glove onboarding.</div>
+          <ul class="feats">
+            <li>Multiple plants under one contract</li>
+            <li>SSO / SAML</li>
+            <li>Dedicated onboarding</li>
+            <li>SLA + named support</li>
+          </ul>
+          <a href="mailto:mike@factorylm.com?subject=FactoryLM%20Enterprise%20inquiry"
+             class="cta cta-secondary"
+             data-cta="buy-enterprise">
+            Talk to Mike →
+          </a>
+        </article>
+
+      </section>
+
+      <div class="trust">
+        <div class="trust-row">
+          <span>No setup fee</span>
+          <span>Cancel anytime</span>
+          <span>Stripe-secured</span>
+        </div>
+      </div>
+
+      <footer>
+        <p style="margin-bottom:6px;">Questions? <a href="mailto:mike@factorylm.com" style="color:var(--text-dim);">mike@factorylm.com</a></p>
+        <p>
+          <a href="/pricing">Full pricing</a> ·
+          <a href="/terms">Terms</a> ·
+          <a href="/privacy">Privacy</a>
+        </p>
+      </footer>
+
+    </div>
+  </main>
+
+  <script>
+    // Telemetry — match analytics expected from pricing.html
+    document.querySelectorAll('[data-cta]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        try {
+          if (window.posthog) {
+            window.posthog.capture('buy_page_cta_click', {
+              cta: el.getAttribute('data-cta'),
+              source: 'buy_page',
+            });
+          }
+        } catch (_) { /* analytics is best-effort */ }
+      });
+    });
+  </script>
+</body>
+</html>

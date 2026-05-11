@@ -449,6 +449,14 @@ app.get("/assess", async (c) => {
   });
 });
 
+// Expo / mobile-optimized direct-purchase page. Stable URL for QR codes and SMS.
+app.get("/buy", async (c) => {
+  const file = Bun.file("./public/buy.html");
+  return new Response(await file.text(), {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+});
+
 // GEO foundation (#681) — llmstxt.org standard for AI-crawler content disclosure
 app.get("/llms.txt", async (c) => {
   const file = Bun.file("./public/llms.txt");

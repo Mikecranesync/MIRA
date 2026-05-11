@@ -88,7 +88,7 @@ function hero(): string {
     <h3 class="fl-hero-h3">Meet <strong>MIRA</strong> — your agent on the floor.</h3>
     <p class="fl-hero-sub">Manuals, sensors, photos, work orders, investigations — organized into Projects. MIRA answers from cited sources at 2&nbsp;AM, when you scan the QR sticker on a broken machine.</p>
     <div class="fl-hero-cta">
-      ${btnPrimary("Start Free — magic link", { href: "/cmms", cta: "hero-primary" })}
+      ${btnPrimary("Start Free Trial", { href: "/buy", cta: "hero-buy" })}
       ${btnGhost("See pricing →", { href: "/pricing", cta: "hero-secondary" })}
     </div>
     <div class="fl-hero-screenshot" aria-hidden="true">

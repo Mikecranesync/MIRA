@@ -139,6 +139,9 @@ mReport.get("/:asset_tag/report", async (c) => {
     </form>
     <div id="success">✓ Report submitted. Your plant admin has been notified.</div>
     <div class="footer">No account needed. Your report goes directly to your plant admin.</div>
+    <div class="footer" style="margin-top: 0.5rem;">
+      Powered by FactoryLM — <a href="/buy" style="color:#b0aca2;text-decoration:underline;">Start Free Trial</a>
+    </div>
     <a id="cmms-btn" class="cmms-link" href="/cmms">Open CMMS →</a>
   </div>
   <script>

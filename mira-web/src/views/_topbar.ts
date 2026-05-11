@@ -17,7 +17,7 @@
  *   - data-cta attribute prefix for analytics
  */
 
-import { btnGhost } from "../lib/components.js";
+import { btnGhost, btnPrimary } from "../lib/components.js";
 
 export interface TopbarOpts {
   /** Path of the current page, used to set aria-current="page". */
@@ -53,6 +53,7 @@ function renderLink(link: NavLink, opts: TopbarOpts): string {
 export function navbar(opts: TopbarOpts = {}): string {
   const links = NAV_LINKS.map((l) => renderLink(l, opts)).join("\n    ");
   const signinCta = ctaName(opts.ctaPrefix, "signin");
+  const buyCta = ctaName(opts.ctaPrefix, "buy");
   return `<header class="fl-topbar" role="banner">
   <a class="fl-topbar-brand" href="/" aria-label="FactoryLM home">FactoryLM</a>
   <nav class="fl-topbar-nav" aria-label="Primary">
@@ -60,6 +61,7 @@ export function navbar(opts: TopbarOpts = {}): string {
   </nav>
   <div class="fl-topbar-cta">
     ${btnGhost("Sign in", { href: "/cmms", cta: signinCta })}
+    ${btnPrimary("Get Started", { href: "/buy", cta: buyCta })}
   </div>
 </header>`;
 }
