@@ -26,6 +26,15 @@ function rowToAsset(r: Record<string, unknown>) {
     createdAt: r.created_at ?? null,
     parentAssetId: r.parent_asset_id ?? null,
     qrGeneratedAt: r.qr_generated_at ?? null,
+    externalIds: {
+      cmmsId: (r.cmms_id as string | null) ?? null,
+      plcTag: (r.plc_tag as string | null) ?? null,
+      scadaPath: (r.scada_path as string | null) ?? null,
+      manufacturerPartNumber: (r.manufacturer_part_number as string | null) ?? null,
+      unsTopicPath: (r.uns_topic_path as string | null) ?? null,
+      erpAssetId: (r.erp_asset_id as string | null) ?? null,
+      drawingReference: (r.drawing_reference as string | null) ?? null,
+    },
   };
 }
 
@@ -54,7 +63,9 @@ export async function GET(
           work_order_count, total_downtime_hours,
           last_maintenance_date, last_work_order_at,
           last_reported_fault, description, installation_date, created_at,
-          parent_asset_id, qr_generated_at
+          parent_asset_id, qr_generated_at,
+          cmms_id, plc_tag, scada_path, manufacturer_part_number,
+          uns_topic_path, erp_asset_id, drawing_reference
         FROM cmms_equipment
         WHERE equipment_number = $1 AND tenant_id = $2
         LIMIT 1`,
