@@ -80,6 +80,7 @@ import {
 import { seedDemoData } from "./seed/demo-data.js";
 import { seedAssetFromNameplate } from "./seed/knowledge-seed.js";
 import { importCSV } from "./lib/csv-import.js";
+import { importAssetCSV } from "./lib/asset-csv-import.js";
 import { sendBetaWelcomeEmail, sendActivatedEmail } from "./lib/mailer.js";
 import { startDripScheduler } from "./lib/drip.js";
 import { recordAuditEvent, requestMetadata } from "./lib/audit.js";
@@ -1598,6 +1599,50 @@ app.post("/api/cmms/import-csv", requireActive, async (c) => {
     return c.json(result);
   } catch (err) {
     console.error("[csv-import] Failed:", err);
+    return c.json({ error: "Import failed" }, 500);
+  }
+});
+
+app.post("/api/cmms/import-assets-csv", requireActive, async (c) => {
+  const user = c.get("user") as MiraTokenPayload;
+
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json({ error: "Invalid multipart body" }, 400);
+  }
+
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    return c.json({ error: "Missing 'file' field" }, 400);
+  }
+  if (file.size > CSV_MAX_BYTES) {
+    return c.json({ error: "CSV exceeds 5 MB limit" }, 413);
+  }
+  if (file.size === 0) {
+    return c.json({ error: "Empty file" }, 400);
+  }
+
+  const csvText = await file.text();
+  console.log(
+    "[asset-csv-import] tenant=%s file=%s size=%d",
+    user.sub,
+    file.name,
+    file.size,
+  );
+
+  try {
+    const result = await importAssetCSV(csvText);
+    console.log(
+      "[asset-csv-import] tenant=%s imported=%d failed=%d",
+      user.sub,
+      result.imported,
+      result.failed,
+    );
+    return c.json(result);
+  } catch (err) {
+    console.error("[asset-csv-import] Failed:", err);
     return c.json({ error: "Import failed" }, 500);
   }
 });
