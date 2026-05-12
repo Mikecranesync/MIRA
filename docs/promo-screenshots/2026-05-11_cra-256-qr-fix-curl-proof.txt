@@ -1,0 +1,29 @@
+CRA-256 QR Generate fix — production curl verification
+Deploy: GH Actions run 25653541128 (merged from PR #1171, commit e5a9030d)
+Verified at: 2026-05-11 06:18 UTC against https://app.factorylm.com
+
+─── BEFORE FIX (no trailing slash) — buggy redirect chain ───
+$ curl -L -i -X POST https://app.factorylm.com/hub/api/assets/test-id/qr
+HTTP/2 301           ← nginx strips /hub
+  location: /api/assets/test-id/qr
+HTTP/2 308           ← Next.js trailingSlash:true (BUG — c489eca3 treated this as auth bounce)
+  location: /api/assets/test-id/qr/
+HTTP/2 307           ← middleware auth redirect (unauth probe)
+  location: /login?callbackUrl=...
+HTTP/2 308
+HTTP/2 405
+
+─── AFTER FIX (trailing slash, new fetch URL) — clean chain ───
+$ curl -L -i -X POST https://app.factorylm.com/hub/api/assets/test-id/qr/
+HTTP/2 301           ← nginx strips /hub
+  location: /api/assets/test-id/qr/
+HTTP/2 307           ← straight to auth (no 308 trailing-slash bounce)
+  location: /login?callbackUrl=...
+HTTP/2 308
+HTTP/2 405
+
+Result: with the new trailing-slash URL, the 308 trailing-slash redirect
+is gone. res.redirected is still true on the final response (nginx 301),
+but res.url ends with /qr/ (success path) or /login/ (auth path) — the
+substring check correctly discriminates the two, so the button no longer
+mis-fires "go to /hub/login" when the user is authenticated.

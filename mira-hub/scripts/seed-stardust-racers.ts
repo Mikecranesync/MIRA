@@ -34,6 +34,11 @@ const SR_SUMP = {
   department: "Ride Maintenance",
   criticality: "high",
   last_reported_fault: "Lead pump nuisance trip on overload — investigate motor current and seal water",
+  // External IDs (CRA-258) — demonstrates i3X cross-system interop.
+  plc_tag: "SUMP_001",
+  manufacturer_part_number: "CR-15-3-A-F-A-E-HQQE",
+  scada_path: "Site/StardustRacers/PitB/SumpPanel/SUMP_001",
+  uns_topic_path: "factorylm/stardust-racers/pit-b/sump-panel/sump-001",
 };
 
 async function main() {
@@ -61,25 +66,33 @@ async function main() {
       `INSERT INTO cmms_equipment
          (id, tenant_id, equipment_number, description, manufacturer, model_number,
           serial_number, equipment_type, location, department, criticality,
-          last_reported_fault, qr_generated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::criticalitylevel,$12,NOW())
+          last_reported_fault, qr_generated_at,
+          plc_tag, manufacturer_part_number, scada_path, uns_topic_path)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::criticalitylevel,$12,NOW(),
+               $13,$14,$15,$16)
        ON CONFLICT (id) DO UPDATE SET
-         equipment_number     = EXCLUDED.equipment_number,
-         description          = EXCLUDED.description,
-         manufacturer         = EXCLUDED.manufacturer,
-         model_number         = EXCLUDED.model_number,
-         serial_number        = EXCLUDED.serial_number,
-         equipment_type       = EXCLUDED.equipment_type,
-         location             = EXCLUDED.location,
-         department           = EXCLUDED.department,
-         criticality          = EXCLUDED.criticality,
-         last_reported_fault  = EXCLUDED.last_reported_fault,
-         qr_generated_at      = COALESCE(cmms_equipment.qr_generated_at, EXCLUDED.qr_generated_at)`,
+         equipment_number          = EXCLUDED.equipment_number,
+         description               = EXCLUDED.description,
+         manufacturer              = EXCLUDED.manufacturer,
+         model_number              = EXCLUDED.model_number,
+         serial_number             = EXCLUDED.serial_number,
+         equipment_type            = EXCLUDED.equipment_type,
+         location                  = EXCLUDED.location,
+         department                = EXCLUDED.department,
+         criticality               = EXCLUDED.criticality,
+         last_reported_fault       = EXCLUDED.last_reported_fault,
+         qr_generated_at           = COALESCE(cmms_equipment.qr_generated_at, EXCLUDED.qr_generated_at),
+         plc_tag                   = EXCLUDED.plc_tag,
+         manufacturer_part_number  = EXCLUDED.manufacturer_part_number,
+         scada_path                = EXCLUDED.scada_path,
+         uns_topic_path            = EXCLUDED.uns_topic_path`,
       [
         SR_SUMP.id, SYNTH_TENANT_ID, SR_SUMP.equipment_number, SR_SUMP.description,
         SR_SUMP.manufacturer, SR_SUMP.model_number, SR_SUMP.serial_number,
         SR_SUMP.equipment_type, SR_SUMP.location, SR_SUMP.department,
         SR_SUMP.criticality, SR_SUMP.last_reported_fault,
+        SR_SUMP.plc_tag, SR_SUMP.manufacturer_part_number,
+        SR_SUMP.scada_path, SR_SUMP.uns_topic_path,
       ],
     );
 

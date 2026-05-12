@@ -70,3 +70,18 @@ A future PR may consolidate after adoption is confirmed.
 
 - Spec: `docs/superpowers/specs/2026-04-19-velocity-3-precommit-smoke-design.md`
 - Plan: `docs/superpowers/plans/2026-04-19-velocity-3-precommit-smoke.md`
+
+## Claude Code v2.1+ commands worth knowing (added 2026-05-07)
+
+| Command | Use it for |
+|---------|-----------|
+| `/effort` | Tune effort interactively. **Set `xhigh` for engine.py / shared/inference / mira-mcp work.** |
+| `/usage` | What's eating your 5-hour budget. Run before kicking off an autonomous session |
+| `/mcp` | Per-server tool counts. Zero-tool servers are flagged — fast misconfig diagnosis |
+| `/autofix-pr` | Native CI auto-fix. Alternative to `bash scripts/pr_self_fix.sh <PR>` |
+| `/team-onboarding` | Replayable setup guide for new MIRA contributors |
+| `/loop` (no arg) | Self-paced autonomous loop — use for poll-style work |
+
+Pre-commit picks up `CLAUDE_CODE_SESSION_ID` automatically (v2.1+) and logs to `.git/claude-sessions/log` so you can correlate failed hooks back to the session that ran them.
+
+Full v2.1+ reference + Routines list: `wiki/references/claude-code-v2.1.md` and `wiki/references/routines.md`.

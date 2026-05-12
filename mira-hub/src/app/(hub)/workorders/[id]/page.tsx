@@ -6,11 +6,12 @@ import Link from "next/link";
 import {
   ArrowLeft, Play, Square, Bot, Package, MessageSquare,
   Clock, User, Calendar, Wrench, CheckCircle2, AlertCircle,
-  AlertTriangle, ChevronRight, Plus, Camera, ExternalLink,
+  AlertTriangle, ChevronRight, Plus, Camera,
   Sparkles, BookOpen, ShieldAlert, Loader2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { OpenInCMMSButton } from "@/components/cmms/open-in-cmms-button";
 import { PARTS } from "@/lib/parts-data";
 import { useToast } from "@/providers/toast-provider";
 import { API_BASE } from "@/lib/config";
@@ -239,13 +240,12 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
               <Bot className="w-4 h-4" />{t("viewMira")}
             </Button>
           </a>
-          {wo.atlas_id ? (
-            <a href={`https://cmms.factorylm.com/workorders/${wo.atlas_id}`} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" className="h-10 gap-1.5 text-sm px-3">
-                <ExternalLink className="w-4 h-4" />{t("openCmms")}
-              </Button>
-            </a>
-          ) : null}
+          <OpenInCMMSButton
+            kind="work_order"
+            recordId={wo.id}
+            variant="outline"
+            className="h-10 gap-1.5 text-sm px-3"
+          />
         </div>
 
         {/* Auto-PM source citation */}

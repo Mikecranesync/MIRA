@@ -707,5 +707,13 @@
       "activeTechs": "सक्रिय तकनीशियन",
       "avgPerDay": "औसत / दिन"
     }
+  },
+  "cmmsLink": {
+    "loading": "लोड हो रहा है…",
+    "openCmms": "CMMS में खोलें",
+    "openIn": "{provider} में खोलें",
+    "syncing": "CMMS के साथ सिंक हो रहा है…",
+    "syncingTooltip": "यह वर्क ऑर्डर आपके CMMS को भेजा जा रहा है — आमतौर पर <60 सेकंड",
+    "connectCmms": "CMMS कनेक्ट करें →"
   }
 }

@@ -120,6 +120,34 @@ class TestClassifyIntent:
         assert classify_intent("any documentation on this thing") == "documentation"
         assert classify_intent("show me the pinout for this sensor") == "documentation"
 
+    def test_doc_request_with_intervening_model_number(self):
+        # CRA-8 — eval failures where the substring phrase list missed retrieval-verb
+        # + doc-noun pairs split by an intervening model number. Caused "industrial"
+        # misclassification → MANUAL_LOOKUP_GATHERING instead of IDLE/doc-crawl.
+        assert (
+            classify_intent("get me a manual for the Danfoss AQUA Drive FC 202")
+            == "documentation"
+        )
+        assert (
+            classify_intent("looking for the FR-E700 datasheet") == "documentation"
+        )
+        assert (
+            classify_intent("find me the MICROMASTER 440 manual") == "documentation"
+        )
+        # Other plausible phrasings the regex must catch
+        assert classify_intent("send me the ACS580 manual") == "documentation"
+        assert classify_intent("can you grab the GS20 datasheet") == "documentation"
+        assert (
+            classify_intent("i'm looking for documentation on the PowerFlex 525")
+            == "documentation"
+        )
+
+    def test_doc_request_does_not_overmatch(self):
+        # The new regex must not swallow industrial diagnosis questions.
+        assert classify_intent("What does F-201 mean") == "industrial"
+        assert classify_intent("the manual reset switch is stuck") == "industrial"
+        assert classify_intent("pulled the plug, fault still showing") == "industrial"
+
     def test_depth_request_detector(self):
         from shared.guardrails import detect_depth_request
 
@@ -344,6 +372,19 @@ class TestVendorHelpers:
     def test_vendor_name_empty(self):
         assert vendor_name_from_text("") is None
         assert vendor_name_from_text(None) is None
+
+    def test_vendor_support_url_resolves_product_line_aliases(self):
+        # CRA-8 — when a user mentions only a product line (no manufacturer name),
+        # the URL must still resolve to the right vendor support site.
+        assert vendor_support_url("MICROMASTER 440 manual") == "siemens.com/support"
+        assert vendor_support_url("SINAMICS G120 datasheet") == "siemens.com/support"
+        assert (
+            vendor_support_url("AQUA Drive FC 202 manual") == "danfoss.com/support"
+        )
+        assert (
+            vendor_support_url("FR-E700 datasheet")
+            == "mitsubishielectric.com/support"
+        )
 
 
 # ---------------------------------------------------------------------------

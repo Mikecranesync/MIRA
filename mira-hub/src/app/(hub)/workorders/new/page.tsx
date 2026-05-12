@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, ArrowRight, Search, QrCode, Camera, CheckCircle2, Loader2, X, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OpenInCMMSButton } from "@/components/cmms/open-in-cmms-button";
 import { useTranslations } from "next-intl";
 
 type AssetOption = { id: string; name: string; tag: string; location: string };
@@ -198,10 +199,16 @@ export default function NewWorkOrderPage() {
         <p className="text-sm mb-8" style={{ color: "var(--foreground-muted)" }}>
           {selectedAsset?.name} · {priority} priority
         </p>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap justify-center">
           <Link href={`/workorders/${createdWO.id}`}>
             <Button>{tCommon("view")}</Button>
           </Link>
+          <OpenInCMMSButton
+            kind="work_order"
+            recordId={createdWO.id}
+            variant="secondary"
+            hideWhenUnconfigured
+          />
           <Link href="/workorders">
             <Button variant="secondary">{t("title")}</Button>
           </Link>

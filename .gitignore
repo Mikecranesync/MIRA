@@ -159,6 +159,13 @@ htmlcov/
 # Playwright MCP session ephemera (per-session, regenerable)
 .playwright-mcp/
 
+# Playwright browser cache + per-run test output (regenerable)
+.playwright-cache/
+test-results/
+
+# Claude Code project-local settings (per-machine; never commit)
+.claude/settings.local.json
+
 # Web-review skill working directories (bare-date dirs hold node_modules,
 # audit JSON, probe scripts — regenerable). Per-PR proof dirs (date-pr-NNN)
 # are explicitly tracked.
