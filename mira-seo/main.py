@@ -18,10 +18,10 @@ celery_app = Celery(
 celery_app.conf.beat_schedule = {
     "weekly-seo-audit": {
         "task": "mira_seo.tasks.weekly_audit.run",
-        "schedule": crontab(hour=6, minute=0, day_of_week=1),  # Monday 06:00 UTC
+        "schedule": crontab(hour="6", minute="0", day_of_week="1"),  # Monday 06:00 UTC
     },
     "geo-probe": {
         "task": "mira_seo.tasks.geo_probe.run",
-        "schedule": crontab(hour=6, minute=0, day_of_week=3),  # Wednesday 06:00 UTC
+        "schedule": crontab(hour="6", minute="0", day_of_week="3"),  # Wednesday 06:00 UTC
     },
 }
