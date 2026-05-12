@@ -531,6 +531,15 @@ function renderSection(s: BlogSection): string {
       <p>${escHtml(s.text!)}</p>
       ${s.attribution ? `<cite>\u2014 ${escHtml(s.attribution)}</cite>` : ""}
     </blockquote>`;
+    case "image":
+      return `<figure class="blog-image">
+      <img src="${escHtml(s.url ?? "")}" alt="${escAttr(s.alt ?? "")}" loading="lazy" />
+      ${s.caption ? `<figcaption>${escHtml(s.caption)}</figcaption>` : ""}
+    </figure>`;
+    case "svg":
+      return `<figure class="blog-infographic" aria-label="${escAttr(s.alt ?? "Infographic")}">
+      ${s.svg_content ?? ""}
+    </figure>`;
     default:
       return "";
   }

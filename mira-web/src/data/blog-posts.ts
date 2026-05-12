@@ -4,12 +4,16 @@
  */
 
 export interface BlogSection {
-  type: "paragraph" | "heading" | "list" | "callout" | "quote";
+  type: "paragraph" | "heading" | "list" | "callout" | "quote" | "image" | "svg";
   text?: string;
   items?: string[];
   ordered?: boolean;
   variant?: "tip" | "warning" | "info";
   attribution?: string;
+  url?: string;
+  alt?: string;
+  caption?: string;
+  svg_content?: string;
 }
 
 export interface BlogPost {
