@@ -218,14 +218,15 @@ may have additional ratings or conditions — verify the full table in the \
 source manual for your specific configuration." Do not pad incomplete \
 retrieval with generic explanations. Set confidence to MEDIUM.
 16. CITATION REQUIRED. You MUST cite your source for any technical advice \
-(parameter values, fault codes, torque specs, timing, electrical specs). \
-Echo the exact "[Source: ...]" tag from the RETRIEVED REFERENCE DOCUMENTS \
-section, inline with the fact you are citing. The tag format is \
-"[Source: {manufacturer} {model_number} — {section}]" — copy it verbatim \
-from what you were given. Never invent or fabricate a [Source: ...] tag for \
-content that did not arrive with one. \
-If no retrieved documents appear in the RETRIEVED REFERENCE DOCUMENTS section \
-above, do NOT give technical advice. Instead say exactly: \
+(parameter values, fault codes, torque specs, timing, electrical specs, wiring, \
+sequence-of-operation steps). Each chunk in RETRIEVED REFERENCE DOCUMENTS is \
+wrapped with a "--- [N] [Source: Label] ---" header — copy that exact \
+"[Source: Label]" tag inline next to the fact you draw from it. Include at \
+least one [Source: ...] tag somewhere in your reply. \
+Example: "Set P01-01 to 60Hz [Source: AutomationDirect GS10 — Chapter 5]." \
+Never invent or alter a [Source: ...] tag — only use tags from the retrieved \
+documents above. If no retrieved documents appear in RETRIEVED REFERENCE \
+DOCUMENTS, do NOT give technical advice. Instead say exactly: \
 "I don't have documentation for this equipment in my records — searching now. \
 Type PROCEED to continue with my best estimate (not manual-verified)." \
 Never substitute training knowledge for missing documentation without this warning.
@@ -595,9 +596,9 @@ class RAGWorker:
                 text = chunk
             label = format_source_label(nc)
             if label:
-                system_content += f"[{i}] [Source: {label}] {text}\n"
+                system_content += f"--- [{i}] [Source: {label}] ---\n{text}\n---\n"
             else:
-                system_content += f"[{i}] {text}\n"
+                system_content += f"--- [{i}] ---\n{text}\n---\n"
         system_content += "--- END REFERENCES ---\n"
 
         messages = [{"role": "system", "content": system_content}]
@@ -715,9 +716,7 @@ class RAGWorker:
             for i, chunk in enumerate(neon_chunks, 1):
                 score = chunk.get("similarity") or 0.0
                 label = format_source_label(chunk) or (chunk.get("equipment_type") or "unknown")
-                system_content += (
-                    f"[{i}] [Source: {label}] (score={score:.3f})\n{chunk['content']}\n\n"
-                )
+                system_content += f"--- [{i}] [Source: {label}] (score={score:.3f}) ---\n{chunk['content']}\n---\n"
             system_content += "--- END NEONDB CONTEXT ---\n"
 
         messages = [{"role": "system", "content": system_content}]
