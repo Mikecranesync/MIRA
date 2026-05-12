@@ -19,43 +19,38 @@ from mira_seo.providers.youtube_analyzer import (
 class TestGetTranscript:
     """Test get_transcript function."""
 
+    def _make_snippets(self, *texts: str) -> list[MagicMock]:
+        return [MagicMock(text=t) for t in texts]
+
     def test_extract_video_id_youtu_be_format(self):
         """Extract video ID from youtu.be short URL."""
-        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_api:
-            mock_api.get_transcript.return_value = [
-                {"text": "Hello", "start": 0.0, "duration": 1.0},
-                {"text": "World", "start": 1.0, "duration": 1.0},
-            ]
+        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_cls:
+            mock_cls.return_value.fetch.return_value = self._make_snippets("Hello", "World")
 
             result = get_transcript("https://youtu.be/dQw4w9WgXcQ")
 
-            # YouTubeTranscriptApi should be called with correct video ID
-            mock_api.get_transcript.assert_called_once_with("dQw4w9WgXcQ")
+            mock_cls.return_value.fetch.assert_called_once_with("dQw4w9WgXcQ")
             assert "Hello" in result
             assert "World" in result
 
     def test_extract_video_id_youtube_com_format(self):
         """Extract video ID from youtube.com watch URL."""
-        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_api:
-            mock_api.get_transcript.return_value = [
-                {"text": "Test", "start": 0.0, "duration": 1.0},
-            ]
+        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_cls:
+            mock_cls.return_value.fetch.return_value = self._make_snippets("Test")
 
             result = get_transcript("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 
-            mock_api.get_transcript.assert_called_once_with("dQw4w9WgXcQ")
+            mock_cls.return_value.fetch.assert_called_once_with("dQw4w9WgXcQ")
             assert "Test" in result
 
     def test_extract_video_id_with_timestamp(self):
         """Extract video ID from URL with timestamp parameter."""
-        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_api:
-            mock_api.get_transcript.return_value = [
-                {"text": "Content", "start": 0.0, "duration": 1.0},
-            ]
+        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_cls:
+            mock_cls.return_value.fetch.return_value = self._make_snippets("Content")
 
             result = get_transcript("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30")
 
-            mock_api.get_transcript.assert_called_once_with("dQw4w9WgXcQ")
+            mock_cls.return_value.fetch.assert_called_once_with("dQw4w9WgXcQ")
             assert "Content" in result
 
     def test_invalid_url_returns_empty_string(self):
@@ -65,8 +60,8 @@ class TestGetTranscript:
 
     def test_transcript_disabled_returns_empty_string(self):
         """Return empty string when transcript is disabled."""
-        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_api:
-            mock_api.get_transcript.side_effect = TranscriptsDisabled("dQw4w9WgXcQ")
+        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_cls:
+            mock_cls.return_value.fetch.side_effect = TranscriptsDisabled("dQw4w9WgXcQ")
 
             result = get_transcript("https://youtu.be/dQw4w9WgXcQ")
 
@@ -74,12 +69,9 @@ class TestGetTranscript:
 
     def test_no_transcript_found_returns_empty_string(self):
         """Return empty string when no transcript is available."""
-        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_api:
-            # NoTranscriptFound requires video_id, requested_language_codes, transcript_data
-            mock_api.get_transcript.side_effect = NoTranscriptFound(
-                video_id="dQw4w9WgXcQ",
-                requested_language_codes=["en"],
-                transcript_data=[]
+        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_cls:
+            mock_cls.return_value.fetch.side_effect = NoTranscriptFound(
+                video_id="dQw4w9WgXcQ", requested_language_codes=["en"], transcript_data=[]
             )
 
             result = get_transcript("https://youtu.be/dQw4w9WgXcQ")
@@ -88,8 +80,8 @@ class TestGetTranscript:
 
     def test_generic_error_returns_empty_string(self):
         """Return empty string on any other error."""
-        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_api:
-            mock_api.get_transcript.side_effect = Exception("Network error")
+        with patch("mira_seo.providers.youtube_analyzer.YouTubeTranscriptApi") as mock_cls:
+            mock_cls.return_value.fetch.side_effect = Exception("Network error")
 
             result = get_transcript("https://youtu.be/dQw4w9WgXcQ")
 
@@ -190,12 +182,14 @@ class TestAnalyzeTranscript:
                     "choices": [
                         {
                             "message": {
-                                "content": json.dumps({
-                                    "main_topics": ["Topic 1", "Topic 2"],
-                                    "keywords": ["keyword1", "keyword2"],
-                                    "content_format": "tutorial",
-                                    "key_questions": ["Q1?", "Q2?"],
-                                })
+                                "content": json.dumps(
+                                    {
+                                        "main_topics": ["Topic 1", "Topic 2"],
+                                        "keywords": ["keyword1", "keyword2"],
+                                        "content_format": "tutorial",
+                                        "key_questions": ["Q1?", "Q2?"],
+                                    }
+                                )
                             }
                         }
                     ]
@@ -225,12 +219,16 @@ class TestAnalyzeTranscript:
                     "choices": [
                         {
                             "message": {
-                                "content": "```json\n" + json.dumps({
-                                    "main_topics": ["Topic"],
-                                    "keywords": ["kw"],
-                                    "content_format": "review",
-                                    "key_questions": [],
-                                }) + "\n```"
+                                "content": "```json\n"
+                                + json.dumps(
+                                    {
+                                        "main_topics": ["Topic"],
+                                        "keywords": ["kw"],
+                                        "content_format": "review",
+                                        "key_questions": [],
+                                    }
+                                )
+                                + "\n```"
                             }
                         }
                     ]
@@ -254,15 +252,7 @@ class TestAnalyzeTranscript:
         """Return empty dict when response contains invalid JSON."""
         with patch("mira_seo.providers.youtube_analyzer.MIRA_PIPELINE_URL", "http://test:9099"):
             with patch("mira_seo.providers.youtube_analyzer.httpx.AsyncClient") as mock_client:
-                response_data = {
-                    "choices": [
-                        {
-                            "message": {
-                                "content": "This is not valid JSON"
-                            }
-                        }
-                    ]
-                }
+                response_data = {"choices": [{"message": {"content": "This is not valid JSON"}}]}
 
                 mock_response = MagicMock()
                 mock_response.json.return_value = response_data
@@ -295,7 +285,9 @@ class TestYoutubeAutocomplete:
     async def test_successful_autocomplete_returns_suggestions(self):
         """Successfully fetch and parse autocomplete suggestions."""
         with patch("mira_seo.providers.youtube_analyzer.httpx.AsyncClient") as mock_client:
-            jsonp_response = 'window.google.ac.h(["test",["test video","test audio","testing","test drive"]])'
+            jsonp_response = (
+                'window.google.ac.h(["test",["test video","test audio","testing","test drive"]])'
+            )
 
             mock_response = MagicMock()
             mock_response.text = jsonp_response

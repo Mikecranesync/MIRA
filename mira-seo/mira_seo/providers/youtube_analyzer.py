@@ -53,9 +53,8 @@ def get_transcript(video_url: str) -> str:
         return ""
 
     try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-        # Join all text segments with spaces
-        transcript_text = " ".join(item["text"] for item in transcript_list)
+        transcript_list = YouTubeTranscriptApi().fetch(video_id)
+        transcript_text = " ".join(item.text for item in transcript_list)
         return transcript_text
     except (NoTranscriptFound, TranscriptsDisabled, VideoUnavailable) as e:
         logger.warning(f"Transcript unavailable for {video_id}: {e}")

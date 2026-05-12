@@ -146,9 +146,7 @@ class TestGSCClient:
     @pytest.mark.asyncio
     @patch("mira_seo.providers.gsc_client.Credentials.from_service_account_info")
     @patch("mira_seo.providers.gsc_client.discovery.build")
-    async def test_get_top_pages_returns_correctly_shaped_dicts(
-        self, mock_build, mock_credentials
-    ):
+    async def test_get_top_pages_returns_correctly_shaped_dicts(self, mock_build, mock_credentials):
         """Test that get_top_pages returns correctly shaped dicts."""
         service_account_info = {
             "type": "service_account",

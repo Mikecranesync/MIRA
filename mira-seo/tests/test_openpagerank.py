@@ -94,9 +94,9 @@ async def test_get_domain_rank_api_error_response(caplog):
         client = OpenPageRankClient()
 
         with respx.mock:
-            respx.get(
-                "https://openpagerank.com/api/v1.0/getPageRank"
-            ).mock(return_value=__import__("httpx").Response(200, json=mock_response))
+            respx.get("https://openpagerank.com/api/v1.0/getPageRank").mock(
+                return_value=__import__("httpx").Response(200, json=mock_response)
+            )
 
             with caplog.at_level(logging.WARNING):
                 result = await client.get_domain_rank(["example.com"])
@@ -112,9 +112,9 @@ async def test_get_domain_rank_http_error(caplog):
         client = OpenPageRankClient()
 
         with respx.mock:
-            respx.get(
-                "https://openpagerank.com/api/v1.0/getPageRank"
-            ).mock(side_effect=__import__("httpx").ConnectError("Connection failed"))
+            respx.get("https://openpagerank.com/api/v1.0/getPageRank").mock(
+                side_effect=__import__("httpx").ConnectError("Connection failed")
+            )
 
             with caplog.at_level(logging.ERROR):
                 result = await client.get_domain_rank(["example.com"])
@@ -142,9 +142,9 @@ async def test_get_domain_rank_correct_headers():
         client = OpenPageRankClient()
 
         with respx.mock:
-            route = respx.get(
-                "https://openpagerank.com/api/v1.0/getPageRank"
-            ).mock(return_value=__import__("httpx").Response(200, json=mock_response))
+            route = respx.get("https://openpagerank.com/api/v1.0/getPageRank").mock(
+                return_value=__import__("httpx").Response(200, json=mock_response)
+            )
 
             result = await client.get_domain_rank(["example.com"])
 
@@ -174,9 +174,9 @@ async def test_get_domain_rank_single_domain():
         client = OpenPageRankClient()
 
         with respx.mock:
-            respx.get(
-                "https://openpagerank.com/api/v1.0/getPageRank"
-            ).mock(return_value=__import__("httpx").Response(200, json=mock_response))
+            respx.get("https://openpagerank.com/api/v1.0/getPageRank").mock(
+                return_value=__import__("httpx").Response(200, json=mock_response)
+            )
 
             result = await client.get_domain_rank(["example.com"])
 

@@ -50,9 +50,7 @@ class GSCClient:
         """Check if service account credentials were loaded successfully."""
         return self._available
 
-    async def get_top_queries(
-        self, site_url: str, days: int = 90
-    ) -> list[dict[str, Any]]:
+    async def get_top_queries(self, site_url: str, days: int = 90) -> list[dict[str, Any]]:
         """Get top search queries for a site.
 
         Args:
@@ -67,13 +65,9 @@ class GSCClient:
             return []
 
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, self._fetch_top_queries_sync, site_url, days
-        )
+        return await loop.run_in_executor(None, self._fetch_top_queries_sync, site_url, days)
 
-    async def get_top_pages(
-        self, site_url: str, days: int = 90
-    ) -> list[dict[str, Any]]:
+    async def get_top_pages(self, site_url: str, days: int = 90) -> list[dict[str, Any]]:
         """Get top pages for a site.
 
         Args:
@@ -114,9 +108,7 @@ class GSCClient:
             }
 
             response = (
-                self._service.searchanalytics()
-                .query(siteUrl=site_url, body=request_body)
-                .execute()
+                self._service.searchanalytics().query(siteUrl=site_url, body=request_body).execute()
             )
 
             rows = response.get("rows", [])
