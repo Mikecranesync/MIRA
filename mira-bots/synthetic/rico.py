@@ -232,12 +232,24 @@ class NeonRecorder:
 
 # ── Telegram notify (stdlib-only, no httpx needed) ────────────────────────────
 
+def is_live() -> bool:
+    """
+    Rico defaults to dry-run everywhere (P0.8 — site-hardening 2026-04-30).
+    Real Atlas writes, real LLM token spend, and real WO creation only happen
+    when RICO_LIVE=1 is explicitly set in the environment. Telegram still fires
+    in dry-run (Mike wants the heartbeat) but is prefixed with [DRY RUN] so
+    it's obvious which mode the shift was in.
+    """
+    return os.environ.get("RICO_LIVE", "").strip() in ("1", "true", "yes")
+
+
 def _tg_send(text: str) -> bool:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "8445149012")
     if not token:
         return False
-    payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
+    body = text if is_live() else f"🧪 [DRY RUN] {text}"
+    payload = json.dumps({"chat_id": chat_id, "text": body, "parse_mode": "Markdown"}).encode()
     req = urllib.request.Request(
         f"https://api.telegram.org/bot{token}/sendMessage",
         data=payload,
@@ -430,12 +442,22 @@ class Rico:
         fault_codes = scenario.get("fault_codes", [])
         fault_str = fault_codes[0] if fault_codes else "unknown fault"
 
+        # Mode banner (P0.8) — make it obvious whether the shift mutated prod
+        # or just simulated. Default is dry-run; require RICO_LIVE=1 to enable
+        # real Atlas writes + real LLM token spend.
+        live = is_live()
+        mode_label = "LIVE" if live else "DRY RUN"
+        logger.info("=" * 60)
+        logger.info("Rico shift starting — mode: %s", mode_label)
+        logger.info("  RICO_LIVE=%r → %s", os.environ.get("RICO_LIVE", ""), mode_label)
+        logger.info("=" * 60)
         logger.info("Rico clocking in — scenario: %s %s", equipment, fault_str)
 
         # ── 1. Check PM schedule ──────────────────────────────────────────────
+        # Read-only Atlas call; safe in either mode.
         pms = self.hub.get_pm_schedules(status="due")
         _tg_send(
-            f"🔧 *Rico Mendez* — Clocking in\n"
+            f"🔧 *Rico Mendez* — Clocking in ({mode_label})\n"
             f"Session: `{self.session_id}`\n"
             f"{len(pms)} PM(s) due tonight · Scenario: {equipment} {fault_str}"
         )
@@ -446,13 +468,18 @@ class Rico:
             pm_id = pm.get("id", "")
             pm_title = pm.get("title", "scheduled PM")
             if pm_id:
-                self.hub.update_pm(pm_id, "in_progress")
-                time.sleep(1)
-                ok = self.hub.update_pm(pm_id, "completed")
-                if ok:
-                    result.pm_completed = True
-                    self._record("pm_complete", pm_title, "completed", success=True)
-                    logger.info("Rico completed PM: %s", pm_title)
+                if live:
+                    self.hub.update_pm(pm_id, "in_progress")
+                    time.sleep(1)
+                    ok = self.hub.update_pm(pm_id, "completed")
+                    if ok:
+                        result.pm_completed = True
+                        self._record("pm_complete", pm_title, "completed", success=True)
+                        logger.info("Rico completed PM: %s", pm_title)
+                else:
+                    logger.info("[DRY RUN] would update PM %s → in_progress → completed", pm_id)
+                    self._record("pm_complete", pm_title, "[dry-run] would complete",
+                                 success=True, quality={"dry_run": True})
         else:
             logger.info("No PMs due — Rico goes straight to fault scenario")
 
@@ -465,7 +492,12 @@ class Rico:
         logger.info("Rico asks MIRA: %s", rico_msg)
 
         # ── 4. First MIRA turn ────────────────────────────────────────────────
-        resp = self.mira.chat(rico_msg)
+        if live:
+            resp = self.mira.chat(rico_msg)
+        else:
+            logger.info("[DRY RUN] would chat with MIRA: %s", rico_msg)
+            resp = {"reply": "[dry-run] no chat performed", "latency_ms": 0,
+                    "success": True, "raw": {}}
         result.messages.append({"from": "rico", "text": rico_msg})
         result.messages.append({"from": "mira", "text": resp.get("reply", ""), "latency_ms": resp.get("latency_ms", 0)})
 
@@ -487,7 +519,15 @@ class Rico:
 
             follow_up = self._generate_follow_up(current_reply, scenario)
             logger.info("Rico follow-up %d: %s", turn + 1, follow_up)
-            resp = self.mira.chat(follow_up)
+            if live:
+                resp = self.mira.chat(follow_up)
+            else:
+                logger.info("[DRY RUN] would follow-up: %s", follow_up)
+                # Stop the followup loop in dry-run — without a real MIRA
+                # reply we can't usefully simulate further turns.
+                resp = {"reply": "", "latency_ms": 0, "success": True, "raw": {}}
+                current_reply = ""
+                break
 
             result.messages.append({"from": "rico", "text": follow_up})
             result.messages.append({"from": "mira", "text": resp.get("reply", ""), "latency_ms": resp.get("latency_ms", 0)})
@@ -511,26 +551,39 @@ class Rico:
         # ── 7. Work order creation ────────────────────────────────────────────
         if "work order" in final_reply.lower() or random.random() < 0.4:
             wo_msg = "yes log it"
-            resp = self.mira.chat(wo_msg)
-            result.messages.append({"from": "rico", "text": wo_msg})
-            result.messages.append({"from": "mira", "text": resp.get("reply", "")})
+            if live:
+                resp = self.mira.chat(wo_msg)
+                result.messages.append({"from": "rico", "text": wo_msg})
+                result.messages.append({"from": "mira", "text": resp.get("reply", "")})
 
-            self._record(
-                "wo_request", wo_msg, resp.get("reply", ""),
-                latency_ms=resp.get("latency_ms", 0),
-                success=resp.get("success", False),
-                quality={"wo_trigger": "voice"},
-            )
+                self._record(
+                    "wo_request", wo_msg, resp.get("reply", ""),
+                    latency_ms=resp.get("latency_ms", 0),
+                    success=resp.get("success", False),
+                    quality={"wo_trigger": "voice"},
+                )
 
-            # Also hit the Hub API directly
-            wo = self.hub.create_work_order(
-                title=f"{equipment.title()} fault — {fault_str}",
-                description=rico_msg,
-                priority="medium",
-            )
-            if wo:
-                result.wo_created = True
-                self._record("hub_wo_create", rico_msg, json.dumps(wo), success=True)
+                # Also hit the Hub API directly — REAL Atlas write.
+                wo = self.hub.create_work_order(
+                    title=f"{equipment.title()} fault — {fault_str}",
+                    description=rico_msg,
+                    priority="medium",
+                )
+                if wo:
+                    result.wo_created = True
+                    self._record("hub_wo_create", rico_msg, json.dumps(wo), success=True)
+            else:
+                logger.info("[DRY RUN] would request WO: %s", wo_msg)
+                logger.info("[DRY RUN] would create Atlas WO: %s fault — %s", equipment, fault_str)
+                self._record(
+                    "wo_request", wo_msg, "[dry-run] no chat performed",
+                    success=True, quality={"dry_run": True, "wo_trigger": "voice"},
+                )
+                self._record(
+                    "hub_wo_create", rico_msg,
+                    json.dumps({"dry_run": True, "would_create": True}),
+                    success=True, quality={"dry_run": True},
+                )
 
         # ── 8. Count observations ─────────────────────────────────────────────
         result.observations_recorded = len(result.messages) // 2
@@ -544,7 +597,7 @@ class Rico:
         )
 
         report = (
-            f"🔧 *Rico Mendez — Shift Complete*\n\n"
+            f"🔧 *Rico Mendez — Shift Complete* ({mode_label})\n\n"
             f"*Scenario:* {equipment} — `{fault_str}`\n"
             f"*Turns:* {turns} messages sent\n"
             f"*MIRA responded:* {'✅' if result.mira_responded else '❌'}\n"
