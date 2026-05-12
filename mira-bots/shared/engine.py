@@ -2253,11 +2253,43 @@ class Supervisor:
 
         history = ctx.get("history", [])
         history.append({"role": "user", "content": message})
-        reply = (
-            f"Asset registered: {manufacturer} {model} — "
-            f"linked to {linked_chunks} OEM manual chunks. "
-            f"Ask me anything about this equipment."
-        )
+
+        # Build a clear, varied reply based on identification + KB coverage.
+        identified = manufacturer != "Unknown" and model != "Unknown"
+        if not identified:
+            reply = (
+                "Could not identify equipment from this nameplate. "
+                "Please reply with manufacturer and model "
+                "(e.g. 'Allen-Bradley PowerFlex 525')."
+            )
+        else:
+            try:
+                kb_covered, _ = kb_has_coverage(
+                    manufacturer, model, resolved_tenant or ""
+                )
+            except Exception as e:
+                logger.warning("nameplate kb_has_coverage failed: %s", e)
+                kb_covered = linked_chunks > 0
+
+            header = f"Identified: {manufacturer} {model}"
+            if linked_chunks > 0:
+                kb_line = (
+                    f"Found {linked_chunks} manual chunks for "
+                    f"{manufacturer} in the knowledge base."
+                )
+            elif kb_covered:
+                kb_line = (
+                    f"Manuals for {manufacturer} are already in the "
+                    f"knowledge base — ask me anything about this equipment."
+                )
+            else:
+                kb_line = (
+                    f"No manuals found for {manufacturer} {model}. "
+                    f"MIRA will search for one in the background — "
+                    f"you can still ask questions and I'll answer from "
+                    f"general knowledge."
+                )
+            reply = f"{header}\n{kb_line}"
         history.append({"role": "assistant", "content": reply})
         if len(history) > HISTORY_LIMIT:
             history = history[-HISTORY_LIMIT:]
