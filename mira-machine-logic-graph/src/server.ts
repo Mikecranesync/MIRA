@@ -11,9 +11,11 @@
 import express from "express";
 import { PROJECTS, findProject } from "./projects/registry.ts";
 import { buildTagsForProject } from "./ignition/build-for-project.ts";
+import { handleLiveTroubleshoot } from "./api/live-troubleshoot.ts";
 
 export function createApp(): express.Express {
   const app = express();
+  app.use(express.json({ limit: "1mb" }));
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "mira-machine-logic-graph", version: "0.1.0" });
@@ -30,6 +32,10 @@ export function createApp(): express.Express {
       return;
     }
     res.json({ id: p.id, name: p.name, ignition: p.ignition });
+  });
+
+  app.post("/projects/:id/live-troubleshoot", (req, res) => {
+    void handleLiveTroubleshoot(req, res);
   });
 
   app.get("/projects/:id/ignition-tags", (req, res) => {
