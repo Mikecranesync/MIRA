@@ -707,5 +707,13 @@
       "activeTechs": "Técnicos activos",
       "avgPerDay": "Promedio / día"
     }
+  },
+  "cmmsLink": {
+    "loading": "Cargando…",
+    "openCmms": "Abrir en CMMS",
+    "openIn": "Abrir en {provider}",
+    "syncing": "Sincronizando con CMMS…",
+    "syncingTooltip": "Esta orden de trabajo se está enviando a tu CMMS — normalmente <60s",
+    "connectCmms": "Conectar un CMMS →"
   }
 }
