@@ -6,6 +6,11 @@
 # Requires: gh CLI authenticated, plus at least one of GROQ_API_KEY /
 # CEREBRAS_API_KEY / GEMINI_API_KEY (Doppler factorylm/prd in CI).
 # Anthropic was removed from MIRA permanently (PR #610) — never reintroduce.
+#
+# Alternatives (Claude Code v2.1+):
+#   • `/autofix-pr` from a Claude Code session — native, faster, but no provider trail
+#   • Add the `auto-fix` label to the PR — invokes this script via code-review.yml
+# Use this script directly when you want the cascade provider trail in logs.
 
 set -euo pipefail
 
