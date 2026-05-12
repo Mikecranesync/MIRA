@@ -288,11 +288,18 @@ async def youtube_autocomplete(seed_keyword: str) -> list[str]:
             data = json.loads(json_str)
 
             # data is [keyword, [suggestions...], ...]
-            # We want the second element (list of suggestions)
+            # Each suggestion is either a plain string or [text, type, metadata...]
+            # We extract only the text portion.
             if isinstance(data, list) and len(data) >= 2:
-                suggestions = data[1]
-                if isinstance(suggestions, list):
-                    return suggestions[:10]
+                raw = data[1]
+                if isinstance(raw, list):
+                    results = []
+                    for item in raw[:10]:
+                        if isinstance(item, list) and item:
+                            results.append(str(item[0]))
+                        elif isinstance(item, str):
+                            results.append(item)
+                    return results
 
             return []
 
