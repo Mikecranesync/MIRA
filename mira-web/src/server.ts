@@ -95,6 +95,10 @@ import {
   createPortalSession,
   constructWebhookEvent,
 } from "./lib/stripe.js";
+import {
+  activateHubUserByEmail,
+  expireHubUserByEmail,
+} from "./lib/hub-user-activation.js";
 import { FAULT_CODES } from "./data/fault-codes.js";
 import { BLOG_POSTS } from "./data/blog-posts.js";
 import {
@@ -1146,6 +1150,21 @@ app.post("/api/stripe/webhook", async (c) => {
         break;
       }
 
+      // Bridge to mira-hub: flip hub_users.status → 'approved' so the Hub
+      // middleware stops redirecting paying customers to /pending-approval
+      // or /upgrade. Idempotent UPDATE — silently 0 rows if the user
+      // hasn't registered on the Hub yet.
+      try {
+        const result = await activateHubUserByEmail(tenant.email);
+        console.log(
+          "[stripe-webhook] Hub user activation: matched=%d email=%s",
+          result.matched,
+          tenant.email,
+        );
+      } catch (err) {
+        console.error("[stripe-webhook] Hub user activation failed:", err);
+      }
+
       const result = await finalizeActivation(tenant, {
         signupUser,
         updateTenantAtlas,
@@ -1185,8 +1204,11 @@ app.post("/api/stripe/webhook", async (c) => {
     case "customer.subscription.deleted": {
       const sub = event.data.object;
       const tenantId = sub.metadata?.tenant_id;
+      let churnedTenantEmail: string | null = null;
       if (tenantId) {
         await updateTenantTier(tenantId, "churned");
+        const t = await findTenantById(tenantId);
+        churnedTenantEmail = t?.email ?? null;
         console.log("[stripe-webhook] Tenant churned:", tenantId);
         void recordAuditEvent({
           tenantId,
@@ -1204,6 +1226,7 @@ app.post("/api/stripe/webhook", async (c) => {
           const tenant = await findTenantByStripeCustomerId(customerId);
           if (tenant) {
             await updateTenantTier(tenant.id, "churned");
+            churnedTenantEmail = tenant.email;
             console.log("[stripe-webhook] Tenant churned (by customer):", tenant.id);
             void recordAuditEvent({
               tenantId: tenant.id,
@@ -1214,6 +1237,19 @@ app.post("/api/stripe/webhook", async (c) => {
               metadata: { matched_via: "customer_id" },
             });
           }
+        }
+      }
+      // Mirror churn into mira-hub so middleware redirects them to /upgrade.
+      if (churnedTenantEmail) {
+        try {
+          const result = await expireHubUserByEmail(churnedTenantEmail);
+          console.log(
+            "[stripe-webhook] Hub user expired: matched=%d email=%s",
+            result.matched,
+            churnedTenantEmail,
+          );
+        } catch (err) {
+          console.error("[stripe-webhook] Hub user expiry failed:", err);
         }
       }
       break;
