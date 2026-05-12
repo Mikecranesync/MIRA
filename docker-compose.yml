@@ -14,3 +14,4 @@ include:
   - mira-web/docker-compose.yml
   - mira-crawler/docker-compose.yml
   - mira-ops/docker-compose.yml
+  - mira-seo/docker-compose.yml
