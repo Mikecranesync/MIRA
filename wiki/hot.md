@@ -1,3 +1,11 @@
+# Hot Cache — 2026-05-12 — CHARLIE
+
+## eval-fixer run — 2026-05-12
+- Scorecard: 48/57 passing (84%) — source: `tests/eval/runs/2026-05-06T0833-offline-text.md`
+- Action: issue-filed (autopatch skipped — 3 file_clusters, hard stop)
+- Issue: https://github.com/Mikecranesync/MIRA/issues/1187
+- 4 failure clusters: (A) FSM state-progression regression — 6 fixtures stuck at wrong states in `engine.py`; (B) `/reset` not re-entering Q1 — spans engine.py + guardrails.py + active.yaml; (C) GS20 cross-vendor contamination — "PowerFlex" leaking into GS20 response; (D) CMMS WO creation not emitting confirmation text
+
 # Hot Cache — 2026-05-10 — ALPHA
 
 ## Session — 2026-05-10 (printing-press toolchain bootstrap + Linear/Stripe CLIs)

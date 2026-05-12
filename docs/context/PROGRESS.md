@@ -123,6 +123,116 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? marketing/comic-pipeline/reference/vfd_shot_04.v2.png
 - ?? marketing/comic-pipeline/reference/vfd_shot_04.v3.png
 - ?? marketing/comic-pipeline/reference/vfd_shot_04.v4.png
+
+### 2026-05-10 21:23 UTC — `main`
+**Last commit:** ba70ff75 feat: PostHog PLG funnel + multi-story video pipeline + security patches (#1167)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- ?? HANDOFF_2026-05-10.md
+- ?? docs/competitive-intelligence-2026-05-10.md
+- ?? docs/competitor-research-2026-05-09.md
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-10 21:36 UTC — `main`
+**Last commit:** ba70ff75 feat: PostHog PLG funnel + multi-story video pipeline + security patches (#1167)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? HANDOFF_2026-05-10.md
+- ?? docs/competitive-intelligence-2026-05-10.md
+- ?? docs/competitor-research-2026-05-09.md
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-10 22:04 UTC — `main`
+**Last commit:** ba70ff75 feat: PostHog PLG funnel + multi-story video pipeline + security patches (#1167)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? HANDOFF_2026-05-10.md
+- ?? docs/competitive-intelligence-2026-05-10.md
+- ?? docs/competitor-research-2026-05-09.md
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-10 22:06 UTC — `main`
+**Last commit:** ba70ff75 feat: PostHog PLG funnel + multi-story video pipeline + security patches (#1167)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? HANDOFF_2026-05-10.md
+- ?? docs/competitive-intelligence-2026-05-10.md
+- ?? docs/competitor-research-2026-05-09.md
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-10 23:46 UTC — `main`
+**Last commit:** ba70ff75 feat: PostHog PLG funnel + multi-story video pipeline + security patches (#1167)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/app/(hub)/assets/[id]/page.tsx
+-  M mira-hub/src/app/api/assets/[id]/route.ts
+- ?? HANDOFF_2026-05-10.md
+- ?? docs/competitive-intelligence-2026-05-10.md
+- ?? docs/competitor-research-2026-05-09.md
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-10 23:52 UTC — `main`
+**Last commit:** a8fecbb5 fix(hub): surface QR generate errors + fix isQrBound always-false
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? HANDOFF_2026-05-10.md
+- ?? docs/competitive-intelligence-2026-05-10.md
+- ?? docs/competitor-research-2026-05-09.md
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-11 05:08 UTC — `main`
+**Last commit:** 8bd83da8 docs(wiki): eval-fixer run 2026-05-11
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? HANDOFF_2026-05-10.md
+- ?? docs/competitive-intelligence-2026-05-10.md
+- ?? docs/competitor-research-2026-05-09.md
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-11 14:42 UTC — `main`
+**Last commit:** 40ade849 docs(linkedin): Week 1 war story posts for re-engagement (CRA-265)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- UU docs/context/PROGRESS.md
+- M  marketing/prospects/hardening-alerts.jsonl
+- ?? HANDOFF_2026-05-10.md
+- ?? HANDOFF_2026-05-11.md
+- ?? docs/competitive-intelligence-2026-05-10.md
+- ?? docs/competitor-research-2026-05-09.md
+- ?? docs/competitor-research-2026-05-11.md
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-11 20:47 UTC — `main`
+**Last commit:** 40ade849 docs(linkedin): Week 1 war story posts for re-engagement (CRA-265)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- UU docs/context/PROGRESS.md
+- MM marketing/prospects/hardening-alerts.jsonl
+- ?? HANDOFF_2026-05-10.md
+- ?? HANDOFF_2026-05-11.md
+- ?? docs/competitive-intelligence-2026-05-10.md
+- ?? docs/competitor-research-2026-05-09.md
+- ?? docs/competitor-research-2026-05-11.md
+- ?? tools/lead-hunter/.hourly_state.json
 **Next:** _set by next session_
 
 ### 2026-05-12 02:05 UTC — `claude/epic-saha-3ed943`
