@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Search, FileText, BookOpen, Zap, ShieldCheck, ClipboardCheck, Truck, MapPin, Bot, Upload } from "lucide-react";
@@ -8,6 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DOCS, CAT_COLOR, CAT_BG } from "@/lib/documents-data";
+import { UploadPicker } from "@/components/UploadPicker";
+import { UploadBlock, type UploadBlockData } from "@/components/UploadBlock";
+import { useToast } from "@/providers/toast-provider";
+import { API_BASE } from "@/lib/config";
+
+const NON_TERMINAL: ReadonlyArray<UploadBlockData["status"]> = [
+  "queued",
+  "fetching",
+  "parsing",
+];
 
 const CATEGORIES = [
   { key: "all",        labelKey: "filterLabels.all",        Icon: FileText,       color: "#2563EB" },
@@ -27,8 +37,150 @@ const DOC_STATE_VARIANT: Record<string, "indexed" | "partial" | "superseded"> = 
 
 export default function DocumentsPage() {
   const t = useTranslations("documents");
+  const { toast } = useToast();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [uploads, setUploads] = useState<UploadBlockData[]>([]);
+  const prevStatuses = useRef<Map<string, UploadBlockData["status"]>>(new Map());
+
+  const fetchUploads = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/uploads`, { cache: "no-store" });
+      if (!res.ok) return;
+      const rows = (await res.json()) as Array<{
+        id: string;
+        provider: "google" | "dropbox" | "local";
+        kind?: "document" | "photo";
+        filename: string;
+        sizeBytes: number | null;
+        externalCreatedAt: string | null;
+        status: UploadBlockData["status"];
+        statusDetail: string | null;
+        kbChunkCount: number | null;
+        assetTag: string | null;
+      }>;
+      const next: UploadBlockData[] = rows.map((r) => ({
+        id: r.id,
+        provider: r.provider,
+        kind: r.kind ?? "document",
+        filename: r.filename,
+        sizeBytes: r.sizeBytes,
+        externalCreatedAt: r.externalCreatedAt,
+        status: r.status,
+        statusDetail: r.statusDetail,
+        kbChunkCount: r.kbChunkCount,
+        assetTag: r.assetTag,
+      }));
+
+      // Toast on terminal-state transitions
+      const seen = prevStatuses.current;
+      for (const u of next) {
+        const prev = seen.get(u.id);
+        if (prev && prev !== u.status) {
+          if (u.status === "parsed") {
+            const chunks = u.kbChunkCount != null ? ` · ${u.kbChunkCount} chunks indexed` : "";
+            toast(`Processed: ${u.filename}${chunks}`, "success");
+          } else if (u.status === "failed") {
+            toast(`Failed: ${u.filename}${u.statusDetail ? ` — ${u.statusDetail}` : ""}`, "error");
+          }
+        }
+        seen.set(u.id, u.status);
+      }
+      setUploads(next);
+    } catch {
+      /* swallow — poll will retry */
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    void fetchUploads();
+  }, [fetchUploads]);
+
+  useEffect(() => {
+    const hasActive = uploads.some((u) => NON_TERMINAL.includes(u.status));
+    if (!hasActive) return;
+    const iv = setInterval(fetchUploads, 2000);
+    return () => clearInterval(iv);
+  }, [uploads, fetchUploads]);
+
+  const handleLocalFiles = useCallback(
+    async (files: File[], assetTag: string | null) => {
+      for (const file of files) {
+        const form = new FormData();
+        form.append("file", file);
+        if (assetTag) form.append("assetTag", assetTag);
+        const res = await fetch(`${API_BASE}/api/uploads/local`, { method: "POST", body: form });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+          const msg =
+            body.error === "unsupported_mime"
+              ? `Unsupported file type: ${(body.got as string | undefined) || file.type || "unknown"}`
+              : body.error === "exceeds_20mb_limit"
+                ? `File too large (max 20 MB): ${file.name}`
+                : typeof body.error === "string"
+                  ? body.error
+                  : `Upload failed (${res.status})`;
+          toast(msg, "error");
+          throw new Error(msg);
+        }
+      }
+      toast(`Uploading ${files.length} file${files.length === 1 ? "" : "s"}…`, "info");
+      await fetchUploads();
+    },
+    [fetchUploads, toast],
+  );
+
+  const handleCloudPicks = useCallback(
+    async (
+      results: Array<{
+        provider: "google" | "dropbox";
+        externalFileId?: string;
+        externalDownloadUrl?: string;
+        filename: string;
+        mimeType: string;
+        sizeBytes: number;
+        externalCreatedAt: string | null;
+      }>,
+      assetTag: string | null,
+    ) => {
+      for (const result of results) {
+        await fetch(`${API_BASE}/api/uploads`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...result, assetTag: assetTag ?? undefined }),
+        });
+      }
+      toast(`Queued ${results.length} file${results.length === 1 ? "" : "s"} from cloud`, "info");
+      await fetchUploads();
+    },
+    [fetchUploads, toast],
+  );
+
+  const handleRetry = useCallback(
+    async (id: string) => {
+      const res = await fetch(`${API_BASE}/api/uploads/${id}/retry`, { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        toast(typeof body.error === "string" ? body.error : "Retry failed", "error");
+        return;
+      }
+      toast("Retrying…", "info");
+      await fetchUploads();
+    },
+    [fetchUploads, toast],
+  );
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      await fetch(`${API_BASE}/api/uploads/${id}`, { method: "DELETE" });
+      await fetchUploads();
+    },
+    [fetchUploads],
+  );
+
+  const recentUploads = uploads.slice(0, 8);
+  const hasActiveUpload = uploads.some((u) => NON_TERMINAL.includes(u.status));
 
   const visible = DOCS.filter((d) => {
     const matchCat = category === "all" || d.category === category;
@@ -42,8 +194,11 @@ export default function DocumentsPage() {
         <div className="px-4 md:px-6 pt-3 pb-3">
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
-            <Button size="sm" variant="outline" className="gap-1.5">
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setPickerOpen(true)}>
               <Upload className="w-3.5 h-3.5" />{t("upload")}
+              {hasActiveUpload && (
+                <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "#2563EB" }} />
+              )}
             </Button>
           </div>
           <div className="relative">
@@ -86,6 +241,18 @@ export default function DocumentsPage() {
 
         {/* Document grid */}
         <div className="flex-1 px-4 md:px-6 py-4 md:pt-4">
+          {recentUploads.length > 0 && (
+            <div className="mb-5">
+              <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: "var(--foreground-subtle)" }}>
+                Recent Uploads
+              </p>
+              <div className="flex flex-col gap-2">
+                {recentUploads.map((u) => (
+                  <UploadBlock key={u.id} upload={u} onDelete={handleDelete} onRetry={handleRetry} />
+                ))}
+              </div>
+            </div>
+          )}
           <p className="text-xs mb-4" style={{ color: "var(--foreground-muted)" }}>
             {visible.length} document{visible.length !== 1 ? "s" : ""}
           </p>
@@ -134,6 +301,13 @@ export default function DocumentsPage() {
           )}
         </div>
       </div>
+
+      <UploadPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onLocalFiles={handleLocalFiles}
+        onCloudPicks={handleCloudPicks}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon, FileText, Tag } from "lucide-react";
+import { X, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon, FileText, Tag, RotateCw } from "lucide-react";
 
 export type UploadBlockData = {
   id: string;
@@ -41,11 +41,14 @@ function formatDate(iso: string | null): string {
 export function UploadBlock({
   upload,
   onDelete,
+  onRetry,
 }: {
   upload: UploadBlockData;
   onDelete: (id: string) => void | Promise<void>;
+  onRetry?: (id: string) => void | Promise<void>;
 }) {
   const [deleting, setDeleting] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const parsed = upload.status === "parsed";
   const failed = upload.status === "failed";
   const isPhoto = upload.kind === "photo";
@@ -129,21 +132,43 @@ export function UploadBlock({
         </div>
       </div>
 
-      <button
-        onClick={async () => {
-          setDeleting(true);
-          try {
-            await onDelete(upload.id);
-          } finally {
-            setDeleting(false);
-          }
-        }}
-        disabled={deleting}
-        className="p-1 rounded-lg hover:bg-[var(--surface-1)] transition-colors disabled:opacity-50"
-        title={parsed ? "Remove from knowledge base" : "Cancel"}
-      >
-        <X className="w-4 h-4" style={{ color: "var(--foreground-muted)" }} />
-      </button>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {failed && onRetry && upload.provider !== "local" && (
+          <button
+            onClick={async () => {
+              setRetrying(true);
+              try {
+                await onRetry(upload.id);
+              } finally {
+                setRetrying(false);
+              }
+            }}
+            disabled={retrying}
+            className="p-1 rounded-lg hover:bg-[var(--surface-1)] transition-colors disabled:opacity-50"
+            title="Retry"
+          >
+            <RotateCw
+              className={`w-4 h-4 ${retrying ? "animate-spin" : ""}`}
+              style={{ color: "#2563EB" }}
+            />
+          </button>
+        )}
+        <button
+          onClick={async () => {
+            setDeleting(true);
+            try {
+              await onDelete(upload.id);
+            } finally {
+              setDeleting(false);
+            }
+          }}
+          disabled={deleting}
+          className="p-1 rounded-lg hover:bg-[var(--surface-1)] transition-colors disabled:opacity-50"
+          title={parsed ? "Remove from knowledge base" : "Cancel"}
+        >
+          <X className="w-4 h-4" style={{ color: "var(--foreground-muted)" }} />
+        </button>
+      </div>
     </div>
   );
 }
