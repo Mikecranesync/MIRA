@@ -4,6 +4,13 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { extractAndStore } from "@/lib/knowledge-graph/extractor";
 import { buildGraphContext } from "@/lib/knowledge-graph/context-builder";
 import { scanBoth, handleSafetyAlert, safetyAlertSseChunk } from "@/lib/agents/safety-alert";
+import {
+  retrieveManualChunks,
+  appendManualContext,
+  chunksToSources,
+  type ManualChunk,
+  type ManualSource,
+} from "@/lib/manual-rag";
 
 export const dynamic = "force-dynamic";
 
@@ -229,11 +236,13 @@ export async function POST(
     });
   }
 
-  // Fetch asset context from DB
+  // Fetch asset context + manual chunks in a single tenant-scoped transaction
+  // so RLS applies uniformly. Both are non-fatal: chat still works without them.
   let assetRow: Record<string, unknown> | null = null;
+  let manualChunks: ManualChunk[] = [];
   try {
-    assetRow = await withTenantContext(ctx.tenantId, (c) =>
-      c.query(
+    const fetched = await withTenantContext(ctx.tenantId, async (c) => {
+      const assetRes = await c.query(
         `SELECT
           equipment_number, manufacturer, model_number, serial_number,
           equipment_type, location, criticality, description,
@@ -243,11 +252,20 @@ export async function POST(
         WHERE id = $1 AND tenant_id = $2
         LIMIT 1`,
         [id, ctx.tenantId],
-      ).then((r) => r.rows[0] ?? null),
-    );
+      );
+      const row = (assetRes.rows[0] ?? null) as Record<string, unknown> | null;
+      const mfr = row?.manufacturer ? String(row.manufacturer) : null;
+      const chunks = await retrieveManualChunks(c, ctx.tenantId, lastUser.content, {
+        manufacturer: mfr,
+      });
+      return { row, chunks };
+    });
+    assetRow = fetched.row;
+    manualChunks = fetched.chunks;
   } catch {
     // Non-fatal: continue without DB context (graceful degradation)
     assetRow = null;
+    manualChunks = [];
   }
 
   // KG graph context — fetch in parallel with (already completed) asset DB fetch
@@ -258,9 +276,12 @@ export async function POST(
     ? buildSystemPrompt(assetRow)
     : `You are MIRA, an AI maintenance assistant for industrial equipment. Answer questions about this asset concisely and accurately. Cite manual sections when referenced.`;
 
-  const systemPrompt = graphContext
+  const withGraph = graphContext
     ? `${baseSystemPrompt}\n\n## Knowledge Graph Context\nThe following relational context was retrieved from the plant knowledge graph. Use it to give more specific, history-aware answers.\n\n${graphContext}`
     : baseSystemPrompt;
+
+  const systemPrompt = appendManualContext(withGraph, manualChunks);
+  const manualSources: ManualSource[] = chunksToSources(manualChunks);
 
   const fullMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
@@ -275,6 +296,14 @@ export async function POST(
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      // Emit retrieved sources up front so the UI can render citation chips
+      // alongside the streaming answer.
+      if (manualSources.length > 0) {
+        controller.enqueue(
+          enc.encode(`data: ${JSON.stringify({ sources: manualSources })}\n\n`),
+        );
+      }
+
       let served = false;
       for (const provider of providers) {
         try {

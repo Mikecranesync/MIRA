@@ -1,0 +1,145 @@
+import { describe, expect, it, vi } from "vitest";
+import type { PoolClient } from "pg";
+import {
+  appendManualContext,
+  buildGroundedContext,
+  chunksToSources,
+  retrieveManualChunks,
+  type ManualChunk,
+} from "../manual-rag";
+
+function makeClient(scriptedRows: Array<Record<string, unknown>[]>): {
+  client: PoolClient;
+  calls: Array<{ sql: string; params: unknown[] }>;
+} {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const query = vi.fn(async (sql: string, params: unknown[]) => {
+    calls.push({ sql, params });
+    const rows = scriptedRows.shift() ?? [];
+    return { rows };
+  });
+  return { client: { query } as unknown as PoolClient, calls };
+}
+
+const row = (overrides: Partial<Record<string, unknown>> = {}) => ({
+  content: "Set torque to 35 ft-lbs on motor mount bolts.",
+  manufacturer: "Allen-Bradley",
+  model_number: "PowerFlex 525",
+  source_url: "https://example.com/pf525.pdf",
+  source_page: 42,
+  title: "PowerFlex 525 Service Manual",
+  rank: 0.42,
+  ...overrides,
+});
+
+describe("retrieveManualChunks", () => {
+  it("returns empty for empty query without touching DB", async () => {
+    const { client, calls } = makeClient([]);
+    const out = await retrieveManualChunks(client, "tenant-1", "   ");
+    expect(out).toEqual([]);
+    expect(calls.length).toBe(0);
+  });
+
+  it("applies manufacturer filter and returns mapped chunks", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "what is the torque", {
+      manufacturer: "Allen-Bradley",
+      topK: 4,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].manufacturer).toBe("Allen-Bradley");
+    expect(out[0].sourcePage).toBe(42);
+    expect(out[0].title).toBe("PowerFlex 525 Service Manual");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].sql).toContain("manufacturer ILIKE");
+    expect(calls[0].params).toEqual([
+      "tenant-1",
+      "what is the torque",
+      "%Allen-Bradley%",
+      4,
+    ]);
+  });
+
+  it("falls back to tenant-only retrieval when manufacturer-scoped query is empty", async () => {
+    const { client, calls } = makeClient([[], [row({ manufacturer: "Generic" })]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "torque", {
+      manufacturer: "Allen-Bradley",
+    });
+    expect(out).toHaveLength(1);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].sql).toContain("manufacturer ILIKE");
+    expect(calls[1].sql).not.toContain("manufacturer ILIKE");
+  });
+
+  it("skips manufacturer filter entirely when none provided", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", "torque");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].sql).not.toContain("manufacturer ILIKE");
+  });
+});
+
+describe("buildGroundedContext", () => {
+  it("returns empty string for no chunks", () => {
+    expect(buildGroundedContext([])).toBe("");
+  });
+
+  it("emits numbered [n] blocks with manufacturer + page", () => {
+    const chunks: ManualChunk[] = [
+      {
+        content: "Torque: 35 ft-lbs.",
+        manufacturer: "Allen-Bradley",
+        modelNumber: "PowerFlex 525",
+        sourceUrl: "u",
+        sourcePage: 42,
+        title: "t",
+        rank: 1,
+      },
+    ];
+    const ctx = buildGroundedContext(chunks);
+    expect(ctx).toContain("[1] Allen-Bradley PowerFlex 525, p.42");
+    expect(ctx).toContain("Torque: 35 ft-lbs.");
+  });
+});
+
+describe("appendManualContext", () => {
+  it("instructs the model when no chunks matched", () => {
+    const out = appendManualContext("BASE", []);
+    expect(out).toContain("BASE");
+    expect(out).toMatch(/No OEM documentation matched/i);
+  });
+
+  it("includes citation rule and context when chunks present", () => {
+    const out = appendManualContext("BASE", [
+      {
+        content: "x",
+        manufacturer: "AB",
+        modelNumber: "PF525",
+        sourceUrl: "u",
+        sourcePage: 1,
+        title: "t",
+        rank: 1,
+      },
+    ]);
+    expect(out).toContain("[n] markers");
+    expect(out).toContain("[1] AB PF525, p.1");
+  });
+});
+
+describe("chunksToSources", () => {
+  it("dedupes by (url, page)", () => {
+    const c: ManualChunk = {
+      content: "a",
+      manufacturer: "AB",
+      modelNumber: "PF525",
+      sourceUrl: "https://x/y.pdf",
+      sourcePage: 7,
+      title: "",
+      rank: 1,
+    };
+    const sources = chunksToSources([c, { ...c, content: "b" }, { ...c, sourcePage: 8 }]);
+    expect(sources).toHaveLength(2);
+    expect(sources[0].title).toBe("AB PF525");
+    expect(sources[1].page).toBe(8);
+  });
+});
