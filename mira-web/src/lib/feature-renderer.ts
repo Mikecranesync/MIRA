@@ -1275,7 +1275,7 @@ export function renderFeaturePage(feature: Feature): string {
               <span class="cta-start-action">Start Here &rarr;</span>
             </span>
           </a>
-          <p class="cta-note">No credit card to sign up. $97/mo after the walkthrough.</p>
+          <p class="cta-note">$500 Maintenance Assessment. We come to your floor. You leave with a written gap report.</p>
         </div>
       </div>
     </section>

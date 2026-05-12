@@ -226,22 +226,22 @@ const FORM_SCRIPT = `
 
 const PLAN_LABELS: Record<string, { eyebrow: string; h1: string; sub: string }> = {
   mira: {
-    eyebrow: "MIRA Troubleshooter — $97/mo",
-    h1: "One workspace per asset. Cited answers at 2 AM.",
-    sub: "You're signing up for MIRA Troubleshooter. Send yourself a magic link — no password, no demo call, no credit card.",
+    eyebrow: "Operating Layer — $499/mo per plant",
+    h1: "MIRA in production. On a structured namespace.",
+    sub: "You're signing in to the Maintenance Operating Layer. Send yourself a magic link — no password, no demo call.",
   },
   integrated: {
-    eyebrow: "MIRA Integrated — $297/mo",
-    h1: "MIRA + your CMMS. Work orders flow automatically.",
-    sub: "You're signing up for MIRA Integrated. Send yourself a magic link — no password, no demo call, no credit card.",
+    eyebrow: "Operating Layer + CMMS write-back",
+    h1: "MIRA + your CMMS. Diagnostics become work orders.",
+    sub: "You're signing in to the Operating Layer with CMMS sync. Send yourself a magic link — no password, no demo call.",
   },
 };
 
 function hero(plan?: string): string {
   const copy = (plan ? PLAN_LABELS[plan] : undefined) ?? {
-    eyebrow: "FactoryLM CMMS",
-    h1: "One workspace per asset. Cited answers at 2 AM.",
-    sub: "Send yourself a magic link. No password, no demo call, no credit card.",
+    eyebrow: "Maintenance Operating Layer",
+    h1: "Sign in to your Operating Layer.",
+    sub: "One component of your maintenance transformation. Send yourself a magic link — no password, no demo call.",
   };
   const planHidden = plan
     ? `<input type="hidden" id="cmms-plan" name="plan" value="${plan}">`
@@ -284,38 +284,41 @@ function hero(plan?: string): string {
 
 function whatHappensNext(): string {
   return `<section class="fl-section" aria-labelledby="fl-steps-h">
-  <h2 id="fl-steps-h" class="fl-section-h">What happens next.</h2>
-  <p class="fl-section-sub">Three steps, all under five minutes.</p>
-  <ol class="fl-steps" aria-label="Onboarding steps">
+  <h2 id="fl-steps-h" class="fl-section-h">The Operating Layer is one component.</h2>
+  <p class="fl-section-sub">It's where MIRA runs after we've structured your maintenance namespace. Most plants start with an Assessment, not here.</p>
+  <ol class="fl-steps" aria-label="What the Operating Layer includes">
     <li class="fl-step">
-      <div class="fl-step-marker">${stateBadge("indexed", "1 · Email arrives")}</div>
-      <h3 class="fl-step-h">Click the magic link</h3>
-      <p class="fl-step-body">A one-time link lands in your inbox in seconds. Single-use, expires in 10 minutes — so it's safe to forward to your phone.</p>
+      <div class="fl-step-marker">${stateBadge("indexed", "Asset registry")}</div>
+      <h3 class="fl-step-h">Asset hierarchy + nameplates</h3>
+      <p class="fl-step-body">Machines, sub-components, and the manuals bound to each. Captured during your pilot, maintained continuously.</p>
     </li>
     <li class="fl-step">
-      <div class="fl-step-marker">${stateBadge("partial", "2 · Upload a manual")}</div>
-      <h3 class="fl-step-h">Drop your first PDF</h3>
-      <p class="fl-step-body">MIRA OCRs and indexes the manual. Document state goes from <em>partial</em> to <em>indexed</em>. You'll see the chunks counted live.</p>
+      <div class="fl-step-marker">${stateBadge("indexed", "Work orders + PMs")}</div>
+      <h3 class="fl-step-h">CMMS write-back</h3>
+      <p class="fl-step-body">PM schedules extracted from OEM manuals. Diagnostics from MIRA become work orders — synced to MaintainX, Limble, UpKeep, or Atlas.</p>
     </li>
     <li class="fl-step">
-      <div class="fl-step-marker">${stateBadge("indexed", "3 · Ask a question")}</div>
-      <h3 class="fl-step-h">Get the cited answer</h3>
-      <p class="fl-step-body">Type a fault code or symptom. MIRA answers from your manual with section citations — not generic web text.</p>
+      <div class="fl-step-marker">${stateBadge("indexed", "Grounded AI")}</div>
+      <h3 class="fl-step-h">MIRA on the floor</h3>
+      <p class="fl-step-body">Telegram, Slack, web. Every answer cites your manuals, your fault history, your assets. No hallucinations because the namespace exists.</p>
     </li>
   </ol>
+  <p style="text-align:center; margin-top: var(--fl-sp-6); color: var(--fl-muted-600); font-size: var(--fl-type-base);">
+    New to FactoryLM? <a href="/buy" style="color: var(--fl-navy-900);">Start with a $500 Assessment →</a>
+  </p>
 </section>`;
 }
 
 function compareSection(): string {
   return `<section class="fl-section" aria-labelledby="fl-compare-h">
-  <h2 id="fl-compare-h" class="fl-section-h">Why MIRA, not ChatGPT Projects.</h2>
-  <p class="fl-section-sub">One real prompt. Two answers. You decide.</p>
+  <h2 id="fl-compare-h" class="fl-section-h">The namespace is the difference.</h2>
+  <p class="fl-section-sub">Same prompt. Generic AI vs. AI running on a structured Maintenance Intelligence Namespace.</p>
   ${compareBlock(
     "Why is the Powerflex 755 tripping F005 at 1,200 RPM?",
-    "ChatGPT Projects",
+    "Generic AI (no namespace)",
     "F005 is typically caused by undervoltage at the input or a brownout condition. Check incoming line voltage and confirm your PLC tag mapping.",
-    "Generic — no plant context, no manual citation, no history.",
-    "MIRA",
+    "No plant context. No manual citation. No history. Hallucination risk.",
+    "MIRA on your namespace",
     "F005 on this drive (Asset POW-755-A12) means DC bus undervoltage. Last 7 days show 4 trips at the same RPM band, all overnight. Manual §6.2 says to check the bus capacitor bank — your 2024-12-14 PM noted bulging on cap 3.",
     ["Manual §6.2 (PowerFlex 755)", "PM 2024-12-14", "Trips: last 7 d"]
   )}
@@ -330,26 +333,26 @@ export function renderCmms(reqUrl?: string): string {
 
   const headHtml = head(
     {
-      title: "FactoryLM CMMS — sign in with a magic link",
+      title: "Maintenance Operating Layer — FactoryLM",
       description:
-        "Send yourself a one-time sign-in link. No password, no demo call, no credit card. Upload your first manual and ask MIRA a question.",
+        "Sign in to the Operating Layer where MIRA runs on your structured Maintenance Intelligence Namespace. One component of the broader transformation.",
       canonical: "https://factorylm.com/cmms",
       jsonLd: {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         "@id": "https://factorylm.com/cmms#app",
-        name: "FactoryLM CMMS",
+        name: "FactoryLM Maintenance Operating Layer",
         applicationCategory: "BusinessApplication",
         operatingSystem: "Web",
         url: "https://factorylm.com/cmms",
-        description: "AI-powered CMMS for industrial maintenance. Work orders, PM scheduling, asset registry, and MIRA AI answers from cited OEM documentation.",
+        description: "The Operating Layer is where MIRA — FactoryLM's AI execution layer — runs on a structured Maintenance Intelligence Namespace. Asset registry, work orders, PM scheduling, and grounded AI answers from cited OEM documentation.",
         offers: {
           "@type": "Offer",
-          name: "MIRA Troubleshooter",
-          price: "97",
+          name: "Operating Layer",
+          price: "499",
           priceCurrency: "USD",
           priceSpecification: { "@type": "UnitPriceSpecification", unitText: "per plant per month" },
-          url: "https://factorylm.com/pricing",
+          url: "https://factorylm.com/buy",
         },
         publisher: { "@id": "https://factorylm.com/#org" },
       },

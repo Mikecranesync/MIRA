@@ -124,4 +124,17 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? marketing/comic-pipeline/reference/vfd_shot_04.v3.png
 - ?? marketing/comic-pipeline/reference/vfd_shot_04.v4.png
 **Next:** _set by next session_
+
+### 2026-05-12 02:05 UTC — `claude/epic-saha-3ed943`
+**Last commit:** 40ade849 docs(linkedin): Week 1 war story posts for re-engagement (CRA-265)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M NORTH_STAR.md
+-  M STRATEGY.md
+-  M mira-web/public/assess.html
+-  M mira-web/public/buy.html
+-  M mira-web/src/views/cmms.ts
+-  M mira-web/src/views/home.ts
+- ?? docs/demo/
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
