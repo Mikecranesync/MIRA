@@ -620,9 +620,7 @@ class Supervisor:
             # Procedural how-to questions: answer from knowledge, skip doc crawl.
             # Keyword "instructional" also routes here via the fallback mapping above.
             if _router_intent == "answer_question" or _keyword_intent == "instructional":
-                return await self._handle_instructional_question(
-                    chat_id, message, state, trace_id
-                )
+                return await self._handle_instructional_question(chat_id, message, state, trace_id)
 
             # find_documentation: let the existing specificity-gate block handle it below
             if _router_intent == "find_documentation":
@@ -663,7 +661,11 @@ class Supervisor:
                 if "," in asset_id:
                     fallback_mfr = mfr or asset_id.split(",", 1)[0].strip()
                     return await self._do_documentation_lookup(
-                        chat_id, message, state, trace_id, resolved_tenant,
+                        chat_id,
+                        message,
+                        state,
+                        trace_id,
+                        resolved_tenant,
                         vendor_override=fallback_mfr,
                     )
                 return await self._enter_manual_lookup_gathering(
@@ -2146,7 +2148,7 @@ class Supervisor:
             if sep not in msg:
                 continue
             idx = msg.index(sep)
-            pre, fault = msg[:idx], msg[idx + len(sep):].strip()
+            pre, fault = msg[:idx], msg[idx + len(sep) :].strip()
             m = re.search(r"\bfor\s+(.{3,}?)$", pre, re.IGNORECASE)
             if m:
                 asset = m.group(1).strip()
@@ -2276,12 +2278,14 @@ class Supervisor:
             if "," in asset_id:
                 fallback_mfr = mfr or asset_id.split(",", 1)[0].strip()
                 return await self._do_documentation_lookup(
-                    chat_id, message, state, trace_id, resolved_tenant,
+                    chat_id,
+                    message,
+                    state,
+                    trace_id,
+                    resolved_tenant,
                     vendor_override=fallback_mfr,
                 )
-            return await self._enter_manual_lookup_gathering(
-                chat_id, message, state, trace_id, mfr
-            )
+            return await self._enter_manual_lookup_gathering(chat_id, message, state, trace_id, mfr)
         return await self._do_documentation_lookup(
             chat_id, message, state, trace_id, resolved_tenant, vendor_override=mfr
         )

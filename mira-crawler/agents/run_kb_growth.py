@@ -21,6 +21,13 @@ QUEUE_FILE = _REPO / "mira-crawler" / "cron" / "manual_queue.json"
 PIPELINE = _REPO / "mira-crawler" / "tasks" / "full_ingest_pipeline.py"
 
 
+_MAX_ATTEMPTS = 3
+
+
+def _save_queue(queue: list[dict]) -> None:
+    QUEUE_FILE.write_text(json.dumps(queue, indent=2))
+
+
 def _run() -> dict:
     queue = json.loads(QUEUE_FILE.read_text())
     pending = [e for e in queue if e.get("status") == "pending"]
@@ -41,7 +48,22 @@ def _run() -> dict:
     )
 
     if result.returncode != 0:
-        raise RuntimeError(result.stderr[-300:] if result.stderr else "pipeline failed")
+        # Record the attempt + decide whether to keep retrying tomorrow or
+        # mark the entry failed so the queue advances. Without this, a
+        # docling-killer PDF stalls the entire queue daily until a human
+        # intervenes (PowerFlex-525 sat for days for exactly this reason).
+        err_tail = (result.stderr[-300:] if result.stderr else "pipeline failed").strip()
+        for e in queue:
+            if e.get("url") == entry["url"]:
+                attempts = int(e.get("attempts", 0)) + 1
+                e["attempts"] = attempts
+                e["last_error"] = err_tail
+                if attempts >= _MAX_ATTEMPTS:
+                    e["status"] = "failed"
+                    e["failed_at"] = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+                break
+        _save_queue(queue)
+        raise RuntimeError(err_tail)
 
     # Parse chunk count from stdout if available
     chunks = 0

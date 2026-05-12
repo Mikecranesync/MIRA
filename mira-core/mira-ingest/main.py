@@ -747,7 +747,11 @@ def _maybe_trigger_pm_extraction(equipment_type: str, fname: str, tenant_id: str
 
     parsed = _parse_manufacturer_model(equipment_type, fname)
     if not parsed:
-        logger.debug("PM extraction skipped: cannot parse manufacturer+model from %r / %r", equipment_type, fname)
+        logger.debug(
+            "PM extraction skipped: cannot parse manufacturer+model from %r / %r",
+            equipment_type,
+            fname,
+        )
         return
 
     manufacturer, model_number = parsed
