@@ -56,6 +56,15 @@ describe("GET /m/:asset_tag/choose", () => {
     expect(html).toContain("Asset not found");
   });
 
+  test("CRA-24: 'Open MIRA' link meets 44x44 tap target on mobile", async () => {
+    const res = await app.request("/m/NOEXIST-CHOOSER-TAG/choose");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("min-height: 44px");
+    expect(html).toContain("padding: 0.75rem 1rem");
+    expect(html).toContain('<a href="https://app.factorylm.com">Open MIRA</a>');
+  });
+
   test("sets mira_channel_pref cookie when ?set_pref=telegram is passed", async () => {
     const res = await app.request("/m/VFD-CHOOSER/choose?set_pref=telegram", {
       redirect: "manual",
