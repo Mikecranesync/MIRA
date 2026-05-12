@@ -54,7 +54,8 @@ class LinkedInPost(BaseModel):
     hashtags: list[str] = Field(default_factory=list)
     char_count: int = 0
 
-    def model_post_init(self, __context: object) -> None:
+    def model_post_init(self, __context: object) -> None:  # noqa: PYI063
+        _ = __context
         if not self.char_count:
             self.char_count = len(self.text)
 
