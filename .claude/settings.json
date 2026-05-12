@@ -71,6 +71,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "echo \"$CLAUDE_TOOL_INPUT\" | bash tools/hooks/prod-guard.sh 2>/dev/null || true"
+          },
+          {
+            "type": "command",
             "command": "echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'git commit|git push' && gitleaks protect --staged --config .gitleaks.toml 2>/dev/null || true"
           }
         ]
@@ -91,7 +95,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/stop.sh"
+            "command": "bash tools/hooks/stop-gate.sh; bash .claude/hooks/stop.sh"
           }
         ]
       }
