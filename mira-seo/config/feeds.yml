@@ -1,0 +1,23 @@
+rss_feeds:
+  - url: "https://www.plantengineering.com/rss/articles.rss"
+    category: industrial
+  - url: "https://www.reliableplant.com/rss.rss"
+    category: industrial
+  - url: "https://maintenanceworld.com/feed/"
+    category: industrial
+  - url: "https://hnrss.org/newest?q=industrial+maintenance&points=30"
+    category: industrial
+  - url: "https://hnrss.org/newest?q=AI+LLM&points=50"
+    category: ai_news
+
+youtube_channels:
+  - id: "UCddiUEpeqJcYeBxX1IVBKvQ"
+    name: "RealPars"
+  - id: "UCAL3JXZSzSm8AlZyD3nQdBA"
+    name: "UpKeep Maintenance"
+
+keyword_weights:
+  problem_aware: 0.60
+  product_aware: 0.40
+
+groq_model: "llama-3.3-70b-versatile"
