@@ -67,7 +67,10 @@ jobs:
           # has lost track of, we hit `Error: container name already in use` and the deploy
           # bails out (exact failure mode of run 25264673954, 2026-05-02).
           for svc in $TARGETS; do
+            # container_name in saas.yml is sometimes bare (mira-hub,
+            # mira-bot-telegram), sometimes -saas suffixed. Try both.
             docker rm -f "${svc}-saas" 2>/dev/null || true
+            docker rm -f "${svc}" 2>/dev/null || true
           done
 
           echo "=== Rebuild containers ==="
