@@ -1,45 +1,55 @@
 # FactoryLM North Star
 
-**The entire premise of this business is a self-building maintenance knowledge base that gets smarter with every trouble call.**
+**FactoryLM is a maintenance digital transformation firm. We turn messy maintenance reality into AI-ready infrastructure. MIRA is the execution layer that runs on top.**
 
-## The Flywheel
+The product is **the transformation**. The flywheel is what makes each transformation cheaper and faster than the last.
 
-1. Tech gets a trouble call → opens MIRA → takes a photo
-2. MIRA identifies the equipment → queues OEM manual download
-3. Manual parsed → PM schedules AUTOMATICALLY extracted → calendar auto-populates
-4. Every subsequent tech at ANY plant encounters that equipment → gets the manual, fault codes, PM schedule, and diagnostic patterns from every previous interaction
-5. Every photo, conversation, and resolved fault makes the entire network smarter
+## The Three Offers (commercial layer)
+
+1. **Assessment** ($500) — walk the floor, score Maintenance AI Readiness, deliver gap report + namespace blueprint.
+2. **Pilot** ($2–5K/mo) — structure one line: nameplates, manuals, PLC tags, PMs, fault history. MIRA goes live on that scope.
+3. **Operating Layer** ($499/mo) — MIRA in production. Continuous structuring as the plant evolves.
+
+See `STRATEGY.md` for the full commercial logic.
+
+## The Flywheel (technical layer)
+
+1. We structure a plant → its **Maintenance Intelligence Namespace** is captured (assets, docs, tags, history)
+2. Every structuring increases our reusable inventory: parsed manuals, OEM PM templates, fault pattern libraries, PLC tag-mapping heuristics
+3. Each next plant is faster + cheaper to structure because we already have the OEM patterns
+4. MIRA on top of the namespace gives the plant grounded answers, captures more knowledge, and feeds back into the inventory
+5. The cost-to-structure curve drops; the moat compounds
 
 ## This Is The Product
 
-Everything else — the hub, the chat adapters, the CMMS integrations, the channels, the OAuth connectors — is supporting infrastructure for this flywheel.
+Infrastructure first. AI second. Every customer engagement starts with **"what does your maintenance world actually look like?"** — not with a chatbot demo.
+
+Everything in the repo — `mira-pipeline`, `mira-mcp`, `mira-bots`, `mira-web`, `mira-cmms`, `mira-crawler` — is supporting infrastructure for delivering and operating that namespace.
 
 ## The Decision Filter
 
 Before building any feature, ask: **"Does this make the flywheel spin faster?"**
 
-- Adding PM schedule extraction from manuals? YES — core flywheel.
-- Adding a new chat adapter (WhatsApp)? YES — more techs feeding photos into the flywheel.
-- Adding a pretty dashboard chart? MAYBE — only if it proves the flywheel is working.
-- Adding a feature that no competitor has? ASK — does it feed the flywheel or is it a distraction?
+- Reusable OEM manual parsing? YES — directly drops structuring cost.
+- New chat adapter (WhatsApp)? MAYBE — only if a paying plant needs it.
+- Pretty dashboard chart? ONLY if it proves namespace quality to a buyer.
+- Self-serve onboarding wizard? DEFER — we structure FOR them in the pilot, not via a wizard.
 
-## The Auto-PM Pipeline (THE core feature)
+## The Maintenance Intelligence Namespace (core deliverable)
 
-Status: PARTIALLY BUILT. This is the #1 priority.
+Status: PARTIALLY BUILT. This is what every pilot produces.
 
-| Step | Status | What |
+| Layer | Status | What |
 |------|--------|------|
-| Photo/tag → equipment ID | ✅ Built | Vision + OCR in GSDEngine |
-| Manual not found → queue download | ✅ Built | KB Builder agent |
-| Parse PDF → RAG chunks | ✅ Built | mira-ingest pipeline |
-| Extract PM schedules → structured JSON | 🔲 NOT BUILT | LLM structured output from chunks |
-| Auto-create PM work orders | 🔲 NOT BUILT | Calendar + WO generation |
-| Push PMs to downstream CMMS | 🔲 NOT BUILT | Atlas/MaintainX/etc API |
-| Knowledge Cooperative sharing | 🔲 NOT BUILT | Anonymized PM patterns across network |
-| Sub-component model | 🔲 NOT BUILT | Machine → motor → relay → switch |
+| Asset hierarchy (machine → sub-component) | 🔲 Schema only | Component model, parent/child links |
+| Nameplate → asset binding | ✅ Built | Vision + OCR (mira-pipeline) |
+| Manual ingest → cited RAG | ✅ Built | mira-ingest, 68K chunks indexed |
+| PM schedule extraction | 🔲 NOT BUILT | LLM structured output from chunks |
+| PLC tag ↔ asset reconciliation | 🔲 NOT BUILT | Ignition tag stream + asset matcher |
+| Fault history capture (Telegram → structured RCA) | ✅ Partial | Adapter exists; RCA schema TBD |
+| Tribal knowledge → structured notes | 🔲 NOT BUILT | Voice memo → structured RCA |
+| CMMS write-back | ✅ Partial | Atlas integration; MaintainX via Nango next |
 
-## The Knowledge Cooperative
+## The Knowledge Cooperative (long-term moat)
 
-Community tier customers share anonymized PM patterns. A plant that uploads a Yaskawa GA500 manual — every other Community plant with a GA500 gets those PM schedules. The more plants participate, the more complete the knowledge base becomes. This is the network effect.
-
-Professional/Enterprise customers who opt out pay more and don't get the network benefit.
+Operating-Layer plants who opt in share anonymized PM patterns and fault-resolution traces. A plant that pilots a Yaskawa GA500 — every subsequent plant with a GA500 starts ~80% structured for free. The more plants on the operating layer, the lower the structuring cost per new plant. **This is the network effect that makes the firm defensible.**

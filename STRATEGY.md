@@ -1,88 +1,122 @@
-# MIRA Go-To-Market Strategy
+# FactoryLM Go-To-Market Strategy
 
-**Mission:** Sell the North Star flywheel (see `NORTH_STAR.md`) to industrial plants, starting with one tech, one plant, one broken machine.
+**Mission:** Help industrial plants turn their messy maintenance reality — manuals in filing cabinets, PLC tags that don't match asset names, fault history in someone's head — into AI-ready infrastructure. MIRA is the execution layer; the **transformation** is the product.
+
+**Positioning (one line):** FactoryLM is a **maintenance digital transformation firm**. We map your assets, documents, PLC context, and technician knowledge into a structured **Maintenance Intelligence Namespace**. Then AI can actually help.
+
+---
+
+## What We Are / What We Are Not
+
+| We are | We are not |
+|---|---|
+| A maintenance digital transformation firm | An "AI CMMS" vendor |
+| Services + SaaS hybrid (assessment → pilot → operating layer) | A self-serve seat-licensed SaaS |
+| The team that structures your maintenance context | A bolt-on chatbot |
+| A subset of UNS (Unified Namespace) focused on the maintenance side | Trying to replace Ignition, MaintainX, or your historian |
+
+**Walker rule:** infrastructure first, AI second. Never lead with "AI CMMS."
 
 ---
 
 ## ICP (Ideal Customer Profile)
 
-**Primary:** Industrial maintenance managers at SMB manufacturers (10–500 employees, 1–5 technicians). Using paper PM logs or basic spreadsheets. One unplanned downtime event costs $10K+.
+**Primary:** Industrial maintenance leadership at SMB / mid-market manufacturers (50–500 employees, 2–20 technicians). Plant manager or maintenance manager owns the budget. One unplanned downtime event costs $10K+.
 
-**Pain:** "We don't have time to read the manual. We don't know what's due. When the VFD fails at 2 AM, nobody knows the procedure."
+**Pain:**
+- "Our manuals are in three filing cabinets, two SharePoints, and one tech's truck."
+- "Our PLC tag names don't match the asset names in the CMMS."
+- "When the senior tech retires next year, we lose 30 years of fault history."
+- "We tried an AI tool. It hallucinated. Of course it did — we never gave it the context."
 
-**Secondary:** Independent maintenance contractors servicing multiple plants.
+**Secondary:** OEM service organizations and independent maintenance contractors who want to layer this on top of their service contracts.
 
 ---
 
-## Pricing Tiers
+## The Three Offers
 
-| Tier | Price | Who | Value Prop |
-|------|-------|-----|-----------|
-| Community | Free | Solo tech, small shops | Access flywheel, contribute PM data |
-| MIRA Troubleshooter | $97/mo | Single plant | AI-cited answers + auto-PM calendar |
-| MIRA Integrated | $297/mo | Multi-site or CMMS user | Everything + work order sync to Atlas/MaintainX |
-| Enterprise | Custom | 10+ plants, OEM partners | SLA + white-label + data export |
+| Offer | Price | What we deliver | Who it's for |
+|---|---|---|---|
+| **Assessment** | **$500** (one-time) | We walk your floor (in person or remote), score your Maintenance AI Readiness, deliver a written gap report + namespace blueprint | Plants exploring; the wedge |
+| **Pilot** | **$2K–5K/mo** (3-month minimum) | We structure one line / one cell: nameplates scanned, manuals indexed, PLC tags mapped, PMs extracted, fault history captured. MIRA goes live on that scope. | Plants that scored low on assessment and want proof on a bounded slice |
+| **Operating Layer** | **$499/mo** (per plant, ongoing) | MIRA in production across the plant. Telegram + web + CMMS integration. Quarterly namespace audits. Continuous structuring as new assets come online. | Plants who finished a pilot or who already have decent structure |
+| **Enterprise** | Custom | Multi-site rollout, dedicated transformation lead, on-prem option, SLA | 5+ plants, OEM partners |
+
+**Why this stack works:** the $500 assessment is a low-friction yes for a plant manager with discretionary spend. It seeds the pipeline for the high-margin pilot and the recurring operating layer.
+
+---
+
+## The Wedge: Maintenance Intelligence Namespace
+
+UNS (Unified Namespace) is the buzzword every consultant is selling to operations. **Nobody is structuring the maintenance side of UNS.** That is our niche:
+
+- **Asset hierarchy** — machine → sub-component → motor → relay → switch
+- **Document binding** — every manual, datasheet, drawing tied to the asset it serves
+- **PLC tag ↔ asset reconciliation** — the tag `LINE3_VFD1_CURRENT` knows it lives on Asset POW-755-A12
+- **Fault & PM history** — captured, structured, queryable
+- **Tribal knowledge capture** — the senior tech's voice notes become structured RCA records
+
+Once that namespace exists, AI (MIRA) becomes useful. Without it, every AI tool hallucinates.
 
 ---
 
 ## GTM Motion
 
-**Stage 1 (now → 60 days): LinkedIn-first PLG**
-- 6-part LinkedIn series: "The 2 AM VFD Problem" → build in public → technical proof posts
-- Each post ends with one CTA: try MIRA free or book a call
-- Target: 3 paid plants within 60 days
-- No agencies, no ads, no SEO yet
+**Stage 1 (now → expo): Direct + LinkedIn**
+- LinkedIn re-engagement (Week 1 war story posts, CRA-265) — lead with infrastructure problems, not AI features
+- Digital Transformation Scorecard (`/assess`) as the lead magnet — converts to $500 assessment booking
+- Expo demo (3-minute script below) — hand prospects the phone to take the scorecard themselves
+- Goal: 5 assessments booked in 30 days; 1–2 convert to pilot
 
-**Stage 2 (60–120 days): Warm outbound**  
-- Direct message 20 maintenance managers/week on LinkedIn
-- Offer: "I'll extract your top 3 PM schedules from your OEM manual for free, takes 10 minutes"
-- Convert 1 in 10 to trial, 1 in 5 trials to paid
+**Stage 2 (expo → 90 days): Pilot proof + content**
+- Run 2–3 paid pilots, document the before/after namespace
+- Each pilot becomes a case study (with permission) — these are the LinkedIn artifacts that close the next 10
+- Begin OEM service-organization outbound (they have plants, no transformation capability)
 
-**Stage 3 (120+ days): Partner channel**
-- VFD distributors (Yaskawa, ABB, Siemens dealers) as referral partners
-- OEM manual co-marketing ("MIRA-verified PM schedules for GA500")
-- Community tier as viral top-of-funnel
+**Stage 3 (90+ days): Partner channel**
+- VFD distributors, OEM service desks, MEP firms as referral partners
+- The pilot deliverable is repeatable enough that partner techs can be trained on it
 
 ---
 
 ## Competition
 
-| Who | Weakness | MIRA Advantage |
-|-----|----------|----------------|
-| MaintainX | UI-heavy, no AI, manual data entry | AI-extracted PMs from OEM manuals |
-| UpKeep | Consumer-y, SMB-focused but no knowledge layer | Domain expertise in industrial equipment |
-| Limble | Enterprise-only pricing | $97/mo entry point |
-| Paper/spreadsheet | No plan | Any structured data is better |
+| Who | What they do | Why they don't compete |
+|---|---|---|
+| MaintainX / UpKeep / Limble | Self-serve CMMS | They sell software to people who already have structured data. We're the firm that creates the data. We integrate, we don't replace. |
+| UNS consultancies (Walker, 4IR, etc.) | Operations namespace | They focus on production data (OEE, throughput). Maintenance is an afterthought. |
+| AI maintenance tools (Augury, etc.) | Vibration / sensor analytics | Narrow vertical, hardware-led, no document or knowledge layer. |
+| Big SIs (Accenture, Deloitte) | Enterprise digital transformation | Won't touch a 200-person plant. Wrong price point, wrong scale. |
 
-**Unique moat:** The Knowledge Cooperative. As more plants upload manuals, the network effect compounds. Competitors can't replicate 3 years of anonymized industrial PM data.
+**Unique moat:** we are the only firm that (a) does the hands-on namespace structuring AND (b) ships the AI execution layer that runs on top of it. Pure consultancies leave you with a binder. Pure SaaS leaves you hallucinating. We do both.
 
 ---
 
-## Key Metrics (North Star)
+## Key Metrics
 
-1. **PM schedules auto-extracted per week** — flywheel spinning
-2. **Work orders auto-created from PMs** — the product delivering ROI
-3. **Plants retained after 30 days** — product-market fit
-4. **MRR** — business health
+1. **Assessments booked / month** — top of funnel
+2. **Assessment → Pilot conversion rate** — value of the gap report
+3. **Pilot → Operating Layer conversion rate** — proof that structuring works
+4. **Active Operating Layer plants** — recurring revenue base
+5. **MRR** — business health
+
+---
+
+## Decision Filter
+
+Every feature, every post, every sales call — ask: **"Does this help us structure a customer's maintenance namespace, or prove that structuring works?"**
+
+If yes → build/do it. If no → defer.
+
+A second filter applies to all marketing copy: **"Would an industrial buyer who hates AI hype still find this credible?"** If not, rewrite it.
 
 ---
 
 ## Docs Reference
 
 | Document | Path |
-|----------|------|
+|---|---|
 | Technical flywheel | `NORTH_STAR.md` |
 | 90-day MVP plan | `docs/plans/2026-04-19-mira-90-day-mvp.md` |
+| 3-minute demo script | `docs/demo/3-minute-demo-script.md` |
 | Brand & positioning | `docs/brand-and-positioning-2026-04-26.md` |
-| Launch plan | `docs/launch-plan-2026-04-26.md` |
-| SEO/GEO strategy | `docs/seo-geo-strategy-2026-04-26.md` |
-| Sales implementation | `docs/sales-implementation-plan-2026-04-26.md` |
-| Monetization playbook | `docs/projects-monetization-playbook-2026-04-26.md` |
-
----
-
-## Decision Filter
-
-Every feature, every post, every sales call — ask: **"Does this bring a new plant into the flywheel, or make existing plants stickier?"**
-
-If yes → build/do it. If no → defer.
