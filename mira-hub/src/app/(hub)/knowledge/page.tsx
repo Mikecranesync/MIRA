@@ -107,6 +107,27 @@ export default function KnowledgePage() {
   const [docsLoading, setDocsLoading] = useState(false);
   const [openTypes, setOpenTypes] = useState<Set<string>>(new Set());
 
+  type LinkedAsset = {
+    id: string;
+    tag: string;
+    name: string;
+    manufacturer: string | null;
+    model: string | null;
+    type: string | null;
+    parentAssetId: string | null;
+  };
+  type AssetDoc = {
+    sourceUrl: string;
+    title: string;
+    chunkCount: number;
+    modelNumber: string | null;
+    verified: boolean;
+  };
+  const [linkedAssets, setLinkedAssets] = useState<LinkedAsset[]>([]);
+  const [expandedAsset, setExpandedAsset] = useState<string | null>(null);
+  const [assetChildren, setAssetChildren] = useState<Record<string, LinkedAsset[]>>({});
+  const [assetDocs, setAssetDocs] = useState<Record<string, AssetDoc[]>>({});
+
   // Tick every 15s so "Last updated" relative time stays current between polls.
   const [, setNowTick] = useState(0);
   useEffect(() => {
@@ -162,6 +183,10 @@ export default function KnowledgePage() {
     setGroups([]);
     setOpenTypes(new Set());
     setDocsLoading(true);
+    setLinkedAssets([]);
+    setExpandedAsset(null);
+    setAssetChildren({});
+    setAssetDocs({});
     fetch(`${API_BASE}/api/knowledge/manufacturer?name=${encodeURIComponent(name)}`, {
       cache: "no-store",
     })
@@ -169,15 +194,59 @@ export default function KnowledgePage() {
       .then((data) => {
         const incoming: ManualGroup[] = data.groups ?? [];
         setGroups(incoming);
-        // Auto-open the first (largest) category so the user sees content
-        // immediately rather than a row of collapsed accordions.
         if (incoming.length > 0) {
           setOpenTypes(new Set([incoming[0].equipmentType]));
         }
       })
       .catch(console.error)
       .finally(() => setDocsLoading(false));
+
+    // Fetch root-level assets for this manufacturer (parent_asset_id IS NULL).
+    fetch(
+      `${API_BASE}/api/assets?manufacturer=${encodeURIComponent(name)}&roots=true`,
+      { cache: "no-store" },
+    )
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setLinkedAssets(Array.isArray(data) ? data : []))
+      .catch(console.error);
   }, []);
+
+  const toggleAsset = useCallback(
+    async (id: string) => {
+      if (expandedAsset === id) {
+        setExpandedAsset(null);
+        return;
+      }
+      setExpandedAsset(id);
+      if (!assetChildren[id]) {
+        try {
+          const r = await fetch(`${API_BASE}/api/assets/${id}/children`, {
+            cache: "no-store",
+          });
+          if (r.ok) {
+            const data = await r.json();
+            setAssetChildren((prev) => ({ ...prev, [id]: data }));
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!assetDocs[id]) {
+        try {
+          const r = await fetch(`${API_BASE}/api/assets/${id}/documents`, {
+            cache: "no-store",
+          });
+          if (r.ok) {
+            const data = await r.json();
+            setAssetDocs((prev) => ({ ...prev, [id]: data }));
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+    [expandedAsset, assetChildren, assetDocs],
+  );
 
   const toggleType = useCallback((equipmentType: string) => {
     setOpenTypes((prev) => {
@@ -473,6 +542,146 @@ export default function KnowledgePage() {
               ))}
             </div>
           </>
+        )}
+
+        {selectedMfr && linkedAssets.length > 0 && (
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-2">
+              <h3
+                className="text-[10px] uppercase tracking-wider font-semibold"
+                style={{ color: "var(--foreground-subtle)" }}
+              >
+                Linked Assets ({linkedAssets.length})
+              </h3>
+            </div>
+            <div className="space-y-2">
+              {linkedAssets.map((a) => {
+                const open = expandedAsset === a.id;
+                const children = assetChildren[a.id] ?? [];
+                const docs = assetDocs[a.id] ?? [];
+                return (
+                  <div key={a.id} className="card overflow-hidden">
+                    <button
+                      onClick={() => toggleAsset(a.id)}
+                      className="w-full flex items-center gap-3 p-3 text-left hover:bg-[var(--surface-1)] transition-colors"
+                    >
+                      <Layers
+                        className="w-4 h-4 flex-shrink-0"
+                        style={{ color: "var(--brand-blue)" }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="text-sm font-semibold leading-tight"
+                          style={{ color: "var(--foreground)" }}
+                        >
+                          {a.name || a.tag}
+                        </p>
+                        <p
+                          className="text-[11px] mt-0.5"
+                          style={{ color: "var(--foreground-muted)" }}
+                        >
+                          {a.tag}
+                          {a.model ? ` · ${a.model}` : ""}
+                          {a.type ? ` · ${a.type}` : ""}
+                        </p>
+                      </div>
+                      <ChevronRight
+                        className={`w-4 h-4 flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+                        style={{ color: "var(--foreground-subtle)" }}
+                      />
+                    </button>
+                    {open && (
+                      <div className="px-3 pb-3 border-t" style={{ borderColor: "var(--border)" }}>
+                        {children.length > 0 && (
+                          <div className="mt-3">
+                            <p
+                              className="text-[10px] uppercase tracking-wider font-semibold mb-1.5"
+                              style={{ color: "var(--foreground-subtle)" }}
+                            >
+                              Components ({children.length})
+                            </p>
+                            <div className="space-y-1">
+                              {children.map((c) => (
+                                <div
+                                  key={c.id}
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded"
+                                  style={{ backgroundColor: "var(--surface-1)" }}
+                                >
+                                  <Layers
+                                    className="w-3 h-3 flex-shrink-0"
+                                    style={{ color: "var(--foreground-subtle)" }}
+                                  />
+                                  <span
+                                    className="text-xs flex-1 min-w-0 truncate"
+                                    style={{ color: "var(--foreground)" }}
+                                  >
+                                    {c.name || c.tag}
+                                  </span>
+                                  {c.type && (
+                                    <span
+                                      className="text-[10px]"
+                                      style={{ color: "var(--foreground-muted)" }}
+                                    >
+                                      {c.type}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="mt-3">
+                          <p
+                            className="text-[10px] uppercase tracking-wider font-semibold mb-1.5"
+                            style={{ color: "var(--foreground-subtle)" }}
+                          >
+                            Linked Documents ({docs.length})
+                          </p>
+                          {docs.length === 0 ? (
+                            <p
+                              className="text-[11px] italic"
+                              style={{ color: "var(--foreground-subtle)" }}
+                            >
+                              No documents linked yet.
+                            </p>
+                          ) : (
+                            <div className="space-y-1">
+                              {docs.map((d) => (
+                                <a
+                                  key={d.sourceUrl}
+                                  href={d.sourceUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--surface-1)] transition-colors"
+                                >
+                                  <FileText
+                                    className="w-3 h-3 flex-shrink-0"
+                                    style={{ color: "var(--foreground-subtle)" }}
+                                  />
+                                  <span
+                                    className="text-xs flex-1 min-w-0 truncate"
+                                    style={{ color: "var(--foreground)" }}
+                                  >
+                                    {d.title}
+                                  </span>
+                                  <span
+                                    className="text-[10px]"
+                                    style={{ color: "var(--foreground-muted)" }}
+                                  >
+                                    {d.chunkCount} chunks
+                                  </span>
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {selectedMfr && !docsLoading && filteredGroups.length > 0 && (

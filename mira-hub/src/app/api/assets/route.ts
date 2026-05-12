@@ -30,13 +30,27 @@ function rowToAsset(r: Record<string, unknown>) {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   try {
+    const url = new URL(req.url);
+    const manufacturer = url.searchParams.get("manufacturer");
+    const rootsOnly = url.searchParams.get("roots") === "true";
+
+    const filters: string[] = ["tenant_id = $1"];
+    const params: unknown[] = [ctx.tenantId];
+    if (manufacturer) {
+      params.push(manufacturer);
+      filters.push(`LOWER(manufacturer) = LOWER($${params.length})`);
+    }
+    if (rootsOnly) {
+      filters.push("parent_asset_id IS NULL");
+    }
+
     const rows = await withTenantContext(ctx.tenantId, (c) =>
       c.query(
         `SELECT
@@ -44,11 +58,11 @@ export async function GET() {
           equipment_type, location, department, criticality,
           work_order_count, total_downtime_hours,
           last_maintenance_date, last_work_order_at,
-          last_reported_fault, description, created_at
+          last_reported_fault, description, created_at, parent_asset_id
         FROM cmms_equipment
-        WHERE tenant_id = $1
+        WHERE ${filters.join(" AND ")}
         ORDER BY last_work_order_at DESC NULLS LAST, created_at DESC`,
-        [ctx.tenantId],
+        params,
       ).then((r) => r.rows),
     );
     return NextResponse.json(rows.map(rowToAsset));
