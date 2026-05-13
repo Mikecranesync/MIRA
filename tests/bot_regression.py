@@ -118,6 +118,16 @@ GOLDEN_CASES: list[dict] = [
         "asset_identified": "",
     },
     {
+        # Bug 2 (2026-05-12): 5-digit fault-code spelling 'f0004' was getting
+        # captured as a model number by _looks_like_model_number; the
+        # clarification path must still recognise the vendor and skip the re-ask.
+        "name": "powerflex_525_f0004_5digit",
+        "input": "I have a powerflex 525 and it has it called f0004",
+        "intent": "industrial",
+        "clarification_must_be_none": True,
+        "asset_identified": "",
+    },
+    {
         "name": "gs10_oca",
         "input": "GS10 VFD ocA fault",
         "intent": "industrial",

@@ -705,29 +705,33 @@ class RAGWorker:
         elif no_kb_coverage:
             asset = state.get("asset_identified", "")
             support_url = vendor_support_url(asset) or vendor_support_url(message)
-            url_hint = (
-                f"Point them to {support_url} for the official manual."
+            url_line = (
+                f"4. Optionally point them to {support_url} for the official manual.\n"
                 if support_url
-                else "Suggest they search the manufacturer's website for the equipment manual."
+                else "4. (no vendor URL on file — skip the link)\n"
             )
             system_content += (
                 "\n\n--- NO KB COVERAGE ---\n"
-                "CRITICAL: The knowledge base has NO documentation for this equipment. "
-                "You searched and found nothing.\n"
-                "You MUST follow these rules for this response:\n"
-                '1. Open with: "I don\'t have documentation for this equipment in my knowledge base."\n'
-                "2. Do NOT ask the user to consult a manual — you don't have it.\n"
-                "3. Any general troubleshooting knowledge MUST be prefaced with: "
-                '"Based on general knowledge (not from specific documentation)..."\n'
-                f"4. {url_hint}\n"
-                "5. NEVER ask the user for manufacturer, model, or fault code information "
+                "The knowledge base has no documentation specifically for this equipment, "
+                "but the technician still needs a useful answer NOW. Give them one.\n"
+                "Rules for this response:\n"
+                '1. Prefix your answer with: "Based on general industrial knowledge '
+                '(not from documentation specific to this equipment): "\n'
+                "2. Provide your best, concrete answer drawing on general industrial knowledge "
+                "of this fault code / symptom / equipment class. Explain what the code or "
+                "symptom typically means for this type of equipment. Suggest the most likely "
+                "causes and first diagnostic steps.\n"
+                "3. Do NOT tell the user to consult their manual as the primary action — they "
+                "already came to you. Give them an answer first.\n"
+                + url_line
+                + "5. NEVER ask the user for manufacturer, model, or fault code information "
                 "they have ALREADY provided in their message or the conversation history. "
                 "Read the user's message and prior turns carefully — if the manufacturer "
                 "(e.g. PowerFlex = Rockwell, GS20 = AutomationDirect, ACS580 = ABB), "
-                "model (e.g. 525, 40P, FC-302), or fault code (e.g. F004, OC1, AL-14) "
+                "model (e.g. 525, 40P, FC-302), or fault code (e.g. F004, F0004, OC1, AL-14) "
                 "is already present, USE IT — do not re-ask. Only ask for what is "
-                "genuinely missing.\n"
-                "6. Set confidence to LOW. Do not pretend to have specific documentation.\n"
+                "genuinely missing, and only AFTER giving your best-effort answer.\n"
+                "6. Set confidence to LOW or MEDIUM. Be honest that this is general guidance.\n"
                 "--- END NO KB COVERAGE ---\n"
             )
 
