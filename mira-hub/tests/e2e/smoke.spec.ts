@@ -95,7 +95,7 @@ test.describe("factorylm.com — marketing site", () => {
 
 test.describe("app.factorylm.com — hub app", () => {
   test("root redirects unauthenticated visitor to login page", async ({ page }) => {
-    // Hub root → nginx 301 /feed/ → Next.js middleware → /login (no auth)
+    // Hub root → nginx 302 /login/ (direct; #1113 collapsed 3-hop chain)
     await page.goto(HUB + "/", { waitUntil: "networkidle", timeout: 20_000 });
     expect(page.url()).toMatch(/\/login/i);
   });
