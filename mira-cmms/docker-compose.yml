@@ -115,6 +115,8 @@ services:
       PADDLE_SECRET_TOKEN: "disabled"
       PADDLE_ENVIRONMENT: production
       RECAPTCHA_SITE_KEY: "disabled"
+    volumes:
+      - ./overrides/static/js/9091.e96a9aef.chunk.js:/usr/share/nginx/html/static/js/9091.e96a9aef.chunk.js:ro
     ports:
       - "${ATLAS_FRONTEND_PORT:-3100}:3000"
     networks:
