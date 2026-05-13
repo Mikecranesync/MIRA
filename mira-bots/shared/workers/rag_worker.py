@@ -726,11 +726,9 @@ class RAGWorker:
                 + url_line
                 + "5. NEVER ask the user for manufacturer, model, or fault code information "
                 "they have ALREADY provided in their message or the conversation history. "
-                "Read the user's message and prior turns carefully — if the manufacturer "
-                "(e.g. PowerFlex = Rockwell, GS20 = AutomationDirect, ACS580 = ABB), "
-                "model (e.g. 525, 40P, FC-302), or fault code (e.g. F004, F0004, OC1, AL-14) "
-                "is already present, USE IT — do not re-ask. Only ask for what is "
-                "genuinely missing, and only AFTER giving your best-effort answer.\n"
+                "Read the user's message and prior turns carefully — if the manufacturer, "
+                "model, or fault code is already present, USE IT — do not re-ask. "
+                "Only ask for what is genuinely missing, and only AFTER giving your best-effort answer.\n"
                 "6. Set confidence to LOW or MEDIUM. Be honest that this is general guidance.\n"
                 "--- END NO KB COVERAGE ---\n"
             )

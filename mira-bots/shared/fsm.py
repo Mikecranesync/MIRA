@@ -137,6 +137,25 @@ def advance_state(state: dict, parsed: dict) -> dict:
     if parsed.get("next_state"):
         proposed = _STATE_ALIASES.get(parsed["next_state"], parsed["next_state"])
         if proposed in VALID_STATES:
+            # Backward-transition guard: once the FSM has advanced past Q-states
+            # (i.e. current is DIAGNOSIS or later in STATE_ORDER), the LLM must
+            # not be allowed to walk the state backward to Q1/Q2/Q3.  This
+            # prevented the Q-trap from re-arming after a natural DIAGNOSIS turn
+            # followed by a hesitant LLM reply suggesting "more info needed"
+            # (returning next_state=Q2).  We clamp the proposed state to at
+            # least the current position in STATE_ORDER.
+            if current in STATE_ORDER and proposed in STATE_ORDER:
+                curr_idx = STATE_ORDER.index(current)
+                prop_idx = STATE_ORDER.index(proposed)
+                if prop_idx < curr_idx:
+                    logger.debug(
+                        "FSM_BACKWARD_GUARD chat_id=%s %s→%s clamped to %s",
+                        state.get("chat_id", "?"),
+                        current,
+                        proposed,
+                        current,
+                    )
+                    proposed = current
             state["state"] = proposed
         else:
             logger.warning(

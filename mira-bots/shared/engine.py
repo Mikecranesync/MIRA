@@ -391,6 +391,12 @@ _MANUAL_ESCAPE_PHRASES = frozenset(
 )
 
 # Signals that the user is resuming a diagnostic conversation.
+# User types "PROCEED" (case-insensitive, standalone) in response to the
+# KB-honesty prompt "Type PROCEED to continue with my best estimate".
+# Matched in process_full BEFORE RAG routing to avoid the text being
+# embedded as a vector query for the word "proceed".
+_PROCEED_RE = re.compile(r"^\s*proceed\s*$", re.IGNORECASE)
+
 _DIAGNOSIS_SIGNAL_RE = re.compile(
     r"\b(?:fault|error|code|alarm|trips?|overload|won'?t start|not working|"
     r"shuts? off|shutting|blink(?:ing)?|flash(?:ing)?|hz|rpm|amps?|volts?|"
@@ -1016,7 +1022,44 @@ class Supervisor:
         # Preprocess: strip Slack mention tags
         message = strip_mentions(message)
 
+        # Slash-command interceptor: /reset and /new must be handled here so
+        # eval fixtures that send "/reset" as a plain message (not a Telegram
+        # CommandHandler) still clear the session.  The Telegram bot calls
+        # engine.reset() directly via its CommandHandler and never reaches
+        # process_full, so this path is only taken for inline-text callers
+        # (eval runner, Slack, mira-pipeline HTTP).
+        _msg_stripped = message.strip()
+        if _msg_stripped.lower() in ("/reset", "/new"):
+            self.reset(chat_id)
+            reply = "Started a fresh session. What equipment can I help with?"
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, "IDLE")
+
         state = self._load_state(chat_id)
+
+        if _PROCEED_RE.match(_msg_stripped) and not photo_b64:
+            ctx_p = state.get("context") or {}
+            ctx_p.pop("awaiting_proceed", None)
+            state["context"] = ctx_p
+            # Advance state once (counts as a diagnostic turn) so q_rounds
+            # increments and the Q-trap can fire if near threshold.
+            parsed_proceed: dict = {"reply": "", "next_state": state.get("state") or "Q1"}
+            state = self._advance_state(state, parsed_proceed)
+            self._save_state(chat_id, state)
+            logger.info(
+                "PROCEED_INTERCEPTED chat_id=%s fsm=%s → continued diagnostic",
+                chat_id,
+                state.get("state"),
+            )
+            tl_flush()
+            return self._make_result(
+                "Got it — let me give you my best assessment based on general "
+                "industrial knowledge. This is not verified against specific "
+                "documentation for your equipment.",
+                "low",
+                trace_id,
+                state.get("state", "Q1"),
+            )
 
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
@@ -1811,9 +1854,38 @@ class Supervisor:
         sc["last_options"] = parsed.get("options", [])
         ctx["session_context"] = sc
 
-        # No auto-persist of WO draft here — the WO flow is now opt-in via
-        # _handle_wo_request, which sets cmms_pending itself when the user
-        # explicitly asks to log a work order.
+        # Auto-WO prompt on RESOLVED: when a full diagnostic session ends (asset
+        # identified AND fault_category or exchange_count >= 3), offer to create
+        # a CMMS work order.  Scoped to real diagnostic sessions — no WO prompt
+        # for one-turn lookups or documentation fetches.  The user must still
+        # say "yes" to actually create the WO; the prompt just arms cmms_pending.
+        if (
+            state["state"] == "RESOLVED"
+            and state.get("asset_identified")
+            and (state.get("fault_category") or state.get("exchange_count", 0) >= 3)
+            and not ctx.get("cmms_pending")
+            and not ctx.get("cmms_wo_draft")
+        ):
+            wo_auto = build_uns_wo_from_state(state)
+            wo_auto.chat_id = chat_id
+            wo_auto.fsm_state_at_creation = "RESOLVED"
+            wo_dict = wo_auto.to_dict()
+            ctx["cmms_pending"] = True
+            ctx["cmms_wo_draft"] = wo_dict
+            preview = format_wo_preview(wo_auto)
+            parsed["reply"] = (
+                parsed["reply"].rstrip()
+                + "\n\n"
+                + "Would you like to log a work order for this? Say **yes** to create it, **no** to skip.\n\n"
+                + preview
+            )
+            logger.info(
+                "AUTO_WO_PROMPT chat_id=%s asset=%r fault=%r",
+                chat_id,
+                state.get("asset_identified"),
+                state.get("fault_category"),
+            )
+
         state["context"] = ctx
 
         self._save_state(chat_id, state)
@@ -1941,7 +2013,7 @@ class Supervisor:
                 logger.warning("Hub NeonDB WO write skipped: %s", hub_result["error"])
 
         label = hub_wo_number or f"#{atlas_wo_id}"
-        return f"Work order {label} created for {wo.asset or 'equipment'} ✓"
+        return f"Work order {label} created in CMMS for {wo.asset or 'equipment'} ✓"
 
     _CMMS_NO = frozenset({"no", "nope", "n", "skip", "cancel", "abort", "never mind", "nevermind"})
 
