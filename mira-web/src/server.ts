@@ -287,6 +287,18 @@ if (process.env.NODE_ENV !== "test" && process.env.MIRA_DISABLE_PURGE_WORKER !==
 // Static files
 // ---------------------------------------------------------------------------
 
+// Cache static assets for 1 day. These files are not content-hash fingerprinted,
+// so we stay conservative rather than using immutable/max-age=31536000.
+app.use(async (c, next) => {
+  await next();
+  const path = c.req.path;
+  if (/\.(js|css|png|jpg|jpeg|svg|webp|woff2?|ttf|ico)$/i.test(path)) {
+    if (!c.res.headers.get("Cache-Control")) {
+      c.header("Cache-Control", "public, max-age=86400");
+    }
+  }
+});
+
 app.use("/public/*", serveStatic({ root: "./" }));
 // Marketing/site imagery served at the conventional /images/* path so the
 // landing page can reference assets the way every other web app does
