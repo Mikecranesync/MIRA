@@ -18,6 +18,7 @@ from chat_adapter import TelegramChatAdapter
 from PIL import Image
 from shared import tts
 from shared.chat.dispatcher import ChatDispatcher
+from shared.conversation_logger import log_turn, measure_ms
 from shared.engine import Supervisor
 from shared.identity.service import get_identity_service
 from shared.integrations.atlas_cmms import AtlasCMMSClient
@@ -359,6 +360,8 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Route text messages through the GSD engine via ChatAdapter."""
+    import time as _time
+
     text = update.message.text
     chat_id = str(update.effective_chat.id)
     logger.info("Received from %s: %s", update.effective_user.first_name, text)
@@ -366,9 +369,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Diagnosing...")
     normalized = await adapter.normalize_incoming(update.to_dict())
     try:
+        _t0 = _time.monotonic()
         async with typing_action(context, update.effective_chat.id):
             response = await dispatcher.dispatch(normalized)
         await adapter.render_outgoing(response, normalized)
+        # Append-only eval log — fail-open. See docs/specs/bot-eval-loop-spec.md.
+        await log_turn(
+            chat_id=chat_id,
+            user_message=text or "",
+            bot_response=response.text or "",
+            source="telegram",
+            intent=getattr(response, "intent", None),
+            has_citations=bool(getattr(response, "citations", None)),
+            response_time_ms=measure_ms(_t0),
+        )
         await _maybe_send_voice(update, context, chat_id, response.text)
     except Exception as e:
         logger.error("Dispatch error: %s", e)
