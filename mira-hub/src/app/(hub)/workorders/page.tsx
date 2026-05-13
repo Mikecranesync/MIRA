@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Search, Plus, User, Calendar as CalIcon, Bot, Sparkles, Loader2 } from "lucide-react";
+import { Search, Plus, User, Calendar as CalIcon, Bot, Sparkles, Loader2, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -121,11 +121,22 @@ export default function WorkOrdersPage() {
                 )}
               </div>
             </div>
-            <Link href="/workorders/new">
-              <Button size="sm" className="gap-1.5">
-                <Plus className="w-3.5 h-3.5" />{tWO("new")}
-              </Button>
-            </Link>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { window.location.href = `${API_BASE}/api/work-orders/export.csv`; }}
+                className="hidden md:flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border transition-colors hover:bg-[var(--surface-1)]"
+                style={{ borderColor: "var(--border)", color: "var(--foreground-muted)" }}
+                title="Export CSV"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Export CSV
+              </button>
+              <Link href="/workorders/new">
+                <Button size="sm" className="gap-1.5">
+                  <Plus className="w-3.5 h-3.5" />{tWO("new")}
+                </Button>
+              </Link>
+            </div>
           </div>
 
           <div className="relative mb-3">

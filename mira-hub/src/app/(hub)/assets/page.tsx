@@ -7,7 +7,13 @@ import { useTranslations } from "next-intl";
 import {
   Search, QrCode, Wind, Zap, Cog, Thermometer, Droplets,
   Factory, Gauge, AlertCircle, CheckCircle2, AlertTriangle,
+<<<<<<< Updated upstream
   Plus, X, Loader2, Wrench, Printer,
+||||||| Stash base
+  Plus, X, Loader2, Wrench,
+=======
+  Plus, X, Loader2, Wrench, Download,
+>>>>>>> Stashed changes
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -462,6 +468,16 @@ function AssetsPageInner() {
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
           <div className="flex items-center gap-2">
+            {/* Export CSV */}
+            <button
+              onClick={() => { window.location.href = `${API_BASE}/api/assets/export.csv`; }}
+              className="hidden md:flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border transition-colors hover:bg-[var(--surface-1)]"
+              style={{ borderColor: "var(--border)", color: "var(--foreground-muted)" }}
+              title="Export CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export CSV
+            </button>
             {/* Desktop create button */}
             <button
               onClick={() => setShowCreate(true)}
