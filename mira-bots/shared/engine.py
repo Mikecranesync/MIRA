@@ -2264,9 +2264,7 @@ class Supervisor:
             )
         else:
             try:
-                kb_covered, _ = kb_has_coverage(
-                    manufacturer, model, resolved_tenant or ""
-                )
+                kb_covered, _ = kb_has_coverage(manufacturer, model, resolved_tenant or "")
             except Exception as e:
                 logger.warning("nameplate kb_has_coverage failed: %s", e)
                 kb_covered = linked_chunks > 0
@@ -2274,8 +2272,7 @@ class Supervisor:
             header = f"Identified: {manufacturer} {model}"
             if linked_chunks > 0:
                 kb_line = (
-                    f"Found {linked_chunks} manual chunks for "
-                    f"{manufacturer} in the knowledge base."
+                    f"Found {linked_chunks} manual chunks for {manufacturer} in the knowledge base."
                 )
             elif kb_covered:
                 kb_line = (
