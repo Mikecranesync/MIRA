@@ -14,6 +14,7 @@ from admin_commands import (
     revoke_command,
     team_command,
 )
+from content_approval import handle_approval_callback
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
 from shared import tts
@@ -44,6 +45,7 @@ from telegram.error import Conflict
 from telegram.ext import (
     Application,
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -1090,6 +1092,12 @@ def main():
             filters.Regex(r"^\s*/\s*new(?:@\w+)?\s*$") & ~filters.COMMAND,
             new_command_variant,
         )
+    )
+    async def _wrap_approval(update, context):
+        await handle_approval_callback(update, context, auth=_authorizer)
+
+    app.add_handler(
+        CallbackQueryHandler(_wrap_approval, pattern=r"^(approve_all|approve_blog|reject):")
     )
     app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
