@@ -3,6 +3,11 @@ name: Automated Code Review
 on:
   pull_request:
     branches: [main, develop, dev]
+    paths-ignore:
+      - 'docs/**'
+      - 'wiki/**'
+      - '**/*.md'
+      - '.claude/**'
   pull_request_target:
     types: [labeled]
 
