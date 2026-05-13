@@ -22,21 +22,10 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-# uns.py lives in mira-crawler; import lazily-styled so unit tests can patch it
-# without dragging the crawler service into the bot test fixtures.
-try:
-    from mira_crawler.ingest import uns as _uns  # type: ignore[import-not-found]
-except Exception:  # pragma: no cover — fall back to filesystem path import
-    import importlib.util
-    import pathlib
-
-    _uns_path = pathlib.Path(__file__).resolve().parents[2] / "mira-crawler" / "ingest" / "uns.py"
-    _spec = importlib.util.spec_from_file_location("_mira_uns", _uns_path)
-    if _spec and _spec.loader:
-        _uns = importlib.util.module_from_spec(_spec)
-        _spec.loader.exec_module(_uns)
-    else:  # pragma: no cover
-        _uns = None  # type: ignore[assignment]
+# Path builders live in shared/uns_paths.py — a verbatim, dep-free copy of the
+# subset of mira-crawler/ingest/uns.py the resolver needs. mira-bots cannot
+# import from mira-crawler (architecture contract, enforced in CI).
+from . import uns_paths as _uns
 
 logger = logging.getLogger(__name__)
 
