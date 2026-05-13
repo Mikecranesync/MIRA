@@ -58,6 +58,10 @@ services:
       - '--storage.tsdb.retention.time=15d'
     networks:
       - core-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   # ── Grafana — dashboards ──────────────────────────────────────────────────
   grafana:
@@ -78,6 +82,10 @@ services:
       - prometheus
     networks:
       - core-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
 networks:
   core-net:
