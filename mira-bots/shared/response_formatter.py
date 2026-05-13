@@ -73,15 +73,24 @@ def deduplicate_options(reply_text: str, keyboard_options: list) -> str:
     return reply_text.strip()
 
 
+_FAULT_CODE_LOOKING = re.compile(r"^[FfEeAa]\d{2,5}$")
+
+
 def _looks_like_model_number(text: str) -> str:
     """Return the first model-number-like token from text, or ''.
 
     A model number must contain both at least one letter and at least one
     digit (e.g. "GS20", "X3", "FC-302", "VLT-FC302").
+
+    Tokens that look like fault codes (single F/E/A prefix + 2-5 digits, no
+    hyphen) are skipped so "powerflex 525 f0004" does not return "f0004"
+    as the model.
     """
     for raw in re.split(r"[\s,;]+", text):
         tok = re.sub(r"[^\w-]", "", raw)
         if len(tok) >= 2 and re.search(r"[A-Za-z]", tok) and re.search(r"\d", tok):
+            if _FAULT_CODE_LOOKING.match(tok):
+                continue
             return tok
     return ""
 
