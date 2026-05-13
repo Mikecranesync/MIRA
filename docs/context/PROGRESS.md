@@ -247,4 +247,15 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 -  M mira-web/src/views/home.ts
 - ?? docs/demo/
 **Next:** _set by next session_
+
+### 2026-05-13 01:09 UTC — `claude/goofy-darwin-c4411a`
+**Last commit:** 8c7cedc5 fix(bot): never re-ask for manufacturer/model already in user's message
+**Changed (vs. fork point):**
+- .github/workflows/ci.yml
+- mira-bots/shared/engine.py
+- mira-bots/shared/guardrails.py
+- mira-bots/shared/workers/rag_worker.py
+- tests/bot_regression.py
+**Working tree:** clean
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
