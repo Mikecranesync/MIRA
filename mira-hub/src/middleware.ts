@@ -1,5 +1,6 @@
 import { withAuth, type NextRequestWithAuth } from "next-auth/middleware";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
+import crypto from "node:crypto";
 
 // Gate pages: authenticated users with non-approved status land here;
 // skip the status check when already on these pages to avoid redirect loops.
@@ -45,6 +46,18 @@ const authMiddleware = withAuth(
   },
 );
 
+function buildCsp(nonce: string): string {
+  return [
+    `default-src 'self'`,
+    `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://apis.google.com`,
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
+    `font-src 'self' https://fonts.gstatic.com`,
+    `img-src 'self' data: https:`,
+    `connect-src 'self' https://accounts.google.com https://api.hubapi.com`,
+    `frame-src https://accounts.google.com`,
+  ].join("; ");
+}
+
 export default async function middleware(req: NextRequest, ev: NextFetchEvent) {
   // Basepath root → redirect to /feed. `redirect()` from a Server Component
   // is silently swallowed in Next.js 16.2.4 standalone + basePath (response
@@ -56,7 +69,27 @@ export default async function middleware(req: NextRequest, ev: NextFetchEvent) {
     url.pathname = "/feed";
     return NextResponse.redirect(url);
   }
-  return authMiddleware(req as NextRequestWithAuth, ev);
+
+  // Per-request nonce for script-src CSP — removes unsafe-inline/unsafe-eval.
+  // Forwarded as x-nonce request header so RootLayout can attach it to <Script>.
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const csp = buildCsp(nonce);
+
+  // Auth check runs on the original request (auth reads cookies, not x-nonce).
+  const authResult = await authMiddleware(req as NextRequestWithAuth, ev);
+
+  // Auth issued a redirect (e.g. → /login) — stamp CSP and return as-is.
+  if (authResult && authResult.status >= 300 && authResult.status < 400) {
+    authResult.headers.set("Content-Security-Policy", csp);
+    return authResult;
+  }
+
+  // Pass through: forward nonce to server components + set CSP on response.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-nonce", nonce);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy", csp);
+  return response;
 }
 
 export const config = {
