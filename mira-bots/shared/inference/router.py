@@ -239,6 +239,21 @@ class InferenceRouter:
             )
 
     @staticmethod
+    def sanitize_text(text: str) -> str:
+        """Strip IPs, MACs, serial numbers from a single string.
+
+        Shares the same regex set as sanitize_context() so the conversation
+        logger and any other plain-string call sites stay aligned with what
+        the cascade sees. Returns the input unchanged if it's not a string.
+        """
+        if not isinstance(text, str):
+            return text
+        text = _IPV4_RE.sub("[IP]", text)
+        text = _MAC_RE.sub("[MAC]", text)
+        text = _SERIAL_RE.sub("[SN]", text)
+        return text
+
+    @staticmethod
     def sanitize_context(messages: list[dict]) -> list[dict]:
         """Strip IPs, MACs, serial numbers from message content before sending."""
         sanitized = []

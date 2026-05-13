@@ -93,12 +93,27 @@ def _build_clarification_request(message: str, asset_identified: str) -> str | N
     to the user are exactly what was searched — no false positives from generic
     English words. Returns None for non-fault queries so the LLM honesty path
     fires instead.
+
+    REGRESSION GUARD (2026-05-12): When the user's message ALREADY contains a
+    recognizable manufacturer (e.g. "PowerFlex" → Rockwell) AND a fault code,
+    return None so the LLM answers from general engineering knowledge with the
+    no_kb_coverage disclaimer — never re-ask for info the user just provided.
     """
     has_fault_mention = bool(_FAULT_MENTION_RE.search(message))
     # Use the same extractor the recall path used — what it found is what failed
     attempted_codes = _neon_recall._extract_fault_codes(message)
 
     if not has_fault_mention and not attempted_codes:
+        return None
+
+    # Short-circuit: user's message already names a vendor + fault code combo.
+    # Asking "what manufacturer?" when they just said "PowerFlex 525 F004" is
+    # the regression Mike has reported 3+ times. Fall through to the LLM with
+    # no_kb_coverage=True — it will answer from general knowledge with a
+    # documentation-disclaimer prefix.
+    if attempted_codes and vendor_name_from_text(message):
+        return None
+    if attempted_codes and asset_identified and vendor_name_from_text(asset_identified):
         return None
 
     parts: list[str] = []
@@ -709,9 +724,13 @@ class RAGWorker:
                 "3. Do NOT tell the user to consult their manual as the primary action — they "
                 "already came to you. Give them an answer first.\n"
                 + url_line
-                + "5. If a missing detail would meaningfully change your answer (e.g. model "
-                "number, exact fault code), ask for it AFTER giving your best-effort answer, "
-                "not instead of it.\n"
+                + "5. NEVER ask the user for manufacturer, model, or fault code information "
+                "they have ALREADY provided in their message or the conversation history. "
+                "Read the user's message and prior turns carefully — if the manufacturer "
+                "(e.g. PowerFlex = Rockwell, GS20 = AutomationDirect, ACS580 = ABB), "
+                "model (e.g. 525, 40P, FC-302), or fault code (e.g. F004, F0004, OC1, AL-14) "
+                "is already present, USE IT — do not re-ask. Only ask for what is "
+                "genuinely missing, and only AFTER giving your best-effort answer.\n"
                 "6. Set confidence to LOW or MEDIUM. Be honest that this is general guidance.\n"
                 "--- END NO KB COVERAGE ---\n"
             )

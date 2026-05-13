@@ -11,6 +11,7 @@ from chat_adapter import SlackChatAdapter
 from pdf_handler import ingest_pdf
 from PIL import Image
 from shared.chat.dispatcher import ChatDispatcher
+from shared.conversation_logger import log_turn, measure_ms
 from shared.engine import Supervisor
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
@@ -163,8 +164,21 @@ async def handle_message(event, say, client):
         return  # nothing to process
 
     try:
+        import time as _time
+
+        _t0 = _time.monotonic()
         response = await dispatcher.dispatch(normalized)
         await adapter.render_outgoing(response, normalized)
+        # Append-only eval log — fail-open. See docs/specs/bot-eval-loop-spec.md.
+        await log_turn(
+            chat_id=str(event.get("channel", "")),
+            user_message=normalized.text or "",
+            bot_response=response.text or "",
+            source="slack",
+            intent=getattr(response, "intent", None),
+            has_citations=bool(getattr(response, "citations", None)),
+            response_time_ms=measure_ms(_t0),
+        )
     except Exception as e:
         logger.error("Dispatch error: %s", e)
         await say(text=f"MIRA error: {e}", thread_ts=thread)
