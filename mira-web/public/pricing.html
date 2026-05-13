@@ -28,7 +28,7 @@
       --border-hi: rgba(255,255,255,0.14);
       --text: #e8eaf0;
       --text-dim: rgba(255,255,255,0.55);
-      --text-faint: rgba(255,255,255,0.28);
+      --text-faint: rgba(255,255,255,0.48);
       --amber: #f0a000;
       --amber-dim: rgba(240,160,0,0.12);
       --teal: #00d4aa;
@@ -71,13 +71,17 @@
     }
     .nav-logo svg { width: 22px; height: 22px; }
     .nav-links { display: flex; gap: 28px; list-style: none; }
-    .nav-links a { font-size: 14px; color: rgba(255,255,255,0.6); text-decoration: none; }
+    .nav-links a {
+      font-size: 14px; color: rgba(255,255,255,0.6); text-decoration: none;
+      display: flex; align-items: center; min-height: 44px; padding: 0 6px;
+    }
     .nav-links a:hover { color: var(--text); }
     .nav-cta {
       font-size: 13px; font-weight: 700; color: #0a0a08;
       background: linear-gradient(180deg, #f0a030 0%, #d4880a 100%);
       border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 6px; padding: 7px 14px; text-decoration: none;
+      border-radius: 6px; padding: 11px 14px; text-decoration: none;
+      min-height: 44px; display: flex; align-items: center;
     }
     @media (max-width: 640px) { .nav-links { display: none; } }
 
@@ -157,7 +161,8 @@
     }
 
     .card-cta {
-      display: block; text-align: center;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 44px; text-align: center;
       padding: 12px 20px; border-radius: 6px;
       font-size: 14px; font-weight: 600; text-decoration: none;
       transition: opacity 150ms;
