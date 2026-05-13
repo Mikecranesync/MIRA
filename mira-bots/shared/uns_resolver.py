@@ -416,12 +416,19 @@ def _find_model_near_vendor(
         # If alias is multi-token, skip tokens that are part of the alias
         if alias_lower and tok.lower() in alias_lower.split():
             continue
-        # Require digit OR adjacent vendor-known context. If alias_idx is set,
-        # the token is "near vendor"; otherwise require digit-in-token.
+        # Require at least one digit. Pure-digit is allowed when near vendor
+        # (e.g. "525" after "powerflex" — Mike's 2026-05-13 regression case);
+        # pure-alpha is rejected everywhere (e.g. "find" in "find a manual for
+        # pilz safety relay" is a verb, not a model). Original
+        # `_looks_like_model_number` required letter AND digit; the resolver
+        # loosens that to "≥1 digit" so pure-digit models near a known vendor
+        # are still captured, but English action verbs are not.
         has_digit = bool(re.search(r"\d", tok))
+        if not has_digit:
+            continue
         if alias_idx is not None:
             return tok
-        if has_digit and re.search(r"[A-Za-z]", tok):
+        if re.search(r"[A-Za-z]", tok):
             return tok
     return None
 
