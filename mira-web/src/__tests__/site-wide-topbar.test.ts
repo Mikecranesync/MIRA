@@ -116,11 +116,14 @@ describe("site-wide topbar coherence (v0.6.0)", () => {
 
     test(`${page.name}: topbar nav has the five standard links`, () => {
       const topbar = extractTopbar(page.html);
-      expect(topbar).toContain('href="/cmms"');
-      expect(topbar).toContain('href="/pricing"');
-      expect(topbar).toContain('href="/blog"');
-      expect(topbar).toContain('href="/limitations"');
-      expect(topbar).toContain('href="/security"');
+      // TS-rendered views (home/cmms/limitations/security) use absolute URLs
+      // since PR #996; static HTML pages still use root-relative until Phase 2.
+      // Accept both: check that the path appears in the href.
+      expect(topbar).toMatch(/href="[^"]*\/cmms"/);
+      expect(topbar).toMatch(/href="[^"]*\/pricing"/);
+      expect(topbar).toMatch(/href="[^"]*\/blog"/);
+      expect(topbar).toMatch(/href="[^"]*\/limitations"/);
+      expect(topbar).toMatch(/href="[^"]*\/security"/);
     });
 
     test(`${page.name}: topbar dropped the "Troubleshooter" / "Product" / "Fault Codes" labels`, () => {
