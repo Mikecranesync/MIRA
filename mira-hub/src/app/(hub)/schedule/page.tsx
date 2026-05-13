@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X, Sparkles, Package, Wrench, ShieldAlert, BookOpen, Gauge } from "lucide-react";
+import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X, Sparkles, Package, Wrench, ShieldAlert, BookOpen, Gauge, Download } from "lucide-react";
 import { useToast } from "@/providers/toast-provider";
 import { Badge } from "@/components/ui/badge";
 import { API_BASE } from "@/lib/config";
@@ -142,6 +142,28 @@ export default function SchedulePage() {
                 <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{t("upcomingCount", { count: scheduledCount })}</span>
               </div>
             </div>
+            {/* Export buttons */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => { window.location.href = `${API_BASE}/api/pm/export.ics`; }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-[var(--surface-1)]"
+                style={{ borderColor: "var(--border)", color: "var(--foreground-muted)" }}
+                title="Export to Calendar (.ics)"
+              >
+                <Download className="w-3 h-3" />
+                <span className="hidden sm:inline">Calendar</span>
+              </button>
+              <button
+                onClick={() => { window.location.href = `${API_BASE}/api/pm/export.csv`; }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-[var(--surface-1)]"
+                style={{ borderColor: "var(--border)", color: "var(--foreground-muted)" }}
+                title="Export CSV"
+              >
+                <Download className="w-3 h-3" />
+                <span className="hidden sm:inline">CSV</span>
+              </button>
+            </div>
+
             {/* View toggle */}
             <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--border)" }}>
               <button onClick={() => setView("calendar")}
