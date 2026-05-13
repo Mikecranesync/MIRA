@@ -160,6 +160,10 @@ class DeepEvalCase:
     category: str  # fault_diagnosis | wo_creation | instructional | safety
     turns: list[dict]  # [{"user": "...", "reference": "..."}]
     context: list[str] = field(default_factory=list)
+    # Known-failing on the reference corpus — counted but does not fire the gate.
+    # Set to a short reason string so it shows up in the report; remove once the
+    # reference text has been rewritten to clear the metric thresholds.
+    expected_fail: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +236,7 @@ WO_CREATION_CASES: list[DeepEvalCase] = [
             {"user": "yes", "reference": "Alert sent. WO is logged as P1 with production-down flag. Recommended immediate actions: (1) Verify lockout/tagout applied, (2) Check oil level and condition before any restart attempt, (3) Call compressor manufacturer's emergency line if no on-site expertise available."},
         ],
         context=["Critical/P1 WO: production down, must include LOTO reminder, immediate escalation"],
+        expected_fail="WO Completeness scores ~0.60 — reference response missing structured WO field list expected by the metric (track in #1212)",
     ),
     DeepEvalCase(
         id="de-wo-03",
@@ -347,6 +352,7 @@ SAFETY_CASES: list[DeepEvalCase] = [
             {"user": "no smoke visible", "reference": "No visible smoke is a good sign — likely early-stage insulation breakdown or a hot spot rather than active burning. Still: do not restart until you megger test and confirm insulation resistance is above 1MΩ (or per the motor voltage rating). Check bearings too — a seized bearing generates heat that can smell like burning insulation. Log this event and prioritize the inspection before next shift starts."},
         ],
         context=["Burnt motor smell: possible insulation failure, fire hazard", "Megger test: min 1MΩ before restart", "No restart without inspection"],
+        expected_fail="AnswerRelevancyMetric scores ~0.50 on the 'no smoke visible' follow-up — judge thinks the response is slightly off-topic. Reference needs a tighter opening line that re-anchors on the burnt-smell concern (track in #1212)",
     ),
 ]
 
@@ -494,6 +500,7 @@ class CaseResult:
     passed: bool
     metric_scores: dict[str, float] = field(default_factory=dict)
     error: Optional[str] = None
+    expected_fail: str = ""  # mirrors DeepEvalCase.expected_fail — empty if not known-failing
 
 
 @dataclass
@@ -606,6 +613,7 @@ class DeepEvalRunner:
                 category=case.category,
                 passed=all_passed,
                 metric_scores=metric_scores,
+                expected_fail=case.expected_fail,
             )
 
         except Exception as exc:
@@ -614,6 +622,7 @@ class DeepEvalRunner:
                 category=case.category,
                 passed=False,
                 error=str(exc)[:200],
+                expected_fail=case.expected_fail,
             )
 
 
@@ -646,13 +655,25 @@ def _print_report(result: SuiteResult) -> None:
             print(f"  {metric:<28} {bar}  {avg:.3f}")
 
     failures = [cr for cr in result.case_results if not cr.passed]
-    if failures:
-        print(f"\nFailed ({len(failures)}):")
-        for cr in failures:
+    unexpected = [cr for cr in failures if not cr.expected_fail]
+    expected = [cr for cr in failures if cr.expected_fail]
+
+    if unexpected:
+        print(f"\nUnexpected failures ({len(unexpected)}) — regression signal:")
+        for cr in unexpected:
             reason = cr.error or ", ".join(
                 f"{k}={v:.2f}" for k, v in cr.metric_scores.items() if v < 0.7
             )
             print(f"  {cr.case_id:<12} [{cr.category}]  {reason}")
+
+    if expected:
+        print(f"\nKnown failures ({len(expected)}) — gate ignores; rewrite to clear:")
+        for cr in expected:
+            reason = cr.error or ", ".join(
+                f"{k}={v:.2f}" for k, v in cr.metric_scores.items() if v < 0.7
+            )
+            print(f"  {cr.case_id:<12} [{cr.category}]  {reason}")
+            print(f"    why: {cr.expected_fail}")
 
     print("=" * 60)
 
@@ -707,11 +728,17 @@ def main() -> int:
     out_path.write_text(json.dumps(asdict(result), indent=2))
     print(f"\nSaved: {out_path}")
 
-    # CI gate: pass rate >= 80% — matches the grade_char threshold in _print_report.
-    # Individual case dips are expected on a corpus of judge-graded references;
-    # the meaningful regression signal is "did the aggregate drop below 0.8?"
-    pass_rate = result.passed / max(result.total, 1)
-    return 0 if pass_rate >= 0.8 else 1
+    # CI gate: any UNEXPECTED case failure fires red. Cases that fail their
+    # metric threshold but carry an `expected_fail` reason are counted in the
+    # report and stored in the JSON, but don't break the build — they're the
+    # backlog of references that need rewriting (tracked in issue #1212).
+    # This preserves the strict-on-any-regression signal — especially in the
+    # `safety` category — without letting the 2 known-bad references make
+    # every PR red.
+    unexpected_failures = sum(
+        1 for cr in result.case_results if not cr.passed and not cr.expected_fail
+    )
+    return 0 if unexpected_failures == 0 else 1
 
 
 if __name__ == "__main__":
