@@ -1068,11 +1068,7 @@ class Supervisor:
         )
         _ctx_for_uns["uns_context"] = uns_ctx.as_dict()
         state["context"] = _ctx_for_uns
-        if (
-            uns_ctx.manufacturer
-            and uns_ctx.confidence >= 0.7
-            and not state.get("asset_identified")
-        ):
+        if uns_ctx.manufacturer and uns_ctx.confidence >= 0.7 and not state.get("asset_identified"):
             label = uns_ctx.manufacturer
             if uns_ctx.model:
                 label = f"{label}, {uns_ctx.model}"
@@ -1328,9 +1324,7 @@ class Supervisor:
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
         if not photo_b64 and intent == "documentation":
             combined = f"{message} {state.get('asset_identified', '')}".strip()
-            mfr = ((state.get("context") or {}).get("uns_context") or {}).get(
-                "manufacturer"
-            ) or ""
+            mfr = ((state.get("context") or {}).get("uns_context") or {}).get("manufacturer") or ""
 
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
@@ -3513,9 +3507,7 @@ class Supervisor:
     ) -> dict:
         """Router-dispatched doc intent — delegates to the existing specificity-gate path."""
         combined = f"{message} {state.get('asset_identified', '')}".strip()
-        mfr = ((state.get("context") or {}).get("uns_context") or {}).get(
-            "manufacturer"
-        ) or ""
+        mfr = ((state.get("context") or {}).get("uns_context") or {}).get("manufacturer") or ""
         if not self._is_doc_specific(mfr, combined):
             asset_id = state.get("asset_identified", "")
             if "," in asset_id:

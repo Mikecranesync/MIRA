@@ -30,12 +30,7 @@ except Exception:  # pragma: no cover — fall back to filesystem path import
     import importlib.util
     import pathlib
 
-    _uns_path = (
-        pathlib.Path(__file__).resolve().parents[2]
-        / "mira-crawler"
-        / "ingest"
-        / "uns.py"
-    )
+    _uns_path = pathlib.Path(__file__).resolve().parents[2] / "mira-crawler" / "ingest" / "uns.py"
     _spec = importlib.util.spec_from_file_location("_mira_uns", _uns_path)
     if _spec and _spec.loader:
         _uns = importlib.util.module_from_spec(_spec)
@@ -121,13 +116,13 @@ FAMILY_FROM_ALIAS: dict[str, str] = {
 # Compiled regexes for fault-code extraction. `\b` boundaries keep "F0004"
 # matching but skip "FAULTY". Patterns are checked in order; first hit wins.
 FAULT_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\b[fF]\d{2,6}\b"),         # F04, F004, F0004, F30004
-    re.compile(r"\b[eE]\d{1,4}\b"),          # E01, E001 (drives use E-codes)
-    re.compile(r"\b[oO][cC][a-zA-Z]?\b"),    # oC, OC, ocA (overcurrent)
-    re.compile(r"\b[oO][lL]\b"),             # OL (overload)
-    re.compile(r"\b[uU][lL]\b"),             # UL (underload)
-    re.compile(r"\b[aA][lL]\d{1,4}\b"),      # AL001 (alarm with AL prefix)
-    re.compile(r"\b[aA]\d{1,4}\b"),          # A02, A002 (alarms — weakest)
+    re.compile(r"\b[fF]\d{2,6}\b"),  # F04, F004, F0004, F30004
+    re.compile(r"\b[eE]\d{1,4}\b"),  # E01, E001 (drives use E-codes)
+    re.compile(r"\b[oO][cC][a-zA-Z]?\b"),  # oC, OC, ocA (overcurrent)
+    re.compile(r"\b[oO][lL]\b"),  # OL (overload)
+    re.compile(r"\b[uU][lL]\b"),  # UL (underload)
+    re.compile(r"\b[aA][lL]\d{1,4}\b"),  # AL001 (alarm with AL prefix)
+    re.compile(r"\b[aA]\d{1,4}\b"),  # A02, A002 (alarms — weakest)
 ]
 
 # Words that may match the alarm pattern A\d{1,4} but are not fault codes
@@ -135,7 +130,10 @@ FAULT_PATTERNS: list[re.Pattern[str]] = [
 # obvious false positives.
 _FAULT_FALSE_POSITIVES: frozenset[str] = frozenset(
     {
-        "a0", "a1", "a4", "a5",  # A4 paper, etc.
+        "a0",
+        "a1",
+        "a4",
+        "a5",  # A4 paper, etc.
     }
 )
 
@@ -148,7 +146,10 @@ _CATEGORY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b(fault|error|trip|alarm)\s*code\b", re.IGNORECASE), "fault_codes"),
     (re.compile(r"\bfault\b", re.IGNORECASE), "fault_codes"),
     (re.compile(r"\bmanual\b|\bdatasheet\b|\bdocumentation\b", re.IGNORECASE), "manuals"),
-    (re.compile(r"\bpm\b|\bpreventiv\w*\smaintenance\b|\bschedule\b", re.IGNORECASE), "pm_schedules"),
+    (
+        re.compile(r"\bpm\b|\bpreventiv\w*\smaintenance\b|\bschedule\b", re.IGNORECASE),
+        "pm_schedules",
+    ),
     (re.compile(r"\bparts?\s*(list|number|kit)\b|\bspare\b", re.IGNORECASE), "parts_lists"),
 ]
 
@@ -205,12 +206,59 @@ class UNSContext:
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _STOPWORDS: frozenset[str] = frozenset(
     {
-        "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
-        "have", "has", "had", "i", "in", "is", "it", "of", "on", "or", "the",
-        "this", "that", "to", "was", "with", "you", "we", "what", "when",
-        "where", "how", "called", "got", "and", "do", "does", "did", "my",
-        "me", "your", "their", "his", "her", "its", "fault", "error", "code",
-        "manual", "issue", "problem", "showing",
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "but",
+        "by",
+        "for",
+        "from",
+        "have",
+        "has",
+        "had",
+        "i",
+        "in",
+        "is",
+        "it",
+        "of",
+        "on",
+        "or",
+        "the",
+        "this",
+        "that",
+        "to",
+        "was",
+        "with",
+        "you",
+        "we",
+        "what",
+        "when",
+        "where",
+        "how",
+        "called",
+        "got",
+        "and",
+        "do",
+        "does",
+        "did",
+        "my",
+        "me",
+        "your",
+        "their",
+        "his",
+        "her",
+        "its",
+        "fault",
+        "error",
+        "code",
+        "manual",
+        "issue",
+        "problem",
+        "showing",
     }
 )
 
@@ -365,9 +413,7 @@ def _find_model_near_vendor(
     # Search right of the alias first
     search_order: list[int]
     if alias_idx is not None:
-        search_order = list(range(alias_idx + 1, len(tokens))) + list(
-            range(0, alias_idx + 1)
-        )
+        search_order = list(range(alias_idx + 1, len(tokens))) + list(range(0, alias_idx + 1))
     else:
         search_order = list(range(len(tokens)))
 
@@ -443,9 +489,7 @@ def _confidence(
     return 0.0
 
 
-def _merge_with_prior(
-    fresh: UNSContext, prior: UNSContext | None
-) -> UNSContext:
+def _merge_with_prior(fresh: UNSContext, prior: UNSContext | None) -> UNSContext:
     """Carry forward prior fields where the fresh ctx has nothing. Confidence
     decays slightly each turn."""
     if prior is None:
@@ -470,9 +514,7 @@ def _merge_with_prior(
     merged_kb_count = max(fresh.matched_kb_count, prior.matched_kb_count)
 
     # Rebuild path from merged fields so it stays correct
-    merged_path = _build_uns_path(
-        merged_mfr, merged_family, merged_model, merged_fault, merged_cat
-    )
+    merged_path = _build_uns_path(merged_mfr, merged_family, merged_model, merged_fault, merged_cat)
 
     final_conf = max(fresh.confidence, decayed)
 
@@ -547,7 +589,9 @@ def _enrich_from_db(
                         "SELECT uns_path::text AS uns_path "
                         "FROM cmms_equipment WHERE tenant_id = $1 "
                         "AND manufacturer ILIKE $2 AND model ILIKE $3 LIMIT 1",
-                        tenant_id, ctx.manufacturer, ctx.model,
+                        tenant_id,
+                        ctx.manufacturer,
+                        ctx.model,
                     )
                     if site_row:
                         site_path = site_row["uns_path"]
@@ -628,9 +672,7 @@ def resolve_uns_path(
 
     # Stage 1d: pick the fault, preferring strong patterns and avoiding the
     # model-position token when a better candidate exists.
-    fault_code, fault_raw, fault_raw_tokens = _pick_fault_code(
-        fault_pairs, model_position
-    )
+    fault_code, fault_raw, fault_raw_tokens = _pick_fault_code(fault_pairs, model_position)
 
     # Stage 2: now strip the chosen fault token(s) from the model candidate
     # pool and re-resolve the model. If the model-position token IS the chosen
