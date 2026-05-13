@@ -3535,14 +3535,33 @@ class Supervisor:
             if not model_hint:
                 # Fallback for models where alpha and digit are separate tokens
                 # (e.g. "MICROMASTER 440", "AQUA Drive FC 202").
-                _skip = {"VFD", "ASK", "MANUAL", "FIND", "GET", "THE", "ME",
-                         "FOR", "DRIVE", "MOTOR", "INVERTER", "CONTROLLER", "PLC",
-                         "A", "AN", "MY", "IS", "IN", "OF", "ON", "AT"}
+                _skip = {
+                    "VFD",
+                    "ASK",
+                    "MANUAL",
+                    "FIND",
+                    "GET",
+                    "THE",
+                    "ME",
+                    "FOR",
+                    "DRIVE",
+                    "MOTOR",
+                    "INVERTER",
+                    "CONTROLLER",
+                    "PLC",
+                    "A",
+                    "AN",
+                    "MY",
+                    "IS",
+                    "IN",
+                    "OF",
+                    "ON",
+                    "AT",
+                }
                 if mfr:
                     _skip.add(mfr.upper())
-                _caps = [w for w in re.findall(r'\b[A-Z]{2,}\b', combined)
-                         if w not in _skip]
-                _nums = re.findall(r'\b\d{2,}\b', combined)
+                _caps = [w for w in re.findall(r"\b[A-Z]{2,}\b", combined) if w not in _skip]
+                _nums = re.findall(r"\b\d{2,}\b", combined)
                 _parts = _caps[:2] + (_nums[:1] if _nums else [])
                 if _parts:
                     model_hint = " ".join(_parts)
