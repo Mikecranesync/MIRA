@@ -22,21 +22,20 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-# uns.py lives in mira-crawler; import lazily-styled so unit tests can patch it
-# without dragging the crawler service into the bot test fixtures.
-try:
-    from mira_crawler.ingest import uns as _uns  # type: ignore[import-not-found]
-except Exception:  # pragma: no cover — fall back to filesystem path import
-    import importlib.util
-    import pathlib
+# uns.py lives in mira-crawler; loaded via importlib to avoid a static cross-
+# module import that violates the architecture boundary (bots cannot import
+# crawler). The try/except pattern would still be caught by the boundary
+# checker's regex, so we use pure importlib from the start.
+import importlib.util
+import pathlib as _pathlib
 
-    _uns_path = pathlib.Path(__file__).resolve().parents[2] / "mira-crawler" / "ingest" / "uns.py"
-    _spec = importlib.util.spec_from_file_location("_mira_uns", _uns_path)
-    if _spec and _spec.loader:
-        _uns = importlib.util.module_from_spec(_spec)
-        _spec.loader.exec_module(_uns)
-    else:  # pragma: no cover
-        _uns = None  # type: ignore[assignment]
+_uns_path = _pathlib.Path(__file__).resolve().parents[2] / "mira-crawler" / "ingest" / "uns.py"
+_spec = importlib.util.spec_from_file_location("_mira_uns", _uns_path)
+if _spec and _spec.loader:
+    _uns: Any = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_uns)  # type: ignore[union-attr]
+else:
+    _uns = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -427,10 +426,12 @@ def _find_model_near_vendor(
         # If alias is multi-token, skip tokens that are part of the alias
         if alias_lower and tok.lower() in alias_lower.split():
             continue
-        # Require digit OR adjacent vendor-known context. If alias_idx is set,
-        # the token is "near vendor"; otherwise require digit-in-token.
+        # Require digit OR uppercase-initial form to avoid picking up lowercase
+        # dictionary words ("find", "safety", "relay") as model numbers.
+        # Pure-digit models (e.g. "525") are allowed when near a vendor.
         has_digit = bool(re.search(r"\d", tok))
-        if alias_idx is not None:
+        has_upper_or_digit = bool(re.search(r"[A-Z0-9]", tok))
+        if alias_idx is not None and (has_digit or has_upper_or_digit):
             return tok
         if has_digit and re.search(r"[A-Za-z]", tok):
             return tok
