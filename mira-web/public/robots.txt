@@ -1,5 +1,5 @@
 # FactoryLM robots.txt
-# Last updated: 2026-04-28
+# Last updated: 2026-05-12
 
 User-agent: *
 Allow: /
@@ -7,6 +7,7 @@ Disallow: /api/
 Disallow: /admin/
 Disallow: /demo/
 Sitemap: https://factorylm.com/sitemap.xml
+Sitemap: https://app.factorylm.com/sitemap.xml
 
 # AI crawlers — explicit allow
 # We want our content indexed and cited by ChatGPT, Claude, Perplexity, etc.
