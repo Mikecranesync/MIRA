@@ -15,7 +15,7 @@ No free tier. Pricing hidden until Day 7 email.
 - **Database:** NeonDB (tenant/quota tracking via `@neondatabase/serverless`)
 - **Payments:** Stripe (Checkout + webhooks + Customer Portal)
 - **CMMS Backend:** Atlas CMMS (Spring Boot, Docker, `atlas-api:8080`)
-- **AI Chat:** Proxies to `mira-sidecar:5000/rag` (dual-brain RAG pipeline)
+- **AI Chat:** Proxies to `mira-pipeline:9099/v1/chat/completions` (OpenAI-compat, ADR-0008 cutover complete)
 - **Email:** Resend HTTP API (transactional + drip)
 
 ## Tenant Tiers
@@ -28,7 +28,7 @@ No free tier. Pricing hidden until Day 7 email.
 - Host: 3200 (via docker-compose)
 
 ## Networks
-- `core-net` — reach mira-sidecar, mira-mcp
+- `core-net` — reach mira-pipeline, mira-mcp
 - `cmms-net` — reach atlas-api
 
 ## Key Env Vars (all via Doppler)
@@ -62,7 +62,7 @@ bun test             # Run tests
 | `GET /api/me` | Active | User profile + quota + `provisioning` status (atlas/demo/email/attempts/ready) |
 | `POST /api/activation/retry` | Active | Re-run `finalizeActivation` for current tenant (1/min cooldown, issue #296) |
 | `GET /api/admin/activation-health` | `x-admin-token` header | List tenants stuck >10min in non-ok provisioning state (requires `PLG_ADMIN_TOKEN` env) |
-| `POST /api/mira/chat` | Active | AI chat via mira-sidecar |
+| `POST /api/mira/chat` | Active | AI chat via mira-pipeline:9099 (ADR-0008) |
 
 ## Env Vars (additions)
 | Var | Purpose |
