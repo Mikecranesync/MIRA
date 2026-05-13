@@ -12,6 +12,7 @@ celery_app = Celery(
         "mira_seo.tasks.weekly_audit",
         "mira_seo.tasks.content_factory",
         "mira_seo.tasks.geo_probe",
+        "mira_seo.tasks.daily_content",
     ],
 )
 
@@ -23,5 +24,9 @@ celery_app.conf.beat_schedule = {
     "geo-probe": {
         "task": "mira_seo.tasks.geo_probe.run",
         "schedule": crontab(hour="6", minute="0", day_of_week="3"),  # Wednesday 06:00 UTC
+    },
+    "daily-content-pipeline": {
+        "task": "mira_seo.tasks.daily_content.run",
+        "schedule": crontab(hour="5", minute="0"),  # 05:00 UTC daily
     },
 }
