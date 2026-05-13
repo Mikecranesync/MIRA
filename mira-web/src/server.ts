@@ -1756,6 +1756,14 @@ app.get("/api/connect/status", requireActive, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Apex-domain redirects — funnel URLs that only exist on app.factorylm.com
+// closes #1132, #1133
+// ---------------------------------------------------------------------------
+
+app.get("/login", (c) => c.redirect("https://app.factorylm.com/login", 301));
+app.get("/signup", (c) => c.redirect("https://app.factorylm.com/signup", 301));
+
+// ---------------------------------------------------------------------------
 // 404 — custom page with home link (CRA-109)
 // ---------------------------------------------------------------------------
 
