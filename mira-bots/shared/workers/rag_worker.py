@@ -85,6 +85,16 @@ _FAULT_MENTION_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Strip prompt-injection delimiters from chunk text before LLM injection.
+# A crafted document containing these patterns could break the reference-block
+# boundary and inject instructions with system-role authority (#1007).
+_SENTINEL_RE = re.compile(
+    r"---\s*(?:END REFERENCES|END NEONDB CONTEXT|RETRIEVED REFERENCE DOCUMENTS"
+    r"|NEONDB KNOWLEDGE BASE|END GENERAL KNOWLEDGE MODE|END NO KB COVERAGE"
+    r"|CURRENT STATE)\s*---",
+    re.IGNORECASE,
+)
+
 
 def _build_clarification_request(message: str, asset_identified: str) -> str | None:
     """Return a targeted clarification question when the KB has no coverage.
@@ -618,6 +628,8 @@ class RAGWorker:
             else:
                 nc = _meta[i - 1] if i - 1 < len(_meta) else {}
                 text = chunk
+            # Strip prompt-injection sentinel patterns before injection (#1007)
+            text = _SENTINEL_RE.sub("[REF_DELIMITER]", text)
             label = format_source_label(nc)
             if label:
                 system_content += f"--- [{i}] [Source: {label}] ---\n{text}\n---\n"
@@ -748,7 +760,11 @@ class RAGWorker:
             for i, chunk in enumerate(neon_chunks, 1):
                 score = chunk.get("similarity") or 0.0
                 label = format_source_label(chunk) or (chunk.get("equipment_type") or "unknown")
-                system_content += f"--- [{i}] [Source: {label}] (score={score:.3f}) ---\n{chunk['content']}\n---\n"
+                # Strip prompt-injection sentinel patterns before injection (#1007)
+                safe_content = _SENTINEL_RE.sub("[REF_DELIMITER]", chunk["content"])
+                system_content += (
+                    f"--- [{i}] [Source: {label}] (score={score:.3f}) ---\n{safe_content}\n---\n"
+                )
             system_content += "--- END NEONDB CONTEXT ---\n"
 
         messages = [{"role": "system", "content": system_content}]
