@@ -129,6 +129,7 @@ import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
 import { qrTest } from "./routes/qr-test.js";
 import { inbox } from "./routes/inbox.js";
 import { mfa } from "./routes/mfa.js";
+import { probeStateRoute } from "./routes/probe-state.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -307,6 +308,7 @@ app.use("/sun-toggle.js", serveStatic({ path: "./public/sun-toggle.js" }));
 app.use("/feature-cartoons.js", serveStatic({ path: "./public/feature-cartoons.js" }));
 app.use("/posthog-init.js", serveStatic({ path: "./public/posthog-init.js" }));
 app.use("/pwa-install.js", serveStatic({ path: "./public/pwa-install.js" }));
+app.use("/status", serveStatic({ path: "./public/status.html" }));
 
 // Dynamic sitemap (replaces static file)
 app.get("/sitemap.xml", (c) => {
@@ -368,6 +370,9 @@ app.get("/", (c) => {
 app.get("/api/health", (c) =>
   c.json({ status: "ok", service: "mira-web", version: "0.2.1" })
 );
+
+// Service status (CRA-280) — reads /tmp/probe-state.jsonl written by external probe
+app.route("/api/probe-state", probeStateRoute);
 
 // PostHog analytics init (closes #618)
 // Public API key is safe in HTML, but we serve it from server env so
