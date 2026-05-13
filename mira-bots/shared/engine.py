@@ -59,7 +59,6 @@ from .guardrails import (
     detect_session_followup,
     resolve_option_selection,
     strip_mentions,
-    vendor_name_from_text,
     vendor_support_url,
 )
 from .inference.router import InferenceRouter
@@ -88,7 +87,6 @@ from .photo_handler import (
 )
 from .response_formatter import (
     _VISION_PROSE_PREFIX_RE,
-    _looks_like_model_number,
     deduplicate_options,  # noqa: F401 — re-exported for test_conversation_continuity.py
     format_reply,
     parse_response,
@@ -103,6 +101,7 @@ from .session_manager import (
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
+from .uns_resolver import resolve_uns_path
 from .workers.nameplate_worker import NameplateWorker
 from .workers.plc_worker import PLCWorker
 from .workers.print_worker import PrintWorker
@@ -670,25 +669,13 @@ class Supervisor:
     def _is_doc_specific(vendor: str, text: str) -> bool:
         """Return True if *text* is specific enough to crawl usefully.
 
-        Requires both:
-        - a vendor name present in _KNOWN_VENDORS (either extracted or in text)
-        - at least one model-number token OR a standalone ≥2-digit number
-
-        The second fallback covers cases like "PowerFlex 525" where the model
-        designator is pure digits (525, 70, 700, etc.).  Vague requests like
-        "the safety relay" or "this VFD" still return False.
+        Requires both vendor known AND model present. Delegates to the UNS
+        resolver — vendor is injected into the resolver input so pure-digit
+        models like "525" resolve when adjacent to a known family name.
         """
-        text_lower = text.lower()
-        vendor_known = bool(vendor) and any(
-            v in vendor.lower() or v in text_lower for v in _KNOWN_VENDORS
-        )
-        if not vendor_known:
-            return False
-        # Primary: mixed letter+digit token (GS20, FC-302, X3, ACS580).
-        if _looks_like_model_number(text):
-            return True
-        # Fallback: standalone ≥2-digit number (525, 70, 700, 120 ...).
-        return bool(re.search(r"\b\d{2,}\b", text))
+        combined = f"{vendor} {text}".strip() if vendor else text
+        ctx = resolve_uns_path(combined)
+        return bool(ctx.manufacturer) and bool(ctx.model)
 
     @staticmethod
     def _infer_confidence(reply: str) -> str:
@@ -1061,6 +1048,32 @@ class Supervisor:
                 state.get("state", "Q1"),
             )
 
+        # Single UNS-aware extraction — one truth per turn for
+        # vendor / model / fault code / category. Downstream sites read
+        # `state["context"]["uns_context"]` instead of re-running
+        # vendor_name_from_text or _looks_like_model_number locally.
+        #
+        # Stored UNDER state["context"] (not at the top level) because
+        # session_manager.save_state only persists the declared columns plus
+        # state["context"] as a JSON blob — top-level extras are dropped.
+        # Carries forward across turns so "make a work order" after
+        # "PowerFlex 525 F0004" keeps the equipment in scope.
+        # See docs/specs/uns-message-resolver-spec.md.
+        _ctx_for_uns = state.get("context") or {}
+        prior_uns = _ctx_for_uns.get("uns_context") or None
+        uns_ctx = resolve_uns_path(
+            message,
+            tenant_id=resolved_tenant,
+            prior_ctx=prior_uns,
+        )
+        _ctx_for_uns["uns_context"] = uns_ctx.as_dict()
+        state["context"] = _ctx_for_uns
+        if uns_ctx.manufacturer and uns_ctx.confidence >= 0.7 and not state.get("asset_identified"):
+            label = uns_ctx.manufacturer
+            if uns_ctx.model:
+                label = f"{label}, {uns_ctx.model}"
+            state["asset_identified"] = label
+
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
         # Bypass guard: if the message is clearly a brand-new diagnostic question (not a
@@ -1311,7 +1324,7 @@ class Supervisor:
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
         if not photo_b64 and intent == "documentation":
             combined = f"{message} {state.get('asset_identified', '')}".strip()
-            mfr = vendor_name_from_text(combined) or ""
+            mfr = ((state.get("context") or {}).get("uns_context") or {}).get("manufacturer") or ""
 
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
@@ -1628,28 +1641,10 @@ class Supervisor:
             session_photo = self._load_recent_session_photo(chat_id, state)
         effective_photo = photo_b64 or session_photo
 
-        # REGRESSION GUARD (2026-05-12): seed asset_identified from the message
-        # when the user names a recognizable vendor (PowerFlex, GS20, etc.) so
-        # downstream prompts and the no-KB-coverage path know what equipment we
-        # are diagnosing. Without this, the LLM and clarification flow drop the
-        # equipment context Mike just typed and ask for it again.
-        if not photo_b64 and not state.get("asset_identified"):
-            _seeded_vendor = vendor_name_from_text(message) or ""
-            if _seeded_vendor:
-                _seeded_model = _looks_like_model_number(message) or ""
-                if not _seeded_model:
-                    _digit_match = re.search(r"\b\d{2,4}\b", message)
-                    if _digit_match:
-                        _seeded_model = _digit_match.group(0)
-                state["asset_identified"] = (
-                    f"{_seeded_vendor}, {_seeded_model}" if _seeded_model else _seeded_vendor
-                )
-                logger.info(
-                    "ASSET_SEEDED_FROM_MESSAGE chat_id=%s vendor=%r model=%r",
-                    chat_id,
-                    _seeded_vendor,
-                    _seeded_model,
-                )
+        # NOTE: asset_identified seeding from message is handled earlier in this
+        # function via the UNS resolver block (state["uns_context"]). The previous
+        # _seeded_vendor regression-guard (#1206 / commit 4537dd3d) was removed as
+        # part of the UNS resolver refactor — one extraction point per turn.
         try:
             with tl_span(t, "rag_worker"):
                 raw, parsed = await self._call_with_correction(
@@ -2572,6 +2567,16 @@ class Supervisor:
         vendor = current_vendor or ""
         model = ""
 
+        # Primary source: UNS resolver result for this turn (includes
+        # prior-context carry-over from previous turns). Stored under
+        # state["context"]["uns_context"] so it survives SQLite round-trip.
+        uns = (state.get("context") or {}).get("uns_context") or {}
+        if not vendor and uns.get("manufacturer"):
+            vendor = str(uns["manufacturer"])
+        if not model and uns.get("model"):
+            model = str(uns["model"])
+
+        # Secondary: asset_identified is the canonical "Vendor, Model" string.
         asset_id = state.get("asset_identified") or ""
         if "," in asset_id:
             parts = [p.strip() for p in asset_id.split(",", 1)]
@@ -2579,24 +2584,15 @@ class Supervisor:
                 vendor = parts[0]
             if len(parts) > 1 and parts[1]:
                 model = parts[1]
-        elif asset_id:
-            if not vendor:
-                vendor = vendor_name_from_text(asset_id) or ""
-            if not model:
-                model = _looks_like_model_number(asset_id) or ""
+        elif asset_id and (not vendor or not model):
+            # Fallback: resolve asset_id through the UNS resolver
+            fallback_ctx = resolve_uns_path(asset_id)
+            if not vendor and fallback_ctx.manufacturer:
+                vendor = fallback_ctx.manufacturer
+            if not model and fallback_ctx.model:
+                model = fallback_ctx.model
 
         ctx = state.get("context") or {}
-        history = ctx.get("history") or []
-        if (not vendor or not model) and history:
-            for turn in reversed(history[-8:]):
-                text = str(turn.get("content") or "")
-                if not vendor:
-                    vendor = vendor_name_from_text(text) or ""
-                if not model:
-                    model = _looks_like_model_number(text) or ""
-                if vendor and model:
-                    break
-
         if not vendor or not model:
             dialogue = ctx.get("dialogue") or {}
             ents = dialogue.get("salient_entities") or {}
@@ -2605,10 +2601,15 @@ class Supervisor:
             if not model and ents.get("model"):
                 model = str(ents["model"])
 
-        if not vendor:
-            vendor = vendor_name_from_text(message) or ""
-        if not model:
-            model = _looks_like_model_number(message) or ""
+        # Last resort: re-resolve the current message directly. This branch
+        # fires only when uns_context wasn't populated (e.g., called from a
+        # path that bypassed process_full's top-of-loop resolution).
+        if not vendor or not model:
+            msg_ctx = resolve_uns_path(message)
+            if not vendor and msg_ctx.manufacturer:
+                vendor = msg_ctx.manufacturer
+            if not model and msg_ctx.model:
+                model = msg_ctx.model
         return vendor, model
 
     async def _enter_manual_lookup_gathering(
@@ -2777,12 +2778,19 @@ class Supervisor:
             return self._make_result(reply, "none", trace_id, prior_state)
 
         # ---- Extract info from this turn ----------------------------------------
-        new_vendor = vendor_name_from_text(message) or ""
-        new_model = _looks_like_model_number(message)
+        # Bias the resolver with any vendor already collected so a bare model
+        # answer like "525" resolves correctly (vendor-adjacent rule).
+        if collected.get("vendor"):
+            biased = f"{collected['vendor']} {message}"
+        else:
+            biased = message
+        turn_ctx = resolve_uns_path(biased)
+        new_vendor = turn_ctx.manufacturer or ""
+        new_model = turn_ctx.model or ""
 
-        # If we're already waiting for the model specifically (vendor in hand) and
-        # _looks_like_model_number found nothing, accept any short non-stopword token.
-        # This covers user answers like "525" or just "PNOZ-X3".
+        # MLG-specific permissive fallback: when vendor is in hand and the
+        # resolver still didn't find a model, accept any short non-stopword
+        # token as the model (covers "PNOZ-X3" and other unusual answers).
         if not new_model and collected.get("vendor"):
             _STOP = {
                 "the",
@@ -2983,8 +2991,10 @@ class Supervisor:
         """User wants to talk about a different asset — clear FSM, preserve session memory."""
         old_asset = state.get("asset_identified", "") or "unknown"
 
-        # Try to identify the new asset from the switch message itself
-        new_asset = vendor_name_from_text(message) or ""
+        # Try to identify the new asset from the switch message itself.
+        # Fresh resolve (no prior_ctx) so we get the NEW asset, not carry-over
+        # from the one the user is switching away from.
+        new_asset = resolve_uns_path(message).manufacturer or ""
 
         logger.info(
             "ASSET_SWITCH chat_id=%s from=%r to=%r",
@@ -3497,7 +3507,7 @@ class Supervisor:
     ) -> dict:
         """Router-dispatched doc intent — delegates to the existing specificity-gate path."""
         combined = f"{message} {state.get('asset_identified', '')}".strip()
-        mfr = vendor_name_from_text(combined) or ""
+        mfr = ((state.get("context") or {}).get("uns_context") or {}).get("manufacturer") or ""
         if not self._is_doc_specific(mfr, combined):
             asset_id = state.get("asset_identified", "")
             if "," in asset_id:
@@ -3595,7 +3605,10 @@ class Supervisor:
         state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         asset = state.get("asset_identified", "")
         combined = " ".join(filter(None, [vendor_override, model_override, message, asset])).strip()
-        mfr = vendor_override or vendor_name_from_text(combined) or ""
+        # Resolve the combined input through the UNS resolver. Overrides win
+        # when present; otherwise we use what the resolver found.
+        combined_ctx = resolve_uns_path(combined)
+        mfr = vendor_override or combined_ctx.manufacturer or ""
         url = vendor_support_url(combined)
 
         # Phase 2 — KB pre-check: skip crawl when we already have coverage.
@@ -3603,40 +3616,7 @@ class Supervisor:
         if kb_covered:
             # CRA-8 Cluster A: include the model token (and the literal word "manual")
             # so vendor-specific manual requests don't fall through the keyword check.
-            model_hint = model_override or _looks_like_model_number(combined) or ""
-            if not model_hint:
-                # Fallback for models where alpha and digit are separate tokens
-                # (e.g. "MICROMASTER 440", "AQUA Drive FC 202").
-                _skip = {
-                    "VFD",
-                    "ASK",
-                    "MANUAL",
-                    "FIND",
-                    "GET",
-                    "THE",
-                    "ME",
-                    "FOR",
-                    "DRIVE",
-                    "MOTOR",
-                    "INVERTER",
-                    "CONTROLLER",
-                    "PLC",
-                    "A",
-                    "AN",
-                    "MY",
-                    "IS",
-                    "IN",
-                    "OF",
-                    "ON",
-                    "AT",
-                }
-                if mfr:
-                    _skip.add(mfr.upper())
-                _caps = [w for w in re.findall(r"\b[A-Z]{2,}\b", combined) if w not in _skip]
-                _nums = re.findall(r"\b\d{2,}\b", combined)
-                _parts = _caps[:2] + (_nums[:1] if _nums else [])
-                if _parts:
-                    model_hint = " ".join(_parts)
+            model_hint = model_override or combined_ctx.model or ""
             if mfr and model_hint:
                 reply = f"I have the {mfr} {model_hint} manual indexed."
             elif mfr:
