@@ -762,7 +762,9 @@ class RAGWorker:
                 label = format_source_label(chunk) or (chunk.get("equipment_type") or "unknown")
                 # Strip prompt-injection sentinel patterns before injection (#1007)
                 safe_content = _SENTINEL_RE.sub("[REF_DELIMITER]", chunk["content"])
-                system_content += f"--- [{i}] [Source: {label}] (score={score:.3f}) ---\n{safe_content}\n---\n"
+                system_content += (
+                    f"--- [{i}] [Source: {label}] (score={score:.3f}) ---\n{safe_content}\n---\n"
+                )
             system_content += "--- END NEONDB CONTEXT ---\n"
 
         messages = [{"role": "system", "content": system_content}]
