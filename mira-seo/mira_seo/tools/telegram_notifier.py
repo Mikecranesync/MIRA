@@ -11,8 +11,6 @@ from mira_seo.models.content import DraftPayload
 
 logger = logging.getLogger("mira-seo.telegram-notifier")
 
-_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-_ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
 _API_BASE = "https://api.telegram.org"
 
 
@@ -32,7 +30,9 @@ async def send_draft_preview(draft_id: str, payload: DraftPayload) -> int:
     Returns:
         Telegram message_id of the sent message (0 on failure or unconfigured)
     """
-    if not _BOT_TOKEN or not _ADMIN_CHAT_ID:
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    admin_chat_id = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
+    if not bot_token or not admin_chat_id:
         logger.warning("TELEGRAM_BOT_TOKEN or TELEGRAM_ADMIN_CHAT_ID not set — skipping notify")
         return 0
 
@@ -66,9 +66,9 @@ async def send_draft_preview(draft_id: str, payload: DraftPayload) -> int:
     async with httpx.AsyncClient(timeout=30) as client:
         try:
             resp = await client.post(
-                f"{_API_BASE}/bot{_BOT_TOKEN}/sendMessage",
+                f"{_API_BASE}/bot{bot_token}/sendMessage",
                 json={
-                    "chat_id": _ADMIN_CHAT_ID,
+                    "chat_id": admin_chat_id,
                     "text": preview_text,
                     "parse_mode": "MarkdownV2",
                     "reply_markup": keyboard,
