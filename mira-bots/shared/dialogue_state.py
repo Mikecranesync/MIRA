@@ -483,18 +483,11 @@ class DialogueState:
             )
 
         salient = SalientEntities()
-        # Prefer the canonical UNS context when present (one source of truth
-        # per turn). Stored under engine_state["context"]["uns_context"] so it
-        # round-trips through SQLite via session_manager.save_state. Fall back
-        # to parsing asset_identified for legacy state rows.
-        uns_ctx = (engine_state.get("context") or {}).get("uns_context") or {}
         asset = engine_state.get("asset_identified") or ""
-        vendor: str | None = uns_ctx.get("manufacturer") or None
-        if not vendor and asset:
-            from .uns_resolver import resolve_uns_path  # local import: avoid cycle
+        if asset:
+            from .guardrails import vendor_name_from_text  # local import: avoid cycle
 
-            vendor = resolve_uns_path(asset).manufacturer or None
-        if vendor or asset:
+            vendor = vendor_name_from_text(asset) or None
             salient = SalientEntities(vendor=vendor, asset_label=asset[:120])
 
         return cls(

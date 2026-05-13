@@ -433,12 +433,10 @@ class RAGWorker:
             # identified vendor.  Chunks with no manufacturer tag are kept (they may be
             # generic content like fault code tables or application notes).
             # Falls back to the old all-or-nothing suppress if no per-chunk filtering
-            # yields results. Vendor is read from state["context"]["uns_context"]
-            # (populated by the UNS resolver at the top of Supervisor.process_full).
+            # yields results.
             if chunk_texts and not photo_b64:
-                query_vendor = ((state.get("context") or {}).get("uns_context") or {}).get(
-                    "manufacturer"
-                )
+                query_combined = f"{message} {state.get('asset_identified', '')}".strip()
+                query_vendor = vendor_name_from_text(query_combined)
                 if query_vendor:
                     qv_lower = query_vendor.lower()
                     filtered_chunks = [
