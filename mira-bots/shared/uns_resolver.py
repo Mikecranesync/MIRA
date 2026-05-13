@@ -3,8 +3,13 @@ code / category per turn.
 
 Reads a free-form user message and returns a `UNSContext` whose fields map
 directly onto UNS path segments built by `mira-crawler/ingest/uns.py`. Engine,
-workers, and DST all read from `state["uns_context"]` instead of re-running
-their own extraction.
+workers, and DST all read from `state["context"]["uns_context"]` instead of
+re-running their own extraction.
+
+Storage location matters: `session_manager.save_state` only persists declared
+columns plus `state["context"]` (as a JSON blob). Top-level keys outside that
+schema are dropped on save — so the resolver result MUST live under
+`state["context"]["uns_context"]` to round-trip across turns.
 
 See `docs/specs/uns-message-resolver-spec.md` for the contract. See
 `.claude/rules/uns-compliance.md` for the rules this module enforces.

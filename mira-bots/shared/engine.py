@@ -1050,17 +1050,24 @@ class Supervisor:
 
         # Single UNS-aware extraction — one truth per turn for
         # vendor / model / fault code / category. Downstream sites read
-        # state["uns_context"] instead of re-running vendor_name_from_text or
-        # _looks_like_model_number locally. Carries forward across turns so
-        # "make a work order" after "PowerFlex 525 F0004" keeps the equipment
-        # in scope. See docs/specs/uns-message-resolver-spec.md.
-        prior_uns = state.get("uns_context") or None
+        # `state["context"]["uns_context"]` instead of re-running
+        # vendor_name_from_text or _looks_like_model_number locally.
+        #
+        # Stored UNDER state["context"] (not at the top level) because
+        # session_manager.save_state only persists the declared columns plus
+        # state["context"] as a JSON blob — top-level extras are dropped.
+        # Carries forward across turns so "make a work order" after
+        # "PowerFlex 525 F0004" keeps the equipment in scope.
+        # See docs/specs/uns-message-resolver-spec.md.
+        _ctx_for_uns = state.get("context") or {}
+        prior_uns = _ctx_for_uns.get("uns_context") or None
         uns_ctx = resolve_uns_path(
             message,
             tenant_id=resolved_tenant,
             prior_ctx=prior_uns,
         )
-        state["uns_context"] = uns_ctx.as_dict()
+        _ctx_for_uns["uns_context"] = uns_ctx.as_dict()
+        state["context"] = _ctx_for_uns
         if (
             uns_ctx.manufacturer
             and uns_ctx.confidence >= 0.7
@@ -1321,7 +1328,9 @@ class Supervisor:
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
         if not photo_b64 and intent == "documentation":
             combined = f"{message} {state.get('asset_identified', '')}".strip()
-            mfr = (state.get("uns_context") or {}).get("manufacturer") or ""
+            mfr = ((state.get("context") or {}).get("uns_context") or {}).get(
+                "manufacturer"
+            ) or ""
 
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
@@ -2565,8 +2574,9 @@ class Supervisor:
         model = ""
 
         # Primary source: UNS resolver result for this turn (includes
-        # prior-context carry-over from previous turns).
-        uns = state.get("uns_context") or {}
+        # prior-context carry-over from previous turns). Stored under
+        # state["context"]["uns_context"] so it survives SQLite round-trip.
+        uns = (state.get("context") or {}).get("uns_context") or {}
         if not vendor and uns.get("manufacturer"):
             vendor = str(uns["manufacturer"])
         if not model and uns.get("model"):
@@ -3503,7 +3513,9 @@ class Supervisor:
     ) -> dict:
         """Router-dispatched doc intent — delegates to the existing specificity-gate path."""
         combined = f"{message} {state.get('asset_identified', '')}".strip()
-        mfr = (state.get("uns_context") or {}).get("manufacturer") or ""
+        mfr = ((state.get("context") or {}).get("uns_context") or {}).get(
+            "manufacturer"
+        ) or ""
         if not self._is_doc_specific(mfr, combined):
             asset_id = state.get("asset_identified", "")
             if "," in asset_id:

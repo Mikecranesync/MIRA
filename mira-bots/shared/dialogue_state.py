@@ -484,9 +484,10 @@ class DialogueState:
 
         salient = SalientEntities()
         # Prefer the canonical UNS context when present (one source of truth
-        # per turn). Fall back to parsing asset_identified for legacy state
-        # rows that haven't been processed through the resolver yet.
-        uns_ctx = engine_state.get("uns_context") or {}
+        # per turn). Stored under engine_state["context"]["uns_context"] so it
+        # round-trips through SQLite via session_manager.save_state. Fall back
+        # to parsing asset_identified for legacy state rows.
+        uns_ctx = (engine_state.get("context") or {}).get("uns_context") or {}
         asset = engine_state.get("asset_identified") or ""
         vendor: str | None = uns_ctx.get("manufacturer") or None
         if not vendor and asset:

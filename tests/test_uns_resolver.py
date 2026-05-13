@@ -402,6 +402,49 @@ def test_family_aliases_set_product_family():
 # ---------------------------------------------------------------------------
 
 
+def test_state_roundtrip_via_session_manager(tmp_path):
+    """The resolver result must survive SQLite save/load.
+
+    `session_manager.save_state` only persists declared columns plus
+    `state["context"]` (JSON). The resolver must live under
+    `state["context"]["uns_context"]` — placing it at the top level would
+    silently drop it and break carry-over across turns.
+    """
+    import sys
+    from pathlib import Path
+
+    bots_root = Path(__file__).resolve().parents[1] / "mira-bots"
+    if str(bots_root) not in sys.path:
+        sys.path.insert(0, str(bots_root))
+    # session_manager is the production save/load path
+    from shared.session_manager import ensure_table, load_state, save_state
+
+    db_path = str(tmp_path / "uns_roundtrip.db")
+    ensure_table(db_path)
+
+    # Turn 1: write resolver result under state["context"]["uns_context"]
+    state = load_state(db_path, "chat_xyz")
+    state["state"] = "IDLE"
+    state["asset_identified"] = "Rockwell Automation, 525"
+    state["exchange_count"] = 1
+    ctx = resolve_uns_path("I have a powerflex 525 and it has it called f0004")
+    state["context"]["uns_context"] = ctx.as_dict()
+    save_state(db_path, "chat_xyz", state)
+
+    # Turn 2: reload and confirm uns_context survived
+    state2 = load_state(db_path, "chat_xyz")
+    uns2 = (state2.get("context") or {}).get("uns_context") or {}
+    assert uns2.get("manufacturer") == "Rockwell Automation"
+    assert uns2.get("model") == "525"
+    assert uns2.get("fault_code") == "F0004"
+
+    # Resolver can re-hydrate from the dict form and apply carry-over
+    turn2_ctx = resolve_uns_path("make a work order", prior_ctx=uns2)
+    assert turn2_ctx.manufacturer == "Rockwell Automation"
+    assert turn2_ctx.model == "525"
+    assert turn2_ctx.fault_code == "F0004"
+
+
 def test_offline_no_db_calls_required():
     """The resolver must produce a useful result with no DB available."""
     # This whole test file is offline already. Sanity-check that the
