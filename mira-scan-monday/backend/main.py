@@ -333,6 +333,20 @@ async def chat_message(req: ChatMessageRequest, request: Request) -> ChatMessage
     account_id = session.account_id_from_headers(request.headers)
     if account_id:
         await oauth.touch_last_seen(account_id)
+        used = await usage.month_chat_count(account_id)
+        if used >= usage.FREE_TIER_MONTHLY_CHAT_CAP:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "quota_exceeded",
+                    "used": used,
+                    "cap": usage.FREE_TIER_MONTHLY_CHAT_CAP,
+                    "message": (
+                        f"Free-tier limit of {usage.FREE_TIER_MONTHLY_CHAT_CAP} "
+                        "AI messages/month reached."
+                    ),
+                },
+            )
     _max_turns = int(os.getenv("MIRA_MAX_CHAT_HISTORY_TURNS", "20"))
     trimmed_history = (req.history or [])[-_max_turns:]
     reply, sources = await mira_rag.chat(
@@ -341,6 +355,8 @@ async def chat_message(req: ChatMessageRequest, request: Request) -> ChatMessage
         asset_label=req.asset_label,
         history=trimmed_history,
     )
+    if account_id:
+        await usage.bump_chat_count(account_id)
     return ChatMessageResponse(reply=reply, sources=sources)
 
 
