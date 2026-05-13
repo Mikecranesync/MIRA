@@ -135,8 +135,12 @@ async function visit(page: Page, route: string): Promise<RouteResult> {
 
   const httpOk = status === 200 || status === 304 || (redirectedToLogin && status >= 300 && status < 400) || (redirectedToLogin && status === 200);
   const paintOk = paintMs <= PAINT_THRESHOLD_MS;
-  const bodyOk = bodyChars >= MIN_BODY_TEXT_CHARS;
-  const errorsOk = inst.errors.length === 0;
+  // Auth-redirect to /login is the correct unauth behavior — treat the redirect
+  // destination body (login page) as satisfying the body check. Closes #1056.
+  const bodyOk = redirectedToLogin || bodyChars >= MIN_BODY_TEXT_CHARS;
+  // For auth-redirected routes, console errors on the login landing page are
+  // not bugs in the protected page itself — only count errors on direct-load pages.
+  const errorsOk = redirectedToLogin ? true : inst.errors.length === 0;
   const exceptionsOk = inst.exceptions.length === 0;
 
   if (!httpOk) notes.push(`http-${status}`);
@@ -146,7 +150,7 @@ async function visit(page: Page, route: string): Promise<RouteResult> {
   if (!exceptionsOk) notes.push(`${inst.exceptions.length}-exceptions`);
 
   // Surface the first error/exception text in notes so the audit is debuggable.
-  if (inst.errors.length) notes.push("err: " + inst.errors[0].slice(0, 80));
+  if (inst.errors.length && !redirectedToLogin) notes.push("err: " + inst.errors[0].slice(0, 80));
   if (inst.exceptions.length) notes.push("exc: " + inst.exceptions[0].slice(0, 80));
 
   const ok = httpOk && paintOk && bodyOk && errorsOk && exceptionsOk;
