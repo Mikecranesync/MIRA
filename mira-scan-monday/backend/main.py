@@ -325,9 +325,7 @@ async def queue_search_now(
 
 
 @app.post("/chat/message", response_model=ChatMessageResponse)
-async def chat_message(
-    req: ChatMessageRequest, request: Request
-) -> ChatMessageResponse:
+async def chat_message(req: ChatMessageRequest, request: Request) -> ChatMessageResponse:
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="message is required")
     # Chat is downstream of scan — bump last_seen so we know the install
@@ -335,11 +333,13 @@ async def chat_message(
     account_id = session.account_id_from_headers(request.headers)
     if account_id:
         await oauth.touch_last_seen(account_id)
+    _max_turns = int(os.getenv("MIRA_MAX_CHAT_HISTORY_TURNS", "20"))
+    trimmed_history = (req.history or [])[-_max_turns:]
     reply, sources = await mira_rag.chat(
         message=req.message,
         asset_id=req.asset_id,
         asset_label=req.asset_label,
-        history=req.history,
+        history=trimmed_history,
     )
     return ChatMessageResponse(reply=reply, sources=sources)
 
