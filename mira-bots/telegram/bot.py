@@ -7,11 +7,9 @@ import logging
 import os
 
 import httpx
-from chat_adapter import TelegramChatAdapter
 from PIL import Image
-from shared import tts
-from shared.chat.dispatcher import ChatDispatcher
-from shared.engine import Supervisor
+from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.error import Conflict
@@ -23,7 +21,6 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-from voice_transcription import transcribe_voice
 
 from admin_commands import (
     invite_command,
@@ -31,11 +28,14 @@ from admin_commands import (
     revoke_command,
     team_command,
 )
+from chat_adapter import TelegramChatAdapter
+from shared import tts
+from shared.chat.dispatcher import ChatDispatcher
+from shared.engine import Supervisor
 from shared.identity.service import get_identity_service
 from shared.tenant.authorizer import Authorizer
 from start_command import start_command
-from sqlalchemy import create_engine
-from sqlalchemy.pool import NullPool
+from voice_transcription import transcribe_voice
 
 logging.basicConfig(
     level=logging.INFO,
