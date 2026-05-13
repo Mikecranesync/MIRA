@@ -470,7 +470,10 @@ class RAGWorker:
 
             self._last_sources = chunk_texts
             self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
-            self._last_neon_chunks = neon_chunks
+            # Snapshot before any await so concurrent sessions can't overwrite
+            # this call's metadata (fixes #1082 Nemotron rerank race).
+            local_neon_chunks = list(neon_chunks)
+            self._last_neon_chunks = local_neon_chunks
             self._kb_status = self._compute_kb_status(neon_chunks, bool(chunk_texts))
 
             async with spans.vector_search(
@@ -501,6 +504,7 @@ class RAGWorker:
                     rewritten,
                     chunk_texts,
                     photo_b64=photo_b64,
+                    neon_chunks_meta=local_neon_chunks,
                 )
             else:
                 no_kb = retrieval_attempted and not photo_b64
@@ -569,14 +573,16 @@ class RAGWorker:
         message: str,
         chunks: list,
         photo_b64: str = None,
+        neon_chunks_meta: list[dict] | None = None,
     ) -> list[dict]:
         """Build prompt with explicitly injected reranked chunks.
 
         ``chunks`` may be either a list of plain strings (legacy callers) or
         a list of chunk dicts. When a dict is passed, the [Source: ...] tag
         comes from that dict directly so reranking does not mis-pair labels
-        with text. When a string is passed, the parallel ``_last_neon_chunks``
-        list is used as the metadata source.
+        with text. When a string is passed, ``neon_chunks_meta`` (a
+        call-local snapshot) is preferred over ``self._last_neon_chunks`` to
+        avoid a cross-tenant data race when Nemotron reranking is enabled.
         """
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
@@ -599,15 +605,16 @@ class RAGWorker:
         # instructed (rule 16) to echo inline next to facts it cites.
         # Rerank-stable: when `chunks` is a list of dicts, label comes from
         # that dict directly so reordering doesn't mis-pair labels with text.
-        # When chunks are bare strings (legacy callers), fall back to the
-        # parallel _last_neon_chunks list.
+        # When chunks are bare strings, prefer the call-local snapshot
+        # (neon_chunks_meta) over the instance attr to avoid cross-tenant leaks.
+        _meta = neon_chunks_meta if neon_chunks_meta is not None else self._last_neon_chunks
         system_content += "\n--- RETRIEVED REFERENCE DOCUMENTS ---\n"
         for i, chunk in enumerate(chunks, 1):
             if isinstance(chunk, dict):
                 nc = chunk
                 text = chunk.get("content", "")
             else:
-                nc = self._last_neon_chunks[i - 1] if i - 1 < len(self._last_neon_chunks) else {}
+                nc = _meta[i - 1] if i - 1 < len(_meta) else {}
                 text = chunk
             label = format_source_label(nc)
             if label:
