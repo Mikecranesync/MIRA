@@ -9,7 +9,7 @@
  *
  * Spec: docs/specs/enforcement-layer-spec.md §4.1
  *
- * Run: HUB_URL=https://app.factorylm.com/hub npx playwright test tests/e2e/hub-page-audit.spec.ts
+ * Run: HUB_URL=https://app.factorylm.com npx playwright test tests/e2e/hub-page-audit.spec.ts
  *
  * The 28-route catalog is regenerated from mira-hub/src/app at boot — adding a
  * page.tsx automatically expands the audit, no edits required here.
@@ -19,7 +19,7 @@ import { test, expect, type Page } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 
-const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
+const HUB = process.env.HUB_URL ?? "https://app.factorylm.com";
 const ROOT = path.resolve(__dirname, "..", "..", "..");
 const AUDIT_DIR = path.join(ROOT, "docs", "audits");
 const PAINT_THRESHOLD_MS = 5000;
@@ -104,11 +104,7 @@ function attachInstrumentation(page: Page): { errors: string[]; exceptions: stri
 
 async function visit(page: Page, route: string): Promise<RouteResult> {
   const inst = attachInstrumentation(page);
-  const url = HUB.replace(/\/hub$/, "") + route;
-  // Keep prefix sane: HUB="https://app.factorylm.com/hub", route="/feed" → /hub/feed
-  const finalUrl = HUB.endsWith("/hub")
-    ? HUB.replace(/\/hub$/, "") + "/hub" + route
-    : HUB + route;
+  const finalUrl = HUB.replace(/\/$/, "") + route;
 
   const t0 = Date.now();
   let status = 0;

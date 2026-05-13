@@ -446,19 +446,18 @@ services:
       # AUTH_SECRET: 32-byte random hex used to sign session JWTs
       # NEXTAUTH_URL: NextAuth v4 builds OAuth callback URLs as
       #   `${NEXTAUTH_URL}/callback/{provider}` — the path portion of
-      #   NEXTAUTH_URL becomes the auth-API base, NOT the app base. With
-      #   `/hub` only, callback resolves to /hub/callback/google which doesn't
-      #   match the actual handler at /hub/api/auth/callback/google → Google
-      #   returns redirect_uri_mismatch. Including `/api/auth` makes the
-      #   callback resolve to /hub/api/auth/callback/google. Verified via
-      #   live probe of the OAuth flow.
-      # If updating: Doppler factorylm/prd NEXTAUTH_URL must match this value
-      # (or be unset to use this default). GCP authorized redirect URI for
-      # client_id 246891599587-* must include
-      # https://app.factorylm.com/hub/api/auth/callback/google.
+      #   NEXTAUTH_URL becomes the auth-API base, NOT the app base. In Phase 2
+      #   (hub at root), the auth API is at /api/auth (no /hub prefix).
+      # ⚠️  MIGRATION NOTE (Phase 1 → Phase 2):
+      #   After updating this default, also:
+      #   1. Set Doppler factorylm/prd NEXTAUTH_URL=https://app.factorylm.com/api/auth
+      #   2. Add https://app.factorylm.com/api/auth/callback/google to GCP
+      #      authorized redirect URIs for client_id 246891599587-*
+      #   3. The old /hub/api/auth/callback/google URI can be removed once no
+      #      active sessions reference it (safe to remove after 24h).
       - AUTH_SECRET=${AUTH_SECRET:-}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/hub/api/auth}
-      - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/hub/api/auth}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/api/auth}
+      - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/api/auth}
       # Sign-in OAuth client. Named HUB_AUTH_GOOGLE_* to avoid collision with
       # the existing GOOGLE_OAUTH_CLIENT_ID (Apps Script magic-inbox) and
       # GOOGLE_CLIENT_ID (Drive integration). Different scopes than both.
