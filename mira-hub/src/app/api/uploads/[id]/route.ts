@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { getUpload, updateUploadStatus, deleteUpload } from "@/lib/uploads";
+import { getUpload, getUploadCounts, updateUploadStatus, deleteUpload } from "@/lib/uploads";
 import { sessionOr401 } from "@/lib/session";
 import { makeUploadLogger } from "@/lib/upload-log";
 import { composeTimeout, isAbortError } from "@/lib/abort-helpers";
@@ -10,6 +10,26 @@ const OPENWEBUI_DELETE_TIMEOUT_MS = 10_000;
 export const dynamic = "force-dynamic";
 
 const TERMINAL: ReadonlyArray<string> = ["parsed", "failed", "cancelled"];
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const ctx = await sessionOr401();
+  if (ctx instanceof NextResponse) return ctx;
+  const { id } = await params;
+  const row = await getUpload(id, ctx.tenantId);
+  if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  // Counts are only meaningful once the pipeline has finished (or failed).
+  // For in-flight uploads we return zeros so the card shows "Processing…".
+  const counts =
+    row.status === "parsed"
+      ? await getUploadCounts(row, ctx.tenantId)
+      : { pm_tasks_count: 0, fault_codes_count: 0, knowledge_chunks_count: 0 };
+
+  return NextResponse.json({ ...row, ...counts });
+}
 
 export async function DELETE(
   req: NextRequest,

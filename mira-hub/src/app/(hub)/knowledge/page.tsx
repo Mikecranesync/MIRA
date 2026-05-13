@@ -17,6 +17,7 @@ import { UploadPicker } from "@/components/UploadPicker";
 import { UploadBlock, type UploadBlockData } from "@/components/UploadBlock";
 import { API_BASE } from "@/lib/config";
 import { KbGrowthDashboard } from "./KbGrowthDashboard";
+import { UploadSummaryCard } from "@/components/UploadSummaryCard";
 
 type Manufacturer = {
   name: string;
@@ -101,6 +102,7 @@ export default function KnowledgePage() {
   const [search, setSearch] = useState("");
   const [uploads, setUploads] = useState<UploadBlockData[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [summaryUploadId, setSummaryUploadId] = useState<string | null>(null);
 
   const [selectedMfr, setSelectedMfr] = useState<string | null>(null);
   const [groups, setGroups] = useState<ManualGroup[]>([]);
@@ -304,6 +306,7 @@ export default function KnowledgePage() {
   }, [uploads, fetchUploads]);
 
   async function handleLocalFiles(files: File[], assetTag: string | null) {
+    let firstId: string | null = null;
     for (const file of files) {
       const form = new FormData();
       form.append("file", file);
@@ -324,7 +327,12 @@ export default function KnowledgePage() {
                 : `Upload failed (${res.status})`;
         throw new Error(msg);
       }
+      if (!firstId) {
+        const data = (await res.json().catch(() => null)) as { id?: string } | null;
+        if (data?.id) firstId = data.id;
+      }
     }
+    if (firstId) setSummaryUploadId(firstId);
     await fetchUploads();
   }
 
@@ -340,13 +348,19 @@ export default function KnowledgePage() {
     }>,
     assetTag: string | null,
   ) {
+    let firstId: string | null = null;
     for (const result of results) {
-      await fetch(`${API_BASE}/api/uploads`, {
+      const res = await fetch(`${API_BASE}/api/uploads`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...result, assetTag: assetTag ?? undefined }),
       });
+      if (!firstId && res.ok) {
+        const data = (await res.json().catch(() => null)) as { id?: string } | null;
+        if (data?.id) firstId = data.id;
+      }
     }
+    if (firstId) setSummaryUploadId(firstId);
     await fetchUploads();
   }
 
@@ -480,6 +494,10 @@ export default function KnowledgePage() {
 
       <div className="px-4 md:px-6 py-4 pb-24 max-w-5xl mx-auto">
         {!selectedMfr && <KbGrowthDashboard />}
+
+        {!selectedMfr && summaryUploadId && (
+          <UploadSummaryCard uploadId={summaryUploadId} />
+        )}
 
         {!selectedMfr && (
           <div className="space-y-2 mb-4">
