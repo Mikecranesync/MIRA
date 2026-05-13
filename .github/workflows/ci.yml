@@ -186,6 +186,12 @@ jobs:
         # clarification invariants. Hermetic, no LLM, runs in <1s.
         run: pytest tests/bot_regression.py -v
 
+      - name: Pipeline endpoint tests
+        run: |
+          pip install -r mira-pipeline/requirements.txt
+          pip install anyio pytest-mock
+          pytest mira-pipeline/tests/test_pipeline.py -v
+
   architecture-check:
     name: Architecture Check
     runs-on: ubuntu-latest
