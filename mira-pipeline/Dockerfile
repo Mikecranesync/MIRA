@@ -19,6 +19,11 @@ COPY mira-pipeline/eval_api.py .
 COPY mira-pipeline/qr_bridge.py .
 COPY VERSION .
 
+RUN addgroup --system --gid 1001 mira && \
+    adduser --system --uid 1001 --ingroup mira mira
+
+USER mira
+
 ENV PYTHONUNBUFFERED=1
 EXPOSE 9099
 
