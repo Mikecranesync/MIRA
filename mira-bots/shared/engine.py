@@ -1584,6 +1584,29 @@ class Supervisor:
         if not photo_b64 and state.get("state") != "IDLE":
             session_photo = self._load_recent_session_photo(chat_id, state)
         effective_photo = photo_b64 or session_photo
+
+        # REGRESSION GUARD (2026-05-12): seed asset_identified from the message
+        # when the user names a recognizable vendor (PowerFlex, GS20, etc.) so
+        # downstream prompts and the no-KB-coverage path know what equipment we
+        # are diagnosing. Without this, the LLM and clarification flow drop the
+        # equipment context Mike just typed and ask for it again.
+        if not photo_b64 and not state.get("asset_identified"):
+            _seeded_vendor = vendor_name_from_text(message) or ""
+            if _seeded_vendor:
+                _seeded_model = _looks_like_model_number(message) or ""
+                if not _seeded_model:
+                    _digit_match = re.search(r"\b\d{2,4}\b", message)
+                    if _digit_match:
+                        _seeded_model = _digit_match.group(0)
+                state["asset_identified"] = (
+                    f"{_seeded_vendor}, {_seeded_model}" if _seeded_model else _seeded_vendor
+                )
+                logger.info(
+                    "ASSET_SEEDED_FROM_MESSAGE chat_id=%s vendor=%r model=%r",
+                    chat_id,
+                    _seeded_vendor,
+                    _seeded_model,
+                )
         try:
             with tl_span(t, "rag_worker"):
                 raw, parsed = await self._call_with_correction(
@@ -2264,9 +2287,7 @@ class Supervisor:
             )
         else:
             try:
-                kb_covered, _ = kb_has_coverage(
-                    manufacturer, model, resolved_tenant or ""
-                )
+                kb_covered, _ = kb_has_coverage(manufacturer, model, resolved_tenant or "")
             except Exception as e:
                 logger.warning("nameplate kb_has_coverage failed: %s", e)
                 kb_covered = linked_chunks > 0
@@ -2274,8 +2295,7 @@ class Supervisor:
             header = f"Identified: {manufacturer} {model}"
             if linked_chunks > 0:
                 kb_line = (
-                    f"Found {linked_chunks} manual chunks for "
-                    f"{manufacturer} in the knowledge base."
+                    f"Found {linked_chunks} manual chunks for {manufacturer} in the knowledge base."
                 )
             elif kb_covered:
                 kb_line = (

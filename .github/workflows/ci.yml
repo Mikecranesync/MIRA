@@ -181,6 +181,11 @@ jobs:
           # the other. Requires renaming one module to fix properly (tracked in
           # known-issues.md). Run locally with: pytest mira-bots/tests/test_email_adapter.py
 
+      - name: Bot regression suite (golden cases — never regress)
+        # Pins the PowerFlex 525 F004 fix (2026-05-12) and other intent /
+        # clarification invariants. Hermetic, no LLM, runs in <1s.
+        run: pytest tests/bot_regression.py -v
+
   architecture-check:
     name: Architecture Check
     runs-on: ubuntu-latest
