@@ -1,10 +1,9 @@
-"use client";
+import { Zap, ClipboardList, BookOpen, Calendar, ShieldAlert, Search } from "lucide-react";
+import { getTranslations } from "next-intl/server";
+import { Suspense } from "react";
+import { ActionsFilters } from "./actions-filters";
 
-import { useState } from "react";
-import { Zap, ClipboardList, BookOpen, Calendar, ShieldAlert, Search, Filter } from "lucide-react";
-import { useTranslations } from "next-intl";
-
-type ActionType = "wo_created" | "pm_scheduled" | "lookup" | "manual_served" | "safety_alert" | "diagnostic";
+type ActionType = "wo_created" | "pm_scheduled" | "diagnostic" | "manual_served" | "safety_alert" | "lookup";
 type SyncStatus = "synced" | "pending" | "failed" | "none";
 
 type Action = {
@@ -51,21 +50,20 @@ const SYNC_CFG: Record<SyncStatus, { label: string; color: string; bg: string }>
   none:    { label: "—",       color: "#94A3B8", bg: "transparent" },
 };
 
-const ALL_TYPES: ActionType[] = ["wo_created", "pm_scheduled", "diagnostic", "manual_served", "safety_alert", "lookup"];
+type SearchParams = Promise<{ type?: string; sync?: string }>;
 
-export default function ActionsPage() {
-  const t = useTranslations("actions");
-  const [filterType, setFilterType] = useState<ActionType | "all">("all");
-  const [filterSync, setFilterSync] = useState<SyncStatus | "all">("all");
-  const [showFilters, setShowFilters] = useState(false);
+export default async function ActionsPage({ searchParams }: { searchParams: SearchParams }) {
+  const t = await getTranslations("actions");
+  const { type: filterType = "all", sync: filterSync = "all" } = await searchParams;
 
-  const filtered = ACTIONS.filter(a =>
-    (filterType === "all" || a.type === filterType) &&
-    (filterSync === "all" || a.syncStatus === filterSync)
+  const filtered = ACTIONS.filter(
+    (a) =>
+      (filterType === "all" || a.type === filterType) &&
+      (filterSync === "all" || a.syncStatus === filterSync),
   );
 
-  const syncedCount  = ACTIONS.filter(a => a.syncStatus === "synced").length;
-  const pendingCount = ACTIONS.filter(a => a.syncStatus === "pending").length;
+  const syncedCount  = ACTIONS.filter((a) => a.syncStatus === "synced").length;
+  const pendingCount = ACTIONS.filter((a) => a.syncStatus === "pending").length;
 
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
@@ -78,50 +76,28 @@ export default function ActionsPage() {
               {ACTIONS.length} {t("today")} · {syncedCount} {t("synced")} · {pendingCount} {t("pending")}
             </p>
           </div>
-          <button onClick={() => setShowFilters(v => !v)} className="p-2 rounded-lg transition-colors hover:bg-[var(--surface-1)]">
-            <Filter className="w-4 h-4" style={{ color: showFilters ? "var(--brand-blue)" : "var(--foreground-muted)" }} />
-          </button>
+          <Suspense>
+            <ActionsFilters currentType={filterType} currentSync={filterSync} />
+          </Suspense>
         </div>
-
-        {showFilters && (
-          <div className="px-4 md:px-6 pb-3 space-y-2">
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-              {(["all", ...ALL_TYPES] as const).map(a => (
-                <button key={a} onClick={() => setFilterType(a)}
-                  className="flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium transition-all"
-                  style={filterType === a
-                    ? { backgroundColor: "var(--brand-blue)", color: "white" }
-                    : { backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }}>
-                  {a === "all" ? "All types" : ACTION_CFG[a].label}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-              {(["all", "synced", "pending", "failed", "none"] as const).map(s => (
-                <button key={s} onClick={() => setFilterSync(s)}
-                  className="flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium transition-all"
-                  style={filterSync === s
-                    ? { backgroundColor: "var(--brand-blue)", color: "white" }
-                    : { backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }}>
-                  {s === "all" ? "All sync" : SYNC_CFG[s].label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="px-4 md:px-6 py-4 pb-24 max-w-4xl mx-auto space-y-1">
-        {filtered.map(action => {
+        {filtered.map((action) => {
           const cfg = ACTION_CFG[action.type];
           const sync = SYNC_CFG[action.syncStatus];
           const Icon = cfg.Icon;
 
           return (
-            <div key={action.id} className="card px-3 py-3 flex items-center gap-3"
-              style={{ borderLeft: action.type === "safety_alert" ? "3px solid #DC2626" : undefined }}>
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: cfg.bg }}>
+            <div
+              key={action.id}
+              className="card px-3 py-3 flex items-center gap-3"
+              style={{ borderLeft: action.type === "safety_alert" ? "3px solid #DC2626" : undefined }}
+            >
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: cfg.bg }}
+              >
                 <Icon className="w-4 h-4" style={{ color: cfg.color }} />
               </div>
 
@@ -132,13 +108,14 @@ export default function ActionsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide"
-                    style={{ color: "var(--foreground-subtle)" }}>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--foreground-subtle)" }}>
                     {action.ts}
                   </span>
                   <span className="text-[10px]" style={{ color: "var(--foreground-subtle)" }}>·</span>
-                  <div className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold flex-shrink-0"
-                    style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)", color: "white" }}>
+                  <div
+                    className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold flex-shrink-0"
+                    style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)", color: "white" }}
+                  >
                     {action.techInitials}
                   </div>
                   <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>{action.tech}</span>
@@ -150,11 +127,17 @@ export default function ActionsPage() {
               </div>
 
               <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                  style={{ backgroundColor: cfg.bg, color: cfg.color }}>{cfg.label}</span>
+                <span
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: cfg.bg, color: cfg.color }}
+                >
+                  {cfg.label}
+                </span>
                 {action.syncStatus !== "none" && (
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                    style={{ backgroundColor: sync.bg, color: sync.color }}>
+                  <span
+                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                    style={{ backgroundColor: sync.bg, color: sync.color }}
+                  >
                     {action.syncStatus === "synced" && action.syncTarget
                       ? `✓ ${action.syncTarget}`
                       : sync.label}
