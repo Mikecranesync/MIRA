@@ -1,11 +1,3 @@
-# Hot Cache — 2026-05-13 — CHARLIE
-
-## eval-fixer run — 2026-05-13
-- Scorecard: 48/57 passing (84%) — source: `tests/eval/runs/2026-05-06T0833-offline-text.md` (unchanged since 2026-05-12)
-- Action: issue-filed (autopatch skipped — 3 file_clusters, hard stop)
-- Issue: https://github.com/Mikecranesync/MIRA/issues/1217 (duplicates pattern from #1187 — same scorecard, no new run)
-- Same 9 fixtures failing as 2026-05-12; scorecard has not refreshed. Nightly eval job may be stalled — check.
-
 # Hot Cache — 2026-05-12 — CHARLIE
 
 ## eval-fixer run — 2026-05-12
