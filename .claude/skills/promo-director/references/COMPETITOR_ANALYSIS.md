@@ -1,8 +1,42 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-13
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-13
+
+### Most actionable pattern for MIRA playbook
+
+MaintainX's "State of Industrial Maintenance 2026" (May 5, co-presented with SMRP Chairman) finds AI has "crossed the adoption threshold" in industrial maintenance — but 79% of teams saw downtime stay the same or increase. Direct MIRA counter-message: AI adoption went mainstream but outcomes didn't follow. "Teams adopted the tool, still bleeding downtime." Own the outcome gap.
+
+### New findings
+
+**B2B SaaS — Stripe Sessions 2026 (event April 29; details now extracted)**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8 — Patrick Collison; "economic infrastructure for AI" frame
+- Developer keynote: https://www.youtube.com/watch?v=NCw4TWMfV-k — Machine Payments Protocol (MPP) + Universal Commerce Protocol (UCP) with Google
+- 12-min summary: https://www.youtube.com/watch?v=8F4XyWYqZi8 — 288 products condensed; best entry point
+- New pattern: "Agentic Commerce Suite" — AI agents as buyers and sellers, not just advisors; payments infrastructure for agent-initiated transactions
+
+**B2B SaaS — Figma Release Notes: May Edition (posted May 2026)**
+- URL: https://www.youtube.com/watch?v=11mdb7lLclM
+- Hook: "how leading product teams are co-designing with AI agents" — monthly update reframed as AI agent workflow showcase
+- Launches: Figma Make Skills (slash-command markdown convention files); Figma Weave (creative canvas for imagery/video/audio/3D)
+- New pattern: AI agent co-design normalized into routine release-notes cadence, not reserved for launch events
+
+**B2B SaaS — Anthropic Claude for Legal (May 12, 2026)**
+- No standalone promo video confirmed [transcript not verified]
+- 20+ MCP connectors (Docusign, Box, Thomson Reuters Westlaw); 12 practice-area plugins; Microsoft 365 cross-app context persistence
+- Launch webinar: 20,000+ professionals; named firms: Freshfields, Quinn Emanuel, Holland & Knight
+- Pattern: named vertical + MCP ecosystem + named enterprise customers = enterprise AI GTM template; adapt for MIRA as named industrial vertical + OEM connector library + named plant
+
+**CMMS / EAM — MaintainX "State of Industrial Maintenance 2026" webinar (May 5, 2026)**
+- On-demand: https://www.getmaintainx.com/webinar/the-state-of-industrial-maintenance-2026-webinar
+- Co-presented with SMRP Chairman Dan Anderson; survey of 2,234 maintenance leaders (US + Canada)
+- Key stat: 79% of teams saw unplanned downtime stay the same or increase despite AI "crossing the adoption threshold"
+- Pattern shift: MaintainX now running analyst-style thought leadership via industry association (SMRP), not just product demos
 
 ---
 
@@ -80,6 +114,14 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - Title: "MaintainX Year in Review 2025"
 - Hook: "In 2025, thousands of maintenance teams used AI to cut downtime and costs" [search-derived]
 - Social proof format; preview of 2026 roadmap
+
+**State of Industrial Maintenance 2026 (webinar, May 5, 2026)**
+- On-demand: https://www.getmaintainx.com/webinar/the-state-of-industrial-maintenance-2026-webinar
+- Co-presenters: Dan Anderson (Chairman, SMRP) + Nick Haase (Co-Founder, MaintainX)
+- Survey base: 2,234 maintenance leaders (US + Canada)
+- Key stat: 79% of teams saw unplanned downtime stay the same or increase; AI adoption nevertheless "crossed threshold"
+- Format: industry-association authority positioning, not product demo
+- MIRA counter: this stat is the gap MIRA owns — adoption without outcomes
 
 **Additional 2025 videos:**
 - Voice-to-text work order feature: https://www.youtube.com/watch?v=GY3AGGukQM8
@@ -254,9 +296,16 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 (April 29, 2026)**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8 — Patrick Collison; theme: "economic infrastructure for AI"
+- Main keynote: https://www.youtube.com/watch?v=e13-s0p1tfE — product team; 288 new products and features
+- Developer keynote: https://www.youtube.com/watch?v=NCw4TWMfV-k — Machine Payments Protocol (MPP, co-authored with Tempo); Universal Commerce Protocol (UCP) with Google
+- 12-min summary: https://www.youtube.com/watch?v=8F4XyWYqZi8 — best entry point
+- Scale: 9,000+ attendees, Moscone Center
+- Key launches: Agentic Commerce Suite (AI agents as buyers/sellers); MPP for agent-initiated microtransactions and recurring payments; Checkout Studio; streaming payments via Metronome + Tempo
+- VO register: founder + product executive; polished on-stage
+- CTA: ecosystem/partner; no pricing push
+- Pattern: "AI agents as economic actors" — payments infrastructure for agent-to-agent commerce; not advisory AI but transactional AI
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -303,6 +352,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
+
+**Claude for Legal (May 12, 2026)**
+- No standalone promo video confirmed [transcript not verified]
+- 20+ MCP connectors (Docusign, Box, Thomson Reuters Westlaw); 12 practice-area plugins
+- Microsoft 365 cross-app context persistence: redline in Word carries into Outlook cover note and PowerPoint board summary without re-explaining context
+- Launch channel: webinar with 20,000+ legal professionals (Anthropic's "largest legal session ever")
+- Named customers on live matters: Freshfields, Quinn Emanuel Urquhart & Sullivan, Holland & Knight, Crosby Legal
+- Pattern: named vertical + MCP ecosystem integrations + named enterprise customers + professional-association channel = enterprise AI GTM template; directly replicable for MIRA (industrial vertical + OEM connector library + named plant customers)
 
 ---
 
@@ -355,6 +412,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
 
+**Release Notes: May Edition (May 2026)**
+- URL: https://www.youtube.com/watch?v=11mdb7lLclM
+- Hook framing: "how leading product teams are co-designing with AI agents" [description-derived]
+- Launches: Figma Make Skills (slash-command markdown workflow conventions, importable per-user); Figma Weave (creative canvas for imagery/video/audio/3D chained prompts); desktop app preloading
+- Footage style: demo-led product team walkthrough
+- VO register: product team
+- Pattern: monthly routine update video explicitly reframed as AI agent co-design showcase — AI agents normalized as everyday workflow partner, not reserved for launch events
+
 ---
 
 ### Replit
@@ -385,6 +450,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "AI went mainstream but downtime didn't move" counter-narrative | MaintainX stat: 79% of teams saw downtime unchanged or worse post-AI adoption | "You adopted the tools. The line still goes down. Here's why MIRA is different." |
+| Vertical-AI + MCP ecosystem GTM | Anthropic Claude for Legal: named vertical + 20+ connectors + named firms | Named industrial vertical + OEM connector library + named plant customer |
 
 ### Anti-patterns (avoid)
 
@@ -398,3 +465,5 @@ No video content surfaced for 2025–2026.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **MaintainX**: added analyst-style thought leadership via SMRP industry association (May 2026 "State of Industrial Maintenance" report). Now running product demos + authority content in parallel — outcome data is the new credibility signal.
+- **Figma**: shifted monthly release-note videos from feature-list format to AI agent co-design showcase framing (May 2026). Routine cadence now carries the agent narrative, not just launch events.
