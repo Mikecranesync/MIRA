@@ -57,21 +57,54 @@ def _post(op: str, tenant_id: str, args: dict[str, Any]) -> Any:
 
 def maintenance_context(
     tenant_id: str,
-    equipment_entity_id: str,
+    equipment_entity_id: str = "",
     *,
+    uns_path: Optional[str] = None,
     include_similar: bool = False,
     fault_window_days: Optional[int] = None,
     max_work_orders: Optional[int] = None,
 ) -> Any:
-    args: dict[str, Any] = {
-        "equipmentEntityId": equipment_entity_id,
-        "includeSimilar": include_similar,
-    }
+    """Aggregated maintenance context. Pass `equipment_entity_id` OR `uns_path`.
+
+    The hub-side `resolveEntityArg` accepts either an entity UUID or an
+    `unsPath` ltree address — see mira-hub/src/app/api/internal/kg/route.ts.
+    """
+    args: dict[str, Any] = {"includeSimilar": include_similar}
+    if equipment_entity_id:
+        args["equipmentEntityId"] = equipment_entity_id
+    if uns_path:
+        args["unsPath"] = uns_path
     if fault_window_days is not None:
         args["faultWindowDays"] = fault_window_days
     if max_work_orders is not None:
         args["maxWorkOrders"] = max_work_orders
     return _post("maintenance_context", tenant_id, args)
+
+
+def resolve_uns_path(tenant_id: str, uns_path: str) -> Any:
+    """Resolve an ltree UNS path to a kg_entities row.
+
+    Returns the entity record (id, entity_type, name, uns_path, properties)
+    or raises KgClientError if no match. Hub op: `resolve_uns_path`.
+    """
+    return _post("resolve_uns_path", tenant_id, {"unsPath": uns_path})
+
+
+def entities_under_uns_path(
+    tenant_id: str,
+    uns_path: str,
+    *,
+    limit: Optional[int] = None,
+) -> Any:
+    """List entities living under a UNS subtree (descendants of `uns_path`).
+
+    Uses Postgres ltree `<@` (is-descendant) on the hub side. Hub op:
+    `entities_under_uns_path`.
+    """
+    args: dict[str, Any] = {"unsPath": uns_path}
+    if limit is not None:
+        args["limit"] = limit
+    return _post("entities_under_uns_path", tenant_id, args)
 
 
 def impact_analysis(tenant_id: str, entity_id: str) -> Any:
