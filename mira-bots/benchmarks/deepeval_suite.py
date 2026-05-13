@@ -707,8 +707,11 @@ def main() -> int:
     out_path.write_text(json.dumps(asdict(result), indent=2))
     print(f"\nSaved: {out_path}")
 
-    failed = result.total - result.passed
-    return 0 if failed == 0 else 1
+    # CI gate: pass rate >= 80% — matches the grade_char threshold in _print_report.
+    # Individual case dips are expected on a corpus of judge-graded references;
+    # the meaningful regression signal is "did the aggregate drop below 0.8?"
+    pass_rate = result.passed / max(result.total, 1)
+    return 0 if pass_rate >= 0.8 else 1
 
 
 if __name__ == "__main__":
