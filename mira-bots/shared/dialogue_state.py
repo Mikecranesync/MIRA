@@ -483,11 +483,17 @@ class DialogueState:
             )
 
         salient = SalientEntities()
+        # Prefer the canonical UNS context when present (one source of truth
+        # per turn). Fall back to parsing asset_identified for legacy state
+        # rows that haven't been processed through the resolver yet.
+        uns_ctx = engine_state.get("uns_context") or {}
         asset = engine_state.get("asset_identified") or ""
-        if asset:
-            from .guardrails import vendor_name_from_text  # local import: avoid cycle
+        vendor: str | None = uns_ctx.get("manufacturer") or None
+        if not vendor and asset:
+            from .uns_resolver import resolve_uns_path  # local import: avoid cycle
 
-            vendor = vendor_name_from_text(asset) or None
+            vendor = resolve_uns_path(asset).manufacturer or None
+        if vendor or asset:
             salient = SalientEntities(vendor=vendor, asset_label=asset[:120])
 
         return cls(

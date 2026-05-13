@@ -18,7 +18,7 @@ from ..agentic_retrieval import (
     is_self_eval_enabled,
     merge_subquery_results,
 )
-from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
+from ..guardrails import rewrite_question, vendor_support_url
 from ..inference.router import InferenceRouter
 from ..langfuse_setup import trace_rag_query
 
@@ -433,10 +433,10 @@ class RAGWorker:
             # identified vendor.  Chunks with no manufacturer tag are kept (they may be
             # generic content like fault code tables or application notes).
             # Falls back to the old all-or-nothing suppress if no per-chunk filtering
-            # yields results.
+            # yields results. Vendor is read from state["uns_context"] (populated
+            # by the UNS resolver at the top of Supervisor.process_full).
             if chunk_texts and not photo_b64:
-                query_combined = f"{message} {state.get('asset_identified', '')}".strip()
-                query_vendor = vendor_name_from_text(query_combined)
+                query_vendor = (state.get("uns_context") or {}).get("manufacturer")
                 if query_vendor:
                     qv_lower = query_vendor.lower()
                     filtered_chunks = [

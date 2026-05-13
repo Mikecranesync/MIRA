@@ -192,21 +192,16 @@ _RX_QUESTION = re.compile(
 def _entities_from_message(message: str) -> SalientEntities:
     """Cheap regex extraction — used as a backstop when the LLM omits entities.
 
-    Conservative on purpose: only extracts vendor/fault_code when the message
-    has an unambiguous match. Anything fuzzier waits for the LLM."""
-    from .guardrails import vendor_name_from_text  # local — avoid import cycle
+    Delegates to the UNS resolver, which already handles vendor + fault-code
+    detection consistently (one source of truth across engine, workers, DST).
+    """
+    from .uns_resolver import resolve_uns_path  # local — avoid import cycle
 
-    vendor = vendor_name_from_text(message) or None
-
-    fault_code = None
-    fault_match = re.search(
-        r"\b([Ff]\s?-?\s?\d{2,4}|[Ee]\s?-?\s?\d{2,4}|AL[-\s]?\d{2,4}|OC|OL|UL)\b",
-        message,
+    ctx = resolve_uns_path(message)
+    return SalientEntities(
+        vendor=ctx.manufacturer or None,
+        fault_code=ctx.fault_code or None,
     )
-    if fault_match:
-        fault_code = fault_match.group(1).upper().replace(" ", "").replace("-", "")
-
-    return SalientEntities(vendor=vendor, fault_code=fault_code)
 
 
 # ---------------------------------------------------------------------------

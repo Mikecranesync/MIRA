@@ -258,6 +258,27 @@ def test_fault_pattern_A_alarm():
     assert ctx.fault_code == "A0023"
 
 
+def test_fault_pattern_OL_overload():
+    """OL bare code (overload). Previously only matched by dialogue_acts'
+    inline regex; now in resolver for parity."""
+    ctx = resolve_uns_path("PowerFlex 525 shows OL")
+    assert ctx.fault_code is not None
+    assert ctx.fault_code.upper() == "OL"
+
+
+def test_fault_pattern_UL_underload():
+    ctx = resolve_uns_path("Drive throws UL")
+    assert ctx.fault_code is not None
+    assert ctx.fault_code.upper() == "UL"
+
+
+def test_fault_pattern_AL_prefix():
+    ctx = resolve_uns_path("Siemens drive AL003")
+    # AL003 matches the AL-prefix pattern, not the bare A-pattern
+    assert ctx.fault_code is not None
+    assert "AL" in ctx.fault_code.upper() or ctx.fault_code == "AL003"
+
+
 # ---------------------------------------------------------------------------
 # Path-build correctness
 # ---------------------------------------------------------------------------

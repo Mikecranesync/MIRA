@@ -118,8 +118,11 @@ FAMILY_FROM_ALIAS: dict[str, str] = {
 FAULT_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\b[fF]\d{2,6}\b"),         # F04, F004, F0004, F30004
     re.compile(r"\b[eE]\d{1,4}\b"),          # E01, E001 (drives use E-codes)
-    re.compile(r"\b[oO][cC][a-zA-Z]?\b"),    # oC, OC, ocA (AutomationDirect overcurrent)
-    re.compile(r"\b[aA]\d{1,4}\b"),          # A02, A002 (alarms)
+    re.compile(r"\b[oO][cC][a-zA-Z]?\b"),    # oC, OC, ocA (overcurrent)
+    re.compile(r"\b[oO][lL]\b"),             # OL (overload)
+    re.compile(r"\b[uU][lL]\b"),             # UL (underload)
+    re.compile(r"\b[aA][lL]\d{1,4}\b"),      # AL001 (alarm with AL prefix)
+    re.compile(r"\b[aA]\d{1,4}\b"),          # A02, A002 (alarms — weakest)
 ]
 
 # Words that may match the alarm pattern A\d{1,4} but are not fault codes
