@@ -3,7 +3,7 @@ services:
     build:
       context: ./mira-hub
       dockerfile: Dockerfile
-    image: mira-hub:latest
+    image: mira-hub:v1.5.2
     container_name: mira-hub
     restart: unless-stopped
     ports:

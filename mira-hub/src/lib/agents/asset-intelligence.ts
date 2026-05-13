@@ -100,7 +100,8 @@ function equipmentTypeToCorpus(type: string): string {
 }
 
 async function getOllamaEmbedding(text: string): Promise<number[] | null> {
-  const base = process.env.OLLAMA_BASE_URL ?? "http://192.168.1.11:11434";
+  const base = process.env.OLLAMA_BASE_URL;
+  if (!base) throw new Error("OLLAMA_BASE_URL must be set");
   try {
     const resp = await fetch(`${base}/api/embeddings`, {
       method: "POST",
