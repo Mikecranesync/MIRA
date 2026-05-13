@@ -307,7 +307,6 @@
     '<text x="306" y="192" font-size="7" fill="rgba(0,212,170,.6)" font-family="ui-monospace,monospace">§ PF525 p.47</text>' +
     // SYNCED badge
     '<rect x="294" y="196" width="170" height="24" rx="0" fill="rgba(0,212,170,.12)" stroke="rgba(0,212,170,.3)" stroke-width="1"/>' +
-    '<rect x="294" y="196" width="170" height="24" rx="0 0 12 12" fill="none"/>' +
     '<text x="379" y="212" text-anchor="middle" font-size="8" font-weight="700" fill="#00d4aa" font-family="ui-monospace,monospace">✓ SYNCED — MaintainX</text>' +
     // Sync indicator on pipeline
     '<circle cx="240" cy="128" r="6" fill="rgba(0,212,170,.15)" stroke="#00d4aa" stroke-width="1"><animate attributeName="r" values="6;10;6" dur="1.5s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/></circle>' +
