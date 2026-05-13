@@ -7,7 +7,6 @@ while still accepting real model numbers (GS20, FC-302, FR-F800, etc.).
 """
 
 import pytest
-
 from shared.response_formatter import _looks_like_model_number
 
 
