@@ -82,6 +82,7 @@ def _sanitize(text: str) -> str:
     """
     try:
         from .inference.router import InferenceRouter
+
         return InferenceRouter.sanitize_text(text)
     except Exception as exc:  # noqa: BLE001
         logger.warning("sanitize_text fallback (passthrough): %s", exc)
@@ -109,7 +110,8 @@ async def _insert(
     # Synchronous SQLAlchemy via a worker thread so the user-reply event loop
     # stays unblocked. ``run_in_executor`` is the canonical bridge.
     def _run() -> None:
-        from sqlalchemy import create_engine, text as sql_text
+        from sqlalchemy import create_engine
+        from sqlalchemy import text as sql_text
         from sqlalchemy.pool import NullPool
 
         engine = create_engine(

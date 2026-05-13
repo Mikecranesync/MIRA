@@ -7,14 +7,11 @@ Hermetic — no NeonDB, no network, no Doppler. Run with::
 
 from __future__ import annotations
 
-import os
 from unittest.mock import patch
 
 import pytest
-
 from shared import conversation_logger
 from shared.inference.router import InferenceRouter
-
 
 # ── PII sanitisation ────────────────────────────────────────────────────────
 
