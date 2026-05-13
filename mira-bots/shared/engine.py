@@ -3532,6 +3532,20 @@ class Supervisor:
             # CRA-8 Cluster A: include the model token (and the literal word "manual")
             # so vendor-specific manual requests don't fall through the keyword check.
             model_hint = model_override or _looks_like_model_number(combined) or ""
+            if not model_hint:
+                # Fallback for models where alpha and digit are separate tokens
+                # (e.g. "MICROMASTER 440", "AQUA Drive FC 202").
+                _skip = {"VFD", "ASK", "MANUAL", "FIND", "GET", "THE", "ME",
+                         "FOR", "DRIVE", "MOTOR", "INVERTER", "CONTROLLER", "PLC",
+                         "A", "AN", "MY", "IS", "IN", "OF", "ON", "AT"}
+                if mfr:
+                    _skip.add(mfr.upper())
+                _caps = [w for w in re.findall(r'\b[A-Z]{2,}\b', combined)
+                         if w not in _skip]
+                _nums = re.findall(r'\b\d{2,}\b', combined)
+                _parts = _caps[:2] + (_nums[:1] if _nums else [])
+                if _parts:
+                    model_hint = " ".join(_parts)
             if mfr and model_hint:
                 reply = f"I have the {mfr} {model_hint} manual indexed."
             elif mfr:
