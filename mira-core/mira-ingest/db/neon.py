@@ -671,3 +671,105 @@ def tenant_ingested_files_record(
             )
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Component profile writes — see migrations/011_component_profiles.sql.
+# Profile JSON shape matches mira-core/component_profiles/schema.py.
+# ---------------------------------------------------------------------------
+
+
+def upsert_component_profile(
+    tenant_id: str,
+    manufacturer: str,
+    component_type: str,
+    profile: dict,
+    *,
+    series: str | None = None,
+    model_number: str | None = None,
+    source_manual_id: str | None = None,
+) -> str:
+    """Insert or update one component_profiles row. Returns the row id.
+
+    Uniqueness is (tenant_id, manufacturer, series, model_number). On
+    conflict, refresh the profile blob, confidence_overall, review flag,
+    and source_manual_id. updated_at bumps automatically via trigger.
+
+    `profile` is the JSON-serializable dict produced by
+    ComponentProfile.model_dump(mode='json'). confidence_overall and
+    needs_human_review are pulled out for indexed access.
+    """
+    confidence = profile.get("confidence", {}) or {}
+    overall = confidence.get("overall")
+    needs_review = bool(confidence.get("needs_human_review", False))
+
+    with _engine().begin() as conn:
+        row = conn.execute(
+            text("""
+                INSERT INTO component_profiles
+                    (tenant_id, manufacturer, series, model_number,
+                     component_type, profile,
+                     source_manual_id, confidence_overall, needs_human_review)
+                VALUES
+                    (:tid, :mfr, :series, :model,
+                     :ctype, cast(:profile AS jsonb),
+                     :src_manual, :conf, :review)
+                ON CONFLICT (tenant_id, manufacturer, series, model_number)
+                DO UPDATE SET
+                    component_type      = EXCLUDED.component_type,
+                    profile             = EXCLUDED.profile,
+                    source_manual_id    = EXCLUDED.source_manual_id,
+                    confidence_overall  = EXCLUDED.confidence_overall,
+                    needs_human_review  = EXCLUDED.needs_human_review
+                RETURNING id
+            """),
+            {
+                "tid": tenant_id,
+                "mfr": manufacturer,
+                "series": series,
+                "model": model_number,
+                "ctype": component_type,
+                "profile": json.dumps(profile),
+                "src_manual": source_manual_id,
+                "conf": overall,
+                "review": needs_review,
+            },
+        ).fetchone()
+    return str(row[0])
+
+
+def get_component_profile(
+    tenant_id: str,
+    manufacturer: str,
+    *,
+    series: str | None = None,
+    model_number: str | None = None,
+) -> dict[str, Any] | None:
+    """Look up one component_profiles row by unique key. Returns None if absent."""
+    sql = """
+        SELECT id, tenant_id, manufacturer, series, model_number,
+               component_type, profile, source_manual_id,
+               confidence_overall, needs_human_review,
+               created_at, updated_at
+        FROM component_profiles
+        WHERE tenant_id = :tid
+          AND manufacturer = :mfr
+          AND series IS NOT DISTINCT FROM :series
+          AND model_number IS NOT DISTINCT FROM :model
+        LIMIT 1
+    """
+    with _engine().connect() as conn:
+        row = (
+            conn.execute(
+                text(sql),
+                {
+                    "tid": tenant_id,
+                    "mfr": manufacturer,
+                    "series": series,
+                    "model": model_number,
+                },
+            )
+            .mappings()
+            .fetchone()
+        )
+    return dict(row) if row else None
