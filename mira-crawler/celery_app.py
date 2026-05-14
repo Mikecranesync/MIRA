@@ -43,6 +43,7 @@ app.config_from_object(_config_module)
 # Explicit imports ensure task registration in both Docker (mira_crawler.*) and local dev
 try:
     import mira_crawler.tasks.blog  # noqa: F401
+    import mira_crawler.tasks.component_template  # noqa: F401
     import mira_crawler.tasks.content  # noqa: F401
     import mira_crawler.tasks.discover  # noqa: F401
     import mira_crawler.tasks.foundational  # noqa: F401
@@ -63,6 +64,7 @@ try:
     import mira_crawler.tasks.youtube_intent  # noqa: F401
 except ImportError:
     import tasks.blog  # noqa: F401
+    import tasks.component_template  # noqa: F401
     import tasks.content  # noqa: F401
     import tasks.discover  # noqa: F401
     import tasks.foundational  # noqa: F401

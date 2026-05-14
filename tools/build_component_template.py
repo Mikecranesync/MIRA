@@ -177,10 +177,12 @@ Return JSON with this exact shape:
 }}"""
 
 
-# Mirrors mira-bots/shared/inference/router.py provider config. Same order:
-# Groq → Cerebras. (Gemini omitted — the openai-compat shim diverges and adds
-# complexity this tool doesn't need. Add it back if both Groq and Cerebras fail
-# in practice.)
+# Mirrors mira-bots/shared/inference/router.py cascade order:
+# Groq → Cerebras → Gemini. Each provider is OpenAI-compatible, so the same
+# httpx call shape works for all three. Gemini is in the documented cascade
+# (CLAUDE.md + InferenceRouter) — if its openai-compat shim rejects
+# `response_format`, the per-provider exception handler drops to the next one,
+# which is the same behavior we want for any provider failure.
 _CASCADE_PROVIDERS = [
     {
         "name": "groq",
@@ -195,6 +197,13 @@ _CASCADE_PROVIDERS = [
         "base_url": "https://api.cerebras.ai/v1",
         "model_env": "CEREBRAS_MODEL",
         "model_default": "llama3.1-8b",
+    },
+    {
+        "name": "gemini",
+        "key_env": "GEMINI_API_KEY",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model_env": "GEMINI_MODEL",
+        "model_default": "gemini-2.5-flash",
     },
 ]
 
