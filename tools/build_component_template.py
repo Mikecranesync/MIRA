@@ -59,21 +59,49 @@ def _engine():
     )
 
 
-def fetch_chunks(manufacturer: str, model: str, limit: int = 40) -> list[dict[str, Any]]:
-    """Pull KB chunks that mention manufacturer + model.
+def fetch_chunks(
+    manufacturer: str,
+    model: str,
+    limit: int = 40,
+    per_doc_limit: int = 5,
+) -> list[dict[str, Any]]:
+    """Pull KB chunks that match manufacturer + model.
 
-    Uses ILIKE against `content` — keyword match, not vector. For a focused
-    "give me everything about GS10 from AutomationDirect" lookup this is enough
-    and stays explainable. A future iteration can stack vector recall on top.
+    Filters on the structured `manufacturer` / `model_number` columns rather than
+    a free-text `content ILIKE` — the latter pulled in arbitrary rows that merely
+    mentioned the strings (e.g. competitor cross-references) and missed real
+    manual chunks whose body never repeated the model number. Mirrors the
+    word-boundary exclude used by `mira-bots/shared/neon_recall._product_search`
+    so "PowerFlex 525" doesn't match "PowerFlex 5250".
+
+    Per-document diversity: instead of greedily taking the N longest rows (which
+    over-samples a single document), `ROW_NUMBER() OVER (PARTITION BY source_url)`
+    caps each source manual at `per_doc_limit` chunks so the LLM sees spec data
+    from multiple sections / documents. Proven on the PowerFlex 525 dry run:
+    2/15 → 6/15 fields populated.
     """
     from sqlalchemy import text
 
     sql = text(
         """
-        SELECT id, content, source_type, metadata, created_at
-        FROM knowledge_entries
-        WHERE content ILIKE :mfr_pat AND content ILIKE :model_pat
-        ORDER BY length(content) DESC
+        WITH matching_chunks AS (
+            SELECT id, content, source_type, source_url, source_page,
+                   manufacturer, model_number, equipment_type, metadata, created_at,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY source_url
+                       ORDER BY source_page ASC NULLS LAST, length(content) DESC
+                   ) AS doc_rank
+            FROM knowledge_entries
+            WHERE manufacturer ILIKE :mfr_pat
+              AND model_number ILIKE :model_pat
+              AND model_number NOT ILIKE :exclude
+              AND content IS NOT NULL
+        )
+        SELECT id, content, source_type, source_url, source_page,
+               manufacturer, model_number, equipment_type, metadata, created_at
+        FROM matching_chunks
+        WHERE doc_rank <= :per_doc_limit
+        ORDER BY source_url NULLS LAST, source_page ASC NULLS LAST
         LIMIT :limit
         """
     )
@@ -84,6 +112,8 @@ def fetch_chunks(manufacturer: str, model: str, limit: int = 40) -> list[dict[st
                 {
                     "mfr_pat": f"%{manufacturer}%",
                     "model_pat": f"%{model}%",
+                    "exclude": f"%{model}0%",
+                    "per_doc_limit": per_doc_limit,
                     "limit": limit,
                 },
             )
