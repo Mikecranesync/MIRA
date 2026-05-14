@@ -78,7 +78,6 @@ def ingest_url(self, url: str, manufacturer: str = "",
     is_pdf_url = url.lower().endswith(".pdf")
 
     if url.startswith("file://"):
-        from pathlib import Path
         from urllib.parse import urlparse as _urlparse
         from urllib.request import url2pathname
 
