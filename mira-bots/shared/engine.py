@@ -1100,6 +1100,17 @@ class Supervisor:
         if (state.get("context") or {}).get("pm_suggestion_pending") and not photo_b64:
             return await self._handle_pm_suggestion_pending(chat_id, message, state, trace_id)
 
+        # UNS confirmation pending: user is answering the equipment-confirmation
+        # prompt fired by the UNS Confirmation Gate. Returns a result on explicit
+        # yes/no, or None to fall through (e.g., user typed equipment specs — let
+        # the normal flow re-run the UNS resolver on the message).
+        if (state.get("context") or {}).get("pending_uns_confirm") and not photo_b64:
+            _uns_resp = await self._handle_uns_confirmation_response(
+                chat_id, message, state, trace_id
+            )
+            if _uns_resp is not None:
+                return _uns_resp
+
         if message.strip() and state.get("final_state") == "RESOLVED":
             state["final_state"] = None
 
@@ -1299,6 +1310,14 @@ class Supervisor:
             # find_documentation: let the existing specificity-gate block handle it below
             if _router_intent == "find_documentation":
                 intent = "documentation"
+
+            # UNS Confirmation Gate — no diagnosis without confirmed equipment.
+            # Telegram + Slack both go through here. Conditions extracted into
+            # _should_fire_uns_gate so the bypass logic is testable directly.
+            if self._should_fire_uns_gate(_router_intent, state, message, sc):
+                return await self._handle_uns_confirmation_request(
+                    chat_id, message, state, uns_ctx, trace_id
+                )
 
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
         if not photo_b64 and state["state"] == "IDLE" and state["exchange_count"] == 0:
@@ -4022,3 +4041,157 @@ class Supervisor:
         """Format parsed response for display. Delegates to response_formatter.format_reply."""
         kb_status = getattr(self.rag, "kb_status", None) or {}
         return format_reply(parsed, user_message, kb_status)
+
+    # ------------------------------------------------------------------
+    # UNS Confirmation Gate
+    # ------------------------------------------------------------------
+    # Rule: no diagnosis without a confirmed asset. When the LLM router
+    # classifies a turn as `diagnose_equipment` and the session has no
+    # `asset_identified`, the engine asks the user to confirm before any
+    # diagnostic work. Storage lives in state["context"]["pending_uns_confirm"]
+    # so a second turn can consume the answer.
+
+    def _should_fire_uns_gate(
+        self,
+        router_intent: str,
+        state: dict,
+        message: str,
+        session_context: dict,
+    ) -> bool:
+        """Return True when the gate should interrupt the turn with a confirm prompt.
+
+        Conditions (all must hold):
+        - router classified turn as diagnose_equipment
+        - session has no asset_identified
+        - session is in IDLE (don't interrupt mid-FSM Q1/Q2/Q3/DIAGNOSIS)
+
+        `message` and `session_context` are accepted for symmetry with other
+        gate helpers and to keep the call site readable, even though the
+        current implementation only inspects intent + state.
+        """
+        del message, session_context  # reserved for future signal expansion
+        if router_intent != "diagnose_equipment":
+            return False
+        if state.get("asset_identified"):
+            return False
+        if state.get("state", "IDLE") != "IDLE":
+            return False
+        return True
+
+    async def _handle_uns_confirmation_request(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        uns_ctx,
+        trace_id,
+    ) -> dict:
+        """Gate firing: ask the user to confirm or supply the equipment.
+
+        Saves `pending_uns_confirm` on state["context"] so the next user turn
+        is consumed by `_handle_uns_confirmation_response`.
+        """
+        ctx = state.get("context") or {}
+
+        candidate = None
+        if getattr(uns_ctx, "manufacturer", None):
+            candidate = uns_ctx.manufacturer
+            if getattr(uns_ctx, "model", None):
+                candidate = f"{candidate}, {uns_ctx.model}"
+
+        if candidate:
+            confidence_pct = int(round((getattr(uns_ctx, "confidence", 0.0) or 0.0) * 100))
+            prompt = (
+                f"Before I diagnose, confirm the equipment: **{candidate}** "
+                f"(confidence {confidence_pct}%). "
+                "Reply 'yes' to confirm, or tell me the correct manufacturer and model."
+            )
+        else:
+            prompt = (
+                "Before I diagnose, I need to know the equipment. "
+                "Tell me the manufacturer and model "
+                "(e.g., 'Allen-Bradley PowerFlex 525')."
+            )
+
+        ctx["pending_uns_confirm"] = {"candidate": candidate}
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+        self._record_exchange(chat_id, state, message, prompt)
+        logger.info(
+            "UNS_CONFIRM_REQUEST chat_id=%s candidate=%r confidence=%.2f",
+            chat_id,
+            candidate,
+            getattr(uns_ctx, "confidence", 0.0) or 0.0,
+        )
+        return self._make_result(
+            prompt,
+            "high",
+            trace_id,
+            state.get("state", "IDLE"),
+            dispatch_kind="uns_confirm_request",
+        )
+
+    async def _handle_uns_confirmation_response(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id,
+    ):
+        """Consume the user's reply to a pending UNS confirmation prompt.
+
+        Returns a result dict on explicit yes/no, or None to signal fall-through
+        (user typed equipment specs — let the normal flow re-run the UNS resolver).
+        """
+        ctx = state.get("context") or {}
+        pending = ctx.get("pending_uns_confirm") or {}
+        candidate = pending.get("candidate")
+        msg = (message or "").strip().lower()
+
+        _YES = {"yes", "y", "yep", "yeah", "yup", "correct", "confirm", "confirmed"}
+        _NO = {"no", "n", "nope", "wrong", "incorrect"}
+
+        if msg in _YES and candidate:
+            state["asset_identified"] = candidate
+            ctx.pop("pending_uns_confirm", None)
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            reply = (
+                f"Got it — equipment is **{candidate}**. Now tell me what's happening "
+                "(fault code, symptom, or what you're seeing)."
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            logger.info("UNS_CONFIRM_YES chat_id=%s asset=%r", chat_id, candidate)
+            return self._make_result(
+                reply,
+                "high",
+                trace_id,
+                state.get("state", "IDLE"),
+                dispatch_kind="uns_confirm_yes",
+            )
+
+        if msg in _NO:
+            ctx.pop("pending_uns_confirm", None)
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            reply = (
+                "OK — tell me the correct manufacturer and model "
+                "(e.g., 'Allen-Bradley PowerFlex 525')."
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            logger.info("UNS_CONFIRM_NO chat_id=%s", chat_id)
+            return self._make_result(
+                reply,
+                "high",
+                trace_id,
+                state.get("state", "IDLE"),
+                dispatch_kind="uns_confirm_no",
+            )
+
+        # User likely typed equipment specs or otherwise off-script. Drop
+        # pending and let the normal flow run UNS resolver on the message.
+        ctx.pop("pending_uns_confirm", None)
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+        logger.info("UNS_CONFIRM_FALLTHROUGH chat_id=%s msg=%r", chat_id, (message or "")[:80])
+        return None
