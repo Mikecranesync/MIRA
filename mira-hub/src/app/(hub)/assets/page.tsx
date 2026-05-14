@@ -7,13 +7,7 @@ import { useTranslations } from "next-intl";
 import {
   Search, QrCode, Wind, Zap, Cog, Thermometer, Droplets,
   Factory, Gauge, AlertCircle, CheckCircle2, AlertTriangle,
-<<<<<<< Updated upstream
-  Plus, X, Loader2, Wrench, Printer,
-||||||| Stash base
-  Plus, X, Loader2, Wrench,
-=======
-  Plus, X, Loader2, Wrench, Download,
->>>>>>> Stashed changes
+  Plus, X, Loader2, Wrench, Printer, Download,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
