@@ -60,6 +60,8 @@ task_routes = {
     "mira_crawler.tasks.freshness.*": {"queue": "freshness"},
     # --- LinkedIn draft generation ---
     "linkedin.*": {"queue": "celery"},
+    # --- Component profile extraction (Anthropic Messages API) ---
+    "component_profile.*": {"queue": "ingest"},
 }
 
 # ---------------------------------------------------------------------------

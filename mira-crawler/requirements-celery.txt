@@ -21,3 +21,11 @@ PyYAML>=6.0.0
 # 24/7 ingest pipeline deps
 feedparser>=6.0.12
 yt-dlp>=2024.0.0
+
+# Component profile extraction (LLM)
+anthropic>=0.50.0
+pydantic>=2.5
+
+# Pydantic schema for ComponentProfile lives in mira-core/component_profiles/.
+# Containerization step: mira-crawler image must mount or copy
+# mira-core/component_profiles/ onto PYTHONPATH so the Celery task can import it.
