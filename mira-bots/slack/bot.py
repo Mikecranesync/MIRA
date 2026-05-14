@@ -13,6 +13,7 @@ from PIL import Image
 from shared.chat.dispatcher import ChatDispatcher
 from shared.conversation_logger import log_turn, measure_ms
 from shared.engine import Supervisor
+from shared.identity.service import get_identity_service
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
 
@@ -49,7 +50,13 @@ adapter = SlackChatAdapter(
     bot_token=SLACK_BOT_TOKEN,
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET", ""),
 )
-dispatcher = ChatDispatcher(engine)
+_identity_service = get_identity_service()
+if _identity_service is None:
+    logger.warning(
+        "NEON_DATABASE_URL not set or sqlalchemy missing — Slack dispatcher will fail closed "
+        "until identity service is configured (multi-tenant gate)"
+    )
+dispatcher = ChatDispatcher(engine, identity_service=_identity_service)
 
 app = AsyncApp(token=SLACK_BOT_TOKEN)
 
