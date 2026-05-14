@@ -58,6 +58,7 @@ task_routes = {
     "mira_crawler.tasks.intent_digest.*": {"queue": "default"},
     "mira_crawler.tasks.gdrive.*": {"queue": "ingest"},
     "mira_crawler.tasks.freshness.*": {"queue": "freshness"},
+    "mira_crawler.tasks.component_template.*": {"queue": "ingest"},
     # --- LinkedIn draft generation ---
     "linkedin.*": {"queue": "celery"},
 }
@@ -88,6 +89,11 @@ task_annotations = {
     "tasks.reddit_intent.scan_reddit_intent": {"rate_limit": "1/h"},
     "tasks.youtube_intent.scan_youtube_intent": {"rate_limit": "1/h"},
     "tasks.intent_digest.send_daily_digest": {"rate_limit": "1/h"},
+    # Component template builder — rate-limited so an ingest burst doesn't
+    # blow through the Groq cascade's free-tier hourly cap.
+    "mira_crawler.tasks.component_template.extract_component_template": {
+        "rate_limit": "10/m",
+    },
 }
 
 # ---------------------------------------------------------------------------
