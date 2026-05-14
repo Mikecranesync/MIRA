@@ -1,3 +1,11 @@
+# Hot Cache — 2026-05-14 — CHARLIE
+
+## eval-fixer run — 2026-05-14
+- Scorecard: 48/57 passing (84%) — source: `tests/eval/runs/2026-05-06T0833-offline-text.md` (unchanged since 2026-05-12, now 8 days stale)
+- Action: issue-filed (autopatch skipped — 3 file_clusters, hard stop)
+- Issue: https://github.com/Mikecranesync/MIRA/issues/1269 (third repeat — see #1217, #1187 — same scorecard, no fresh eval run)
+- Same 9 fixtures still failing across `engine.py`, `guardrails.py`, `prompts/diagnose/active.yaml`. Nightly eval job is almost certainly dead — needs human investigation, not another auto-issue.
+
 # Hot Cache — 2026-05-13 — CHARLIE
 
 ## eval-fixer run — 2026-05-13
