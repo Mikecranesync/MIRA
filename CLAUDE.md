@@ -119,7 +119,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **macOS keychain over SSH** — `docker build`/`doppler` fail on Bravo/Charlie. Workaround: `docker cp` + restart. Bravo fixed with `doppler configure set token-storage file`.
 - **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
 - **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
-- **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
+- **Telegram bot single-poller rule** — Production token is polled by **VPS only**. CHARLIE/dev hosts gate `mira-bot-telegram` behind `COMPOSE_PROFILES=dev-bot` and require a separate test token. Bot auto-exits after 5 consecutive 409s; heartbeat alerts at 3. Spec: `docs/specs/telegram-single-poller-enforcement.md`.
 - **Gemini key blocked** — 403 in Doppler. Cascade falls through to next provider; if all fail, falls through to Open WebUI/Ollama.
 
 ---

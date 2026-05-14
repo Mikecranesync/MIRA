@@ -192,6 +192,10 @@ PLAYBOOKS: dict[str, Callable[[str, str], HealAction]] = {
     "api_5xx": restart_container,  # service field is the container name
     "endpoint_unreachable": noop_escalate,  # could be DNS / TLS / nginx — don't touch
     "bot_not_polling": restart_container,
+    # dual_poller_409: alert only — restarting a competing poller doesn't fix it
+    # (it just rejoins the race). Operator must locate and stop the other host.
+    # See docs/specs/telegram-single-poller-enforcement.md
+    "dual_poller_409": noop_escalate,
     "neondb_connection": neondb_retry,
     "disk_full": disk_cleanup,
     "kb_cron_stale": trigger_kb_cron,

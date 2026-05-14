@@ -925,19 +925,48 @@ async def _startup(application: Application) -> None:
     )
 
 
+# Single-poller enforcement: how many consecutive 409s before we give up.
+# Rationale: two competing pollers each succeed most calls and collide ~25%, so
+# a single 409 is not proof of a competitor. N in a row is. Each poll happens
+# ~every 10s, so 5 consecutive 409s ≈ 50s of sustained conflict — enough signal,
+# fast enough to act. After threshold, exit (restart: on-failure:3 in compose
+# bounds the crash loop so we stay dead, not flapping).
+# See docs/specs/telegram-single-poller-enforcement.md
+_CONFLICT_THRESHOLD = int(os.environ.get("TELEGRAM_CONFLICT_THRESHOLD", "5"))
+_consecutive_409s = 0
+
+
 async def _conflict_error_handler(update: object, context) -> None:
-    """On 409 Conflict sleep 15s and let PTB retry — avoids crash-restart loop."""
+    """Count consecutive 409s; exit hard once threshold hit so a competing poller can't coexist."""
     import asyncio
+    import sys
 
     from telegram.error import Conflict as TGConflict
 
+    global _consecutive_409s
+
     if isinstance(context.error, TGConflict):
+        _consecutive_409s += 1
+        if _consecutive_409s >= _CONFLICT_THRESHOLD:
+            logger.error(
+                "FATAL: %d consecutive 409 Conflicts — another instance is polling this "
+                "bot token. Exiting. Only one poller per token is allowed. "
+                "Production token MUST be polled by VPS only; CHARLIE/dev hosts must use "
+                "COMPOSE_PROFILES=dev-bot + a separate test token. "
+                "See docs/specs/telegram-single-poller-enforcement.md",
+                _consecutive_409s,
+            )
+            sys.exit(1)
         logger.warning(
-            "409 Conflict during polling — another session is active. "
-            "Sleeping 15s and retrying (do NOT call getUpdates externally while bot is running)."
+            "409 Conflict during polling (%d/%d) — another session is active. "
+            "Sleeping 15s and retrying.",
+            _consecutive_409s,
+            _CONFLICT_THRESHOLD,
         )
         await asyncio.sleep(15)
         return  # let PTB retry getUpdates
+    # Reset counter on any non-409 error path so transient blips don't accumulate.
+    _consecutive_409s = 0
     raise context.error
 
 

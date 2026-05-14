@@ -134,9 +134,16 @@ HTTP_ENDPOINTS = [
 
 # Container we expect to be polling Telegram. We grep its recent log for the
 # pattern emitted by python-telegram-bot's getUpdates loop.
+# Note: on dev hosts (CHARLIE) the bot is gated behind COMPOSE_PROFILES=dev-bot
+# and the container won't exist — the check returns STATUS_UNKNOWN in that case
+# rather than STATUS_DOWN. Production polling runs on VPS only.
+# See: docs/specs/telegram-single-poller-enforcement.md
 TELEGRAM_BOT_CONTAINER = "mira-bot-telegram"
 TELEGRAM_POLL_PATTERN = "getUpdates"
 TELEGRAM_LOG_WINDOW_MIN = 5
+# Sustained 409 Conflicts in this window means a competing poller appeared.
+# Threshold mirrors the bot's own _CONFLICT_THRESHOLD in mira-bots/telegram/bot.py.
+TELEGRAM_409_ALERT_THRESHOLD = 3
 
 # KB Growth cron freshness — `manual_queue.json` mtime should be < 24h on a
 # healthy node (cron runs every 6h).
@@ -282,7 +289,16 @@ def check_http(label: str, url: str, expect: int, timeout: int) -> HealthCheck:
 
 
 def check_telegram_polling() -> HealthCheck:
-    """Look for `getUpdates` in the bot container's last 5 minutes of logs."""
+    """Verify the bot is polling AND not fighting a competing poller.
+
+    Returns STATUS_DOWN if:
+      - Container exists but no `getUpdates` evidence in the window (bot stuck).
+      - Container logs show >= TELEGRAM_409_ALERT_THRESHOLD `409 Conflict` lines
+        in the window (a second poller appeared — single-poller rule violated).
+
+    Returns STATUS_UNKNOWN if the container is absent (expected on dev hosts
+    like CHARLIE where the bot is gated behind COMPOSE_PROFILES=dev-bot).
+    """
     start = time.perf_counter()
     rc, out, err = _run_cmd(
         ["docker", "logs", "--since", f"{TELEGRAM_LOG_WINDOW_MIN}m", TELEGRAM_BOT_CONTAINER],
@@ -294,7 +310,20 @@ def check_telegram_polling() -> HealthCheck:
         return HealthCheck(
             "telegram_polling", STATUS_UNKNOWN, latency, "docker not on PATH", "service"
         )
+
+    # Distinguish "container doesn't exist on this host" (expected on dev) from
+    # "docker logs really failed" (real problem). Docker prints "No such
+    # container" / "Error response from daemon: ... No such container" to stderr.
     if rc != 0:
+        err_lower = (err or "").lower()
+        if "no such container" in err_lower:
+            return HealthCheck(
+                "telegram_polling",
+                STATUS_UNKNOWN,
+                latency,
+                f"{TELEGRAM_BOT_CONTAINER} not on this host (dev host expected)",
+                "service",
+            )
         return HealthCheck(
             "telegram_polling",
             STATUS_DOWN,
@@ -303,7 +332,27 @@ def check_telegram_polling() -> HealthCheck:
             "service",
         )
 
-    if TELEGRAM_POLL_PATTERN.lower() in (out + err).lower():
+    combined = (out + err).lower()
+
+    # Dual-poller detection: count 409 Conflicts in the window. Bot's own
+    # _conflict_error_handler will exit after _CONFLICT_THRESHOLD=5 consecutive,
+    # but a few 409s during a brief race condition (e.g., deploy overlap) are
+    # still worth alerting on so the operator notices BEFORE the bot exits.
+    conflict_count = combined.count("409 conflict")
+    if conflict_count >= TELEGRAM_409_ALERT_THRESHOLD:
+        return HealthCheck(
+            "telegram_polling",
+            STATUS_DOWN,
+            latency,
+            (
+                f"{conflict_count} '409 Conflict' lines in last "
+                f"{TELEGRAM_LOG_WINDOW_MIN}m — competing poller detected"
+            ),
+            "service",
+            extra={"remediation_hint": "dual_poller_409"},
+        )
+
+    if TELEGRAM_POLL_PATTERN.lower() in combined:
         return HealthCheck(
             "telegram_polling",
             STATUS_HEALTHY,

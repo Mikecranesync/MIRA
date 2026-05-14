@@ -27,7 +27,14 @@ x-bot-common-env: &bot-common-env
   LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
 
 services:
+  # Telegram bot — production polling lives on VPS (docker-compose.saas.yml).
+  # On dev hosts (CHARLIE), this service is gated behind the `dev-bot` profile so
+  # `docker compose up -d` does NOT start a competing poller against the prod token.
+  # To run a local bot, use a SEPARATE test bot token and opt in:
+  #     COMPOSE_PROFILES=dev-bot doppler run -- docker compose up -d telegram-bot
+  # See: docs/specs/telegram-single-poller-enforcement.md
   telegram-bot:
+    profiles: ["dev-bot"]
     build:
       context: ..
       dockerfile: mira-bots/telegram/Dockerfile
@@ -44,7 +51,9 @@ services:
     networks:
       - bot-net
       - core-net
-    restart: unless-stopped
+    # on-failure (bounded) so a clean sys.exit on 409 doesn't restart-loop.
+    # See _conflict_error_handler in mira-bots/telegram/bot.py.
+    restart: on-failure:3
     healthcheck:
       test: ["CMD", "python", "-c", "import os; exit(0)"]
       interval: 30s

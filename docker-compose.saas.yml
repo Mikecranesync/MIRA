@@ -293,7 +293,11 @@ services:
       - /opt/mira/mira-bridge/data/sessions:/data/sessions
     networks:
       - mira-net
-    restart: unless-stopped
+    # on-failure (bounded) so a clean sys.exit on 409 doesn't restart-loop.
+    # If a competing poller is detected, the bot exits and stays exited —
+    # operator must investigate before it auto-revives.
+    # See docs/specs/telegram-single-poller-enforcement.md
+    restart: on-failure:3
     deploy:
       resources:
         limits:
