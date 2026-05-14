@@ -15,12 +15,12 @@
 set -uo pipefail
 
 if [ "${MIRA_SKIP_STOP_GATE:-0}" = "1" ]; then
-  echo '{"decision":"allow"}'
+  echo '{"decision":"approve"}'
   exit 0
 fi
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-cd "$ROOT" 2>/dev/null || { echo '{"decision":"allow"}'; exit 0; }
+cd "$ROOT" 2>/dev/null || { echo '{"decision":"approve"}'; exit 0; }
 
 # Scope to what THIS branch added on top of main (not unrelated recent commits
 # from other people). Falls back to HEAD~5 if no main branch reference exists.
@@ -65,7 +65,7 @@ if [ -n "$CHANGED_HUB" ] && [ -f "mira-hub/package.json" ] && [ -d "mira-hub/nod
 fi
 
 if [ ${#FAILS[@]} -eq 0 ]; then
-  echo '{"decision":"allow"}'
+  echo '{"decision":"approve"}'
   exit 0
 fi
 
