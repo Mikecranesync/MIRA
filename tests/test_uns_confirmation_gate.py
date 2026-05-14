@@ -157,3 +157,48 @@ async def test_response_yes_without_candidate_falls_through(tmp_path):
 
     saved = sv._load_state("u6")
     assert saved["asset_identified"] is None
+
+
+# ── Gate firing conditions (_should_fire_uns_gate) ─────────────────────────
+
+
+def test_gate_fires_on_diagnose_idle_no_asset(tmp_path):
+    """Primary case: diagnostic question in IDLE with no confirmed equipment."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("u")
+    assert sv._should_fire_uns_gate("diagnose_equipment", state, "why is conveyor stopped", {}) is True
+
+
+def test_gate_does_not_fire_on_general_question(tmp_path):
+    """'What is MQTT?' routes to general_question — gate never sees it. But even
+    if it did, the gate must refuse to fire on non-diagnose intents."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("u")
+    assert sv._should_fire_uns_gate("general_question", state, "what is mqtt", {}) is False
+
+
+def test_gate_does_not_fire_when_asset_identified(tmp_path):
+    """Asset already confirmed — diagnose freely, no gate."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("u")
+    state["asset_identified"] = "Allen-Bradley, PowerFlex 525"
+    assert sv._should_fire_uns_gate("diagnose_equipment", state, "fault again", {}) is False
+
+
+def test_gate_does_not_fire_mid_fsm(tmp_path):
+    """Mid-Q1/Q2/Q3 session — even with no asset, don't hijack the in-flight
+    diagnostic flow with a confirmation prompt. Regression case from advisor."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("u")
+    for fsm_state in ("Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"):
+        state["state"] = fsm_state
+        assert (
+            sv._should_fire_uns_gate("diagnose_equipment", state, "clarifying question", {}) is False
+        ), f"gate must not fire in {fsm_state}"
+
+
+def test_gate_does_not_fire_on_safety_intent(tmp_path):
+    """Safety wins everywhere — safety_concern intent doesn't trigger UNS confirmation."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("u")
+    assert sv._should_fire_uns_gate("safety_concern", state, "arc flash hazard", {}) is False

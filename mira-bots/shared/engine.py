@@ -1312,14 +1312,9 @@ class Supervisor:
                 intent = "documentation"
 
             # UNS Confirmation Gate — no diagnosis without confirmed equipment.
-            # Fires when the router classifies a turn as diagnose_equipment AND
-            # no asset has been confirmed in this session AND the message is not
-            # an in-flight FSM answer. Telegram + Slack both go through here.
-            if (
-                _router_intent == "diagnose_equipment"
-                and not state.get("asset_identified")
-                and not detect_session_followup(message, sc, state["state"])
-            ):
+            # Telegram + Slack both go through here. Conditions extracted into
+            # _should_fire_uns_gate so the bypass logic is testable directly.
+            if self._should_fire_uns_gate(_router_intent, state, message, sc):
                 return await self._handle_uns_confirmation_request(
                     chat_id, message, state, uns_ctx, trace_id
                 )
@@ -4055,6 +4050,33 @@ class Supervisor:
     # `asset_identified`, the engine asks the user to confirm before any
     # diagnostic work. Storage lives in state["context"]["pending_uns_confirm"]
     # so a second turn can consume the answer.
+
+    def _should_fire_uns_gate(
+        self,
+        router_intent: str,
+        state: dict,
+        message: str,
+        session_context: dict,
+    ) -> bool:
+        """Return True when the gate should interrupt the turn with a confirm prompt.
+
+        Conditions (all must hold):
+        - router classified turn as diagnose_equipment
+        - session has no asset_identified
+        - session is in IDLE (don't interrupt mid-FSM Q1/Q2/Q3/DIAGNOSIS)
+
+        `message` and `session_context` are accepted for symmetry with other
+        gate helpers and to keep the call site readable, even though the
+        current implementation only inspects intent + state.
+        """
+        del message, session_context  # reserved for future signal expansion
+        if router_intent != "diagnose_equipment":
+            return False
+        if state.get("asset_identified"):
+            return False
+        if state.get("state", "IDLE") != "IDLE":
+            return False
+        return True
 
     async def _handle_uns_confirmation_request(
         self,
