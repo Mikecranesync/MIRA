@@ -149,4 +149,57 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 **Working tree:**
 - M docs/context/PROGRESS.md
 **Next:** _set by next session_
+
+### 2026-05-09 14:14 UTC — `chore/promo-director-refresh-2026-05-09`
+**Last commit:** 01826e0 chore: update PROGRESS.md session log 2026-05-09
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- .warp/MCP_SETUP.md
+- .warp/README.md
+- .warp/workflows/cluster-ssh.yaml
+- .warp/workflows/mira-enum-drift.yaml
+- .warp/workflows/mira-eval.yaml
+- .warp/workflows/mira-logs.yaml
+- .warp/workflows/mira-pr-review.yaml
+- .warp/workflows/mira-rebuild-service.yaml
+- .warp/workflows/mira-smoke-remote.yaml
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-14 00:31 UTC — `chore/promo-director-refresh-2026-05-09`
+**Last commit:** 01826e0 chore: update PROGRESS.md session log 2026-05-09
+**Changed (vs. fork point):**
+- .claude/hooks/stop.sh
+- .claude/rules/karpathy-principles.md
+- .claude/settings.json
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .claude/skills/youtube-transcript.md
+- .enum-drift-allowlist.txt
+- .githooks/pre-commit
+- .github/pull_request_template.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/enforcement-audit.yml
+- .gitignore
+- .warp/MCP_SETUP.md
+- .warp/README.md
+- .warp/workflows/cluster-ssh.yaml
+- .warp/workflows/mira-enum-drift.yaml
+- .warp/workflows/mira-eval.yaml
+- .warp/workflows/mira-logs.yaml
+- .warp/workflows/mira-pr-review.yaml
+- .warp/workflows/mira-rebuild-service.yaml
+- .warp/workflows/mira-smoke-remote.yaml
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
