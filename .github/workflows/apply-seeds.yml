@@ -106,10 +106,12 @@ jobs:
            WHERE tenant_id = :'tid';
           SQL
 
-          OUTPUT=$(psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
-                        -v tid="${{ inputs.tenant_id }}" \
-                        -f /tmp/preflight.sql 2>&1)
-          echo "$OUTPUT"
+          set +e
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
+               -v "tid=${{ inputs.tenant_id }}" \
+               -f /tmp/preflight.sql 2>&1 | tee /tmp/preflight.out
+          PSQL_EXIT=${PIPESTATUS[0]}
+          set -e
           {
             echo "## Pre-flight diagnostic"
             echo ""
@@ -118,9 +120,13 @@ jobs:
             echo "Tenant id under test: \`${{ inputs.tenant_id }}\`"
             echo ""
             echo '```'
-            echo "$OUTPUT"
+            cat /tmp/preflight.out
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PSQL_EXIT" -ne 0 ]; then
+            echo "::error::psql pre-flight failed with exit $PSQL_EXIT — see step output above for the actual error"
+            exit "$PSQL_EXIT"
+          fi
 
       - name: Resolve seed file list
         id: resolve
@@ -263,15 +269,21 @@ jobs:
              AND created_at > now() - interval '15 minutes';
           SQL
 
-          OUTPUT=$(psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
-                        -v tid="${{ inputs.tenant_id }}" \
-                        -f /tmp/postcheck.sql 2>&1)
-          echo "$OUTPUT"
+          set +e
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
+               -v "tid=${{ inputs.tenant_id }}" \
+               -f /tmp/postcheck.sql 2>&1 | tee /tmp/postcheck.out
+          PSQL_EXIT=${PIPESTATUS[0]}
+          set -e
           {
             echo ""
             echo "### Post-apply row counts"
             echo ""
             echo '```'
-            echo "$OUTPUT"
+            cat /tmp/postcheck.out
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PSQL_EXIT" -ne 0 ]; then
+            echo "::error::psql post-check failed with exit $PSQL_EXIT"
+            exit "$PSQL_EXIT"
+          fi
