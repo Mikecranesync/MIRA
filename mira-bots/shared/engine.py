@@ -1316,7 +1316,11 @@ class Supervisor:
             # _should_fire_uns_gate so the bypass logic is testable directly.
             if self._should_fire_uns_gate(_router_intent, state, message, sc):
                 return await self._handle_uns_confirmation_request(
-                    chat_id, message, state, uns_ctx, trace_id,
+                    chat_id,
+                    message,
+                    state,
+                    uns_ctx,
+                    trace_id,
                     tenant_id=resolved_tenant,
                 )
 
@@ -4172,11 +4176,7 @@ class Supervisor:
             "UNS_CONFIRM_REQUEST chat_id=%s candidate=%r confidence=%.2f demo_match=%s",
             chat_id,
             candidate,
-            (
-                demo_match.confidence
-                if demo_match
-                else (getattr(uns_ctx, "confidence", 0.0) or 0.0)
-            ),
+            (demo_match.confidence if demo_match else (getattr(uns_ctx, "confidence", 0.0) or 0.0)),
             bool(demo_match),
         )
         return self._make_result(
