@@ -3,13 +3,21 @@
 -- Idempotent: re-runs are no-ops via WHERE NOT EXISTS on (tenant_id, source_url, source_page)
 --
 -- Schema: docs/migrations/001_knowledge_entries.sql
--- Tenant: 'public' (shared KB)
+-- Tenant: passed via psql -v tenant_id="'<slug>'". Default UUID for Mike's
+--         garage demo (see \set below) if no CLI override is provided.
 -- chunk_type values: wiring | parameters | serial-config | registers | plc-program |
 --                    bench-test | troubleshooting | mistakes | component-profile | config-variance
 --
 -- IMPORTANT: This guide documents 9600 baud / None parity / 2 stop bits
 -- (P09.01=9.6, P09.04=13). The earlier GS10 seed used 19200 / Even / 1 stop.
 -- BOTH are valid — PLC serial port and VFD parameters MUST MATCH. See chunk 10.
+
+\set ON_ERROR_STOP on
+\set tenant_id_default '''78917b56-f85f-43bb-9a08-1bb98a6cd6c3'''
+\if :{?tenant_id}
+\else
+\set tenant_id :tenant_id_default
+\endif
 
 BEGIN;
 
@@ -21,7 +29,7 @@ INSERT INTO knowledge_entries (
     content, source_url, source_page, chunk_type, verified, metadata
 )
 SELECT
-    gen_random_uuid(), 'public', 'field-guide', 'Automation Direct', 'GS11', 'vfd',
+    gen_random_uuid(), :tenant_id, 'field-guide', 'Automation Direct', 'GS11', 'vfd',
 $$Micro820 to GS11 RS-485 Wiring (Modbus RTU)
 
 Physical connection — 3 wires, shielded twisted pair preferred:
@@ -55,7 +63,7 @@ Clean wiring checklist (in order of how often each one bites):
     '{"manufacturer":"Automation Direct","drive":"GS11","plc":"Micro820","protocol":"Modbus RTU","topic":"physical-wiring"}'::jsonb
 WHERE NOT EXISTS (
     SELECT 1 FROM knowledge_entries
-    WHERE tenant_id = 'public'
+    WHERE tenant_id = :tenant_id
       AND source_url = 'mira://seeds/gs11-micro820-field-guide'
       AND source_page = 1
 );
@@ -68,7 +76,7 @@ INSERT INTO knowledge_entries (
     content, source_url, source_page, chunk_type, verified, metadata
 )
 SELECT
-    gen_random_uuid(), 'public', 'field-guide', 'Automation Direct', 'GS11', 'vfd',
+    gen_random_uuid(), :tenant_id, 'field-guide', 'Automation Direct', 'GS11', 'vfd',
 $$GS11 VFD Parameters for RS-485 Modbus Control (this guide's config)
 
 Communication parameters (P09 group):
@@ -100,7 +108,7 @@ initializes at the new baud/parity/stop on power-up, not on parameter save.$$,
     '{"manufacturer":"Automation Direct","drive":"GS11","parameters":["P09.00","P09.01","P09.04","P00.20","P00.21"],"baud":9600,"parity":"None","stop_bits":2,"slave_id":1}'::jsonb
 WHERE NOT EXISTS (
     SELECT 1 FROM knowledge_entries
-    WHERE tenant_id = 'public'
+    WHERE tenant_id = :tenant_id
       AND source_url = 'mira://seeds/gs11-micro820-field-guide'
       AND source_page = 2
 );
@@ -113,7 +121,7 @@ INSERT INTO knowledge_entries (
     content, source_url, source_page, chunk_type, verified, metadata
 )
 SELECT
-    gen_random_uuid(), 'public', 'field-guide', 'Allen-Bradley', 'Micro820', 'plc',
+    gen_random_uuid(), :tenant_id, 'field-guide', 'Allen-Bradley', 'Micro820', 'plc',
 $$Connected Components Workbench (CCW) Serial Port Configuration
 
 In CCW project tree: Controller > Serial Port (Embedded or Plug-in)
@@ -144,7 +152,7 @@ the port. Cycle power on doubt.$$,
     '{"manufacturer":"Allen-Bradley","plc":"Micro820","software":"Connected Components Workbench","baud":9600,"parity":"None","data_bits":8,"stop_bits":2,"role":"master"}'::jsonb
 WHERE NOT EXISTS (
     SELECT 1 FROM knowledge_entries
-    WHERE tenant_id = 'public'
+    WHERE tenant_id = :tenant_id
       AND source_url = 'mira://seeds/gs11-micro820-field-guide'
       AND source_page = 3
 );
@@ -157,7 +165,7 @@ INSERT INTO knowledge_entries (
     content, source_url, source_page, chunk_type, verified, metadata
 )
 SELECT
-    gen_random_uuid(), 'public', 'field-guide', 'Automation Direct', 'GS11', 'vfd',
+    gen_random_uuid(), :tenant_id, 'field-guide', 'Automation Direct', 'GS11', 'vfd',
 $$GS11 Modbus Holding Register Map (the three registers you actually use)
 
 Register  Hex     Purpose                  Values
@@ -193,7 +201,7 @@ Idempotency notes:
     '{"manufacturer":"Automation Direct","drive":"GS11","registers":{"8192":{"hex":"0x2000","name":"command","stop":1,"fwd":18,"rev":20},"8193":{"hex":"0x2001","name":"freq_ref","scale":"Hz*100"},"8194":{"hex":"0x2002","name":"fault_reset"}}}'::jsonb
 WHERE NOT EXISTS (
     SELECT 1 FROM knowledge_entries
-    WHERE tenant_id = 'public'
+    WHERE tenant_id = :tenant_id
       AND source_url = 'mira://seeds/gs11-micro820-field-guide'
       AND source_page = 4
 );
@@ -206,7 +214,7 @@ INSERT INTO knowledge_entries (
     content, source_url, source_page, chunk_type, verified, metadata
 )
 SELECT
-    gen_random_uuid(), 'public', 'field-guide', 'Allen-Bradley', 'Micro820', 'plc',
+    gen_random_uuid(), :tenant_id, 'field-guide', 'Allen-Bradley', 'Micro820', 'plc',
 $$Micro820 Program — Modbus Master to GS11 (sequence + ST template)
 
 Tag structure (Global, in CCW Variables view):
@@ -281,7 +289,7 @@ exactly like a wiring fault.$$,
     '{"manufacturer":"Allen-Bradley","plc":"Micro820","language":"ST","tags":["vfd_target_hz","vfd_run_request","vfd_step","vfd_busy"],"steps":{"0":"idle","10":"write_speed","20":"write_cmd","90":"fault"}}'::jsonb
 WHERE NOT EXISTS (
     SELECT 1 FROM knowledge_entries
-    WHERE tenant_id = 'public'
+    WHERE tenant_id = :tenant_id
       AND source_url = 'mira://seeds/gs11-micro820-field-guide'
       AND source_page = 5
 );
@@ -294,7 +302,7 @@ INSERT INTO knowledge_entries (
     content, source_url, source_page, chunk_type, verified, metadata
 )
 SELECT
-    gen_random_uuid(), 'public', 'field-guide', 'Automation Direct', 'GS11', 'vfd',
+    gen_random_uuid(), :tenant_id, 'field-guide', 'Automation Direct', 'GS11', 'vfd',
 $$Bench Test Sequence — Verify GS11 Modbus control before connecting load
 
 Use a Modbus master test tool (Modscan, QModMaster, Modbus Poll, or the
@@ -328,7 +336,7 @@ go to chunk 7 (no-comms checklist) FIRST — do not touch PLC code.$$,
     '{"manufacturer":"Automation Direct","drive":"GS11","sequence":[{"step":1,"fc":6,"reg":8193,"val":1000,"meaning":"10Hz"},{"step":2,"fc":6,"reg":8192,"val":18,"meaning":"run fwd"},{"step":3,"fc":6,"reg":8192,"val":1,"meaning":"stop"}]}'::jsonb
 WHERE NOT EXISTS (
     SELECT 1 FROM knowledge_entries
-    WHERE tenant_id = 'public'
+    WHERE tenant_id = :tenant_id
       AND source_url = 'mira://seeds/gs11-micro820-field-guide'
       AND source_page = 6
 );
@@ -341,7 +349,7 @@ INSERT INTO knowledge_entries (
     content, source_url, source_page, chunk_type, verified, metadata
 )
 SELECT
-    gen_random_uuid(), 'public', 'field-guide', 'Automation Direct', 'GS11', 'vfd',
+    gen_random_uuid(), :tenant_id, 'field-guide', 'Automation Direct', 'GS11', 'vfd',
 $$Troubleshooting — Three symptom patterns and what to check
 
 SYMPTOM A: No comms at all (MSG times out, drive never responds)
@@ -380,7 +388,7 @@ SYMPTOM C: Wrong speed (drive runs, but Hz is wrong)
     '{"manufacturer":"Automation Direct","drive":"GS11","symptoms":["no-comms","runs-but-no-motion","wrong-speed"],"common_cause_no_comms":"D+/D- swapped","common_cause_no_motion":"P00.21 not set to 2","common_cause_wrong_speed":"forgot Hz*100 scaling"}'::jsonb
 WHERE NOT EXISTS (
     SELECT 1 FROM knowledge_entries
-    WHERE tenant_id = 'public'
+    WHERE tenant_id = :tenant_id
       AND source_url = 'mira://seeds/gs11-micro820-field-guide'
       AND source_page = 7
 );
@@ -393,7 +401,7 @@ INSERT INTO knowledge_entries (
     content, source_url, source_page, chunk_type, verified, metadata
 )
 SELECT
-    gen_random_uuid(), 'public', 'field-guide', 'Automation Direct', 'GS11', 'vfd',
+    gen_random_uuid(), :tenant_id, 'field-guide', 'Automation Direct', 'GS11', 'vfd',
 $$GS11 + Micro820 — Common Mistakes (the things that bite real installers)
 
 1. Using Rx / Tx instead of D+ / D-
@@ -437,7 +445,7 @@ $$GS11 + Micro820 — Common Mistakes (the things that bite real installers)
     '{"manufacturer":"Automation Direct","drive":"GS11","mistakes":["rx-tx-not-d+/d-","rj45-into-ethernet","forgot-p00.20-or-p00.21","sent-30-instead-of-3000","msg-every-scan","no-power-cycle-after-p09","silent-parity-mismatch"]}'::jsonb
 WHERE NOT EXISTS (
     SELECT 1 FROM knowledge_entries
-    WHERE tenant_id = 'public'
+    WHERE tenant_id = :tenant_id
       AND source_url = 'mira://seeds/gs11-micro820-field-guide'
       AND source_page = 8
 );
@@ -450,7 +458,7 @@ INSERT INTO knowledge_entries (
     content, source_url, source_page, chunk_type, verified, metadata
 )
 SELECT
-    gen_random_uuid(), 'public', 'field-guide', 'Automation Direct', 'GS11', 'vfd',
+    gen_random_uuid(), :tenant_id, 'field-guide', 'Automation Direct', 'GS11', 'vfd',
 $$MIRA Component Profile — GS11 over Modbus RTU from Micro820
 
 This YAML is the machine-readable summary that mira-connect / the diagnostic
@@ -513,7 +521,7 @@ bench_test:
     '{"manufacturer":"Automation Direct","drive":"GS11","plc":"Micro820","format":"yaml-in-content","consumer":"mira-connect"}'::jsonb
 WHERE NOT EXISTS (
     SELECT 1 FROM knowledge_entries
-    WHERE tenant_id = 'public'
+    WHERE tenant_id = :tenant_id
       AND source_url = 'mira://seeds/gs11-micro820-field-guide'
       AND source_page = 9
 );
@@ -526,7 +534,7 @@ INSERT INTO knowledge_entries (
     content, source_url, source_page, chunk_type, verified, metadata
 )
 SELECT
-    gen_random_uuid(), 'public', 'field-guide', 'Automation Direct', 'GS10-vs-GS11', 'vfd',
+    gen_random_uuid(), :tenant_id, 'field-guide', 'Automation Direct', 'GS10-vs-GS11', 'vfd',
 $$Configuration Variance Note — GS10 Seed vs GS11 Field Guide
 
 The MIRA knowledge base contains an earlier GS10 reference that uses a
@@ -567,7 +575,7 @@ comms at all") is the failure mode when these mismatch.$$,
     '{"manufacturer":"Automation Direct","drives":["GS10","GS11"],"variance":{"gs10_seed":{"baud":19200,"parity":"Even","stop":1,"P09.01":"19.2","P09.04":12},"gs11_guide":{"baud":9600,"parity":"None","stop":2,"P09.01":"9.6","P09.04":13}},"warning":"PLC and VFD must match each other; choice of combo is per-install"}'::jsonb
 WHERE NOT EXISTS (
     SELECT 1 FROM knowledge_entries
-    WHERE tenant_id = 'public'
+    WHERE tenant_id = :tenant_id
       AND source_url = 'mira://seeds/gs11-micro820-field-guide'
       AND source_page = 10
 );

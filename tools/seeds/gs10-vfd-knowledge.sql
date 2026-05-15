@@ -28,8 +28,11 @@
 -- =============================================================================
 
 \set ON_ERROR_STOP on
-\set tenant_id_default '''mike-garage-demo'''
+\set tenant_id_default '''78917b56-f85f-43bb-9a08-1bb98a6cd6c3'''
+\if :{?tenant_id}
+\else
 \set tenant_id :tenant_id_default
+\endif
 
 BEGIN;
 
