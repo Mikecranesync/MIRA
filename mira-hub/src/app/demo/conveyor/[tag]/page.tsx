@@ -163,7 +163,10 @@ export default function ConveyorDemoPage({
         if (!res.ok) return;
         const data = (await res.json()) as { signals: SignalRow[] };
         if (cancelled) return;
-        // Filter to rows that belong to this asset (when bound).
+        // Single-asset demo: include this asset's bound rows plus any
+        // currently-unbound cache rows (asset_id null), so a freshly toggled
+        // signal still shows up before binding catches up. Tighten to
+        // strict `=== equipment.id` if a second demo asset is ever seeded.
         const mine = (data.signals ?? []).filter(
           (r) => r.asset_id === equipment.id || r.asset_id === null,
         );
