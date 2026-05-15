@@ -1276,7 +1276,9 @@ class Supervisor:
                 "safety",
                 "documentation",
             ):
-                return await self._handle_general_question(chat_id, message, state, trace_id)
+                return await self._handle_general_question(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
+                )
 
             if _router_intent == "greeting_or_chitchat" and state["state"] == "IDLE":
                 return self._greeting_response(state, chat_id, trace_id)
@@ -2963,37 +2965,165 @@ class Supervisor:
         "hz setpoint acceleration deceleration boost carrier fault code alarm reset".split()
     )
 
-    async def _handle_general_question(
-        self, chat_id: str, message: str, state: dict, trace_id: str
-    ) -> dict:
-        """Answer a general industrial question — uses RAG for equipment-specific specs."""
-        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
-        asset = state.get("asset_identified", "")
-        msg_lower = message.lower()
-        needs_rag = asset and any(kw in msg_lower for kw in self._SPEC_KEYWORDS)
+    # Heuristic: looks like an industrial question that *should* resolve to a
+    # vendor/model. If we can't extract one, asking is better than guessing.
+    _INDUSTRIAL_HINTS_RE = re.compile(
+        r"\b(vfd|plc|hmi|scada|motor|fault|alarm|trip|modbus|profinet|"
+        r"ethernet/?ip|cip|rs[\- ]?485|rs[\- ]?232|contactor|relay|servo|"
+        r"encoder|nameplate|drive|f\d{2,4}|e\d{2,4}|oc\b|ol\b)\b",
+        re.IGNORECASE,
+    )
 
-        raw = ""
-        if needs_rag:
+    async def _handle_general_question(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> dict:
+        """KB-first answer with conversation history.
+
+        Decision order:
+          1. Re-resolve equipment (manufacturer/model) from current message
+             plus recent user turns — every turn gets a fresh extraction.
+          2. If a vendor is identified and the KB has coverage → RAG worker,
+             so the reply carries citations.
+          3. Vendor identified but no KB coverage → hand off to the
+             documentation lookup path so the crawler fills the gap.
+          4. No vendor anywhere AND the question looks industrial → ask for
+             vendor/model rather than hallucinate.
+          5. Otherwise → answer from training knowledge with conversation
+             history threaded through. Disclose lack of docs when relevant.
+        """
+        # Don't wipe an active session photo for a general question — a
+        # clarifying ask mid-diagnostic shouldn't break the photo flow.
+        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=False)
+
+        ctx = state.get("context") or {}
+        history = ctx.get("history", [])
+        asset = state.get("asset_identified", "")
+
+        # 1) Re-extract equipment from the user's recent turns + current msg.
+        user_window = [h.get("content", "") for h in history[-6:] if h.get("role") == "user"]
+        combined_for_resolve = " ".join([*user_window, message]).strip()
+        uns = resolve_uns_path(combined_for_resolve)
+        mfr = uns.manufacturer or ((ctx.get("uns_context") or {}).get("manufacturer") or "")
+        model = uns.model or ""
+
+        resolved_tenant = tenant_id or state.get("tenant_id") or ""
+
+        kb_covered = False
+        kb_reason = ""
+        if mfr:
             try:
-                raw_resp = await self.rag.process(message, state, photo_b64=None, tenant_id=None)
+                kb_covered, kb_reason = kb_has_coverage(mfr, combined_for_resolve, resolved_tenant)
+            except Exception as exc:
+                logger.warning("GENERAL_QUESTION_KB_PROBE_FAILURE error=%s", exc)
+
+        logger.info(
+            "GENERAL_QUESTION_GATE chat_id=%s mfr=%r model=%r kb_covered=%s reason=%r",
+            chat_id,
+            mfr,
+            model,
+            kb_covered,
+            kb_reason,
+        )
+
+        # 2) Vendor + KB coverage → answer through RAG (citations enforced).
+        if mfr and kb_covered:
+            if not asset:
+                state["asset_identified"] = f"{mfr}, {model}" if model else mfr
+            try:
+                raw_resp = await self.rag.process(
+                    message, state, photo_b64=None, tenant_id=resolved_tenant
+                )
                 parsed = self._parse_response(raw_resp)
                 raw = parsed.get("reply", "") if parsed else ""
+                if raw:
+                    reply = self._format_simple_response(
+                        raw,
+                        suggestions=[
+                            "Find documentation",
+                            "Log a work order",
+                            "Diagnose this asset",
+                        ],
+                    )
+                    self._record_exchange(chat_id, state, message, reply)
+                    tl_flush()
+                    return self._make_result(
+                        reply,
+                        self._infer_confidence(raw),
+                        trace_id,
+                        state.get("state", "IDLE"),
+                    )
             except Exception as exc:
-                logger.warning("GENERAL_QUESTION_RAG_FAILURE error=%s — falling back to LLM", exc)
+                logger.warning("GENERAL_QUESTION_RAG_FAILURE error=%s — falling through", exc)
 
-        if not raw:
-            asset_ctx = f" The current equipment is: {asset}." if asset else ""
-            system = (
-                "You are MIRA, an industrial maintenance assistant."
-                f"{asset_ctx} "
-                "Answer this question concisely and accurately using your training knowledge. "
-                "Keep the reply under 120 words."
+        # 3) Vendor identified but no KB coverage → kick off doc lookup/crawl.
+        if mfr and not kb_covered:
+            return await self._do_documentation_lookup(
+                chat_id,
+                message,
+                state,
+                trace_id,
+                resolved_tenant,
+                vendor_override=mfr,
+                model_override=model,
+            )
+
+        # 4) Industrial-flavored question with no resolvable vendor → ask.
+        looks_industrial = bool(self._INDUSTRIAL_HINTS_RE.search(message))
+        if looks_industrial and not asset:
+            clarify_system = (
+                "You are MIRA, an industrial maintenance assistant. The "
+                "technician asked a question but the manufacturer and model "
+                "haven't been identified. Reply in ≤2 short sentences: "
+                "acknowledge what you understood, then ask for the missing "
+                "piece (manufacturer and/or model). Do NOT try to answer the "
+                "question yet — getting the docs requires knowing the asset."
             )
             try:
-                raw = await self._call_llm_direct(message, system=system)
+                raw = await self._call_llm_direct(message, system=clarify_system, history=history)
             except Exception as exc:
-                logger.warning("GENERAL_QUESTION_LLM_FAILURE error=%s", exc)
-                raw = "I can help with that — could you give me a bit more context?"
+                logger.warning("GENERAL_QUESTION_CLARIFY_FAILURE error=%s", exc)
+                raw = (
+                    "Which equipment is this — manufacturer and model? "
+                    "Once I know, I'll pull the docs and walk you through it."
+                )
+            reply = self._format_simple_response(
+                raw,
+                suggestions=[
+                    "Send a nameplate photo",
+                    "Type the model number",
+                    "Describe the symptom",
+                ],
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, state.get("state", "IDLE"))
+
+        # 5) Truly general question → answer with history. Disclose missing
+        #    docs when an asset is known but the KB doesn't cover it.
+        asset_ctx = f" The current equipment is: {asset}." if asset else ""
+        disclosure = (
+            " You do not have documentation for this in your knowledge base — "
+            "say so up front, then answer from general training knowledge."
+            if asset and not kb_covered
+            else ""
+        )
+        system = (
+            "You are MIRA, an industrial maintenance assistant."
+            f"{asset_ctx}{disclosure} "
+            "Answer the technician's question concisely and accurately, using "
+            "the conversation history for context. Keep it under 120 words."
+        )
+        try:
+            raw = await self._call_llm_direct(message, system=system, history=history)
+        except Exception as exc:
+            logger.warning("GENERAL_QUESTION_LLM_FAILURE error=%s", exc)
+            raw = "I can help with that — could you give me a bit more context?"
 
         reply = self._format_simple_response(
             raw,
@@ -3315,7 +3445,9 @@ class Supervisor:
         if kind == DISPATCH_ASK_PROCEDURAL:
             return await self._handle_instructional_question(chat_id, message, state, trace_id)
         if kind == DISPATCH_ASK_GENERAL:
-            return await self._handle_general_question(chat_id, message, state, trace_id)
+            return await self._handle_general_question(
+                chat_id, message, state, trace_id, tenant_id=resolved_tenant
+            )
 
         # Priority 7 — greeting in IDLE
         if kind == DISPATCH_GREET and state.get("state", "IDLE") == "IDLE":
@@ -3599,13 +3731,32 @@ class Supervisor:
             reply, self._infer_confidence(reply), trace_id, state.get("state", "IDLE")
         )
 
-    async def _call_llm_direct(self, message: str, system: str = "") -> str:
-        """One-shot LLM call via the existing inference router. Returns plain text."""
+    async def _call_llm_direct(
+        self,
+        message: str,
+        system: str = "",
+        history: list[dict] | None = None,
+    ) -> str:
+        """LLM call via the inference router. Threads conversation history.
+
+        Pass ``history`` (the ``context.history`` list of {role, content}
+        dicts) to give the stateless LLM the same illusion of memory that
+        ChatGPT/Claude/Gemini provide — older turns get token-budget-trimmed
+        and spliced between the system prompt and the current user message.
+        """
+        from .workers.rag_worker import _trim_history_by_tokens
+
         messages: list[dict] = []
         if system:
             messages.append({"role": "system", "content": system})
+        if history:
+            for entry in _trim_history_by_tokens(history):
+                role = entry.get("role")
+                content = entry.get("content")
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": message})
-        raw, _usage = await self.router.complete(messages, max_tokens=300)
+        raw, _usage = await self.router.complete(messages, max_tokens=600)
         return raw.strip() if raw else "I'm not sure — can you give me more context?"
 
     async def _do_documentation_lookup(
