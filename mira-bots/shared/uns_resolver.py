@@ -26,6 +26,7 @@ from typing import Any
 # subset of mira-crawler/ingest/uns.py the resolver needs. mira-bots cannot
 # import from mira-crawler (architecture contract, enforced in CI).
 from . import uns_paths as _uns
+from .neon_recall import kb_has_pair_coverage
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +189,45 @@ class UNSContext:
         return cls(**clean)
 
 
+@dataclass(frozen=True)
+class UNSResolution:
+    """Multi-candidate resolution result for messages that may name more than
+    one vendor (cross-vendor integration questions).
+
+    ``primary`` matches the legacy ``resolve_uns_path()`` semantics — the
+    first vendor encountered in message order — so callers that only care
+    about a single answer can read ``resolution.primary`` and ignore the
+    rest.
+
+    ``candidates`` is the validated list. Each entry is a ``UNSContext``
+    for one vendor named in the message, with its nearest model token,
+    after pair-coverage validation against the KB. Chimeric pairings (e.g.
+    "AutomationDirect" + "820" — no row in ``knowledge_entries`` has them
+    together) are dropped before the result is returned.
+
+    For single-vendor messages, ``candidates`` has one entry equal to
+    ``primary``. For messages with no recognized vendor, ``candidates`` is
+    empty and ``primary`` is the legacy fault-only or no-op result.
+    """
+
+    primary: UNSContext
+    candidates: tuple[UNSContext, ...] = ()
+
+    @property
+    def has_multi_vendor(self) -> bool:
+        seen = {c.manufacturer for c in self.candidates if c.manufacturer}
+        return len(seen) >= 2
+
+    def vendors(self) -> list[str]:
+        return [c.manufacturer for c in self.candidates if c.manufacturer]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "primary": self.primary.as_dict(),
+            "candidates": [c.as_dict() for c in self.candidates],
+        }
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -345,6 +385,51 @@ def _match_vendor(message_lower: str) -> tuple[str | None, str | None, str | Non
                 family = FAMILY_FROM_ALIAS.get(alias)
                 return mfr, alias, family
     return None, None, None
+
+
+def _match_all_vendors(
+    message_lower: str,
+) -> list[tuple[str, str, str | None, int]]:
+    """Find every distinct canonical vendor named in the message.
+
+    Returns a list of (canonical_mfr, alias_key_lower, family_token,
+    char_position) sorted by char_position (first-named vendor first).
+    Deduplicated by canonical manufacturer: if both "allen-bradley" and
+    "rockwell" appear, only the earliest position for "Rockwell Automation"
+    is returned. Longer-specific aliases win over shorter ones when both
+    match the same canonical vendor (e.g. "rockwell automation" preferred
+    over the bare "rockwell" at the same position).
+    """
+    # canonical -> (alias_lower, family_token, char_position, alias_length)
+    best: dict[str, tuple[str, str | None, int, int]] = {}
+    for alias in sorted(VENDOR_ALIASES.keys(), key=len, reverse=True):
+        canonical = VENDOR_ALIASES[alias]
+        family = FAMILY_FROM_ALIAS.get(alias)
+        if any(c in alias for c in " -"):
+            m = re.search(re.escape(alias), message_lower)
+        else:
+            m = re.search(rf"\b{re.escape(alias)}\b", message_lower)
+        if m is None:
+            continue
+        pos = m.start()
+        existing = best.get(canonical)
+        # Prefer the earliest position. On a position tie, prefer the longer
+        # (more specific) alias — this keeps "rockwell automation" winning
+        # over "rockwell" when both anchor at the same offset.
+        if existing is None:
+            best[canonical] = (alias, family, pos, len(alias))
+            continue
+        existing_pos = existing[2]
+        existing_len = existing[3]
+        if pos < existing_pos or (pos == existing_pos and len(alias) > existing_len):
+            best[canonical] = (alias, family, pos, len(alias))
+
+    results = [
+        (canon, alias, family, pos)
+        for canon, (alias, family, pos, _len) in best.items()
+    ]
+    results.sort(key=lambda x: x[3])
+    return results
 
 
 def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:
@@ -721,3 +806,116 @@ def resolve_uns_path(
     else:
         prior_obj = prior_ctx
     return _merge_with_prior(fresh, prior_obj)
+
+
+def resolve_uns_path_multi(
+    message: str,
+    tenant_id: str | None = None,
+    prior_ctx: UNSContext | dict[str, Any] | None = None,
+) -> UNSResolution:
+    """Multi-vendor resolution. Returns one ``UNSContext`` candidate per
+    distinct vendor named in the message, after pair-coverage validation
+    against the KB.
+
+    Use this when a message may name two pieces of equipment from different
+    OEMs — e.g. "connect my Micro 820 to an AutomationDirect GS11 over
+    Modbus". The legacy ``resolve_uns_path()`` only returns the first
+    vendor + one model and is responsible for the historical chimera bug
+    where a vendor from one product gets paired with a model number from
+    another.
+
+    Behaviour:
+      - For messages naming 0 or 1 vendors, this is a thin wrapper around
+        ``resolve_uns_path``: ``primary`` is the legacy result, and
+        ``candidates`` either has one entry (single vendor) or is empty
+        (no vendor recognized).
+      - For messages naming ≥2 distinct vendors, each vendor gets its own
+        ``UNSContext`` with the nearest model token after the vendor's
+        position. Each (vendor, model) pair is then validated by
+        ``kb_has_pair_coverage`` — pairs the KB has no rows for get their
+        model field cleared, so the caller never speaks "AutomationDirect
+        820" as if it were a real product.
+      - ``primary`` is the first candidate in message order, matching the
+        legacy single-vendor result for backward-compat semantics.
+
+    Pair validation requires ``tenant_id``. When tenant_id is None the
+    validator is skipped (the candidates list still reflects multi-vendor
+    detection, but chimeric models are not pruned). Callers in
+    diagnostic contexts should always pass tenant_id.
+    """
+    legacy_primary = resolve_uns_path(message, tenant_id=tenant_id, prior_ctx=prior_ctx)
+
+    if not message:
+        return UNSResolution(primary=legacy_primary, candidates=())
+
+    message_lower = message.lower()
+    vendor_matches = _match_all_vendors(message_lower)
+
+    if len(vendor_matches) <= 1:
+        # Single-vendor (or zero-vendor) message — legacy resolver result is
+        # canonical. The pair-coverage check is intentionally NOT applied here
+        # to keep this path zero-DB-latency for the common case; the engine's
+        # speak-time formatter (`_do_documentation_lookup` and friends) is
+        # where the strict pair check guards single-vendor chimeras.
+        candidates = (legacy_primary,) if legacy_primary.manufacturer else ()
+        return UNSResolution(primary=legacy_primary, candidates=candidates)
+
+    # Multi-vendor — derive a candidate per vendor, validate each pair.
+    fault_pairs = _extract_fault_codes(message)
+    fault_code, fault_raw, fault_raw_tokens = _pick_fault_code(fault_pairs, None)
+    category = _detect_category(message, has_fault=fault_code is not None)
+
+    candidates_list: list[UNSContext] = []
+    for canonical, alias_lower, family_token, _pos in vendor_matches:
+        model = _find_model_near_vendor(message, alias_lower, fault_raw_tokens)
+
+        # Strip alias-as-model false positives (mirrors the legacy resolver's
+        # defenses at the end of `resolve_uns_path`).
+        if model and alias_lower and model.lower() == alias_lower:
+            model = None
+        if model and alias_lower:
+            m_compact = re.sub(r"[^A-Za-z0-9]", "", model).lower()
+            a_compact = re.sub(r"[^A-Za-z0-9]", "", alias_lower).lower()
+            if m_compact == a_compact:
+                model = None
+
+        # Chimera filter — drop the model when (vendor, model) has no KB
+        # coverage. Keep the vendor so the caller can still offer vendor-
+        # level documentation.
+        if model and tenant_id is not None:
+            covered, count = kb_has_pair_coverage(canonical, model, tenant_id)
+            if not covered:
+                logger.info(
+                    "UNS_PAIR_DROPPED canonical=%r model=%r kb_count=%d",
+                    canonical,
+                    model,
+                    count,
+                )
+                model = None
+
+        uns_path = _build_uns_path(canonical, family_token, model, fault_code, category)
+        cand = UNSContext(
+            uns_path=uns_path,
+            manufacturer=canonical,
+            manufacturer_alias=alias_lower,
+            product_family=family_token,
+            model=model,
+            fault_code=fault_code,
+            fault_code_raw=fault_raw,
+            category=category,
+            site_path=None,
+            matched_entities=[],
+            matched_kb_count=0,
+            confidence=_confidence(canonical, model, fault_code, db_confirmed=False),
+        )
+        candidates_list.append(cand)
+
+    if not candidates_list:
+        return UNSResolution(primary=legacy_primary, candidates=())
+
+    logger.info(
+        "UNS_RESOLUTION_MULTI n=%d vendors=%s",
+        len(candidates_list),
+        [c.manufacturer for c in candidates_list],
+    )
+    return UNSResolution(primary=candidates_list[0], candidates=tuple(candidates_list))
