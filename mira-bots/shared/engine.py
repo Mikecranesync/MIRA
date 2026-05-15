@@ -3006,9 +3006,7 @@ class Supervisor:
         asset = state.get("asset_identified", "")
 
         # 1) Re-extract equipment from the user's recent turns + current msg.
-        user_window = [
-            h.get("content", "") for h in history[-6:] if h.get("role") == "user"
-        ]
+        user_window = [h.get("content", "") for h in history[-6:] if h.get("role") == "user"]
         combined_for_resolve = " ".join([*user_window, message]).strip()
         uns = resolve_uns_path(combined_for_resolve)
         mfr = uns.manufacturer or ((ctx.get("uns_context") or {}).get("manufacturer") or "")
@@ -3020,15 +3018,17 @@ class Supervisor:
         kb_reason = ""
         if mfr:
             try:
-                kb_covered, kb_reason = kb_has_coverage(
-                    mfr, combined_for_resolve, resolved_tenant
-                )
+                kb_covered, kb_reason = kb_has_coverage(mfr, combined_for_resolve, resolved_tenant)
             except Exception as exc:
                 logger.warning("GENERAL_QUESTION_KB_PROBE_FAILURE error=%s", exc)
 
         logger.info(
             "GENERAL_QUESTION_GATE chat_id=%s mfr=%r model=%r kb_covered=%s reason=%r",
-            chat_id, mfr, model, kb_covered, kb_reason,
+            chat_id,
+            mfr,
+            model,
+            kb_covered,
+            kb_reason,
         )
 
         # 2) Vendor + KB coverage → answer through RAG (citations enforced).
@@ -3085,9 +3085,7 @@ class Supervisor:
                 "question yet — getting the docs requires knowing the asset."
             )
             try:
-                raw = await self._call_llm_direct(
-                    message, system=clarify_system, history=history
-                )
+                raw = await self._call_llm_direct(message, system=clarify_system, history=history)
             except Exception as exc:
                 logger.warning("GENERAL_QUESTION_CLARIFY_FAILURE error=%s", exc)
                 raw = (
