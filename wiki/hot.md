@@ -1,5 +1,24 @@
 # Hot Cache — 2026-05-15 — CHARLIE
 
+## Session — 2026-05-15 (Maintenance Namespace Builder doctrine + spec + plan landed)
+
+- **NEW PRIMARY DOCTRINE — read first for any feature work:**
+  - `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Establishes "MIRA turns everyday maintenance activity into an AI-ready factory namespace" as the primary product framing. Promoted above `mira-component-intelligence-architecture.md` (which is now positioned as implementation-level architecture).
+  - `docs/specs/maintenance-namespace-builder-spec.md` — technical contract for the product surface (UNS Location-Confirmation Gate, `ai_suggestions` + `approvals` queue, L0–L6 AI Readiness score, namespace tree editor, onboarding wizard, photo + tag ingestion API).
+  - `docs/plans/2026-05-15-maintenance-namespace-builder.md` — phased execution plan (Phase 0 docs done; Phases 1–6 across ≈14 weeks). Integrates with the 90-day MVP plan rather than replacing it.
+- **CLAUDE.md pointers updated** (root + `.claude/CLAUDE.md`) — North Star points to TOO doc as primary; the broken `uns-message-resolver-spec.md` reference is replaced by a pointer to the namespace-builder spec's UNS gate section.
+- **CORRECTION** (after `git fetch origin main` mid-session): the local main was 19+ commits behind. The UNS resolver + Stage-1 confirmation gate are **already merged** (PRs #1220, #1280, #1295, #1314). `mira-bots/shared/uns_resolver.py` + `uns_paths.py` exist on origin/main; `engine.py` calls `resolve_uns_path()` in 14+ places; the gate is at engine.py line 1316. The existing scope is **vendor / model / fault-code**; Phase 1 extends it to full **site / area / line / machine / asset / component** plant hierarchy. The TOO doc, spec, and plan were corrected mid-session to reflect this — they now describe an additive extension, not a from-scratch build. **Always run `git log main..origin/main --oneline` before claiming any UNS-related work.**
+- **In-flight coordination:** Phase 0 is doc-only and runs on `main`. Phases 1+ live on new `feat/mnb-phase-N-*` branches. The active 90-day MVP units (`feat/mvp-unit-4-exports`, `feat/mvp-unit-9a-landing`) are **not** paused — they fold into Phases 2 + 4 respectively.
+- **Marketing repositioning queued for Phase 4** (Weeks 7–8): new homepage H1 candidate "Turn your maintenance data into an AI-ready factory namespace." + new landing pages `/namespace-builder`, `/ignition`, `/ai-readiness-scan`. Coordinate with Unit 9a's branch before any merge to `mira-web/`.
+- **Open decision (resolve before Phase 1):** KG schema canonicalization — Hub `001_knowledge_graph.sql` vs. NeonDB `004_kg_entities.sql + 007_uns_path.sql`. The new spec assumes the latter (per CLAUDE.md).
+
+**To resume:**
+1. Read the three new docs in order (TOO → spec → plan).
+2. `git fetch origin main && git log main..origin/main --oneline` to see how far behind local is.
+3. Read `docs/specs/uns-message-resolver-spec.md` (the existing spec on origin/main — describes the Stage-1 gate that's already shipped).
+4. Read `mira-bots/shared/uns_resolver.py` and the engine.py UNS hook (line ~1316 on origin/main).
+5. Then coordinate with the 90-day plan's in-flight section before any code change.
+
 ## eval-fixer run — 2026-05-15
 - Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (9 days stale, unchanged since 2026-05-10)
 - Action: no-op (suppressed duplicate issue — #1217 from 2026-05-13 still covers this exact scorecard; prior dupes: #1144, #1170, #1187)

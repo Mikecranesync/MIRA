@@ -7,9 +7,12 @@
 
 ---
 
-## North Star + Strategy
-- **Technical flywheel:** `NORTH_STAR.md` — read before any feature work; every PR references which flywheel step it supports
-- **Commercial strategy:** `STRATEGY.md` — ICP, pricing tiers, GTM motion, competitive moat
+## North Star
+- **PRIMARY:** `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Read first before any feature work.
+- **Contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the namespace-builder product surface (UNS gate, AI proposals, readiness levels).
+- **Implementation-level architecture:** `docs/specs/mira-component-intelligence-architecture.md` — component templates, KG mechanics. (Self-declared "supersedes" header is historical; the TOO doc re-layers the hierarchy.)
+- **Commercial flywheel:** `NORTH_STAR.md` (still authoritative for offers + flywheel mechanics).
+- **GTM motion:** `STRATEGY.md` (still authoritative for ICP + competitive table).
 
 ## Coding Principles → `wiki/references/coding-principles.md`
 ## KANBAN Board → `wiki/references/kanban.md`
@@ -24,6 +27,7 @@
 4. **Secrets:** All via Doppler (`factorylm/prd`). Never in `.env` files committed to git.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
 6. **Commits:** Conventional format (`feat/fix/security/docs/refactor/test/chore/BREAKING`).
+7. **UNS Compliance:** All data MUST conform to the Unified Namespace (ISA-95 ltree). See `.claude/rules/uns-compliance.md`. No free-form manufacturer/model string pairs — use UNS paths or entity FKs.
 
 ---
 
@@ -139,6 +143,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Skills:** `.claude/skills/`
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
+- **Active namespace-builder plan:** `docs/plans/2026-05-15-maintenance-namespace-builder.md` — integrates with the 90-day plan (Units 2/4/9a fold in as Phase 1/2/4 components); has its own "Currently in-flight" section — check both.
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
 - **Karpathy principles (behavior rules):** `.claude/rules/karpathy-principles.md`
 - **Enforcement layer:** `docs/specs/enforcement-layer-spec.md` — Playwright audit, write-path round-trip, enum drift, spec staleness, PR template, NeonDB canary
