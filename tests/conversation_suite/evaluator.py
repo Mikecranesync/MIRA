@@ -188,7 +188,7 @@ def cp_asks_clarification_for_ambiguous(run: ScenarioRun) -> Checkpoint:
     return _checkpoint(
         "asks_clarification",
         False,
-        f"first reply lacked a question mark — engine diagnosed without asking",
+        "first reply lacked a question mark — engine diagnosed without asking",
     )
 
 

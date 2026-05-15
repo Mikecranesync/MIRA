@@ -6,19 +6,19 @@ Evaluator (evaluator.py) consumes the ScenarioRun and emits checkpoints + scores
 
 from __future__ import annotations
 
+import asyncio
+
 # IMPORTANT: import stdlib `email` (and its httpx-transitive deps) BEFORE we
 # add mira-bots to sys.path. The mira-bots/ tree contains an `email/` subpackage
 # that would otherwise shadow the stdlib module when httpx → urllib.request →
 # import email resolves.
 import email as _stdlib_email  # noqa: F401  — load before sys.path mutation
-import urllib.request as _stdlib_urllib_request  # noqa: F401
-
-import asyncio
 import logging
 import os
 import sys
 import tempfile
 import time
+import urllib.request as _stdlib_urllib_request  # noqa: F401
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
