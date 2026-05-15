@@ -1,0 +1,1242 @@
+{
+  "CRA-10": {
+    "days_since_created": 12,
+    "days_since_updated": 12,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 12,
+    "stale_confirmed": false
+  },
+  "CRA-100": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-101": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-102": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-103": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-107": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-108": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-111": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-112": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-114": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-116": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-118": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-119": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-12": {
+    "days_since_created": 12,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-121": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-122": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-125": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-128": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-131": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-132": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-133": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-135": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-136": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-137": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-138": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-139": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-140": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-141": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-142": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-143": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-144": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-145": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-146": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-147": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-148": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-150": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-152": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-153": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-154": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-155": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-156": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-157": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-158": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-159": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-160": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-161": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-162": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-163": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-164": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-165": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-166": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-167": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-168": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-169": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-175": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-176": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-177": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-178": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-179": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-180": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-181": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-183": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-185": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-186": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-187": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-188": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-191": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-193": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-194": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-195": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-196": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-197": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-198": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-199": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-200": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-201": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-202": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-206": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-207": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-208": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-209": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-210": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-211": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-212": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-213": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-214": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-215": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-216": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-219": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-221": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-225": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-227": {
+    "days_since_created": 4,
+    "days_since_updated": 4,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 4,
+    "stale_confirmed": false
+  },
+  "CRA-228": {
+    "days_since_created": 4,
+    "days_since_updated": 4,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 4,
+    "stale_confirmed": false
+  },
+  "CRA-229": {
+    "days_since_created": 4,
+    "days_since_updated": 4,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 4,
+    "stale_confirmed": false
+  },
+  "CRA-230": {
+    "days_since_created": 4,
+    "days_since_updated": 4,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 4,
+    "stale_confirmed": false
+  },
+  "CRA-243": {
+    "days_since_created": 4,
+    "days_since_updated": 4,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 4,
+    "stale_confirmed": false
+  },
+  "CRA-244": {
+    "days_since_created": 4,
+    "days_since_updated": 4,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 4,
+    "stale_confirmed": false
+  },
+  "CRA-245": {
+    "days_since_created": 4,
+    "days_since_updated": 4,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 4,
+    "stale_confirmed": false
+  },
+  "CRA-247": {
+    "days_since_created": 4,
+    "days_since_updated": 4,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 4,
+    "stale_confirmed": false
+  },
+  "CRA-250": {
+    "days_since_created": 4,
+    "days_since_updated": 4,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 4,
+    "stale_confirmed": false
+  },
+  "CRA-258": {
+    "days_since_created": 3,
+    "days_since_updated": 3,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 3,
+    "stale_confirmed": false
+  },
+  "CRA-259": {
+    "days_since_created": 3,
+    "days_since_updated": 3,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 3,
+    "stale_confirmed": false
+  },
+  "CRA-261": {
+    "days_since_created": 3,
+    "days_since_updated": 0,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 0,
+    "stale_confirmed": false
+  },
+  "CRA-262": {
+    "days_since_created": 3,
+    "days_since_updated": 3,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 3,
+    "stale_confirmed": false
+  },
+  "CRA-263": {
+    "days_since_created": 3,
+    "days_since_updated": 1,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 1,
+    "stale_confirmed": false
+  },
+  "CRA-264": {
+    "days_since_created": 3,
+    "days_since_updated": 3,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 3,
+    "stale_confirmed": false
+  },
+  "CRA-266": {
+    "days_since_created": 3,
+    "days_since_updated": 3,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 3,
+    "stale_confirmed": false
+  },
+  "CRA-267": {
+    "days_since_created": 3,
+    "days_since_updated": 3,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 3,
+    "stale_confirmed": false
+  },
+  "CRA-268": {
+    "days_since_created": 3,
+    "days_since_updated": 3,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 3,
+    "stale_confirmed": false
+  },
+  "CRA-269": {
+    "days_since_created": 3,
+    "days_since_updated": 2,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 2,
+    "stale_confirmed": false
+  },
+  "CRA-271": {
+    "days_since_created": 3,
+    "days_since_updated": 3,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 3,
+    "stale_confirmed": false
+  },
+  "CRA-272": {
+    "days_since_created": 3,
+    "days_since_updated": 3,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 3,
+    "stale_confirmed": false
+  },
+  "CRA-274": {
+    "days_since_created": 2,
+    "days_since_updated": 1,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 1,
+    "stale_confirmed": false
+  },
+  "CRA-282": {
+    "days_since_created": 0,
+    "days_since_updated": 0,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 0,
+    "stale_confirmed": false
+  },
+  "CRA-34": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-35": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-36": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-39": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-41": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-42": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-44": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-45": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-46": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-47": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-48": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-49": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-50": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-51": {
+    "days_since_created": 11,
+    "days_since_updated": 11,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 11,
+    "stale_confirmed": false
+  },
+  "CRA-61": {
+    "days_since_created": 10,
+    "days_since_updated": 10,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 10,
+    "stale_confirmed": false
+  },
+  "CRA-62": {
+    "days_since_created": 10,
+    "days_since_updated": 10,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 10,
+    "stale_confirmed": false
+  },
+  "CRA-63": {
+    "days_since_created": 10,
+    "days_since_updated": 10,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 10,
+    "stale_confirmed": false
+  },
+  "CRA-64": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-65": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-66": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-67": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-68": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-69": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-70": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-71": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-72": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-73": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-74": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-75": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-76": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-78": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-79": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-80": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-81": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-83": {
+    "days_since_created": 7,
+    "days_since_updated": 7,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 7,
+    "stale_confirmed": false
+  },
+  "CRA-86": {
+    "days_since_created": 6,
+    "days_since_updated": 6,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 6,
+    "stale_confirmed": false
+  },
+  "CRA-95": {
+    "days_since_created": 6,
+    "days_since_updated": -1,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": -1,
+    "stale_confirmed": false
+  },
+  "CRA-96": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-97": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-98": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  },
+  "CRA-99": {
+    "days_since_created": 5,
+    "days_since_updated": 5,
+    "is_stale_candidate": false,
+    "last_comment_at": null,
+    "days_since_last_comment": 5,
+    "stale_confirmed": false
+  }
+}

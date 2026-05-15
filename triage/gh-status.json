@@ -1,0 +1,506 @@
+{
+  "mira#11": {
+    "repo": "mira",
+    "num": 11,
+    "state": "CLOSED",
+    "closedAt": "2026-03-22T01:21:11Z",
+    "title": "Tighten PII sanitization regex in inference router",
+    "labels": [
+      "bot-logic",
+      "safety"
+    ]
+  },
+  "mira#541": {
+    "repo": "mira",
+    "num": 541,
+    "state": "MERGED",
+    "closedAt": "2026-04-24T10:35:29Z",
+    "title": "feat(web): Unit 3 \u2014 magic email inbox for manuals",
+    "labels": []
+  },
+  "mira#543": {
+    "repo": "mira",
+    "num": 543,
+    "state": "MERGED",
+    "closedAt": "2026-04-24T12:07:56Z",
+    "title": "feat: Unit 3.5 \u2014 magic-inbox safety gates (dedup + relevance + [force])",
+    "labels": []
+  },
+  "mira#545": {
+    "repo": "mira",
+    "num": 545,
+    "state": "MERGED",
+    "closedAt": "2026-04-24T15:20:42Z",
+    "title": "chore(saas): plumb Unit 3 + 3.5 env vars through SaaS compose (hotfix)",
+    "labels": []
+  },
+  "mira#560": {
+    "repo": "mira",
+    "num": 560,
+    "state": "MERGED",
+    "closedAt": "2026-04-24T21:47:17Z",
+    "title": "feat(web): activation email + /activated \u2014 magic-inbox contact card with mailto hotlink",
+    "labels": []
+  },
+  "mira#583": {
+    "repo": "mira",
+    "num": 583,
+    "state": "MERGED",
+    "closedAt": "2026-04-25T01:09:53Z",
+    "title": "feat(web): swap inbox vendor from Postmark to Resend Inbound (HMAC + vendor consolidation)",
+    "labels": []
+  },
+  "mira#585": {
+    "repo": "mira",
+    "num": 585,
+    "state": "MERGED",
+    "closedAt": "2026-04-25T03:01:54Z",
+    "title": "feat: magic inbox via Google Apps Script + Gmail (free, HMAC-signed)",
+    "labels": []
+  },
+  "mira#962": {
+    "repo": "mira",
+    "num": 962,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P1] (site-wide) \u2014 Console error: [hubDataProvider] NEXT_PUBLIC_PIPELINE_API_URL is unset in p",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P1"
+    ]
+  },
+  "mira#964": {
+    "repo": "mira",
+    "num": 964,
+    "state": "CLOSED",
+    "closedAt": "2026-05-13T04:26:19Z",
+    "title": "[web-review/P1] (site-wide) \u2014 1 button(s) without accessible name",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P1"
+    ]
+  },
+  "mira#965": {
+    "repo": "mira",
+    "num": 965,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P1] /admin/roles \u2014 Initial page load returned 404",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P1"
+    ]
+  },
+  "mira#967": {
+    "repo": "mira",
+    "num": 967,
+    "state": "CLOSED",
+    "closedAt": "2026-05-13T04:26:16Z",
+    "title": "[web-review/P1] /magic/ \u2014 Page has no H1",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P1"
+    ]
+  },
+  "mira#968": {
+    "repo": "mira",
+    "num": 968,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P2] (site-wide) \u2014 Missing canonical link",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P2"
+    ]
+  },
+  "mira#969": {
+    "repo": "mira",
+    "num": 969,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P2] (site-wide) \u2014 Incomplete Open Graph tags",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P2"
+    ]
+  },
+  "mira#970": {
+    "repo": "mira",
+    "num": 970,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P2] (site-wide) \u2014 6 clickable(s) did not respond within 2s",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P2"
+    ]
+  },
+  "mira#971": {
+    "repo": "mira",
+    "num": 971,
+    "state": "CLOSED",
+    "closedAt": "2026-05-10T23:49:00Z",
+    "title": "[web-review/P2] (site-wide) \u2014 Heading levels skipped",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P2"
+    ]
+  },
+  "mira#972": {
+    "repo": "mira",
+    "num": 972,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P2] (site-wide) \u2014 5 tap target(s) < 44px (mobile)",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P2"
+    ]
+  },
+  "mira#973": {
+    "repo": "mira",
+    "num": 973,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P2] /login \u2014 Lighthouse performance score 73",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P2"
+    ]
+  },
+  "mira#974": {
+    "repo": "mira",
+    "num": 974,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P3] (site-wide) \u2014 Missing twitter:card",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P3"
+    ]
+  },
+  "mira#994": {
+    "repo": "mira",
+    "num": 994,
+    "state": "CLOSED",
+    "closedAt": "2026-05-13T04:24:16Z",
+    "title": "[web-review/P1] factorylm.com \u2014 apex CSP header missing despite repo nginx config defining it (deploy drift)",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P1"
+    ]
+  },
+  "mira#995": {
+    "repo": "mira",
+    "num": 995,
+    "state": "CLOSED",
+    "closedAt": "2026-05-13T08:23:10Z",
+    "title": "[web-review/P2] app.factorylm.com/pricing \u2014 Stripe Checkout asset ERR_CONNECTION_RESET on Start Free Trial",
+    "labels": [
+      "bug",
+      "web-review",
+      "severity:P2"
+    ]
+  },
+  "mira#1032": {
+    "repo": "mira",
+    "num": 1032,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "demo(hub): Verify login + magic-link + Google OAuth on iPad Safari + Android Chrome",
+    "labels": [
+      "P0",
+      "demo-readiness"
+    ]
+  },
+  "mira#1033": {
+    "repo": "mira",
+    "num": 1033,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "demo(hub): Real data on Feed, Assets, Work Orders, Knowledge, PM Schedule \u2014 no stubs",
+    "labels": [
+      "P0",
+      "demo-readiness"
+    ]
+  },
+  "mira#1034": {
+    "repo": "mira",
+    "num": 1034,
+    "state": "CLOSED",
+    "closedAt": "2026-05-07T06:31:19Z",
+    "title": "demo(hub): Verify Create Work Order form persists end-to-end (enum fix)",
+    "labels": [
+      "P0",
+      "demo-readiness"
+    ]
+  },
+  "mira#1035": {
+    "repo": "mira",
+    "num": 1035,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "demo(hub): CMMS panel shows Atlas connection status + real WO counts",
+    "labels": [
+      "P0",
+      "demo-readiness"
+    ]
+  },
+  "mira#1036": {
+    "repo": "mira",
+    "num": 1036,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "demo(hub): Tablet QA \u2014 mobile responsive, navigation, console clean, <3s load",
+    "labels": [
+      "P0",
+      "demo-readiness"
+    ]
+  },
+  "mira#1037": {
+    "repo": "mira",
+    "num": 1037,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "demo(cmms): Atlas login + WOs + Assets + PMs visible and editable",
+    "labels": [
+      "P0",
+      "demo-readiness"
+    ]
+  },
+  "mira#1038": {
+    "repo": "mira",
+    "num": 1038,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "demo(scan): MIRA Scan camera + nameplate extraction in <5s on iPad + Android",
+    "labels": [
+      "P0",
+      "demo-readiness"
+    ]
+  },
+  "mira#1039": {
+    "repo": "mira",
+    "num": 1039,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "demo(scan): KB hit \u2192 cited chat; KB miss \u2192 real OEM manual link",
+    "labels": [
+      "P0",
+      "demo-readiness"
+    ]
+  },
+  "mira#1040": {
+    "repo": "mira",
+    "num": 1040,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "demo(telegram): Single poller, fault-code answers, photo ID, WO creation, /new reset",
+    "labels": [
+      "P0",
+      "demo-readiness"
+    ]
+  },
+  "mira#1041": {
+    "repo": "mira",
+    "num": 1041,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "demo(ops): Demo-day prep \u2014 seed data, network plan, tablets provisioned, monitoring",
+    "labels": [
+      "P0",
+      "demo-readiness"
+    ]
+  },
+  "mira#1042": {
+    "repo": "mira",
+    "num": 1042,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "demo(ops): Lockdown plan \u2014 change freeze May 18\u201322, rollback path, kill switch",
+    "labels": [
+      "P0",
+      "demo-readiness"
+    ]
+  },
+  "mira#1051": {
+    "repo": "mira",
+    "num": 1051,
+    "state": "CLOSED",
+    "closedAt": "2026-05-13T07:36:01Z",
+    "title": "P0: next-auth CLIENT_FETCH_ERROR on 18+ hub routes (audit 2026-05-07)",
+    "labels": [
+      "enforcement-audit",
+      "v3.15.0"
+    ]
+  },
+  "mira#1052": {
+    "repo": "mira",
+    "num": 1052,
+    "state": "CLOSED",
+    "closedAt": "2026-05-13T07:35:39Z",
+    "title": "P0: MIRA Scan healthz endpoint auth-gated (audit 2026-05-07)",
+    "labels": [
+      "enforcement-audit",
+      "v3.15.0"
+    ]
+  },
+  "mira#1054": {
+    "repo": "mira",
+    "num": 1054,
+    "state": "CLOSED",
+    "closedAt": "2026-05-13T07:03:45Z",
+    "title": "P1: /actions route slow paint 5.7s (audit 2026-05-07)",
+    "labels": [
+      "enforcement-audit",
+      "v3.15.0"
+    ]
+  },
+  "mira#1055": {
+    "repo": "mira",
+    "num": 1055,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "P1: provision ENFORCEMENT_TEST_BEARER in Doppler factorylm/prd (audit 2026-05-07)",
+    "labels": [
+      "enforcement-audit",
+      "v3.15.0"
+    ]
+  },
+  "mira#1056": {
+    "repo": "mira",
+    "num": 1056,
+    "state": "CLOSED",
+    "closedAt": "2026-05-13T07:36:02Z",
+    "title": "P2: hub-page-audit harness needs auth-aware mode (audit 2026-05-07)",
+    "labels": [
+      "enforcement-audit",
+      "v3.15.0"
+    ]
+  },
+  "mira#1057": {
+    "repo": "mira",
+    "num": 1057,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "P2: schedule heartbeat_monitor.py via cron on Charlie (audit 2026-05-07)",
+    "labels": [
+      "enforcement-audit",
+      "v3.15.0"
+    ]
+  },
+  "mira#1092": {
+    "repo": "mira",
+    "num": 1092,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P0] factorylm.com / \u2014 LCP 18.3s, TTI 18.3s (page unusable until loaded)",
+    "labels": []
+  },
+  "mira#1093": {
+    "repo": "mira",
+    "num": 1093,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P1] factorylm.com / \u2014 3,238 KiB image savings (no WebP, no lazy-load)",
+    "labels": []
+  },
+  "mira#1094": {
+    "repo": "mira",
+    "num": 1094,
+    "state": "CLOSED",
+    "closedAt": "2026-05-13T06:00:23Z",
+    "title": "[web-review/P1] factorylm.com / \u2014 SVG console error: <rect> attribute rx: Expected length fires on every load",
+    "labels": []
+  },
+  "mira#1095": {
+    "repo": "mira",
+    "num": 1095,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P1] factorylm.com \u2014 nginx not serving HTTP/2 (est. 710ms savings)",
+    "labels": []
+  },
+  "mira#1096": {
+    "repo": "mira",
+    "num": 1096,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "[web-review/P2] factorylm.com \u2014 3,335 KiB cache savings; static assets missing long-lived Cache-Control",
+    "labels": []
+  },
+  "mira#1115": {
+    "repo": "mira",
+    "num": 1115,
+    "state": "CLOSED",
+    "closedAt": "2026-05-13T06:18:26Z",
+    "title": "[web-review/P2] app.factorylm.com/pricing \u2014 render-blocking resources add 1,470ms to first paint",
+    "labels": [
+      "bug",
+      "plg-funnel",
+      "P2"
+    ]
+  },
+  "mira#1116": {
+    "repo": "mira",
+    "num": 1116,
+    "state": "CLOSED",
+    "closedAt": "2026-05-14T00:30:08Z",
+    "title": "[web-review/P2] app.factorylm.com/pricing \u2014 console errors on every page load",
+    "labels": [
+      "bug",
+      "plg-funnel",
+      "P2"
+    ]
+  },
+  "mira#1117": {
+    "repo": "mira",
+    "num": 1117,
+    "state": "CLOSED",
+    "closedAt": "2026-05-13T06:10:41Z",
+    "title": "[web-review/P2] app.factorylm.com/pricing \u2014 color contrast failures (Lighthouse a11y)",
+    "labels": [
+      "bug",
+      "plg-funnel",
+      "P2"
+    ]
+  },
+  "factorylm#106": {
+    "repo": "factorylm",
+    "num": 106,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "Add health check endpoint to discord relay service",
+    "labels": [
+      "post-v1"
+    ]
+  },
+  "factorylm#137": {
+    "repo": "factorylm",
+    "num": 137,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "fix(ci): brain-feed circuit breaker + watchdog + DLQ",
+    "labels": []
+  },
+  "factorylm#138": {
+    "repo": "factorylm",
+    "num": 138,
+    "state": "OPEN",
+    "closedAt": null,
+    "title": "feat(brain): remote HTTP MCP server on Charlie :8501",
+    "labels": []
+  }
+}
