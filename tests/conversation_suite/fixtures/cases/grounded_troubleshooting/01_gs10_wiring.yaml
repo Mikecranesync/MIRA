@@ -1,0 +1,15 @@
+id: grounded_gs10_wiring_01
+category: grounded_troubleshooting
+description: "Wiring Micro820 to GS10 via RS-485 — must cite KB pinout."
+expected_keywords: ["TXD+", "S+", "9600", "shielded"]
+forbidden_keywords: ["8192"]
+citation_required: true
+max_turns: 1
+asset_required: "GS10"
+anti_hallucination_check: true
+allowed_specs: ["P09.00", "P09.01", "9600", "120"]
+mock_responses: garage/wiring
+mock_kb_chunks: garage/micro820_wiring
+turns:
+  - role: user
+    content: "How do I wire the Micro820 to the GS10 VFD over RS-485?"

@@ -1,0 +1,10 @@
+id: uns_bare_broken_01
+category: uns_gate
+description: "Bare 'it's broken' — engine must ask which machine."
+clarification_required: true
+expected_keywords: ["which"]
+max_turns: 1
+mock_responses: garage/uns_gate
+turns:
+  - role: user
+    content: "it's broken"

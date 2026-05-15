@@ -1,0 +1,11 @@
+id: uns_powerflex_f004_01
+category: uns_gate
+description: "PowerFlex 525 F004 — named asset + named fault, engine should confirm + ask context."
+expected_keywords: ["PowerFlex", "F004"]
+forbidden_keywords: []
+max_turns: 1
+asset_required: "PowerFlex"
+mock_responses: garage/flow
+turns:
+  - role: user
+    content: "PowerFlex 525 F004 fault on the conveyor"
