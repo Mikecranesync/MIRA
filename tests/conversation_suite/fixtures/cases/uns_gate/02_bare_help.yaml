@@ -1,0 +1,10 @@
+id: uns_bare_help_01
+category: uns_gate
+description: "Bare 'help' — engine must ask what they need, not diagnose."
+clarification_required: true
+expected_keywords: ["which", "what"]
+max_turns: 1
+mock_responses: garage/uns_gate
+turns:
+  - role: user
+    content: "help"
