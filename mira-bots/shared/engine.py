@@ -1316,7 +1316,8 @@ class Supervisor:
             # _should_fire_uns_gate so the bypass logic is testable directly.
             if self._should_fire_uns_gate(_router_intent, state, message, sc):
                 return await self._handle_uns_confirmation_request(
-                    chat_id, message, state, uns_ctx, trace_id
+                    chat_id, message, state, uns_ctx, trace_id,
+                    tenant_id=resolved_tenant,
                 )
 
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
@@ -4085,43 +4086,98 @@ class Supervisor:
         state: dict,
         uns_ctx,
         trace_id,
+        tenant_id: str | None = None,
     ) -> dict:
         """Gate firing: ask the user to confirm or supply the equipment.
 
         Saves `pending_uns_confirm` on state["context"] so the next user turn
         is consumed by `_handle_uns_confirmation_response`.
+
+        Two-tier candidate resolution:
+          1. Tenant-scoped demo-namespace lookup — if the message references
+             an asset tag/name or component tag that exists in the tenant's
+             kg_entities / installed_component_instances, prefer that as the
+             confirmation candidate. This is the path the May 21 expo demo
+             takes ("I'm on Conveyor 001 / PE-001"). The existing UNS
+             resolver doesn't know tenant data; this fills that gap without
+             touching the resolver.
+          2. Generic manufacturer/model from `uns_ctx` — the unchanged
+             behavior for every other tenant and every other turn.
         """
         ctx = state.get("context") or {}
 
+        # Tier 1 — tenant-scoped lookup.
+        demo_match = None
+        try:
+            from .demo_namespace import resolve_demo_namespace  # noqa: PLC0415
+
+            demo_match = resolve_demo_namespace(message, tenant_id)
+        except Exception as exc:  # noqa: BLE001 — never block the gate
+            logger.debug("UNS_CONFIRM demo_namespace lookup error: %s", exc)
+            demo_match = None
+
         candidate = None
-        if getattr(uns_ctx, "manufacturer", None):
+        prompt: str
+        if demo_match and demo_match.confidence >= 0.7:
+            parts: list[str] = []
+            if demo_match.asset_name:
+                parts.append(demo_match.asset_name)
+            if demo_match.asset_tag and demo_match.asset_tag not in parts:
+                parts.append(demo_match.asset_tag)
+            if demo_match.component_name:
+                parts.append(demo_match.component_name)
+            candidate = " / ".join(parts) if parts else None
+            confidence_pct = int(round(demo_match.confidence * 100))
+            if candidate:
+                prompt = (
+                    f"Before I diagnose, confirm the equipment: **{candidate}** "
+                    f"(confidence {confidence_pct}%). "
+                    "Reply 'yes' to confirm, or tell me the correct equipment."
+                )
+            else:
+                prompt = (
+                    "Before I diagnose, I need to know the equipment. "
+                    "Tell me the asset and component you're working on."
+                )
+            # Stash the namespace match so a follow-up turn can promote it
+            # straight into asset_identified / asset_id without re-querying.
+            ctx["pending_uns_confirm"] = {
+                "candidate": candidate,
+                "demo_namespace": demo_match.as_dict(),
+            }
+        elif getattr(uns_ctx, "manufacturer", None):
+            # Tier 2 — generic manufacturer/model path (unchanged).
             candidate = uns_ctx.manufacturer
             if getattr(uns_ctx, "model", None):
                 candidate = f"{candidate}, {uns_ctx.model}"
-
-        if candidate:
             confidence_pct = int(round((getattr(uns_ctx, "confidence", 0.0) or 0.0) * 100))
             prompt = (
                 f"Before I diagnose, confirm the equipment: **{candidate}** "
                 f"(confidence {confidence_pct}%). "
                 "Reply 'yes' to confirm, or tell me the correct manufacturer and model."
             )
+            ctx["pending_uns_confirm"] = {"candidate": candidate}
         else:
             prompt = (
                 "Before I diagnose, I need to know the equipment. "
                 "Tell me the manufacturer and model "
                 "(e.g., 'Allen-Bradley PowerFlex 525')."
             )
+            ctx["pending_uns_confirm"] = {"candidate": None}
 
-        ctx["pending_uns_confirm"] = {"candidate": candidate}
         state["context"] = ctx
         self._save_state(chat_id, state)
         self._record_exchange(chat_id, state, message, prompt)
         logger.info(
-            "UNS_CONFIRM_REQUEST chat_id=%s candidate=%r confidence=%.2f",
+            "UNS_CONFIRM_REQUEST chat_id=%s candidate=%r confidence=%.2f demo_match=%s",
             chat_id,
             candidate,
-            getattr(uns_ctx, "confidence", 0.0) or 0.0,
+            (
+                demo_match.confidence
+                if demo_match
+                else (getattr(uns_ctx, "confidence", 0.0) or 0.0)
+            ),
+            bool(demo_match),
         )
         return self._make_result(
             prompt,
@@ -4153,6 +4209,13 @@ class Supervisor:
 
         if msg in _YES and candidate:
             state["asset_identified"] = candidate
+            # When the request came from the demo-namespace path, preserve
+            # the asset_id / component_id under context["confirmed_namespace"]
+            # so downstream retrieval can target the KG row directly instead
+            # of fuzzy-matching on the label.
+            demo_ns = pending.get("demo_namespace")
+            if demo_ns:
+                ctx["confirmed_namespace"] = demo_ns
             ctx.pop("pending_uns_confirm", None)
             state["context"] = ctx
             self._save_state(chat_id, state)
@@ -4161,7 +4224,12 @@ class Supervisor:
                 "(fault code, symptom, or what you're seeing)."
             )
             self._record_exchange(chat_id, state, message, reply)
-            logger.info("UNS_CONFIRM_YES chat_id=%s asset=%r", chat_id, candidate)
+            logger.info(
+                "UNS_CONFIRM_YES chat_id=%s asset=%r confirmed_namespace=%s",
+                chat_id,
+                candidate,
+                bool(demo_ns),
+            )
             return self._make_result(
                 reply,
                 "high",

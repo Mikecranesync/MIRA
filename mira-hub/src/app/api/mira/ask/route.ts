@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
+import { countTransitions } from "@/lib/signal-recorder";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,56 @@ interface SessionRow {
   asset_tag: string | null;
   component_name: string | null;
   component_plc_tag: string | null;
+}
+
+/**
+ * "How many times in the last N {seconds|minutes}" → window in seconds.
+ *
+ * Demo cases:
+ *   "how many times did I flag it in the last minute" → 60
+ *   "transitions over the last 30 seconds"             → 30
+ *   "how often in the last 5 minutes"                  → 300
+ *
+ * Returns null when no recognizable window phrase is present.
+ */
+function parseTransitionWindow(q: string): number | null {
+  const m = q
+    .toLowerCase()
+    .match(/(?:last|past)\s+(?:(\d+)\s*)?(seconds?|secs?|minutes?|mins?|minute|min|second|sec)/);
+  if (!m) {
+    // Also catch the bare "in the last minute" phrasing (no number).
+    if (/last\s+minute\b/.test(q.toLowerCase())) return 60;
+    if (/last\s+second\b/.test(q.toLowerCase())) return 1;
+    return null;
+  }
+  const n = m[1] ? Number(m[1]) : 1;
+  const unit = m[2];
+  const isMinute = unit.startsWith("min");
+  return Math.max(1, isMinute ? n * 60 : n);
+}
+
+/**
+ * True when the question implies a recurring-fault investigation worth
+ * recording as a diagnostic trend. Demo trigger phrases include
+ * "keeps shutting off", "trips frequently", "intermittent", etc.
+ */
+function mentionsRecurringFailure(q: string): boolean {
+  const lower = q.toLowerCase();
+  return [
+    "keeps shutting off",
+    "keeps tripping",
+    "keeps faulting",
+    "keeps cutting out",
+    "trips frequently",
+    "trips occasionally",
+    "intermittent",
+    "shuts off",
+    "shuts down",
+    "won't stay running",
+    "wont stay running",
+    "stops randomly",
+    "stops occasionally",
+  ].some((phrase) => lower.includes(phrase));
 }
 
 /**
@@ -91,6 +142,15 @@ export async function POST(req: Request) {
     );
   }
 
+  // ── 1b. Question-pattern parsing ─────────────────────────────────────
+  // Extract two demo-specific signals from the question text so the
+  // grounding step can pre-compute facts the LLM otherwise can't:
+  //   - transitionWindowSec: "how many times in the last N seconds/minutes"
+  //   - proposeTrend       : "keeps shutting off", "trips frequently", etc.
+  // Both are cheap heuristics — the LLM still composes the final reply.
+  const transitionWindowSec = parseTransitionWindow(body.question);
+  const proposeTrend = mentionsRecurringFailure(body.question);
+
   // ── 2. Build grounding context ────────────────────────────────────────
   const grounding = await withTenantContext(ctx.tenantId, async (c) => {
     const asset = session.asset_id;
@@ -138,7 +198,68 @@ export async function POST(req: Request) {
       )
       .then((r: { rows: Record<string, unknown>[] }) => r.rows);
 
-    return { components, edges, recentSignals, focusComponentId: component };
+    // live_signal_cache snapshot for the current state of every topic on
+    // this asset — answers "is the PLC seeing X *right now*" without
+    // scanning the event log.
+    const currentSignals = await c
+      .query(
+        `SELECT cache.plc_tag,
+                cache.last_value_text, cache.last_value_numeric, cache.last_value_bool,
+                cache.last_changed_at, cache.last_seen_at,
+                i.component_name
+           FROM live_signal_cache cache
+           LEFT JOIN installed_component_instances i ON i.id = cache.component_id
+          WHERE cache.tenant_id = $1
+            AND (i.asset_id = $2 OR cache.component_id IS NULL)
+          ORDER BY cache.last_changed_at DESC`,
+        [ctx.tenantId, asset],
+      )
+      .then((r: { rows: Record<string, unknown>[] }) => r.rows);
+
+    // Pre-compute a transition count when the user asked "how many times…"
+    let transitionFact: {
+      topic: string;
+      component_name: string | null;
+      count: number;
+      window_seconds: number;
+    } | null = null;
+    if (transitionWindowSec) {
+      // Scope to the focus component if one is set, else fall back to the
+      // first component on the asset (the demo has a clear hero — PE-001).
+      const focus =
+        (components as Array<Record<string, unknown>>).find(
+          (cmp) => cmp.id === component,
+        ) ?? (components as Array<Record<string, unknown>>)[0];
+      const focusTag = (focus?.plc_tag as string | null) ?? null;
+      const focusId = (focus?.id as string | null) ?? null;
+      if (focusTag || focusId) {
+        try {
+          const tc = await countTransitions(c, {
+            tenantId: ctx.tenantId,
+            plcTag: focusTag,
+            componentId: focusTag ? null : focusId,
+            windowSeconds: transitionWindowSec,
+          });
+          transitionFact = {
+            topic: focusTag ?? focusId ?? "",
+            component_name: (focus?.component_name as string | null) ?? null,
+            count: tc.transitions,
+            window_seconds: tc.windowSeconds,
+          };
+        } catch (err) {
+          console.warn("[api/mira/ask] countTransitions failed", err);
+        }
+      }
+    }
+
+    return {
+      components,
+      edges,
+      recentSignals,
+      currentSignals,
+      focusComponentId: component,
+      transitionFact,
+    };
   });
 
   // ── 3. Compose system prompt with citations available to model ────────
@@ -197,12 +318,39 @@ export async function POST(req: Request) {
       );
     }
   }
+  const currentSignals = (grounding as { currentSignals?: Array<Record<string, unknown>> })
+    .currentSignals;
+  if (currentSignals && currentSignals.length > 0) {
+    lines.push(``, `## Current signal state ${cite(`live_signal_cache`)}`);
+    for (const s of currentSignals) {
+      const val =
+        s.last_value_text ?? s.last_value_numeric ?? s.last_value_bool;
+      lines.push(
+        `- ${s.component_name ? `${s.component_name as string} ` : ""}(${s.plc_tag as string}) = ${String(val)} since ${s.last_changed_at as string}`,
+      );
+    }
+  }
   if (grounding.recentSignals.length > 0) {
     lines.push(``, `## Recent signal samples (last 10) ${cite(`live_signal_events`)}`);
     for (const s of grounding.recentSignals as Array<Record<string, unknown>>) {
       const val = s.value_text ?? s.value_numeric ?? s.value_bool;
       lines.push(`- ${s.created_at as string} | ${s.component_name as string} (${s.plc_tag as string}) = ${String(val)}${s.simulated ? " [SIM]" : ""}`);
     }
+  }
+  const transitionFact = (grounding as {
+    transitionFact?: {
+      topic: string;
+      component_name: string | null;
+      count: number;
+      window_seconds: number;
+    } | null;
+  }).transitionFact;
+  if (transitionFact) {
+    lines.push(
+      ``,
+      `## Transition count ${cite(`live_signal_events window function`)}`,
+      `- ${transitionFact.component_name ?? transitionFact.topic} changed value ${transitionFact.count} time(s) in the last ${transitionFact.window_seconds} second(s).`,
+    );
   }
   lines.push(
     ``,
@@ -257,11 +405,42 @@ export async function POST(req: Request) {
     ),
   );
 
+  // ── 6. Diagnostic trend proposal ─────────────────────────────────────
+  // When the question implies a recurring fault, return a `trend_proposal`
+  // payload alongside the answer. The tablet UI can render an "Open trend
+  // session" affordance from this. The trend is NOT auto-created — the
+  // tablet calls a follow-up endpoint with the user's confirmation, which
+  // keeps unsolicited writes out of diagnostic_trend_sessions.
+  let trendProposal:
+    | {
+        name: string;
+        hypothesis: string;
+        watched_topics: string[];
+        suggested_duration_seconds: number;
+      }
+    | null = null;
+  if (proposeTrend) {
+    const componentRows = grounding.components as Array<Record<string, unknown>>;
+    const watchedTopics = componentRows
+      .map((cmp) => cmp.plc_tag as string | null)
+      .filter((tag): tag is string => Boolean(tag));
+    if (watchedTopics.length > 0) {
+      trendProposal = {
+        name: `Recurring-fault watch on ${session.asset_name ?? "asset"}`,
+        hypothesis: `User reports recurring failure (\"${body.question.slice(0, 120)}\"). Watching all bound PLC tags for transitions during a ${120}-second window to localize the first edge.`,
+        watched_topics: watchedTopics,
+        suggested_duration_seconds: 120,
+      };
+    }
+  }
+
   return NextResponse.json({
     session_id: session.id,
     answer: result.content,
     provider: result.provider,
     duration_ms: result.durationMs,
     citations: citationItems,
+    transition_fact: transitionFact ?? null,
+    trend_proposal: trendProposal,
   });
 }
