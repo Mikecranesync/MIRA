@@ -100,3 +100,23 @@
 
 - Linear: hit Free tier limit (per memory) — track in GitHub issues only until resolved.
 - Issues to file after this plan lands: P3, P4, P5, P6, P7, P8 (one each).
+
+---
+
+## 2026-05-15 — Phases 4–6 status (this PR)
+
+Task brief used different numbering than the plan above; reconciling here.
+
+| Brief phase | Plan phase(s) | Status in this PR |
+|---|---|---|
+| **Brief P4: signal simulator + event store** | P5 (mock signal feed) | ✅ Migration 020 adds `live_signal_cache` (current state, keyed on `(tenant_id, plc_tag)`), `diagnostic_trend_sessions`, `diagnostic_trend_signals`. New helper `mira-hub/src/lib/signal-recorder.ts` is the single write path that fans out to events + cache and reports edge classification. Endpoints: existing `POST /api/demo/signals/toggle` now writes through the recorder; new `POST /api/demo/signals/set` (arbitrary value by plc_tag or component_id) and `GET /api/demo/signals/summary` (full cache snapshot). Transition counting lives in `countTransitions` (LAG window over the events table). |
+| **Brief P5: wire /api/mira/ask to real data** | P6 + P7 (KG handlers, intent wire-up) | ✅ The Phase 3 ask endpoint already pulled `components`, `kg_relationships`, and recent `live_signal_events`. This PR adds: cache-derived "current signal state" block, transition count injection when the question mentions "in the last N seconds/minutes", and a `trend_proposal` payload (non-creating) when the question implies a recurring fault. We deliberately did NOT add 5 named KG handlers — the existing context-injection path covers the demo's 5 question shapes and stays smaller. |
+| **Brief P6: Slack namespace gate** | P4 (Slack namespace gate) | ✅ The gate landed in PR #1280 (engine.py `_handle_uns_confirmation_request`). This PR adds the tenant-scoped lookup path: `mira-bots/shared/demo_namespace.py` matches asset tags (CV-001, PE-001…) and names ("Conveyor 001") against `kg_entities` + `installed_component_instances` for the active tenant; the gate consults it *before* the generic manufacturer/model prompt. The existing UNS resolver is untouched (no global VENDOR_ALIASES drift). When the tech confirms, the match's `asset_id`/`component_id` lands on `state["context"]["confirmed_namespace"]` so downstream retrieval can target the KG row. |
+
+Also fixed in this PR: migration 019 policies were not idempotent (no `DROP POLICY IF EXISTS`). Patched to match the pattern PR #1296 established for 017/018.
+
+Out of scope (still per the original plan or follow-up):
+- P3 tablet read API — already merged in PR #1295.
+- Real-time MQTT subscription — still mocked.
+- Promotion service from `relationship_proposals.verified` → `kg_relationships` — still direct-insert.
+- Tablet demo page (P8) — frontend, separate PR.

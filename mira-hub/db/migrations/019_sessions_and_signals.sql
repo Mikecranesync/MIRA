@@ -69,6 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_recent
 
 ALTER TABLE troubleshooting_sessions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS sessions_tenant ON troubleshooting_sessions;
 CREATE POLICY sessions_tenant
     ON troubleshooting_sessions
     USING (tenant_id = current_setting('app.tenant_id', true)::UUID
@@ -121,6 +122,7 @@ CREATE INDEX IF NOT EXISTS idx_signals_recent
 
 ALTER TABLE live_signal_events ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS signals_tenant ON live_signal_events;
 CREATE POLICY signals_tenant
     ON live_signal_events
     USING (tenant_id = current_setting('app.tenant_id', true)::UUID
