@@ -632,7 +632,9 @@ class DeepEvalRunner:
 
 
 def _print_report(result: SuiteResult) -> None:
-    pct = lambda n, d: f"{n/d*100:.1f}%" if d else "0%"
+    def pct(n: float, d: float) -> str:
+        return f"{n / d * 100:.1f}%" if d else "0%"
+
     grade_char = "✓" if result.passed / max(result.total, 1) >= 0.8 else "✗"
     overall_pct = result.passed / max(result.total, 1) * 100
 

@@ -442,8 +442,8 @@ async def monday_webhook(request: Request) -> dict[str, Any]:
     raw = await request.body()
     try:
         body = await request.json() if raw else {}
-    except Exception:
-        raise HTTPException(status_code=400, detail="invalid json body")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid json body") from exc
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="body must be a json object")
 
@@ -452,5 +452,5 @@ async def monday_webhook(request: Request) -> dict[str, Any]:
         result = await webhooks.handle_event(authorization_header=auth, body=body)
     except webhooks.WebhookInvalid as exc:
         logger.warning("webhook signature invalid: %s", exc)
-        raise HTTPException(status_code=401, detail="invalid webhook signature")
+        raise HTTPException(status_code=401, detail="invalid webhook signature") from exc
     return result

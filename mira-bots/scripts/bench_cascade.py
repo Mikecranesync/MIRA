@@ -44,7 +44,6 @@ sys.path.insert(0, os.path.join(REPO_ROOT, "mira-bots"))
 
 from shared.inference.router import get_system_prompt  # noqa: E402
 
-
 BENCH_PROMPTS = [
     "vfd faulted out, whole line stopped",
     "GS20, shows OC, trips the instant I hit run",
