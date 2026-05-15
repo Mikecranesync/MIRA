@@ -287,8 +287,10 @@ jobs:
           # Backfill scripts import the same deps as mira-hub workers.
           # Keep this list minimal — pin via requirements lookup once a
           # tools/requirements.txt exists; today they only need psycopg + httpx.
+          # psycopg2-binary needed because tools/uns_backfill.py uses bare
+          # postgresql:// URLs that SQLAlchemy resolves to the psycopg2 driver.
           python -m pip install --upgrade pip
-          pip install 'psycopg[binary]>=3.1' httpx 'sqlalchemy>=2.0'
+          pip install 'psycopg2-binary>=2.9' 'psycopg[binary]>=3.1' httpx 'sqlalchemy>=2.0'
 
       - name: Run kg_entities backfill (tools/uns_backfill.py)
         env:
