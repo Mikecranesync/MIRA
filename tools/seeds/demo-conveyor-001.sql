@@ -1,557 +1,591 @@
--- Demo seed: Conveyor 001 (Lake Wales / Assembly / Line A)
--- Spec: docs/plans/2026-05-14-demo-backend-plan.md (Phase 2)
--- North Star: every troubleshooting question must resolve to a known component
--- with confirmed namespace, PLC tag, wiring, and evidence.
+-- =============================================================================
+-- Demo Conveyor 001 — VFD-001 / PLC-001 component templates + RS-485 wiring
+-- =============================================================================
+-- Purpose : Seed MIRA's NeonDB knowledge_entries with the component-level
+--           topology of Mike's garage demo conveyor so the diagnostic
+--           engine can retrieve:
+--             - the GS10 VFD-001 "component template" (register map,
+--               RS-485 comm params, failure modes, diagnostic steps,
+--               safety notes)
+--             - the Micro820 PLC-001 component template (Modbus RTU master,
+--               CCW serial port config, MSG_MODBUS .ErrorID bands)
+--             - the PLC-001 ↔ VFD-001 RS-485 wiring relationship
+--             - the VFD-001 Modbus RTU communication relationship
+--           during the 2026-05-16 garage demo.
 --
--- Requires (in order):
---   * mira-hub/db/migrations/001_knowledge_graph.sql      (kg_entities, kg_relationships)
---   * mira-hub/db/migrations/010_kg_uns_path.sql          (ltree on kg_entities)
---   * mira-hub/db/migrations/013_external_ids.sql         (plc_tag/mqtt_topic on cmms_equipment)
---   * mira-hub/db/migrations/015_equipment_uns_path.sql   (ltree on cmms_equipment)
---   * mira-hub/db/migrations/016_component_templates.sql
---   * mira-hub/db/migrations/017_installed_component_instances.sql
---   * mira-hub/db/migrations/018_relationship_proposals.sql
+-- Target  : knowledge_entries  (NeonDB, pgvector)
+--           Schema: docs/migrations/001_knowledge_entries.sql
+--           VERIFIED DEPLOYED — currently holds 25K+ production rows.
 --
--- Safety: idempotent — every INSERT uses ON CONFLICT DO NOTHING keyed on a stable
--- natural key (entity_id, manufacturer+model+version, plc_tag, etc.). Re-running
--- against an already-seeded tenant is a no-op.
+-- WHY THIS TABLE (not kg_entities / kg_relationships):
+--   The dedicated knowledge-graph tables exist in two incompatible
+--   variants in this repo:
+--     - mira-hub/db/migrations/001_knowledge_graph.sql  → UUID tenant,
+--       source_id/target_id/relationship_type, no_self_loop CHECK, RLS.
+--     - docs/migrations/004_kg_entities.sql + 005_kg_relationships.sql
+--       → both marked "PLANNED — do not run until GraphRAG phase starts".
+--   Whichever variant is live, the diagnostic engine's live recall path
+--   is knowledge_entries (verified, with tsvector + pgvector retrieval).
+--   Encoding the topology as knowledge_entries chunks therefore guarantees
+--   the demo works regardless of GraphRAG deployment state.
 --
--- Tenant: 00000000-0000-0000-0000-0000000000d1  ("demo" tenant — d1 is mnemonic)
--- Asset:  Conveyor 001 (asset_tag = "CV-001")
--- UNS:    enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.<id>
+--   A commented-out kg_entities / kg_relationships block is included at
+--   the bottom for the day GraphRAG ships. Uncomment + adapt to the live
+--   schema then.
+--
+-- Tenant  : Set via psql variable. Default 'mike-garage-demo'.
+--
+-- Usage   :
+--   psql "$DATABASE_URL" \
+--        -v tenant_id="'mike-garage-demo'" \
+--        -f tools/seeds/demo-conveyor-001.sql
+--
+-- Idempotent: each chunk uses WHERE NOT EXISTS guarded on
+--   (tenant_id, source_url, source_page). Re-running is safe — no
+--   duplicate rows, no errors.
+--
+-- Companion seed: tools/seeds/gs10-vfd-knowledge.sql (manufacturer-level
+--   GS10 integration guide chunks). Run BOTH for a complete demo.
+-- =============================================================================
+
+\set ON_ERROR_STOP on
+\set tenant_id_default '''mike-garage-demo'''
+\set tenant_id :tenant_id_default
 
 BEGIN;
 
-SET LOCAL app.current_tenant_id = '00000000-0000-0000-0000-0000000000d1';
-
--- ─── 1. Demo tenant marker entity ────────────────────────────────────────────
--- kg_entities needs the tenant root so UNS subtree queries hit something.
-INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, properties, uns_path)
-VALUES (
-  '00000000-0000-0000-0000-0000000000d1',
-  'tenant',
-  'demo',
-  'Demo Tenant — Lake Wales',
-  jsonb_build_object('purpose', 'expo_demo', 'created_for', '2026-05-21 Florida Automation Expo'),
-  'enterprise.demo'::ltree
+-- ---------------------------------------------------------------------------
+-- Component template: VFD-001 (AutomationDirect GS10)
+-- ---------------------------------------------------------------------------
+INSERT INTO knowledge_entries (
+    id, tenant_id, source_type, manufacturer, model_number, equipment_type,
+    content, source_url, source_page, metadata,
+    is_private, verified, chunk_type, created_at
 )
-ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING;
-
-INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, properties, uns_path) VALUES
-  ('00000000-0000-0000-0000-0000000000d1', 'site', 'lake_wales', 'Lake Wales, FL',
-   jsonb_build_object('city', 'Lake Wales', 'state', 'FL'),
-   'enterprise.demo.site.lake_wales'::ltree),
-  ('00000000-0000-0000-0000-0000000000d1', 'area', 'assembly', 'Assembly Area',
-   '{}'::jsonb,
-   'enterprise.demo.site.lake_wales.area.assembly'::ltree),
-  ('00000000-0000-0000-0000-0000000000d1', 'line', 'line_a', 'Line A',
-   '{}'::jsonb,
-   'enterprise.demo.site.lake_wales.area.assembly.line.line_a'::ltree)
-ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING;
-
--- ─── 2. The asset (Conveyor 001) ─────────────────────────────────────────────
--- cmms_equipment is created by the Atlas schema (separate migration path).
--- We don't know exact column shape across all deployments, so we wrap the
--- insert in an exception handler — if the table is absent or its column set
--- doesn't match, we log a NOTICE and the rest of the seed still lands. The
--- kg_entity row for the asset (next block) is the demo-critical write.
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cmms_equipment') THEN
-    BEGIN
-      INSERT INTO cmms_equipment (id, tenant_id, name, asset_tag, manufacturer, model, serial_number,
-                                  plc_tag, scada_path, uns_topic_path, uns_path)
-      VALUES (
-        'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid,
-        '00000000-0000-0000-0000-0000000000d1'::uuid,
-        'Conveyor 001',
-        'CV-001',
-        'FactoryLM',
-        'Demo Conveyor v1',
-        'CV-001-2026-DEMO',
-        'Line5.CV001',
-        '[default]CV001',
-        'factorylm/demo/lake_wales/assembly/line_a/cv_001',
-        'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001'::ltree
-      )
-      ON CONFLICT (id) DO NOTHING;
-      RAISE NOTICE 'cmms_equipment row inserted for CV-001.';
-    EXCEPTION WHEN OTHERS THEN
-      RAISE NOTICE 'cmms_equipment insert skipped: % (column shape mismatch is OK; kg_entities still seeded)', SQLERRM;
-    END;
-  ELSE
-    RAISE NOTICE 'cmms_equipment table not present — kg_entities row will represent the asset.';
-  END IF;
-END $$;
-
--- Also record the asset in the KG so UNS subtree queries find it
-INSERT INTO kg_entities (id, tenant_id, entity_type, entity_id, name, properties, uns_path)
-VALUES (
-  'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid,
-  '00000000-0000-0000-0000-0000000000d1',
-  'equipment', 'cv_001', 'Conveyor 001',
-  jsonb_build_object(
-    'asset_tag', 'CV-001',
-    'manufacturer', 'FactoryLM',
-    'model', 'Demo Conveyor v1',
-    'serial', 'CV-001-2026-DEMO'
-  ),
-  'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001'::ltree
-)
-ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING;
-
--- ─── 3. Component templates (catalog) ────────────────────────────────────────
--- PE-001 is the demo hero: a Banner Engineering QS18VN6D photoelectric sensor.
--- Fully populated to prove the schema. Others use minimal placeholders so the
--- demo has a "verified vs proposed" contrast.
-
--- 3a. PE-001 template — Banner QS18VN6D diffuse photoelectric sensor
-INSERT INTO component_templates (
-  id, component_category, component_type, manufacturer, model, description,
-  power_specs, input_output_specs, signal_behavior, connector_type, pinout,
-  environmental_limits, diagnostic_indicators, expected_signals,
-  common_failure_modes, troubleshooting_steps, pm_checks, safety_notes,
-  recommended_uns_template, verification_status, version
-) VALUES (
-  '11111111-0001-0001-0001-000000000001'::uuid,
-  'sensor',
-  'photoelectric_sensor',
-  'Banner Engineering',
-  'QS18VN6D',
-  '18mm tubular diffuse-mode photoelectric sensor, NPN open-collector output. Common conveyor presence detection (boxes, totes, parts at 50–400 mm).',
-  jsonb_build_object(
-    'voltage_vdc_min', 10, 'voltage_vdc_max', 30, 'phase', 'DC',
-    'current_consumption_ma', 25, 'inrush_ma', 35
-  ),
-  jsonb_build_object(
-    'output_type', 'NPN open collector (dark-operate / light-operate selectable)',
-    'switching_current_ma', 150,
-    'response_time_ms', 1.0,
-    'signal_type', 'discrete'
-  ),
-  jsonb_build_object(
-    'normal_state_blocked', 'output LOW (sinking to 0 V)',
-    'normal_state_clear',   'output HIGH-Z (pulled to 24 V by PLC input)',
-    'response_time_ms', 1.0,
-    'jitter_ms', 0.2,
-    'expected_envelope_when_running', 'edges every 1.2–4.0 s (item pitch)'
-  ),
-  'M12 4-pin pico (Euro)',
-  jsonb_build_object(
-    'pin_1', '+V (brown, 10–30 VDC)',
-    'pin_2', 'not used',
-    'pin_3', '0 V (blue)',
-    'pin_4', 'OUT (black, NPN)'
-  ),
-  jsonb_build_object(
-    'operating_temp_c_min', -20, 'operating_temp_c_max', 70,
-    'ip_rating', 'IP67', 'shock_g', 30, 'vibration_g', 10
-  ),
-  jsonb_build_array(
-    jsonb_build_object('indicator', 'green_led', 'meaning', 'power on'),
-    jsonb_build_object('indicator', 'yellow_led', 'meaning', 'target detected (output active)'),
-    jsonb_build_object('indicator', 'yellow_flash_fast', 'meaning', 'marginal signal — clean lens or realign'),
-    jsonb_build_object('indicator', 'yellow_flash_slow', 'meaning', 'short-circuit overload on output')
-  ),
-  jsonb_build_array(
-    jsonb_build_object('name', 'idle_clear',     'state', 'output HIGH-Z',  'duration_s_min', 0,   'duration_s_max', 30),
-    jsonb_build_object('name', 'item_present',   'state', 'output LOW',     'duration_s_min', 0.5, 'duration_s_max', 3),
-    jsonb_build_object('name', 'edge_rising',    'transition', 'HIGH-Z → LOW within 1 ms')
-  ),
-  jsonb_build_array(
-    jsonb_build_object('mode', 'lens_dirty',        'cause', 'dust/grease film on emitter or receiver lens', 'symptom', 'output stays HIGH-Z even with target present (false clear)', 'severity', 'medium'),
-    jsonb_build_object('mode', 'misalignment',      'cause', 'mounting bracket shifted',                     'symptom', 'intermittent detection at high speed',                       'severity', 'medium'),
-    jsonb_build_object('mode', 'output_short',      'cause', 'shorted load cable',                            'symptom', 'yellow LED fast-flash; output stuck LOW',                    'severity', 'high'),
-    jsonb_build_object('mode', 'no_power',          'cause', '24V supply rail blown or cable severed',        'symptom', 'green LED off; output HIGH-Z permanently',                   'severity', 'medium'),
-    jsonb_build_object('mode', 'wrong_target_color','cause', 'matte black target absorbs IR',                'symptom', 'output never triggers on certain SKUs',                       'severity', 'low')
-  ),
-  jsonb_build_array(
-    jsonb_build_object('step', 1, 'action', 'Visually inspect green LED — power present?'),
-    jsonb_build_object('step', 2, 'action', 'Verify yellow LED transitions when an item passes — sensor seeing target?'),
-    jsonb_build_object('step', 3, 'action', 'At the PLC, watch the bound input bit for matching edges'),
-    jsonb_build_object('step', 4, 'action', 'Clean lens with soft cloth + isopropyl alcohol; re-test'),
-    jsonb_build_object('step', 5, 'action', 'Confirm M12 cable continuity pin-by-pin to PLC terminal'),
-    jsonb_build_object('step', 6, 'action', 'If yellow LED is correct but PLC bit is not, the wire or input card is the suspect')
-  ),
-  jsonb_build_array(
-    jsonb_build_object('interval', 'monthly', 'task', 'Clean lens with soft cloth'),
-    jsonb_build_object('interval', 'quarterly', 'task', 'Confirm mounting torque and alignment'),
-    jsonb_build_object('interval', 'annual',   'task', 'Inspect M12 cable jacket for abrasion')
-  ),
-  jsonb_build_array(
-    jsonb_build_object('hazard', 'low_voltage', 'note', '24 VDC class 2 — no LOTO required for this sensor itself'),
-    jsonb_build_object('hazard', 'pinch_point', 'note', 'Conveyor must be stopped before reaching into the detection zone')
-  ),
-  'enterprise.kb.banner_engineering.qs.qs18vn6d',
-  'verified',
-  1
-)
-ON CONFLICT (manufacturer, model, version) DO NOTHING;
-
-INSERT INTO component_template_sources (template_id, source_type, source_url, page_numbers, excerpt, extraction_confidence, extracted_by)
-VALUES (
-  '11111111-0001-0001-0001-000000000001'::uuid,
-  'datasheet',
-  'https://info.bannerengineering.com/cs/groups/public/documents/literature/40714.pdf',
-  '1',
-  'QS18 Series 18 mm tubular DC photoelectric sensor, NPN or PNP output, 10-30 VDC, IP67.',
-  0.95, 'human'
-)
-ON CONFLICT DO NOTHING;
-
--- 3b. GS10 VFD template (AutomationDirect)
-INSERT INTO component_templates (
-  id, component_category, component_type, manufacturer, model, description,
-  power_specs, signal_behavior, recommended_uns_template, verification_status, version
-) VALUES (
-  '11111111-0001-0001-0002-000000000001'::uuid,
-  'drive', 'variable_frequency_drive', 'AutomationDirect', 'GS10-10P2',
-  'AC variable frequency drive, 0.25 HP, 120 VAC single-phase input, 230 VAC 3-phase output. Modbus RTU on RS-485.',
-  jsonb_build_object('voltage_vac', 120, 'phase_in', 1, 'phase_out', 3, 'hp', 0.25),
-  jsonb_build_object('faults', jsonb_build_array('ocA', 'ocd', 'ocn', 'GFF', 'OUV', 'OcA-cF')),
-  'enterprise.kb.automationdirect.gs.gs10',
-  'verified', 1
-)
-ON CONFLICT (manufacturer, model, version) DO NOTHING;
-
--- 3c. Motor template (placeholder — proposed)
-INSERT INTO component_templates (id, component_category, component_type, manufacturer, model, verification_status, version)
-VALUES ('11111111-0001-0001-0003-000000000001'::uuid, 'motor', 'ac_induction_motor', 'Marathon', 'Y56C-1HP-1750', 'proposed', 1)
-ON CONFLICT (manufacturer, model, version) DO NOTHING;
-
--- 3d. PLC template (placeholder — proposed)
-INSERT INTO component_templates (id, component_category, component_type, manufacturer, model, verification_status, version)
-VALUES ('11111111-0001-0001-0004-000000000001'::uuid, 'plc', 'compact_plc', 'Allen-Bradley', 'Micro820 2080-LC20-20QWB', 'proposed', 1)
-ON CONFLICT (manufacturer, model, version) DO NOTHING;
-
--- 3e. Panel/enclosure (placeholder)
-INSERT INTO component_templates (id, component_category, component_type, manufacturer, model, verification_status, version)
-VALUES ('11111111-0001-0001-0005-000000000001'::uuid, 'enclosure', 'control_panel', 'Hoffman', 'A24H2008LP', 'proposed', 1)
-ON CONFLICT (manufacturer, model, version) DO NOTHING;
-
--- ─── 4. Installed component instances (deployment) ───────────────────────────
--- These are the rows the tablet UI and Slack engine query when grounding answers.
-INSERT INTO installed_component_instances (
-  id, tenant_id, template_id, asset_id, component_name, canonical_name, aliases,
-  installed_location, panel, terminal, wire_number, plc_tag, mqtt_topic,
-  uns_path, human_confirmed, confidence
-) VALUES
-  (
-    '22222222-0001-0001-0001-000000000001'::uuid,
-    '00000000-0000-0000-0000-0000000000d1'::uuid,
-    '11111111-0001-0001-0001-000000000001'::uuid,
-    'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid,
-    'Photoeye 1 (Item Detect)',
-    'PE-001',
-    ARRAY['Sensor 1', '_IO_EM_DI_05', 'pe1', 'photo eye 1'],
-    'Line A, infeed side, 200 mm above belt',
-    'PANEL-001',
-    'TB1-5',
-    'W-PE001-OUT',
-    '%IX0.5',
-    'factorylm/demo/lake_wales/assembly/line_a/cv_001/pe_001',
-    'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.pe_001'::ltree,
-    true, 0.95
-  ),
-  (
-    '22222222-0001-0001-0002-000000000001'::uuid,
-    '00000000-0000-0000-0000-0000000000d1'::uuid,
-    '11111111-0001-0001-0002-000000000001'::uuid,
-    'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid,
-    'GS10 VFD',
-    'VFD-001',
-    ARRAY['GS10', 'AutomationDirect drive', 'inverter'],
-    'PANEL-001 inside, top-left DIN rail',
-    'PANEL-001',
-    'TB2-1..TB2-6',
-    'W-VFD001-PWR',
-    NULL,
-    'factorylm/demo/lake_wales/assembly/line_a/cv_001/vfd_001',
-    'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.vfd_001'::ltree,
-    true, 0.90
-  ),
-  (
-    '22222222-0001-0001-0003-000000000001'::uuid,
-    '00000000-0000-0000-0000-0000000000d1'::uuid,
-    '11111111-0001-0001-0003-000000000001'::uuid,
-    'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid,
-    'Conveyor Motor',
-    'MTR-001',
-    ARRAY['motor', 'Marathon 1HP'],
-    'Drive end of conveyor frame',
-    NULL,
-    'VFD-001 OUT-T1/T2/T3',
-    'W-MTR001-PWR',
-    NULL,
-    'factorylm/demo/lake_wales/assembly/line_a/cv_001/mtr_001',
-    'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.mtr_001'::ltree,
-    true, 0.85
-  ),
-  (
-    '22222222-0001-0001-0004-000000000001'::uuid,
-    '00000000-0000-0000-0000-0000000000d1'::uuid,
-    '11111111-0001-0001-0004-000000000001'::uuid,
-    'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid,
-    'Micro820 Controller',
-    'PLC-001',
-    ARRAY['Micro820', 'controller', 'Allen-Bradley'],
-    'PANEL-001 inside, top-right DIN rail',
-    'PANEL-001',
-    'TB1, TB2 (I/O headers)',
-    NULL,
-    'Line5.CV001.Controller',
-    'factorylm/demo/lake_wales/assembly/line_a/cv_001/plc_001',
-    'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.plc_001'::ltree,
-    true, 0.95
-  ),
-  (
-    '22222222-0001-0001-0005-000000000001'::uuid,
-    '00000000-0000-0000-0000-0000000000d1'::uuid,
-    '11111111-0001-0001-0005-000000000001'::uuid,
-    'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid,
-    'Control Panel',
-    'PANEL-001',
-    ARRAY['panel', 'enclosure', 'cabinet'],
-    'Outboard of conveyor, drive-end',
-    NULL, NULL, NULL, NULL,
-    'factorylm/demo/lake_wales/assembly/line_a/cv_001/panel_001',
-    'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.panel_001'::ltree,
-    true, 0.95
-  )
-ON CONFLICT (id) DO NOTHING;
-
--- ─── 5. KG entities for each installed component ─────────────────────────────
--- Mirror of the instances so KG traversal queries hit nodes with uns_path.
-INSERT INTO kg_entities (id, tenant_id, entity_type, entity_id, name, properties, uns_path) VALUES
-  ('22222222-0001-0001-0001-000000000001'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'component', 'pe_001', 'PE-001 — Photoeye 1',
-   jsonb_build_object('template_id', '11111111-0001-0001-0001-000000000001',
-                      'plc_tag', '%IX0.5', 'aliases', jsonb_build_array('Sensor 1', '_IO_EM_DI_05')),
-   'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.pe_001'::ltree),
-  ('22222222-0001-0001-0002-000000000001'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'component', 'vfd_001', 'VFD-001 — GS10 Drive',
-   jsonb_build_object('template_id', '11111111-0001-0001-0002-000000000001'),
-   'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.vfd_001'::ltree),
-  ('22222222-0001-0001-0003-000000000001'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'component', 'mtr_001', 'MTR-001 — Conveyor Motor',
-   jsonb_build_object('template_id', '11111111-0001-0001-0003-000000000001'),
-   'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.mtr_001'::ltree),
-  ('22222222-0001-0001-0004-000000000001'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'component', 'plc_001', 'PLC-001 — Micro820',
-   jsonb_build_object('template_id', '11111111-0001-0001-0004-000000000001',
-                      'plc_tag_root', 'Line5.CV001.Controller'),
-   'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.plc_001'::ltree),
-  ('22222222-0001-0001-0005-000000000001'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'component', 'panel_001', 'PANEL-001 — Control Panel',
-   jsonb_build_object('template_id', '11111111-0001-0001-0005-000000000001'),
-   'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.panel_001'::ltree)
-ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING;
-
--- ─── 6. PLC tag entities (from variable manifest) ────────────────────────────
--- Only the 4 tags the demo questions actually traverse — full manifest load is
--- the job of tools/load_manifest_to_kg.py.
-INSERT INTO kg_entities (id, tenant_id, entity_type, entity_id, name, properties, uns_path) VALUES
-  ('33333333-0001-0001-0001-000000000005'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'plc_tag', '_IO_EM_DI_05', '%IX0.5 — Sensor 1',
-   jsonb_build_object('plc_address', '%IX0.5', 'data_type', 'BOOL',
-                      'source_device', 'Sensor', 'alias', 'Sensor 1'),
-   'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.plc_001'::ltree),
-  ('33333333-0001-0001-0001-000000000101'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'plc_tag', 'motor_speed', 'HR:101 — Motor Speed',
-   jsonb_build_object('modbus_address', 'HR:101', 'data_type', 'INT',
-                      'source_device', 'Micro 820', 'alias', 'Motor Speed'),
-   'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.plc_001'::ltree),
-  ('33333333-0001-0001-0001-000000000106'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'plc_tag', 'error_code', 'HR:106 — Error Code',
-   jsonb_build_object('modbus_address', 'HR:106', 'data_type', 'INT',
-                      'enum', jsonb_build_object('7', 'e_stop', '8', 'dir_fault', '9', 'vfd_comm_error')),
-   'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.plc_001'::ltree),
-  ('33333333-0001-0001-0001-000000000114'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'plc_tag', 'conv_state', 'HR:114 — Conveyor State',
-   jsonb_build_object('modbus_address', 'HR:114', 'data_type', 'INT',
-                      'enum', jsonb_build_object('0', 'IDLE', '1', 'STARTING', '2', 'RUNNING', '3', 'STOPPING', '4', 'FAULT')),
-   'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001.component.plc_001'::ltree)
-ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING;
-
--- ─── 7. Relationship proposals + evidence (the chain) ────────────────────────
--- Status='verified' so the demo doesn't need a review pass. Confidence 0.95
--- because every edge is human-confirmed for this seeded asset.
--- NOTE: relationship_proposals has `reasoning TEXT` (LLM rationale / human note),
--- NOT a `properties` jsonb. Structured details live on the evidence rows.
-INSERT INTO relationship_proposals (
-  id, tenant_id, source_entity_id, source_entity_type, target_entity_id, target_entity_type,
-  relationship_type, confidence, status, risk_level, requires_human_review,
-  created_by, reasoning
-) VALUES
-  -- Hierarchy: CV-001 HAS_COMPONENT each child
-  ('44444444-0001-0001-0001-000000000001'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid, 'equipment',
-   '22222222-0001-0001-0001-000000000001'::uuid, 'component',
-   'HAS_COMPONENT', 0.95, 'verified', 'low', false, 'human',
-   'PE-001 (photoeye) is bolted to Conveyor 001 frame, confirmed at bench install.'),
-  ('44444444-0001-0001-0002-000000000001'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid, 'equipment',
-   '22222222-0001-0001-0002-000000000001'::uuid, 'component',
-   'HAS_COMPONENT', 0.95, 'verified', 'low', false, 'human',
-   'VFD-001 (GS10) is the variable-speed drive for Conveyor 001.'),
-  ('44444444-0001-0001-0003-000000000001'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid, 'equipment',
-   '22222222-0001-0001-0003-000000000001'::uuid, 'component',
-   'HAS_COMPONENT', 0.95, 'verified', 'low', false, 'human',
-   'MTR-001 (Marathon 1HP) is the drive motor for Conveyor 001.'),
-  ('44444444-0001-0001-0004-000000000001'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid, 'equipment',
-   '22222222-0001-0001-0004-000000000001'::uuid, 'component',
-   'HAS_COMPONENT', 0.95, 'verified', 'low', false, 'human',
-   'PLC-001 (Micro820) is the controller for Conveyor 001.'),
-  ('44444444-0001-0001-0005-000000000001'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid, 'equipment',
-   '22222222-0001-0001-0005-000000000001'::uuid, 'component',
-   'HAS_COMPONENT', 0.95, 'verified', 'low', false, 'human',
-   'PANEL-001 is the control enclosure mounted on Conveyor 001.'),
-
-  -- Wiring: PE-001 WIRED_TO PLC tag %IX0.5
-  ('44444444-0002-0001-0001-000000000005'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   '22222222-0001-0001-0001-000000000001'::uuid, 'component',
-   '33333333-0001-0001-0001-000000000005'::uuid, 'plc_tag',
-   'WIRED_TO', 0.95, 'verified', 'medium', false, 'human',
-   'PE-001 output wires to PLC-001 input TB1-5 (wire W-PE001-OUT), bound to %IX0.5.'),
-
-  -- Tag mapping: %IX0.5 MAPS_TO PE-001
-  ('44444444-0003-0001-0001-000000000005'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   '33333333-0001-0001-0001-000000000005'::uuid, 'plc_tag',
-   '22222222-0001-0001-0001-000000000001'::uuid, 'component',
-   'MAPS_TO', 0.95, 'verified', 'low', false, 'import',
-   'Variable manifest declares _IO_EM_DI_05 alias "Sensor 1" at address %IX0.5.'),
-
-  -- Logic: %IX0.5 USED_IN_LOGIC of motor start rung
-  ('44444444-0004-0001-0001-000000000005'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   '33333333-0001-0001-0001-000000000005'::uuid, 'plc_tag',
-   'aaaaaaaa-0001-0001-0001-0000000000d1'::uuid, 'equipment',
-   'USED_IN_LOGIC', 0.90, 'verified', 'low', false, 'import',
-   'Sensor 1 (%IX0.5) participates in the item-presence gate before the motor-start permissive rung.'),
-
-  -- Power: MTR-001 POWERED_BY VFD-001
-  ('44444444-0005-0001-0001-000000000001'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   '22222222-0001-0001-0003-000000000001'::uuid, 'component',
-   '22222222-0001-0001-0002-000000000001'::uuid, 'component',
-   'POWERED_BY', 0.95, 'verified', 'high', false, 'human',
-   'VFD-001 drives MTR-001 via T1/T2/T3, 230 VAC three-phase output.'),
-
-  -- LOCATED_IN: VFD/PLC located in PANEL-001
-  ('44444444-0006-0001-0001-000000000002'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   '22222222-0001-0001-0002-000000000001'::uuid, 'component',
-   '22222222-0001-0001-0005-000000000001'::uuid, 'component',
-   'LOCATED_IN', 0.95, 'verified', 'low', false, 'human',
-   'VFD-001 mounted on top-left DIN rail inside PANEL-001.'),
-  ('44444444-0006-0001-0001-000000000004'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   '22222222-0001-0001-0004-000000000001'::uuid, 'component',
-   '22222222-0001-0001-0005-000000000001'::uuid, 'component',
-   'LOCATED_IN', 0.95, 'verified', 'low', false, 'human',
-   'PLC-001 mounted on top-right DIN rail inside PANEL-001.'),
-
-  -- Causation: vfd_comm_error TRIGGERS motor stop
-  ('44444444-0007-0001-0001-000000000009'::uuid, '00000000-0000-0000-0000-0000000000d1',
-   '33333333-0001-0001-0001-000000000106'::uuid, 'plc_tag',
-   '22222222-0001-0001-0003-000000000001'::uuid, 'component',
-   'CAUSES', 0.85, 'verified', 'medium', false, 'import',
-   'error_code=9 (VFD comms error) drops the safety contactor and stops MTR-001.')
-ON CONFLICT (id) DO NOTHING;
-
--- Evidence rows — every proposal cites at least one source.
--- Columns: proposal_id, evidence_type, source_description, page_or_location, excerpt, confidence_contribution
-INSERT INTO relationship_evidence (proposal_id, evidence_type, source_description, page_or_location, excerpt, confidence_contribution) VALUES
-  ('44444444-0002-0001-0001-000000000005'::uuid, 'manifest',
-   'research/variable-manifest.json',
-   '_IO_EM_DI_05',
-   '"name": "_IO_EM_DI_05", "alias": "Sensor 1", "address": "%IX0.5"',
-   0.45),
-  ('44444444-0002-0001-0001-000000000005'::uuid, 'technician_note',
-   'Bench install log 2026-05-10 (Mike Harper)',
-   'TB1-5',
-   'PE-001 output landed on TB1-5; continuity confirmed end-to-end.',
-   0.50),
-  ('44444444-0003-0001-0001-000000000005'::uuid, 'manifest',
-   'research/variable-manifest.json',
-   '_IO_EM_DI_05',
-   '"name": "_IO_EM_DI_05", "alias": "Sensor 1", "address": "%IX0.5"',
-   0.95),
-  ('44444444-0004-0001-0001-000000000005'::uuid, 'plc_rung',
-   'plc/Prog2.stf',
-   'motor_start_permissive',
-   'IF (sensor_1_active OR sensor_2_active) AND system_ready THEN motor_run := TRUE;',
-   0.90),
-  ('44444444-0005-0001-0001-000000000001'::uuid, 'document_page',
-   'plc/specs/phase1_ladder.md',
-   'page 1',
-   'GS10 drives 3-phase output to Marathon Y56C 1HP via T1/T2/T3.',
-   0.95),
-  ('44444444-0007-0001-0001-000000000009'::uuid, 'plc_rung',
-   'plc/Prog2.stf',
-   'vfd_comm_fault_branch',
-   'IF vfd_comm_err THEN error_code := 9; safety_contactor := FALSE;',
-   0.85)
-ON CONFLICT DO NOTHING;
-
--- ─── 8. Promoted kg_relationships (verified proposals → live graph) ──────────
--- Spec says "Nothing lands in kg_relationships until verified". The seed bypasses
--- the promotion service (still TBD) by writing verified proposals directly into
--- kg_relationships. `reasoning` becomes the canonical note; structured details
--- can be re-attached when the promotion pipeline lands (P6/follow-up PR).
-INSERT INTO kg_relationships (tenant_id, source_id, target_id, relationship_type, confidence, properties)
 SELECT
-  tenant_id,
-  source_entity_id,
-  target_entity_id,
-  relationship_type,
-  confidence,
-  jsonb_build_object('proposal_id', id, 'reasoning', reasoning, 'risk_level', risk_level)
-FROM relationship_proposals
-WHERE tenant_id = '00000000-0000-0000-0000-0000000000d1'::uuid
-  AND status = 'verified'
-ON CONFLICT DO NOTHING;
+    gen_random_uuid(),
+    :tenant_id,
+    'component_template',
+    'AutomationDirect',
+    'GS10',
+    'vfd',
+$content$
+COMPONENT TEMPLATE — VFD-001 (AutomationDirect GS10).
 
--- ─── 9. Verification ─────────────────────────────────────────────────────────
-DO $$
-DECLARE
-  v_templates INTEGER;
-  v_instances INTEGER;
-  v_entities  INTEGER;
-  v_proposals INTEGER;
-  v_evidence  INTEGER;
-  v_relationships INTEGER;
-BEGIN
-  SELECT COUNT(*) INTO v_templates FROM component_templates
-    WHERE id IN (
-      '11111111-0001-0001-0001-000000000001'::uuid,
-      '11111111-0001-0001-0002-000000000001'::uuid,
-      '11111111-0001-0001-0003-000000000001'::uuid,
-      '11111111-0001-0001-0004-000000000001'::uuid,
-      '11111111-0001-0001-0005-000000000001'::uuid
-    );
-  SELECT COUNT(*) INTO v_instances FROM installed_component_instances
-    WHERE tenant_id = '00000000-0000-0000-0000-0000000000d1'::uuid;
-  SELECT COUNT(*) INTO v_entities FROM kg_entities
-    WHERE tenant_id = '00000000-0000-0000-0000-0000000000d1'::uuid;
-  SELECT COUNT(*) INTO v_proposals FROM relationship_proposals
-    WHERE tenant_id = '00000000-0000-0000-0000-0000000000d1'::uuid;
-  SELECT COUNT(*) INTO v_evidence FROM relationship_evidence re
-    JOIN relationship_proposals rp ON rp.id = re.proposal_id
-    WHERE rp.tenant_id = '00000000-0000-0000-0000-0000000000d1'::uuid;
-  SELECT COUNT(*) INTO v_relationships FROM kg_relationships
-    WHERE tenant_id = '00000000-0000-0000-0000-0000000000d1'::uuid;
+Role           : Conveyor drive on Mike's garage demo (2026-05-16).
+Criticality    : Demo-critical — single VFD on the conveyor.
+Comm role      : Modbus RTU slave on the RS-485 trunk shared with PLC-001.
 
-  RAISE NOTICE 'Demo seed verification:';
-  RAISE NOTICE '  component_templates:                %', v_templates;
-  RAISE NOTICE '  installed_component_instances:      %', v_instances;
-  RAISE NOTICE '  kg_entities (demo tenant):          %', v_entities;
-  RAISE NOTICE '  relationship_proposals (demo):      %', v_proposals;
-  RAISE NOTICE '  relationship_evidence (demo):       %', v_evidence;
-  RAISE NOTICE '  kg_relationships (demo tenant):     %', v_relationships;
+RS-485 / MODBUS RTU COMMUNICATION PARAMETERS (must all be set before the
+drive will accept Modbus run/freq commands):
 
-  IF v_templates < 5 OR v_instances < 5 OR v_proposals < 11 OR v_relationships < 11 THEN
-    RAISE EXCEPTION 'Seed verification failed — counts below expected (templates>=5, instances>=5, proposals>=11, relationships>=11)';
-  END IF;
-END $$;
+  P00.20 = 5    Frequency command source = RS-485 (Modbus RTU).
+                Default 0 (keypad) — if left at default, writes to
+                register 0x2000 are silently ignored. **#1 failure mode.**
+  P00.21 = 5    Run command source = RS-485 (Modbus RTU).
+                Default 0 (keypad) — if left at default, writes to
+                register 0x2001 are silently ignored. **#1 failure mode.**
+  P09.00 = N    Modbus slave ID (1..254). Must match the Micro820
+                MSG_MODBUS Slave field exactly.
+  P09.01 = 2    Baud rate = 19200 bps. (Encoding: 0=4800, 1=9600,
+                2=19200, 3=38400, 4=57600, 5=115200 — confirm against
+                the manual revision printed on the drive label.)
+  P09.04 = 4    Modbus framing = RTU 8-E-1 (8 data, Even parity, 1 stop).
+                (Encoding: 0=ASCII 7-N-2, 1=ASCII 7-E-1, 2=ASCII 7-O-1,
+                3=RTU 8-N-2, 4=RTU 8-E-1, 5=RTU 8-O-1, 6=RTU 8-N-1.)
+
+Power-cycle the GS10 after changing any P00.20 / P00.21 / P09.xx —
+they are read at boot.
+
+MODBUS REGISTER MAP — WRITE (master → slave, FC 0x06 / 0x10):
+  0x2000  Frequency Reference        0.01 Hz / count (6000 = 60.00 Hz)
+                                     Requires P00.20=5.
+  0x2001  Run/Stop Command Word
+            bits 0..1 = 00 stop, 10 run, 01 jog
+            bits 4..5 = direction (00 fwd, 10 rev)
+            bit  12   = external fault trigger
+            bit  13   = fault reset (pulse 1→0)
+                                     Requires P00.21=5.
+
+MODBUS REGISTER MAP — READ (FC 0x03 / 0x04):
+  0x2100  Drive Status Word
+            bits 0..1 = run state (00 stop, 01 decel, 10 standby, 11 run)
+            bit  7    = fault active
+            bit  8    = freq reached
+            bit  12   = at command speed
+  0x2102  Output Frequency           0.01 Hz / count
+  0x2103  Output Current             0.1  A  / count
+  0x2104  DC Bus Voltage             1    V  / count
+  0x2105  Output Voltage             0.1  V  / count
+  0x2108  Heatsink Temperature       1    °C / count
+  0x2200  Fault Code (current)       0 = no fault (manual ch.6 for codes)
+
+FAILURE MODES — ranked by first-time-integration frequency:
+  1. **P00.20 / P00.21 not set to 5 (RS-485).** Reads work, writes
+     silently ignored, keypad still commands drive. Fix: set both = 5,
+     cycle power.
+  2. Baud / parity mismatch. MSG_MODBUS .ErrorID 0x0001..0x0010
+     (framing/parity reject). Fix: align CCW serial port (19200, 8-E-1)
+     with P09.01=2 and P09.04=4.
+  3. Missing 120 Ω termination at far end of trunk. Intermittent
+     ErrorID 0x0100..0x0200 (timeout). Fix: 120 Ω across D+/D- at GS10
+     end; enable Micro820 internal termination at PLC end.
+  4. D+/D- polarity swapped. 100 % timeout. Fix: swap one end. A/B
+     labelling is NOT universal — verify per nameplate.
+  5. Slave ID mismatch (P09.00 ≠ MSG_MODBUS Slave). Timeout on one
+     slave only. Fix: read P09.00 on keypad, align Micro820 config.
+  6. EMI from VFD output picked up on RS-485 pair. CRC errors under
+     load, clean when motor stops. Fix: dedicated conduit; shielded
+     twisted pair (Belden 3105A); shield grounded at PLC end ONLY.
+  7. SGND not connected across panels. Bench works, cabinet fails.
+     Fix: pull a third conductor for SGND alongside D+/D-.
+
+DIAGNOSTIC STEPS — keyed to Micro820 MSG_MODBUS .ErrorID bands:
+  .ErrorID 0x0001..0x0010  (protocol / framing)
+     → CCW serial port = 19200, 8 data, Even, 1 stop, RTU Master?
+     → GS10 P09.04 = 4 (RTU 8-E-1)?
+     → GS10 P09.01 = 2 (19200)?
+  .ErrorID 0x0100..0x0200  (timeout / wiring)
+     → D+/D- idle ~2.5 V, ~200 mV swing on traffic?
+     → P09.00 == MSG_MODBUS Slave field?
+     → 120 Ω across D+/D- at GS10 end?
+     → Swap D+/D- as the cheapest polarity test.
+  .ErrorID > 0x0200        (Modbus exception from slave)
+     → Register address valid per the map above?
+     → If write to 0x2000 / 0x2001 rejected: re-verify P00.20=5,
+       P00.21=5.
+
+SAFETY NOTES:
+  - RS-485 cable MUST be separated from VFD output (U/T1, V/T2, W/T3)
+    by ≥ 300 mm of air OR routed in a separate metallic conduit. VFD
+    PWM is the largest EMI source in the panel.
+  - RS-485 cable MUST be shielded twisted pair (Belden 3105A or
+    equivalent). Ground the shield at the PLC end ONLY — never both
+    ends (ground loop induces 60 Hz hum).
+  - Before opening the GS10 enclosure: lock out the disconnect, wait
+    5 minutes for DC bus to drain, verify < 24 VDC across PA/+ and PC/-.
+
+Manual reference: AutomationDirect GS10 User Manual, P/N GS1-M
+  (parameters: ch.5, fault codes: ch.6, wiring: ch.3).
+$content$,
+    'mira://seeds/demo-conveyor-001/VFD-001',
+    0,
+    jsonb_build_object(
+        'asset_tag', 'VFD-001',
+        'manufacturer', 'AutomationDirect',
+        'model', 'GS10',
+        'document_type', 'component_template',
+        'role', 'conveyor_drive',
+        'criticality', 'demo-critical',
+        'protocol', 'modbus_rtu',
+        'transport', 'rs485',
+        'comm_role', 'slave',
+        'required_drive_params', jsonb_build_object(
+            'P00.20', 5,
+            'P00.21', 5,
+            'P09.01', 2,
+            'P09.04', 4
+        ),
+        'register_anchors', jsonb_build_object(
+            'freq_ref',    '0x2000',
+            'run_cmd',     '0x2001',
+            'status_word', '0x2100',
+            'output_freq', '0x2102',
+            'output_amps', '0x2103',
+            'dc_bus_v',    '0x2104',
+            'fault_code',  '0x2200'
+        ),
+        'top_failure_mode', 'P00.20/P00.21 not set to RS-485',
+        'errorid_bands', jsonb_build_object(
+            '0x0001..0x0010', 'protocol/framing — parity/stop/data/mode/CRC',
+            '0x0100..0x0200', 'timeout/wiring — open/polarity/termination/slave_id/SGND',
+            '>0x0200',        'Modbus exception — illegal function/address/value'
+        ),
+        'safety_keywords', jsonb_build_array(
+            'arc_flash_DC_bus',
+            'shielded_twisted_pair_required',
+            'shield_ground_PLC_end_only',
+            'separate_conduit_from_VFD_power'
+        ),
+        'seed_source', 'tools/seeds/demo-conveyor-001.sql',
+        'seed_version', '1',
+        'seed_date', '2026-05-15'
+    ),
+    false, true, 'component_template', now()
+WHERE NOT EXISTS (
+    SELECT 1 FROM knowledge_entries
+     WHERE tenant_id = :tenant_id
+       AND source_url = 'mira://seeds/demo-conveyor-001/VFD-001'
+       AND source_page = 0
+);
+
+-- ---------------------------------------------------------------------------
+-- Component template: PLC-001 (Allen-Bradley Micro820, Modbus RTU master)
+-- ---------------------------------------------------------------------------
+INSERT INTO knowledge_entries (
+    id, tenant_id, source_type, manufacturer, model_number, equipment_type,
+    content, source_url, source_page, metadata,
+    is_private, verified, chunk_type, created_at
+)
+SELECT
+    gen_random_uuid(),
+    :tenant_id,
+    'component_template',
+    'Allen-Bradley',
+    'Micro820',
+    'plc',
+$content$
+COMPONENT TEMPLATE — PLC-001 (Allen-Bradley Micro820).
+
+Role           : Conveyor controller on Mike's garage demo (2026-05-16).
+Criticality    : Demo-critical — sole controller.
+Comm role      : Modbus RTU master on the RS-485 trunk to VFD-001.
+
+CCW (CONNECTED COMPONENTS WORKBENCH) SERIAL PORT CONFIG:
+  Project tree → Micro820 → Embedded Serial Port (or plug-in module)
+                          → Properties.
+
+    Driver            : Modbus RTU Master
+    Baud rate         : 19200
+    Data bits         : 8
+    Parity            : Even
+    Stop bits         : 1
+    Media             : RS-485
+    Response timeout  : 1000 ms (raise to 2000 ms while debugging
+                        on a noisy plant)
+    Retries           : 3
+
+  Channel number is typically Ch.2 for the embedded port and Ch.5+ for
+  plug-ins — confirm in CCW under Communication Ports. MSG_MODBUS
+  instances must reference the channel by its CCW-assigned number.
+
+MSG_MODBUS .ErrorID DECODE — these three bands cover almost every
+RS-485 / Modbus RTU fault you will see at startup:
+
+  0x0001 .. 0x0010   PROTOCOL / FRAMING — bytes arriving, malformed.
+                     Causes: parity, stop bits, data bits, mode (ASCII
+                     vs RTU), CRC mismatch.
+                     Check: CCW serial port settings vs GS10 P09.01,
+                     P09.04.
+
+  0x0100 .. 0x0200   TIMEOUT / WIRING — no response inside window.
+                     Causes: cable open, D+/D- swapped, missing 120 Ω
+                     termination, slave ID mismatch, SGND missing
+                     across panels.
+                     Check: probe D+/D- (~2.5 V idle, ~200 mV swing on
+                     traffic); P09.00 vs MSG_MODBUS Slave; terminator
+                     at GS10 end; swap D+/D- as a free polarity test.
+
+  > 0x0200           MODBUS EXCEPTION — slave rejected the request
+                     (illegal function/address/value). Comms is OK.
+                     Check: register address matches GS10 map. For
+                     write rejection on 0x2000/0x2001 specifically:
+                     re-verify GS10 P00.20=5 and P00.21=5.
+
+CANONICAL POLL EXAMPLE — read 4 live telemetry registers:
+  MSG_MODBUS
+    Slave         = P09.00 value (from GS10 keypad)
+    Function      = 0x03 (Read Holding Registers)
+    Starting addr = 0x2102 (output freq)
+    Quantity      = 4      (freq, current, dc bus, output volt)
+    Local addr    = HoldingReg[100]  (lands in HR100..HR103)
+  Retarget to 0x2200 on a 1 Hz cadence for fault polling.
+
+SAFETY NOTES:
+  - Download programs to the Micro820 with the panel disconnect
+    locked out if the program controls live equipment.
+  - The 2080-SERIALISOL plug-in offers isolated RS-485 (recommended
+    in noisy panels). The embedded port shares the PLC's reference,
+    which can pick up motor PWM noise on long shared returns.
+
+Manual reference: Rockwell Automation Micro820 Programmable Controllers
+User Manual, P/N 2080-UM005.
+$content$,
+    'mira://seeds/demo-conveyor-001/PLC-001',
+    0,
+    jsonb_build_object(
+        'asset_tag', 'PLC-001',
+        'manufacturer', 'Allen-Bradley',
+        'model', 'Micro820',
+        'document_type', 'component_template',
+        'role', 'conveyor_controller',
+        'criticality', 'demo-critical',
+        'protocol', 'modbus_rtu',
+        'transport', 'rs485',
+        'comm_role', 'master',
+        'ccw_config', jsonb_build_object(
+            'driver', 'Modbus RTU Master',
+            'baud', 19200,
+            'data_bits', 8,
+            'parity', 'Even',
+            'stop_bits', 1,
+            'media', 'RS-485',
+            'response_timeout_ms', 1000,
+            'retries', 3
+        ),
+        'function_block', 'MSG_MODBUS',
+        'errorid_bands', jsonb_build_object(
+            '0x0001..0x0010', 'protocol/framing',
+            '0x0100..0x0200', 'timeout/wiring',
+            '>0x0200',        'modbus_exception'
+        ),
+        'seed_source', 'tools/seeds/demo-conveyor-001.sql',
+        'seed_version', '1',
+        'seed_date', '2026-05-15'
+    ),
+    false, true, 'component_template', now()
+WHERE NOT EXISTS (
+    SELECT 1 FROM knowledge_entries
+     WHERE tenant_id = :tenant_id
+       AND source_url = 'mira://seeds/demo-conveyor-001/PLC-001'
+       AND source_page = 0
+);
+
+-- ---------------------------------------------------------------------------
+-- Relationship proposal: PLC-001 (Serial Port Ch.2) WIRED_TO VFD-001 (RS-485)
+-- ---------------------------------------------------------------------------
+INSERT INTO knowledge_entries (
+    id, tenant_id, source_type, manufacturer, model_number, equipment_type,
+    content, source_url, source_page, metadata,
+    is_private, verified, chunk_type, created_at
+)
+SELECT
+    gen_random_uuid(),
+    :tenant_id,
+    'relationship_proposal',
+    NULL,
+    NULL,
+    'system',
+$content$
+RELATIONSHIP PROPOSAL — PLC-001 WIRED_TO VFD-001.
+
+Topology      : Point-to-point 2-wire RS-485 + signal common, Micro820
+                serial port Ch.2 → GS10 RS+/RS-/SG terminal block.
+
+Description   : "2-wire RS-485: D+→D+, D-→D-, SGND→Common"
+
+Pinout:
+  PLC-001 Ch.2 D+ (TX+ / A)   →   VFD-001 RS+ (D+ / A)
+  PLC-001 Ch.2 D- (TX- / B)   →   VFD-001 RS- (D- / B)
+  PLC-001 Ch.2 SGND (0V)      →   VFD-001 SG  (Signal Common)
+
+Cable          : Shielded twisted pair, 22-24 AWG, 120 Ω characteristic
+                 impedance. Belden 3105A is canonical; Alpha 6412
+                 acceptable.
+
+Termination    : 120 Ω resistor across D+/D- at the GS10 end. Enable
+                 the Micro820 internal termination at the PLC end
+                 (typically a dip-switch on the serial port plug-in or
+                 the embedded port). Two terminators total — not one
+                 per device on a multi-drop bus.
+
+Shield ground  : Bond shield at the PLC end ONLY. Never both ends —
+                 a double bond creates a ground loop and induces 60 Hz
+                 hum on the RS-485 pair.
+
+Physical separation (SAFETY):
+  ≥ 300 mm of air gap or routed in a separate metallic conduit from:
+    - VFD output power (U/T1, V/T2, W/T3)
+    - DC bus wiring (PA/+, PC/-)
+    - Motor cable
+  Parallel routing with VFD output = guaranteed intermittent comms.
+
+Status         : proposal (auto-generated by demo seed; verify in the
+                 field before commissioning).
+$content$,
+    'mira://seeds/demo-conveyor-001/REL/PLC-001-WIRED_TO-VFD-001',
+    0,
+    jsonb_build_object(
+        'relation_type', 'WIRED_TO',
+        'source_entity', 'PLC-001',
+        'source_port', 'Serial Port Ch.2',
+        'target_entity', 'VFD-001',
+        'target_port', 'RS-485 terminals (RS+, RS-, SG)',
+        'description', '2-wire RS-485: D+→D+, D-→D-, SGND→Common',
+        'cable_type', 'Shielded twisted pair, 22-24 AWG, 120 Ohm (Belden 3105A or equivalent)',
+        'termination', '120 Ohm at GS10 end; Micro820 internal termination enabled at PLC end',
+        'shield_ground', 'PLC end ONLY',
+        'physical_separation_mm', 300,
+        'status', 'proposal',
+        'seed_source', 'tools/seeds/demo-conveyor-001.sql',
+        'seed_version', '1',
+        'seed_date', '2026-05-15'
+    ),
+    false, true, 'relationship_proposal', now()
+WHERE NOT EXISTS (
+    SELECT 1 FROM knowledge_entries
+     WHERE tenant_id = :tenant_id
+       AND source_url = 'mira://seeds/demo-conveyor-001/REL/PLC-001-WIRED_TO-VFD-001'
+       AND source_page = 0
+);
+
+-- ---------------------------------------------------------------------------
+-- Relationship proposal: VFD-001 COMMUNICATES_VIA Modbus RTU
+-- ---------------------------------------------------------------------------
+INSERT INTO knowledge_entries (
+    id, tenant_id, source_type, manufacturer, model_number, equipment_type,
+    content, source_url, source_page, metadata,
+    is_private, verified, chunk_type, created_at
+)
+SELECT
+    gen_random_uuid(),
+    :tenant_id,
+    'relationship_proposal',
+    NULL,
+    NULL,
+    'system',
+$content$
+RELATIONSHIP PROPOSAL — VFD-001 COMMUNICATES_VIA Modbus RTU.
+
+Description   : "Modbus RTU, Slave ID per P09.00, 19200 baud, Even parity"
+
+Bus spec:
+  Protocol           : Modbus RTU
+  Transport          : RS-485 (2-wire D+/D- + signal common)
+  Baud               : 19200 bps
+  Framing            : 8 data bits, Even parity, 1 stop bit  (RTU 8-E-1)
+  Slave ID source    : GS10 keypad parameter P09.00 (1..254 — set per
+                       multi-drop topology, default 1)
+
+Required GS10 parameters (must all be set for the bus to function):
+  P00.20 = 5  (frequency command source = RS-485)
+  P00.21 = 5  (run command source = RS-485)
+  P09.01 = 2  (19200 baud)
+  P09.04 = 4  (RTU 8-E-1)
+  (See VFD-001 component template for encoding details.)
+
+Register anchors most often used by the diagnostic engine:
+  Run / Stop command  → 0x2001
+  Frequency reference → 0x2000
+  Drive status word   → 0x2100
+  Output frequency    → 0x2102
+  Output current      → 0x2103
+  DC bus voltage      → 0x2104
+  Fault code (current)→ 0x2200
+
+Status         : proposal (auto-generated by demo seed; verify P09.00
+                 on the keypad before commissioning).
+$content$,
+    'mira://seeds/demo-conveyor-001/REL/VFD-001-COMMUNICATES_VIA-ModbusRTU',
+    0,
+    jsonb_build_object(
+        'relation_type', 'COMMUNICATES_VIA',
+        'source_entity', 'VFD-001',
+        'description', 'Modbus RTU, Slave ID per P09.00, 19200 baud, Even parity',
+        'protocol', 'Modbus RTU',
+        'transport', 'RS-485',
+        'baud', 19200,
+        'data_bits', 8,
+        'parity', 'Even',
+        'stop_bits', 1,
+        'framing', 'RTU 8-E-1',
+        'slave_id_source', 'GS10 parameter P09.00',
+        'required_drive_params', jsonb_build_object(
+            'P00.20', 5,
+            'P00.21', 5,
+            'P09.01', 2,
+            'P09.04', 4
+        ),
+        'register_anchors', jsonb_build_object(
+            'run_command', '0x2001',
+            'freq_ref',    '0x2000',
+            'status_word', '0x2100',
+            'output_freq', '0x2102',
+            'output_amps', '0x2103',
+            'dc_bus_v',    '0x2104',
+            'fault_code',  '0x2200'
+        ),
+        'status', 'proposal',
+        'seed_source', 'tools/seeds/demo-conveyor-001.sql',
+        'seed_version', '1',
+        'seed_date', '2026-05-15'
+    ),
+    false, true, 'relationship_proposal', now()
+WHERE NOT EXISTS (
+    SELECT 1 FROM knowledge_entries
+     WHERE tenant_id = :tenant_id
+       AND source_url = 'mira://seeds/demo-conveyor-001/REL/VFD-001-COMMUNICATES_VIA-ModbusRTU'
+       AND source_page = 0
+);
 
 COMMIT;
+
+-- ---------------------------------------------------------------------------
+-- GraphRAG optional block — kg_entities / kg_relationships
+-- ---------------------------------------------------------------------------
+-- The diagnostic engine's live recall path is knowledge_entries (above).
+-- The kg_entities / kg_relationships layer is a planned GraphRAG enhancement
+-- with two incompatible schema variants observed in this repo:
+--
+--   A) mira-hub/db/migrations/001_knowledge_graph.sql
+--      UUID tenant_id, source_id/target_id, relationship_type,
+--      no_self_loop CHECK, RLS on app.current_tenant_id.
+--
+--   B) docs/migrations/004_kg_entities.sql + 005_kg_relationships.sql
+--      TEXT tenant_id, source_entity/target_entity, relation_type,
+--      no RLS, no self-loop CHECK. (Both marked "PLANNED — do not run".)
+--
+-- Before uncommenting either block: confirm the live schema with
+--   psql "$DATABASE_URL" -c "\d kg_entities" -c "\d kg_relationships"
+-- and pick the matching variant.
+--
+-- ============ Variant A: mira-hub UUID schema ============
+-- SET LOCAL app.current_tenant_id = :tenant_id::uuid;
+--
+-- INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, properties)
+-- VALUES (:tenant_id::uuid, 'component', 'VFD-001',
+--         'GS10 VFD — Conveyor Drive (VFD-001)',
+--         '{"manufacturer":"AutomationDirect","model":"GS10",
+--           "role":"conveyor_drive"}'::jsonb)
+-- ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING;
+--
+-- INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, properties)
+-- VALUES (:tenant_id::uuid, 'component', 'PLC-001',
+--         'Micro820 PLC — Conveyor Controller (PLC-001)',
+--         '{"manufacturer":"Allen-Bradley","model":"Micro820",
+--           "role":"conveyor_controller"}'::jsonb)
+-- ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING;
+--
+-- -- For COMMUNICATES_VIA we need a third entity (no self-loops).
+-- INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, properties)
+-- VALUES (:tenant_id::uuid, 'comm_bus', 'BUS-RS485-001',
+--         'RS-485 Modbus RTU trunk (PLC-001 Ch.2 ↔ VFD-001)',
+--         '{"protocol":"Modbus RTU","transport":"RS-485",
+--           "baud":19200,"framing":"RTU 8-E-1"}'::jsonb)
+-- ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING;
+--
+-- INSERT INTO kg_relationships
+--        (tenant_id, source_id, target_id, relationship_type, properties)
+-- SELECT :tenant_id::uuid, plc.id, vfd.id, 'WIRED_TO',
+--        '{"description":"2-wire RS-485: D+→D+, D-→D-, SGND→Common",
+--          "status":"proposal"}'::jsonb
+--   FROM kg_entities plc, kg_entities vfd
+--  WHERE plc.tenant_id = :tenant_id::uuid AND plc.entity_id = 'PLC-001'
+--    AND vfd.tenant_id = :tenant_id::uuid AND vfd.entity_id = 'VFD-001';
+--
+-- INSERT INTO kg_relationships
+--        (tenant_id, source_id, target_id, relationship_type, properties)
+-- SELECT :tenant_id::uuid, vfd.id, bus.id, 'COMMUNICATES_VIA',
+--        '{"description":"Modbus RTU, Slave ID per P09.00, 19200 baud, Even parity",
+--          "status":"proposal"}'::jsonb
+--   FROM kg_entities vfd, kg_entities bus
+--  WHERE vfd.tenant_id = :tenant_id::uuid AND vfd.entity_id = 'VFD-001'
+--    AND bus.tenant_id = :tenant_id::uuid AND bus.entity_id = 'BUS-RS485-001';
+--
+-- ============ Variant B: docs-migrations TEXT schema ============
+-- Replace the column names (source_id→source_entity, target_id→target_entity,
+-- relationship_type→relation_type) and drop the ::uuid casts; the BUS-RS485-001
+-- bridge entity is optional (no CHECK constraint on self-loops in variant B).
+-- ---------------------------------------------------------------------------
+
+-- Verification (run manually after \i'ing this file):
+--
+--   SELECT chunk_type, metadata->>'asset_tag' AS tag,
+--          metadata->>'relation_type' AS rel,
+--          length(content) AS content_len
+--     FROM knowledge_entries
+--    WHERE tenant_id = :tenant_id
+--      AND source_url LIKE 'mira://seeds/demo-conveyor-001/%'
+--    ORDER BY chunk_type, source_url;
+--
+-- Expect 4 rows: 2 component_template, 2 relationship_proposal.
