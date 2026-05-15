@@ -288,7 +288,7 @@ jobs:
           # Keep this list minimal — pin via requirements lookup once a
           # tools/requirements.txt exists; today they only need psycopg + httpx.
           python -m pip install --upgrade pip
-          pip install 'psycopg[binary]>=3.1' httpx
+          pip install 'psycopg[binary]>=3.1' httpx 'sqlalchemy>=2.0'
 
       - name: Run kg_entities backfill (tools/uns_backfill.py)
         env:
