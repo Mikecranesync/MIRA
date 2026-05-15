@@ -80,9 +80,10 @@ jobs:
             echo "::error::DOPPLER_TOKEN secret not set. Create a service token at https://dashboard.doppler.com (factorylm/prd) and run: gh secret set DOPPLER_TOKEN"
             exit 1
           fi
-          DATABASE_URL="$(doppler secrets get DATABASE_URL --project factorylm --config prd --plain)"
+          # Doppler key is NEON_DATABASE_URL in factorylm/prd (no plain DATABASE_URL).
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::DATABASE_URL empty after Doppler fetch — token scope wrong?"
+            echo "::error::NEON_DATABASE_URL empty after Doppler fetch — token scope wrong?"
             exit 1
           fi
           # Mask it so it never leaks to the log if a later step echoes env.
