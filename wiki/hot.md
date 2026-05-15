@@ -1,4 +1,9 @@
-# Hot Cache — 2026-05-13 — CHARLIE
+# Hot Cache — 2026-05-15 — CHARLIE
+
+## eval-fixer run — 2026-05-15
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (9 days stale, unchanged since 2026-05-10)
+- Action: no-op (suppressed duplicate issue — #1217 from 2026-05-13 still covers this exact scorecard; prior dupes: #1144, #1170, #1187)
+- Same 9 fixtures, same 3 file_clusters (engine.py×7, guardrails.py×3, prompts×3). No new signal — nightly eval job is stalled. Action needed: regenerate scorecard or land a fix on one of the open issues before the next eval-fixer run will produce signal.
 
 ## eval-fixer run — 2026-05-13
 - Scorecard: 48/57 passing (84%) — source: `tests/eval/runs/2026-05-06T0833-offline-text.md` (unchanged since 2026-05-12)
