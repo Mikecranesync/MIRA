@@ -1,75 +1,112 @@
-# PLAN — UNS Message Resolver (single extraction point)
+# PLAN — feat/demo-may21-finish (continuation of HANDOFF_2026-05-15.md)
 
-**Status:** Active (2026-05-13)
-**Branch:** `claude/elated-margulis-ac0926`
-**Scope:** `mira-bots/shared/uns_resolver.py` (new), `mira-bots/shared/engine.py`,
-`mira-bots/shared/workers/rag_worker.py`, `mira-bots/shared/dialogue_state.py`,
-`mira-bots/shared/dialogue_acts.py`, `tests/test_uns_resolver.py` (new),
-`docs/specs/uns-message-resolver-spec.md` (new), `.claude/rules/uns-compliance.md` (new)
-**Out-of-scope:** FSM, DST, LLM cascade, response formatting, any UI; the DST plan
-in `PLAN.dst.md` is a separate concern — do not modify those files except where
-they import from `guardrails.vendor_name_from_text` or call `_looks_like_model_number`.
-**Constraints:** No new dependencies, Python 3.12, ruff clean, reuse
-`mira-crawler/ingest/uns.py` path builders. Net-negative LOC target.
+**Status:** Active (2026-05-15 evening)
+**Branch:** `feat/demo-may21-finish` (off `origin/main` HEAD `1c0c2413`)
+**Worktree:** `.claude/worktrees/demo-may21-finish/`
+**Master plan file:** `/Users/charlienode/.claude/plans/handoff-written-mira-handoff-2026-05-15-swirling-crayon.md`
+**Source handoff:** `~/MIRA/HANDOFF_2026-05-15.md`
+
+> The PLAN.md from `main` (UNS Message Resolver, 2026-05-13) is preserved on
+> `main` and recoverable via `git show origin/main:PLAN.md`. This file is
+> THIS branch's scope contract, per the autonomous-run skill.
 
 ---
 
-## Why
+## In-scope (this session)
 
-`mira-bots/shared/engine.py` has 14 separate extraction sites that call
-`vendor_name_from_text()` and `_looks_like_model_number()` on `message`,
-`combined`, or `asset_id`. They don't share results, they disagree on edge
-cases (numeric-only models, fault codes captured as models), and they re-run
-the same regex work several times per turn. Mike's exact regression case
-*"I have a powerflex 525 and it has it called f0004"* fails because:
+1. **PR #1297** (psycopg v3 `add_notice_handler` for seed runner). Confirmed
+   NOT superseded by #1311/#1312. Merge if lint/unit/security all green and
+   the E2E smoke failure is pre-existing on `main`; otherwise comment.
 
-- `vendor_name_from_text` picks up `"powerflex"` → `"Rockwell Automation"` ✓
-- `_looks_like_model_number` returns `"f0004"` because it ranges left-to-right
-  and accepts the first letter+digit token — the *fault code is captured as
-  the model*
-- `"525"` (the real model) is rejected — letters-only check fails
+2. **PR #1314** (`fix/uns-pair-coverage-multi-vendor`). MERGEABLE but
+   `Lint & Format` step failing. Fix locally with ruff, push, merge.
 
-One UNS-aware resolver, called once at the top of `process()`, produces one
-canonical `UNSContext` for the turn. All 14 sites read from it.
+3. **PR #1313** (`claude/romantic-wescoff-290da1`, OEM-manual seed for the
+   garage RS-485 commissioning gap — closes part of #1308). CONFLICTING.
+   Rebase, resolve, push `--force-with-lease`, merge.
 
-## Numbered tasks
+4. **PR #1315** (`claude/crazy-ardinghelli-acc976`, adapter-agnostic
+   conversation testing harness, 36 cases). CONFLICTING. Rebase, resolve,
+   push, merge.
 
-1. **Spec + rule docs** — `docs/specs/uns-message-resolver-spec.md` and
-   `.claude/rules/uns-compliance.md`. Both short, both reference the resolver
-   module as the single extraction point.
-2. **`uns_resolver.py`** — `UNSContext` dataclass, `resolve_uns_path()`
-   function, `VENDOR_ALIASES` table, `FAULT_PATTERNS` list. Must work offline
-   (no NeonDB) — alias table is the floor.
-3. **`tests/test_uns_resolver.py`** — 30+ cases, must include Mike's exact
-   regression case and the pure-digit-model case. Run with
-   `python -m pytest tests/test_uns_resolver.py -v`.
-4. **Wire into `Supervisor.process()`** — one call near the top. Merge with
-   prior `state["uns_context"]` to preserve carry-over.
-5. **Replace extraction sites** — 14 in `engine.py`, 1 each in `rag_worker.py`,
-   `dialogue_state.py`, `dialogue_acts.py`. Batch by region, commit each batch.
-6. **`rag_worker` KB scoping** — use `uns_context.manufacturer` for the
-   cross-vendor filter, and `uns_path` for entity-scoped knowledge_entries
-   queries when available.
-7. **Run gates** — `ruff check`, `pytest tests/test_uns_resolver.py`, the
-   existing `tests/eval/bot_regression.py` cases, and Mike's exact regression
-   message must resolve to `mfr="Rockwell Automation", model="525",
-   fault="F0004"`.
-8. **Commit, push, PR, merge**.
+5. **(REVISED — Phase 7 dropped, see below.)** The demo backend plan
+   (`docs/plans/2026-05-14-demo-backend-plan.md` line 94) **explicitly
+   defers** real-time MQTT subscription for the May 21 demo: *"What this
+   plan deliberately does NOT do: Real-time MQTT subscription (deferred —
+   mock feed for demo)."* The 2026-05-15 addendum confirms Plan P5 (mock
+   signal feed via `live_signal_cache` + `signal-recorder.ts`) and Plan P7
+   (engine + intent wire-up via existing context-injection path) are
+   already DONE in #1295 + #1298. Building an MQTT pipeline now would
+   contradict the spec — STOP condition fired and re-planned. The handoff's
+   "Phase 7" appears to have been an aspirational item not aligned with the
+   plan's deliberate deferral.
 
-## Success criteria
+6. **Demo P8 — tablet demo page.** Per
+   `docs/plans/2026-05-14-demo-backend-plan.md` row P8: single page, 3
+   panels — live signals (polling `GET /api/demo/signals/summary`),
+   KG/component card (`GET /api/demo/customer` + `GET /api/components/[id]`),
+   Slack-like chat embedded (`POST /api/mira/ask`). Path:
+   `mira-hub/src/app/demo/conveyor/[tag]/page.tsx` (plan's `mira-web/`
+   reference is a typo — all 11 endpoints live in `mira-hub`). Reuses Hub
+   design tokens (shadcn/ui already present). Playwright snapshots at
+   iPad sizes (1024×768 landscape + 820×1180 portrait, per plan's
+   verification gate) committed to `docs/promo-screenshots/`.
 
-- All 14 `engine.py` extraction sites reduced to `state["uns_context"]` reads.
-- `vendor_name_from_text` and `_looks_like_model_number` no longer imported in
-  `engine.py`, `rag_worker.py`, `dialogue_state.py`, `dialogue_acts.py`.
-- `tests/test_uns_resolver.py` ≥ 30 cases, all pass.
-- Mike's exact regression case resolves correctly (see test 1 in the suite).
-- `ruff check` passes.
-- `tests/eval/bot_regression.py` does not regress vs main baseline.
-- Net diff is negative LOC.
+7. **Open the session PR + write `HANDOFF_2026-05-15-evening.md`** —
+   row-by-row done/skipped, deferred-to-operator list, exact resume command.
 
-## Hard stops
+---
 
-- A reviewer-style data-integrity issue surfaces → stop, fix, re-gate.
-- 5 consecutive failing test runs on the same case → stop, write HANDOFF.
-- Out-of-scope file modified accidentally → revert that file, do not "while
-  I'm here".
+## Out-of-scope (DEFERRED to operator — Mike). Editing these = STOP.
+
+| Item | Why deferred |
+|---|---|
+| VPS deploy of #1306 mira-hub middleware | SSH to VPS; `prod-guard.sh` blocks |
+| VPS bring-up of `mira-mcp` (#1304) | Same |
+| Verify migrations 014–018 on prod NeonDB (#1305) | VPS-side smoke required |
+| VPS bot restart for GS10/Micro820 KB (#1308) | Same |
+| Stripe test → live keys in Doppler `factorylm/prd` | Live billing; explicit Mike approval needed |
+| Slack Messages Tab enable | Manual Slack admin UI click |
+| Physical conveyor + Micro820 boot procedure on-site | Hardware, on-site |
+| #1284 (Bravo Mac Docker daemon) | Different node |
+| Triage of older P0s (#1284, #1201, #1200, #1158, etc.) | Not coding work |
+| Closing the 25+ older conflicting PRs | Mike's explicit instruction: don't |
+
+---
+
+## Stop conditions (per `.claude/skills/autonomous-run/SKILL.md`)
+
+- All 7 in-scope items complete → write evening HANDOFF, stop
+- Token usage > 70%, or turn count > 200 → stop, HANDOFF
+- Edit would touch an OUT-of-scope path → STOP
+- Phase 7 reference plan reveals fundamentally different architecture → re-plan
+- 5 consecutive turns failing the same test → stop
+- Pre-merge reviewer-style issue surfaces → stop, fix, re-run gates
+
+---
+
+## Verification gates
+
+| Step | Gate |
+|---|---|
+| 1–4 | `gh pr checks <num>` green; merge via `gh pr merge --squash` |
+| 5 | Mosquitto + simulator + poller running locally; `wscat` against `/api/demo/ws` shows ticking values |
+| 6 | `bun run test:e2e -- demo-conveyor-001` passes; both screenshots committed |
+| 7 | `gh pr checks` green on session PR; HANDOFF committed |
+
+`tools/hooks/stop-gate.sh` runs on Stop — don't bypass with `MIRA_SKIP_STOP_GATE=1`.
+
+---
+
+## Path corrections vs handoff
+
+- `mira-hub/app/api/...` → **`mira-hub/src/app/api/...`**
+- `mira-hub/migrations/` → **`mira-hub/db/migrations/`**
+- `seeds/2026-05-1?_*.sql` → **`tools/seeds/{gs10-vfd-knowledge,gs11-field-guide-knowledge,demo-conveyor-001}.sql`**
+- `docs/plans/2026-05-15-may-21-demo-8-phase-plan.md` → **`docs/plans/2026-05-14-demo-backend-plan.md`**
+- `docs/runbooks/may-21-demo-physical-conveyor.md` → does NOT exist on `origin/main`
+
+The 11 demo endpoints (all created in #1295 commit `94b6ca33`):
+`demo/customer`, `demo/signals/{events,set,summary,toggle}`, `mira/ask`,
+`assets/[id]/{context,signals}`, `components/[id]`,
+`sessions/{confirm,[id]}`, `documents/{,upload}`.
