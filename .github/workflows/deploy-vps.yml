@@ -83,7 +83,7 @@ jobs:
           echo "mira-pipeline health: $STATUS"
           if [ "$STATUS" != "ok" ]; then
             echo "WARNING: health check returned $STATUS — check container logs"
-            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=20 mira-pipeline-saas
+            doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml logs --tail=20 mira-pipeline
             exit 1
           fi
 
