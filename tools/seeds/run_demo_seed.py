@@ -65,12 +65,14 @@ def run_seed(commit: bool) -> None:
     raw_sql = SEED_FILE.read_text(encoding="utf-8")
     sql = _strip_outer_tx(raw_sql)
     log.info("Connecting to NeonDB...")
+    notices: list[str] = []
     with psycopg.connect(get_database_url(), autocommit=False) as conn:
+        conn.add_notice_handler(lambda diag: notices.append(diag.message_primary or ""))
         with conn.cursor() as cur:
             log.info("Applying %s (%d bytes, outer BEGIN/COMMIT stripped)...", SEED_FILE.name, len(sql))
             cur.execute(sql)
-            for diag in conn.notices or []:
-                log.info("PG NOTICE: %s", diag.strip())
+            for msg in notices:
+                log.info("PG NOTICE: %s", msg.strip())
         if commit:
             conn.commit()
             log.info("✔ Seed committed.")
