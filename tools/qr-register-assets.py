@@ -24,7 +24,6 @@ import argparse
 import csv
 import os
 import sys
-import uuid as uuid_mod
 
 
 def connect():
@@ -38,14 +37,14 @@ def connect():
 def register(conn, tenant_id: str, tags: list[tuple[str, str]]) -> int:
     cur = conn.cursor()
     inserted = 0
-    for asset_tag, asset_name in tags:
+    for asset_tag, _asset_name in tags:
         cur.execute(
             """
-            INSERT INTO asset_qr_tags (id, tenant_id, asset_tag, asset_name, created_at)
-            VALUES (%s, %s, %s, %s, NOW())
+            INSERT INTO asset_qr_tags (tenant_id, asset_tag, atlas_asset_id)
+            VALUES (%s, %s, 0)
             ON CONFLICT (tenant_id, asset_tag) DO NOTHING
             """,
-            (str(uuid_mod.uuid4()), tenant_id, asset_tag, asset_name or asset_tag),
+            (tenant_id, asset_tag),
         )
         if cur.rowcount:
             inserted += 1
