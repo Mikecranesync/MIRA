@@ -1,8 +1,29 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-15
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-15
+
+### Most actionable pattern for MIRA playbook
+
+MaintainX's survey-report-as-launch-vehicle (May 5) is directly stealable: a MIRA "State of Industrial Diagnostics" report built from anonymized tenant data could claim the same authority position. Notion's workspace-to-platform pivot hook — "a place to work in → a place to build on" — is the cleanest two-act framing seen for a tool graduating from end-user product to developer API.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — "The State of Industrial Maintenance 2026" webinar (May 5, 2026): https://www.youtube.com/watch?v=b7SPyhyY9-c — authority pivot via survey data; 2,234 respondents; claims 58% AI adoption and 75% measurable ROI in <6 months; webinar co-hosted with SMRP Chairman; not a product demo — new GTM pattern for CMMS (report-led launch)
+- **MaintainX** — Facebook report launch video (May 5, 2026): https://www.facebook.com/getMaintainX/videos/the-2026-state-of-industrial-maintenance-report-is-here-we-surveyed-2200-mainten/1862973987721444/ — co-founder Nick Haase + SMRP chairman panel; social proof via volume of survey respondents
+
+**Predictive maintenance**
+- **Augury** — C1D1/C2D1 hazardous-environment webinar (May 14, 2026): no standalone YouTube URL confirmed; Fred Wasden PhD PE + Andrew Pry; category expansion: "always-on PdM now reaches C1D1/C2D1 environments without shutdowns, conduit runs, or operational disruption"; HazLoc/ATEX-certified areas; [transcript not verified — webinar invite-based]
+
+**B2B SaaS (pattern transfer)**
+- **Notion 3.5** — "Introducing Notion's Developer Platform: Keynote" (May 13, 2026): https://www.youtube.com/watch?v=rpE2rzKO6L0 — CEO Ivan Zhao; hook: "Notion used to be a place to work in. Now it's a place to build on."; event: "Make with Notion: Developer Platform" livestream; introduces Notion Workers (serverless sandbox), External Agent API (Claude/Codex/Decagon integrations out of the box), Database Sync (any API-enabled source to Notion DB); biggest position shift since Notion 3.0 Agents
+- **Figma** — "Release Notes 2026: May Edition" (published ~May 8, 2026): https://www.youtube.com/watch?v=11mdb7lLclM — "co-designing with AI agents"; introduces Figma Make Skills (markdown convention files that define agent workflows, callable via slash command); recurring release-notes format; length not verified; [transcript not verified]
 
 ---
 
@@ -86,6 +107,16 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
+**State of Industrial Maintenance 2026 webinar (May 5, 2026)**
+- YouTube: https://www.youtube.com/watch?v=b7SPyhyY9-c
+- Facebook: https://www.facebook.com/getMaintainX/videos/the-2026-state-of-industrial-maintenance-report-is-here-we-surveyed-2200-mainten/1862973987721444/
+- Panelists: Nick Haase (co-founder) + Dan Anderson (SMRP Chairman)
+- Format: live webinar tied to annual industry report; 2,234 survey respondents across US + Canada
+- Key claims: 58% of maintenance teams now using AI; 75% report measurable ROI in under 6 months
+- Not a product demo — positions MaintainX as industry authority via third-party data
+- CTA: report download + demo
+- Pattern note: report-as-launch-vehicle is a new MaintainX GTM move; previously all feature/product demos
+
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
 ---
@@ -144,7 +175,15 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Distribution: Bloomberg Originals Genbiz Video Series — third-party credibility format
 - Footage style: real factory floor + exec interviews
 
-**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+**C1D1/C2D1 hazardous-environment webinar (May 14, 2026)**
+- No standalone YouTube URL confirmed; invite-based webinar
+- Panelists: Fred Wasden PhD PE + Andrew Pry
+- Claim: "always-on predictive maintenance now reaches C1D1/C2D1 environments without shutdowns, conduit runs, or operational disruption"
+- Targets: explosive-atmosphere zones (ATEX/HazLoc certified); previously too dangerous to instrument continuously
+- Framing: same category-creation playbook as Ultra Low RPM — find the hardest corner of the market, claim it first
+- [transcript not verified]
+
+**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM, C1D1 hazardous environments) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
 
 ---
 
@@ -340,6 +379,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Notion 3.5: Developer Platform keynote (May 13, 2026)**
+- URL: https://www.youtube.com/watch?v=rpE2rzKO6L0
+- Title: "Introducing Notion's Developer Platform: Keynote"
+- Event: "Make with Notion: Developer Platform" — livestreamed launch
+- Presenter: Ivan Zhao (CEO + co-founder)
+- Hook: "Notion used to be a place to work in. Now it's a place to build on." [search-derived]
+- Features: Notion Workers (serverless code sandbox), External Agent API (Claude/Codex/Decagon integrations), Database Sync (any API → Notion DB, no servers)
+- Coverage: TechCrunch, Dataconomy, BetaNews; positioned as orchestration layer for multi-agent workflows
+- CTA: Workers free in beta through Aug 2026; then Notion credits
+- Pattern note: clean two-act hook ("used to be X → now Y") for a product expanding from end-user tool to developer platform; the workspace-to-hub positioning is a direct escalation from 3.0 Agents
+
 ---
 
 ### Figma
@@ -354,6 +404,15 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Release Notes 2026: May Edition (published ~May 8, 2026)**
+- URL: https://www.youtube.com/watch?v=11mdb7lLclM
+- Format: monthly release notes video (recurring series)
+- Framing: "co-designing with AI agents" — language shift from feature-demo to AI-native workflow
+- Introduces Figma Make Skills: markdown files that define agent conventions + workflows, callable via slash command inside Make
+- Also covers: vibe-coded prototypes extension, design-system-to-code connector, desktop-app tab management improvements
+- Length: not verified; [transcript not verified]
+- Pattern note: Figma's monthly release notes series has adopted "AI co-design" as the consistent frame; the Make Skills pattern (markdown → agent instruction) mirrors the Claude Code skills pattern exactly
 
 ---
 
@@ -392,9 +451,18 @@ No video content surfaced for 2025–2026.
 - Feature list VO without a single proof number → no hook, no memory
 - "AI-powered" as the lead without explaining what the AI specifically does → now invisible signal (every competitor uses it)
 
+### New patterns (2026-05-15 delta)
+
+| Pattern | Example | Transfer to MIRA |
+|---|---|---|
+| Data-report-as-launch-vehicle | MaintainX: "State of Industrial Maintenance 2026" — survey data before product demo | Release "State of Industrial Diagnostics" report from anonymized MIRA tenant data; use webinar + report as primary GTM motion |
+| Workspace-to-platform two-act hook | Notion: "used to be a place to work in. Now it's a place to build on." | "MIRA used to be a diagnostic assistant. Now it's the operational memory for your plant." |
+| Hard-corner category creation | Augury: Ultra Low RPM → now C1D1 hazardous zones — same playbook, new wedge each quarter | "First AI trained to diagnose [specific hard equipment class, e.g., gas compressors / hydraulic presses]" |
+
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; now pivoted again (May 2026) to industry-authority positioning via annual survey report. Three distinct GTM phases in 18 months: workflow CMMS → AI knowledge base → authority publisher.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience. Now systematically claiming hard-corner categories each quarter (Ultra Low RPM Mar 2025 → C1D1/HazLoc May 2026).
+- **Notion**: graduated from "AI inside your workspace" (3.0 Agents, Sep 2025) to "your workspace is the hub for all AI" (3.5 Developer Platform, May 2026) — clean escalation on the same hook in 8 months.
