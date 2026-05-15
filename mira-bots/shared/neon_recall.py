@@ -832,9 +832,7 @@ def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]
 KB_PAIR_COVERAGE_MIN_CHUNKS = int(os.getenv("MIRA_KB_PAIR_COVERAGE_MIN_CHUNKS", "1"))
 
 
-def kb_has_pair_coverage(
-    vendor: str, model: str, tenant_id: str
-) -> tuple[bool, int]:
+def kb_has_pair_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, int]:
     """Strict-pair coverage probe — does the KB have chunks tagged with BOTH
     this vendor AND this model?
 

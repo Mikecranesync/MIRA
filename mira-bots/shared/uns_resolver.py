@@ -424,10 +424,7 @@ def _match_all_vendors(
         if pos < existing_pos or (pos == existing_pos and len(alias) > existing_len):
             best[canonical] = (alias, family, pos, len(alias))
 
-    results = [
-        (canon, alias, family, pos)
-        for canon, (alias, family, pos, _len) in best.items()
-    ]
+    results = [(canon, alias, family, pos) for canon, (alias, family, pos, _len) in best.items()]
     results.sort(key=lambda x: x[3])
     return results
 
