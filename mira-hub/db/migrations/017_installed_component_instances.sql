@@ -74,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_installed_instances_aliases
 -- Tenant isolation
 ALTER TABLE installed_component_instances ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS installed_instances_tenant ON installed_component_instances;
 CREATE POLICY installed_instances_tenant
     ON installed_component_instances
     USING (tenant_id = current_setting('app.current_tenant_id')::UUID);

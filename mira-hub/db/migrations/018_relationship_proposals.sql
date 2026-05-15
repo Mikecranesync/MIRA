@@ -110,6 +110,7 @@ CREATE INDEX IF NOT EXISTS idx_rel_evidence_type
 -- Tenant isolation — RLS on the proposal table. Evidence inherits via cascade.
 ALTER TABLE relationship_proposals ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS rel_proposals_tenant ON relationship_proposals;
 CREATE POLICY rel_proposals_tenant
     ON relationship_proposals
     USING (
@@ -119,6 +120,7 @@ CREATE POLICY rel_proposals_tenant
 
 ALTER TABLE relationship_evidence ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS rel_evidence_tenant ON relationship_evidence;
 CREATE POLICY rel_evidence_tenant
     ON relationship_evidence
     USING (
