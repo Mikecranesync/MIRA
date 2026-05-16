@@ -129,6 +129,7 @@ import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
 import { qrTest } from "./routes/qr-test.js";
 import { inbox } from "./routes/inbox.js";
 import { mfa } from "./routes/mfa.js";
+import { probeStateRoute } from "./routes/probe-state.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -286,6 +287,18 @@ if (process.env.NODE_ENV !== "test" && process.env.MIRA_DISABLE_PURGE_WORKER !==
 // Static files
 // ---------------------------------------------------------------------------
 
+// Cache static assets for 1 day. These files are not content-hash fingerprinted,
+// so we stay conservative rather than using immutable/max-age=31536000.
+app.use(async (c, next) => {
+  await next();
+  const path = c.req.path;
+  if (/\.(js|css|png|jpg|jpeg|svg|webp|woff2?|ttf|ico)$/i.test(path)) {
+    if (!c.res.headers.get("Cache-Control")) {
+      c.header("Cache-Control", "public, max-age=86400");
+    }
+  }
+});
+
 app.use("/public/*", serveStatic({ root: "./" }));
 // Marketing/site imagery served at the conventional /images/* path so the
 // landing page can reference assets the way every other web app does
@@ -307,6 +320,7 @@ app.use("/sun-toggle.js", serveStatic({ path: "./public/sun-toggle.js" }));
 app.use("/feature-cartoons.js", serveStatic({ path: "./public/feature-cartoons.js" }));
 app.use("/posthog-init.js", serveStatic({ path: "./public/posthog-init.js" }));
 app.use("/pwa-install.js", serveStatic({ path: "./public/pwa-install.js" }));
+app.use("/status", serveStatic({ path: "./public/status.html" }));
 
 // Dynamic sitemap (replaces static file)
 app.get("/sitemap.xml", (c) => {
@@ -368,6 +382,9 @@ app.get("/", (c) => {
 app.get("/api/health", (c) =>
   c.json({ status: "ok", service: "mira-web", version: "0.2.1" })
 );
+
+// Service status (CRA-280) — reads /tmp/probe-state.jsonl written by external probe
+app.route("/api/probe-state", probeStateRoute);
 
 // PostHog analytics init (closes #618)
 // Public API key is safe in HTML, but we serve it from server env so
@@ -1754,6 +1771,14 @@ app.get("/api/connect/status", requireActive, async (c) => {
     return c.json({ error: "Status check failed" }, 500);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Apex-domain redirects — funnel URLs that only exist on app.factorylm.com
+// closes #1132, #1133
+// ---------------------------------------------------------------------------
+
+app.get("/login", (c) => c.redirect("https://app.factorylm.com/login", 301));
+app.get("/signup", (c) => c.redirect("https://app.factorylm.com/signup", 301));
 
 // ---------------------------------------------------------------------------
 // 404 — custom page with home link (CRA-109)

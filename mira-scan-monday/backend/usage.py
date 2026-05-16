@@ -96,6 +96,54 @@ async def month_scan_count(account_id: str) -> int:
     return int(row[0]) if row and row[0] is not None else 0
 
 
+FREE_TIER_MONTHLY_CHAT_CAP = int(os.getenv("MIRA_FREE_TIER_MONTHLY_CHAT_CAP", "200"))
+
+
+async def bump_chat_count(account_id: str) -> None:
+    """Increment today's chat_count for an account. Best-effort no-op on failure."""
+    if not account_id:
+        return
+    sql = """
+        INSERT INTO account_usage_daily
+            (account_id, usage_date, chat_count, last_seen_at)
+        VALUES (%s, CURRENT_DATE, 1, NOW())
+        ON CONFLICT (account_id, usage_date) DO UPDATE
+            SET chat_count   = account_usage_daily.chat_count + 1,
+                last_seen_at = NOW()
+    """
+    try:
+        await db.execute(sql, (account_id,))
+    except db.DBUnavailable:
+        return
+    except Exception:
+        logger.exception("usage.bump_chat_count failed for account_id=%s", account_id)
+
+
+async def month_chat_count(account_id: str) -> int:
+    """Sum chat_count over the trailing 30 days for an account.
+
+    Returns 0 on empty account_id, DB unavailability, or no activity.
+    Never raises — callers must fail-open so a DB outage never locks out
+    a legitimate user.
+    """
+    if not account_id:
+        return 0
+    sql = """
+        SELECT COALESCE(SUM(chat_count), 0)::integer
+          FROM account_usage_daily
+         WHERE account_id = %s
+           AND usage_date >= CURRENT_DATE - INTERVAL '30 days'
+    """
+    try:
+        row = await db.fetch_one(sql, (account_id,))
+    except db.DBUnavailable:
+        return 0
+    except Exception:
+        logger.exception("usage.month_chat_count failed for account_id=%s", account_id)
+        return 0
+    return int(row[0]) if row and row[0] is not None else 0
+
+
 async def days_summary(account_id: str, days: int = 30) -> list[dict]:
     """Return up to N most-recent days of scan_count for an account.
 

@@ -78,7 +78,6 @@ def ingest_url(self, url: str, manufacturer: str = "",
     is_pdf_url = url.lower().endswith(".pdf")
 
     if url.startswith("file://"):
-        from pathlib import Path
         from urllib.parse import urlparse as _urlparse
         from urllib.request import url2pathname
 
@@ -252,6 +251,35 @@ def ingest_url(self, url: str, manufacturer: str = "",
         "Completed %s: %d inserted, %d skipped, %d total chunks",
         url[:60], inserted, skipped, total,
     )
+
+    # Auto-extract a component_templates row when fresh chunks landed for a
+    # branded source. Dispatched async on the same queue — the ingest task
+    # never blocks on the LLM cascade. Issue #1257.
+    if inserted > 0 and manufacturer and model:
+        try:
+            try:
+                from mira_crawler.tasks.component_template import (
+                    extract_component_template,
+                )
+            except ImportError:
+                from tasks.component_template import (  # type: ignore[no-redef]
+                    extract_component_template,
+                )
+            extract_component_template.delay(
+                manufacturer=manufacturer,
+                model=model,
+                source_type=source_type,
+            )
+            logger.info(
+                "Queued component_template extraction for %s %s (%d new chunks)",
+                manufacturer, model, inserted,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to queue component_template extraction for %s %s: %s",
+                manufacturer, model, exc,
+            )
+
     return {"url": url, "inserted": inserted, "skipped": skipped, "total": total}
 
 

@@ -45,8 +45,12 @@ services:
       - bot-net
       - core-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     healthcheck:
-      test: ["CMD", "python", "-c", "import os; exit(0)"]
+      test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -66,8 +70,12 @@ services:
       - bot-net
       - core-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     healthcheck:
-      test: ["CMD", "python", "-c", "import slack_bolt; exit(0)"]
+      test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
       interval: 30s
       timeout: 10s
       retries: 3

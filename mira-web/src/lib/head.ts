@@ -59,8 +59,8 @@ export function head(opts: HeadOpts, reqUrl?: string): string {
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="FactoryLM">
   <link rel="apple-touch-icon" href="/public/icons/mira-192.png">
-  <link rel="icon" type="image/x-icon" href="/favicon.ico">
-  <script src="/posthog-init.js"></script>
+  <link rel="icon" type="image/svg+xml" href="/public/icons/favicon.svg">
+  <script src="/posthog-init.js" defer></script>
   <script src="/pwa-install.js" defer></script>
   <script>(function(){try{if(localStorage.getItem('fl_sun_mode')==='1')document.documentElement.classList.add('sun-pre');}catch(e){}})()</script>
   <script>if('serviceWorker'in navigator)window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});</script>

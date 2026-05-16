@@ -19,3 +19,12 @@ CVE-2026-42208
 
 # CVE-2026-42271 — LiteLLM Authenticated command execution via MCP stdio test
 CVE-2026-42271
+
+# CVE-2026-40217 — LiteLLM Arbitrary Code Execution via bytecode (HIGH)
+# Present in litellm 1.83.0 (pulled in via openviking==0.3.9, the version
+# we held back to). Fixed upstream in litellm 1.83.10, but litellm
+# 1.83.7+ pins python-dotenv==1.0.1 which conflicts with fastmcp 3.x's
+# python-dotenv>=1.1.0 — same chain documented above.
+# mira-mcp does not call litellm directly and does not expose its
+# vulnerable endpoints. Re-evaluate every openviking / fastmcp bump.
+CVE-2026-40217

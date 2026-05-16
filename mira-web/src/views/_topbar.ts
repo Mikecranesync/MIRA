@@ -32,12 +32,14 @@ interface NavLink {
   ctaSlug: string;
 }
 
+const APEX = "https://factorylm.com";
+
 const NAV_LINKS: NavLink[] = [
-  { href: "/cmms", label: "CMMS", ctaSlug: "cmms" },
-  { href: "/pricing", label: "Pricing", ctaSlug: "pricing" },
-  { href: "/blog", label: "Blog", ctaSlug: "blog" },
-  { href: "/limitations", label: "Limitations", ctaSlug: "limitations" },
-  { href: "/security", label: "Security", ctaSlug: "security" },
+  { href: `${APEX}/cmms`, label: "CMMS", ctaSlug: "cmms" },
+  { href: `${APEX}/pricing`, label: "Pricing", ctaSlug: "pricing" },
+  { href: `${APEX}/blog`, label: "Blog", ctaSlug: "blog" },
+  { href: `${APEX}/limitations`, label: "Limitations", ctaSlug: "limitations" },
+  { href: `${APEX}/security`, label: "Security", ctaSlug: "security" },
 ];
 
 function ctaName(prefix: string | undefined, slug: string): string {
@@ -45,7 +47,9 @@ function ctaName(prefix: string | undefined, slug: string): string {
 }
 
 function renderLink(link: NavLink, opts: TopbarOpts): string {
-  const current = opts.currentPath === link.href ? ` aria-current="page"` : "";
+  // link.href is absolute; compare path suffix for aria-current
+  const linkPath = link.href.replace(APEX, "");
+  const current = opts.currentPath === linkPath ? ` aria-current="page"` : "";
   const cta = ctaName(opts.ctaPrefix, link.ctaSlug);
   return `<a href="${link.href}" data-cta="${cta}"${current}>${link.label}</a>`;
 }
@@ -55,22 +59,22 @@ export function navbar(opts: TopbarOpts = {}): string {
   const signinCta = ctaName(opts.ctaPrefix, "signin");
   const buyCta = ctaName(opts.ctaPrefix, "buy");
   return `<header class="fl-topbar" role="banner">
-  <a class="fl-topbar-brand" href="/" aria-label="FactoryLM home">FactoryLM</a>
+  <a class="fl-topbar-brand" href="${APEX}/" aria-label="FactoryLM home">FactoryLM</a>
   <nav class="fl-topbar-nav" aria-label="Primary">
     ${links}
   </nav>
   <div class="fl-topbar-cta">
-    ${btnGhost("Sign in", { href: "/cmms", cta: signinCta })}
-    ${btnPrimary("Get Started", { href: "/buy", cta: buyCta })}
+    ${btnGhost("Sign in", { href: `${APEX}/cmms`, cta: signinCta })}
+    ${btnPrimary("Get Started", { href: `${APEX}/buy`, cta: buyCta })}
   </div>
 </header>`;
 }
 
 const FOOTER_LINKS = [
-  { href: "/limitations", label: "Limitations", slug: "limitations" },
-  { href: "/trust", label: "Trust", slug: "trust" },
-  { href: "/privacy", label: "Privacy", slug: "privacy" },
-  { href: "/terms", label: "Terms", slug: "terms" },
+  { href: `${APEX}/limitations`, label: "Limitations", slug: "limitations" },
+  { href: `${APEX}/trust`, label: "Trust", slug: "trust" },
+  { href: `${APEX}/privacy`, label: "Privacy", slug: "privacy" },
+  { href: `${APEX}/terms`, label: "Terms", slug: "terms" },
 ];
 
 export function footer(opts: TopbarOpts = {}): string {
@@ -86,7 +90,7 @@ export function footer(opts: TopbarOpts = {}): string {
     <ul class="fl-footer-links">
 ${items}
     </ul>
-    <button type="button" id="fl-sun-toggle" class="fl-sun-toggle" aria-pressed="false" aria-label="Toggle high-contrast outdoor mode" data-cta="sun-toggle">&#9728; Sun-readable</button>
+    <button type="button" id="fl-sun-toggle" class="fl-sun-toggle" aria-pressed="false" aria-label="&#9728; Sun-readable" data-cta="sun-toggle">&#9728; Sun-readable</button>
   </div>
 </footer>`;
 }

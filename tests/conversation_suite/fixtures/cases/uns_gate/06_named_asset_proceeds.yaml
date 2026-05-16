@@ -1,0 +1,11 @@
+id: uns_named_asset_proceeds_01
+category: uns_gate
+description: "User names asset (GS10 OC fault) — engine confirms asset, asks for nameplate."
+expected_keywords: ["GS10"]
+max_turns: 2
+asset_required: "GS10"
+mock_responses: garage/flow
+mock_kb_chunks: garage/gs10_modbus
+turns:
+  - role: user
+    content: "GS10 OC fault on startup"

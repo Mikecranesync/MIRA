@@ -325,9 +325,7 @@ async def queue_search_now(
 
 
 @app.post("/chat/message", response_model=ChatMessageResponse)
-async def chat_message(
-    req: ChatMessageRequest, request: Request
-) -> ChatMessageResponse:
+async def chat_message(req: ChatMessageRequest, request: Request) -> ChatMessageResponse:
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="message is required")
     # Chat is downstream of scan — bump last_seen so we know the install
@@ -335,12 +333,30 @@ async def chat_message(
     account_id = session.account_id_from_headers(request.headers)
     if account_id:
         await oauth.touch_last_seen(account_id)
+        used = await usage.month_chat_count(account_id)
+        if used >= usage.FREE_TIER_MONTHLY_CHAT_CAP:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "quota_exceeded",
+                    "used": used,
+                    "cap": usage.FREE_TIER_MONTHLY_CHAT_CAP,
+                    "message": (
+                        f"Free-tier limit of {usage.FREE_TIER_MONTHLY_CHAT_CAP} "
+                        "AI messages/month reached."
+                    ),
+                },
+            )
+    _max_turns = int(os.getenv("MIRA_MAX_CHAT_HISTORY_TURNS", "20"))
+    trimmed_history = (req.history or [])[-_max_turns:]
     reply, sources = await mira_rag.chat(
         message=req.message,
         asset_id=req.asset_id,
         asset_label=req.asset_label,
-        history=req.history,
+        history=trimmed_history,
     )
+    if account_id:
+        await usage.bump_chat_count(account_id)
     return ChatMessageResponse(reply=reply, sources=sources)
 
 
@@ -426,8 +442,8 @@ async def monday_webhook(request: Request) -> dict[str, Any]:
     raw = await request.body()
     try:
         body = await request.json() if raw else {}
-    except Exception:
-        raise HTTPException(status_code=400, detail="invalid json body")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid json body") from exc
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="body must be a json object")
 
@@ -436,5 +452,5 @@ async def monday_webhook(request: Request) -> dict[str, Any]:
         result = await webhooks.handle_event(authorization_header=auth, body=body)
     except webhooks.WebhookInvalid as exc:
         logger.warning("webhook signature invalid: %s", exc)
-        raise HTTPException(status_code=401, detail="invalid webhook signature")
+        raise HTTPException(status_code=401, detail="invalid webhook signature") from exc
     return result

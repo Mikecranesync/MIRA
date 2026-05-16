@@ -298,6 +298,61 @@ services:
       resources:
         limits:
           memory: 512M
+    healthcheck:
+      test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  mira-bot-slack:
+    build:
+      context: ./mira-bots
+      dockerfile: slack/Dockerfile
+    container_name: mira-bot-slack
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET:-}
+      - SLACK_ALLOWED_CHANNELS=${SLACK_ALLOWED_CHANNELS:-}
+      - MIRA_DB_PATH=/mira-db/mira.db
+      - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - VISION_MODEL=qwen2.5vl:7b
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - INFERENCE_BACKEND=cloud
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=llama-3.3-70b-versatile
+      - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - CEREBRAS_MODEL=llama3.1-8b
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
+      - MCP_BASE_URL=http://mira-mcp-saas:8001
+      - SESSION_RECORDING_PATH=/data/sessions
+    volumes:
+      - /opt/mira/data:/mira-db
+      - /opt/mira/mira-bridge/data/sessions:/data/sessions
+    networks:
+      - mira-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import slack_bolt"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   mira-docling:
     image: quay.io/docling-project/docling-serve:v1.16.1
@@ -354,7 +409,7 @@ services:
     container_name: nango-db
     environment:
       POSTGRES_USER: nango
-      POSTGRES_PASSWORD: ${NANGO_DB_PASSWORD:-nango}
+      POSTGRES_PASSWORD: ${NANGO_DB_PASSWORD}
       POSTGRES_DB: nango
     volumes:
       - nango-db-data:/var/lib/postgresql/data
@@ -382,16 +437,16 @@ services:
       - NANGO_ENCRYPTION_KEY=${NANGO_ENCRYPTION_KEY}
       - NANGO_SECRET_KEY=${NANGO_SECRET_KEY}
       - NANGO_DB_USER=nango
-      - NANGO_DB_PASSWORD=${NANGO_DB_PASSWORD:-nango}
+      - NANGO_DB_PASSWORD=${NANGO_DB_PASSWORD}
       - NANGO_DB_HOST=nango-db
       - NANGO_DB_PORT=5432
       - NANGO_DB_NAME=nango
       - NANGO_DB_SSL=false
-      - RECORDS_DATABASE_URL=postgresql://nango:${NANGO_DB_PASSWORD:-nango}@nango-db:5432/nango
+      - RECORDS_DATABASE_URL=postgresql://nango:${NANGO_DB_PASSWORD}@nango-db:5432/nango
       - NANGO_SERVER_URL=${NANGO_SERVER_URL:-http://localhost:3003}
       - NANGO_PUBLIC_CONNECT_URL=${NANGO_PUBLIC_CONNECT_URL:-http://localhost:3009}
       - SERVER_PORT=3003
-      - FLAG_AUTH_ENABLED=${NANGO_DASHBOARD_AUTH_ENABLED:-false}
+      - FLAG_AUTH_ENABLED=${NANGO_DASHBOARD_AUTH_ENABLED:-true}
       - NANGO_DASHBOARD_USERNAME=${NANGO_DASHBOARD_USERNAME:-admin}
       - NANGO_DASHBOARD_PASSWORD=${NANGO_DASHBOARD_PASSWORD:-changeme}
       - FLAG_SERVE_CONNECT_UI=true
@@ -440,19 +495,18 @@ services:
       # AUTH_SECRET: 32-byte random hex used to sign session JWTs
       # NEXTAUTH_URL: NextAuth v4 builds OAuth callback URLs as
       #   `${NEXTAUTH_URL}/callback/{provider}` — the path portion of
-      #   NEXTAUTH_URL becomes the auth-API base, NOT the app base. With
-      #   `/hub` only, callback resolves to /hub/callback/google which doesn't
-      #   match the actual handler at /hub/api/auth/callback/google → Google
-      #   returns redirect_uri_mismatch. Including `/api/auth` makes the
-      #   callback resolve to /hub/api/auth/callback/google. Verified via
-      #   live probe of the OAuth flow.
-      # If updating: Doppler factorylm/prd NEXTAUTH_URL must match this value
-      # (or be unset to use this default). GCP authorized redirect URI for
-      # client_id 246891599587-* must include
-      # https://app.factorylm.com/hub/api/auth/callback/google.
+      #   NEXTAUTH_URL becomes the auth-API base, NOT the app base. In Phase 2
+      #   (hub at root), the auth API is at /api/auth (no /hub prefix).
+      # ⚠️  MIGRATION NOTE (Phase 1 → Phase 2):
+      #   After updating this default, also:
+      #   1. Set Doppler factorylm/prd NEXTAUTH_URL=https://app.factorylm.com/api/auth
+      #   2. Add https://app.factorylm.com/api/auth/callback/google to GCP
+      #      authorized redirect URIs for client_id 246891599587-*
+      #   3. The old /hub/api/auth/callback/google URI can be removed once no
+      #      active sessions reference it (safe to remove after 24h).
       - AUTH_SECRET=${AUTH_SECRET:-}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/hub/api/auth}
-      - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/hub/api/auth}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/api/auth}
+      - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/api/auth}
       # Sign-in OAuth client. Named HUB_AUTH_GOOGLE_* to avoid collision with
       # the existing GOOGLE_OAUTH_CLIENT_ID (Apps Script magic-inbox) and
       # GOOGLE_CLIENT_ID (Drive integration). Different scopes than both.

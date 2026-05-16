@@ -15,4 +15,9 @@ COPY schematic_intelligence.py .
 COPY cmms/ ./cmms/
 COPY context/ ./context/
 
+RUN addgroup --system --gid 1001 mira && \
+    adduser --system --uid 1001 --ingroup mira mira
+
+USER mira
+
 CMD ["python", "server.py"]

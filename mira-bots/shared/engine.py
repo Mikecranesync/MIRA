@@ -59,7 +59,6 @@ from .guardrails import (
     detect_session_followup,
     resolve_option_selection,
     strip_mentions,
-    vendor_name_from_text,
     vendor_support_url,
 )
 from .inference.router import InferenceRouter
@@ -88,7 +87,6 @@ from .photo_handler import (
 )
 from .response_formatter import (
     _VISION_PROSE_PREFIX_RE,
-    _looks_like_model_number,
     deduplicate_options,  # noqa: F401 — re-exported for test_conversation_continuity.py
     format_reply,
     parse_response,
@@ -103,6 +101,7 @@ from .session_manager import (
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
+from .uns_resolver import resolve_uns_path
 from .workers.nameplate_worker import NameplateWorker
 from .workers.plc_worker import PLCWorker
 from .workers.print_worker import PrintWorker
@@ -391,6 +390,12 @@ _MANUAL_ESCAPE_PHRASES = frozenset(
 )
 
 # Signals that the user is resuming a diagnostic conversation.
+# User types "PROCEED" (case-insensitive, standalone) in response to the
+# KB-honesty prompt "Type PROCEED to continue with my best estimate".
+# Matched in process_full BEFORE RAG routing to avoid the text being
+# embedded as a vector query for the word "proceed".
+_PROCEED_RE = re.compile(r"^\s*proceed\s*$", re.IGNORECASE)
+
 _DIAGNOSIS_SIGNAL_RE = re.compile(
     r"\b(?:fault|error|code|alarm|trips?|overload|won'?t start|not working|"
     r"shuts? off|shutting|blink(?:ing)?|flash(?:ing)?|hz|rpm|amps?|volts?|"
@@ -664,25 +669,13 @@ class Supervisor:
     def _is_doc_specific(vendor: str, text: str) -> bool:
         """Return True if *text* is specific enough to crawl usefully.
 
-        Requires both:
-        - a vendor name present in _KNOWN_VENDORS (either extracted or in text)
-        - at least one model-number token OR a standalone ≥2-digit number
-
-        The second fallback covers cases like "PowerFlex 525" where the model
-        designator is pure digits (525, 70, 700, etc.).  Vague requests like
-        "the safety relay" or "this VFD" still return False.
+        Requires both vendor known AND model present. Delegates to the UNS
+        resolver — vendor is injected into the resolver input so pure-digit
+        models like "525" resolve when adjacent to a known family name.
         """
-        text_lower = text.lower()
-        vendor_known = bool(vendor) and any(
-            v in vendor.lower() or v in text_lower for v in _KNOWN_VENDORS
-        )
-        if not vendor_known:
-            return False
-        # Primary: mixed letter+digit token (GS20, FC-302, X3, ACS580).
-        if _looks_like_model_number(text):
-            return True
-        # Fallback: standalone ≥2-digit number (525, 70, 700, 120 ...).
-        return bool(re.search(r"\b\d{2,}\b", text))
+        combined = f"{vendor} {text}".strip() if vendor else text
+        ctx = resolve_uns_path(combined)
+        return bool(ctx.manufacturer) and bool(ctx.model)
 
     @staticmethod
     def _infer_confidence(reply: str) -> str:
@@ -1016,7 +1009,70 @@ class Supervisor:
         # Preprocess: strip Slack mention tags
         message = strip_mentions(message)
 
+        # Slash-command interceptor: /reset and /new must be handled here so
+        # eval fixtures that send "/reset" as a plain message (not a Telegram
+        # CommandHandler) still clear the session.  The Telegram bot calls
+        # engine.reset() directly via its CommandHandler and never reaches
+        # process_full, so this path is only taken for inline-text callers
+        # (eval runner, Slack, mira-pipeline HTTP).
+        _msg_stripped = message.strip()
+        if _msg_stripped.lower() in ("/reset", "/new"):
+            self.reset(chat_id)
+            reply = "Started a fresh session. What equipment can I help with?"
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, "IDLE")
+
         state = self._load_state(chat_id)
+
+        if _PROCEED_RE.match(_msg_stripped) and not photo_b64:
+            ctx_p = state.get("context") or {}
+            ctx_p.pop("awaiting_proceed", None)
+            state["context"] = ctx_p
+            # Advance state once (counts as a diagnostic turn) so q_rounds
+            # increments and the Q-trap can fire if near threshold.
+            parsed_proceed: dict = {"reply": "", "next_state": state.get("state") or "Q1"}
+            state = self._advance_state(state, parsed_proceed)
+            self._save_state(chat_id, state)
+            logger.info(
+                "PROCEED_INTERCEPTED chat_id=%s fsm=%s → continued diagnostic",
+                chat_id,
+                state.get("state"),
+            )
+            tl_flush()
+            return self._make_result(
+                "Got it — let me give you my best assessment based on general "
+                "industrial knowledge. This is not verified against specific "
+                "documentation for your equipment.",
+                "low",
+                trace_id,
+                state.get("state", "Q1"),
+            )
+
+        # Single UNS-aware extraction — one truth per turn for
+        # vendor / model / fault code / category. Downstream sites read
+        # `state["context"]["uns_context"]` instead of re-running
+        # vendor_name_from_text or _looks_like_model_number locally.
+        #
+        # Stored UNDER state["context"] (not at the top level) because
+        # session_manager.save_state only persists the declared columns plus
+        # state["context"] as a JSON blob — top-level extras are dropped.
+        # Carries forward across turns so "make a work order" after
+        # "PowerFlex 525 F0004" keeps the equipment in scope.
+        # See docs/specs/uns-message-resolver-spec.md.
+        _ctx_for_uns = state.get("context") or {}
+        prior_uns = _ctx_for_uns.get("uns_context") or None
+        uns_ctx = resolve_uns_path(
+            message,
+            tenant_id=resolved_tenant,
+            prior_ctx=prior_uns,
+        )
+        _ctx_for_uns["uns_context"] = uns_ctx.as_dict()
+        state["context"] = _ctx_for_uns
+        if uns_ctx.manufacturer and uns_ctx.confidence >= 0.7 and not state.get("asset_identified"):
+            label = uns_ctx.manufacturer
+            if uns_ctx.model:
+                label = f"{label}, {uns_ctx.model}"
+            state["asset_identified"] = label
 
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
@@ -1043,6 +1099,17 @@ class Supervisor:
         # PM suggestion pending: user is answering a follow-up PM proposal.
         if (state.get("context") or {}).get("pm_suggestion_pending") and not photo_b64:
             return await self._handle_pm_suggestion_pending(chat_id, message, state, trace_id)
+
+        # UNS confirmation pending: user is answering the equipment-confirmation
+        # prompt fired by the UNS Confirmation Gate. Returns a result on explicit
+        # yes/no, or None to fall through (e.g., user typed equipment specs — let
+        # the normal flow re-run the UNS resolver on the message).
+        if (state.get("context") or {}).get("pending_uns_confirm") and not photo_b64:
+            _uns_resp = await self._handle_uns_confirmation_response(
+                chat_id, message, state, trace_id
+            )
+            if _uns_resp is not None:
+                return _uns_resp
 
         if message.strip() and state.get("final_state") == "RESOLVED":
             state["final_state"] = None
@@ -1209,7 +1276,9 @@ class Supervisor:
                 "safety",
                 "documentation",
             ):
-                return await self._handle_general_question(chat_id, message, state, trace_id)
+                return await self._handle_general_question(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
+                )
 
             if _router_intent == "greeting_or_chitchat" and state["state"] == "IDLE":
                 return self._greeting_response(state, chat_id, trace_id)
@@ -1244,6 +1313,19 @@ class Supervisor:
             if _router_intent == "find_documentation":
                 intent = "documentation"
 
+            # UNS Confirmation Gate — no diagnosis without confirmed equipment.
+            # Telegram + Slack both go through here. Conditions extracted into
+            # _should_fire_uns_gate so the bypass logic is testable directly.
+            if self._should_fire_uns_gate(_router_intent, state, message, sc):
+                return await self._handle_uns_confirmation_request(
+                    chat_id,
+                    message,
+                    state,
+                    uns_ctx,
+                    trace_id,
+                    tenant_id=resolved_tenant,
+                )
+
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
         if not photo_b64 and state["state"] == "IDLE" and state["exchange_count"] == 0:
             if intent == "help":
@@ -1268,7 +1350,7 @@ class Supervisor:
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
         if not photo_b64 and intent == "documentation":
             combined = f"{message} {state.get('asset_identified', '')}".strip()
-            mfr = vendor_name_from_text(combined) or ""
+            mfr = ((state.get("context") or {}).get("uns_context") or {}).get("manufacturer") or ""
 
             # Specificity gate — vague requests ("the safety relay", "this VFD") enter
             # MANUAL_LOOKUP_GATHERING to collect vendor + model before crawling.
@@ -1584,6 +1666,11 @@ class Supervisor:
         if not photo_b64 and state.get("state") != "IDLE":
             session_photo = self._load_recent_session_photo(chat_id, state)
         effective_photo = photo_b64 or session_photo
+
+        # NOTE: asset_identified seeding from message is handled earlier in this
+        # function via the UNS resolver block (state["uns_context"]). The previous
+        # _seeded_vendor regression-guard (#1206 / commit 4537dd3d) was removed as
+        # part of the UNS resolver refactor — one extraction point per turn.
         try:
             with tl_span(t, "rag_worker"):
                 raw, parsed = await self._call_with_correction(
@@ -1788,9 +1875,38 @@ class Supervisor:
         sc["last_options"] = parsed.get("options", [])
         ctx["session_context"] = sc
 
-        # No auto-persist of WO draft here — the WO flow is now opt-in via
-        # _handle_wo_request, which sets cmms_pending itself when the user
-        # explicitly asks to log a work order.
+        # Auto-WO prompt on RESOLVED: when a full diagnostic session ends (asset
+        # identified AND fault_category or exchange_count >= 3), offer to create
+        # a CMMS work order.  Scoped to real diagnostic sessions — no WO prompt
+        # for one-turn lookups or documentation fetches.  The user must still
+        # say "yes" to actually create the WO; the prompt just arms cmms_pending.
+        if (
+            state["state"] == "RESOLVED"
+            and state.get("asset_identified")
+            and (state.get("fault_category") or state.get("exchange_count", 0) >= 3)
+            and not ctx.get("cmms_pending")
+            and not ctx.get("cmms_wo_draft")
+        ):
+            wo_auto = build_uns_wo_from_state(state)
+            wo_auto.chat_id = chat_id
+            wo_auto.fsm_state_at_creation = "RESOLVED"
+            wo_dict = wo_auto.to_dict()
+            ctx["cmms_pending"] = True
+            ctx["cmms_wo_draft"] = wo_dict
+            preview = format_wo_preview(wo_auto)
+            parsed["reply"] = (
+                parsed["reply"].rstrip()
+                + "\n\n"
+                + "Would you like to log a work order for this? Say **yes** to create it, **no** to skip.\n\n"
+                + preview
+            )
+            logger.info(
+                "AUTO_WO_PROMPT chat_id=%s asset=%r fault=%r",
+                chat_id,
+                state.get("asset_identified"),
+                state.get("fault_category"),
+            )
+
         state["context"] = ctx
 
         self._save_state(chat_id, state)
@@ -1918,7 +2034,7 @@ class Supervisor:
                 logger.warning("Hub NeonDB WO write skipped: %s", hub_result["error"])
 
         label = hub_wo_number or f"#{atlas_wo_id}"
-        return f"Work order {label} created for {wo.asset or 'equipment'} ✓"
+        return f"Work order {label} created in CMMS for {wo.asset or 'equipment'} ✓"
 
     _CMMS_NO = frozenset({"no", "nope", "n", "skip", "cancel", "abort", "never mind", "nevermind"})
 
@@ -2264,9 +2380,7 @@ class Supervisor:
             )
         else:
             try:
-                kb_covered, _ = kb_has_coverage(
-                    manufacturer, model, resolved_tenant or ""
-                )
+                kb_covered, _ = kb_has_coverage(manufacturer, model, resolved_tenant or "")
             except Exception as e:
                 logger.warning("nameplate kb_has_coverage failed: %s", e)
                 kb_covered = linked_chunks > 0
@@ -2274,8 +2388,7 @@ class Supervisor:
             header = f"Identified: {manufacturer} {model}"
             if linked_chunks > 0:
                 kb_line = (
-                    f"Found {linked_chunks} manual chunks for "
-                    f"{manufacturer} in the knowledge base."
+                    f"Found {linked_chunks} manual chunks for {manufacturer} in the knowledge base."
                 )
             elif kb_covered:
                 kb_line = (
@@ -2480,6 +2593,16 @@ class Supervisor:
         vendor = current_vendor or ""
         model = ""
 
+        # Primary source: UNS resolver result for this turn (includes
+        # prior-context carry-over from previous turns). Stored under
+        # state["context"]["uns_context"] so it survives SQLite round-trip.
+        uns = (state.get("context") or {}).get("uns_context") or {}
+        if not vendor and uns.get("manufacturer"):
+            vendor = str(uns["manufacturer"])
+        if not model and uns.get("model"):
+            model = str(uns["model"])
+
+        # Secondary: asset_identified is the canonical "Vendor, Model" string.
         asset_id = state.get("asset_identified") or ""
         if "," in asset_id:
             parts = [p.strip() for p in asset_id.split(",", 1)]
@@ -2487,24 +2610,15 @@ class Supervisor:
                 vendor = parts[0]
             if len(parts) > 1 and parts[1]:
                 model = parts[1]
-        elif asset_id:
-            if not vendor:
-                vendor = vendor_name_from_text(asset_id) or ""
-            if not model:
-                model = _looks_like_model_number(asset_id) or ""
+        elif asset_id and (not vendor or not model):
+            # Fallback: resolve asset_id through the UNS resolver
+            fallback_ctx = resolve_uns_path(asset_id)
+            if not vendor and fallback_ctx.manufacturer:
+                vendor = fallback_ctx.manufacturer
+            if not model and fallback_ctx.model:
+                model = fallback_ctx.model
 
         ctx = state.get("context") or {}
-        history = ctx.get("history") or []
-        if (not vendor or not model) and history:
-            for turn in reversed(history[-8:]):
-                text = str(turn.get("content") or "")
-                if not vendor:
-                    vendor = vendor_name_from_text(text) or ""
-                if not model:
-                    model = _looks_like_model_number(text) or ""
-                if vendor and model:
-                    break
-
         if not vendor or not model:
             dialogue = ctx.get("dialogue") or {}
             ents = dialogue.get("salient_entities") or {}
@@ -2513,10 +2627,15 @@ class Supervisor:
             if not model and ents.get("model"):
                 model = str(ents["model"])
 
-        if not vendor:
-            vendor = vendor_name_from_text(message) or ""
-        if not model:
-            model = _looks_like_model_number(message) or ""
+        # Last resort: re-resolve the current message directly. This branch
+        # fires only when uns_context wasn't populated (e.g., called from a
+        # path that bypassed process_full's top-of-loop resolution).
+        if not vendor or not model:
+            msg_ctx = resolve_uns_path(message)
+            if not vendor and msg_ctx.manufacturer:
+                vendor = msg_ctx.manufacturer
+            if not model and msg_ctx.model:
+                model = msg_ctx.model
         return vendor, model
 
     async def _enter_manual_lookup_gathering(
@@ -2685,12 +2804,19 @@ class Supervisor:
             return self._make_result(reply, "none", trace_id, prior_state)
 
         # ---- Extract info from this turn ----------------------------------------
-        new_vendor = vendor_name_from_text(message) or ""
-        new_model = _looks_like_model_number(message)
+        # Bias the resolver with any vendor already collected so a bare model
+        # answer like "525" resolves correctly (vendor-adjacent rule).
+        if collected.get("vendor"):
+            biased = f"{collected['vendor']} {message}"
+        else:
+            biased = message
+        turn_ctx = resolve_uns_path(biased)
+        new_vendor = turn_ctx.manufacturer or ""
+        new_model = turn_ctx.model or ""
 
-        # If we're already waiting for the model specifically (vendor in hand) and
-        # _looks_like_model_number found nothing, accept any short non-stopword token.
-        # This covers user answers like "525" or just "PNOZ-X3".
+        # MLG-specific permissive fallback: when vendor is in hand and the
+        # resolver still didn't find a model, accept any short non-stopword
+        # token as the model (covers "PNOZ-X3" and other unusual answers).
         if not new_model and collected.get("vendor"):
             _STOP = {
                 "the",
@@ -2839,37 +2965,165 @@ class Supervisor:
         "hz setpoint acceleration deceleration boost carrier fault code alarm reset".split()
     )
 
-    async def _handle_general_question(
-        self, chat_id: str, message: str, state: dict, trace_id: str
-    ) -> dict:
-        """Answer a general industrial question — uses RAG for equipment-specific specs."""
-        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
-        asset = state.get("asset_identified", "")
-        msg_lower = message.lower()
-        needs_rag = asset and any(kw in msg_lower for kw in self._SPEC_KEYWORDS)
+    # Heuristic: looks like an industrial question that *should* resolve to a
+    # vendor/model. If we can't extract one, asking is better than guessing.
+    _INDUSTRIAL_HINTS_RE = re.compile(
+        r"\b(vfd|plc|hmi|scada|motor|fault|alarm|trip|modbus|profinet|"
+        r"ethernet/?ip|cip|rs[\- ]?485|rs[\- ]?232|contactor|relay|servo|"
+        r"encoder|nameplate|drive|f\d{2,4}|e\d{2,4}|oc\b|ol\b)\b",
+        re.IGNORECASE,
+    )
 
-        raw = ""
-        if needs_rag:
+    async def _handle_general_question(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> dict:
+        """KB-first answer with conversation history.
+
+        Decision order:
+          1. Re-resolve equipment (manufacturer/model) from current message
+             plus recent user turns — every turn gets a fresh extraction.
+          2. If a vendor is identified and the KB has coverage → RAG worker,
+             so the reply carries citations.
+          3. Vendor identified but no KB coverage → hand off to the
+             documentation lookup path so the crawler fills the gap.
+          4. No vendor anywhere AND the question looks industrial → ask for
+             vendor/model rather than hallucinate.
+          5. Otherwise → answer from training knowledge with conversation
+             history threaded through. Disclose lack of docs when relevant.
+        """
+        # Don't wipe an active session photo for a general question — a
+        # clarifying ask mid-diagnostic shouldn't break the photo flow.
+        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=False)
+
+        ctx = state.get("context") or {}
+        history = ctx.get("history", [])
+        asset = state.get("asset_identified", "")
+
+        # 1) Re-extract equipment from the user's recent turns + current msg.
+        user_window = [h.get("content", "") for h in history[-6:] if h.get("role") == "user"]
+        combined_for_resolve = " ".join([*user_window, message]).strip()
+        uns = resolve_uns_path(combined_for_resolve)
+        mfr = uns.manufacturer or ((ctx.get("uns_context") or {}).get("manufacturer") or "")
+        model = uns.model or ""
+
+        resolved_tenant = tenant_id or state.get("tenant_id") or ""
+
+        kb_covered = False
+        kb_reason = ""
+        if mfr:
             try:
-                raw_resp = await self.rag.process(message, state, photo_b64=None, tenant_id=None)
+                kb_covered, kb_reason = kb_has_coverage(mfr, combined_for_resolve, resolved_tenant)
+            except Exception as exc:
+                logger.warning("GENERAL_QUESTION_KB_PROBE_FAILURE error=%s", exc)
+
+        logger.info(
+            "GENERAL_QUESTION_GATE chat_id=%s mfr=%r model=%r kb_covered=%s reason=%r",
+            chat_id,
+            mfr,
+            model,
+            kb_covered,
+            kb_reason,
+        )
+
+        # 2) Vendor + KB coverage → answer through RAG (citations enforced).
+        if mfr and kb_covered:
+            if not asset:
+                state["asset_identified"] = f"{mfr}, {model}" if model else mfr
+            try:
+                raw_resp = await self.rag.process(
+                    message, state, photo_b64=None, tenant_id=resolved_tenant
+                )
                 parsed = self._parse_response(raw_resp)
                 raw = parsed.get("reply", "") if parsed else ""
+                if raw:
+                    reply = self._format_simple_response(
+                        raw,
+                        suggestions=[
+                            "Find documentation",
+                            "Log a work order",
+                            "Diagnose this asset",
+                        ],
+                    )
+                    self._record_exchange(chat_id, state, message, reply)
+                    tl_flush()
+                    return self._make_result(
+                        reply,
+                        self._infer_confidence(raw),
+                        trace_id,
+                        state.get("state", "IDLE"),
+                    )
             except Exception as exc:
-                logger.warning("GENERAL_QUESTION_RAG_FAILURE error=%s — falling back to LLM", exc)
+                logger.warning("GENERAL_QUESTION_RAG_FAILURE error=%s — falling through", exc)
 
-        if not raw:
-            asset_ctx = f" The current equipment is: {asset}." if asset else ""
-            system = (
-                "You are MIRA, an industrial maintenance assistant."
-                f"{asset_ctx} "
-                "Answer this question concisely and accurately using your training knowledge. "
-                "Keep the reply under 120 words."
+        # 3) Vendor identified but no KB coverage → kick off doc lookup/crawl.
+        if mfr and not kb_covered:
+            return await self._do_documentation_lookup(
+                chat_id,
+                message,
+                state,
+                trace_id,
+                resolved_tenant,
+                vendor_override=mfr,
+                model_override=model,
+            )
+
+        # 4) Industrial-flavored question with no resolvable vendor → ask.
+        looks_industrial = bool(self._INDUSTRIAL_HINTS_RE.search(message))
+        if looks_industrial and not asset:
+            clarify_system = (
+                "You are MIRA, an industrial maintenance assistant. The "
+                "technician asked a question but the manufacturer and model "
+                "haven't been identified. Reply in ≤2 short sentences: "
+                "acknowledge what you understood, then ask for the missing "
+                "piece (manufacturer and/or model). Do NOT try to answer the "
+                "question yet — getting the docs requires knowing the asset."
             )
             try:
-                raw = await self._call_llm_direct(message, system=system)
+                raw = await self._call_llm_direct(message, system=clarify_system, history=history)
             except Exception as exc:
-                logger.warning("GENERAL_QUESTION_LLM_FAILURE error=%s", exc)
-                raw = "I can help with that — could you give me a bit more context?"
+                logger.warning("GENERAL_QUESTION_CLARIFY_FAILURE error=%s", exc)
+                raw = (
+                    "Which equipment is this — manufacturer and model? "
+                    "Once I know, I'll pull the docs and walk you through it."
+                )
+            reply = self._format_simple_response(
+                raw,
+                suggestions=[
+                    "Send a nameplate photo",
+                    "Type the model number",
+                    "Describe the symptom",
+                ],
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, state.get("state", "IDLE"))
+
+        # 5) Truly general question → answer with history. Disclose missing
+        #    docs when an asset is known but the KB doesn't cover it.
+        asset_ctx = f" The current equipment is: {asset}." if asset else ""
+        disclosure = (
+            " You do not have documentation for this in your knowledge base — "
+            "say so up front, then answer from general training knowledge."
+            if asset and not kb_covered
+            else ""
+        )
+        system = (
+            "You are MIRA, an industrial maintenance assistant."
+            f"{asset_ctx}{disclosure} "
+            "Answer the technician's question concisely and accurately, using "
+            "the conversation history for context. Keep it under 120 words."
+        )
+        try:
+            raw = await self._call_llm_direct(message, system=system, history=history)
+        except Exception as exc:
+            logger.warning("GENERAL_QUESTION_LLM_FAILURE error=%s", exc)
+            raw = "I can help with that — could you give me a bit more context?"
 
         reply = self._format_simple_response(
             raw,
@@ -2891,8 +3145,10 @@ class Supervisor:
         """User wants to talk about a different asset — clear FSM, preserve session memory."""
         old_asset = state.get("asset_identified", "") or "unknown"
 
-        # Try to identify the new asset from the switch message itself
-        new_asset = vendor_name_from_text(message) or ""
+        # Try to identify the new asset from the switch message itself.
+        # Fresh resolve (no prior_ctx) so we get the NEW asset, not carry-over
+        # from the one the user is switching away from.
+        new_asset = resolve_uns_path(message).manufacturer or ""
 
         logger.info(
             "ASSET_SWITCH chat_id=%s from=%r to=%r",
@@ -3189,7 +3445,9 @@ class Supervisor:
         if kind == DISPATCH_ASK_PROCEDURAL:
             return await self._handle_instructional_question(chat_id, message, state, trace_id)
         if kind == DISPATCH_ASK_GENERAL:
-            return await self._handle_general_question(chat_id, message, state, trace_id)
+            return await self._handle_general_question(
+                chat_id, message, state, trace_id, tenant_id=resolved_tenant
+            )
 
         # Priority 7 — greeting in IDLE
         if kind == DISPATCH_GREET and state.get("state", "IDLE") == "IDLE":
@@ -3405,7 +3663,7 @@ class Supervisor:
     ) -> dict:
         """Router-dispatched doc intent — delegates to the existing specificity-gate path."""
         combined = f"{message} {state.get('asset_identified', '')}".strip()
-        mfr = vendor_name_from_text(combined) or ""
+        mfr = ((state.get("context") or {}).get("uns_context") or {}).get("manufacturer") or ""
         if not self._is_doc_specific(mfr, combined):
             asset_id = state.get("asset_identified", "")
             if "," in asset_id:
@@ -3473,13 +3731,32 @@ class Supervisor:
             reply, self._infer_confidence(reply), trace_id, state.get("state", "IDLE")
         )
 
-    async def _call_llm_direct(self, message: str, system: str = "") -> str:
-        """One-shot LLM call via the existing inference router. Returns plain text."""
+    async def _call_llm_direct(
+        self,
+        message: str,
+        system: str = "",
+        history: list[dict] | None = None,
+    ) -> str:
+        """LLM call via the inference router. Threads conversation history.
+
+        Pass ``history`` (the ``context.history`` list of {role, content}
+        dicts) to give the stateless LLM the same illusion of memory that
+        ChatGPT/Claude/Gemini provide — older turns get token-budget-trimmed
+        and spliced between the system prompt and the current user message.
+        """
+        from .workers.rag_worker import _trim_history_by_tokens
+
         messages: list[dict] = []
         if system:
             messages.append({"role": "system", "content": system})
+        if history:
+            for entry in _trim_history_by_tokens(history):
+                role = entry.get("role")
+                content = entry.get("content")
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": message})
-        raw, _usage = await self.router.complete(messages, max_tokens=300)
+        raw, _usage = await self.router.complete(messages, max_tokens=600)
         return raw.strip() if raw else "I'm not sure — can you give me more context?"
 
     async def _do_documentation_lookup(
@@ -3503,7 +3780,10 @@ class Supervisor:
         state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         asset = state.get("asset_identified", "")
         combined = " ".join(filter(None, [vendor_override, model_override, message, asset])).strip()
-        mfr = vendor_override or vendor_name_from_text(combined) or ""
+        # Resolve the combined input through the UNS resolver. Overrides win
+        # when present; otherwise we use what the resolver found.
+        combined_ctx = resolve_uns_path(combined)
+        mfr = vendor_override or combined_ctx.manufacturer or ""
         url = vendor_support_url(combined)
 
         # Phase 2 — KB pre-check: skip crawl when we already have coverage.
@@ -3511,7 +3791,7 @@ class Supervisor:
         if kb_covered:
             # CRA-8 Cluster A: include the model token (and the literal word "manual")
             # so vendor-specific manual requests don't fall through the keyword check.
-            model_hint = model_override or _looks_like_model_number(combined) or ""
+            model_hint = model_override or combined_ctx.model or ""
             if mfr and model_hint:
                 reply = f"I have the {mfr} {model_hint} manual indexed."
             elif mfr:
@@ -3917,3 +4197,220 @@ class Supervisor:
         """Format parsed response for display. Delegates to response_formatter.format_reply."""
         kb_status = getattr(self.rag, "kb_status", None) or {}
         return format_reply(parsed, user_message, kb_status)
+
+    # ------------------------------------------------------------------
+    # UNS Confirmation Gate
+    # ------------------------------------------------------------------
+    # Rule: no diagnosis without a confirmed asset. When the LLM router
+    # classifies a turn as `diagnose_equipment` and the session has no
+    # `asset_identified`, the engine asks the user to confirm before any
+    # diagnostic work. Storage lives in state["context"]["pending_uns_confirm"]
+    # so a second turn can consume the answer.
+
+    def _should_fire_uns_gate(
+        self,
+        router_intent: str,
+        state: dict,
+        message: str,
+        session_context: dict,
+    ) -> bool:
+        """Return True when the gate should interrupt the turn with a confirm prompt.
+
+        Conditions (all must hold):
+        - router classified turn as diagnose_equipment
+        - session has no asset_identified
+        - session is in IDLE (don't interrupt mid-FSM Q1/Q2/Q3/DIAGNOSIS)
+
+        `message` and `session_context` are accepted for symmetry with other
+        gate helpers and to keep the call site readable, even though the
+        current implementation only inspects intent + state.
+        """
+        del message, session_context  # reserved for future signal expansion
+        if router_intent != "diagnose_equipment":
+            return False
+        if state.get("asset_identified"):
+            return False
+        if state.get("state", "IDLE") != "IDLE":
+            return False
+        return True
+
+    async def _handle_uns_confirmation_request(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        uns_ctx,
+        trace_id,
+        tenant_id: str | None = None,
+    ) -> dict:
+        """Gate firing: ask the user to confirm or supply the equipment.
+
+        Saves `pending_uns_confirm` on state["context"] so the next user turn
+        is consumed by `_handle_uns_confirmation_response`.
+
+        Two-tier candidate resolution:
+          1. Tenant-scoped demo-namespace lookup — if the message references
+             an asset tag/name or component tag that exists in the tenant's
+             kg_entities / installed_component_instances, prefer that as the
+             confirmation candidate. This is the path the May 21 expo demo
+             takes ("I'm on Conveyor 001 / PE-001"). The existing UNS
+             resolver doesn't know tenant data; this fills that gap without
+             touching the resolver.
+          2. Generic manufacturer/model from `uns_ctx` — the unchanged
+             behavior for every other tenant and every other turn.
+        """
+        ctx = state.get("context") or {}
+
+        # Tier 1 — tenant-scoped lookup.
+        demo_match = None
+        try:
+            from .demo_namespace import resolve_demo_namespace  # noqa: PLC0415
+
+            demo_match = resolve_demo_namespace(message, tenant_id)
+        except Exception as exc:  # noqa: BLE001 — never block the gate
+            logger.debug("UNS_CONFIRM demo_namespace lookup error: %s", exc)
+            demo_match = None
+
+        candidate = None
+        prompt: str
+        if demo_match and demo_match.confidence >= 0.7:
+            parts: list[str] = []
+            if demo_match.asset_name:
+                parts.append(demo_match.asset_name)
+            if demo_match.asset_tag and demo_match.asset_tag not in parts:
+                parts.append(demo_match.asset_tag)
+            if demo_match.component_name:
+                parts.append(demo_match.component_name)
+            candidate = " / ".join(parts) if parts else None
+            confidence_pct = int(round(demo_match.confidence * 100))
+            if candidate:
+                prompt = (
+                    f"Before I diagnose, confirm the equipment: **{candidate}** "
+                    f"(confidence {confidence_pct}%). "
+                    "Reply 'yes' to confirm, or tell me the correct equipment."
+                )
+            else:
+                prompt = (
+                    "Before I diagnose, I need to know the equipment. "
+                    "Tell me the asset and component you're working on."
+                )
+            # Stash the namespace match so a follow-up turn can promote it
+            # straight into asset_identified / asset_id without re-querying.
+            ctx["pending_uns_confirm"] = {
+                "candidate": candidate,
+                "demo_namespace": demo_match.as_dict(),
+            }
+        elif getattr(uns_ctx, "manufacturer", None):
+            # Tier 2 — generic manufacturer/model path (unchanged).
+            candidate = uns_ctx.manufacturer
+            if getattr(uns_ctx, "model", None):
+                candidate = f"{candidate}, {uns_ctx.model}"
+            confidence_pct = int(round((getattr(uns_ctx, "confidence", 0.0) or 0.0) * 100))
+            prompt = (
+                f"Before I diagnose, confirm the equipment: **{candidate}** "
+                f"(confidence {confidence_pct}%). "
+                "Reply 'yes' to confirm, or tell me the correct manufacturer and model."
+            )
+            ctx["pending_uns_confirm"] = {"candidate": candidate}
+        else:
+            prompt = (
+                "Before I diagnose, I need to know the equipment. "
+                "Tell me the manufacturer and model "
+                "(e.g., 'Allen-Bradley PowerFlex 525')."
+            )
+            ctx["pending_uns_confirm"] = {"candidate": None}
+
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+        self._record_exchange(chat_id, state, message, prompt)
+        logger.info(
+            "UNS_CONFIRM_REQUEST chat_id=%s candidate=%r confidence=%.2f demo_match=%s",
+            chat_id,
+            candidate,
+            (demo_match.confidence if demo_match else (getattr(uns_ctx, "confidence", 0.0) or 0.0)),
+            bool(demo_match),
+        )
+        return self._make_result(
+            prompt,
+            "high",
+            trace_id,
+            state.get("state", "IDLE"),
+            dispatch_kind="uns_confirm_request",
+        )
+
+    async def _handle_uns_confirmation_response(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id,
+    ):
+        """Consume the user's reply to a pending UNS confirmation prompt.
+
+        Returns a result dict on explicit yes/no, or None to signal fall-through
+        (user typed equipment specs — let the normal flow re-run the UNS resolver).
+        """
+        ctx = state.get("context") or {}
+        pending = ctx.get("pending_uns_confirm") or {}
+        candidate = pending.get("candidate")
+        msg = (message or "").strip().lower()
+
+        _YES = {"yes", "y", "yep", "yeah", "yup", "correct", "confirm", "confirmed"}
+        _NO = {"no", "n", "nope", "wrong", "incorrect"}
+
+        if msg in _YES and candidate:
+            state["asset_identified"] = candidate
+            # When the request came from the demo-namespace path, preserve
+            # the asset_id / component_id under context["confirmed_namespace"]
+            # so downstream retrieval can target the KG row directly instead
+            # of fuzzy-matching on the label.
+            demo_ns = pending.get("demo_namespace")
+            if demo_ns:
+                ctx["confirmed_namespace"] = demo_ns
+            ctx.pop("pending_uns_confirm", None)
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            reply = (
+                f"Got it — equipment is **{candidate}**. Now tell me what's happening "
+                "(fault code, symptom, or what you're seeing)."
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            logger.info(
+                "UNS_CONFIRM_YES chat_id=%s asset=%r confirmed_namespace=%s",
+                chat_id,
+                candidate,
+                bool(demo_ns),
+            )
+            return self._make_result(
+                reply,
+                "high",
+                trace_id,
+                state.get("state", "IDLE"),
+                dispatch_kind="uns_confirm_yes",
+            )
+
+        if msg in _NO:
+            ctx.pop("pending_uns_confirm", None)
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            reply = (
+                "OK — tell me the correct manufacturer and model "
+                "(e.g., 'Allen-Bradley PowerFlex 525')."
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            logger.info("UNS_CONFIRM_NO chat_id=%s", chat_id)
+            return self._make_result(
+                reply,
+                "high",
+                trace_id,
+                state.get("state", "IDLE"),
+                dispatch_kind="uns_confirm_no",
+            )
+
+        # User likely typed equipment specs or otherwise off-script. Drop
+        # pending and let the normal flow run UNS resolver on the message.
+        ctx.pop("pending_uns_confirm", None)
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+        logger.info("UNS_CONFIRM_FALLTHROUGH chat_id=%s msg=%r", chat_id, (message or "")[:80])
+        return None

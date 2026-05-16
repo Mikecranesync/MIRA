@@ -204,6 +204,13 @@ async def ensure_account_usage_table() -> None:
                   ON account_usage_daily (usage_date DESC)
                 """
             )
+            # Idempotent migration: add chat_count column for /chat/message quota gate.
+            await cur.execute(
+                """
+                ALTER TABLE account_usage_daily
+                  ADD COLUMN IF NOT EXISTS chat_count integer NOT NULL DEFAULT 0
+                """
+            )
         _ENSURED_USAGE = True
         logger.info("account_usage_daily table is ready")
     except Exception:

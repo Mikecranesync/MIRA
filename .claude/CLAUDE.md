@@ -149,6 +149,7 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 - `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
 - `docs/specs/mira-component-intelligence-architecture.md` — implementation-level architecture (component templates, KG mechanics)
 - `docs/specs/dialogue-state-tracker-spec.md` — FSM the UNS gate plugs into
+- `docs/specs/uns-message-resolver-spec.md` — how bot messages resolve to UNS paths (Stage-1 spec, shipped)
 - `.claude/skills/<name>/SKILL.md` — task-specific operating guides
 - `.claude/commands/<name>.md` — repeatable workflows
 - `.claude/mcp/<name>-spec.md` — MCP server contracts

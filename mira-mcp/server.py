@@ -619,11 +619,17 @@ async def get_agent_status() -> dict:
 @mcp.tool
 def kg_maintenance_context(
     tenant_id: str,
-    equipment_entity_id: str,
+    equipment_entity_id: str = "",
+    uns_path: str = "",
     include_similar: bool = False,
     fault_window_days: int = 90,
 ) -> dict:
     """Aggregated maintenance context for one piece of equipment.
+
+    Pass `equipment_entity_id` (kg_entities.id UUID) OR `uns_path` (ltree
+    address, e.g. `enterprise.stardust_racers.site.garage_factory.area.
+    conveyor_lab.line.line1.work_cell.conveyor_cell.equipment.conveyor_b16`).
+    The hub resolves the path to a kg_entities row.
 
     Returns hierarchy (plant/area/line), components, recent faults (with
     counts in window), recent work orders, parts, manuals, PM schedule,
@@ -632,12 +638,16 @@ def kg_maintenance_context(
     """
     from kg_client import KgClientError, maintenance_context
 
+    if not equipment_entity_id and not uns_path:
+        return {"ok": False, "error": "pass equipment_entity_id or uns_path"}
+
     try:
         return {
             "ok": True,
             "result": maintenance_context(
                 tenant_id,
                 equipment_entity_id,
+                uns_path=uns_path or None,
                 include_similar=include_similar,
                 fault_window_days=fault_window_days,
             ),
@@ -723,6 +733,70 @@ def kg_flag_pm_mismatches(
                 tenant_id,
                 lookback_days=lookback_days,
                 equipment_entity_id=equipment_entity_id or None,
+            ),
+        }
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def mira_browse_namespace(tenant_id: str, uns_path: str, limit: int = 100) -> dict:
+    """Browse the UNS tree under an ltree path. Returns the descendant
+    entities (`<@` ltree query) so the caller can render a tree view or
+    step one level deeper.
+
+    Path grammar lives in mira-crawler/ingest/uns.py — ISA-95 literal
+    markers (`site`, `area`, `line`, `work_cell`, `equipment`) alternate
+    with dynamic instance labels.
+
+    Examples:
+        mira_browse_namespace(tid, "enterprise.knowledge_base")
+            → every catalog manufacturer
+        mira_browse_namespace(tid, "enterprise.knowledge_base.rockwell_automation")
+            → families / models under Rockwell
+        mira_browse_namespace(tid, "enterprise.stardust_racers.site.garage_factory")
+            → areas, lines, equipment under that site
+    """
+    from kg_client import KgClientError, entities_under_uns_path
+
+    try:
+        return {
+            "ok": True,
+            "result": entities_under_uns_path(tenant_id, uns_path, limit=limit),
+        }
+    except KgClientError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def mira_get_equipment(
+    tenant_id: str,
+    uns_path: str = "",
+    equipment_entity_id: str = "",
+    fault_window_days: int = 90,
+) -> dict:
+    """Get equipment + components + linked docs by UNS path (or entity UUID).
+
+    Resolves the UNS path to a kg_entities row and returns the same
+    payload as `kg_maintenance_context`: hierarchy, components, recent
+    faults, work orders, parts, manuals, PM schedule, and plan-vs-actual
+    mismatches.
+
+    Pass exactly one of `uns_path` or `equipment_entity_id`.
+    """
+    from kg_client import KgClientError, maintenance_context
+
+    if not uns_path and not equipment_entity_id:
+        return {"ok": False, "error": "pass uns_path or equipment_entity_id"}
+
+    try:
+        return {
+            "ok": True,
+            "result": maintenance_context(
+                tenant_id,
+                equipment_entity_id,
+                uns_path=uns_path or None,
+                fault_window_days=fault_window_days,
             ),
         }
     except KgClientError as exc:

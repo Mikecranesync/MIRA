@@ -827,3 +827,86 @@ def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]
     except Exception as exc:
         logger.warning("kb_has_coverage failed: %s", exc)
         return False, f"error_{type(exc).__name__}"
+
+
+KB_PAIR_COVERAGE_MIN_CHUNKS = int(os.getenv("MIRA_KB_PAIR_COVERAGE_MIN_CHUNKS", "1"))
+
+
+def kb_has_pair_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, int]:
+    """Strict-pair coverage probe — does the KB have chunks tagged with BOTH
+    this vendor AND this model?
+
+    Distinct from ``kb_has_coverage`` (vendor-only). Used to catch chimeric
+    pairings like ("AutomationDirect", "820") — the resolver can name them,
+    but no row in ``knowledge_entries`` has them together, so the count is
+    zero and the caller drops the candidate before speaking it.
+
+    Returns (covered, count). ``covered`` is True when count ≥
+    ``KB_PAIR_COVERAGE_MIN_CHUNKS`` (default 1 — any chunk counts as proof
+    the pair exists). Tunable via ``MIRA_KB_PAIR_COVERAGE_MIN_CHUNKS``.
+
+    Never raises. Blank vendor or model returns (False, 0). Missing
+    NEON_DATABASE_URL returns (False, 0). Any DB error returns (False, -1)
+    so callers can distinguish "no rows" from "couldn't check" if they
+    want to fail open in failure scenarios.
+    """
+    vendor_clean = vendor.strip()
+    model_clean = model.strip()
+    if not vendor_clean or not model_clean:
+        return False, 0
+
+    url = os.environ.get("NEON_DATABASE_URL")
+    if not url:
+        return False, 0
+
+    try:
+        from sqlalchemy import create_engine, text  # noqa: PLC0415
+        from sqlalchemy.pool import NullPool  # noqa: PLC0415
+
+        engine = create_engine(
+            url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    SELECT COUNT(*) AS cnt
+                    FROM knowledge_entries
+                    WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
+                      AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
+                      AND LOWER(model_number) LIKE LOWER(:model_pat)
+                      AND embedding IS NOT NULL
+                    """
+                ),
+                {
+                    "tid": tenant_id,
+                    "shared_tid": SHARED_TENANT_ID,
+                    "vendor_pat": f"%{vendor_clean}%",
+                    "model_pat": f"%{model_clean}%",
+                },
+            ).fetchone()
+        count = int(row[0]) if row else 0
+        covered = count >= KB_PAIR_COVERAGE_MIN_CHUNKS
+        if covered:
+            logger.info(
+                "KB_PAIR_COVERAGE_HIT vendor=%r model=%r count=%d threshold=%d",
+                vendor_clean,
+                model_clean,
+                count,
+                KB_PAIR_COVERAGE_MIN_CHUNKS,
+            )
+        else:
+            logger.info(
+                "KB_PAIR_COVERAGE_MISS vendor=%r model=%r count=%d threshold=%d",
+                vendor_clean,
+                model_clean,
+                count,
+                KB_PAIR_COVERAGE_MIN_CHUNKS,
+            )
+        return covered, count
+    except Exception as exc:
+        logger.warning("kb_has_pair_coverage failed: %s", exc)
+        return False, -1

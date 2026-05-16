@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { headers } from "next/headers";
 import Script from "next/script";
 import "./globals.css";
 import { RefineProviders } from "./refine-providers";
@@ -42,7 +43,8 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = (await headers()).get("x-nonce") ?? "";
   return (
     <html lang="en" className={`${inter.variable} h-full`}>
       <body className="h-full antialiased bg-background text-foreground">
@@ -51,6 +53,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script
           id="sw-killer"
           strategy="beforeInteractive"
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `if('serviceWorker'in navigator){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(s){s.unregister()})});caches.keys().then(function(n){n.forEach(function(c){caches.delete(c)})})}`,
           }}

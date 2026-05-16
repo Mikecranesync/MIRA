@@ -30,6 +30,12 @@ COPY mira-crawler/ingest/chunker.py /mira-crawler/ingest/chunker.py
 # Runtime directories (mounted as volumes in production)
 RUN mkdir -p /data/chroma /data/docs
 
+RUN addgroup --system --gid 1001 mira && \
+    adduser --system --uid 1001 --ingroup mira mira && \
+    chown -R mira:mira /data
+
+USER mira
+
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=15s \

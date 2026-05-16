@@ -1,4 +1,7 @@
-.PHONY: observe observe-down observe-logs
+.PHONY: demo-preflight observe observe-down observe-logs
+
+demo-preflight:
+	doppler run --project factorylm --config prd -- bash scripts/demo-preflight.sh
 
 observe:
 	doppler run --project factorylm --config prd -- \

@@ -24,6 +24,16 @@
 - Action: no-op (suppressed duplicate issue — #1217 from 2026-05-13 still covers this exact scorecard; prior dupes: #1144, #1170, #1187)
 - Same 9 fixtures, same 3 file_clusters (engine.py×7, guardrails.py×3, prompts×3). No new signal — nightly eval job is stalled. Action needed: regenerate scorecard or land a fix on one of the open issues before the next eval-fixer run will produce signal.
 
+# Hot Cache — 2026-05-14 — CHARLIE
+
+## eval-fixer run — 2026-05-14
+- Scorecard: 48/57 passing (84%) — source: `tests/eval/runs/2026-05-06T0833-offline-text.md` (unchanged since 2026-05-12, now 8 days stale)
+- Action: issue-filed (autopatch skipped — 3 file_clusters, hard stop)
+- Issue: https://github.com/Mikecranesync/MIRA/issues/1269 (third repeat — see #1217, #1187 — same scorecard, no fresh eval run)
+- Same 9 fixtures still failing across `engine.py`, `guardrails.py`, `prompts/diagnose/active.yaml`. Nightly eval job is almost certainly dead — needs human investigation, not another auto-issue.
+
+# Hot Cache — 2026-05-13 — CHARLIE
+
 ## eval-fixer run — 2026-05-13
 - Scorecard: 48/57 passing (84%) — source: `tests/eval/runs/2026-05-06T0833-offline-text.md` (unchanged since 2026-05-12)
 - Action: issue-filed (autopatch skipped — 3 file_clusters, hard stop)

@@ -85,6 +85,16 @@ _FAULT_MENTION_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Strip prompt-injection delimiters from chunk text before LLM injection.
+# A crafted document containing these patterns could break the reference-block
+# boundary and inject instructions with system-role authority (#1007).
+_SENTINEL_RE = re.compile(
+    r"---\s*(?:END REFERENCES|END NEONDB CONTEXT|RETRIEVED REFERENCE DOCUMENTS"
+    r"|NEONDB KNOWLEDGE BASE|END GENERAL KNOWLEDGE MODE|END NO KB COVERAGE"
+    r"|CURRENT STATE)\s*---",
+    re.IGNORECASE,
+)
+
 
 def _build_clarification_request(message: str, asset_identified: str) -> str | None:
     """Return a targeted clarification question when the KB has no coverage.
@@ -93,12 +103,27 @@ def _build_clarification_request(message: str, asset_identified: str) -> str | N
     to the user are exactly what was searched — no false positives from generic
     English words. Returns None for non-fault queries so the LLM honesty path
     fires instead.
+
+    REGRESSION GUARD (2026-05-12): When the user's message ALREADY contains a
+    recognizable manufacturer (e.g. "PowerFlex" → Rockwell) AND a fault code,
+    return None so the LLM answers from general engineering knowledge with the
+    no_kb_coverage disclaimer — never re-ask for info the user just provided.
     """
     has_fault_mention = bool(_FAULT_MENTION_RE.search(message))
     # Use the same extractor the recall path used — what it found is what failed
     attempted_codes = _neon_recall._extract_fault_codes(message)
 
     if not has_fault_mention and not attempted_codes:
+        return None
+
+    # Short-circuit: user's message already names a vendor + fault code combo.
+    # Asking "what manufacturer?" when they just said "PowerFlex 525 F004" is
+    # the regression Mike has reported 3+ times. Fall through to the LLM with
+    # no_kb_coverage=True — it will answer from general knowledge with a
+    # documentation-disclaimer prefix.
+    if attempted_codes and vendor_name_from_text(message):
+        return None
+    if attempted_codes and asset_identified and vendor_name_from_text(asset_identified):
         return None
 
     parts: list[str] = []
@@ -418,10 +443,12 @@ class RAGWorker:
             # identified vendor.  Chunks with no manufacturer tag are kept (they may be
             # generic content like fault code tables or application notes).
             # Falls back to the old all-or-nothing suppress if no per-chunk filtering
-            # yields results.
+            # yields results. Vendor is read from state["context"]["uns_context"]
+            # (populated by the UNS resolver at the top of Supervisor.process_full).
             if chunk_texts and not photo_b64:
-                query_combined = f"{message} {state.get('asset_identified', '')}".strip()
-                query_vendor = vendor_name_from_text(query_combined)
+                query_vendor = ((state.get("context") or {}).get("uns_context") or {}).get(
+                    "manufacturer"
+                )
                 if query_vendor:
                     qv_lower = query_vendor.lower()
                     filtered_chunks = [
@@ -455,7 +482,10 @@ class RAGWorker:
 
             self._last_sources = chunk_texts
             self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
-            self._last_neon_chunks = neon_chunks
+            # Snapshot before any await so concurrent sessions can't overwrite
+            # this call's metadata (fixes #1082 Nemotron rerank race).
+            local_neon_chunks = list(neon_chunks)
+            self._last_neon_chunks = local_neon_chunks
             self._kb_status = self._compute_kb_status(neon_chunks, bool(chunk_texts))
 
             async with spans.vector_search(
@@ -486,6 +516,7 @@ class RAGWorker:
                     rewritten,
                     chunk_texts,
                     photo_b64=photo_b64,
+                    neon_chunks_meta=local_neon_chunks,
                 )
             else:
                 no_kb = retrieval_attempted and not photo_b64
@@ -554,14 +585,16 @@ class RAGWorker:
         message: str,
         chunks: list,
         photo_b64: str = None,
+        neon_chunks_meta: list[dict] | None = None,
     ) -> list[dict]:
         """Build prompt with explicitly injected reranked chunks.
 
         ``chunks`` may be either a list of plain strings (legacy callers) or
         a list of chunk dicts. When a dict is passed, the [Source: ...] tag
         comes from that dict directly so reranking does not mis-pair labels
-        with text. When a string is passed, the parallel ``_last_neon_chunks``
-        list is used as the metadata source.
+        with text. When a string is passed, ``neon_chunks_meta`` (a
+        call-local snapshot) is preferred over ``self._last_neon_chunks`` to
+        avoid a cross-tenant data race when Nemotron reranking is enabled.
         """
         system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
@@ -584,16 +617,19 @@ class RAGWorker:
         # instructed (rule 16) to echo inline next to facts it cites.
         # Rerank-stable: when `chunks` is a list of dicts, label comes from
         # that dict directly so reordering doesn't mis-pair labels with text.
-        # When chunks are bare strings (legacy callers), fall back to the
-        # parallel _last_neon_chunks list.
+        # When chunks are bare strings, prefer the call-local snapshot
+        # (neon_chunks_meta) over the instance attr to avoid cross-tenant leaks.
+        _meta = neon_chunks_meta if neon_chunks_meta is not None else self._last_neon_chunks
         system_content += "\n--- RETRIEVED REFERENCE DOCUMENTS ---\n"
         for i, chunk in enumerate(chunks, 1):
             if isinstance(chunk, dict):
                 nc = chunk
                 text = chunk.get("content", "")
             else:
-                nc = self._last_neon_chunks[i - 1] if i - 1 < len(self._last_neon_chunks) else {}
+                nc = _meta[i - 1] if i - 1 < len(_meta) else {}
                 text = chunk
+            # Strip prompt-injection sentinel patterns before injection (#1007)
+            text = _SENTINEL_RE.sub("[REF_DELIMITER]", text)
             label = format_source_label(nc)
             if label:
                 system_content += f"--- [{i}] [Source: {label}] ---\n{text}\n---\n"
@@ -690,23 +726,31 @@ class RAGWorker:
         elif no_kb_coverage:
             asset = state.get("asset_identified", "")
             support_url = vendor_support_url(asset) or vendor_support_url(message)
-            url_hint = (
-                f"Point them to {support_url} for the official manual."
+            url_line = (
+                f"4. Optionally point them to {support_url} for the official manual.\n"
                 if support_url
-                else "Suggest they search the manufacturer's website for the equipment manual."
+                else "4. (no vendor URL on file — skip the link)\n"
             )
             system_content += (
                 "\n\n--- NO KB COVERAGE ---\n"
-                "CRITICAL: The knowledge base has NO documentation for this equipment. "
-                "You searched and found nothing.\n"
-                "You MUST follow these rules for this response:\n"
-                '1. Open with: "I don\'t have documentation for this equipment in my knowledge base."\n'
-                "2. Do NOT ask the user to consult a manual — you don't have it.\n"
-                "3. Any general troubleshooting knowledge MUST be prefaced with: "
-                '"Based on general knowledge (not from specific documentation)..."\n'
-                f"4. {url_hint}\n"
-                "5. If they haven't provided the model number, ask for it so a manual can be sourced.\n"
-                "6. Set confidence to LOW. Do not pretend to have specific documentation.\n"
+                "The knowledge base has no documentation specifically for this equipment, "
+                "but the technician still needs a useful answer NOW. Give them one.\n"
+                "Rules for this response:\n"
+                '1. Prefix your answer with: "Based on general industrial knowledge '
+                '(not from documentation specific to this equipment): "\n'
+                "2. Provide your best, concrete answer drawing on general industrial knowledge "
+                "of this fault code / symptom / equipment class. Explain what the code or "
+                "symptom typically means for this type of equipment. Suggest the most likely "
+                "causes and first diagnostic steps.\n"
+                "3. Do NOT tell the user to consult their manual as the primary action — they "
+                "already came to you. Give them an answer first.\n"
+                + url_line
+                + "5. NEVER ask the user for manufacturer, model, or fault code information "
+                "they have ALREADY provided in their message or the conversation history. "
+                "Read the user's message and prior turns carefully — if the manufacturer, "
+                "model, or fault code is already present, USE IT — do not re-ask. "
+                "Only ask for what is genuinely missing, and only AFTER giving your best-effort answer.\n"
+                "6. Set confidence to LOW or MEDIUM. Be honest that this is general guidance.\n"
                 "--- END NO KB COVERAGE ---\n"
             )
 
@@ -716,7 +760,11 @@ class RAGWorker:
             for i, chunk in enumerate(neon_chunks, 1):
                 score = chunk.get("similarity") or 0.0
                 label = format_source_label(chunk) or (chunk.get("equipment_type") or "unknown")
-                system_content += f"--- [{i}] [Source: {label}] (score={score:.3f}) ---\n{chunk['content']}\n---\n"
+                # Strip prompt-injection sentinel patterns before injection (#1007)
+                safe_content = _SENTINEL_RE.sub("[REF_DELIMITER]", chunk["content"])
+                system_content += (
+                    f"--- [{i}] [Source: {label}] (score={score:.3f}) ---\n{safe_content}\n---\n"
+                )
             system_content += "--- END NEONDB CONTEXT ---\n"
 
         messages = [{"role": "system", "content": system_content}]

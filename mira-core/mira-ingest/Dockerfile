@@ -11,5 +11,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py crawl_verifier.py route_fallback.py asset_tag.py crawl_routes.yaml ./
 COPY db/ db/
 
+RUN addgroup --system --gid 1001 mira && \
+    adduser --system --uid 1001 --ingroup mira mira
+
+USER mira
+
 ENV PYTHONUNBUFFERED=1
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

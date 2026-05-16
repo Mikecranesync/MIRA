@@ -1,0 +1,12 @@
+# Mock replies for out-of-KB / honesty-signal cases.
+- match_substring: "Mitsubishi M70"
+  reply: |
+    I don't have Mitsubishi M70 coverage in my KB. Refer to the M70 manual
+    directly for AL10 alarm details — Mitsubishi publishes the alarm reference
+    on their support portal. If you can paste the relevant page or upload a
+    photo of the manual, I can help interpret it.
+
+- match_substring: "ABB ACS580"
+  reply: |
+    No ABB ACS580 in the KB right now. Consult the ABB Hardware Manual
+    3AXD50000016097 for fault codes, or upload a page and I'll work from that.

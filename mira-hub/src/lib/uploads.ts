@@ -234,3 +234,62 @@ export async function deleteUpload(id: string, tenantId = DEFAULT_TENANT_ID): Pr
   );
   return (rowCount ?? 0) > 0;
 }
+
+export interface UploadCounts {
+  pm_tasks_count: number;
+  fault_codes_count: number;
+  knowledge_chunks_count: number;
+}
+
+/**
+ * Query ingest-result counts for a completed upload.
+ *
+ * - knowledge_chunks_count: taken directly from hub_uploads.kb_chunk_count
+ *   (written by the pipeline when mira-ingest returns the chunk count).
+ * - pm_tasks_count: count of pm_schedules rows whose source_citation matches
+ *   the upload filename. Falls back to 0 if the table/column doesn't exist.
+ * - fault_codes_count: count of kb_chunks rows tagged as fault-code chunks
+ *   whose source matches the upload filename. Falls back to 0 gracefully.
+ *
+ * All fallbacks return 0 — never throws on missing tables/columns.
+ */
+export async function getUploadCounts(
+  upload: Upload,
+  tenantId = DEFAULT_TENANT_ID,
+): Promise<UploadCounts> {
+  // kb_chunk_count is written directly by the ingest pipeline
+  const knowledge_chunks_count = upload.kbChunkCount ?? 0;
+
+  // PM tasks: pm_schedules rows linked to this filename via source_citation
+  let pm_tasks_count = 0;
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS n
+         FROM pm_schedules
+        WHERE tenant_id = $1
+          AND source_citation ILIKE $2`,
+      [tenantId, `%${upload.filename}%`],
+    );
+    pm_tasks_count = rows[0]?.n ?? 0;
+  } catch {
+    // Table or column doesn't exist yet — return 0
+  }
+
+  // Fault codes: kb_chunks tagged as fault codes linked to this filename
+  let fault_codes_count = 0;
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS n
+         FROM kb_chunks
+        WHERE tenant_id = $1
+          AND source ILIKE $2
+          AND (doc_type ILIKE '%fault%' OR doc_type ILIKE '%error%' OR title ILIKE '%fault%' OR title ILIKE '%error code%')`,
+      [tenantId, `%${upload.filename}%`],
+    );
+    fault_codes_count = rows[0]?.n ?? 0;
+  } catch {
+    // Table or column doesn't exist yet — return 0
+  }
+
+  return { pm_tasks_count, fault_codes_count, knowledge_chunks_count };
+}
