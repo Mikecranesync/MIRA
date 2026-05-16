@@ -322,6 +322,14 @@ _TRUSTED_DISPATCH_KINDS: frozenset[str] = frozenset(
 # failure — see `_dispatch_dialogue_turn` below.
 _DST_ENABLED = os.getenv("MIRA_USE_DST", "0") == "1"
 
+# UNS Confirmation Gate kill-switch. Default ON — the gate is the doctrinal
+# entry point of the namespace-builder product (spec §"The UNS Location-Confirmation
+# Gate"). Setting MIRA_UNS_GATE_ENABLED=0 returns the engine to pre-gate behavior
+# (treats every diagnose_equipment turn as if the asset were already confirmed).
+# Used by `_should_fire_uns_gate`; preserves the flag-off regression path called
+# out in docs/plans/2026-05-15-maintenance-namespace-builder.md Phase 1 acceptance.
+_UNS_GATE_ENABLED = os.getenv("MIRA_UNS_GATE_ENABLED", "1") == "1"
+
 # Stage 0 (2026-05-04) action-request fast-path. Catches imperative
 # work-order requests BEFORE `route_intent`, which currently sends them
 # into RAG (CRITICAL RULE 3 prefers continue_current mid-flow). Without
@@ -4217,15 +4225,20 @@ class Supervisor:
         """Return True when the gate should interrupt the turn with a confirm prompt.
 
         Conditions (all must hold):
+        - MIRA_UNS_GATE_ENABLED is on (default true)
         - router classified turn as diagnose_equipment
         - session has no asset_identified
-        - session is in IDLE (don't interrupt mid-FSM Q1/Q2/Q3/DIAGNOSIS)
+        - session is in IDLE (don't interrupt mid-FSM Q1/Q2/Q3/DIAGNOSIS).
+          AWAITING_UNS_CONFIRMATION is consumed earlier in `process()` via
+          `_handle_uns_confirmation_response`, so it never reaches this check.
 
         `message` and `session_context` are accepted for symmetry with other
         gate helpers and to keep the call site readable, even though the
-        current implementation only inspects intent + state.
+        current implementation only inspects intent + state + flag.
         """
         del message, session_context  # reserved for future signal expansion
+        if not _UNS_GATE_ENABLED:
+            return False
         if router_intent != "diagnose_equipment":
             return False
         if state.get("asset_identified"):
@@ -4320,6 +4333,11 @@ class Supervisor:
             )
             ctx["pending_uns_confirm"] = {"candidate": None}
 
+        # Promote to AWAITING_UNS_CONFIRMATION so downstream code paths
+        # (citation-compliance enforcement, telemetry, dialogue-state tracker)
+        # can key off a single FSM state instead of inspecting context. The
+        # response handler clears it back to IDLE on yes / no / fallthrough.
+        state["state"] = "AWAITING_UNS_CONFIRMATION"
         state["context"] = ctx
         self._save_state(chat_id, state)
         self._record_exchange(chat_id, state, message, prompt)
@@ -4334,7 +4352,7 @@ class Supervisor:
             prompt,
             "high",
             trace_id,
-            state.get("state", "IDLE"),
+            state["state"],
             dispatch_kind="uns_confirm_request",
         )
 
@@ -4368,6 +4386,10 @@ class Supervisor:
             if demo_ns:
                 ctx["confirmed_namespace"] = demo_ns
             ctx.pop("pending_uns_confirm", None)
+            # Side state cleared — normal IDLE→Q1/DIAGNOSIS flow resumes on
+            # the next turn now that asset_identified is set.
+            if state.get("state") == "AWAITING_UNS_CONFIRMATION":
+                state["state"] = "IDLE"
             state["context"] = ctx
             self._save_state(chat_id, state)
             reply = (
@@ -4391,6 +4413,8 @@ class Supervisor:
 
         if msg in _NO:
             ctx.pop("pending_uns_confirm", None)
+            if state.get("state") == "AWAITING_UNS_CONFIRMATION":
+                state["state"] = "IDLE"
             state["context"] = ctx
             self._save_state(chat_id, state)
             reply = (
@@ -4409,7 +4433,11 @@ class Supervisor:
 
         # User likely typed equipment specs or otherwise off-script. Drop
         # pending and let the normal flow run UNS resolver on the message.
+        # Returning to IDLE lets the gate re-fire with new context on the
+        # next turn if the user still hasn't given us enough.
         ctx.pop("pending_uns_confirm", None)
+        if state.get("state") == "AWAITING_UNS_CONFIRMATION":
+            state["state"] = "IDLE"
         state["context"] = ctx
         self._save_state(chat_id, state)
         logger.info("UNS_CONFIRM_FALLTHROUGH chat_id=%s msg=%r", chat_id, (message or "")[:80])
