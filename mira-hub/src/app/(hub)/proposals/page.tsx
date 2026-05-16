@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, FileText, Loader2, Shield } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, FileText, Loader2, Shield, X } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
 interface ProposalEndpoint {
@@ -55,6 +55,38 @@ export default function ProposalsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("proposed");
+  const [deciding, setDeciding] = useState<Record<string, "verify" | "reject" | undefined>>({});
+  const [toast, setToast] = useState<string | null>(null);
+
+  async function decide(proposalId: string, decision: "verify" | "reject") {
+    setDeciding((s) => ({ ...s, [proposalId]: decision }));
+    const previous = proposals;
+    if (statusFilter === "proposed") {
+      setProposals((cur) => cur.filter((p) => p.id !== proposalId));
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/proposals/${proposalId}/decide`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      setToast(decision === "verify" ? "Proposal verified" : "Proposal rejected");
+    } catch (e) {
+      setProposals(previous);
+      setToast(`Decide failed: ${(e as Error).message}`);
+    } finally {
+      setDeciding((s) => {
+        const next = { ...s };
+        delete next[proposalId];
+        return next;
+      });
+      setTimeout(() => setToast(null), 4000);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -126,17 +158,54 @@ export default function ProposalsPage() {
       ) : (
         <div className="space-y-6" data-testid="proposals-list">
           {grouped.safetyCritical.length > 0 && (
-            <RiskSection title="Safety-critical" tone="critical" proposals={grouped.safetyCritical} />
+            <RiskSection
+              title="Safety-critical"
+              tone="critical"
+              proposals={grouped.safetyCritical}
+              canDecide={statusFilter === "proposed"}
+              deciding={deciding}
+              onDecide={decide}
+            />
           )}
           {grouped.high.length > 0 && (
-            <RiskSection title="High risk" tone="warning" proposals={grouped.high} />
+            <RiskSection
+              title="High risk"
+              tone="warning"
+              proposals={grouped.high}
+              canDecide={statusFilter === "proposed"}
+              deciding={deciding}
+              onDecide={decide}
+            />
           )}
           {grouped.medium.length > 0 && (
-            <RiskSection title="Medium risk" tone="info" proposals={grouped.medium} />
+            <RiskSection
+              title="Medium risk"
+              tone="info"
+              proposals={grouped.medium}
+              canDecide={statusFilter === "proposed"}
+              deciding={deciding}
+              onDecide={decide}
+            />
           )}
           {grouped.low.length > 0 && (
-            <RiskSection title="Low risk" tone="neutral" proposals={grouped.low} />
+            <RiskSection
+              title="Low risk"
+              tone="neutral"
+              proposals={grouped.low}
+              canDecide={statusFilter === "proposed"}
+              deciding={deciding}
+              onDecide={decide}
+            />
           )}
+        </div>
+      )}
+
+      {toast && (
+        <div
+          className="fixed bottom-4 right-4 z-50 rounded-md bg-slate-900 px-4 py-2 text-sm text-white shadow-lg"
+          data-testid="proposals-toast"
+        >
+          {toast}
         </div>
       )}
     </div>
@@ -147,10 +216,16 @@ function RiskSection({
   title,
   tone,
   proposals,
+  canDecide,
+  deciding,
+  onDecide,
 }: {
   title: string;
   tone: "critical" | "warning" | "info" | "neutral";
   proposals: Proposal[];
+  canDecide: boolean;
+  deciding: Record<string, "verify" | "reject" | undefined>;
+  onDecide: (id: string, decision: "verify" | "reject") => void;
 }) {
   const accent =
     tone === "critical"
@@ -167,19 +242,40 @@ function RiskSection({
       </h2>
       <div className="space-y-2">
         {proposals.map((p) => (
-          <ProposalCard key={p.id} proposal={p} accent={accent} />
+          <ProposalCard
+            key={p.id}
+            proposal={p}
+            accent={accent}
+            canDecide={canDecide}
+            decidingState={deciding[p.id]}
+            onDecide={onDecide}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function ProposalCard({ proposal, accent }: { proposal: Proposal; accent: string }) {
+function ProposalCard({
+  proposal,
+  accent,
+  canDecide,
+  decidingState,
+  onDecide,
+}: {
+  proposal: Proposal;
+  accent: string;
+  canDecide: boolean;
+  decidingState: "verify" | "reject" | undefined;
+  onDecide: (id: string, decision: "verify" | "reject") => void;
+}) {
   const confidencePct = Math.round(proposal.confidence * 100);
+  const busy = decidingState !== undefined;
   return (
     <article
       className={`rounded-lg border border-slate-200 ${accent} border-l-4 bg-white p-4 shadow-sm`}
       data-testid="proposal-card"
+      data-proposal-id={proposal.id}
     >
       <div className="flex items-center gap-2 text-sm">
         {proposal.riskLevel === "safety_critical" && (
@@ -214,9 +310,41 @@ function ProposalCard({ proposal, accent }: { proposal: Proposal; accent: string
         <span className="flex items-center gap-1">
           <FileText className="h-3 w-3" /> {proposal.evidenceCount} evidence
         </span>
-        <time className="ml-auto" dateTime={proposal.createdAt}>
+        <time className="ml-2" dateTime={proposal.createdAt}>
           {new Date(proposal.createdAt).toLocaleDateString()}
         </time>
+        {canDecide && (
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDecide(proposal.id, "reject")}
+              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              data-testid="proposal-reject"
+            >
+              {decidingState === "reject" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <X className="h-3 w-3" />
+              )}
+              Reject
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDecide(proposal.id, "verify")}
+              className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              data-testid="proposal-verify"
+            >
+              {decidingState === "verify" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Check className="h-3 w-3" />
+              )}
+              Verify
+            </button>
+          </div>
+        )}
       </footer>
     </article>
   );

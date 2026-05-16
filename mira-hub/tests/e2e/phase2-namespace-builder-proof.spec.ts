@@ -96,8 +96,6 @@ test.describe("Phase 2 slice 1 — Hub product surfaces", () => {
   });
 
   test("API GET /api/readiness returns a level between 0-6", async ({ request }) => {
-    // Cookie auth comes from the login above in beforeEach — request reuses
-    // the page context's session via the shared storage state.
     const res = await request.get(`${HUB}/api/readiness`);
     expect(res.status()).toBe(200);
     const body = await res.json();
@@ -108,5 +106,53 @@ test.describe("Phase 2 slice 1 — Hub product surfaces", () => {
     expect(body).toHaveProperty("nextStep");
     expect(typeof body.nextStep).toBe("string");
     expect(body.nextStep.length).toBeGreaterThan(5);
+  });
+
+  test("API POST /api/readiness/recalculate returns fresh level", async ({ request }) => {
+    const res = await request.post(`${HUB}/api/readiness/recalculate`);
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.level).toBeGreaterThanOrEqual(0);
+    expect(body.level).toBeLessThanOrEqual(6);
+    expect(body).toHaveProperty("computedAt");
+  });
+});
+
+// ── Mutation flows (slice 2) ───────────────────────────────────────────────
+
+test.describe("Phase 2 slice 2 — mutations", () => {
+  test("Verify and Reject buttons render on Pending tab", async ({ page }) => {
+    await page.goto(`${HUB}/proposals`, { waitUntil: "networkidle" });
+    await expect(page.locator('[data-testid="proposals-tab-proposed"]')).toBeVisible();
+
+    const empty = page.locator('[data-testid="proposals-empty"]');
+    const firstCard = page.locator('[data-testid="proposal-card"]').first();
+    if (await empty.isVisible().catch(() => false)) {
+      return;
+    }
+    await expect(firstCard).toBeVisible();
+    await expect(firstCard.locator('[data-testid="proposal-verify"]')).toBeVisible();
+    await expect(firstCard.locator('[data-testid="proposal-reject"]')).toBeVisible();
+  });
+
+  test("Verified tab hides the decide buttons", async ({ page }) => {
+    await page.goto(`${HUB}/proposals`, { waitUntil: "networkidle" });
+    await page.locator('[data-testid="proposals-tab-verified"]').click();
+    const firstCard = page.locator('[data-testid="proposal-card"]').first();
+    if (await firstCard.isVisible().catch(() => false)) {
+      await expect(firstCard.locator('[data-testid="proposal-verify"]')).toHaveCount(0);
+      await expect(firstCard.locator('[data-testid="proposal-reject"]')).toHaveCount(0);
+    }
+  });
+
+  test("Namespace nodes are draggable", async ({ page }) => {
+    await page.goto(`${HUB}/namespace`, { waitUntil: "networkidle" });
+    const empty = page.locator('[data-testid="namespace-empty"]');
+    if (await empty.isVisible().catch(() => false)) {
+      return;
+    }
+    const firstNode = page.locator('[data-testid="namespace-node"]').first();
+    await expect(firstNode).toHaveAttribute("draggable", "true");
+    await expect(firstNode).toHaveAttribute("data-node-id", /[0-9a-f-]+/i);
   });
 });

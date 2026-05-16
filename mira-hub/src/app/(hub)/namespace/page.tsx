@@ -9,8 +9,8 @@
  * Drag-drop move, rename, and merge land in slice 2.
  */
 
-import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Layers, Loader2, Factory, MapPin, Cog, FileText } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { ChevronDown, ChevronRight, Layers, Loader2, Factory, MapPin, Cog, FileText, Move } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
 interface NamespaceNode {
@@ -49,28 +49,59 @@ export default function NamespacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<NamespaceNode | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const refreshTree = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/namespace/tree`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as TreeResponse;
+      setTree(data.tree);
+      setTotal(data.total);
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/namespace/tree`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as TreeResponse;
-        if (cancelled) return;
-        setTree(data.tree);
-        setTotal(data.total);
-      } catch (e) {
-        if (cancelled) return;
-        setError((e as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    void (async () => {
+      await refreshTree();
+      if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshTree]);
+
+  async function handleDrop(sourceId: string, targetId: string) {
+    if (sourceId === targetId) return;
+    const previous = tree;
+    setToast("Moving…");
+    try {
+      const res = await fetch(`${API_BASE}/api/namespace/node/${sourceId}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ newParentId: targetId, reason: "drag-and-drop" }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      await refreshTree();
+      setToast("Move saved");
+    } catch (e) {
+      setTree(previous);
+      setToast(`Move failed: ${(e as Error).message}`);
+    } finally {
+      setDraggingId(null);
+      setDropTargetId(null);
+      setTimeout(() => setToast(null), 3500);
+    }
+  }
 
   return (
     <div className="flex h-full" data-testid="namespace-page">
@@ -79,8 +110,11 @@ export default function NamespacePage() {
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">Namespace</h1>
             <p className="mt-1 text-sm text-slate-500">
-              {loading ? "Loading…" : `${total} entit${total === 1 ? "y" : "ies"} in your factory namespace`}
+              {loading ? "Loading…" : `${total} entit${total === 1 ? "y" : "ies"} — drag any node to reparent`}
             </p>
+          </div>
+          <div className="hidden items-center gap-1 text-xs text-slate-400 sm:flex">
+            <Move className="h-3 w-3" /> Drag to move
           </div>
         </div>
 
@@ -103,6 +137,11 @@ export default function NamespacePage() {
                 depth={0}
                 selectedId={selected?.id ?? null}
                 onSelect={setSelected}
+                draggingId={draggingId}
+                dropTargetId={dropTargetId}
+                onDragStart={setDraggingId}
+                onDragOver={setDropTargetId}
+                onDrop={handleDrop}
               />
             ))}
           </div>
@@ -115,6 +154,15 @@ export default function NamespacePage() {
       >
         {selected ? <DetailPane node={selected} /> : <DetailEmpty />}
       </aside>
+
+      {toast && (
+        <div
+          className="fixed bottom-4 right-4 z-50 rounded-md bg-slate-900 px-4 py-2 text-sm text-white shadow-lg"
+          data-testid="namespace-toast"
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
@@ -124,25 +172,63 @@ function TreeNode({
   depth,
   selectedId,
   onSelect,
+  draggingId,
+  dropTargetId,
+  onDragStart,
+  onDragOver,
+  onDrop,
 }: {
   node: NamespaceNode;
   depth: number;
   selectedId: string | null;
   onSelect: (n: NamespaceNode) => void;
+  draggingId: string | null;
+  dropTargetId: string | null;
+  onDragStart: (id: string | null) => void;
+  onDragOver: (id: string | null) => void;
+  onDrop: (sourceId: string, targetId: string) => void;
 }) {
   const [open, setOpen] = useState(depth < 2);
   const hasChildren = node.children.length > 0;
   const Icon = KIND_ICON[node.kind] ?? Layers;
   const isSelected = node.id === selectedId;
+  const isDragging = draggingId === node.id;
+  const isDropTarget = dropTargetId === node.id && draggingId !== node.id;
 
   return (
     <div>
       <div
-        className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-100 ${
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", node.id);
+          onDragStart(node.id);
+        }}
+        onDragEnd={() => onDragStart(null)}
+        onDragOver={(e) => {
+          if (draggingId && draggingId !== node.id) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            onDragOver(node.id);
+          }
+        }}
+        onDragLeave={() => onDragOver(null)}
+        onDrop={(e) => {
+          e.preventDefault();
+          const sourceId = e.dataTransfer.getData("text/plain") || draggingId;
+          if (sourceId && sourceId !== node.id) {
+            onDrop(sourceId, node.id);
+          }
+        }}
+        className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm transition ${
           isSelected ? "bg-blue-50 ring-1 ring-blue-200" : ""
+        } ${isDragging ? "opacity-40" : ""} ${
+          isDropTarget ? "bg-blue-100 ring-2 ring-blue-500" : "hover:bg-slate-100"
         }`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         data-testid="namespace-node"
+        data-node-id={node.id}
+        data-drop-target={isDropTarget ? "true" : "false"}
       >
         <button
           type="button"
@@ -176,6 +262,11 @@ function TreeNode({
               depth={depth + 1}
               selectedId={selectedId}
               onSelect={onSelect}
+              draggingId={draggingId}
+              dropTargetId={dropTargetId}
+              onDragStart={onDragStart}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
             />
           ))}
         </div>
