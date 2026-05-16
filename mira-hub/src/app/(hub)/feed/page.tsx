@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import HealthScoreWidget from "@/components/HealthScoreWidget";
 
 const KPI_CARDS = [
   { label: "Open Work Orders", value: "12", icon: ClipboardList, color: "#2563EB", bg: "#EFF6FF", href: "/workorders" },
@@ -176,6 +177,9 @@ export default function FeedPage() {
       </div>
 
       <div className="px-4 md:px-6 py-4 pb-24 space-y-4 max-w-3xl mx-auto">
+        {/* Namespace readiness widget (Phase 2 slice 1) */}
+        <HealthScoreWidget />
+
         {/* KPI Summary Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {KPI_CARDS.map((kpi) => (
