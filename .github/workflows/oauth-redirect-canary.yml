@@ -1,0 +1,65 @@
+name: oauth-redirect canary
+
+# Catches `redirect_uri_mismatch` drift before a user does.
+#
+# Background: there is no public Google API to read which redirect URIs
+# are registered on an OAuth 2.0 Client ID. Drift between what mira-hub
+# sends (NEXTAUTH_URL + NextAuth basePath → /callback/google) and what
+# Google Cloud Console has authorized causes silent "Access blocked: this
+# app's request is invalid — Error 400: redirect_uri_mismatch" on every
+# sign-in. The canonical list lives in
+# mira-hub/docs/auth/oauth-redirect-uris.md.
+#
+# This workflow runs the probe script, which hits Google's authorize
+# endpoint with our exact redirect_uri and fails on a 302 → /signin/oauth/error
+# carrying redirect_uri_mismatch. Failure means: re-add the URI in
+# Google Cloud Console; see the script's stderr for the exact value.
+
+on:
+  schedule:
+    - cron: "17 14 * * *"   # 14:17 UTC = 10:17 EDT / 09:17 EST
+  workflow_dispatch: {}     # manual trigger from the Actions tab
+  push:
+    branches: [main]
+    paths:
+      - "mira-hub/src/auth.ts"
+      - "mira-hub/src/lib/config.ts"
+      - "docker-compose.saas.yml"
+      - "docker-compose.hub.yml"
+      - "mira-hub/scripts/verify-google-oauth-redirect.ts"
+      - "mira-hub/docs/auth/oauth-redirect-uris.md"
+      - ".github/workflows/oauth-redirect-canary.yml"
+
+jobs:
+  probe:
+    name: Probe Google authorize endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Run canary
+        env:
+          HUB_AUTH_GOOGLE_CLIENT_ID: ${{ secrets.HUB_AUTH_GOOGLE_CLIENT_ID }}
+          # Override-able so the same script can verify per-env URIs
+          # (preview / staging) by passing OAUTH_REDIRECT_URI_TO_VERIFY.
+          OAUTH_REDIRECT_URI_TO_VERIFY: "https://app.factorylm.com/api/auth/callback/google"
+        run: bun run mira-hub/scripts/verify-google-oauth-redirect.ts
+
+      - name: On failure, point reader at the fix
+        if: failure()
+        run: |
+          echo "::error title=Google OAuth redirect URI not authorized::"
+          echo "Google rejected mira-hub's redirect_uri. Fix:"
+          echo "  1. Open Google Cloud Console → APIs & Services → Credentials"
+          echo "  2. Edit OAuth 2.0 Client ID 246891599587-…"
+          echo "  3. Under 'Authorized redirect URIs' add the URI from the"
+          echo "     stderr above (or the canonical list in"
+          echo "     mira-hub/docs/auth/oauth-redirect-uris.md)"
+          echo "  4. Save. Wait ~30s. Re-run this workflow."
