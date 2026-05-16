@@ -489,9 +489,11 @@ function AssetsPageInner() {
               <Printer className="w-3.5 h-3.5" />
               Print QR Labels
             </Link>
-            <Button size="sm" className="gap-1.5">
-              <QrCode className="w-3.5 h-3.5" />
-              {tCommon("scanQr")}
+            <Button asChild size="sm" className="gap-1.5">
+              <Link href="/scan">
+                <QrCode className="w-3.5 h-3.5" />
+                {tCommon("scanQr")}
+              </Link>
             </Button>
           </div>
         </div>
