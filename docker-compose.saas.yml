@@ -98,6 +98,8 @@ services:
     ports:
       - "127.0.0.1:8002:8001"
     environment:
+      - MIRA_DB_PATH=/mira-db/mira.db
+      - PHOTOS_DIR=/mira-db/photos
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
@@ -109,6 +111,8 @@ services:
       # Unit 3.5 — magic-inbox safety gates
       - RELEVANCE_GATE_ENABLED=${RELEVANCE_GATE_ENABLED:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
+    volumes:
+      - /opt/mira/data/ingest:/mira-db
     networks:
       - mira-net
     restart: unless-stopped
