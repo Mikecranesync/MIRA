@@ -1,4 +1,9 @@
-# Hot Cache — 2026-05-15 — CHARLIE
+# Hot Cache — 2026-05-16 — CHARLIE
+
+## eval-fixer run — 2026-05-16
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (10 days stale, unchanged since 2026-05-10)
+- Action: filed #1329, then closed it as duplicate of #1217. Prior dupes: #1144, #1170, #1187, #1217, #1329.
+- **Nightly eval job is still stalled** — no new scorecard since 2026-05-06. Next eval-fixer run on this scorecard should suppress before opening an issue; today's CLI agent missed the wiki note. Action needed: regenerate the scorecard (run `doppler run -- python3 tests/eval/offline_run.py --suite text`) or land a fix on one of the open clusters in #1217.
 
 ## Session — 2026-05-15 (Maintenance Namespace Builder doctrine + spec + plan landed)
 
