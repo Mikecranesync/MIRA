@@ -57,6 +57,12 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
+          echo "=== Host permission setup (chown saas data dirs to UID 1001) ==="
+          # PR #1219 dropped root in mira-pipeline/mira-mcp/mira-ingest Dockerfiles.
+          # Host bind-mounts must match or containers crash-loop on SQLite WAL.
+          # Script is idempotent — safe on every deploy. See incident 2026-05-15.
+          bash scripts/host_perm_setup.sh
+
           # Resolve the rebuild list once so cleanup + build + up all agree.
           TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync}"
           echo "Rebuild targets: $TARGETS"
