@@ -1,6 +1,10 @@
 # MIRA — Product & Architecture Operating Guide
 
 > Companion to root `CLAUDE.md` (which is the **build-state + repo map**). This file is the **product rules** Claude Code must honor while editing this codebase.
+>
+> **Primary doctrine:** `docs/THEORY_OF_OPERATIONS.md` — read it first.
+> **Product-surface contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the UNS gate, AI proposals, readiness levels.
+> **Phased execution:** `docs/plans/2026-05-15-maintenance-namespace-builder.md`.
 
 ## What MIRA is
 
@@ -28,7 +32,7 @@ Required flow (enforced in `mira-bots/shared/engine.py`):
 
 1. Receive technician message.
 2. Extract candidate `asset`, `area`, `line`, `machine`, `component`, `symptom`, `fault_code`.
-3. Search the UNS (`uns_resolver.resolve_uns_path()` per `docs/specs/uns-message-resolver-spec.md`).
+3. Search the UNS (`uns_resolver.resolve_uns_path()` per `docs/specs/maintenance-namespace-builder-spec.md` § "The UNS Location-Confirmation Gate").
 4. Identify candidate context(s).
 5. Gather evidence (UNS hit, work-order history, manual reference, PLC tag, prior session, technician hint).
 6. **Send a confirmation message** identifying site / area / line / machine / asset / component / fault, evidence used, confidence level, and a confirmation question.
@@ -135,13 +139,17 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 ## Cross-references
 
 - Root `CLAUDE.md` — build state, ports, env vars, repo map
+- `docs/THEORY_OF_OPERATIONS.md` — primary product doctrine
+- `docs/specs/maintenance-namespace-builder-spec.md` — UNS gate, AI proposals, readiness levels (subsumes the older `uns-message-resolver-spec.md` reference)
+- `docs/plans/2026-05-15-maintenance-namespace-builder.md` — phased execution
 - `.claude/rules/uns-compliance.md` — UNS data-shape enforcement
 - `.claude/rules/security-boundaries.md` — secrets, PII, safety keywords
 - `.claude/rules/python-standards.md` — ruff, httpx, NeonDB, async
 - `.claude/rules/karpathy-principles.md` — coding behavior
-- `docs/specs/uns-kg-unification-spec.md` — UNS authority (710 lines)
-- `docs/specs/mira-component-intelligence-architecture.md` — component intelligence architecture
-- `docs/specs/uns-message-resolver-spec.md` — how bot messages resolve to UNS paths
+- `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
+- `docs/specs/mira-component-intelligence-architecture.md` — implementation-level architecture (component templates, KG mechanics)
+- `docs/specs/dialogue-state-tracker-spec.md` — FSM the UNS gate plugs into
+- `docs/specs/uns-message-resolver-spec.md` — how bot messages resolve to UNS paths (Stage-1 spec, shipped)
 - `.claude/skills/<name>/SKILL.md` — task-specific operating guides
 - `.claude/commands/<name>.md` — repeatable workflows
 - `.claude/mcp/<name>-spec.md` — MCP server contracts
