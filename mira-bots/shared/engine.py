@@ -77,7 +77,7 @@ from .models.work_order import (
     log_uns_event,
 )
 from .nemotron import NemotronClient
-from .neon_recall import kb_has_coverage
+from .neon_recall import kb_has_coverage, kb_has_pair_coverage
 from .notifications.push import push_safety_alert, push_wo_created
 from .photo_handler import (
     build_print_reply,
@@ -101,7 +101,7 @@ from .session_manager import (
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
-from .uns_resolver import resolve_uns_path
+from .uns_resolver import UNSResolution, resolve_uns_path, resolve_uns_path_multi
 from .workers.nameplate_worker import NameplateWorker
 from .workers.plc_worker import PLCWorker
 from .workers.print_worker import PrintWorker
@@ -2982,6 +2982,32 @@ class Supervisor:
         re.IGNORECASE,
     )
 
+    # Greetings / pleasantries that aren't really "questions" — used to gate
+    # whether the doc-lookup formatter appends its generic "Ask about..." menu.
+    _NON_QUESTION_TOKENS = frozenset(
+        {
+            "hi", "hello", "hey", "howdy", "yo", "sup", "thanks", "thank",
+            "ok", "okay", "k", "cool", "great", "nice", "yes", "no", "y", "n",
+            "?", "??", "help",
+        }
+    )
+
+    @classmethod
+    def _message_is_specific_question(cls, message: str) -> bool:
+        """True when the user's message looks like a real question that
+        deserves a real answer, not the generic "Ask about manuals…" menu.
+
+        Heuristic: >3 word-tokens AND not just a greeting / acknowledgement.
+        Used by the doc-lookup formatter to skip a non-responsive menu line
+        when the user clearly asked something specific.
+        """
+        if not message:
+            return False
+        tokens = re.findall(r"\w+", message.lower())
+        if len(tokens) <= 3:
+            return False
+        return any(t not in cls._NON_QUESTION_TOKENS for t in tokens)
+
     async def _handle_general_question(
         self,
         chat_id: str,
@@ -3016,11 +3042,33 @@ class Supervisor:
         # 1) Re-extract equipment from the user's recent turns + current msg.
         user_window = [h.get("content", "") for h in history[-6:] if h.get("role") == "user"]
         combined_for_resolve = " ".join([*user_window, message]).strip()
-        uns = resolve_uns_path(combined_for_resolve)
+        resolved_tenant = tenant_id or state.get("tenant_id") or ""
+
+        # Multi-candidate resolution catches cross-vendor questions (e.g.
+        # "connect Micro 820 to AutomationDirect GS11") that the single-result
+        # resolver would collapse to one vendor. Candidates are pair-validated
+        # against the KB by resolve_uns_path_multi so chimeric (vendor, model)
+        # pairings are dropped before we reach the speak path.
+        uns_resolution = resolve_uns_path_multi(
+            combined_for_resolve, tenant_id=resolved_tenant
+        )
+        uns = uns_resolution.primary
         mfr = uns.manufacturer or ((ctx.get("uns_context") or {}).get("manufacturer") or "")
         model = uns.model or ""
 
-        resolved_tenant = tenant_id or state.get("tenant_id") or ""
+        # Multi-vendor branch — when the user names two pieces of equipment
+        # from different OEMs, the single-vendor decision tree would pick
+        # one and ignore the other. Route to the cross-vendor handler instead.
+        if uns_resolution.has_multi_vendor:
+            return await self._handle_multi_vendor_question(
+                chat_id,
+                message,
+                state,
+                trace_id,
+                uns_resolution,
+                history,
+                resolved_tenant,
+            )
 
         kb_covered = False
         kb_reason = ""
@@ -3138,6 +3186,98 @@ class Supervisor:
             suggestions=[
                 "Diagnose a specific machine",
                 "Find documentation",
+                "Log a work order",
+            ],
+        )
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(
+            reply, self._infer_confidence(raw), trace_id, state.get("state", "IDLE")
+        )
+
+    async def _handle_multi_vendor_question(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        uns_resolution: UNSResolution,
+        history: list[dict],
+        resolved_tenant: str,
+    ) -> dict:
+        """Cross-vendor integration question handler.
+
+        Triggered when ``resolve_uns_path_multi`` finds ≥2 distinct vendors
+        in the message after pair-coverage validation (e.g. "connect my
+        Micro 820 to an AutomationDirect GS11 over RS485 Modbus"). Each
+        candidate's (vendor, model) pair has already been validated against
+        the KB by the resolver, so the products this handler enumerates
+        are guaranteed real — no chimeras.
+
+        v1 behaviour: name all vendors explicitly in the system prompt and
+        answer from training knowledge with the conversation history. Cross-
+        vendor RAG composition (pulling chunks from both vendors' manuals
+        into one grounded reply) is a follow-up that requires RAGWorker
+        signature changes; this handler at least prevents the bot from
+        pretending one vendor's product belongs to the other.
+        """
+        candidates = uns_resolution.candidates
+        vendor_summary = ", ".join(
+            f"{c.manufacturer} {c.model}".strip()
+            if c.model
+            else c.manufacturer
+            for c in candidates
+            if c.manufacturer
+        )
+        vendor_names = ", ".join(uns_resolution.vendors())
+
+        logger.info(
+            "MULTI_VENDOR_QUESTION chat_id=%s vendors=%s summary=%r",
+            chat_id,
+            vendor_names,
+            vendor_summary,
+        )
+
+        # Pick the first KB-validated candidate as the "lead" asset so the
+        # session has *some* identified asset for downstream features (work
+        # orders, photo follow-ups). The other vendors stay in the system
+        # prompt context.
+        lead = candidates[0]
+        if not state.get("asset_identified") and lead.manufacturer:
+            state["asset_identified"] = (
+                f"{lead.manufacturer}, {lead.model}" if lead.model else lead.manufacturer
+            )
+
+        system = (
+            "You are MIRA, an industrial maintenance assistant. The technician "
+            f"is asking about a cross-vendor integration involving: {vendor_summary}. "
+            "Answer the question with both pieces of equipment in mind. "
+            "If the answer requires steps on both sides (e.g. wiring + parameter "
+            "setup), structure your reply so each vendor's portion is clear. "
+            "If you don't have specific documentation for the integration itself, "
+            "say so up front and then answer from general industrial knowledge. "
+            "Never invent product names — only reference the vendors and models "
+            "listed above. Keep the reply under 180 words."
+        )
+        try:
+            raw = await self._call_llm_direct(message, system=system, history=history)
+        except Exception as exc:
+            logger.warning("MULTI_VENDOR_LLM_FAILURE error=%s", exc)
+            raw = (
+                f"You're asking about an integration between {vendor_summary}. "
+                "I can pull the docs for either side — which do you want to "
+                "start with?"
+            )
+
+        reply = self._format_simple_response(
+            raw,
+            suggestions=[
+                f"Pull {candidates[0].manufacturer} docs"
+                if candidates
+                else "Find documentation",
+                f"Pull {candidates[1].manufacturer} docs"
+                if len(candidates) > 1
+                else "Log a work order",
                 "Log a work order",
             ],
         )
@@ -3800,15 +3940,45 @@ class Supervisor:
             # CRA-8 Cluster A: include the model token (and the literal word "manual")
             # so vendor-specific manual requests don't fall through the keyword check.
             model_hint = model_override or combined_ctx.model or ""
+
+            # Chimera guard — kb_has_coverage filters on vendor only, so a
+            # message naming two vendors (e.g. "Micro 820" + "AutomationDirect
+            # GS11") can resolve to one vendor's name paired with another's
+            # model number. Validate the pair against the KB; if zero rows
+            # have BOTH together, drop the model so the reply never speaks
+            # "AutomationDirect 820" or any other fabricated product.
+            if mfr and model_hint:
+                pair_covered, pair_count = kb_has_pair_coverage(
+                    mfr, model_hint, resolved_tenant or ""
+                )
+                if not pair_covered and pair_count >= 0:
+                    logger.info(
+                        "DOC_LOOKUP_CHIMERA_BLOCKED chat_id=%s mfr=%r model=%r "
+                        "kb_pair_count=%d — dropping model from reply",
+                        chat_id,
+                        mfr,
+                        model_hint,
+                        pair_count,
+                    )
+                    model_hint = ""
+
             if mfr and model_hint:
                 reply = f"I have the {mfr} {model_hint} manual indexed."
             elif mfr:
                 reply = f"I have {mfr} documentation indexed."
             else:
                 reply = "I already have documentation indexed for that equipment."
-            if url:
-                reply += f" Official source: {url}"
-            reply += " Ask about the manual, fault codes, specs, or wiring."
+            # The support URL is always the vendor's /support landing page
+            # (see VENDOR_SUPPORT_URLS in guardrails.py) — useful when we
+            # have NO docs, useless noise when we already do. Skip on the
+            # KB_HIT path; the crawl-pending path below still uses it.
+            #
+            # The trailing "Ask about the manual, fault codes, specs, or
+            # wiring" menu is also dropped when the user already asked a
+            # specific question (>3 words and not a greeting) — appending
+            # a menu after a real question reads as non-responsive.
+            if not self._message_is_specific_question(message):
+                reply += " Ask about the manual, fault codes, specs, or wiring."
             logger.info(
                 "KB_PRE_CHECK_HIT chat_id=%s manufacturer=%r reason=%s",
                 chat_id,

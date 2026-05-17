@@ -56,7 +56,6 @@ export const NAV_ITEMS = [
   // Primary nav — main surfaces, always visible to qualifying roles
   { key: "event-log",     label: "Event Log",     icon: "Activity",      href: "/event-log",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
   { key: "conversations", label: "Conversations", icon: "MessageSquare", href: "/conversations", roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
-  { key: "actions",       label: "Actions",       icon: "Zap",           href: "/actions",       roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
   { key: "alerts",        label: "Alerts",        icon: "AlertTriangle", href: "/alerts",        roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
   { key: "knowledge",     label: "Knowledge",     icon: "BookOpen",      href: "/knowledge",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
   { key: "namespace",     label: "Namespace",     icon: "Layers",        href: "/namespace",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },

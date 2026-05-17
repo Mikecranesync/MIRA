@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
-  Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
+  Activity, MessageSquare, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
   Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon, HelpCircle, Cpu,
@@ -18,7 +18,7 @@ import { useTheme } from "@/providers/theme-provider";
 import { LanguageSelector } from "@/components/ui/language-selector";
 
 const ICON_MAP: Record<string, React.ElementType> = {
-  Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
+  Activity, MessageSquare, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
   Cpu, Layers, Sparkles,
@@ -92,7 +92,6 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
     const map: Record<string, string> = {
       "event-log":     t("eventLog"),
       "conversations": t("conversations"),
-      "actions":       t("actions"),
       "alerts":        t("alerts"),
       "knowledge":     t("knowledge"),
       "assets":        t("assets"),
