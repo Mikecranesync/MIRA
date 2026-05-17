@@ -44,6 +44,10 @@ const KIND_ICON: Record<string, React.ElementType> = {
   document: FileText,
 };
 
+// Next.js `<Link>` auto-prepends the configured basePath ('/hub' in this
+// app). Build hrefs as bare app-relative paths — NOT prefixed with
+// API_BASE — or they'll double-up to '/hub/hub/...'. Plain `<a>` does
+// not transform; those still need the full prefix (see EmptyState below).
 const HUB_BASE = API_BASE.replace(/\/api$/, "");
 
 function filterTree(nodes: NamespaceNode[], query: string): NamespaceNode[] {
@@ -316,6 +320,8 @@ function TreeNode({
 
 function DetailPane({ node }: { node: NamespaceNode }) {
   const path = node.unsPath ?? "";
+  const proposalsHref = (status: "pending" | "verified") =>
+    `/proposals?path=${encodeURIComponent(path)}&status=${status}`;
   return (
     <div data-testid="namespace-detail">
       <div className="text-xs uppercase tracking-wide text-slate-500">{node.kind}</div>
@@ -330,17 +336,17 @@ function DetailPane({ node }: { node: NamespaceNode }) {
         <CounterLink
           label="Proposals pending"
           value={node.counts.proposalsPending}
-          href={`${HUB_BASE}/proposals?path=${encodeURIComponent(path)}&status=pending`}
+          href={proposalsHref("pending")}
         />
         <CounterLink
           label="Proposals verified"
           value={node.counts.proposalsVerified}
-          href={`${HUB_BASE}/proposals?path=${encodeURIComponent(path)}&status=verified`}
+          href={proposalsHref("verified")}
         />
       </dl>
       {node.counts.proposalsPending > 0 && (
         <Link
-          href={`${HUB_BASE}/proposals?path=${encodeURIComponent(path)}&status=pending`}
+          href={proposalsHref("pending")}
           className="mt-6 inline-block text-sm font-medium text-blue-600 hover:underline"
         >
           Review {node.counts.proposalsPending} pending proposal
