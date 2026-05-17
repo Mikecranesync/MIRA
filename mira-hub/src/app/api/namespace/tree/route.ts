@@ -59,7 +59,7 @@ export async function GET() {
       const entitiesRes = await c.query<KgEntityRow>(
         `SELECT id, entity_type, entity_id, name, uns_path::text AS uns_path, created_at
          FROM kg_entities
-         WHERE tenant_id = $1
+         WHERE tenant_id = $1::uuid
          ORDER BY uns_path::text NULLS LAST, name`,
         [ctx.tenantId],
       );
@@ -71,7 +71,7 @@ export async function GET() {
             COUNT(*)::text AS cnt
          FROM relationship_proposals p
          LEFT JOIN kg_entities e ON e.id = p.source_entity_id
-         WHERE p.tenant_id = $1
+         WHERE p.tenant_id = $1::uuid
          GROUP BY e.uns_path::text, p.status`,
         [ctx.tenantId],
       );

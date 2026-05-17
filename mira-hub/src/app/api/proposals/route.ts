@@ -73,7 +73,7 @@ export async function GET(req: Request) {
       HARD_LIMIT,
     );
 
-    const filters: string[] = ["(p.tenant_id = $1 OR p.tenant_id IS NULL)"];
+    const filters: string[] = ["(p.tenant_id = $1::uuid OR p.tenant_id IS NULL)"];
     const params: unknown[] = [ctx.tenantId];
 
     if (statusParam !== "all") {
@@ -125,8 +125,8 @@ export async function GET(req: Request) {
               (SELECT COUNT(*) FROM relationship_evidence e WHERE e.proposal_id = p.id)::text AS evidence_count,
               p.created_at
            FROM relationship_proposals p
-           LEFT JOIN kg_entities src ON src.id = p.source_entity_id AND src.tenant_id = $1
-           LEFT JOIN kg_entities tgt ON tgt.id = p.target_entity_id AND tgt.tenant_id = $1
+           LEFT JOIN kg_entities src ON src.id = p.source_entity_id AND src.tenant_id = $1::uuid
+           LEFT JOIN kg_entities tgt ON tgt.id = p.target_entity_id AND tgt.tenant_id = $1::uuid
            WHERE ${filters.join(" AND ")}
            ORDER BY
               CASE p.risk_level
