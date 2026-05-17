@@ -59,6 +59,8 @@ export const NAV_ITEMS = [
   { key: "actions",       label: "Actions",       icon: "Zap",           href: "/actions",       roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
   { key: "alerts",        label: "Alerts",        icon: "AlertTriangle", href: "/alerts",        roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
   { key: "knowledge",     label: "Knowledge",     icon: "BookOpen",      href: "/knowledge",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "namespace",     label: "Namespace",     icon: "Layers",        href: "/namespace",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "proposals",     label: "Proposals",     icon: "Sparkles",      href: "/proposals",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
   { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
   { key: "channels",      label: "Channels",      icon: "Radio",         href: "/channels",      roles: ["manager", "scheduler", "admin", "owner"],                           group: "primary" },
   { key: "integrations",  label: "Integrations",  icon: "Plug",          href: "/integrations",  roles: ["manager", "admin", "owner"],                                        group: "primary" },
