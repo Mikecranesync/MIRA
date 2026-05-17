@@ -233,6 +233,9 @@ async function mirrorKnowledgeEntities(
   for (const r of rows) {
     const mfr = r.manufacturer;
     const mfrPath = manufacturerPath(mfr);
+    // manufacturerPath returns null when the name slugs to empty (e.g., "!!!").
+    // Skip — SQL uns_slug() would have returned NULL for the same input.
+    if (!mfrPath) continue;
     if (!mfrSet.has(mfrPath)) {
       mfrSet.set(mfrPath, {
         entityType: "manufacturer",
@@ -244,6 +247,7 @@ async function mirrorKnowledgeEntities(
     }
     if (r.model) {
       const mPath = modelPath(mfr, r.model);
+      if (!mPath) continue;
       modelEntries.push({
         entityType: "model",
         entityId: mPath,
