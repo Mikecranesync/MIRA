@@ -326,8 +326,16 @@ function EmptyState() {
       <Layers className="mx-auto h-10 w-10 text-slate-300" />
       <h2 className="mt-4 text-lg font-semibold text-slate-900">Your namespace is empty</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
-        Upload a manual, run a photo walk, or import a PLC tag list. MIRA will propose entities here.
+        Start the namespace wizard to add your first site and line, then MIRA will
+        propose assets and components from your manuals, photos, and PLC tags.
       </p>
+      <a
+        href={`${API_BASE.replace("/api", "")}/onboarding`}
+        className="mt-6 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+        data-testid="namespace-empty-start"
+      >
+        Build your namespace →
+      </a>
     </div>
   );
 }
