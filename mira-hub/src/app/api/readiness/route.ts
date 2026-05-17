@@ -42,32 +42,32 @@ export async function GET() {
     const counts = await withTenantContext(ctx.tenantId, async (c) => {
       const res = await c.query<RawCountsRow>(
         `SELECT
-            (SELECT COUNT(*) FROM kg_entities WHERE tenant_id = $1 AND entity_type IN ('site','plant'))::text AS sites,
-            (SELECT COUNT(*) FROM kg_entities WHERE tenant_id = $1 AND entity_type IN ('line','production_line'))::text AS lines,
+            (SELECT COUNT(*) FROM kg_entities WHERE tenant_id = $1::uuid AND entity_type IN ('site','plant'))::text AS sites,
+            (SELECT COUNT(*) FROM kg_entities WHERE tenant_id = $1::uuid AND entity_type IN ('line','production_line'))::text AS lines,
             (
-              SELECT COUNT(*) FROM cmms_equipment WHERE tenant_id = $1
+              SELECT COUNT(*) FROM cmms_equipment WHERE tenant_id = $1::text
             )::text AS assets,
             (
               SELECT COUNT(*) FROM kg_entities
-              WHERE tenant_id = $1 AND entity_type IN ('component','component_template')
+              WHERE tenant_id = $1::uuid AND entity_type IN ('component','component_template')
             )::text AS components,
             (
-              SELECT COUNT(DISTINCT source) FROM kg_triples_log WHERE tenant_id = $1
+              SELECT COUNT(DISTINCT source) FROM kg_triples_log WHERE tenant_id = $1::uuid
             )::text AS docs,
             (
               SELECT COUNT(*) FROM relationship_proposals
-              WHERE (tenant_id = $1 OR tenant_id IS NULL) AND status = 'proposed'
+              WHERE (tenant_id = $1::uuid OR tenant_id IS NULL) AND status = 'proposed'
             )::text AS proposals_pending,
             (
               SELECT COUNT(*) FROM relationship_proposals
-              WHERE (tenant_id = $1 OR tenant_id IS NULL) AND status = 'verified'
+              WHERE (tenant_id = $1::uuid OR tenant_id IS NULL) AND status = 'verified'
             )::text AS proposals_verified,
             (
-              SELECT COUNT(DISTINCT uns_path) FROM kg_entities WHERE tenant_id = $1 AND uns_path IS NOT NULL
+              SELECT COUNT(DISTINCT uns_path) FROM kg_entities WHERE tenant_id = $1::uuid AND uns_path IS NOT NULL
             )::text AS uns_paths,
             (
               SELECT status = 'completed' FROM wizard_progress
-              WHERE tenant_id = $1 AND wizard_kind = 'namespace_onboarding'
+              WHERE tenant_id = $1::uuid AND wizard_kind = 'namespace_onboarding'
               ORDER BY updated_at DESC LIMIT 1
             ) AS wizard_completed`,
         [ctx.tenantId],
@@ -116,7 +116,7 @@ async function persistScore(
     c.query(
       `INSERT INTO health_scores
          (tenant_id, scope, scope_path, level, next_step, counts, computed_at, last_event_at, updated_at)
-       VALUES ($1, 'tenant', '', $2, $3, $4::jsonb, now(), now(), now())
+       VALUES ($1::uuid, 'tenant', '', $2, $3, $4::jsonb, now(), now(), now())
        ON CONFLICT (tenant_id, scope, scope_path) DO UPDATE
          SET level = EXCLUDED.level,
              next_step = EXCLUDED.next_step,
