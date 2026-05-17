@@ -2986,9 +2986,27 @@ class Supervisor:
     # whether the doc-lookup formatter appends its generic "Ask about..." menu.
     _NON_QUESTION_TOKENS = frozenset(
         {
-            "hi", "hello", "hey", "howdy", "yo", "sup", "thanks", "thank",
-            "ok", "okay", "k", "cool", "great", "nice", "yes", "no", "y", "n",
-            "?", "??", "help",
+            "hi",
+            "hello",
+            "hey",
+            "howdy",
+            "yo",
+            "sup",
+            "thanks",
+            "thank",
+            "ok",
+            "okay",
+            "k",
+            "cool",
+            "great",
+            "nice",
+            "yes",
+            "no",
+            "y",
+            "n",
+            "?",
+            "??",
+            "help",
         }
     )
 
@@ -3049,9 +3067,7 @@ class Supervisor:
         # resolver would collapse to one vendor. Candidates are pair-validated
         # against the KB by resolve_uns_path_multi so chimeric (vendor, model)
         # pairings are dropped before we reach the speak path.
-        uns_resolution = resolve_uns_path_multi(
-            combined_for_resolve, tenant_id=resolved_tenant
-        )
+        uns_resolution = resolve_uns_path_multi(combined_for_resolve, tenant_id=resolved_tenant)
         uns = uns_resolution.primary
         mfr = uns.manufacturer or ((ctx.get("uns_context") or {}).get("manufacturer") or "")
         model = uns.model or ""
@@ -3223,9 +3239,7 @@ class Supervisor:
         """
         candidates = uns_resolution.candidates
         vendor_summary = ", ".join(
-            f"{c.manufacturer} {c.model}".strip()
-            if c.model
-            else c.manufacturer
+            f"{c.manufacturer} {c.model}".strip() if c.model else c.manufacturer
             for c in candidates
             if c.manufacturer
         )
@@ -3272,9 +3286,7 @@ class Supervisor:
         reply = self._format_simple_response(
             raw,
             suggestions=[
-                f"Pull {candidates[0].manufacturer} docs"
-                if candidates
-                else "Find documentation",
+                f"Pull {candidates[0].manufacturer} docs" if candidates else "Find documentation",
                 f"Pull {candidates[1].manufacturer} docs"
                 if len(candidates) > 1
                 else "Log a work order",
