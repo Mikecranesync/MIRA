@@ -5,6 +5,7 @@
 **Owner:** Mike Harper / FactoryLM
 **Status:** Active — primary product-surface spec for the namespace-builder direction
 **Parent doctrine:** `docs/THEORY_OF_OPERATIONS.md`
+**Schema canonicalization:** [ADR-0013](../adr/0013-uns-namespace-builder-schema-canonicalization.md) — Hub `mira-hub/db/migrations/` owns product-surface schema; engine `docs/migrations/` owns kg_entities / kg_relationships.
 
 ## Purpose
 
