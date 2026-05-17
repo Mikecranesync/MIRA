@@ -9,6 +9,7 @@ import {
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
   Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon, HelpCircle, Cpu,
+  Layers, Sparkles,
 } from "lucide-react";
 import { restartTour } from "@/components/onboarding/tour";
 import { cn } from "@/lib/utils";
@@ -20,7 +21,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Activity, MessageSquare, Zap, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
-  Cpu,
+  Cpu, Layers, Sparkles,
 };
 
 type NavItemProps = {
