@@ -64,11 +64,15 @@ async def test_request_with_candidate_includes_candidate_in_prompt(tmp_path):
     assert "PowerFlex 525" in result["reply"]
     assert "55%" in result["reply"]
     assert result["dispatch_kind"] == "uns_confirm_request"
+    # FSM side state — downstream code paths (citation enforcement, telemetry,
+    # DST) key off this. See namespace-builder spec §"UNS Location-Confirmation Gate".
+    assert result["next_state"] == "AWAITING_UNS_CONFIRMATION"
 
     # State must persist the pending block for the next turn.
     saved = sv._load_state("u1")
     pending = (saved.get("context") or {}).get("pending_uns_confirm")
     assert pending == {"candidate": "Allen-Bradley, PowerFlex 525"}
+    assert saved["state"] == "AWAITING_UNS_CONFIRMATION"
 
 
 @pytest.mark.asyncio
@@ -80,9 +84,11 @@ async def test_request_with_no_candidate_asks_for_make_and_model(tmp_path):
     result = await sv._handle_uns_confirmation_request("u2", "fault", state, uns_ctx, "trace-2")
 
     assert "manufacturer and model" in result["reply"]
+    assert result["next_state"] == "AWAITING_UNS_CONFIRMATION"
     saved = sv._load_state("u2")
     pending = (saved.get("context") or {}).get("pending_uns_confirm")
     assert pending == {"candidate": None}
+    assert saved["state"] == "AWAITING_UNS_CONFIRMATION"
 
 
 # ── Confirmation consumed ──────────────────────────────────────────────────
@@ -92,6 +98,7 @@ async def test_request_with_no_candidate_asks_for_make_and_model(tmp_path):
 async def test_response_yes_sets_asset_and_clears_pending(tmp_path):
     sv = _make_sv(str(tmp_path / "test.db"))
     state = _fresh_state("u3")
+    state["state"] = "AWAITING_UNS_CONFIRMATION"
     state["context"]["pending_uns_confirm"] = {"candidate": "Siemens, SINAMICS G120"}
     sv._save_state("u3", state)
 
@@ -104,12 +111,15 @@ async def test_response_yes_sets_asset_and_clears_pending(tmp_path):
     saved = sv._load_state("u3")
     assert saved["asset_identified"] == "Siemens, SINAMICS G120"
     assert "pending_uns_confirm" not in (saved.get("context") or {})
+    # Side state cleared — normal IDLE→Q1 flow resumes on the next turn.
+    assert saved["state"] == "IDLE"
 
 
 @pytest.mark.asyncio
 async def test_response_no_clears_pending_and_reprompts(tmp_path):
     sv = _make_sv(str(tmp_path / "test.db"))
     state = _fresh_state("u4")
+    state["state"] = "AWAITING_UNS_CONFIRMATION"
     state["context"]["pending_uns_confirm"] = {"candidate": "Mitsubishi, FR-D700"}
     sv._save_state("u4", state)
 
@@ -122,6 +132,9 @@ async def test_response_no_clears_pending_and_reprompts(tmp_path):
     saved = sv._load_state("u4")
     assert saved["asset_identified"] is None  # NOT set on "no"
     assert "pending_uns_confirm" not in (saved.get("context") or {})
+    # Side state cleared — gate can re-fire on the next turn if the user's
+    # reply doesn't itself resolve to a candidate.
+    assert saved["state"] == "IDLE"
 
 
 @pytest.mark.asyncio
@@ -130,6 +143,7 @@ async def test_response_freeform_text_falls_through(tmp_path):
     so the normal flow can re-run the UNS resolver on the new message."""
     sv = _make_sv(str(tmp_path / "test.db"))
     state = _fresh_state("u5")
+    state["state"] = "AWAITING_UNS_CONFIRMATION"
     state["context"]["pending_uns_confirm"] = {"candidate": "Bad Guess Inc"}
     sv._save_state("u5", state)
 
@@ -141,6 +155,9 @@ async def test_response_freeform_text_falls_through(tmp_path):
 
     saved = sv._load_state("u5")
     assert "pending_uns_confirm" not in (saved.get("context") or {})
+    # Side state cleared so the normal flow re-running on this message can
+    # re-fire the gate with a fresh candidate from the new specs.
+    assert saved["state"] == "IDLE"
 
 
 @pytest.mark.asyncio
@@ -202,3 +219,46 @@ def test_gate_does_not_fire_on_safety_intent(tmp_path):
     sv = _make_sv(str(tmp_path / "test.db"))
     state = _fresh_state("u")
     assert sv._should_fire_uns_gate("safety_concern", state, "arc flash hazard", {}) is False
+
+
+# ── Kill-switch — MIRA_UNS_GATE_ENABLED=0 returns to pre-gate behavior ──────
+
+
+def test_gate_disabled_via_env_flag_does_not_fire(monkeypatch):
+    """MIRA_UNS_GATE_ENABLED=0 reverts to the pre-gate behavior. This is the
+    flag-off regression path called out in the namespace-builder plan Phase 1
+    acceptance ("with MIRA_UNS_GATE_ENABLED=false, the engine falls back to the
+    pre-extension gate path")."""
+    import importlib
+
+    import shared.engine as engine_mod
+
+    monkeypatch.setenv("MIRA_UNS_GATE_ENABLED", "0")
+    # Module-level flag — reimport to pick up the new env value.
+    importlib.reload(engine_mod)
+
+    sv = engine_mod.Supervisor.__new__(engine_mod.Supervisor)  # bypass __init__ heavy deps
+    state = _fresh_state("u")
+    # Gate would normally fire on this exact input; flag must suppress it.
+    assert (
+        engine_mod.Supervisor._should_fire_uns_gate(
+            sv, "diagnose_equipment", state, "why is conveyor stopped", {}
+        )
+        is False
+    )
+
+    # Restore default for the rest of the suite.
+    monkeypatch.setenv("MIRA_UNS_GATE_ENABLED", "1")
+    importlib.reload(engine_mod)
+
+
+# ── FSM-state validity ─────────────────────────────────────────────────────
+
+
+def test_awaiting_uns_confirmation_is_valid_fsm_state():
+    """The side state added for the gate must be in VALID_STATES so transition
+    validators in `_advance_state` accept it. Guards against the LLM emitting it
+    as a `next_state` value in a future prompt update."""
+    from shared.fsm import VALID_STATES
+
+    assert "AWAITING_UNS_CONFIRMATION" in VALID_STATES

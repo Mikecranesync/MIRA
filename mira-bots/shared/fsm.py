@@ -32,6 +32,11 @@ _MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
 _MAX_TURNS_PER_STATE = int(os.getenv("MIRA_MAX_TURNS_PER_STATE", "6"))
 
 # All valid FSM states (used in transition validation)
+# AWAITING_UNS_CONFIRMATION is a side state entered by the UNS Confirmation Gate
+# in engine._handle_uns_confirmation_request; cleared back to IDLE by
+# _handle_uns_confirmation_response on yes/no/fallthrough. Not part of STATE_ORDER,
+# so the backward-transition guard never sees it.
+# Spec: docs/specs/maintenance-namespace-builder-spec.md §"The UNS Location-Confirmation Gate"
 VALID_STATES = frozenset(
     STATE_ORDER
     + [
@@ -40,6 +45,7 @@ VALID_STATES = frozenset(
         "SAFETY_ALERT",
         "DIAGNOSIS_REVISION",
         "QUERY_UNDERSTANDING",
+        "AWAITING_UNS_CONFIRMATION",
     ]
 )
 

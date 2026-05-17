@@ -15,7 +15,8 @@
 
 | Phase / Task | Owner | Branch | Started | Notes |
 |---|---|---|---|---|
-| Phase 0 — Docs + pointers | agent-claude | (main, doc-only) | 2026-05-15 | THEORY_OF_OPERATIONS.md, maintenance-namespace-builder-spec.md, this plan, CLAUDE.md pointer updates, wiki/hot.md flag. |
+| Phase 0 — Docs + pointers | agent-claude | (main, doc-only) | 2026-05-15 | THEORY_OF_OPERATIONS.md, maintenance-namespace-builder-spec.md, this plan, CLAUDE.md pointer updates, wiki/hot.md flag. **Merged 2026-05-15 via PR #1323 (9ccc43af).** |
+| Phase 1 — FSM `AWAITING_UNS_CONFIRMATION` side state + `MIRA_UNS_GATE_ENABLED` kill-switch (Phase 1 deliverable #3 partial) | agent-claude | `feat/mnb-phase-1-uns-gate-state` | 2026-05-16 | Adds the FSM side state the gate currently lacks, kill-switch flag for flag-off regression, ADR-0013 schema canonicalization. Extends `tests/test_uns_confirmation_gate.py` (11→13 tests). |
 
 Coordination check before starting any sub-task (same as the 90-day MVP plan's discipline):
 
@@ -411,3 +412,5 @@ Listed for completeness; not committed in this plan window.
 
 - **2026-05-15** — Initial plan. Phases 0–6 + post-MVP. Integrates 90-day MVP Units 2/4/9a as Phase 1/2/4 components without claiming their branches.
 - **2026-05-15 (correction)** — Reframed Phase 1 after `git fetch origin main` revealed the UNS resolver + Stage-1 gate are **already merged** (PRs #1220, #1280, #1295, #1314). Phase 1 now audits + extends existing code, not builds from scratch. Migration numbering reset to next-available (likely > 008). Acceptance includes "pre-existing gate regression set still passes." Local checkouts may be behind origin/main — `git log main..origin/main --oneline` is now part of the coordination check.
+- **2026-05-16 (correction)** — Pre-build audit of `mira-hub/db/migrations/` revealed Hub already ships migrations 014–020 covering `component_templates`, `installed_component_instances`, `relationship_proposals` + `relationship_evidence`, `sessions_and_signals`, `signal_cache_and_trends`, `equipment_uns_path`, `uns_path_backfill`. Recorded in **ADR-0013** — Hub lineage is canonical for product-surface schema; engine lineage (`docs/migrations/`) keeps `kg_entities` / `kg_relationships` and adds only the `approval_state` columns there. The plan's `008_namespace_builder.sql` line is retired in favor of two narrower migrations split by lineage. The Hub-side proposals queue (`relationship_proposals.status`) is the upstream of the engine-side verified-only edge table.
+- **2026-05-16 (slice 1 shipped)** — `feat/mnb-phase-1-uns-gate-state` adds the `AWAITING_UNS_CONFIRMATION` FSM side state the gate currently lacks (it stored pending state in `context["pending_uns_confirm"]` only), and the `MIRA_UNS_GATE_ENABLED` env kill-switch. `tests/test_uns_confirmation_gate.py` extended from 11 → 13 tests with new assertions on the state transitions. Phase 1 deliverable #3 ("FSM extension") partially completed; location-resolution extension (sites/areas/lines/machines/assets/components) and the citation-enforcement path-specific upgrade are still outstanding. See `docs/HANDOFF-mnb-phase-1.md` for what remains.
