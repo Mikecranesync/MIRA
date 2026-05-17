@@ -2,6 +2,10 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## [1.6.0] - 2026-05-17
+### Removed
+- Actions tab removed from primary nav and mobile bottom tabs (mock-data only, no backend)
+
 ## [1.4.0] - 2026-04-26
 - Upload-pipeline hardening sweep — tenant_id filter on updateUploadStatus (#707), structured JSON logs + X-Request-Id propagation (#709), path-traversal sanitization on asset_tag (#726), magic-byte file sniffing on PDF/image uploads (#729), AbortSignal/timeout on every outbound fetch (#730), SSRF guard + manual-redirect re-validation on streamFromSignedUrl (#731), cloud-source upload idempotency (#733), manual retry endpoint POST /api/uploads/:id/retry (#734).
 

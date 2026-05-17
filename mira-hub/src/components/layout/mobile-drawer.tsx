@@ -55,7 +55,6 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
 
   const ITEMS = [
     { label: t("conversations"), Icon: MessageSquare, href: "/conversations" },
-    { label: t("actions"),       Icon: AlertTriangle, href: "/actions" },
     { label: t("alerts"),        Icon: AlertTriangle, href: "/alerts" },
     { label: t("knowledge"),     Icon: BookOpen,      href: "/knowledge" },
     { label: t("assets"),        Icon: Wrench,        href: "/assets" },

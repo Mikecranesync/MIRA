@@ -3,7 +3,6 @@
     "feed": "गतिविधि फ़ीड",
     "eventLog": "इवेंट लॉग",
     "conversations": "बातचीत",
-    "actions": "कार्रवाइयां",
     "alerts": "अलर्ट",
     "knowledge": "ज्ञानकोष",
     "library": "पुस्तकालय",
@@ -602,13 +601,6 @@
     "today": "आज",
     "live": "लाइव",
     "allChannels": "सभी चैनल"
-  },
-  "actions": {
-    "title": "कार्रवाइयां",
-    "noActions": "कोई कार्रवाई नहीं",
-    "synced": "सिंक्ड",
-    "pending": "लंबित",
-    "today": "आज"
   },
   "alerts": {
     "title": "अलर्ट",
