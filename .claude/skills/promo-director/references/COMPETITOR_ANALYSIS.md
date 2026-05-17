@@ -1,8 +1,31 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-17
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-17
+
+### Most actionable change for playbook
+
+MaintainX released its 2026 State of Industrial Maintenance report (2,234 respondents). Key stat: **79% of teams saw unplanned downtime stay the same or increase** despite 58% already using AI. This exposes the exact gap MIRA addresses — AI adoption without context-grounded troubleshooting doesn't move the downtime needle. Use "58% of plants use AI. 79% still have the same downtime problem." as a hook stat.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — "2026 State of Industrial Maintenance" webinar (May 5, 2026): https://www.getmaintainx.com/webinar/the-state-of-industrial-maintenance-2026-webinar — co-founder + SMRP Board Chair co-host format; 58% AI adoption, 75% ROI in <6 months, 79% downtime unchanged; new credibility pattern: industry association chair as co-presenter. Facebook video also released: https://www.facebook.com/getMaintainX/videos/the-2026-state-of-industrial-maintenance-report-is-here-we-surveyed-2200-mainten/1862973987721444/
+- **MaintainX** — May 2026 product update: Sub Work Orders, AI-powered Procedure Recommendations, enhanced Automations — continued deepening of AI-native CMMS positioning
+
+**Automation / SCADA**
+- No new Rockwell/Siemens/Beckhoff/Inductive Automation video found after May 3 cutoff
+
+**B2B SaaS / dev-tools (pattern transfer)**
+- **Stripe** — Sessions 2026 keynote videos (early May 2026): 288 launches; "economic infrastructure for AI" positioning; Agentic Commerce Suite (Meta + Google); agent wallet via Link; public roadmap through Q1 2027. Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8 | 12-min summary: https://www.youtube.com/watch?v=8F4XyWYqZi8 | Developer keynote: https://www.youtube.com/watch?v=NCw4TWMfV-k [transcript not verified]
+- **Figma** — "Release Notes 2026: May Edition" (May 5 livestream): https://www.youtube.com/watch?v=11mdb7lLclM — agentic AI co-design demo; MCP as integration layer between agents and canvas; "co-designing with AI agents to take creative control of vibe-coded prototypes." Config 2026 conference scheduled Jun 23–25 (watch for major launch). [transcript not verified]
+- **Anthropic** — "Code with Claude 2026" developer conference: SF keynote at https://www.youtube.com/watch?v=GMIWm5y90xA; "Three Layers" framing for Claude's role in dev workflows [transcript not verified]; London event May 19–21 (live-streamed); Claude for Small Business launch (May 13) — workflow bundle (QuickBooks, M365, PayPal, HubSpot); Claude Opus 4.7 GA. Pattern: Anthropic running own developer conference as primary video/launch vehicle (mirrors Stripe Sessions, Figma Config).
+- **Cursor** — v3.4 (May 13, 2026): agents now auto-generate a **demo video** alongside code changes ("shows you demos, not diffs"). PR-to-merge in one place via parallel agents. Playbook implication: AI-generated product demo video alongside every code push is now a shipped behavior in dev tooling; validates and accelerates MIRA's `seedance-video-gen.py` pipeline strategy. [no standalone promo video — changelog-driven]
 
 ---
 
@@ -87,6 +110,17 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+
+**2026 State of Industrial Maintenance report (May 5, 2026)**
+- Webinar: https://www.getmaintainx.com/webinar/the-state-of-industrial-maintenance-2026-webinar
+- Facebook video: https://www.facebook.com/getMaintainX/videos/the-2026-state-of-industrial-maintenance-report-is-here-we-surveyed-2200-mainten/1862973987721444/
+- Format: co-founder Nick Haase + Dan Anderson (SMRP Board Chair) live panel; on-demand after
+- Key claims: 58% of industrial teams already using AI; 75% report measurable ROI in under 6 months; 79% saw unplanned downtime stay same or increase; 39% say downtime events are getting more expensive (up from 31% in 2025)
+- Hook stat for MIRA counterplay: "AI adoption is up. Downtime isn't down. Context is the missing layer."
+- Pattern note: pairing a co-founder with an industry association chair is a new credibility format for MaintainX — implies they're moving from startup credibility to institutional credibility.
+
+**May 2026 product update**
+- Sub Work Orders; AI-powered Procedure Recommendations; enhanced Automations — continued deepening of AI-native CMMS positioning
 
 ---
 
@@ -254,11 +288,20 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 (early May 2026)**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8
+- Full keynote: https://www.youtube.com/watch?v=e13-s0p1tfE
+- 12-minute summary: https://www.youtube.com/watch?v=8F4XyWYqZi8
+- Developer keynote: https://www.youtube.com/watch?v=NCw4TWMfV-k
+- Scale claim: 288 new products and features; "more than 9,000 business leaders and builders" attending
+- Theme: "economic infrastructure for AI" — Stripe now explicitly positioning for agent-to-agent commerce
+- Key launches: Agentic Commerce Suite (Meta + Google partnerships); agent wallet via Link; Checkout Studio; Smart Disputes; cross-border payouts; public roadmap through Q1 2027
+- Hook: unlabeled but "programmable, networked, AI-ready" as the three axes
+- VO register: founder (Collison brothers); peer-to-peer
+- CTA: "available now" callouts within demo; no hard URL
+- [transcript not verified — derived from newsroom blog]
 
-**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
+**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube. Sessions 2026 introduced "economic infrastructure for AI" as the next framing layer — transferable to MIRA as "maintenance intelligence infrastructure."
 
 ---
 
@@ -302,7 +345,20 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**Code with Claude 2026 developer conference (May 2026)**
+- SF keynote: https://www.youtube.com/watch?v=GMIWm5y90xA — full playlist: https://www.youtube.com/playlist?list=PLf2m23nhTg1P5BsOHUOXyQz5RhfUSSVUi
+- London: May 19–21, 2026 (live-streamed); Tokyo: Jun 5–6
+- Framing introduced: "Three Layers" of Claude's role in development workflows [transcript not verified]
+- Format: developer conference with keynotes, workshops, live demos — Anthropic now owns its primary launch vehicle (vs analyst appearances)
+- Pattern shift: Anthropic moved from conference-appearances-only to running its own developer conference, mirroring Stripe Sessions + Figma Config as the B2B SaaS conference-as-launch-vehicle playbook
+
+**Claude for Small Business (May 13, 2026)**
+- 15 ready-to-run workflows across finance, operations, sales, marketing, HR, customer service
+- Runs inside QuickBooks + Microsoft 365; integrates PayPal, HubSpot, Canva, DocuSign, Google Workspace
+- No standalone product demo video; press release + blog-driven
+
+**Claude Opus 4.7** — now generally available
 
 ---
 
@@ -313,9 +369,12 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Cursor 2.0 (Oct 29, 2025): Composer → proprietary coding model
 - Cursor 3.0 (Apr 2, 2026): Agents Window
 - Cursor 3.1 (Apr 13, 2026): Tiled Layout
+- Cursor 3.4 (May 13, 2026): agents auto-generate a **demo video** alongside code changes; PR-to-merge in one place via parallel agents; Bugbot switches to usage-based billing
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
-- No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+- No standalone promo video; growth is organic/word-of-mouth, changelog-driven
+
+**Pattern note (3.4 "demos not diffs"):** Cursor agents now ship a video demo of the running application alongside any code change. This normalizes AI-generated product demo video as a default output of the build process, not a production investment. Directly validates MIRA's `tools/seedance-video-gen.py` pipeline and suggests the playbook should lean harder into auto-generated demo clips per feature release.
 
 ---
 
@@ -354,6 +413,15 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Release Notes 2026: May Edition (May 5, 2026 livestream)**
+- URL: https://www.youtube.com/watch?v=11mdb7lLclM
+- Format: live demo session; CPO Yuhki Yamashita + Q&A
+- Topics: agentic AI co-design workflows; MCP (Model Context Protocol) as integration layer between agents and Figma canvas; "co-designing with AI agents to take creative control of vibe-coded prototypes, connect design systems to code, and ship the best idea fast"
+- Three workflows shown: starting from code, starting from canvas, connecting design system to live code
+- Pattern: monthly release notes livestream as lightweight recurring launch vehicle (lower production cost than Config, higher cadence)
+- Config 2026 scheduled Jun 23–25 at Moscone Center — watch for major launch
+- [transcript not verified]
 
 ---
 
