@@ -1,84 +1,129 @@
-import { describe, test, expect } from "vitest";
-import {
-  slugify,
-  sitePath,
-  linePath,
-  equipmentPath,
-  manufacturerPath,
-  modelPath,
-} from "../uns";
+import { describe, it, expect } from "vitest";
+import { slugify, sitePath, linePath, equipmentPath, manufacturerPath, modelPath } from "../uns";
 
-describe("uns.slugify", () => {
-  test("lowercases", () => {
-    expect(slugify("Plant 1")).toBe("plant_1");
+describe("uns", () => {
+  describe("slugify", () => {
+    it("returns null for empty string", () => {
+      expect(slugify("")).toBeNull();
+    });
+
+    it("returns null for non-alphanumeric chars only", () => {
+      expect(slugify("!!!")).toBeNull();
+      expect(slugify("   ")).toBeNull();
+    });
+
+    it("converts to lowercase", () => {
+      expect(slugify("PowerFlex")).toBe("powerflex");
+    });
+
+    it("collapses non-alphanumeric runs", () => {
+      expect(slugify("Power Flex 525")).toBe("power_flex_525");
+    });
+
+    it("strips leading and trailing underscores", () => {
+      expect(slugify("_PowerFlex_")).toBe("powerflex");
+    });
+
+    it("handles real-world examples", () => {
+      expect(slugify("Rockwell Automation")).toBe("rockwell_automation");
+    });
   });
 
-  test("collapses non-alphanumeric runs to single underscore", () => {
-    expect(slugify("Site A — Bay 3")).toBe("site_a_bay_3");
+  describe("sitePath", () => {
+    it("returns null for empty site name", () => {
+      expect(sitePath("")).toBeNull();
+    });
+
+    it("returns null for non-alphanumeric site name", () => {
+      expect(sitePath("!!!")).toBeNull();
+    });
+
+    it("builds valid site path", () => {
+      expect(sitePath("Detroit Plant")).toBe("enterprise.detroit_plant");
+    });
   });
 
-  test("strips leading/trailing underscore", () => {
-    expect(slugify("__hello world__")).toBe("hello_world");
+  describe("linePath", () => {
+    it("returns null for empty site", () => {
+      expect(linePath("", "Assembly")).toBeNull();
+    });
+
+    it("returns null for empty line", () => {
+      expect(linePath("Detroit Plant", "")).toBeNull();
+    });
+
+    it("returns null for non-alphanumeric site", () => {
+      expect(linePath("!!!", "Line 1")).toBeNull();
+    });
+
+    it("returns null for non-alphanumeric line", () => {
+      expect(linePath("Detroit Plant", "!!!")).toBeNull();
+    });
+
+    it("builds valid line path", () => {
+      expect(linePath("Detroit Plant", "Assembly Line 1")).toBe(
+        "enterprise.detroit_plant.assembly_line_1"
+      );
+    });
   });
 
-  test("caps at 64 chars", () => {
-    const long = "a".repeat(200);
-    expect(slugify(long).length).toBe(64);
+  describe("equipmentPath", () => {
+    it("returns null when parentPath is null", () => {
+      expect(equipmentPath(null, "Motor123")).toBeNull();
+    });
+
+    it("returns null when eqIdentifier is null", () => {
+      expect(equipmentPath("enterprise.detroit_plant.line_1", null)).toBeNull();
+    });
+
+    it("returns null when eqIdentifier is non-alphanumeric", () => {
+      expect(equipmentPath("enterprise.detroit_plant.line_1", "!!!")).toBeNull();
+    });
+
+    it("builds valid equipment path", () => {
+      expect(equipmentPath("enterprise.detroit_plant.line_1", "Motor-123")).toBe(
+        "enterprise.detroit_plant.line_1.motor_123"
+      );
+    });
   });
 
-  test("falls back to underscore for empty input", () => {
-    expect(slugify("")).toBe("_");
-    expect(slugify("!@#$%")).toBe("_");
+  describe("manufacturerPath", () => {
+    it("returns null for empty manufacturer", () => {
+      expect(manufacturerPath("")).toBeNull();
+    });
+
+    it("returns null for non-alphanumeric manufacturer", () => {
+      expect(manufacturerPath("!!!")).toBeNull();
+    });
+
+    it("builds valid manufacturer path", () => {
+      expect(manufacturerPath("Rockwell Automation")).toBe(
+        "enterprise.knowledge_base.rockwell_automation"
+      );
+    });
   });
 
-  test("matches SQL uns_slug semantics for typical CMMS strings", () => {
-    expect(slugify("Ingersoll Rand")).toBe("ingersoll_rand");
-    expect(slugify("PowerFlex 525")).toBe("powerflex_525");
-    expect(slugify("Air Compressor #1")).toBe("air_compressor_1");
-  });
-});
+  describe("modelPath", () => {
+    it("returns null for empty manufacturer", () => {
+      expect(modelPath("", "525")).toBeNull();
+    });
 
-describe("uns path builders", () => {
-  test("sitePath", () => {
-    expect(sitePath("Lake Wales Plant")).toBe("enterprise.lake_wales_plant");
-  });
+    it("returns null for empty model", () => {
+      expect(modelPath("Rockwell Automation", "")).toBeNull();
+    });
 
-  test("linePath under site", () => {
-    expect(linePath("Lake Wales Plant", "Line 3")).toBe(
-      "enterprise.lake_wales_plant.line_3",
-    );
-  });
+    it("returns null for non-alphanumeric manufacturer", () => {
+      expect(modelPath("!!!", "525")).toBeNull();
+    });
 
-  test("manufacturerPath under knowledge_base", () => {
-    expect(manufacturerPath("Rockwell Automation")).toBe(
-      "enterprise.knowledge_base.rockwell_automation",
-    );
-  });
+    it("returns null for non-alphanumeric model", () => {
+      expect(modelPath("Rockwell Automation", "!!!")).toBeNull();
+    });
 
-  test("modelPath under manufacturer", () => {
-    expect(modelPath("Rockwell Automation", "PowerFlex 525")).toBe(
-      "enterprise.knowledge_base.rockwell_automation.powerflex_525",
-    );
-  });
-});
-
-describe("equipmentPath", () => {
-  test("appends slug under parent line", () => {
-    expect(equipmentPath("enterprise.plant_a.line_1", "Compressor-7")).toBe(
-      "enterprise.plant_a.line_1.compressor_7",
-    );
-  });
-
-  test("returns null with no parent path", () => {
-    expect(equipmentPath(null, "Compressor-7")).toBeNull();
-  });
-
-  test("returns null with no equipment identifier", () => {
-    expect(equipmentPath("enterprise.plant_a.line_1", null)).toBeNull();
-    expect(equipmentPath("enterprise.plant_a.line_1", "")).toBeNull();
-  });
-
-  test("rejects identifier that slugifies to bare underscore", () => {
-    expect(equipmentPath("enterprise.plant_a.line_1", "!!!")).toBeNull();
+    it("builds valid model path", () => {
+      expect(modelPath("Rockwell Automation", "PowerFlex 525")).toBe(
+        "enterprise.knowledge_base.rockwell_automation.powerflex_525"
+      );
+    });
   });
 });

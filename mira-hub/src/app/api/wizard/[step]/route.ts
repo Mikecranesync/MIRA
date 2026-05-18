@@ -177,10 +177,18 @@ async function finishWizard(tenantId: string, userId: string) {
         return { kind: "incomplete" as const, missing: !site?.name ? "site" : "line" };
       }
 
-      const siteSlug = slugify(site.name);
-      const lineSlug = slugify(line.name);
       const sitePathStr = sitePath(site.name);
+      if (!sitePathStr) {
+        return { kind: "invalid_site_name" as const };
+      }
+
       const linePathStr = linePath(site.name, line.name);
+      if (!linePathStr) {
+        return { kind: "invalid_line_name" as const };
+      }
+
+      const siteSlug = slugify(site.name)!; // guaranteed non-null by sitePath check above
+      const lineSlug = slugify(line.name)!; // guaranteed non-null by linePath check above
 
       const siteRes = await c.query<{ id: string }>(
         `INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, properties, uns_path)
@@ -238,6 +246,12 @@ async function finishWizard(tenantId: string, userId: string) {
     }
     if (result.kind === "incomplete") {
       return NextResponse.json({ error: `missing payload: ${result.missing}` }, { status: 400 });
+    }
+    if (result.kind === "invalid_site_name") {
+      return NextResponse.json({ error: "site name is invalid for UNS path" }, { status: 400 });
+    }
+    if (result.kind === "invalid_line_name") {
+      return NextResponse.json({ error: "line name is invalid for UNS path" }, { status: 400 });
     }
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {

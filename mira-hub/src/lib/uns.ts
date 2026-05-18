@@ -18,31 +18,33 @@
 
 /**
  * Lowercase, collapse any run of non-alphanumeric chars to `_`, strip
- * leading/trailing `_`, cap at 64 chars, fall back to `_` for empty input.
+ * leading/trailing `_`, cap at 64 chars, return null for empty input.
  *
  * Matches:
- *   - SQL `uns_slug()` in migration 014
+ *   - SQL `uns_slug()` in migration 014 (returns NULL for empty)
  *   - the wizard helper that previously lived inline in
  *     `mira-hub/src/app/api/wizard/[step]/route.ts`
  */
-export function slugify(value: string): string {
-  return (
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .slice(0, 64) || "_"
-  );
+export function slugify(value: string): string | null {
+  const result = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64);
+  return result.length > 0 ? result : null;
 }
 
 /** Compact UNS path for a site. */
-export function sitePath(site: string): string {
-  return `enterprise.${slugify(site)}`;
+export function sitePath(site: string): string | null {
+  const slug = slugify(site);
+  return slug ? `enterprise.${slug}` : null;
 }
 
 /** Compact UNS path for a line under a site. */
-export function linePath(site: string, line: string): string {
-  return `${sitePath(site)}.${slugify(line)}`;
+export function linePath(site: string, line: string): string | null {
+  const sPath = sitePath(site);
+  const lSlug = slugify(line);
+  return sPath && lSlug ? `${sPath}.${lSlug}` : null;
 }
 
 /**
@@ -56,19 +58,25 @@ export function linePath(site: string, line: string): string {
  * Returns `null` when both `parentPath` and `eqIdentifier` are absent — the
  * caller decides whether to skip the row or leave uns_path unset.
  */
-export function equipmentPath(parentPath: string | null, eqIdentifier: string | null): string | null {
+export function equipmentPath(
+  parentPath: string | null,
+  eqIdentifier: string | null
+): string | null {
   const slug = eqIdentifier ? slugify(eqIdentifier) : null;
-  if (!slug || slug === "_") return null;
+  if (!slug) return null;
   if (!parentPath) return null;
   return `${parentPath}.${slug}`;
 }
 
 /** Knowledge-base UNS path for a manufacturer node. */
-export function manufacturerPath(manufacturer: string): string {
-  return `enterprise.knowledge_base.${slugify(manufacturer)}`;
+export function manufacturerPath(manufacturer: string): string | null {
+  const slug = slugify(manufacturer);
+  return slug ? `enterprise.knowledge_base.${slug}` : null;
 }
 
 /** Knowledge-base UNS path for a model under a manufacturer. */
-export function modelPath(manufacturer: string, model: string): string {
-  return `${manufacturerPath(manufacturer)}.${slugify(model)}`;
+export function modelPath(manufacturer: string, model: string): string | null {
+  const mPath = manufacturerPath(manufacturer);
+  const mSlug = slugify(model);
+  return mPath && mSlug ? `${mPath}.${mSlug}` : null;
 }
