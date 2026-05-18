@@ -16,7 +16,7 @@ psycopg2-binary>=2.9.0
 apify-client>=2.5.0
 
 # YAML config
-PyYAML>=6.0.0
+PyYAML>=6.0.3
 
 # 24/7 ingest pipeline deps
 feedparser>=6.0.12
