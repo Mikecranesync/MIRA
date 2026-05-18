@@ -1,0 +1,95 @@
+name: NeonDB inspect (P0 #1305/#1343/#1344)
+
+# Ad-hoc DB inspection workflow. Runs SQL inside mira-mcp-saas container on the
+# VPS (which has working SSL to Neon — Windows hosts can't reach Neon directly
+# per the gotcha in CLAUDE.md). Read-only. Drop after #1305/#1343/#1344 close
+# and a permanent /api/admin/db-inventory endpoint is in place.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: db-inspect
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Inspect NeonDB via mira-mcp-saas
+        run: |
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+            root@165.245.138.91 "bash -s" << 'ENDSSH'
+
+          set -euo pipefail
+          cd /opt/mira
+
+          echo "=== container status ==="
+          docker ps --filter "name=mira-mcp-saas" --format "table {{.Names}}\t{{.Status}}"
+
+          echo
+          echo "=== NeonDB inventory ==="
+          docker exec mira-mcp-saas python -c "
+          import os, psycopg2
+          url = os.environ.get('NEON_DATABASE_URL', '')
+          if not url:
+              print('NEON_DATABASE_URL not set in container env')
+              raise SystemExit(2)
+          conn = psycopg2.connect(url)
+          cur = conn.cursor()
+
+          cur.execute(\"SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename;\")
+          tables = [r[0] for r in cur.fetchall()]
+          print(f'TABLE_COUNT: {len(tables)}')
+          for t in tables:
+              print('  ' + t)
+
+          required = [
+              'knowledge_entries', 'fault_codes', 'kg_entities', 'kg_relationships',
+              'kg_bridge', 'tenant_invites', 'kg_approval_state',
+          ]
+          missing = [t for t in required if t not in tables]
+          print(f'MISSING_REQUIRED: {missing}')
+
+          for q in [
+              (\"kg_entities total\", \"SELECT COUNT(*) FROM kg_entities;\"),
+              (\"kg_entities NULL uns_path\", \"SELECT COUNT(*) FROM kg_entities WHERE uns_path IS NULL;\"),
+              (\"kg_entities source='cmms'\", \"SELECT COUNT(*) FROM kg_entities WHERE source='cmms';\"),
+              (\"kg_entities source='cmms' NULL uns_path\", \"SELECT COUNT(*) FROM kg_entities WHERE source='cmms' AND uns_path IS NULL;\"),
+              (\"knowledge_entries total\", \"SELECT COUNT(*) FROM knowledge_entries;\"),
+              (\"kg_entities kind='knowledge_entry'\", \"SELECT COUNT(*) FROM kg_entities WHERE kind='knowledge_entry';\"),
+              (\"kg_relationships total\", \"SELECT COUNT(*) FROM kg_relationships;\"),
+          ]:
+              label, sql = q
+              try:
+                  cur.execute(sql)
+                  print(f'{label}: {cur.fetchone()[0]}')
+              except Exception as e:
+                  print(f'{label}: ERR {e.__class__.__name__}: {str(e)[:120]}')
+                  conn.rollback()
+
+          cur.execute(\"\"\"
+              SELECT column_name, data_type
+              FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='kg_entities'
+              ORDER BY ordinal_position;
+          \"\"\")
+          print('--- kg_entities columns ---')
+          for col, dtype in cur.fetchall():
+              print(f'  {col}: {dtype}')
+
+          conn.close()
+          "
+          ENDSSH
