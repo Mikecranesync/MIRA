@@ -368,17 +368,23 @@ function Stat({ label, value }: { label: string; value: number }) {
 
 function CounterLink({ label, value, href }: { label: string; value: number; href: string }) {
   const isZero = value === 0;
-  if (isZero) {
-    return <Stat label={label} value={value} />;
-  }
   return (
     <Link
       href={href}
-      className="group flex items-center justify-between rounded px-2 py-1.5 hover:bg-blue-50"
+      className={`group flex items-center justify-between rounded px-2 py-1.5 ${
+        isZero ? "pointer-events-none cursor-default" : "hover:bg-blue-50"
+      }`}
+      aria-disabled={isZero}
+      tabIndex={isZero ? -1 : 0}
       data-testid="namespace-counter-link"
     >
-      <dt className="text-slate-500 group-hover:text-blue-700">{label}</dt>
-      <dd className="font-semibold text-slate-900 group-hover:text-blue-700">{value} →</dd>
+      <dt className={`${isZero ? "text-slate-500" : "text-slate-500 group-hover:text-blue-700"}`}>
+        {label}
+      </dt>
+      <dd className={`font-semibold text-slate-900 ${!isZero && "group-hover:text-blue-700"}`}>
+        {value}
+        {!isZero && " →"}
+      </dd>
     </Link>
   );
 }
