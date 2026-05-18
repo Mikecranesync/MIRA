@@ -444,9 +444,7 @@ class RAGWorker:
 
             _has_non_vector = any(_streams_of(c) - {"vector"} for c in neon_chunks)
             _vector_only_chunks = [c for c in neon_chunks if _streams_of(c) <= {"vector"}]
-            _vector_top = max(
-                (c.get("similarity", 0) for c in _vector_only_chunks), default=0
-            )
+            _vector_top = max((c.get("similarity", 0) for c in _vector_only_chunks), default=0)
             _top_score = max((c.get("similarity", 0) for c in neon_chunks), default=0)
 
             if neon_chunks and not _has_non_vector and _vector_top < _min_sim:
