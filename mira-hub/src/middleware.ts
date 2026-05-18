@@ -159,6 +159,6 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
 
 export const config = {
   matcher: [
-    "/((?!login|signup|magic|api/auth|api/health|api/scanbe/healthz|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
+    "/((?!login|signup|magic|m/|api/auth|api/public|api/health|api/scanbe/healthz|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
   ],
 };

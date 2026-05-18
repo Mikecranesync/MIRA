@@ -110,11 +110,15 @@ export function UploadPicker({
   onClose,
   onLocalFiles,
   onCloudPicks,
+  defaultAssetTag = null,
+  hideAssetPicker = false,
 }: {
   open: boolean;
   onClose: () => void;
   onLocalFiles: (files: File[], assetTag: string | null) => void | Promise<void>;
   onCloudPicks: (results: PickResult[], assetTag: string | null) => void | Promise<void>;
+  defaultAssetTag?: string | null;
+  hideAssetPicker?: boolean;
 }) {
   const [googleReady, setGoogleReady] = useState(false);
   const [dropboxReady, setDropboxReady] = useState(false);
@@ -128,7 +132,12 @@ export function UploadPicker({
 
   const [assets, setAssets] = useState<Asset[]>([]);
   const [assetSearch, setAssetSearch] = useState("");
-  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<string | null>(defaultAssetTag);
+
+  // Re-sync when the consumer opens the picker for a different asset.
+  useEffect(() => {
+    if (open) setSelectedAsset(defaultAssetTag);
+  }, [open, defaultAssetTag]);
 
   useEffect(() => {
     if (!open) return;
@@ -323,7 +332,7 @@ export function UploadPicker({
             </button>
           </div>
 
-          {assets.length > 0 && (
+          {!hideAssetPicker && assets.length > 0 && (
             <div className="mb-3">
               <label className="text-xs font-medium" style={{ color: "var(--foreground-muted)" }}>
                 Link to asset (optional)
@@ -437,28 +446,39 @@ export function UploadPicker({
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={!googleAvailable || !pickerLoaded || uploading}
-              onClick={openGoogle}
-              title={
-                !googleAvailable
-                  ? "Connect Google Workspace in Channels to enable"
-                  : pickerLoadFailed && !pickerLoaded
+            {googleAvailable ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!pickerLoaded || uploading}
+                onClick={openGoogle}
+                title={
+                  pickerLoadFailed && !pickerLoaded
                     ? "Picker SDK didn't load — try local upload above"
                     : undefined
-              }
-              className="gap-1.5"
-            >
-              {googleAvailable && !pickerLoaded && pickerLoadFailed ? (
-                <><AlertTriangle className="w-3.5 h-3.5" /> Unavailable</>
-              ) : googleAvailable && !pickerLoaded ? (
-                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</>
-              ) : (
-                <><FolderOpen className="w-3.5 h-3.5" /> Google Drive</>
-              )}
-            </Button>
+                }
+                className="gap-1.5"
+              >
+                {!pickerLoaded && pickerLoadFailed ? (
+                  <><AlertTriangle className="w-3.5 h-3.5" /> Unavailable</>
+                ) : !pickerLoaded ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</>
+                ) : (
+                  <><FolderOpen className="w-3.5 h-3.5" /> Google Drive</>
+                )}
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => { window.location.href = "/hub/api/auth/google"; }}
+                title="Sign in with Google to pick files from Drive"
+                data-testid="connect-google-drive"
+                className="gap-1.5"
+              >
+                <FolderOpen className="w-3.5 h-3.5" /> Connect Google Drive
+              </Button>
+            )}
             <Button
               variant="secondary"
               size="sm"
@@ -495,15 +515,15 @@ export function UploadPicker({
 
           {!googleAvailable && !dropboxAvailable && (
             <p className="text-[11px] mt-2 text-center" style={{ color: "var(--foreground-subtle)" }}>
-              Connect Google Workspace or Dropbox in{" "}
+              Or manage all integrations in{" "}
               <Link
                 href="/channels"
                 className="font-medium underline-offset-2 hover:underline"
                 style={{ color: "var(--brand-blue)" }}
               >
                 Channels
-              </Link>{" "}
-              to enable cloud picking.
+              </Link>
+              .
             </p>
           )}
 

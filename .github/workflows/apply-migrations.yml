@@ -301,7 +301,7 @@ jobs:
             echo "::error::tools/uns_backfill.py missing — was PR #1245 reverted?"
             exit 1
           fi
-          doppler run --project factorylm --config prd -- python tools/uns_backfill.py
+          doppler run --project factorylm --config prd -- python tools/uns_backfill.py --commit
 
       - name: Run cmms_equipment backfill (tools/cmms_equipment_uns_backfill.py)
         env:
@@ -312,4 +312,4 @@ jobs:
             echo "::error::tools/cmms_equipment_uns_backfill.py missing — was PR #1245 reverted?"
             exit 1
           fi
-          doppler run --project factorylm --config prd -- python tools/cmms_equipment_uns_backfill.py
+          doppler run --project factorylm --config prd -- python tools/cmms_equipment_uns_backfill.py --commit

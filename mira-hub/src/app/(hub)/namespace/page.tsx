@@ -9,8 +9,9 @@
  * Drag-drop move, rename, and merge land in slice 2.
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Layers, Loader2, Factory, MapPin, Cog, FileText, Move } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { ChevronDown, ChevronRight, Layers, Loader2, Factory, MapPin, Cog, FileText, Search } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
 interface NamespaceNode {
@@ -43,6 +44,29 @@ const KIND_ICON: Record<string, React.ElementType> = {
   document: FileText,
 };
 
+// Next.js `<Link>` auto-prepends the configured basePath ('/hub' in this
+// app). Build hrefs as bare app-relative paths — NOT prefixed with
+// API_BASE — or they'll double-up to '/hub/hub/...'. Plain `<a>` does
+// not transform; those still need the full prefix (see EmptyState below).
+const HUB_BASE = API_BASE.replace(/\/api$/, "");
+
+function filterTree(nodes: NamespaceNode[], query: string): NamespaceNode[] {
+  const q = query.trim().toLowerCase();
+  if (q.length === 0) return nodes;
+  const walk = (node: NamespaceNode): NamespaceNode | null => {
+    const selfMatches =
+      node.name.toLowerCase().includes(q) ||
+      (node.unsPath?.toLowerCase().includes(q) ?? false);
+    const filteredChildren = node.children
+      .map(walk)
+      .filter((c): c is NamespaceNode => c !== null);
+    if (!selfMatches && filteredChildren.length === 0) return null;
+    // When a child matches, surface the whole subtree so the user keeps context.
+    return { ...node, children: selfMatches ? node.children : filteredChildren };
+  };
+  return nodes.map(walk).filter((n): n is NamespaceNode => n !== null);
+}
+
 export default function NamespacePage() {
   const [tree, setTree] = useState<NamespaceNode[]>([]);
   const [total, setTotal] = useState(0);
@@ -52,6 +76,7 @@ export default function NamespacePage() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const refreshTree = useCallback(async () => {
     try {
@@ -76,6 +101,8 @@ export default function NamespacePage() {
       cancelled = true;
     };
   }, [refreshTree]);
+
+  const visibleTree = useMemo(() => filterTree(tree, search), [tree, search]);
 
   async function handleDrop(sourceId: string, targetId: string) {
     if (sourceId === targetId) return;
@@ -110,12 +137,24 @@ export default function NamespacePage() {
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">Namespace</h1>
             <p className="mt-1 text-sm text-slate-500">
-              {loading ? "Loading…" : `${total} entit${total === 1 ? "y" : "ies"} — drag any node to reparent`}
+              {loading
+                ? "Loading…"
+                : `${total} entit${total === 1 ? "y" : "ies"} — drag any node to reparent`}
             </p>
           </div>
-          <div className="hidden items-center gap-1 text-xs text-slate-400 sm:flex">
-            <Move className="h-3 w-3" /> Drag to move
-          </div>
+        </div>
+
+        <div className="relative mb-4">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search namespace…"
+            className="w-full rounded-md border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            data-testid="namespace-search"
+            aria-label="Search namespace"
+          />
         </div>
 
         {loading ? (
@@ -128,9 +167,13 @@ export default function NamespacePage() {
           </div>
         ) : tree.length === 0 ? (
           <EmptyState />
+        ) : visibleTree.length === 0 ? (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            No nodes match <span className="font-mono">&quot;{search}&quot;</span>.
+          </div>
         ) : (
           <div className="space-y-1" data-testid="namespace-tree">
-            {tree.map((node) => (
+            {visibleTree.map((node) => (
               <TreeNode
                 key={node.id}
                 node={node}
@@ -152,7 +195,7 @@ export default function NamespacePage() {
         className="hidden w-80 shrink-0 border-l border-slate-200 bg-slate-50 p-6 lg:block"
         data-testid="namespace-detail-pane"
       >
-        {selected ? <DetailPane node={selected} /> : <DetailEmpty />}
+        {loading ? null : selected ? <DetailPane node={selected} /> : <DetailEmpty />}
       </aside>
 
       {toast && (
@@ -233,7 +276,7 @@ function TreeNode({
         <button
           type="button"
           onClick={() => hasChildren && setOpen((o) => !o)}
-          className="flex h-5 w-5 items-center justify-center text-slate-400 hover:text-slate-700"
+          className="flex h-5 w-5 items-center justify-center text-slate-600 hover:text-slate-900"
           aria-label={open ? "Collapse" : "Expand"}
         >
           {hasChildren ? open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" /> : null}
@@ -245,7 +288,7 @@ function TreeNode({
         >
           <Icon className="h-4 w-4 text-slate-500" />
           <span className="text-slate-900">{node.name}</span>
-          <span className="text-xs text-slate-400">{node.kind}</span>
+          <span className="text-xs text-slate-600">{node.kind}</span>
           {node.counts.proposalsPending > 0 && (
             <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
               {node.counts.proposalsPending} proposed
@@ -276,6 +319,9 @@ function TreeNode({
 }
 
 function DetailPane({ node }: { node: NamespaceNode }) {
+  const path = node.unsPath ?? "";
+  const proposalsHref = (status: "pending" | "verified") =>
+    `/proposals?path=${encodeURIComponent(path)}&status=${status}`;
   return (
     <div data-testid="namespace-detail">
       <div className="text-xs uppercase tracking-wide text-slate-500">{node.kind}</div>
@@ -285,19 +331,27 @@ function DetailPane({ node }: { node: NamespaceNode }) {
           {node.unsPath}
         </code>
       )}
-      <dl className="mt-6 space-y-3 text-sm">
+      <dl className="mt-6 space-y-1 text-sm">
         <Stat label="Children" value={node.counts.children} />
-        <Stat label="Proposals pending" value={node.counts.proposalsPending} />
-        <Stat label="Proposals verified" value={node.counts.proposalsVerified} />
+        <CounterLink
+          label="Proposals pending"
+          value={node.counts.proposalsPending}
+          href={proposalsHref("pending")}
+        />
+        <CounterLink
+          label="Proposals verified"
+          value={node.counts.proposalsVerified}
+          href={proposalsHref("verified")}
+        />
       </dl>
       {node.counts.proposalsPending > 0 && (
-        <a
-          href={`${API_BASE.replace("/api", "")}/proposals?path=${encodeURIComponent(node.unsPath ?? "")}`}
+        <Link
+          href={proposalsHref("pending")}
           className="mt-6 inline-block text-sm font-medium text-blue-600 hover:underline"
         >
           Review {node.counts.proposalsPending} pending proposal
           {node.counts.proposalsPending === 1 ? "" : "s"} →
-        </a>
+        </Link>
       )}
     </div>
   );
@@ -305,10 +359,33 @@ function DetailPane({ node }: { node: NamespaceNode }) {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between rounded px-2 py-1.5">
       <dt className="text-slate-500">{label}</dt>
       <dd className="font-semibold text-slate-900">{value}</dd>
     </div>
+  );
+}
+
+function CounterLink({ label, value, href }: { label: string; value: number; href: string }) {
+  const isZero = value === 0;
+  return (
+    <Link
+      href={href}
+      className={`group flex items-center justify-between rounded px-2 py-1.5 ${
+        isZero ? "pointer-events-none cursor-default" : "hover:bg-blue-50"
+      }`}
+      aria-disabled={isZero}
+      tabIndex={isZero ? -1 : 0}
+      data-testid="namespace-counter-link"
+    >
+      <dt className={`${isZero ? "text-slate-500" : "text-slate-500 group-hover:text-blue-700"}`}>
+        {label}
+      </dt>
+      <dd className={`font-semibold text-slate-900 ${!isZero && "group-hover:text-blue-700"}`}>
+        {value}
+        {!isZero && " →"}
+      </dd>
+    </Link>
   );
 }
 
@@ -330,7 +407,7 @@ function EmptyState() {
         propose assets and components from your manuals, photos, and PLC tags.
       </p>
       <a
-        href={`${API_BASE.replace("/api", "")}/onboarding`}
+        href={`${HUB_BASE}/onboarding`}
         className="mt-6 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
         data-testid="namespace-empty-start"
       >
