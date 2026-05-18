@@ -1,0 +1,1044 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Conv_Simple — Complete: Bench-rig walkthrough, RS-485 → Prog3-Modbus → UDFB motor_starter → v4.1.9 cleanup</title>
+<style>
+  @page { size: Letter; margin: 0.45in 0.55in; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; color: #111; line-height: 1.42; }
+  h1 { font-size: 19pt; margin: 0 0 4pt 0; border-bottom: 2pt solid #111; padding-bottom: 6pt; }
+  h2 { font-size: 14pt; margin: 18pt 0 6pt 0; padding: 6pt 10pt; background: #1f3a5f; color: #fff; }
+  h2.part { background: #8a1a10; font-size: 16pt; padding: 8pt 12pt; }
+  h3 { font-size: 12pt; margin: 14pt 0 4pt 0; color: #1f3a5f; }
+  h4 { font-size: 11pt; margin: 10pt 0 2pt 0; color: #333; }
+  .meta { font-size: 9.5pt; color: #555; margin-bottom: 10pt; }
+  .meta strong { color: #111; }
+  ol, ul { margin: 4pt 0 6pt 22pt; }
+  li { margin-bottom: 4pt; }
+  code, pre { font-family: 'Consolas', 'Courier New', monospace; }
+  pre { background: #f4f5f7; border: 1pt solid #d0d5dc; border-radius: 3pt; padding: 8pt; font-size: 9pt; white-space: pre; overflow-x: auto; tab-size: 2; -webkit-tab-size: 2; line-height: 1.25; }
+  pre.ladder { background: #fafbfd; border: 1pt solid #1f3a5f; font-size: 9pt; line-height: 1.15; padding: 10pt 12pt; }
+  pre.wiring { background: #fff8e8; border: 1pt solid #b9882a; padding: 10pt; font-size: 9.5pt; }
+  pre.bits { background: #f0f4fa; border: 1pt solid #1f3a5f; padding: 10pt; font-size: 9.5pt; }
+  code { background: #f4f5f7; padding: 1pt 3pt; border-radius: 2pt; font-size: 10pt; }
+  table { border-collapse: collapse; width: 100%; margin: 4pt 0 8pt 0; font-size: 9.5pt; }
+  th, td { border: 1pt solid #b5bcc4; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #e8edf3; }
+  .callout { border-left: 4pt solid #d9822b; background: #fff7eb; padding: 8pt 12pt; margin: 8pt 0; }
+  .callout-title { font-weight: bold; color: #a55a14; display: block; margin-bottom: 2pt; }
+  .danger { border-left: 4pt solid #c5392c; background: #fdecea; padding: 8pt 12pt; margin: 8pt 0; }
+  .danger-title { font-weight: bold; color: #8a1a10; display: block; margin-bottom: 2pt; }
+  .ok { border-left: 4pt solid #2f8f3a; background: #ecf6ee; padding: 8pt 12pt; margin: 8pt 0; }
+  .ok-title { font-weight: bold; color: #1f5f24; display: block; margin-bottom: 2pt; }
+  .bug { border-left: 4pt solid #8a1a10; background: #fff5f3; padding: 10pt 12pt; margin: 10pt 0; }
+  .bug-title { font-weight: bold; color: #8a1a10; display: block; margin-bottom: 3pt; font-size: 11pt; }
+  .why { background: #eef2f9; padding: 6pt 10pt; margin: 4pt 0 6pt 0; border-radius: 3pt; font-size: 10pt; }
+  .why::before { content: 'Why this matters: '; font-weight: bold; color: #1f3a5f; }
+  .check { background: #f7fff8; border: 1pt dashed #2f8f3a; padding: 5pt 9pt; border-radius: 3pt; margin: 4pt 0; font-size: 10pt; }
+  .check::before { content: '\2713 You should see: '; font-weight: bold; color: #2f8f3a; }
+  .pageref { font-size: 8.5pt; color: #888; font-style: italic; }
+  hr { border: 0; border-top: 1pt solid #b5bcc4; margin: 12pt 0; }
+  .step { background: #1f3a5f; color: #fff; border-radius: 50%; display: inline-block; width: 20pt; height: 20pt; line-height: 20pt; text-align: center; font-weight: bold; margin-right: 7pt; }
+  .checkbox { display: inline-block; width: 11pt; height: 11pt; border: 1.5pt solid #111; margin-right: 6pt; vertical-align: middle; }
+  .small { font-size: 9.5pt; color: #555; }
+  .page-break { page-break-before: always; }
+  .compact td, .compact th { padding: 3pt 6pt; font-size: 9.5pt; }
+  .rung-caption { font-style: italic; color: #555; font-size: 9.5pt; margin: 2pt 0 6pt 0; }
+  .cheatsheet { background: #fffaf0; border: 2pt solid #1f3a5f; padding: 12pt 14pt; margin: 10pt 0; }
+  .cheatsheet h3 { margin-top: 8pt; color: #1f3a5f; }
+  .cheatsheet table { margin: 4pt 0; }
+  .cheatsheet th { background: #1f3a5f; color: #fff; }
+  .bit-fixed { font-family: 'Consolas', monospace; font-size: 11pt; letter-spacing: 1pt; color: #1f3a5f; font-weight: bold; }
+  .toc { background: #f7f8fa; border: 1pt solid #b5bcc4; padding: 10pt 14pt; margin: 10pt 0 18pt 0; }
+  .toc h3 { margin: 0 0 6pt 0; color: #1f3a5f; }
+  .toc ol { margin: 4pt 0 0 22pt; }
+  .toc li { margin-bottom: 2pt; }
+</style>
+</head>
+<body>
+
+<h1>Conv_Simple — Complete<br/><span style="font-size:13pt;font-weight:normal;color:#555;">Bench-rig walkthrough, end-to-end: RS-485 wiring → Prog3-Modbus polling sequencer → motor_starter UDFB → v4.1.9 program cleanup</span></h1>
+<div class="meta">
+  <strong>Audience:</strong> First-time CCW developer with a Micro 820 + GS10 bench rig on the desk &nbsp;|&nbsp;
+  <strong>PLC:</strong> Allen-Bradley Micro 820 (2080-LC20-20QBB)<br/>
+  <strong>Drive:</strong> AutomationDirect GS10 DURApulse, Modbus RTU slave node 1<br/>
+  <strong>Project:</strong> <code>MIRA_v5</code> &nbsp;|&nbsp;
+  <strong>IDE:</strong> Connected Components Workbench (CCW) v22+<br/>
+  <strong>Source-of-truth program:</strong> <code>plc/Micro820_v4.1.8_Program.st</code> (will become <code>v4.1.9</code> after applying Part 3)<br/>
+  <strong>Primary references:</strong> <em>GS10 DURApulse User Manual</em> + <code>plc/GS10_Integration_Guide.md</code> + <em>Micro 820 ref manual</em><br/>
+  <strong>This doc supersedes:</strong> <code>Conv_Simple_Prog3_Modbus_Polling.pdf</code>, <code>Conv_Simple_UDFB_Intro.pdf</code>, <code>plc/LD_BUILD_GUIDE_v5.md</code> (v5.1)<br/>
+  <strong>You will understand after reading:</strong> exactly which wires go where; why the Modbus sequencer is a state machine driven by <code>vfd_poll_step</code>; what a UDFB is and why one instance of <code>motor_starter</code> beats five copy-pasted rungs; which lines of the deployed <code>.st</code> still need surgery and what each fix looks like; and which numbers must be bench-verified before relying on production.
+</div>
+
+<div class="toc">
+  <h3>📖 Reading map (three parts, each self-contained but listed in execution order)</h3>
+  <ol>
+    <li><strong>Part 1 — Modbus polling sequencer (Prog3-Modbus)</strong>. Without this the drive doesn't talk. Sections 1–9. <em>~12 pages.</em></li>
+    <li><strong>Part 2 — motor_starter UDFB</strong>. Wraps the run/stop/direction logic into one reusable block. Assumes Part 1's wiring works. Sections 10–19. <em>~14 pages.</em></li>
+    <li><strong>Part 3 — Apply to v4.1.9</strong>. A line-by-line checklist that turns the deployed <code>Micro820_v4.1.8_Program.st</code> into v4.1.9 by applying every fix flagged in Parts 1 and 2. Section 20. <em>~4 pages.</em></li>
+  </ol>
+</div>
+
+<div class="cheatsheet">
+<h3 style="margin-top:0;">🛈 Unified one-page cheat sheet — every value that absolutely must be right</h3>
+
+<h4>Bench wiring + serial parameters</h4>
+<table class="compact">
+<thead><tr><th>What</th><th>Value</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>PLC serial channel (embedded RS-485)</td><td><code>2</code> <span style="color:#c5392c;font-weight:bold;">(NOT 0 — v5.1 LD guide is wrong; v4.1.8 .st is wrong)</span></td><td>Micro 820 ref manual; <code>GS10_Integration_Guide.md</code> §5</td></tr>
+<tr><td>Drive RJ45 pin for D+ (SG+)</td><td><strong>Pin 5</strong> (green/white per T568B)</td><td>GS10 manual p.10</td></tr>
+<tr><td>Drive RJ45 pin for D- (SG-)</td><td><strong>Pin 4</strong> (blue)</td><td>GS10 manual p.10</td></tr>
+<tr><td>Drive RJ45 pin for signal ground</td><td><strong>Pin 3</strong> (SGND)</td><td>GS10 manual p.10</td></tr>
+<tr><td>VFD slave address (Modbus Node, P09.00)</td><td><code>1</code></td><td>GS10 manual p.6</td></tr>
+<tr><td>Baud / format</td><td><code>9600 8N2 RTU</code> (P09.01=96, P09.04=13)</td><td>GS10 manual p.6</td></tr>
+</tbody>
+</table>
+
+<h4>GS10 register map</h4>
+<table class="compact">
+<thead><tr><th>What</th><th>Register</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Control Command (FC06 write)</td><td><code>0x2000</code> (dec <code>8192</code>)</td><td>Bit-field integer</td></tr>
+<tr><td>Frequency Setpoint (FC06 write)</td><td><code>0x2001</code> (dec <code>8193</code>)</td><td>Value = Hz × 10 (300 = 30.0 Hz)</td></tr>
+<tr><td>Fault Reset (FC06 write)</td><td><code>0x2002</code> (dec <code>8194</code>)</td><td>Write <code>2</code> to clear non-latched faults</td></tr>
+<tr><td>Operation Status WORD (FC03 read)</td><td><code>0x2101</code> (dec <code>8449</code>)</td><td>NOT in v4.1.8 — to add in v4.1.9</td></tr>
+<tr><td>Monitor block (FC03 read)</td><td>Start <code>0x2103</code> (dec <code>8451</code>), <code>ElementCnt = 4</code></td><td>Covers 0x2103–0x2106 (freq, current, DC bus, V_out). <span style="color:#c5392c;font-weight:bold;">Reading 6 lands in undocumented 0x2108 — do NOT.</span></td></tr>
+</tbody>
+</table>
+
+<h4>Command word values (bench-verify before production)</h4>
+<table class="compact">
+<thead><tr><th>Command</th><th>Decimal</th><th>Hex</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>STOP</td><td><code>1</code></td><td><code>0x0001</code></td><td>Confirmed</td></tr>
+<tr><td>FWD + RUN</td><td><code>18</code></td><td><code>0x0012</code></td><td>Deployed value (.st line 127, 146). Bit-math across sources contradicts (10/18/34). <strong>Bench-verify.</strong></td></tr>
+<tr><td>REV + RUN</td><td><code>20</code></td><td><code>0x0014</code></td><td>Deployed value (.st line 129, 148). Same contradiction. See Section 18 open question.</td></tr>
+</tbody>
+</table>
+
+<h4>motor_starter UDFB interface</h4>
+<table class="compact">
+<thead><tr><th>Pin</th><th>Type</th><th>Wired to (this conveyor)</th></tr></thead>
+<tbody>
+<tr><td><code>Enable</code></td><td>BOOL in</td><td><code>enable_motor_ctrl</code> (new global, default TRUE)</td></tr>
+<tr><td><code>StartPB</code></td><td>BOOL in</td><td><code>_IO_EM_DI_04</code> (PBRun)</td></tr>
+<tr><td><code>DirFwdSw</code></td><td>BOOL in</td><td><code>dir_fwd</code> (decoded in Prog2 §2)</td></tr>
+<tr><td><code>DirRevSw</code></td><td>BOOL in</td><td><code>dir_rev</code> (decoded in Prog2 §2)</td></tr>
+<tr><td><code>EStopOK</code></td><td>BOOL in</td><td><code>e_stop_ok</code> (new global, computed in Prog2 §1)</td></tr>
+<tr><td><code>VFDCmdWord</code></td><td>INT out</td><td><code>vfd_cmd_word</code> (sole writer after v4.1.9)</td></tr>
+<tr><td><code>RunLamp</code></td><td>BOOL out</td><td><code>_IO_EM_DO_00</code> (LightGreen)</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="bug">
+  <span class="bug-title">⚠ Carry-forward bug log — what's wrong in the prior docs AND in <code>Micro820_v4.1.8_Program.st</code> that this complete walkthrough corrects</span>
+  <p style="margin: 4pt 0;"><strong>From the v5.1 LD build guide (<code>plc/LD_BUILD_GUIDE_v5.md</code>):</strong></p>
+  <ol style="margin: 4pt 0 0 22pt;">
+    <li><strong>Channel = 0</strong> in every config table. Correct = <code>2</code>. The Micro 820's embedded serial port is channel 2; channel 0 is reserved for a plug-in serial card that the 2080-LC20-20QBB does not have. Documented in <code>GS10_Integration_Guide.md</code> §5 and contradicted by the v5.1 LD guide — this doc reconciles them.</li>
+    <li><strong>Rung 1 reads Output Frequency, but the MSG instance was named <code>mb_read_status</code></strong> — misleading. <code>0x2103</code> is the live monitor block, not the status word. Actual status bits live at <code>0x2101</code> (a separate FC03 read this doc adds).</li>
+    <li><strong>ElementCnt mismatch</strong> — comment said 4, struct said 6. <code>0x2108</code> is undocumented in the GS10 register map. <code>ElementCnt := 4</code> only.</li>
+  </ol>
+  <p style="margin: 4pt 0;"><strong>From the deployed <code>Micro820_v4.1.8_Program.st</code> (gap audit 2026-05-17):</strong></p>
+  <ol style="margin: 4pt 0 0 22pt;" start="4">
+    <li><strong>All four <code>.Channel := 0</code></strong> at lines 251, 259, 267, 275 — must change to <code>:= 2</code>.</li>
+    <li><strong><code>read_local_cfg.ElementCnt := 6</code></strong> at line 254 — must change to <code>:= 4</code>.</li>
+    <li><strong>Instance named <code>mb_read_status</code></strong> at lines 316, 340, 350 — rename to <code>mb_read_monitor</code> (matches what it actually does).</li>
+    <li><strong>No FC03 read of the real status word</strong> (<code>0x2101</code>) — add a second read block to recover the running / at-speed / fault bits.</li>
+    <li><strong>State machine writes <code>vfd_cmd_word</code></strong> from 6+ places (lines 113, 127, 129, 133, 146, 148, 153, 157, 172, 185). Comment out every one before adding the UDFB — two writers in one scan = last-writer-wins = random behavior.</li>
+    <li><strong>No <code>e_stop_ok</code> global</strong> — CCW LD pin fields don't accept compound boolean expressions, so the UDFB's <code>EStopOK</code> pin needs a single tag. Pre-compute it in Prog2 §1.</li>
+    <li><strong>Poll timer at 500 ms</strong> (line 299) — works, just slow. Tune to 50–100 ms when the bench is steady.</li>
+    <li><strong>Cmd words 18 / 20 unverified on bench</strong> — three different values appear across sources (10 / 18 / 20 / 34). The bit-math contradicts the "common command words" table on the same page of the integration guide. See Section 18.</li>
+  </ol>
+  <p style="margin: 4pt 0;">Part 3 (Section 20) maps every fix above to the specific edit in the <code>.st</code> file so you can apply them line by line.</p>
+</div>
+
+<div class="page-break"></div>
+
+<h2 class="part">PART 1 — Modbus polling sequencer (Prog3-Modbus)</h2>
+
+<h2><span class="step">1</span> The Big Picture (Part 1)</h2>
+<p>The PLC needs to ask the VFD four questions, on a rotation, forever. "What's your output frequency?" "Run forward at 30 Hz." "Frequency setpoint = 30.0 Hz." "Clear any active fault." Each question is one Modbus RTU packet on the RS-485 wire. Each packet is fired by one ladder rung. A counter (<code>vfd_poll_step</code>) decides whose turn it is — only one rung sends at a time, because the wire can only carry one packet at a time without collisions.</p>
+
+<h2><span class="step">2</span> The Real-World Problem</h2>
+<p>A conveyor sits on the floor with a 2-HP motor wired through a GS10 VFD. The motor's run/stop/direction is controlled from the PLC — not the VFD's keypad. The PLC needs to (a) tell the VFD what to do, (b) read back what the VFD is actually doing, and (c) clear faults when the operator presses the reset button. All of this over one twisted pair of wires running Modbus RTU.</p>
+
+<p>The bench rig is one PLC, one drive, one motor, one ~6-foot RS-485 cable. No production gear. You can break things and restart them. That's the point.</p>
+
+<h2><span class="step">3</span> RS-485 wiring + GS10 keypad parameter setup (prerequisites)</h2>
+
+<p>Both walkthroughs assume the wiring + keypad params are already correct. If you're starting from a brand-new bench, do these first.</p>
+
+<h4>RJ45 serial cable to the GS10</h4>
+
+<pre class="wiring">  GS10 RJ45 Serial Comm Port pinout (looking into the jack on the drive):
+
+      ┌──────────────────────────────────────┐
+   →  │   1   2   3   4   5   6   7   8      │   ← pin numbers
+      │   ─   ─   ─   ─   ─   ─   ─   ─      │
+      │   ░   ░   ●   ●   ●   ░   ░   ░      │
+      │           │   │   │                  │
+      │           │   │   └── PIN 5 = SG+  (D+, non-inverting)
+      │           │   └────── PIN 4 = SG-  (D-, inverting)
+      │           └────────── PIN 3 = SGND (signal ground)
+      └──────────────────────────────────────┘
+                                              <span class="pageref">[GS10 manual p.10]</span>
+
+  Pins 1, 2, 6, 7, 8: NO CONNECT — leave open.
+  For bench runs &lt; 30 ft, no termination resistor needed.
+  For runs &gt; 30 ft, 120Ω across D+/D- at the far end.</pre>
+
+<div class="danger">
+  <span class="danger-title">GS10 pin order is DIFFERENT from Allen-Bradley PowerFlex</span>
+  YouTube tutorials and Allen-Bradley docs say "pin 4 = D+, pin 5 = D-" because that's how PowerFlex 525 wires it. <strong>The GS10 reverses these:</strong> on the GS10, <strong>pin 5 is D+ (SG+)</strong> and <strong>pin 4 is D- (SG-)</strong>. If you follow the AB convention by mistake you'll have D+/D- swapped — no traffic, no error, just silence on the wire. Verify with a multimeter: ~2.0–2.5V DC idle bias measured pin 5 (+) to pin 4 (-), drive powered, PLC offline.
+</div>
+
+<h4>GS10 keypad parameters (set once, save, power-cycle)</h4>
+<table class="compact">
+<thead><tr><th>Param</th><th>Value</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>P00.20</td><td><code>3</code></td><td>Frequency source = RS-485 comms</td></tr>
+<tr><td>P00.21</td><td><code>3</code></td><td>Run command source = RS-485 comms</td></tr>
+<tr><td>P09.00</td><td><code>1</code></td><td>Modbus slave address</td></tr>
+<tr><td>P09.01</td><td><code>96</code></td><td>9600 baud</td></tr>
+<tr><td>P09.04</td><td><code>13</code></td><td>RTU 8N2 format</td></tr>
+<tr><td>P09.07</td><td><code>2</code></td><td>Modbus comm-loss action = stop the drive on timeout</td></tr>
+</tbody>
+</table>
+
+<div class="check">After saving P09.xx changes and power-cycling the VFD, the keypad shows the steady "STOP" indicator and you can write to <code>0x2000</code> from a PC Modbus tester without the drive faulting CE10.</div>
+
+<h2><span class="step">4</span> Modbus polling — the simple version first</h2>
+<p>Before the 4-rung sequencer exists, the simplest thing that works is <strong>one</strong> rung firing <strong>one</strong> <code>MSG_MODBUS</code> read continuously:</p>
+
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─always_true─[MSG_MODBUS]─mb_read_one
+    │                                                              │
+</pre>
+
+<p>One read, every scan. The PLC fires another Modbus packet before the previous one has finished. The drive ignores you. The serial driver buffers up requests and eventually goes out of sync. You see CE10 (comm timeout) on the VFD keypad and <code>ErrorID = 55</code> in the live monitor. The simple version reads one register fine for about 200 ms, then everything jams.</p>
+
+<div class="ok">
+  <span class="ok-title">Why the simple version "works" at all</span>
+  <code>MSG_MODBUS</code>'s <code>IN</code> pin is rising-edge triggered. Even with <code>always_true</code> always high, the block only fires once per scan and waits for <code>.Done</code> before re-triggering. So you get one packet every few scans, which "works" for one register. The problem appears the moment you want to read AND write — two messages racing each other.
+</div>
+
+<h2><span class="step">5</span> Why the simple version becomes a problem</h2>
+<p>The conveyor needs four conversations: read monitor data, write the run command, write the frequency setpoint, clear faults. Fire all four from rungs all enabled at the same time and the serial driver tries to send four packets stacked end-to-end. The Micro 820's embedded serial driver doesn't queue packets — it expects you to wait for one to complete before starting the next. Stack them and you get partial sends, garbled CRCs, and the drive's CE10 timeout fault.</p>
+
+<div class="callout">
+  <span class="callout-title">The pain made concrete</span>
+  Four people trying to ask the same waiter four different questions at the same time. The waiter can answer one at a time. If everyone shouts, the waiter writes nothing down. You need a queue — and a way to take turns.
+</div>
+
+<h2><span class="step">6</span> The better pattern — a step-driven polling sequencer</h2>
+<p>One integer (<code>vfd_poll_step</code>) cycles 1 → 2 → 3 → 4 → 1, advanced by a TON timer in Prog2. Each ladder rung in Prog3 watches the step and fires its <code>MSG_MODBUS</code> <strong>only when the step matches its number</strong>. So at any given instant exactly one MSG is active. The wire never sees overlap.</p>
+
+<div class="why">A polling sequencer is a rotating spotlight. Only the rung the spotlight is on can speak. When the spotlight moves on, that rung shuts up and the next rung takes its turn. The TON timer is the clock that moves the spotlight; <code>vfd_poll_step</code> is the spotlight's current position. Add a fifth conversation later? Bump the modulo, add Rung 5, done — the existing four don't change.</div>
+
+<h2><span class="step">7</span> CCW step-by-step — build Prog3-Modbus</h2>
+
+<p>Open <code>MIRA_v5.ccwsln</code>. Pre-build checklist (most of this lives in Prog2 + the global variable list; if you skipped one, the rung will compile but report <code>ErrorID = 55</code> the moment you go online).</p>
+
+<h4>Pre-build checklist</h4>
+<ol>
+  <li><span class="checkbox"></span> CCW project <code>MIRA_v5</code> exists; controller is <strong>2080-LC20-20QBB</strong>.</li>
+  <li><span class="checkbox"></span> <strong>Embedded Serial Port</strong> → <strong>Properties</strong>: Protocol = Modbus RTU, Mode = Master, Baud = 9600, Parity = None, Stop Bits = 2, Handshake = None.</li>
+  <li><span class="checkbox"></span> Variables imported from <code>VARIABLES_IMPORT.csv</code>. Includes <code>vfd_poll_step</code>, <code>vfd_poll_active</code>, four config structs, four data buffers, four <code>MSG_MODBUS</code> instances.</li>
+  <li><span class="checkbox"></span> Prog2 (ST) loaded with <code>Micro820_v4.1.8_Program.st</code>. Prog2 owns the timer that advances <code>vfd_poll_step</code> and loads the four config structs each scan.</li>
+  <li><span class="checkbox"></span> <code>MbSrvConf.xml</code> copied to <code>Controller\Controller\</code> folder.</li>
+  <li><span class="checkbox"></span> Program execution order: <strong>Prog2 first, Prog3-Modbus second</strong> (Project Organizer → Programs → Properties).</li>
+</ol>
+
+<h4>Add the Prog3-Modbus LD program</h4>
+<ol>
+  <li><span class="checkbox"></span> Project Organizer → right-click <strong>Programs</strong> → <strong>Add → New LD: Ladder Diagram</strong>.</li>
+  <li><span class="checkbox"></span> Rename it <strong>Prog3-Modbus</strong>. Confirm execution order again.</li>
+  <li><span class="checkbox"></span> Double-click to open the ladder editor.</li>
+</ol>
+
+<div class="callout">
+  <span class="callout-title">CCW "no match" panic — don't click away</span>
+  When you drop a contact and type <code>vfd_poll_step</code>, the dropdown may briefly show "no match" while indexing. Press Enter anyway — if the variable was imported from CSV, CCW will accept it. Only worry about "no match" if it persists after a build attempt.
+</div>
+
+<h4>Rung 1 — Read VFD Monitor Block</h4>
+
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU]─[XIC]─[MSG_MODBUS]
+    │  A = B  vfd_poll_active   mb_read_monitor
+    │  A = vfd_poll_step
+    │  B = 1
+    │                                                              │
+</pre>
+<p class="rung-caption">Reads 4 registers starting at 0x2103 (Output Freq, Current, DC Bus, V_out). Instance is <code>mb_read_monitor</code> — v4.1.8 calls it <code>mb_read_status</code>, which is misleading because 0x2103 is the monitor block, not the status word.</p>
+
+<ol>
+  <li><span class="checkbox"></span> Drag <strong>EQU</strong> from Toolbox. Source A = <code>vfd_poll_step</code>, Source B = <code>1</code>.</li>
+  <li><span class="checkbox"></span> Drag <strong>XIC</strong> (NO contact). Variable = <code>vfd_poll_active</code>.</li>
+  <li><span class="checkbox"></span> Drag <strong>MSG_MODBUS</strong> (search "MSG"). Instance name = <strong><code>mb_read_monitor</code></strong>.</li>
+  <li><span class="checkbox"></span> Click each pin to wire variables:
+    <ul>
+      <li><code>LocalCfg</code> = <code>read_local_cfg</code></li>
+      <li><code>TargetCfg</code> = <code>read_target_cfg</code></li>
+      <li><code>LocalAddr</code> = <code>read_data</code></li>
+    </ul>
+  </li>
+</ol>
+
+<p>Config values Prog2 ST loads each scan (these go into the structs — not the rung):</p>
+
+<table class="compact">
+<thead><tr><th>Field</th><th>Value</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td><code>read_local_cfg.Channel</code></td><td><code>2</code></td><td>Embedded RS-485 is channel 2 on Micro 820</td></tr>
+<tr><td><code>read_local_cfg.Cmd</code></td><td><code>3</code></td><td>FC03 = Read Holding Registers</td></tr>
+<tr><td><code>read_local_cfg.ElementCnt</code></td><td><code>4</code></td><td>4 monitor regs — 0x2103–0x2106. Reading 6 lands in undocumented 0x2108.</td></tr>
+<tr><td><code>read_target_cfg.Addr</code></td><td><code>8451</code> (0x2103)</td><td>Start of the monitor block <span class="pageref">[GS10 manual p.5]</span></td></tr>
+<tr><td><code>read_target_cfg.Node</code></td><td><code>1</code></td><td>VFD's Modbus slave address (P09.00)</td></tr>
+</tbody>
+</table>
+
+<h4>Rung 2 — Write VFD Command</h4>
+
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU]─[XIC]─[MSG_MODBUS]
+    │  A = B  vfd_poll_active   mb_write_cmd
+    │  A = vfd_poll_step
+    │  B = 2
+    │                                                              │
+</pre>
+<p class="rung-caption">Writes one register to 0x2000 (Control Command). Value from <code>vfd_cmd_word</code>, copied into <code>write_cmd_data(1)</code> by Prog2 ST via COP function block.</p>
+
+<ol>
+  <li><span class="checkbox"></span> <strong>EQU</strong>: A = <code>vfd_poll_step</code>, B = <code>2</code>.</li>
+  <li><span class="checkbox"></span> <strong>XIC</strong>: <code>vfd_poll_active</code>.</li>
+  <li><span class="checkbox"></span> <strong>MSG_MODBUS</strong> instance: <code>mb_write_cmd</code>. Pins: <code>LocalCfg = write_cmd_local_cfg</code>, <code>TargetCfg = write_cmd_target_cfg</code>, <code>LocalAddr = write_cmd_data</code>.</li>
+</ol>
+
+<p>Config: <code>Channel := 2</code>, <code>Cmd := 6</code> (FC06 Write Single Register), <code>ElementCnt := 1</code>, <code>Addr := 8192</code> (0x2000), <code>Node := 1</code>.</p>
+
+<div class="why">Prog2 ST owns <code>vfd_cmd_word</code> and copies it into <code>write_cmd_data(1)</code> each scan via a COP function block (v4.1.8 line 291). Skip the copy and the write fires with stale data — motor won't start or runs the wrong way.</div>
+
+<h4>Rung 3 — Write Frequency Setpoint</h4>
+
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU]─[XIC]─[MSG_MODBUS]
+    │  A = B  vfd_poll_active   mb_write_freq
+    │  A = vfd_poll_step
+    │  B = 3
+    │                                                              │
+</pre>
+<p class="rung-caption">Writes one register to 0x2001 (Frequency Setpoint, value = Hz × 10).</p>
+
+<ol>
+  <li><span class="checkbox"></span> <strong>EQU</strong>: A = <code>vfd_poll_step</code>, B = <code>3</code>.</li>
+  <li><span class="checkbox"></span> <strong>XIC</strong>: <code>vfd_poll_active</code>.</li>
+  <li><span class="checkbox"></span> <strong>MSG_MODBUS</strong> instance: <code>mb_write_freq</code>. Pins: <code>LocalCfg = write_freq_local_cfg</code>, <code>TargetCfg = write_freq_target_cfg</code>, <code>LocalAddr = write_freq_data</code>.</li>
+</ol>
+
+<p>Config: <code>Channel := 2</code>, <code>Cmd := 6</code>, <code>ElementCnt := 1</code>, <code>Addr := 8193</code> (0x2001), <code>Node := 1</code>.</p>
+
+<div class="callout">
+  <span class="callout-title">Frequency is Hz × 10, not Hz</span>
+  To run at 30.0 Hz, load <code>300</code> into <code>vfd_freq_setpoint</code> — not <code>30</code>. Loading <code>30</code> sets 3.0 Hz, which is below most motor minimum frequencies and looks like the drive isn't responding. v4.1.8 line 284 already does <code>conveyor_speed_cmd * 10</code> — keep it.
+</div>
+
+<h4>Rung 4 — Fault Reset</h4>
+
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU]─[XIC]─[MSG_MODBUS]
+    │  A = B  vfd_poll_active   mb_fault_reset
+    │  A = vfd_poll_step
+    │  B = 4
+    │                                                              │
+</pre>
+<p class="rung-caption">Writes value <code>2</code> to register 0x2002 to clear any active fault.</p>
+
+<ol>
+  <li><span class="checkbox"></span> <strong>EQU</strong>: A = <code>vfd_poll_step</code>, B = <code>4</code>.</li>
+  <li><span class="checkbox"></span> <strong>XIC</strong>: <code>vfd_poll_active</code>.</li>
+  <li><span class="checkbox"></span> <strong>MSG_MODBUS</strong> instance: <code>mb_fault_reset</code>. Pins as above with <code>fault_reset_*</code> structs.</li>
+</ol>
+
+<p>Config: <code>Channel := 2</code>, <code>Cmd := 6</code>, <code>ElementCnt := 1</code>, <code>Addr := 8194</code> (0x2002), <code>Node := 1</code>. Prog2 ST sets <code>fault_reset_cmd := 2</code> and copies into <code>fault_reset_data(1)</code> via COP (v4.1.8 lines 290, 295).</p>
+
+<h2><span class="step">8</span> Code walkthrough — one Modbus scan, step by step</h2>
+
+<p>Pick a moment when <code>vfd_poll_step = 2</code> and <code>vfd_poll_active = TRUE</code>. The state machine just decided we want REV+RUN, so <code>vfd_cmd_word = 20</code>. Walk one scan:</p>
+
+<ol>
+  <li><strong>Input update phase.</strong> Micro 820 reads the physical input table — start button, e-stop, selector. None of those affect Prog3 directly; they affect <code>vfd_cmd_word</code> via the state machine in Prog2 (or, after Part 2, via the motor_starter UDFB in Prog4).</li>
+  <li><strong>Prog2 ST executes.</strong> Loads all four config structs (Channel=2, Cmd, Addr, Node). Loads <code>write_cmd_data(1) := vfd_cmd_word</code> = 20 via COP. Advances <code>vfd_poll_timer</code>; if <code>.Q</code>, increments <code>vfd_poll_step</code> and resets.</li>
+  <li><strong>Prog3 LD executes.</strong> Rung 1's EQU evaluates <code>vfd_poll_step = 1</code> → FALSE → rung dead. Rung 2's EQU evaluates <code>vfd_poll_step = 2</code> → TRUE. XIC sees <code>vfd_poll_active</code> → TRUE. <code>mb_write_cmd.IN</code> rises → block builds an FC06 packet at 0x2000 with payload 20 and hands it to the serial driver. Rungs 3 and 4: EQUs are FALSE; their MSGs sit idle.</li>
+  <li><strong>Output update phase.</strong> No physical output driven from Prog3.</li>
+  <li><strong>Housekeeping (comms phase).</strong> Serial driver transmits the queued packet. The drive responds ~5–15 ms later (depends on baud + packet length).</li>
+  <li><strong>Next scan.</strong> Packet is still on the wire. <code>mb_write_cmd.Done</code> is FALSE because the drive hasn't replied. Rung 2 still satisfies EQU+XIC but the MSG block won't re-fire — it's internally in "waiting for response" state.</li>
+  <li><strong>A few scans later.</strong> Drive replies. <code>mb_write_cmd.Done</code> goes TRUE for one scan. <code>vfd_poll_timer</code> eventually completes; <code>vfd_poll_step</code> increments to 3.</li>
+</ol>
+
+<div class="why">The reason rung 2 doesn't re-fire while it's waiting for the drive is internal to <code>MSG_MODBUS</code> — the block has its own state machine. EQU+XIC being TRUE is necessary but not sufficient; the block checks "am I currently in a transaction?" If yes, it ignores its <code>IN</code> until <code>.Done</code> or <code>.Error</code> fires. This is what protects the wire from packet stacking.</div>
+
+<h2><span class="step">9</span> Test Procedure — Part 1 (Modbus only)</h2>
+
+<ol>
+  <li><span class="checkbox"></span> Build: Ctrl+Shift+B → <strong>0 errors</strong>. Unknown-variable errors mean the CSV import didn't take — re-run it.</li>
+  <li><span class="checkbox"></span> Download via USB (Ethernet sometimes leaves the serial driver out of sync on first download after a structure change).</li>
+  <li><span class="checkbox"></span> PLC to Run.</li>
+  <li><span class="checkbox"></span> Online → Variable Monitor.</li>
+</ol>
+
+<div class="check"><code>vfd_poll_step</code> visibly cycles <code>1 → 2 → 3 → 4 → 1</code> at the timer rate. If stuck on one value: Prog2 timer broken, or <code>vfd_poll_active</code> stuck FALSE.</div>
+
+<div class="check"><code>mb_read_monitor.ErrorID</code> = <code>0</code> (success) for at least 10 seconds. <code>255</code> = MSG never executed (serial port out of sync — re-download). <code>55</code> = timeout (check D+/D- swap, P09.04=13).</div>
+
+<div class="check"><code>read_data(1)</code> &gt; <code>0</code> when motor is commanded to run. Value is Hz × 10 (300 ≈ 30.0 Hz).</div>
+
+<div class="check">VFD keypad displays the commanded frequency (~30.0 Hz) within 2 seconds of <code>vfd_cmd_word := 18</code>.</div>
+
+<div class="page-break"></div>
+
+<h2 class="part">PART 2 — motor_starter UDFB (run/stop/direction logic)</h2>
+
+<h2><span class="step">10</span> The Big Picture (Part 2)</h2>
+<p>You're going to push a green button. A motor will spin. Whether the motor spins forward or reverse depends on where a 3-position selector switch is pointing when you press the button. Flipping the selector while the motor is running stops it — you have to press the button again to start it back up in the new direction. Pressing the e-stop kills it immediately. Releasing the e-stop alone does not restart the motor; you have to press the green button again.</p>
+
+<p>You're going to build that behavior <strong>once</strong>, inside a sealed box of logic called a User-Defined Function Block (UDFB). The sealed box has labeled terminals on its outside: one for the green button, one for each direction-switch position, one for the e-stop status, one for "enable", and on the output side one terminal that drops out the VFD command word and one that lights the run lamp. Inside the box, the logic is the same every time. Wire one box to one motor. If you ever need a second motor, wire a second copy of the same box. Fixing a bug inside the box fixes both motors at once.</p>
+
+<h2><span class="step">11</span> Motor logic — the simple version first</h2>
+
+<p>Before the UDFB exists, the simplest correct version of this logic is five flat ladder rungs in Prog3 (or in Prog2 ST). Show them flat first, prove they work, then go look at the pain.</p>
+
+<h3>Rung 1 — Drop the seal-in on any stop condition</h3>
+
+<pre class="ladder">
+    │                                                              │
+    ├─[/]─e_stop_active─[/]─estop_wiring_fault─┬─[ ]─dir_fwd─┬─( )─run_ok
+    │                                          │             │
+    │                                          └─[ ]─dir_rev─┘
+    │                                                              │
+</pre>
+<p class="rung-caption">An "OK to run" composite bit. TRUE means e-stop healthy AND a direction is selected.</p>
+
+<h3>Rung 2 — Seal-in latch on the green pushbutton</h3>
+
+<pre class="ladder">
+    │                                                              │
+    ├─┬─[ ]─start_pb_rising─┬─[ ]─run_ok─( )─run_latch
+    │ │                     │
+    │ └─[ ]─run_latch───────┘
+    │                                                              │
+</pre>
+<p class="rung-caption">Classic seal-in. <code>start_pb_rising</code> is the rising-edge bit of the green PB; <code>run_latch</code> holds itself in once started, as long as <code>run_ok</code> stays TRUE.</p>
+
+<h3>Rung 3 — Stop on direction change while running</h3>
+
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─run_latch─┬─[ ]─dir_latched_fwd─[/]─dir_fwd─┬─(R)─run_latch
+    │               │                                  │
+    │               └─[ ]─dir_latched_rev─[/]─dir_rev─┘
+    │                                                              │
+</pre>
+<p class="rung-caption">If the direction switch is in a different position than the one captured at start, drop the latch.</p>
+
+<h3>Rung 4 — Capture direction at the moment of start</h3>
+
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─start_pb_rising─[ ]─dir_fwd─( )─dir_latched_fwd
+    │
+    ├─[ ]─start_pb_rising─[ ]─dir_rev─( )─dir_latched_rev
+    │                                                              │
+</pre>
+
+<h3>Rung 5 — Assign the VFD command word and the run lamp</h3>
+
+<pre class="ladder">
+    │                                                              │
+    ├─[/]─run_latch───────────────────────────( )─vfd_cmd_word := 1     (STOP)
+    │
+    ├─[ ]─run_latch─[ ]─dir_latched_fwd───────( )─vfd_cmd_word := 18    (FWD+RUN)
+    │
+    ├─[ ]─run_latch─[ ]─dir_latched_rev───────( )─vfd_cmd_word := 20    (REV+RUN)
+    │
+    └─[ ]─run_latch───────────────────────────( )─_IO_EM_DO_00          (run lamp)
+    │                                                              │
+</pre>
+
+<div class="ok">
+  <span class="ok-title">If you see this, the simple version works</span>
+  Green PB while FWD selector → <code>vfd_cmd_word = 18</code> within one scan; VFD keypad shows commanded frequency within ~2 sec; <code>_IO_EM_DO_00</code> lights solid; flipping selector to OFF drops <code>vfd_cmd_word</code> to <code>1</code> within one scan; flipping selector REV mid-run also drops to <code>1</code> and requires a fresh PB press.
+</div>
+
+<h2><span class="step">12</span> Why the flat rungs become a problem</h2>
+
+<p>You wired five rungs. They work. Now imagine a second motor — a discharge cross-belt — needs the same exact behavior: its own green PB, its own selector, its own e-stop, its own run lamp, writing to its own VFD command word over Modbus. To replicate:</p>
+
+<ul>
+  <li>Five rungs become ten rungs.</li>
+  <li>Every tag in those new five rungs gets a "_2" suffix or its own new name.</li>
+  <li>You find a bug in the seal-in logic. You fix it on motor 1's rungs. Two weeks later, motor 2 has the same bug and you spend an hour wondering why motor 2 doesn't behave like motor 1.</li>
+  <li>Ten rungs become fifteen when a third motor arrives. Cognitive load is no longer linear.</li>
+</ul>
+
+<div class="callout">
+  <span class="callout-title">The pain made concrete (v4.1.8 specifically)</span>
+  The deployed Prog2 ST today has a 5-state machine (<code>CASE conv_state OF</code>, line 107) that does roughly the same job, and adding a second conveyor motor would mean copy-pasting the whole <code>CASE</code> block with renamed locals. The state-machine approach is more powerful than the flat rungs above (timers, fault states, recovery transitions) but it suffers from the same scaling problem when motor-count grows.
+</div>
+
+<h2><span class="step">13</span> The better pattern — User-Defined Function Block</h2>
+
+<p>A UDFB is a sealed box of logic with labeled input and output terminals. Define it once — name it, declare inputs, declare outputs, declare private locals, write the body. From that point on, every place in the program that needs that behavior drops the block in and wires the terminals. Inside, the logic runs identically every time. The terminals are the contract.</p>
+
+<div class="why">A UDFB is a sealed starter cabinet. You wire field devices to the terminals on the front — start PB, direction switch, e-stop, run lamp, VFD command. Inside is the latching logic, identical in every cabinet. Build one cabinet, install two. Fix a bug in the cabinet design, every cabinet on the floor is now fixed.</div>
+
+<p>The block has <strong>instances</strong>. Each instance is an independent copy of internal storage (<code>RunLatch</code>, <code>DirLatch</code>, <code>PrevStartPB</code>). One motor's instance latches separately from the other's, even though both run the same block code. That's the leverage of the pattern.</p>
+
+<h2><span class="step">14</span> CCW step-by-step — build the motor_starter UDFB</h2>
+
+<p>CCW open with <code>MIRA_v5</code> loaded. Create one UDFB (<code>motor_starter</code>), call it once from a new Prog4, and remove the conflicting <code>vfd_cmd_word :=</code> assignments from Prog2 ST.</p>
+
+<h4>Step 1 — Create the UDFB</h4>
+<ol>
+  <li><span class="checkbox"></span> Project Organizer → right-click <strong>User-Defined Function Blocks</strong> → <strong>Add → New Function Block</strong>.</li>
+  <li><span class="checkbox"></span> Language: <strong>Structured Text</strong>. (ST is shorter for this case and reads more directly than LD.)</li>
+  <li><span class="checkbox"></span> Name: <code>motor_starter</code>. OK.</li>
+  <li><span class="checkbox"></span> Empty variable list + empty ST body editor opens.</li>
+</ol>
+
+<h4>Step 2 — Declare variables (in order — order matters)</h4>
+
+<p>Order determines pin order when you drop the block onto a calling rung. Group related pins together.</p>
+
+<table class="compact">
+<thead><tr><th>Section</th><th>Name</th><th>Type</th><th>Initial</th></tr></thead>
+<tbody>
+<tr><td>VAR_INPUT</td><td><code>Enable</code></td><td><code>BOOL</code></td><td><code>TRUE</code></td></tr>
+<tr><td>VAR_INPUT</td><td><code>StartPB</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR_INPUT</td><td><code>DirFwdSw</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR_INPUT</td><td><code>DirRevSw</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR_INPUT</td><td><code>EStopOK</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR_OUTPUT</td><td><code>VFDCmdWord</code></td><td><code>INT</code></td><td><code>1</code></td></tr>
+<tr><td>VAR_OUTPUT</td><td><code>RunLamp</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR</td><td><code>RunLatch</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR</td><td><code>DirLatch</code></td><td><code>INT</code></td><td><code>0</code></td></tr>
+<tr><td>VAR</td><td><code>PrevStartPB</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR</td><td><code>StartPBRising</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR</td><td><code>DirChangedWhileRunning</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR</td><td><code>DropConditions</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+</tbody>
+</table>
+
+<div class="callout">
+  <span class="callout-title">VAR_INPUT default initial — non-obvious gotcha</span>
+  CCW lets you set an initial on a <code>VAR_INPUT</code>. That initial is only used if the caller leaves the pin unwired. For <code>Enable</code>, defaulting <code>TRUE</code> means "if the caller forgets to wire it, the block runs" — what you want for a master gate. For everything else, default <code>FALSE</code> so an unwired input never accidentally starts a motor.
+</div>
+
+<h4>Step 3 — Paste the ST body</h4>
+
+<p>Click into the ST editor and paste verbatim. ~30 lines.</p>
+
+<pre>(* === motor_starter — green PB seal-in with direction-lock + e-stop drop === *)
+
+(* Rising-edge on start pushbutton — prevents stuck-PB auto-restart *)
+StartPBRising := StartPB AND NOT PrevStartPB;
+PrevStartPB := StartPB;
+
+(* Did the operator flip the selector to a different position while running? *)
+DirChangedWhileRunning := RunLatch AND (
+    (DirLatch = 1 AND NOT DirFwdSw) OR
+    (DirLatch = 2 AND NOT DirRevSw)
+);
+
+(* Anything that should drop the seal-in latch *)
+DropConditions := (NOT Enable)
+               OR (NOT EStopOK)
+               OR (NOT DirFwdSw AND NOT DirRevSw)   (* selector OFF = stop *)
+               OR (DirFwdSw AND DirRevSw)            (* both contacts = wiring fault *)
+               OR DirChangedWhileRunning;
+
+(* Seal-in state machine *)
+IF DropConditions THEN
+    RunLatch := FALSE;
+    DirLatch := 0;
+ELSIF StartPBRising AND NOT RunLatch THEN
+    IF DirFwdSw THEN
+        RunLatch := TRUE;
+        DirLatch := 1;
+    ELSIF DirRevSw THEN
+        RunLatch := TRUE;
+        DirLatch := 2;
+    END_IF;
+END_IF;
+
+(* Output assignment *)
+IF NOT RunLatch THEN
+    VFDCmdWord := 1;             (* STOP *)
+ELSIF DirLatch = 1 THEN
+    VFDCmdWord := 18;            (* FWD + RUN — bench-verify, see cheatsheet *)
+ELSIF DirLatch = 2 THEN
+    VFDCmdWord := 20;            (* REV + RUN — bench-verify, see cheatsheet *)
+ELSE
+    VFDCmdWord := 1;             (* defensive fallback *)
+END_IF;
+RunLamp := RunLatch;
+</pre>
+
+<h4>Step 4 — Build the UDFB</h4>
+<ol>
+  <li><span class="checkbox"></span> Press <strong>F8</strong>. Look for <strong>0 errors</strong>.</li>
+  <li><span class="checkbox"></span> Errors? Check for typos in body vs variable list — <code>DirFwd</code> ≠ <code>DirFwdSw</code>.</li>
+</ol>
+
+<h4>Step 5 — Add the calling rung in a new LD program (Prog4)</h4>
+
+<ol>
+  <li><span class="checkbox"></span> Project Organizer → Programs → right-click → <strong>Add → New LD: Ladder Diagram</strong> → name it <code>Prog4-MotorControl</code>.</li>
+  <li><span class="checkbox"></span> Execution order: Prog2 first, Prog3-Modbus second, Prog4-MotorControl third.</li>
+  <li><span class="checkbox"></span> Drag a contact onto rung 1, type <code>enable_motor_ctrl</code> (new global BOOL, default TRUE).</li>
+  <li><span class="checkbox"></span> Toolbox → User-Defined Function Blocks → drag <code>motor_starter</code> onto the rung. Instance name: <code>motor_starter_inst</code>.</li>
+  <li><span class="checkbox"></span> Wire each pin:
+    <ul>
+      <li><code>Enable</code> ← wired from the contact</li>
+      <li><code>StartPB</code> ← <code>_IO_EM_DI_04</code></li>
+      <li><code>DirFwdSw</code> ← <code>dir_fwd</code></li>
+      <li><code>DirRevSw</code> ← <code>dir_rev</code></li>
+      <li><code>EStopOK</code> ← <code>e_stop_ok</code> (see Step 6)</li>
+      <li><code>VFDCmdWord</code> → <code>vfd_cmd_word</code></li>
+      <li><code>RunLamp</code> → <code>_IO_EM_DO_00</code></li>
+    </ul>
+  </li>
+</ol>
+
+<div class="callout">
+  <span class="callout-title">"EStopOK" can't be a NOT-NOT expression on a ladder pin</span>
+  CCW won't let you type <code>NOT e_stop_active AND NOT estop_wiring_fault</code> into the pin field — it expects a single variable. Fix: add one line to Prog2 ST: <code>e_stop_ok := NOT e_stop_active AND NOT estop_wiring_fault;</code> and declare <code>e_stop_ok : BOOL;</code> as a global. Then wire <code>EStopOK</code> ← <code>e_stop_ok</code>.
+</div>
+
+<h4>Step 6 — Comment out the conflicting <code>vfd_cmd_word :=</code> in Prog2 ST</h4>
+
+<p>The UDFB drives <code>vfd_cmd_word</code> directly. The old state-machine assignments must be removed so both don't write to the same global within one scan.</p>
+
+<ol>
+  <li><span class="checkbox"></span> Open Prog2.</li>
+  <li><span class="checkbox"></span> Find the <code>CASE conv_state OF</code> block (v4.1.8 line 107).</li>
+  <li><span class="checkbox"></span> Comment out (<code>(*</code>...<code>*)</code>) every line that assigns to <code>vfd_cmd_word</code>. Six sites in v4.1.8: lines 113, 127, 129, 133, 146, 148, 153, 157, 172, 185.</li>
+  <li><span class="checkbox"></span> <strong>Leave the rest of the state machine alive.</strong> <code>conv_state</code> transitions, <code>start_timer</code>, <code>motor_running</code>, <code>item_count</code>, fault tracking — all keep working. Only the <code>vfd_cmd_word :=</code> lines move to the UDFB.</li>
+  <li><span class="checkbox"></span> Save, build (F8), download.</li>
+</ol>
+
+<div class="why">Skip Step 6 and both Prog2 ST and Prog4 LD assign to <code>vfd_cmd_word</code> in the same scan, the last writer wins — depends on program execution order. With order Prog2 → Prog3 → Prog4, the UDFB's value wins for one scan, then Prog2 ST overwrites it on the next, and the motor behaves randomly. Comment the old lines now and never wonder later.</div>
+
+<h2><span class="step">15</span> Code walkthrough — chunk by chunk</h2>
+
+<h3>Chunk 1 — Edge detection on the start pushbutton</h3>
+
+<pre>StartPBRising := StartPB AND NOT PrevStartPB;
+PrevStartPB := StartPB;</pre>
+
+<p>First line computes "was the button low on the previous scan AND is it high this scan?" — the definition of a rising edge. Second line shifts the current value into the previous-value slot for next scan.</p>
+
+<div class="why">Without rising-edge detection, holding the green PB while the latch is FALSE would re-fire the start every scan as long as the PB stays pressed. With rising-edge, the start only happens once per physical button press. That matters when (a) the operator holds the button — you want one start, not 1000 — and (b) the button welds shut from a stray voltage spike — you don't want the motor to auto-restart every time the seal-in tries to drop.</div>
+
+<h3>Chunk 2 — Direction-change-while-running detection</h3>
+
+<pre>DirChangedWhileRunning := RunLatch AND (
+    (DirLatch = 1 AND NOT DirFwdSw) OR
+    (DirLatch = 2 AND NOT DirRevSw)
+);</pre>
+
+<p>If the seal-in is held AND the captured direction was FWD but the FWD switch contact is no longer closed, the operator must have moved the selector. Same for REV. Either way: the motor is about to be stopped.</p>
+
+<h3>Chunk 3 — Drop conditions</h3>
+
+<pre>DropConditions := (NOT Enable)
+               OR (NOT EStopOK)
+               OR (NOT DirFwdSw AND NOT DirRevSw)
+               OR (DirFwdSw AND DirRevSw)
+               OR DirChangedWhileRunning;</pre>
+
+<p>Five reasons to drop, OR'd. Each on its own line so you can read them top-to-bottom: master disable; e-stop unhealthy; selector OFF; selector wiring fault; operator moved the selector mid-run.</p>
+
+<div class="why">Computing <code>DropConditions</code> as a single bool before the IF means the latch logic stays short. Inlining all five into the IF directly would make a tangle of nested booleans that's hard to read and hard to extend.</div>
+
+<h3>Chunk 4 — The seal-in state machine</h3>
+
+<pre>IF DropConditions THEN
+    RunLatch := FALSE;
+    DirLatch := 0;
+ELSIF StartPBRising AND NOT RunLatch THEN
+    IF DirFwdSw THEN
+        RunLatch := TRUE;
+        DirLatch := 1;
+    ELSIF DirRevSw THEN
+        RunLatch := TRUE;
+        DirLatch := 2;
+    END_IF;
+END_IF;</pre>
+
+<p>Three branches. <strong>If</strong> any drop condition is true → kill the latch + clear direction. <strong>Else if</strong> the button just went high AND we aren't already running → try to latch in whichever direction the selector points; if neither (selector OFF), don't latch. <strong>Otherwise</strong>: do nothing.</p>
+
+<div class="callout">
+  <span class="callout-title">Order of branches matters</span>
+  Drop comes <em>before</em> start. If both happened in the same scan (operator presses the button at the exact moment the e-stop is released), the drop wins and the start request is ignored. Safer order — you don't want a marginal scan timing to accidentally start a motor.
+</div>
+
+<h3>Chunk 5 — Output assignment</h3>
+
+<pre>IF NOT RunLatch THEN
+    VFDCmdWord := 1;
+ELSIF DirLatch = 1 THEN
+    VFDCmdWord := 18;
+ELSIF DirLatch = 2 THEN
+    VFDCmdWord := 20;
+ELSE
+    VFDCmdWord := 1;
+END_IF;
+RunLamp := RunLatch;</pre>
+
+<p>Latch not held → STOP. Latch held in FWD → FWD+RUN. Latch held in REV → REV+RUN. Defensive fallback to STOP if the latch is somehow TRUE but the captured direction is 0 (shouldn't happen, but the ELSE is cheap insurance against a future code change). Run lamp mirrors the latch.</p>
+
+<h2><span class="step">16</span> Scan cycle — UDFB through Modbus, end to end</h2>
+
+<p>Five-phase loop, ~10 ms typical. Walk the realistic scenario: operator presses Green PB while selector is in FWD.</p>
+
+<table class="compact">
+<thead><tr><th>Scan</th><th>What happens inside the UDFB instance</th><th>What appears on the wire / lamp</th></tr></thead>
+<tbody>
+<tr><td>N</td><td><code>StartPB</code> = TRUE, <code>PrevStartPB</code> = FALSE → <code>StartPBRising</code> = TRUE. <code>DirFwdSw</code> = TRUE, <code>DirRevSw</code> = FALSE → no drop. ELSIF fires: <code>RunLatch := TRUE</code>, <code>DirLatch := 1</code>. Output: <code>VFDCmdWord := 18</code>, <code>RunLamp := TRUE</code>. <code>PrevStartPB := TRUE</code>.</td><td><code>vfd_cmd_word</code> global = 18; <code>_IO_EM_DO_00</code> goes high at end-of-scan.</td></tr>
+<tr><td>N+1</td><td><code>StartPB</code> still TRUE, <code>PrevStartPB</code> = TRUE → <code>StartPBRising</code> = FALSE. No drop. ELSIF doesn't fire (latch already held). Outputs unchanged.</td><td><code>vfd_cmd_word</code> still 18. Prog3-Modbus's sequencer eventually ships an FC06 write of 18 to register <code>0x2000</code> — drive starts ramping the motor up. Run lamp solid.</td></tr>
+<tr><td>N+~50</td><td>Operator releases the button. <code>StartPB</code> = FALSE → <code>StartPBRising</code> = FALSE. No drop. Latch holds.</td><td>Motor still running. Run lamp still solid.</td></tr>
+<tr><td>N+~2000</td><td>Operator flips selector to REV without stopping first. <code>DirFwdSw</code> = FALSE, <code>DirRevSw</code> = TRUE. <code>DirLatch</code> still = 1 → <code>DirChangedWhileRunning</code> = TRUE → <code>DropConditions</code> = TRUE. IF fires: <code>RunLatch := FALSE</code>, <code>DirLatch := 0</code>. Output: <code>VFDCmdWord := 1</code>, <code>RunLamp := FALSE</code>.</td><td><code>vfd_cmd_word</code> drops to 1; drive begins coast-to-stop (or decel-to-stop, depending on GS10 P09.xx settings). Run lamp dark within one scan.</td></tr>
+<tr><td>N+~2050</td><td>Operator presses green PB again, selector now in REV. <code>StartPBRising</code> = TRUE. <code>DirRevSw</code> = TRUE → ELSIF sets <code>RunLatch := TRUE</code>, <code>DirLatch := 2</code>. Output: <code>VFDCmdWord := 20</code>.</td><td>Motor begins ramping in reverse.</td></tr>
+</tbody>
+</table>
+
+<div class="why">The actual Modbus packet transmit happens in the housekeeping phase at the end of each scan, not at the moment the UDFB writes <code>vfd_cmd_word</code>. So you'll see the global update instantly in CCW's variable monitor, but the drive sees the change one Modbus polling cycle later (~500 ms in the deployed sequencer cadence). That's why the keypad takes a beat to display the commanded frequency after you press the button.</div>
+
+<h2><span class="step">17</span> Test Procedure — Part 2 (UDFB + integration)</h2>
+
+<ol>
+  <li><span class="checkbox"></span> Build (F8). 0 errors. (If errors mention <code>e_stop_ok</code> undeclared, you skipped Step 5's note — add the global + the Prog2 ST line that computes it.)</li>
+  <li><span class="checkbox"></span> Download via USB.</li>
+  <li><span class="checkbox"></span> PLC to Run.</li>
+  <li><span class="checkbox"></span> Online → Variable Monitor. Pin <code>vfd_cmd_word</code>, <code>motor_starter_inst.RunLatch</code>, <code>motor_starter_inst.DirLatch</code>.</li>
+</ol>
+
+<h4>Test 1 — Green PB while selector in OFF → no start</h4>
+<div class="check">Press + release green PB, selector centered. <code>RunLatch</code> stays FALSE. <code>vfd_cmd_word</code> stays 1. <code>_IO_EM_DO_00</code> dark.</div>
+
+<h4>Test 2 — Green PB while selector in FWD → forward start</h4>
+<div class="check">Flip to FWD. Press PB. <code>RunLatch</code> goes TRUE. <code>DirLatch</code> = 1. <code>vfd_cmd_word</code> = 18. <code>_IO_EM_DO_00</code> solid green. Within ~2 sec VFD keypad shows commanded frequency.</div>
+
+<h4>Test 3 — Selector to OFF while running → stop</h4>
+<div class="check">With motor running forward, flip selector to OFF. <code>RunLatch</code> drops to FALSE within one scan. <code>vfd_cmd_word</code> drops to 1. Motor coasts to stop. Run lamp dark.</div>
+
+<h4>Test 4 — Direction-change-while-running drops latch</h4>
+<div class="check">Restart in FWD. While running, flip selector directly from FWD to REV. <code>RunLatch</code> drops to FALSE. <code>vfd_cmd_word</code> drops to 1. Motor stops. Operator must press PB again to start in REV.</div>
+
+<h4>Test 5 — Verify REV actually spins motor reverse (CRITICAL — bench-verify)</h4>
+<div class="check">From stopped, selector in REV, press PB. <code>vfd_cmd_word</code> = 20. Within ~2 sec motor spins reverse. <strong>If motor spins forward, the deployed REV value (20) is wrong on your firmware — try 34 (see Section 18).</strong></div>
+
+<h4>Test 6 — E-stop drops everything</h4>
+<div class="check">Motor running, press e-stop. <code>e_stop_active</code> TRUE, <code>e_stop_ok</code> FALSE, <code>RunLatch</code> drops within one scan. Motor stops. Contactor (<code>_IO_EM_DO_02</code>) drops open via separate e-stop logic.</div>
+
+<h4>Test 7 — E-stop release alone does NOT restart</h4>
+<div class="check">Release e-stop. <code>RunLatch</code> stays FALSE — motor does NOT auto-restart. Press PB to restart.</div>
+
+<h4>Test 8 — Stuck-PB protection</h4>
+<div class="check">Force-set <code>_IO_EM_DI_04</code> = TRUE in CCW monitor. Motor starts once. Flip to OFF (drops latch). Motor stays stopped even though <code>StartPB</code> still TRUE — rising-edge prevents auto-restart. Release force.</div>
+
+<h4>Pass / Fail summary (combined Modbus + UDFB)</h4>
+<table class="compact">
+<thead><tr><th>Test</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Project builds with 0 errors</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+<tr><td>Modbus: vfd_poll_step cycles 1→4</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+<tr><td>Modbus: mb_read_monitor.ErrorID = 0 sustained</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+<tr><td>Modbus: read_data(1) non-zero when running</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+<tr><td>UDFB Test 1 — PB in OFF doesn't start</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+<tr><td>UDFB Test 2 — PB in FWD starts forward</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+<tr><td>UDFB Test 3 — Selector OFF stops</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+<tr><td>UDFB Test 4 — Direction change drops latch</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+<tr><td>UDFB Test 5 — REV actually reverses (BENCH-VERIFY)</td><td>☐</td><td>☐</td><td>If fails: try 34 instead of 20</td></tr>
+<tr><td>UDFB Test 6 — E-stop drops everything</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+<tr><td>UDFB Test 7 — E-stop release alone doesn't restart</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+<tr><td>UDFB Test 8 — Stuck PB protected by rising-edge</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+<tr><td>End-to-end — fault reset clears CE10</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+</tbody>
+</table>
+
+<h2><span class="step">18</span> Open question — bench-verify before relying on production</h2>
+
+<div class="callout">
+  <span class="callout-title">Command word bit math has a known contradiction</span>
+  Three different values for "REV + RUN" appear across the existing documentation:
+  <ul>
+    <li><strong>20</strong> (<code>0x0014</code>) — <code>plc/LD_BUILD_GUIDE_v5.md</code> Rung 2; <code>GS10_Integration_Guide.md</code> §2 "Common Command Words" table; deployed Prog2 ST line 129/148.</li>
+    <li><strong>18</strong> (<code>0x0012</code>) — same sources, but labeled as FWD+RUN there.</li>
+    <li><strong>34</strong> (<code>0x0022</code>) — <code>~/.claude/skills/plc-instruction-guide/references/style-vocabulary.md</code> bug example asserting REV+RUN with explicit bit math "bit 5 + bit 1 = 32 + 2 = 34".</li>
+  </ul>
+  Per <code>GS10_Integration_Guide.md</code> §2's bit-field table: RUN = bit 1 (dec 2), FWD = bit 3 (dec 8), REV = bit 4 (dec 16). That arithmetic gives FWD+RUN = 10 and REV+RUN = 18 — neither matches the "Common Command Words" table on the same page (which lists FWD+RUN = 18 and REV+RUN = 20). The skill's 34 corresponds to yet another bit convention (bit 5 for REV).
+  <br/><br/>
+  <strong>What to do:</strong> bench-test all three values when you sit down at the rig. Whichever value <em>actually</em> spins the motor in reverse on your specific GS10 firmware is the correct one. Update the cheatsheet + the integration guide + this doc with the bench-verified value and a <code>[verified on bench YYYY-MM-DD]</code> citation. Delete the wrong values from the cheatsheet and the v5.1 build guide so they don't propagate further.
+</div>
+
+<h2><span class="step">19</span> Unified troubleshooting</h2>
+
+<table class="compact">
+<thead><tr><th>Symptom</th><th>Likely cause</th><th>What to check</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td><code>mb_*.ErrorID = 255</code> on every rung</td><td>Serial driver not in sync (channel wrong, or partial download)</td><td>Serial Port → Diagnose. Status should say "in sync".</td><td>Confirm <code>Channel := 2</code> in all four cfg structs. Re-download over USB.</td></tr>
+<tr><td><code>mb_*.ErrorID = 55</code> (timeout)</td><td>Wiring (D+/D- swap), baud mismatch, slave node wrong, or P09.04 wrong</td><td>Keypad: P09.00=1, P09.01=96, P09.04=13. Multimeter D+/D-: 2.0–2.5V DC idle bias.</td><td>Fix wiring or VFD params. Power-cycle the VFD after changing P09.xx.</td></tr>
+<tr><td>Build fails: "unknown identifier <code>mb_read_monitor</code>"</td><td>Renamed instance but didn't update Prog2 ST references</td><td>Search Prog2 for <code>mb_read_status</code>.</td><td>Find/Replace <code>mb_read_status</code> → <code>mb_read_monitor</code>. Rebuild.</td></tr>
+<tr><td>Frequency write succeeds but motor runs wrong speed</td><td>Forgot the × 10 scaling</td><td><code>vfd_freq_setpoint</code> value vs VFD displayed Hz</td><td>Multiply desired Hz by 10. 30 Hz → 300.</td></tr>
+<tr><td>Direction command runs wrong way</td><td>Bit-math contradiction (see §18)</td><td>Try 18 / 20 / 34 on bench</td><td>Document verified value. Update cheatsheet.</td></tr>
+<tr><td>Motor runs once then CE10 / F30</td><td>PLC scan stretched and poll timer collided with previous MSG completion</td><td>Watch <code>uptime_seconds</code> for scan-time spikes</td><td>Increase <code>vfd_poll_timer.PT</code> from 500ms to 1000ms.</td></tr>
+<tr><td>Motor never starts; <code>RunLatch</code> stays FALSE no matter what</td><td>One of the drop conditions is permanently TRUE</td><td>Variable monitor: <code>Enable</code>, <code>EStopOK</code>, <code>DirFwdSw</code>, <code>DirRevSw</code></td><td>Most common: forgot <code>enable_motor_ctrl := TRUE</code>.</td></tr>
+<tr><td>Motor starts but immediately stops on same scan</td><td>Forgot Step 6 — Prog2 ST still assigns <code>vfd_cmd_word := 1</code> in IDLE</td><td>Search Prog2 for <code>vfd_cmd_word :=</code> — should be 0 hits after the refactor</td><td>Comment out all sites per Part 3 line list.</td></tr>
+<tr><td>Direction change DOESN'T drop latch — motor reverses live</td><td><code>DirLatch</code> not captured, or chunk 2 typo</td><td>Variable monitor: <code>motor_starter_inst.DirLatch</code> while running — should be 1 or 2</td><td>If DirLatch is 0 while RunLatch is TRUE, chunk 4 ELSIF didn't fire — recheck rising-edge.</td></tr>
+<tr><td>Live monitor shows UDFB body but values frozen</td><td>Viewing <strong>definition</strong>, not instance</td><td>Project Organizer → Programs → Prog4-MotorControl → expand. Find <code>motor_starter_inst</code> in local variables.</td><td>Monitor the instance, not the definition.</td></tr>
+<tr><td>After rebuild, <code>RunLatch</code> = TRUE on first scan even though motor wasn't running</td><td>CCW retained instance memory across downloads</td><td>Compare before/after download</td><td>Project → Clear Memory Retention before re-download. Or power-cycle PLC.</td></tr>
+<tr><td>Build fails: "undefined identifier <code>e_stop_ok</code>"</td><td>Added the global to Prog2 ST body but didn't declare in global variable list</td><td>Global Variables view → search <code>e_stop_ok</code></td><td>Add <code>e_stop_ok : BOOL;</code> to globals. Rebuild.</td></tr>
+<tr><td>Fault won't clear even with rung 4 firing</td><td>Drive in F30.x latched (comm-loss latch)</td><td>Keypad: STOP/RESET button. If still latched, power-cycle.</td><td>Hardware reset; software is only enough for non-latched faults.</td></tr>
+</tbody>
+</table>
+
+<div class="page-break"></div>
+
+<h2 class="part">PART 3 — Apply to v4.1.9: line-by-line cleanup of the deployed program</h2>
+
+<h2><span class="step">20</span> Cutting v4.1.9 from <code>Micro820_v4.1.8_Program.st</code></h2>
+
+<p>The deployed program has every fix from Parts 1 and 2 still <em>unapplied</em>. The TODO comment block at the top of the <code>.st</code> file lists each gap. This section maps each gap to the exact edit. Apply in order — each step verifies before the next.</p>
+
+<h4>Fix 1 — Four <code>Channel := 0</code> assignments → <code>Channel := 2</code></h4>
+<p><strong>Where:</strong> v4.1.8 lines 251, 259, 267, 275.</p>
+<pre>(* BEFORE *)
+  read_local_cfg.Channel := 0;
+  write_cmd_local_cfg.Channel := 0;
+  write_freq_local_cfg.Channel := 0;
+  fault_reset_local_cfg.Channel := 0;
+
+(* AFTER *)
+  read_local_cfg.Channel := 2;
+  write_cmd_local_cfg.Channel := 2;
+  write_freq_local_cfg.Channel := 2;
+  fault_reset_local_cfg.Channel := 2;
+</pre>
+<div class="check">After download: <code>mb_read_monitor.ErrorID</code> changes from 255 (out-of-sync) to either 0 (success) or 55 (timeout). 255 specifically means the channel was wrong — eliminating it confirms this fix took.</div>
+
+<h4>Fix 2 — <code>read_local_cfg.ElementCnt := 6</code> → <code>:= 4</code></h4>
+<p><strong>Where:</strong> v4.1.8 line 254.</p>
+<pre>(* BEFORE *)
+  read_local_cfg.ElementCnt := 6; (* read 6 regs: freq,curr,dcbus,volts,torque,rpm *)
+
+(* AFTER *)
+  read_local_cfg.ElementCnt := 4; (* read 4 documented regs: 0x2103..0x2106 *)
+</pre>
+<p>The comment claimed torque + rpm but those live at 0x2108 / 0x2109, undocumented in the GS10 register map at §2. Reading them returns garbage or triggers Modbus exception 02.</p>
+
+<h4>Fix 3 — Rename <code>mb_read_status</code> → <code>mb_read_monitor</code></h4>
+<p><strong>Where:</strong> v4.1.8 lines 316, 340, 350 (three references).</p>
+<p>In CCW: Project Organizer → Prog3-Modbus → expand → right-click <code>mb_read_status</code> → <strong>Rename</strong> → <code>mb_read_monitor</code>. CCW updates the LD rung automatically. Then update Prog2 ST:</p>
+<pre>(* BEFORE *)
+  mb_read_status(IN := (vfd_poll_step = 1) AND vfd_poll_active, ...);
+  IF mb_read_status.Q THEN ...
+  IF mb_read_status.Error THEN ...
+
+(* AFTER *)
+  mb_read_monitor(IN := (vfd_poll_step = 1) AND vfd_poll_active, ...);
+  IF mb_read_monitor.Q THEN ...
+  IF mb_read_monitor.Error THEN ...
+</pre>
+<div class="check">Build with 0 errors after the rename — confirms all references updated.</div>
+
+<h4>Fix 4 — Add second FC03 read for the actual status word at 0x2101</h4>
+<p><strong>Where:</strong> NEW. Insert below the existing read config block (around line 256 after the renames).</p>
+<pre>(* --- Configure Modbus READ STATUS WORD parameters --- *)
+  read_status_local_cfg.Channel := 2;
+  read_status_local_cfg.TriggerType := 0;
+  read_status_local_cfg.Cmd := 3;        (* FC03 = read holding registers *)
+  read_status_local_cfg.ElementCnt := 1; (* one register: status word *)
+  read_status_target_cfg.Addr := 8449;   (* 0x2101 = GS10 operation status word *)
+  read_status_target_cfg.Node := 1;
+</pre>
+<p>Add a 5th MSG block instance + 5th LD rung in Prog3-Modbus (EQU vfd_poll_step = 5, MSG instance <code>mb_read_status_word</code>, wired to the new structs + a new <code>read_status_data(1)</code> INT). Bump the poll-step modulo in Prog2 ST from 4 to 5:</p>
+<pre>(* BEFORE *)
+  IF vfd_poll_step > 4 THEN
+    vfd_poll_step := 1;
+  END_IF;
+
+(* AFTER *)
+  IF vfd_poll_step > 5 THEN
+    vfd_poll_step := 1;
+  END_IF;
+</pre>
+<p>Then decode the status bits — add to the CASE block at line 338:</p>
+<pre>      5: (* READ STATUS WORD results *)
+        IF mb_read_status_word.Q THEN
+          vfd_status_word := read_status_data(1);
+          vfd_running     := (vfd_status_word AND 16#0002) &lt;&gt; 0;  (* bit 1 *)
+          vfd_at_speed    := (vfd_status_word AND 16#0008) &lt;&gt; 0;  (* bit 3 *)
+          vfd_fault_active:= (vfd_status_word AND 16#0080) &lt;&gt; 0;  (* bit 7 *)
+          vfd_msg_done := TRUE;
+          vfd_poll_active := FALSE;
+        END_IF;
+        IF mb_read_status_word.Error THEN
+          vfd_comm_err := TRUE;
+          vfd_msg_done := TRUE;
+          vfd_poll_active := FALSE;
+        END_IF;
+</pre>
+<div class="callout">
+  <span class="callout-title">Status word bit positions — bench-verify per drive firmware</span>
+  GS10 manual p.5 lists the status word bits; some firmware revisions reorder them. After this fix, run the motor in FWD and watch <code>vfd_status_word</code> in CCW monitor — bit 1 should toggle TRUE when the drive is running. If a different bit toggles, adjust the bit-mask constants.
+</div>
+
+<h4>Fix 5 — Comment out every <code>vfd_cmd_word :=</code> assignment in Prog2 ST</h4>
+<p><strong>Where:</strong> v4.1.8 lines 113, 127, 129, 133, 146, 148, 153, 157, 172, 185. <strong>Ten sites total.</strong></p>
+<pre>(* Example: line 113 *)
+(* BEFORE *)
+    0: (* IDLE -- waiting for RUN command *)
+      motor_running := FALSE;
+      conveyor_running := FALSE;
+      motor_speed := 0;
+      vfd_cmd_word := 1;  (* GS10 stop = 0x0001 *)
+
+(* AFTER *)
+    0: (* IDLE -- waiting for RUN command *)
+      motor_running := FALSE;
+      conveyor_running := FALSE;
+      motor_speed := 0;
+      (* vfd_cmd_word now owned by motor_starter UDFB in Prog4 *)
+      (* vfd_cmd_word := 1; -- removed v4.1.9 *)
+</pre>
+<p>Repeat for all ten sites. Leave the state machine alive — <code>conv_state</code> transitions, <code>motor_running</code>, <code>start_timer</code>, <code>fault_alarm</code> tracking all continue to work.</p>
+<div class="check">Search Prog2 for <code>vfd_cmd_word :=</code> after the edits — should return <strong>0 hits</strong>.</div>
+
+<h4>Fix 6 — Add <code>e_stop_ok</code> global + computation in Prog2 ST §1</h4>
+<p><strong>Where:</strong> declare in CCW Controller Variables; compute in Prog2 ST around line 73 (after the e-stop supervision IF block).</p>
+<pre>(* AFTER the existing IF (_IO_EM_DI_02 XOR _IO_EM_DI_03) THEN ... END_IF; *)
+  e_stop_ok := NOT e_stop_active AND NOT estop_wiring_fault;
+</pre>
+<p>In CCW: Global Variables → add row → Name = <code>e_stop_ok</code>, Type = <code>BOOL</code>, Initial = <code>FALSE</code>.</p>
+
+<h4>Fix 7 — Create <code>motor_starter</code> UDFB + Prog4-MotorControl + wire the instance</h4>
+<p><strong>Where:</strong> NEW Prog4 program + NEW UDFB. Follow Section 14 Steps 1–5 of Part 2 verbatim.</p>
+<div class="check">After build, the global <code>vfd_cmd_word</code> updates within one scan of pressing the green PB. CCW Variable Monitor: pin <code>vfd_cmd_word</code> + <code>motor_starter_inst.RunLatch</code>.</div>
+
+<h4>Fix 8 — Bench-verify FWD+RUN / REV+RUN values</h4>
+<p>Section 18 procedure. Update the cheatsheet, the integration guide, and the UDFB output assignment with the bench-verified values + a <code>[verified on bench YYYY-MM-DD]</code> citation.</p>
+
+<h4>Fix 9 — (Optional) Tune poll timer from 500 ms to 100 ms</h4>
+<p><strong>Where:</strong> v4.1.8 line 299. Only after Fixes 1–8 are confirmed working on the bench.</p>
+<pre>(* BEFORE *)
+  vfd_poll_timer(IN := NOT vfd_poll_active, PT := T#500ms);
+
+(* AFTER *)
+  vfd_poll_timer(IN := NOT vfd_poll_active, PT := T#100ms);
+</pre>
+<div class="check">After tuning: drive responds to command changes within ~200 ms instead of ~1 sec. If <code>vfd_comm_err</code> starts ticking up, scan time can't keep up — revert to 500 ms.</div>
+
+<h4>Final v4.1.9 changelog block (add to top of <code>.st</code>)</h4>
+<pre>(*  v4.1.9 - Applied every fix flagged in                          *)
+(*           docs/instructions/Conv_Simple_Complete.pdf §20:        *)
+(*           - Channel 0 -> 2 (4 places)                            *)
+(*           - ElementCnt 6 -> 4 on monitor read                    *)
+(*           - Renamed mb_read_status -> mb_read_monitor            *)
+(*           - Added FC03 status word read at 0x2101                *)
+(*           - Removed 10 vfd_cmd_word := assignments from Prog2    *)
+(*           - Added e_stop_ok global + computation                 *)
+(*           - Built motor_starter UDFB + Prog4-MotorControl        *)
+(*           - Bench-verified FWD+RUN=NN, REV+RUN=NN (YYYY-MM-DD)   *)
+(*           - Tuned poll timer to 100ms (was 500ms)                *)
+*)</pre>
+
+<h2><span class="step">21</span> Mental model — the whole rig in one breath</h2>
+
+<div class="why">The Micro 820 is a clerk with three notebooks open: Prog2 ST (the brain — tracks state, decides what should happen), Prog3-Modbus LD (the radio operator — takes turns talking on the serial wire, one packet at a time), and Prog4-MotorControl LD (a sealed starter cabinet — wires the green button + selector + e-stop into a clean run-or-don't decision that overwrites the global the radio ships). Every ~10 ms the clerk reads physical inputs, runs each notebook in order, writes physical outputs, then has the radio actually transmit. The contradiction in the bit-math tables and the historical "channel := 0" drift between docs are the lessons in why every value in this whole stack needs a citation — when you can't trace a number to a manual page or a bench-verified run, it's a guess waiting to bite the next person.</div>
+
+<h2><span class="step">22</span> What you should understand now</h2>
+
+<ul>
+  <li><strong>Why <code>Channel := 2</code></strong> and not 0 for the Micro 820 embedded serial port (channel 0 = plug-in serial card that the 2080-LC20-20QBB doesn't have).</li>
+  <li><strong>Why every MSG_MODBUS instance is independent.</strong> Each has its own internal state — sharing one across rungs collides on the wire.</li>
+  <li><strong>The difference between status word (0x2101) and monitor block (0x2103+).</strong> v5.1 conflated them; v4.1.9 separates them.</li>
+  <li><strong>Why frequency is Hz × 10.</strong> GS10's register is encoded that way.</li>
+  <li><strong>Why rising-edge is the right trigger for "start".</strong> Level-triggered allows stuck buttons to auto-restart — unsafe.</li>
+  <li><strong>Why drop conditions are computed before the latch IF.</strong> One named bool keeps the body readable and makes a new drop reason a one-line addition.</li>
+  <li><strong>Why each UDFB instance has its own RunLatch.</strong> Per-instance locals are the leverage of the pattern.</li>
+  <li><strong>Why EStopOK is an input, not a hardcoded global inside the UDFB.</strong> A second instance could be gated by a different safety chain.</li>
+  <li><strong>Why VFDCmdWord is an INT, not a BOOL.</strong> GS10's command word is a bit-field integer, not a single bit.</li>
+  <li><strong>Why Prog2 ST's <code>vfd_cmd_word :=</code> lines had to be commented out.</strong> Two writers in one scan = unpredictable.</li>
+  <li><strong>Why the live monitor shows different values depending on instance vs definition.</strong> Definition is the code template; instance is the runtime data.</li>
+  <li><strong>Why every value in this doc cites a source.</strong> The 18/20/34 contradiction is what happens when a number gets copy-pasted without one.</li>
+</ul>
+
+<h2><span class="step">23</span> Next Step</h2>
+
+<p>In order of leverage:</p>
+<ol>
+  <li><strong>Bench-verify the FWD+RUN / REV+RUN command words</strong> and update every doc + the .st with the verified values. This unblocks every other downstream task.</li>
+  <li><strong><code>Conv_Simple_StatusWord_Decode.html</code></strong> — once Fix 4 above is shipped, write a beginner walkthrough on what each bit of <code>vfd_status_word</code> means + how to consume <code>vfd_running</code> / <code>vfd_at_speed</code> / <code>vfd_fault_active</code> from the UDFB or HMI.</li>
+  <li><strong><code>Conv_Simple_UDFB_DualMotor.html</code></strong> — instantiate <code>motor_starter</code> twice for a second conveyor motor on its own VFD (Modbus slave 2). Demonstrates the UDFB payoff: one definition, two instances, two independent motors, no copy-paste.</li>
+  <li><strong><code>Conv_Simple_UDFB_VFDFeedback.html</code></strong> — extend <code>motor_starter</code> with a <code>MinFreqOK</code> input that gates the start until the drive reports a stable DC bus. Shows how the UDFB's contract grows as you wire in feedback.</li>
+</ol>
+
+<hr/>
+
+<div class="cheatsheet">
+<h3 style="margin-top:0;">🛈 Tear-off appendix — combined back-of-doc reference</h3>
+
+<h4>v4.1.9 fix checklist (apply in order)</h4>
+<ol>
+  <li><span class="checkbox"></span> Channel 0 → 2 (4 sites: lines 251, 259, 267, 275)</li>
+  <li><span class="checkbox"></span> ElementCnt 6 → 4 (line 254)</li>
+  <li><span class="checkbox"></span> Rename <code>mb_read_status</code> → <code>mb_read_monitor</code> (3 sites in .st + LD rung)</li>
+  <li><span class="checkbox"></span> Add FC03 status read at 0x2101 + 5th rung + status decode</li>
+  <li><span class="checkbox"></span> Comment out 10× <code>vfd_cmd_word :=</code> in Prog2 (lines 113, 127, 129, 133, 146, 148, 153, 157, 172, 185)</li>
+  <li><span class="checkbox"></span> Add <code>e_stop_ok</code> global + computation in Prog2 §1</li>
+  <li><span class="checkbox"></span> Build <code>motor_starter</code> UDFB + Prog4-MotorControl + wire instance</li>
+  <li><span class="checkbox"></span> Bench-verify FWD+RUN / REV+RUN command words</li>
+  <li><span class="checkbox"></span> (Optional) tune poll timer 500ms → 100ms (line 299)</li>
+  <li><span class="checkbox"></span> Update top-of-file changelog comment to v4.1.9</li>
+</ol>
+
+<h4>Critical values (must be right)</h4>
+<table class="compact">
+<tbody>
+<tr><td>Channel (embedded RS-485)</td><td><code>2</code></td></tr>
+<tr><td>Baud / format</td><td><code>9600 8N2 RTU</code></td></tr>
+<tr><td>Drive Modbus node</td><td><code>1</code></td></tr>
+<tr><td>RJ45 pin 5 = SG+; pin 4 = SG-; pin 3 = SGND</td><td>—</td></tr>
+<tr><td>FC03 monitor block start</td><td><code>0x2103</code>, ElementCnt = 4</td></tr>
+<tr><td>FC03 status word</td><td><code>0x2101</code>, ElementCnt = 1</td></tr>
+<tr><td>FC06 Control Command</td><td><code>0x2000</code></td></tr>
+<tr><td>FC06 Frequency Setpoint</td><td><code>0x2001</code>, value = Hz × 10</td></tr>
+<tr><td>FC06 Fault Reset</td><td><code>0x2002</code>, data = <code>2</code></td></tr>
+<tr><td>Cmd: STOP</td><td><code>1</code></td></tr>
+<tr><td>Cmd: FWD + RUN (bench-verify)</td><td><code>18</code></td></tr>
+<tr><td>Cmd: REV + RUN (bench-verify)</td><td><code>20</code></td></tr>
+</tbody>
+</table>
+
+<h4>UDFB drop conditions (anything that stops the motor)</h4>
+<ul>
+  <li><code>NOT Enable</code></li>
+  <li><code>NOT EStopOK</code></li>
+  <li>Selector OFF (<code>NOT DirFwdSw AND NOT DirRevSw</code>)</li>
+  <li>Selector wiring fault (<code>DirFwdSw AND DirRevSw</code>)</li>
+  <li>Direction change while running (<code>RunLatch AND captured-dir ≠ live-dir</code>)</li>
+</ul>
+
+</div>
+
+</body>
+</html>
