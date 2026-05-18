@@ -1,112 +1,118 @@
-# PLAN — feat/demo-may21-finish (continuation of HANDOFF_2026-05-15.md)
+# PLAN — feat/answer-quality-may21 (MIRA Answer Quality Standard + Demo Benchmark)
 
-**Status:** Active (2026-05-15 evening)
-**Branch:** `feat/demo-may21-finish` (off `origin/main` HEAD `1c0c2413`)
-**Worktree:** `.claude/worktrees/demo-may21-finish/`
-**Master plan file:** `/Users/charlienode/.claude/plans/handoff-written-mira-handoff-2026-05-15-swirling-crayon.md`
-**Source handoff:** `~/MIRA/HANDOFF_2026-05-15.md`
+**Status:** Active (2026-05-18)
+**Branch:** `claude/agitated-kowalevski-17c2c5` (worktree, reset to `origin/main` HEAD `a8ee1e2b`)
+**Worktree:** `.claude/worktrees/agitated-kowalevski-17c2c5/`
+**Demo target:** May 21, 2026
 
-> The PLAN.md from `main` (UNS Message Resolver, 2026-05-13) is preserved on
-> `main` and recoverable via `git show origin/main:PLAN.md`. This file is
-> THIS branch's scope contract, per the autonomous-run skill.
+> Supersedes the prior PLAN.md (demo-may21-finish scope). That work was either
+> merged or abandoned; the branch was 86 commits behind origin/main and reset.
+>
+> This PLAN follows the autonomous-run skill contract: numbered scope,
+> explicit OUT-of-scope, per-task verify steps, stop conditions.
 
----
+## North-star reuse
+
+- `tests/eval/judge.py` — already implements a 5-dim Likert 1-5 judge
+  (`groundedness, helpfulness, tone, instruction_following, conversational_flow`)
+  with cross-model routing. This IS the auto-grader for Phase 4 — don't write a parallel one.
+- `tests/conversation_suite/` — engine-direct harness with mock + live mode,
+  fixtures, checkpoints (`cp_asset_confirmed`, `cp_hard_fail_safety`, citation
+  check). Phase 2/4 build INTO this suite, not next to it.
+- `mira-bots/shared/citation_compliance.py` — `[Source:]` tag enforcer.
+- `mira-bots/shared/engine.py` lines 274-278, 2432-2463 — embedded judge
+  prompt and `_judge_response` already score 1-5 internally.
+- 7-8 of Mike's 10 demo questions ALREADY exist as fixtures in
+  `tests/conversation_suite/fixtures/cases/grounded_troubleshooting/`.
 
 ## In-scope (this session)
 
-1. **PR #1297** (psycopg v3 `add_notice_handler` for seed runner). Confirmed
-   NOT superseded by #1311/#1312. Merge if lint/unit/security all green and
-   the E2E smoke failure is pre-existing on `main`; otherwise comment.
+1. **Phase 1: Standard doc** — write `docs/specs/mira-answer-quality-standard.md`
+   that codifies the existing rubric (groundedness, helpfulness, tone,
+   instruction_following, conversational_flow + citation-compliance + safety
+   hard-fail). Map Mike's 6 criteria (Grounded, Accurate, Contextual,
+   Actionable, Concise, Safe) onto existing dimensions. Add `accuracy` only
+   if needed as a distinct axis. Reference existing modules; do NOT invent
+   parallel scoring.
 
-2. **PR #1314** (`fix/uns-pair-coverage-multi-vendor`). MERGEABLE but
-   `Lint & Format` step failing. Fix locally with ruff, push, merge.
+2. **Phase 2: Benchmark fixture set** — define the demo-benchmark suite as
+   the 10 questions from Mike's prompt. Most exist; the gaps:
+   - GS11 wiring (existing is GS10)
+   - MSG_MODBUS error 255
+   - "What should I check if the proximity sensor doesn't change state?"
+   - "Is the PLC seeing the sensor?"
+   Tag each of the 10 fixtures `benchmark: demo_may21` so the harness can
+   filter to them. Add 4 new fixtures only as needed; reuse where possible.
 
-3. **PR #1313** (`claude/romantic-wescoff-290da1`, OEM-manual seed for the
-   garage RS-485 commissioning gap — closes part of #1308). CONFLICTING.
-   Rebase, resolve, push `--force-with-lease`, merge.
+3. **Phase 3: Run live benchmark + grade** — execute
+   `doppler run -p factorylm -c prd -- python -m tests.conversation_suite.harness
+    --mode=live --filter=benchmark:demo_may21 --report=md --out=docs/benchmarks/`
+   Record results in `docs/benchmarks/2026-05-18_demo_may21_baseline.md`.
 
-4. **PR #1315** (`claude/crazy-ardinghelli-acc976`, adapter-agnostic
-   conversation testing harness, 36 cases). CONFLICTING. Rebase, resolve,
-   push, merge.
+4. **Phase 4: Diagnose failures** — for each fixture scoring avg < 4 on the
+   five dimensions OR failing citation/safety checkpoints, write a
+   one-paragraph diagnosis in the same benchmark doc: root cause (KB gap,
+   prompt issue, intent miss, retrieval gap), proposed fix, owner.
+   **In-scope fixes:** prompt-template tweaks, fixture corrections,
+   `expected_keywords` calibration. **Out-of-scope fixes:** new KB
+   ingestion (defer), engine refactors (defer), retrieval-tuning runs
+   (defer).
 
-5. **(REVISED — Phase 7 dropped, see below.)** The demo backend plan
-   (`docs/plans/2026-05-14-demo-backend-plan.md` line 94) **explicitly
-   defers** real-time MQTT subscription for the May 21 demo: *"What this
-   plan deliberately does NOT do: Real-time MQTT subscription (deferred —
-   mock feed for demo)."* The 2026-05-15 addendum confirms Plan P5 (mock
-   signal feed via `live_signal_cache` + `signal-recorder.ts`) and Plan P7
-   (engine + intent wire-up via existing context-injection path) are
-   already DONE in #1295 + #1298. Building an MQTT pipeline now would
-   contradict the spec — STOP condition fired and re-planned. The handoff's
-   "Phase 7" appears to have been an aspirational item not aligned with the
-   plan's deliberate deferral.
+5. **Phase 5: Re-test fixed cases** — re-run live benchmark on any fixture
+   that received an in-scope fix; verify scores improved. Append new
+   results section to the benchmark doc.
 
-6. **Demo P8 — tablet demo page.** Per
-   `docs/plans/2026-05-14-demo-backend-plan.md` row P8: single page, 3
-   panels — live signals (polling `GET /api/demo/signals/summary`),
-   KG/component card (`GET /api/demo/customer` + `GET /api/components/[id]`),
-   Slack-like chat embedded (`POST /api/mira/ask`). Path:
-   `mira-hub/src/app/demo/conveyor/[tag]/page.tsx` (plan's `mira-web/`
-   reference is a typo — all 11 endpoints live in `mira-hub`). Reuses Hub
-   design tokens (shadcn/ui already present). Playwright snapshots at
-   iPad sizes (1024×768 landscape + 820×1180 portrait, per plan's
-   verification gate) committed to `docs/promo-screenshots/`.
+6. **Phase 6: Wire into pytest** — add `tests/conversation_suite/test_demo_benchmark.py`
+   that loads the 10 fixtures, runs in `live` mode (gated by
+   `RUN_LIVE_BENCHMARK=1` env so CI doesn't auto-burn quota), asserts
+   avg score >= 3.5 across the suite. Add a `pytest -m "live_benchmark"`
+   marker. Document the run command in
+   `tests/conversation_suite/README.md`.
 
-7. **Open the session PR + write `HANDOFF_2026-05-15-evening.md`** —
-   row-by-row done/skipped, deferred-to-operator list, exact resume command.
+7. **Phase 7: HANDOFF + PR** — open PR for the spec doc, fixtures, test
+   file, README updates, and benchmark results. Write
+   `HANDOFF_2026-05-18-evening.md` per autonomous-run template.
 
----
-
-## Out-of-scope (DEFERRED to operator — Mike). Editing these = STOP.
+## Out-of-scope (DEFER to operator — Mike). Editing these = STOP.
 
 | Item | Why deferred |
 |---|---|
-| VPS deploy of #1306 mira-hub middleware | SSH to VPS; `prod-guard.sh` blocks |
-| VPS bring-up of `mira-mcp` (#1304) | Same |
-| Verify migrations 014–018 on prod NeonDB (#1305) | VPS-side smoke required |
-| VPS bot restart for GS10/Micro820 KB (#1308) | Same |
-| Stripe test → live keys in Doppler `factorylm/prd` | Live billing; explicit Mike approval needed |
-| Slack Messages Tab enable | Manual Slack admin UI click |
-| Physical conveyor + Micro820 boot procedure on-site | Hardware, on-site |
-| #1284 (Bravo Mac Docker daemon) | Different node |
-| Triage of older P0s (#1284, #1201, #1200, #1158, etc.) | Not coding work |
-| Closing the 25+ older conflicting PRs | Mike's explicit instruction: don't |
+| SSH to VPS to send Telegram messages | `prod-guard.sh` blocks; autonomous-run forbids. Phase 2 uses engine-direct live mode instead. |
+| Ingest new KB documents (manuals, PDFs) | Adds risk surface, slow, separate workstream |
+| Touch `mira-bots/shared/engine.py` core flow | Engine refactor is a STOP — surface as a diagnosed-failure recommendation only |
+| Change provider cascade | Out of scope; the cascade is already Groq→Cerebras→Gemini |
+| Modify `tests/eval/judge.py` rubric | Existing 5-dim rubric is the standard — codify, don't redefine |
+| Reintroduce Anthropic | Forbidden per PR #610 + project memory |
+| Atlas CMMS, mira-web, mira-relay touches | Different surfaces, not the bot/engine path |
 
----
+## Stop conditions
 
-## Stop conditions (per `.claude/skills/autonomous-run/SKILL.md`)
-
-- All 7 in-scope items complete → write evening HANDOFF, stop
-- Token usage > 70%, or turn count > 200 → stop, HANDOFF
+- All 7 in-scope items complete → write HANDOFF, stop
+- Token usage > 70% OR turn count > 200 → stop, HANDOFF
 - Edit would touch an OUT-of-scope path → STOP
-- Phase 7 reference plan reveals fundamentally different architecture → re-plan
-- 5 consecutive turns failing the same test → stop
-- Pre-merge reviewer-style issue surfaces → stop, fix, re-run gates
-
----
+- 5 consecutive turns failing the same fixture → stop
+- Live benchmark suite-wide avg < 2.0 → STOP (reveals systemic issue, not per-fixture fix)
+- Doppler/Groq quota exhausted → stop, document partial results in HANDOFF
 
 ## Verification gates
 
 | Step | Gate |
 |---|---|
-| 1–4 | `gh pr checks <num>` green; merge via `gh pr merge --squash` |
-| 5 | Mosquitto + simulator + poller running locally; `wscat` against `/api/demo/ws` shows ticking values |
-| 6 | `bun run test:e2e -- demo-conveyor-001` passes; both screenshots committed |
-| 7 | `gh pr checks` green on session PR; HANDOFF committed |
+| 1 | Spec doc references existing modules by file:line; rubric matches `judge.py` dimensions |
+| 2 | `python -m tests.conversation_suite.harness --mode=mock --filter=benchmark:demo_may21` lists 10 fixtures |
+| 3 | Benchmark md file exists in `docs/benchmarks/`; contains per-fixture scores |
+| 4 | Each <4 fixture has a diagnosis paragraph |
+| 5 | Re-test scores recorded (or "no in-scope fix possible" noted) |
+| 6 | `pytest tests/conversation_suite/test_demo_benchmark.py -m live_benchmark --collect-only` shows 10 items; env-gate respected |
+| 7 | `ruff check $(git diff --name-only origin/main..HEAD \| grep '\.py$')` passes; PR open; HANDOFF committed |
 
-`tools/hooks/stop-gate.sh` runs on Stop — don't bypass with `MIRA_SKIP_STOP_GATE=1`.
+## Coordination check
 
----
-
-## Path corrections vs handoff
-
-- `mira-hub/app/api/...` → **`mira-hub/src/app/api/...`**
-- `mira-hub/migrations/` → **`mira-hub/db/migrations/`**
-- `seeds/2026-05-1?_*.sql` → **`tools/seeds/{gs10-vfd-knowledge,gs11-field-guide-knowledge,demo-conveyor-001}.sql`**
-- `docs/plans/2026-05-15-may-21-demo-8-phase-plan.md` → **`docs/plans/2026-05-14-demo-backend-plan.md`**
-- `docs/runbooks/may-21-demo-physical-conveyor.md` → does NOT exist on `origin/main`
-
-The 11 demo endpoints (all created in #1295 commit `94b6ca33`):
-`demo/customer`, `demo/signals/{events,set,summary,toggle}`, `mira/ask`,
-`assets/[id]/{context,signals}`, `components/[id]`,
-`sessions/{confirm,[id]}`, `documents/{,upload}`.
+- `docs/plans/2026-04-19-mira-90-day-mvp.md` "Currently in-flight" — no
+  conflict; this work is grounded-by-default verification for the May 21 demo.
+- `docs/plans/2026-05-14-demo-backend-plan.md` — demo backend is shipped
+  (P5/P7/P8 done per prior HANDOFFs). This benchmark validates the
+  shipped surface.
+- `docs/plans/2026-05-15-maintenance-namespace-builder.md` — UNS gate
+  shipped; this benchmark exercises it (`uns_gate` + `grounded_troubleshooting`
+  categories).

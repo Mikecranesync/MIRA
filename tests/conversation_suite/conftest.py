@@ -24,6 +24,11 @@ if str(MIRA_BOTS) not in sys.path:
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "live: requires live LLM cascade + Doppler")
     config.addinivalue_line("markers", "mock: uses FakeInferenceRouter / FakeRAGWorker")
+    config.addinivalue_line(
+        "markers",
+        "live_benchmark: demo-may21 live benchmark (real Groq, burns quota). "
+        "Gated by RUN_LIVE_BENCHMARK=1.",
+    )
 
 
 def pytest_collection_modifyitems(

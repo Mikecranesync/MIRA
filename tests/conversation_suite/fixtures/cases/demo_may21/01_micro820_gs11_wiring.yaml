@@ -1,0 +1,18 @@
+id: demo_may21_01_gs11_wiring
+category: demo_may21
+tags: [demo_may21]
+description: |
+  Mike's demo Q1. Wiring Micro820 to GS11 VFD over RS-485. Differs from
+  the GS10: GS11 uses SG+/SG-/SGND terminals (not S+/S-/SG), and the
+  front-panel RJ45 jack is NOT Ethernet — common confusion. Reply must
+  cite KB and identify the correct terminals.
+expected_keywords: ["SG+", "SG-", "RS-485"]
+forbidden_keywords: ["RJ45 Ethernet", "patch cable to switch"]
+citation_required: true
+asset_required: "GS11"
+max_turns: 1
+mock_responses: garage/wiring
+mock_kb_chunks: garage/micro820_wiring
+turns:
+  - role: user
+    content: "How do I wire the Micro820 to the GS11 VFD?"

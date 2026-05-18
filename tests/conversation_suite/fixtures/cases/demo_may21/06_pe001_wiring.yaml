@@ -1,0 +1,16 @@
+id: demo_may21_06_pe001_wiring
+category: demo_may21
+tags: [demo_may21]
+description: |
+  Mike's demo Q6. Named sensor PE-001 (exit-end photoeye). KB I/O table
+  says it lands at Micro820 I-05 (24VDC sinking, COM0 shared). Reply
+  must cite the I-05 wiring + COM0 reference.
+expected_keywords: ["PE-001", "I-05"]
+citation_required: true
+asset_required: "PE-001"
+max_turns: 1
+mock_responses: garage/io
+mock_kb_chunks: garage/io_assignments
+turns:
+  - role: user
+    content: "Where is PE-001 wired?"

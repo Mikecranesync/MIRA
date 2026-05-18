@@ -1,0 +1,15 @@
+id: demo_may21_09_plc_seeing_sensor
+category: demo_may21
+tags: [demo_may21]
+description: |
+  Mike's demo Q9. Intentionally vague — "the sensor". Engine should
+  invoke the UNS clarification gate and ask WHICH sensor (PE-001
+  exit, PE-002 entry, or one of the selector inputs). Diagnosing
+  without context = failure.
+clarification_required: true
+expected_keywords: ["which"]
+max_turns: 1
+mock_responses: garage/uns_gate
+turns:
+  - role: user
+    content: "Is the PLC seeing the sensor?"
