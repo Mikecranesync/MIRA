@@ -790,6 +790,13 @@ def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]
             pool_pre_ping=True,
         )
         with engine.connect() as conn:
+            # Drop the embedding-not-null filter — a row reachable only via
+            # BM25 (content_tsv) is still KB coverage, and the pre-check
+            # otherwise misses freshly-seeded rows whose embeddings haven't
+            # been backfilled yet (the #1308 demo blocker — seeded
+            # gs10/gs11 rows had NULL embeddings and were invisible to
+            # this pre-check, so the engine routed every Modbus question
+            # to the LLM hallucination fallback).
             row = conn.execute(
                 text(
                     """
@@ -797,7 +804,6 @@ def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]
                     FROM knowledge_entries
                     WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
                       AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
-                      AND embedding IS NOT NULL
                     """
                 ),
                 {
