@@ -12,5 +12,5 @@ sqlalchemy>=2.0
 psycopg2-binary>=2.9
 pdfplumber==0.11.9
 beautifulsoup4>=4.14.3
-apify-client>=1.7
+apify-client>=2.5.0
 pyyaml>=6.0.3
