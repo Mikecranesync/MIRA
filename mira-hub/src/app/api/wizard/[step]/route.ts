@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { slugify, sitePath, linePath } from "@/lib/uns";
 
 export const dynamic = "force-dynamic";
 
@@ -46,10 +47,6 @@ type Step = typeof STEPS[number];
 
 function isStep(s: string): s is Step {
   return (STEPS as readonly string[]).includes(s);
-}
-
-function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64) || "_";
 }
 
 function nextStep(step: Step): Step {
@@ -182,8 +179,8 @@ async function finishWizard(tenantId: string, userId: string) {
 
       const siteSlug = slugify(site.name);
       const lineSlug = slugify(line.name);
-      const sitePath = `enterprise.${siteSlug}`;
-      const linePath = `enterprise.${siteSlug}.${lineSlug}`;
+      const sitePathStr = sitePath(site.name);
+      const linePathStr = linePath(site.name, line.name);
 
       const siteRes = await c.query<{ id: string }>(
         `INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, properties, uns_path)
@@ -193,7 +190,7 @@ async function finishWizard(tenantId: string, userId: string) {
                 uns_path = EXCLUDED.uns_path,
                 updated_at = now()
          RETURNING id`,
-        [tenantId, siteSlug, site.name, JSON.stringify({ location: site.location ?? null, source: "onboarding_wizard" }), sitePath],
+        [tenantId, siteSlug, site.name, JSON.stringify({ location: site.location ?? null, source: "onboarding_wizard" }), sitePathStr],
       );
       const siteId = siteRes.rows[0].id;
 
@@ -205,13 +202,13 @@ async function finishWizard(tenantId: string, userId: string) {
                 uns_path = EXCLUDED.uns_path,
                 updated_at = now()
          RETURNING id`,
-        [tenantId, lineSlug, line.name, JSON.stringify({ description: line.description ?? null, source: "onboarding_wizard" }), linePath],
+        [tenantId, lineSlug, line.name, JSON.stringify({ description: line.description ?? null, source: "onboarding_wizard" }), linePathStr],
       );
       const lineId = lineRes.rows[0].id;
 
       for (const [entityId, entityKind, path, displayName] of [
-        [siteId, "site", sitePath, site.name],
-        [lineId, "line", linePath, line.name],
+        [siteId, "site", sitePathStr, site.name],
+        [lineId, "line", linePathStr, line.name],
       ] as const) {
         await c.query(
           `INSERT INTO namespace_versions
@@ -233,7 +230,7 @@ async function finishWizard(tenantId: string, userId: string) {
         [tenantId],
       );
 
-      return { kind: "ok" as const, siteId, lineId, sitePath, linePath };
+      return { kind: "ok" as const, siteId, lineId, sitePath: sitePathStr, linePath: linePathStr };
     });
 
     if (result.kind === "no_progress") {
