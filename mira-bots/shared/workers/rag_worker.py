@@ -357,11 +357,11 @@ class RAGWorker:
                                 sub_queries = [embed_query]
 
                         if len(sub_queries) > 1:
+                            # Embed each sub-query; still call recall_knowledge
+                            # when embedding fails so BM25/fault streams run.
                             per_sub: list[list[dict]] = []
                             for sq in sub_queries:
                                 sq_emb = await self._embed_ollama(sq)
-                                if not sq_emb:
-                                    continue
                                 per_sub.append(
                                     _neon_recall.recall_knowledge(
                                         sq_emb,
@@ -377,12 +377,16 @@ class RAGWorker:
                             )
                         else:
                             embedding = await self._embed_ollama(embed_query)
-                            if embedding:
-                                neon_chunks = _neon_recall.recall_knowledge(
-                                    embedding,
-                                    effective_tenant,
-                                    query_text=embed_query,
-                                )
+                            # Call recall_knowledge unconditionally — it now
+                            # falls through to lexical streams when embedding
+                            # is None (Ollama sidecar down). Pre-fix this gate
+                            # short-circuited BM25 and produced NO_KB_COVERAGE
+                            # despite KB rows being lexically retrievable.
+                            neon_chunks = _neon_recall.recall_knowledge(
+                                embedding,
+                                effective_tenant,
+                                query_text=embed_query,
+                            )
 
                         if is_self_eval_enabled() and neon_chunks:
                             try:

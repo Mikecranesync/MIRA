@@ -604,12 +604,18 @@ def _merge_results(
 
 
 def recall_knowledge(
-    embedding: list[float],
+    embedding: list[float] | None,
     tenant_id: str,
     limit: int = 3,
     query_text: str = "",
 ) -> list[dict]:
-    """Three-stage retrieval: vector + fault code ILIKE + product name ILIKE.
+    """Hybrid retrieval: vector + fault code + product name + BM25.
+
+    When `embedding` is None or empty (e.g. Ollama embed sidecar unreachable),
+    vector and product-name stages are skipped but BM25, structured fault, and
+    ILIKE-fault stages still run. Pre-fix the function early-returned []
+    whenever the embedding was missing, which short-circuited BM25 even
+    though it doesn't need an embedding — the GS11 demo regression.
 
     Returns a list of dicts with keys:
         content, manufacturer, model_number, equipment_type, source_type, similarity
@@ -625,8 +631,15 @@ def recall_knowledge(
             )
             recall_knowledge._warned_url = True
         return []
-    if not embedding or not tenant_id:
+    if not tenant_id:
         return []
+    has_embedding: bool = bool(embedding)
+    if not has_embedding:
+        logger.info(
+            "NEON_RECALL_NO_EMBEDDING tenant=%s — vector + product stages skipped, "
+            "lexical streams (BM25/fault/structured) still run",
+            tenant_id,
+        )
 
     try:
         from sqlalchemy import create_engine, text  # noqa: PLC0415
@@ -643,37 +656,43 @@ def recall_knowledge(
             pool_pre_ping=True,
         )
         with engine.connect() as conn:
-            # Stage 1: Dense vector search — searches tenant entries + shared OEM pool
-            vector_rows = (
-                conn.execute(
-                    text("""
-                    SELECT
-                        content,
-                        manufacturer,
-                        model_number,
-                        equipment_type,
-                        source_type,
-                        source_url,
-                        source_page,
-                        metadata,
-                        1 - (embedding <=> cast(:emb AS vector)) AS similarity
-                    FROM knowledge_entries
-                    WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-                      AND embedding IS NOT NULL
-                    ORDER BY embedding <=> cast(:emb AS vector)
-                    LIMIT :lim
-                """),
-                    {
-                        "emb": str(embedding),
-                        "tid": tenant_id,
-                        "shared_tid": SHARED_TENANT_ID,
-                        "lim": limit,
-                    },
+            # Stage 1: Dense vector search — searches tenant entries + shared OEM pool.
+            # Skipped when the embedding sidecar was unreachable (has_embedding=False);
+            # BM25 + structured-fault stages below carry the load in that case.
+            vector_results: list[dict] = []
+            if has_embedding:
+                vector_rows = (
+                    conn.execute(
+                        text("""
+                        SELECT
+                            content,
+                            manufacturer,
+                            model_number,
+                            equipment_type,
+                            source_type,
+                            source_url,
+                            source_page,
+                            metadata,
+                            1 - (embedding <=> cast(:emb AS vector)) AS similarity
+                        FROM knowledge_entries
+                        WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
+                          AND embedding IS NOT NULL
+                        ORDER BY embedding <=> cast(:emb AS vector)
+                        LIMIT :lim
+                    """),
+                        {
+                            "emb": str(embedding),
+                            "tid": tenant_id,
+                            "shared_tid": SHARED_TENANT_ID,
+                            "lim": limit,
+                        },
+                    )
+                    .mappings()
+                    .fetchall()
                 )
-                .mappings()
-                .fetchall()
-            )
-            vector_results = [dict(r) for r in vector_rows if r["similarity"] >= MIN_SIMILARITY]
+                vector_results = [
+                    dict(r) for r in vector_rows if r["similarity"] >= MIN_SIMILARITY
+                ]
 
             # Stage 2: Fault code — structured lookup first, ILIKE fallback
             fault_codes = _extract_fault_codes(query_text)
@@ -710,10 +729,12 @@ def recall_knowledge(
                 if not structured_fault_results:
                     like_results = _like_search(conn, text, tenant_id, fault_codes, limit)
 
-            # Stage 3: Product name search (vector-reranked within product's manual)
+            # Stage 3: Product name search (vector-reranked within product's manual).
+            # Vector-rerank requires an embedding; if none, skip — BM25 still
+            # surfaces product-matching chunks via lexical match below.
             product_names = _extract_product_names(query_text)
             product_results: list[dict] = []
-            if product_names:
+            if product_names and has_embedding:
                 product_results = _product_search(
                     conn, text, tenant_id, product_names, embedding, limit
                 )
