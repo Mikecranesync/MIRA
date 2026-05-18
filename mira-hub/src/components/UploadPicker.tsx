@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Script from "next/script";
-import { X, Upload as UploadIcon, Search, Loader2 } from "lucide-react";
+import { X, Upload as UploadIcon, Search, Loader2, FolderOpen, Package, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
 
@@ -119,6 +119,7 @@ export function UploadPicker({
   const [googleReady, setGoogleReady] = useState(false);
   const [dropboxReady, setDropboxReady] = useState(false);
   const [pickerLoaded, setPickerLoaded] = useState(false);
+  const [pickerLoadFailed, setPickerLoadFailed] = useState(false);
   const [googleAvailable, setGoogleAvailable] = useState(false);
   const [dropboxAvailable, setDropboxAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +151,29 @@ export function UploadPicker({
     if (!googleReady || pickerLoaded) return;
     window.gapi?.load("picker", () => setPickerLoaded(true));
   }, [googleReady, pickerLoaded]);
+
+  // Fail-open: if the modal has been open for 10s and at least one cloud
+  // picker SDK still hasn't loaded, stop showing an infinite spinner — Mike
+  // saw the Loading… state never resolve on mobile at the expo (2026-05-17).
+  // Refs (not deps) so the timer doesn't reset every time gapi/dropboxjs
+  // partially load.
+  const pickerLoadedRef = useRef(false);
+  const dropboxReadyRef = useRef(false);
+  useEffect(() => { pickerLoadedRef.current = pickerLoaded; }, [pickerLoaded]);
+  useEffect(() => { dropboxReadyRef.current = dropboxReady; }, [dropboxReady]);
+
+  useEffect(() => {
+    if (!open) return;
+    setPickerLoadFailed(false);
+    const t = setTimeout(() => {
+      // Surface a failure for whichever provider is "available" but still
+      // hasn't loaded — the other button reverts to its label regardless.
+      const googleStuck = googleAvailable && !pickerLoadedRef.current;
+      const dropboxStuck = dropboxAvailable && !dropboxReadyRef.current;
+      if (googleStuck || dropboxStuck) setPickerLoadFailed(true);
+    }, 10_000);
+    return () => clearTimeout(t);
+  }, [open, googleAvailable, dropboxAvailable]);
 
   const filteredAssets = useMemo(() => {
     if (assets.length === 0) return [];
@@ -254,27 +278,41 @@ export function UploadPicker({
 
   return (
     <>
-      <Script src="https://apis.google.com/js/api.js" strategy="lazyOnload" onLoad={() => setGoogleReady(true)} />
+      {/* afterInteractive (not lazyOnload) — on slow mobile networks lazyOnload
+          may never fire, leaving the picker stuck on "Loading…". */}
+      <Script
+        src="https://apis.google.com/js/api.js"
+        strategy="afterInteractive"
+        onLoad={() => setGoogleReady(true)}
+        onError={() => setPickerLoadFailed(true)}
+      />
       {dropboxKey && (
         <Script
           id="dropboxjs"
           src="https://www.dropbox.com/static/api/2/dropins.js"
-          strategy="lazyOnload"
+          strategy="afterInteractive"
           data-app-key={dropboxKey}
           onLoad={() => setDropboxReady(true)}
+          onError={() => setPickerLoadFailed(true)}
         />
       )}
 
       <div
-        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4"
         style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
         onClick={(e) => {
           if (e.target === e.currentTarget) onClose();
         }}
       >
         <div
-          className="w-full max-w-md rounded-2xl p-5"
-          style={{ backgroundColor: "var(--surface-0)", border: "1px solid var(--border)" }}
+          className="w-full max-w-md rounded-2xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto"
+          style={{
+            backgroundColor: "var(--surface-0)",
+            border: "1px solid var(--border)",
+            // Respect the iOS home-indicator safe area when the modal is
+            // bottom-aligned on a phone.
+            paddingBottom: "max(env(safe-area-inset-bottom), 1rem)",
+          }}
         >
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
@@ -404,12 +442,21 @@ export function UploadPicker({
               size="sm"
               disabled={!googleAvailable || !pickerLoaded || uploading}
               onClick={openGoogle}
-              title={!googleAvailable ? "Connect Google Workspace in Channels to enable" : undefined}
+              title={
+                !googleAvailable
+                  ? "Connect Google Workspace in Channels to enable"
+                  : pickerLoadFailed && !pickerLoaded
+                    ? "Picker SDK didn't load — try local upload above"
+                    : undefined
+              }
+              className="gap-1.5"
             >
-              {googleAvailable && !pickerLoaded ? (
-                <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1 inline" />Loading…</>
+              {googleAvailable && !pickerLoaded && pickerLoadFailed ? (
+                <><AlertTriangle className="w-3.5 h-3.5" /> Unavailable</>
+              ) : googleAvailable && !pickerLoaded ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</>
               ) : (
-                "📁 From Google Drive"
+                <><FolderOpen className="w-3.5 h-3.5" /> Google Drive</>
               )}
             </Button>
             <Button
@@ -417,21 +464,40 @@ export function UploadPicker({
               size="sm"
               disabled={!dropboxAvailable || !dropboxReady || uploading}
               onClick={openDropbox}
-              title={!dropboxAvailable ? "Connect Dropbox in Channels to enable" : undefined}
+              title={
+                !dropboxAvailable
+                  ? "Connect Dropbox in Channels to enable"
+                  : pickerLoadFailed && !dropboxReady
+                    ? "Picker SDK didn't load — try local upload above"
+                    : undefined
+              }
+              className="gap-1.5"
             >
-              {dropboxAvailable && !dropboxReady ? (
-                <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1 inline" />Loading…</>
+              {dropboxAvailable && !dropboxReady && pickerLoadFailed ? (
+                <><AlertTriangle className="w-3.5 h-3.5" /> Unavailable</>
+              ) : dropboxAvailable && !dropboxReady ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</>
               ) : (
-                "📦 From Dropbox"
+                <><Package className="w-3.5 h-3.5" /> Dropbox</>
               )}
             </Button>
           </div>
+
+          {pickerLoadFailed && (googleAvailable || dropboxAvailable) && (
+            <p
+              className="text-[11px] mt-2 text-center"
+              style={{ color: "var(--foreground-muted)" }}
+            >
+              Couldn&apos;t load cloud picker. Use the local upload above, or check your
+              connection and reopen.
+            </p>
+          )}
 
           {!googleAvailable && !dropboxAvailable && (
             <p className="text-[11px] mt-2 text-center" style={{ color: "var(--foreground-subtle)" }}>
               Connect Google Workspace or Dropbox in{" "}
               <Link
-                href="/hub/channels"
+                href="/channels"
                 className="font-medium underline-offset-2 hover:underline"
                 style={{ color: "var(--brand-blue)" }}
               >
