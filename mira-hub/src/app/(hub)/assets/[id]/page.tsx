@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use, useEffect } from "react";
+import { useState, use, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
@@ -11,9 +11,12 @@ import {
 import { AssetChat } from "@/components/AssetChat";
 import { AssetIntelligencePanel } from "@/components/AssetIntelligencePanel";
 import { QrCodeModal } from "@/components/qr-code-modal";
+import { UploadPicker, type PickResult } from "@/components/UploadPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/providers/toast-provider";
+import { API_BASE } from "@/lib/config";
+import { Upload } from "lucide-react";
 
 /* ─── Mock data ─────────────────────────────────────────────────────── */
 const ASSETS: Record<string, {
@@ -244,7 +247,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
           {activeTab === "overview"      && <OverviewTab asset={asset} onAskMira={() => setActiveTab("ask")} />}
           {activeTab === "activity"      && <ActivityTab />}
           {activeTab === "workorders"    && <WorkOrdersTab />}
-          {activeTab === "documents"     && <DocumentsTab />}
+          {activeTab === "documents"     && <DocumentsTab assetId={id} assetTag={asset.tag} />}
           {activeTab === "parts"         && <PartsTab />}
           {activeTab === "intelligence"  && <AssetIntelligencePanel assetId={id} />}
         </div>
@@ -383,31 +386,136 @@ function WorkOrdersTab() {
 }
 
 /* ─── Documents Tab ─────────────────────────────────────────────────── */
-function DocumentsTab() {
+type AssetDoc = {
+  sourceUrl: string;
+  title: string;
+  modelNumber: string | null;
+  equipmentType: string | null;
+  chunkCount: number;
+  lastIndexed: string | null;
+  verified: boolean;
+};
+
+function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string }) {
   const DOC_STATE_VARIANT: Record<string, "indexed" | "partial" | "superseded"> = {
     indexed: "indexed", partial: "partial", superseded: "superseded",
   };
-  // Map local ids to real doc ids (d01 format)
   const docIdMap: Record<string, string> = { d1: "d01", d2: "d02", d3: "d03", d4: "d09" };
+  const { toast } = useToast();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [realDocs, setRealDocs] = useState<AssetDoc[] | null>(null);
+
+  const fetchDocs = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/assets/${assetId}/documents/`, { cache: "no-store" });
+      if (res.ok && !res.url.includes("/login")) {
+        const data = (await res.json()) as AssetDoc[];
+        if (Array.isArray(data)) setRealDocs(data);
+      }
+    } catch {
+      /* silent — falls back to mock list */
+    }
+  }, [assetId]);
+
+  useEffect(() => { void fetchDocs(); }, [fetchDocs]);
+
+  async function handleLocalFiles(files: File[], tag: string | null) {
+    for (const file of files) {
+      const form = new FormData();
+      form.append("file", file);
+      if (tag) form.append("assetTag", tag);
+      const res = await fetch(`${API_BASE}/api/uploads/local`, { method: "POST", body: form });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        throw new Error(typeof body.error === "string" ? body.error : `Upload failed (${res.status})`);
+      }
+    }
+    toast(`Uploaded ${files.length} file${files.length === 1 ? "" : "s"} — parsing in background`, "success");
+    // Give the ingest pipeline a moment to register before refreshing.
+    setTimeout(() => { void fetchDocs(); }, 1500);
+  }
+
+  async function handleCloudPicks(results: PickResult[], tag: string | null) {
+    for (const r of results) {
+      await fetch(`${API_BASE}/api/uploads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...r, assetTag: tag ?? undefined }),
+      });
+    }
+    toast(`Imported ${results.length} from cloud — parsing in background`, "success");
+    setTimeout(() => { void fetchDocs(); }, 1500);
+  }
+
+  // Prefer real docs when present; fall back to mock so demo data renders for assets
+  // that don't yet have knowledge_entries.
+  const useReal = realDocs !== null && realDocs.length > 0;
+
   return (
     <div className="space-y-3">
-      {DOCS_LIST.map((doc) => (
-        <Link key={doc.id} href={`/documents/${docIdMap[doc.id] ?? "d01"}`}>
-          <div className="card p-4 flex items-center gap-3 hover:shadow-md transition-shadow cursor-pointer">
-            <FileText className="w-8 h-8 flex-shrink-0 p-1.5 rounded-lg"
-              style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }} />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>{doc.name}</p>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <Badge variant="outline" className="text-[10px]">{doc.category}</Badge>
-                <Badge variant={DOC_STATE_VARIANT[doc.state]} className="capitalize text-[10px]">{doc.state}</Badge>
-                <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{doc.pages}p · {doc.date}</span>
+      <div className="flex items-center justify-between">
+        <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+          {useReal
+            ? `${realDocs!.length} document${realDocs!.length === 1 ? "" : "s"} linked to this asset`
+            : `${DOCS_LIST.length} documents (demo)`}
+        </p>
+        <Button
+          size="sm"
+          onClick={() => setPickerOpen(true)}
+          data-testid="upload-document-button"
+          className="gap-1.5"
+        >
+          <Upload className="w-3.5 h-3.5" />
+          Upload Document
+        </Button>
+      </div>
+
+      {useReal
+        ? realDocs!.map((doc) => (
+            <div key={doc.sourceUrl} className="card p-4 flex items-center gap-3">
+              <FileText className="w-8 h-8 flex-shrink-0 p-1.5 rounded-lg"
+                style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>{doc.title}</p>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  {doc.equipmentType && <Badge variant="outline" className="text-[10px]">{doc.equipmentType}</Badge>}
+                  <Badge variant={doc.verified ? "indexed" : "partial"} className="capitalize text-[10px]">
+                    {doc.verified ? "indexed" : "pending"}
+                  </Badge>
+                  <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>
+                    {doc.chunkCount} chunk{doc.chunkCount === 1 ? "" : "s"}
+                    {doc.lastIndexed ? ` · ${new Date(doc.lastIndexed).toISOString().slice(0,10)}` : ""}
+                  </span>
+                </div>
               </div>
             </div>
-            <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--foreground-subtle)" }} />
-          </div>
-        </Link>
-      ))}
+          ))
+        : DOCS_LIST.map((doc) => (
+            <Link key={doc.id} href={`/documents/${docIdMap[doc.id] ?? "d01"}`}>
+              <div className="card p-4 flex items-center gap-3 hover:shadow-md transition-shadow cursor-pointer">
+                <FileText className="w-8 h-8 flex-shrink-0 p-1.5 rounded-lg"
+                  style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>{doc.name}</p>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <Badge variant="outline" className="text-[10px]">{doc.category}</Badge>
+                    <Badge variant={DOC_STATE_VARIANT[doc.state]} className="capitalize text-[10px]">{doc.state}</Badge>
+                    <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{doc.pages}p · {doc.date}</span>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--foreground-subtle)" }} />
+              </div>
+            </Link>
+          ))}
+
+      <UploadPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onLocalFiles={handleLocalFiles}
+        onCloudPicks={handleCloudPicks}
+        defaultAssetTag={assetTag}
+        hideAssetPicker
+      />
     </div>
   );
 }
