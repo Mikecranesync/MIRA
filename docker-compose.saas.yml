@@ -361,17 +361,15 @@ services:
   mira-docling:
     image: quay.io/docling-project/docling-serve:v1.16.1
     container_name: mira-docling-saas
+    mem_limit: 3g
+    memswap_limit: 3g
     ports:
       - "127.0.0.1:5001:5001"
     environment:
       - DOCLING_SERVE_PORT=5001
     networks:
       - mira-net
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 2G
+    restart: on-failure:5
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
       interval: 30s
