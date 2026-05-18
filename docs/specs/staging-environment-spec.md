@@ -186,6 +186,68 @@ The change is in the same PR but called out so the operator can roll back the ve
 3. Deploy to VPS no longer runs until staging gate is green.
 4. Operator can run `bash install/up_staging.sh` on CHARLIE and have a working `@MiraStaging_bot`.
 
+## Eval framework choice
+
+The judge in `tools/staging_test.py` is a **direct Groq OpenAI-compatible call** returning compact JSON for the 5 rubric dimensions. That is intentionally minimal — no framework wraps the LLM call (PRD §4) and the rubric is MIRA-specific enough that a generic framework adds more weight than it removes. We evaluated the relevant open-source options before settling on the in-line judge:
+
+| Framework | Disposition | Why |
+|---|---|---|
+| **DeepEval** | **Natural upgrade path.** Already in the repo via `deepeval-ci.yml`. Its `GEval` custom-rubric metric maps 1:1 to the 5-dimension scorecard, and the LLM backend is pluggable so we can route the judge through Groq instead of OpenAI. Migrate when a second eval surface needs to share the rubric. | One dep for several wins (Confident.ai-style report, pytest integration, regression deltas). |
+| **Promptfoo** | Deferred. Strong CI ergonomics but its provider model expects the prompt template to live in YAML — `Supervisor.process()` is not a single prompt, it's an orchestrator. Awkward fit. | Reconsider if we ever expose a flat `/chat` HTTP surface for staging. |
+| **Ragas** | Out of scope. Metrics (`faithfulness`, `context_precision`, `answer_relevancy`) require *reference contexts* per question; we don't have ground-truth retrievals for the fixture. | Track if we add a labeled retrieval gold set. |
+| **Trulens** | Out of scope. Excellent tracing + feedback functions, but requires an OTEL exporter + persistent store. Too much surface for a 10-question PR gate. | Revisit if we want production-side observability of the same metrics. |
+| **LangSmith** | Rejected. Closed source / paid, LangChain-coupled. We do not run LangChain (PRD §4). |
+| **Braintrust** | Deferred. Open-core SDK is fine standalone, but adds a dep for no immediate gain over a direct Groq call. | Reconsider if we want shared evals across staging + offline (one place to host fixtures and replays). |
+
+The pattern we *are* adopting is the Vercel/Railway "PR → preview env → CI gate" shape, with NeonDB branching as the ephemeral-DB primitive instead of a copy-on-write Postgres restore. That decision is documented in "Prior art" above; the framework table is the LLM-judge half of the same decision.
+
+## CI runner contract
+
+The staging gate runs on **`ubuntu-latest`** (GitHub Actions, no Docker-in-Docker). Required environment:
+
+| Env | Source | Purpose |
+|---|---|---|
+| `NEON_DATABASE_URL` | `staging` env secret `NEON_STG_DATABASE_URL` | Connection string for the NeonDB staging branch. |
+| `GROQ_API_KEY` | `staging` env secret `STAGING_GROQ_API_KEY` | Cascade primary + judge. |
+| `CEREBRAS_API_KEY` | optional | Cascade fallback. |
+| `GEMINI_API_KEY` | optional | Cascade fallback. |
+| `INFERENCE_BACKEND` | `cloud` (literal) | Skips Ollama / Open WebUI; the runner has neither. |
+| `MIRA_TENANT_ID` | `staging` env secret `STAGING_TENANT_ID` (default: the prod shared-tenant UUID) | **Must be a valid UUID** — `kg_entities.tenant_id` is a `uuid` column. Passing a literal string like `"staging"` trips a Postgres cast error and disables BM25 for every question. |
+| `MIRA_DB_PATH` | `${{ runner.temp }}/mira-stg.db` | `mira-bots/shared/chat_tenant.py` reads this at module import time and opens a SQLite file; the default `/data/mira.db` is the VPS container path and not writable on `ubuntu-latest`. |
+| `KNOWLEDGE_COLLECTION_ID` | `staging-dummy` | Unused by the text path; required by the Supervisor constructor. |
+| `OPENWEBUI_BASE_URL`, `MCP_BASE_URL` | dummy localhost ports | Same — constructor params, never reached on the text path. |
+
+No Open WebUI / no Ollama. No Docker. The whole gate is `pip install` + `python tools/staging_test.py`.
+
+## Adding a test question
+
+1. Append an entry to `tools/staging_questions.yaml` with a unique `id`, a `category` from the set the judge recognises (`oem_model_fault`, `oem_only`, `symptom_only`, `uns_gate`, `safety`, `greeting`, `followup`, `no_photo`, `off_topic`, `cmms_context`), the technician's `message`, and a short `exercises:` block describing the failure mode it catches.
+2. If the new question pushes the total past ~15, raise `MAX_BELOW_3` in `tools/staging_test.py` (currently 2) so the distribution rule scales with the fixture.
+3. Open a PR. The gate runs against the new question on the same staging Neon branch — no migration needed.
+
+## Operator one-time setup (verbatim commands)
+
+```bash
+# 1. NeonDB staging branch (run once; weekly refresh is the same command with a new --name)
+neonctl auth                       # opens browser to the Neon console
+neonctl projects list              # grab the project_id for FactoryLM / Mira
+neonctl branches create \
+  --name staging \
+  --parent production \
+  --project-id <project_id>
+
+# 2. Confirm the branch has the prod shared-tenant row:
+psql "$NEON_STG_DATABASE_URL" -c \
+  "SELECT id FROM tenants WHERE id = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3';"
+
+# 3. Drop the connection string into the staging GitHub environment:
+gh secret set NEON_STG_DATABASE_URL --env staging --body "<conn_str>"
+gh secret set STAGING_GROQ_API_KEY  --env staging --body "$GROQ_API_KEY"
+```
+
+If the staging branch is empty or missing the shared tenant, the gate will run cleanly but every OEM-anchored question will score low — that is a **data** failure, not a code failure; refresh the branch.
+
 ## Change log
 
 - 2026-05-18 — v1.0 — initial spec, written alongside implementation.
+- 2026-05-18 — v1.1 — first-run bug-fix pass: documented the UUID requirement for `MIRA_TENANT_ID`, the `MIRA_DB_PATH` override, the eval-framework comparison, and the operator setup commands. Switched PR-comment delivery from `GITHUB_OUTPUT` heredoc to the sticky action's `path:` input.

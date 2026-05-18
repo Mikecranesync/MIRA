@@ -61,7 +61,16 @@ jobs:
           CEREBRAS_API_KEY: ${{ secrets.STAGING_CEREBRAS_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.STAGING_GEMINI_API_KEY }}
           INFERENCE_BACKEND: cloud
-          MIRA_TENANT_ID: staging
+          # tenant_id must be a real UUID — `kg_entities.tenant_id` is a uuid
+          # column; passing the literal string "staging" trips a Postgres cast
+          # error that disables BM25 for every question. Use the prod shared
+          # tenant UUID; the staging Neon branch is forked from prod so the
+          # row exists.
+          MIRA_TENANT_ID: ${{ secrets.STAGING_TENANT_ID || '78917b56-f85f-43bb-9a08-1bb98a6cd6c3' }}
+          # `mira-bots/shared/chat_tenant.py` reads MIRA_DB_PATH at module
+          # import time and opens a SQLite file. The default `/data/mira.db`
+          # does not exist on ubuntu-latest; point it at the runner temp dir.
+          MIRA_DB_PATH: ${{ runner.temp }}/mira-stg.db
           KNOWLEDGE_COLLECTION_ID: staging-dummy
           OPENWEBUI_BASE_URL: http://localhost:11434
           MCP_BASE_URL: http://localhost:1
@@ -80,22 +89,18 @@ jobs:
 
       - name: Render PR comment
         if: always() && github.event_name == 'pull_request'
-        id: render
         run: |
           python tools/staging_render_comment.py \
             --in tools/staging_results.json \
             --out staging_comment.md \
             --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          # Expose body to next step via outputs
-          {
-            echo 'body<<EOF'
-            cat staging_comment.md
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
 
       - name: Post / update PR comment
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && hashFiles('staging_comment.md') != ''
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: staging-gate
-          message: ${{ steps.render.outputs.body }}
+          # Reading the body from a file avoids the GITHUB_OUTPUT heredoc
+          # parser tripping on missing trailing newlines or markdown that
+          # happens to contain the chosen delimiter.
+          path: staging_comment.md

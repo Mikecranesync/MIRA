@@ -41,7 +41,16 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "mira-bots"))
 
-# Imported after sys.path patch; ruff will flag E402, which is expected here.
+# `mira-bots/shared/chat_tenant.py` reads MIRA_DB_PATH at module import time
+# and falls back to `/data/mira.db` (the VPS container path). On any other
+# host that path is not writable and every tenant resolution logs an error.
+# Pin the default to a temp file BEFORE importing the engine so even ad-hoc
+# local invocations work. The workflow sets a runner-temp path explicitly.
+os.environ.setdefault(
+    "MIRA_DB_PATH", str(Path(tempfile.gettempdir()) / "mira-staging.db")
+)
+
+# Imported after sys.path + env patch; ruff will flag E402, which is expected.
 from shared.engine import Supervisor  # noqa: E402
 
 logging.basicConfig(
