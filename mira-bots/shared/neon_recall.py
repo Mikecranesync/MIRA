@@ -690,9 +690,7 @@ def recall_knowledge(
                     .mappings()
                     .fetchall()
                 )
-                vector_results = [
-                    dict(r) for r in vector_rows if r["similarity"] >= MIN_SIMILARITY
-                ]
+                vector_results = [dict(r) for r in vector_rows if r["similarity"] >= MIN_SIMILARITY]
 
             # Stage 2: Fault code — structured lookup first, ILIKE fallback
             fault_codes = _extract_fault_codes(query_text)
