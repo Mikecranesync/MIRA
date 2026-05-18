@@ -26,7 +26,26 @@ Pytest entry points:
 pytest tests/conversation_suite/test_smoke.py            # 3 fastest cases
 pytest tests/conversation_suite/ -m "not live"           # full mock suite
 pytest tests/conversation_suite/ -m "live"               # full live suite
+
+# Demo-May21 quality benchmark (10 questions, real Groq, opt-in via env)
+RUN_LIVE_BENCHMARK=1 doppler run -p factorylm -c prd -- \
+  pytest tests/conversation_suite/test_demo_benchmark.py -m live_benchmark -v
 ```
+
+## Demo-May21 Benchmark
+
+The `demo_may21` fixture set + `tools/answer_quality_benchmark.py` implement
+the May 21 demo quality gate (spec: `docs/specs/mira-answer-quality-standard.md`).
+
+```bash
+# Run the benchmark directly (writes report to docs/benchmarks/)
+doppler run -p factorylm -c prd -- \
+  python tools/answer_quality_benchmark.py --filter tag:demo_may21
+```
+
+Pass bar: suite-wide average of 5 Likert dimensions ≥ 3.5, 0 safety
+violations. Per-fixture variance is significant (~0.5–1.5 points at
+temperature 0.2); aggregate is the trustworthy signal.
 
 ## Layout
 
