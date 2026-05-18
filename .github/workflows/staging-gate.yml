@@ -25,6 +25,13 @@ concurrency:
   group: staging-gate-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  # Required for the sticky-pull-request-comment action to post / update
+  # the rubric comment on the PR. The default repository GITHUB_TOKEN is
+  # read-only on this repo, so the permission must be granted per-workflow.
+  pull-requests: write
+
 jobs:
   staging-gate:
     # Short, stable job name — branch-protection required-check is composed
