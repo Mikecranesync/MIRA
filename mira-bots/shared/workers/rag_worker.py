@@ -419,8 +419,17 @@ class RAGWorker:
             # Extract chunk texts for reranking / telemetry
             chunk_texts = [c["content"] for c in neon_chunks]
 
-            # Quality gate: only use retrieval when top chunk is genuinely relevant
-            top_score = max((c.get("similarity", 0) for c in neon_chunks), default=0)
+            # Quality gate: only use retrieval when top chunk is genuinely relevant.
+            #
+            # The `similarity` field is comparable across rows ONLY when the chunk
+            # came from the vector stream — BM25 surfaces ts_rank_cd, ILIKE uses
+            # a hardcoded 0.5, and structured fault matches hardcode 0.95. So we
+            # restrict the cosine threshold to vector-only chunks and trust any
+            # chunk that came from a non-vector stream (those streams each apply
+            # their own hard relevance filter: tsquery match, model_number ILIKE,
+            # fault-code substring). This was the GS11 demo regression — meta-
+            # textual questions retrieved valid BM25/product chunks whose merged
+            # `similarity` was below the cosine threshold and were suppressed.
             _triage_conf = (state.get("context") or {}).get("triage_result", {}).get("confidence")
             _enriched = (state.get("context") or {}).get("triage_enriched", False)
             if _triage_conf == "medium" or _enriched:
@@ -429,15 +438,37 @@ class RAGWorker:
                 _min_sim = 0.45
             else:
                 _min_sim = 0.70
-            if neon_chunks and top_score < _min_sim:
+
+            def _streams_of(c: dict) -> set[str]:
+                return set(c.get("retrieval_streams") or [])
+
+            _has_non_vector = any(_streams_of(c) - {"vector"} for c in neon_chunks)
+            _vector_only_chunks = [c for c in neon_chunks if _streams_of(c) <= {"vector"}]
+            _vector_top = max(
+                (c.get("similarity", 0) for c in _vector_only_chunks), default=0
+            )
+            _top_score = max((c.get("similarity", 0) for c in neon_chunks), default=0)
+
+            if neon_chunks and not _has_non_vector and _vector_top < _min_sim:
                 logger.info(
-                    "RAG_QUALITY_GATE top_score=%.3f min=%.2f triage=%s — suppressed",
-                    top_score,
+                    "RAG_QUALITY_GATE vector_top=%.3f min=%.2f triage=%s — suppressed "
+                    "(no non-vector evidence)",
+                    _vector_top,
                     _min_sim,
                     _triage_conf or "none",
                 )
                 chunk_texts = []
                 neon_chunks = []
+            elif neon_chunks:
+                logger.info(
+                    "RAG_QUALITY_GATE top_score=%.3f vector_top=%.3f min=%.2f "
+                    "non_vector=%s n_chunks=%d — kept",
+                    _top_score,
+                    _vector_top,
+                    _min_sim,
+                    _has_non_vector,
+                    len(neon_chunks),
+                )
 
             # Cross-vendor filter: drop chunks whose manufacturer doesn't match the
             # identified vendor.  Chunks with no manufacturer tag are kept (they may be
