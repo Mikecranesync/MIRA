@@ -64,7 +64,7 @@ jobs:
           bash scripts/host_perm_setup.sh
 
           # Resolve the rebuild list once so cleanup + build + up all agree.
-          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync}"
+          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync mira-bot-telegram mira-bot-slack}"
           echo "Rebuild targets: $TARGETS"
 
           echo "=== Pre-deploy cleanup: remove any stale containers blocking recreate ==="
