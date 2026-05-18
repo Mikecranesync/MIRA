@@ -6,6 +6,17 @@
 **Generator:** Groq llama-3.3-70b-versatile, temperature 0.2
 **Judge:** Claude sonnet-4-6 (cross-model, per `tests/eval/judge.py`)
 
+> **⚠️ Framing caveat.** The numbers below come from
+> `tools/answer_quality_benchmark.py`, which calls Groq directly with a
+> custom diagnostic prompt and fixture-side KB chunks. It BYPASSES the
+> production UNS gate, intent classifier, FSM, RAGWorker, and prompt
+> template. These results describe what "Groq + a good prompt + good
+> chunks" produces — a *ceiling* for what the full MIRA engine should
+> match — not what the production engine currently does. The full-engine
+> benchmark via `tests.conversation_suite.harness --mode=live` requires
+> Open WebUI to be externally reachable, which it currently is not. See
+> HANDOFF "MUST DO BEFORE MAY 21" for the unblock.
+
 This document records the failure diagnosis pass per the spec's §6 taxonomy
 and the in-scope fixes applied for the May 21 demo. Out-of-scope fixes are
 noted with their proposed owners and deferred.
