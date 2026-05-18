@@ -1,0 +1,17 @@
+id: demo_may21_03_gs10_no_modbus
+category: demo_may21
+tags: [demo_may21]
+description: |
+  Mike's demo Q3. Named-asset symptom: GS10 silent on Modbus. Must
+  cite the standard checklist — P09.01 baud, 8N2 framing, swap S+/S-
+  polarity, verify 24V common. Cite KB.
+expected_keywords: ["P09.01", "9600", "S+"]
+forbidden_keywords: ["8192"]
+citation_required: true
+asset_required: "GS10"
+max_turns: 1
+mock_responses: garage/modbus
+mock_kb_chunks: garage/micro820_wiring
+turns:
+  - role: user
+    content: "GS10 won't respond to Modbus commands"

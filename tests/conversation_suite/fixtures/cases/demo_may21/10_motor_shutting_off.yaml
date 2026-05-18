@@ -1,0 +1,14 @@
+id: demo_may21_10_motor_shutting_off
+category: demo_may21
+tags: [demo_may21]
+description: |
+  Mike's demo Q10. Vague symptom — UNS clarification gate must fire to
+  identify the motor (conveyor motor, sortation motor, etc.) before
+  diagnosing. A direct diagnosis without context = failure.
+clarification_required: true
+expected_keywords: ["which"]
+max_turns: 1
+mock_responses: garage/uns_gate
+turns:
+  - role: user
+    content: "Motor keeps shutting off"

@@ -1,0 +1,27 @@
+[
+  {
+    "source": "docs/legacy/Rockwell_PowerFlex_520_Series_UserManual.pdf",
+    "section": "Appendix B — Fault Codes",
+    "text": "F004 — UnderVoltage. Cause: DC bus voltage fell below threshold while drive was running (typical: <300 VDC on a 480V drive). First checks: (1) Verify incoming line voltage at L1/L2/L3 under load. (2) Verify input fuses and contactor. (3) Check for brownout / line dip events in plant power log. (4) Confirm input phase count (single-phase derating)."
+  },
+  {
+    "source": "docs/legacy/Rockwell_PowerFlex_520_Series_UserManual.pdf",
+    "section": "Appendix B — Fault Codes",
+    "text": "F005 — OverVoltage. Cause: DC bus voltage exceeded threshold. Typically caused by aggressive regeneration on deceleration. Mitigations: enable dynamic brake, lengthen decel ramp (P041 DECEL TIME 1), or add a brake resistor (PowerFlex 525 brake module)."
+  },
+  {
+    "source": "docs/legacy/Rockwell_PowerFlex_520_Series_UserManual.pdf",
+    "section": "Appendix B — Fault Codes",
+    "text": "F006 — Motor Overload. Cause: thermal overload protection (I²t) tripped. Verify motor FLA at P033 (MOTOR NP FLA), check actual current at keypad while loaded, inspect for mechanical bind."
+  },
+  {
+    "source": "docs/legacy/Rockwell_PowerFlex_520_Series_UserManual.pdf",
+    "section": "Appendix B — Fault Codes",
+    "text": "F012 — HW OverCurrent. Cause: instantaneous overcurrent (typically a short or motor stall). Disconnect motor leads, check for line-to-line and line-to-ground shorts at motor terminals, ramp-test with empty shaft."
+  },
+  {
+    "source": "docs/legacy/Rockwell_PowerFlex_520_Series_UserManual.pdf",
+    "section": "Appendix B — Fault Codes",
+    "text": "Clearing faults: press the red Stop button twice on the keypad, or write 0 to drive command bit 2 (Clear Fault) via Modbus. Faults will not clear while the underlying cause is still present."
+  }
+]

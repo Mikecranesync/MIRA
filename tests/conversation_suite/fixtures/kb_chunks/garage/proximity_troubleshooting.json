@@ -1,0 +1,17 @@
+[
+  {
+    "source": "docs/legacy/IO_Table.md",
+    "section": "Proximity Sensor Wiring",
+    "text": "Inductive proximity sensors on the garage cell (PE-001 exit, PE-002 entry) are 24VDC PNP-type, wired sinking into Micro820 digital inputs I-05 and I-06 respectively. Both share COM0 (24V common). Brown=+24V, Blue=0V/COM, Black=signal output to PLC input."
+  },
+  {
+    "source": "docs/legacy/Troubleshooting_Guide.md",
+    "section": "Prox sensor not switching",
+    "text": "Checklist for a proximity sensor that won't change state: (1) Verify 24VDC supply at sensor with meter — brown to blue should read 24V. (2) Watch the LED indicator on the sensor body — should turn on within the sensing distance (typically 4–8 mm for M12 inductive). (3) Verify target material is ferrous metal at correct gap. (4) Verify the PLC input LED follows the sensor LED. If sensor LED on but PLC LED off, the signal wire (black) is broken or miswired. (5) Confirm sensor output type matches PLC input: PNP (sourcing) sensor needs sinking input, or NPN (sinking) sensor needs sourcing input. Mismatched type stays at 0 forever."
+  },
+  {
+    "source": "docs/legacy/Troubleshooting_Guide.md",
+    "section": "Prox sensor — common failure modes",
+    "text": "Most common failure modes seen on this conveyor: (a) face contamination — clean with isopropyl, sensor face must be clear of metal swarf. (b) overshoot — target passing too fast / too far away for the sensor's switching frequency rating. (c) electrical noise — VFD motor leads run too close to sensor cable; reroute or twist the input cable."
+  }
+]

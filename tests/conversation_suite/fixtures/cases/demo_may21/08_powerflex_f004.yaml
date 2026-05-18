@@ -1,0 +1,17 @@
+id: demo_may21_08_powerflex_f004
+category: demo_may21
+tags: [demo_may21]
+description: |
+  Mike's demo Q8. Named drive + named fault. PowerFlex 525 F004 =
+  UnderVoltage Bus fault per Rockwell user manual. Bot should resolve
+  drive (UNS gate), cite manual, and give the fault meaning + first
+  checks (input power, brownout).
+expected_keywords: ["PowerFlex", "F004"]
+citation_required: true
+asset_required: "PowerFlex"
+max_turns: 2
+mock_responses: garage/flow
+mock_kb_chunks: garage/powerflex_525_faults
+turns:
+  - role: user
+    content: "PowerFlex 525 F004 fault"
