@@ -444,28 +444,40 @@ def _recall_bm25(
     cosine similarity used elsewhere). BM25 scores feed RRF by rank, not by
     magnitude, so the scale mismatch is irrelevant to fusion.
 
-    Returns [] if query_text is blank or the query fails — never raises.
-    The `content_tsv @@ plainto_tsquery(...)` predicate acts as a hard gate:
-    no match → no row, so MIN_SIMILARITY filtering is not applied here.
-    Searches both the caller's tenant entries and the shared OEM pool.
+    Query construction: OR-fanout via `to_tsquery('english', 't1 | t2 | …')`.
+    plainto_tsquery ANDs every term — fatal for maintenance queries like
+    "modbus parameters word write GS11 drive" where no single doc contains
+    all six. OR-joining means a doc matches if ANY token hits; ts_rank_cd
+    still rewards docs that match MORE tokens, so multi-term matches rank
+    higher than single-term ones. Tokens are stripped to `\\w+` to keep the
+    tsquery parser-safe (no need to escape `&|!():*`).
+
+    Returns [] if query_text is blank, has no usable tokens, or the query
+    fails — never raises. The tsquery `@@` predicate is a hard gate, so
+    MIN_SIMILARITY filtering is not applied here. Searches both the caller's
+    tenant entries and the shared OEM pool.
     """
     if not query_text or not query_text.strip():
         return []
+    tokens = re.findall(r"\w+", query_text)
+    if not tokens:
+        return []
+    ts_query = " | ".join(tokens)
     try:
         rows = (
             conn.execute(
                 text_fn(
                     "SELECT content, manufacturer, model_number, equipment_type, "
                     "source_type, source_url, source_page, metadata, "
-                    "ts_rank_cd(content_tsv, plainto_tsquery('english', :q)) AS similarity "
+                    "ts_rank_cd(content_tsv, to_tsquery('english', :tsq)) AS similarity "
                     "FROM knowledge_entries "
                     "WHERE (tenant_id = :tid OR tenant_id = :shared_tid) "
-                    "  AND content_tsv @@ plainto_tsquery('english', :q) "
+                    "  AND content_tsv @@ to_tsquery('english', :tsq) "
                     "ORDER BY similarity DESC "
                     "LIMIT :lim"
                 ),
                 {
-                    "q": query_text,
+                    "tsq": ts_query,
                     "tid": tenant_id,
                     "shared_tid": SHARED_TENANT_ID,
                     "lim": limit,
