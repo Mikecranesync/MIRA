@@ -114,7 +114,7 @@ def upsert_entity(
                         (:tenant_id, :entity_type, :name,
                          cast(:properties AS jsonb),
                          cast(:source_chunk_id AS uuid),
-                         :uns_path::ltree)
+                         cast(:uns_path AS ltree))
                     ON CONFLICT (tenant_id, entity_type, name) DO UPDATE
                         SET properties = COALESCE(kg_entities.properties, '{}'::jsonb)
                                        || EXCLUDED.properties
