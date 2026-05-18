@@ -38,6 +38,7 @@ cat > "$TMPFILE" << CRONTAB
 MIRA_DIR=$MIRA_DIR
 LOG_DIR=$LOG_DIR
 PATH=/usr/local/bin:/usr/bin:/bin
+MIRA_HEALER_ALLOW_ROOT=1
 
 # ─── DATA ENGINEERING ───────────────────────────────────────────────────────
 
