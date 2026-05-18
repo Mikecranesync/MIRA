@@ -31,19 +31,10 @@ type PM = {
   meter_current?: number;
 };
 
-// Fallback shown while loading or when no extracted PMs exist
-const FALLBACK_PMS: PM[] = [
-  { id: "PM-001", title: "Air Compressor Full PM",    asset: "Air Compressor #1", date: "2026-04-25", tech: "Mike H.",  recur: "Monthly",    durationH: 2, status: "scheduled" },
-  { id: "PM-002", title: "Conveyor Belt Lubrication", asset: "Conveyor Belt #3",  date: "2026-04-28", tech: "John S.", recur: "Weekly",     durationH: 1, status: "scheduled" },
-  { id: "PM-003", title: "Pump Station A Inspection", asset: "Pump Station A",    date: "2026-04-22", tech: "Sara K.", recur: "Bi-Weekly",  durationH: 3, status: "inprogress" },
-  { id: "PM-004", title: "Generator Load Test",       asset: "Generator #1",      date: "2026-04-18", tech: "Mike H.", recur: "Monthly",    durationH: 2, status: "overdue" },
-  { id: "PM-005", title: "HVAC Filter Change",        asset: "HVAC Unit #2",      date: "2026-05-01", tech: "—",       recur: "Quarterly",  durationH: 1, status: "scheduled" },
-  { id: "PM-006", title: "CNC Mill Calibration",      asset: "CNC Mill #7",       date: "2026-05-05", tech: "Mike H.", recur: "Monthly",    durationH: 4, status: "scheduled" },
-  { id: "PM-007", title: "Conveyor Belt Inspection",  asset: "Conveyor Belt #3",  date: "2026-05-07", tech: "John S.", recur: "Monthly",    durationH: 2, status: "scheduled" },
-  { id: "PM-008", title: "Compressor Oil Change",     asset: "Air Compressor #1", date: "2026-04-10", tech: "Mike H.", recur: "Quarterly",  durationH: 1, status: "completed" },
-  { id: "PM-009", title: "VFD Inspection",            asset: "Conveyor Belt #3",  date: "2026-05-12", tech: "Sara K.", recur: "Monthly",    durationH: 1, status: "scheduled" },
-  { id: "PM-010", title: "Pump Seal Check",           asset: "Pump Station A",    date: "2026-05-15", tech: "John S.", recur: "Quarterly",  durationH: 2, status: "scheduled" },
-];
+// Empty fallback — schedule page renders strictly from /api/pm-schedules.
+// Demo tenant should be seeded via tools/seed_demo_tenant_pms.sql before any
+// demo. Empty state renders cleanly when there are no PMs.
+const FALLBACK_PMS: PM[] = [];
 
 const STATUS_CFG = {
   scheduled:  { labelKey: "statusLabels.scheduled",  badgeVariant: "secondary" as const, dot: "#3B82F6", bar: "#DBEAFE" },

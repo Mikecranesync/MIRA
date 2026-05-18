@@ -2,6 +2,11 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## [1.7.0] - 2026-05-18
+### Changed
+- Feed page renders live work-order + PM data from `/api/work-orders` and `/api/pm-schedules` (#1033). KPI cards show real Open WO / Overdue PM / Total WO / Auto-Extracted PM counts; hardcoded `12 / 3 / 2.4h / 67%` values removed. Feed items composed from the most-recent 5 work orders + 3 nearest-due PM schedules.
+- Schedule page FALLBACK_PMS array emptied — page now renders strictly from `/api/pm-schedules` on the demo tenant (seeded via `tools/seed_demo_tenant_pms.sql`).
+
 ## [1.6.1] - 2026-05-18
 ### Fixed
 - DB migration 023 grants `factorylm_app` SELECT/INSERT/UPDATE on relationship_proposals, relationship_evidence, component_templates, component_template_sources, installed_component_instances, health_scores, wizard_progress, namespace_versions. Fixes HTTP 500 on /api/namespace/tree, /api/proposals, /api/readiness, /api/components/[id] and related routes — same RLS-role grant gap that #1345/#1343/#1344 surfaced. Requires `gh workflow run "Apply Prod Migrations"` after merge.
