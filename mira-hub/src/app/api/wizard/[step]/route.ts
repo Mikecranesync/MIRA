@@ -49,7 +49,6 @@ function isStep(s: string): s is Step {
   return (STEPS as readonly string[]).includes(s);
 }
 
-
 function nextStep(step: Step): Step {
   const i = STEPS.indexOf(step);
   return STEPS[Math.min(i + 1, STEPS.length - 1)];
@@ -231,7 +230,7 @@ async function finishWizard(tenantId: string, userId: string) {
         [tenantId],
       );
 
-      return { kind: "ok" as const, siteId, lineId, sitePath, linePath };
+      return { kind: "ok" as const, siteId, lineId, sitePath: sitePathStr, linePath: linePathStr };
     });
 
     if (result.kind === "no_progress") {
