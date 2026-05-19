@@ -1,8 +1,26 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-19
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-19
+
+### Most actionable pattern for MIRA playbook
+
+Anthropic's Code with Claude 2026 keynote introduced "exponential vs. linear adoption" as an opening hook: "model capabilities are advancing on an exponential curve; most organizations are still adopting AI on a linear path." This framing is immediately stealable for industrial maintenance: *"Your equipment failures are growing complex exponentially. Your maintenance team is still troubleshooting linearly."* Stronger than "AI-powered" boilerplate — gives the buyer a felt diagnosis before the product reveal.
+
+### New findings
+
+**B2B SaaS / dev-tools**
+- **Anthropic** — "Code with Claude 2026: Opening Keynote" (May 6, 2026): https://www.youtube.com/watch?v=wjvESxKgqaQ — ~1h on-stage developer conference keynote. Opening hook (Ami Vora, CPO): "capabilities are advancing on an exponential curve; most organizations are still adopting AI on a linear path." Launches: Managed Agents, Proactive Workflows, Capability Curve; "dreaming" (AI agents that learn from their own mistakes). Partner demo track: GitHub, Vercel, Datadog, Bun. Style shift: Anthropic moved from analyst interviews to conference-as-launch-vehicle. Soft brand CTA; dev activation.
+- **Figma** — "Release Notes 2026: May Edition" (May 2026): https://www.youtube.com/watch?v=11mdb7lLclM — Episode 006 of a regular release-notes video series (not a one-off launch). Format: product walkthrough + CPO Yuhki Yamashita Q&A. Highlights: Make Skills (markdown-based reusable prompts callable via slash commands), voice-to-text in Make chat, AI image reference improvements. Embedded CTA: Config 2026 ticket giveaway (Jun 23–25, San Francisco). Pattern: monthly video cadence to signal shipping velocity, not just milestone launches. [transcript not verified]
+- **Cursor** — Teams integration (May 8–11, 2026): no dedicated YouTube video; announced via X/changelog. @mention @Cursor in any Teams channel → cloud agent picks up the task, reads thread context, implements and opens a PR. Hook framing: "delegate from anywhere" — agent follows the engineer into their communication channel. Mirrors MIRA's Slack-bot architecture; MIRA can own this claim first in industrial.
+
+**CMMS / EAM**
+- No YouTube promo or launch video confirmed for UpKeep, MaintainX, Fiix, Limble, eMaint, or Brightly since May 3. MaintainX published a May 2026 blog update (AI Procedure Recommendations — attaches right procedure at work-order creation; Sub Work Orders) with no dedicated video.
 
 ---
 
@@ -299,10 +317,21 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 ### Anthropic
 
+**Code with Claude 2026 opening keynote (May 6, 2026)**
+- URL: https://www.youtube.com/watch?v=wjvESxKgqaQ
+- Title: "Code with Claude 2026: Opening Keynote"
+- Length: ~1 hour
+- Opening 5-sec hook: Ami Vora (CPO) — "Model capabilities are advancing on an exponential curve, while most organizations are still adopting AI on a linear path." [search-derived; likely verbatim or close]
+- Footage style: on-stage conference keynote
+- VO register: product executive + founder (Ami Vora, Dario Amodei, Daniela Amodei)
+- Key launches: Managed Agents, Proactive Workflows, Capability Curve; "dreaming" (agents that learn from their own mistakes); partner integration track (GitHub, Vercel, Datadog, Bun)
+- CTA: soft brand; developer activation
+- Style note: first conference-as-launch-vehicle for Anthropic. Followed by London (May 20–21) and Tokyo (Jun 5–6) legs, all livestreamed.
+
+**Previous (analyst appearances)**
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
-- 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+- Pattern shift: moved from analyst/conference appearances to owned conference format with Code with Claude 2026.
 
 ---
 
@@ -313,9 +342,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Cursor 2.0 (Oct 29, 2025): Composer → proprietary coding model
 - Cursor 3.0 (Apr 2, 2026): Agents Window
 - Cursor 3.1 (Apr 13, 2026): Tiled Layout
+- Cursor in Microsoft Teams (May 8–11, 2026): @mention @Cursor in any channel → cloud agent implements task and opens a PR. "Delegate from anywhere" framing — agent follows the engineer into the communication layer, no context switch required.
+- Cursor 3.4 (May 13, 2026): faster parallel agent plan execution, PR review experience, quick-action pills
+- Composer 2.5 (May 18, 2026): smarter long-running task handling
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
 - No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+- Pattern note: Teams integration is a style shift — "ambient agent in your comms channel" positions the agent as infrastructure, not an optional IDE plugin. MIRA's Slack bot already owns this in industrial; claim it explicitly.
 
 ---
 
@@ -344,6 +377,15 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 ### Figma
 
+**Release Notes 2026: May Edition (May 2026)**
+- URL: https://www.youtube.com/watch?v=11mdb7lLclM
+- Title: "Release Notes 2026: May Edition" (Episode 006)
+- Format: regular release-notes video series — not a one-off launch. Monthly cadence.
+- Features: Make Skills (markdown-based reusable prompts, callable via slash commands), voice-to-text in Make chat, AI image reference improvements, Dev Mode updates
+- VO register: product walkthrough + CPO Q&A (Yuhki Yamashita)
+- CTA: embedded Config 2026 ticket giveaway (Jun 23–25, San Francisco)
+- Pattern note: Figma is using regular video cadence to signal shipping velocity. The series format (Ep 006) creates ongoing touchpoints vs. single launch events. [transcript not verified]
+
 **Config 2025 keynote (May 6–8, 2025)**
 - URL: https://www.youtube.com/watch?v=5q8YAUTYAyk
 - Title: "Config 2025: Figma product launch keynote"
@@ -354,6 +396,7 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+- Config 2026 scheduled: Jun 23–25, San Francisco — keynotes to be posted to YouTube same day
 
 ---
 
@@ -385,6 +428,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Exponential vs. linear diagnosis (gives buyer a felt problem before product reveal) | Anthropic Code w/ Claude 2026: "capabilities on an exponential curve; adoption still linear" | "Equipment failures are growing complex exponentially. Maintenance teams are still troubleshooting linearly." |
+| Regular video cadence as shipping-velocity signal | Figma: monthly Release Notes series (Ep 006) with CPO Q&A | Monthly "MIRA shipped this week" short-form — positions as active product, not vaporware |
 
 ### Anti-patterns (avoid)
 
@@ -398,3 +443,5 @@ No video content surfaced for 2025–2026.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Cursor**: moved from IDE-first to "ambient agent in communication channels" (Teams integration, May 2026). Positions the coding agent as infrastructure that follows the engineer, not an optional tool they must switch to. MIRA's Slack architecture already owns this in industrial — claim it explicitly in messaging.
+- **Anthropic**: moved from analyst/conference appearances to owned developer conference (Code with Claude 2026, May 6). First major video vehicle; adopted conference-as-launch-vehicle pattern common in B2B SaaS (Stripe Sessions, Figma Config).
