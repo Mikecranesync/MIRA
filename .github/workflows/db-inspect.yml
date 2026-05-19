@@ -1,9 +1,11 @@
 name: NeonDB inspect (P0 #1305/#1343/#1344)
 
-# Ad-hoc DB inspection workflow. Runs SQL inside mira-mcp-saas container on the
-# VPS (which has working SSL to Neon — Windows hosts can't reach Neon directly
-# per the gotcha in CLAUDE.md). Read-only. Drop after #1305/#1343/#1344 close
-# and a permanent /api/admin/db-inventory endpoint is in place.
+# Ad-hoc DB inspection workflow. Uses psql against NeonDB directly via the
+# Doppler-managed NEON_DATABASE_URL (factorylm/prd). Read-only.
+#
+# Previous version (pre-2026-05-19) executed Python inside the mira-mcp-saas
+# container and broke when the container lost psycopg2 in a rebuild. Switched
+# to the same psql pattern apply-migrations.yml uses for resilience.
 
 on:
   workflow_dispatch:
@@ -19,77 +21,107 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Set up SSH
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Install psql
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
-          chmod 600 ~/.ssh/vps_deploy_key
-          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+          psql --version
 
-      - name: Inspect NeonDB via mira-mcp-saas
+      - name: Authenticate Doppler + resolve DATABASE_URL
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
-          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
-            root@165.245.138.91 "bash -s" << 'ENDSSH'
-
           set -euo pipefail
-          cd /opt/mira
+          if [ -z "${DOPPLER_TOKEN:-}" ]; then
+            echo "::error::DOPPLER_TOKEN secret not set."
+            exit 1
+          fi
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::NEON_DATABASE_URL empty after Doppler fetch"
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
 
-          echo "=== container status ==="
-          docker ps --filter "name=mira-mcp-saas" --format "table {{.Names}}\t{{.Status}}"
+      - name: Inspect kg_entities + kg_relationships
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === connection identity ===
+          SELECT current_user AS connected_as, session_user;
+          SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname = current_user;
 
-          echo
-          echo "=== NeonDB inventory ==="
-          docker exec mira-mcp-saas python -c "
-          import os, psycopg2
-          url = os.environ.get('NEON_DATABASE_URL', '')
-          if not url:
-              print('NEON_DATABASE_URL not set in container env')
-              raise SystemExit(2)
-          conn = psycopg2.connect(url)
-          cur = conn.cursor()
+          \echo
+          \echo === table inventory ===
+          SELECT tablename FROM pg_tables
+          WHERE schemaname='public'
+            AND tablename IN ('knowledge_entries','fault_codes','kg_entities',
+                              'kg_relationships','kg_bridge','tenant_invites',
+                              'kg_approval_state','relationship_proposals',
+                              'relationship_evidence')
+          ORDER BY tablename;
 
-          cur.execute(\"SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename;\")
-          tables = [r[0] for r in cur.fetchall()]
-          print(f'TABLE_COUNT: {len(tables)}')
-          for t in tables:
-              print('  ' + t)
+          \echo
+          \echo === row counts ===
+          SELECT 'kg_entities' AS tbl, COUNT(*)::text AS n FROM kg_entities
+          UNION ALL SELECT 'kg_entities NULL uns_path', COUNT(*)::text FROM kg_entities WHERE uns_path IS NULL
+          UNION ALL SELECT 'kg_relationships', COUNT(*)::text FROM kg_relationships
+          UNION ALL SELECT 'knowledge_entries', COUNT(*)::text FROM knowledge_entries;
 
-          required = [
-              'knowledge_entries', 'fault_codes', 'kg_entities', 'kg_relationships',
-              'kg_bridge', 'tenant_invites', 'kg_approval_state',
-          ]
-          missing = [t for t in required if t not in tables]
-          print(f'MISSING_REQUIRED: {missing}')
+          \echo
+          \echo === kg_entities columns ===
+          SELECT column_name, data_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='kg_entities'
+          ORDER BY ordinal_position;
 
-          for q in [
-              (\"kg_entities total\", \"SELECT COUNT(*) FROM kg_entities;\"),
-              (\"kg_entities NULL uns_path\", \"SELECT COUNT(*) FROM kg_entities WHERE uns_path IS NULL;\"),
-              (\"kg_entities source='cmms'\", \"SELECT COUNT(*) FROM kg_entities WHERE source='cmms';\"),
-              (\"kg_entities source='cmms' NULL uns_path\", \"SELECT COUNT(*) FROM kg_entities WHERE source='cmms' AND uns_path IS NULL;\"),
-              (\"knowledge_entries total\", \"SELECT COUNT(*) FROM knowledge_entries;\"),
-              (\"kg_entities kind='knowledge_entry'\", \"SELECT COUNT(*) FROM kg_entities WHERE kind='knowledge_entry';\"),
-              (\"kg_relationships total\", \"SELECT COUNT(*) FROM kg_relationships;\"),
-          ]:
-              label, sql = q
-              try:
-                  cur.execute(sql)
-                  print(f'{label}: {cur.fetchone()[0]}')
-              except Exception as e:
-                  print(f'{label}: ERR {e.__class__.__name__}: {str(e)[:120]}')
-                  conn.rollback()
+          \echo
+          \echo === kg_relationships columns ===
+          SELECT column_name, data_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='kg_relationships'
+          ORDER BY ordinal_position;
 
-          cur.execute(\"\"\"
-              SELECT column_name, data_type
-              FROM information_schema.columns
-              WHERE table_schema='public' AND table_name='kg_entities'
-              ORDER BY ordinal_position;
-          \"\"\")
-          print('--- kg_entities columns ---')
-          for col, dtype in cur.fetchall():
-              print(f'  {col}: {dtype}')
+          \echo
+          \echo === kg_relationships indexes ===
+          SELECT indexname, indexdef
+          FROM pg_indexes
+          WHERE schemaname='public' AND tablename='kg_relationships'
+          ORDER BY indexname;
 
-          conn.close()
-          "
-          ENDSSH
+          \echo
+          \echo === RLS state ===
+          SELECT c.relname,
+                 c.relrowsecurity AS rls_enabled,
+                 c.relforcerowsecurity AS rls_forced
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname='public'
+            AND c.relname IN ('kg_entities','kg_relationships');
+
+          \echo
+          \echo === RLS policies ===
+          SELECT tablename, policyname, cmd, qual::text
+          FROM pg_policies
+          WHERE schemaname='public'
+            AND tablename IN ('kg_entities','kg_relationships');
+
+          \echo
+          \echo === kg_relationships sample (10) ===
+          SELECT * FROM kg_relationships LIMIT 10;
+
+          \echo
+          \echo === kg_relationships by type ===
+          SELECT relationship_type, COUNT(*)
+          FROM kg_relationships
+          GROUP BY relationship_type
+          ORDER BY 2 DESC;
+          SQL

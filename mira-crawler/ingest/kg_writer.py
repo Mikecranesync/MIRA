@@ -5,8 +5,14 @@ admin tools) must go through these helpers so the spec's invariants hold:
 
 - `kg_entities` UNIQUE (tenant_id, entity_type, name) → ON CONFLICT DO NOTHING
   on insert, then SELECT to obtain the canonical id.
-- `kg_relationships` UNIQUE (tenant_id, source_entity, target_entity,
-  relation_type) → same pattern.
+- `kg_relationships` UNIQUE (tenant_id, source_id, target_id,
+  relationship_type) → same pattern. (Column names follow the prod schema
+  established by mira-hub/db/migrations/001_knowledge_graph.sql; the
+  `source_entity`/`target_entity`/`relation_type` names in
+  docs/migrations/006_kg_bridge.sql never landed in prod — see ADR-0013
+  follow-up.) The Python parameter names below keep the
+  `source_entity`/`target_entity` spelling for backwards compatibility
+  with existing callers.
 - Every entity carries a non-NULL `uns_path` (spec §3.1, Phase 3).
 - Path grammar is enforced both at the application layer (uns.is_valid_path)
   and at the database layer (CHECK constraint added in migration 008).
@@ -163,15 +169,15 @@ def upsert_relationship(
             row = c.execute(
                 text("""
                     INSERT INTO kg_relationships
-                        (tenant_id, source_entity, target_entity,
-                         relation_type, properties, confidence,
+                        (tenant_id, source_id, target_id,
+                         relationship_type, properties, confidence,
                          source_chunk_id)
                     VALUES
                         (:tenant_id, :source, :target, :rel,
                          cast(:properties AS jsonb), :confidence,
                          cast(:source_chunk_id AS uuid))
                     ON CONFLICT
-                        (tenant_id, source_entity, target_entity, relation_type)
+                        (tenant_id, source_id, target_id, relationship_type)
                     DO UPDATE SET
                         confidence = GREATEST(kg_relationships.confidence,
                                               EXCLUDED.confidence)
