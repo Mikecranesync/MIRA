@@ -448,6 +448,9 @@
   },
   "admin": {
     "title": "Admin",
+    "users": {
+      "title": "Users"
+    },
     "usersTab": "Users",
     "rolesTab": "Roles & Permissions",
     "inviteUser": "Invite User",

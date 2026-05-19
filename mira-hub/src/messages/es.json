@@ -463,6 +463,9 @@
   },
   "admin": {
     "title": "Administración",
+    "users": {
+      "title": "Usuarios"
+    },
     "usersTab": "Usuarios",
     "rolesTab": "Roles y permisos",
     "inviteUser": "Invitar usuario",
