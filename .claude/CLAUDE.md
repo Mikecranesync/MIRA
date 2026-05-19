@@ -106,11 +106,23 @@ Technicians read on a phone in a noisy plant. Optimize for that.
 
 See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message templates.
 
+## Environment boundaries (Dev / Staging / Prod)
+
+**Doctrine:** `docs/environments.md`. Three environments, promoted in order. Root `CLAUDE.md` § **Environments** is the rule card. Product-side implications:
+
+- **Never** test bot changes against the production Telegram bot (`@FactoryLM_Diagnose`). The UNS gate, citation compliance, and groundedness scorers log episodes — a feature-branch reply on the prod bot contaminates the truth set.
+- **Never** point a feature-branch engine build at the prod NeonDB. `kg_entities` / `kg_relationships` writes are append-only-with-status; a misfire pollutes the verified set and forces a manual cleanup.
+- **Never** seed the KB to prod first. BM25 retrieval quality is verified on staging-shape data (`tests/eval/`) before bulk insert — see issue #1385 (embedding-gate killed BM25 in May 2026; lesson stands: seeds reach prod only after retrieval is proven).
+- **Migrations** to `kg_entities` / `kg_relationships` / `cmms_*` / Hub schema go dev → staging → prod via `apply-migrations.yml` (`dry-run` first). The promotion-state column work (ADR-0013) assumes this discipline.
+- **Engine / RAG / FSM / classifier changes** must pass the staging gate (today: `smoke-test.yml` + the relevant `tests/eval/` regime) before merging to `main`.
+
+`tools/hooks/prod-guard.sh` enforces the obvious blast-radius cases (`PreToolUse(Bash)`). It is a floor, not a ceiling. The full rule set lives in `docs/environments.md`.
+
 ## Rules for code changes
 
 - **Conventional Commits**: `feat/fix/security/docs/refactor/test/chore/BREAKING`. Scope hint: module name (`feat(slack):`, `fix(uns):`, `fix(engine):`).
 - **No LangChain, TensorFlow, n8n** — see PRD §4 in root CLAUDE.md.
-- **Doppler for secrets** — `factorylm/prd`. Never `.env` files in git.
+- **Doppler for secrets** — `factorylm/dev` (local) / `factorylm/stg` (staging) / `factorylm/prd` (production). Never `.env` files in git. Never copy `prd` values into a dev shell.
 - **Python: ruff + httpx + `Optional[X]` (3.12 target)** — see `.claude/rules/python-standards.md`.
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).
 - **UNS compliance** — see `.claude/rules/uns-compliance.md` (every asset row has `uns_path` or `equipment_entity_id` FK).
@@ -135,10 +147,12 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 - ❌ **Add a LangChain/n8n abstraction over the LLM call** (PRD §4).
 - ❌ **Reintroduce Anthropic as a provider** — removed PR #610, never reintroduce. Cascade is Groq → Cerebras → Gemini.
 - ❌ **Skip the screenshot rule** for visible mira-web UI changes.
+- ❌ **Cross environment boundaries** — no prod `psql`, no direct VPS `docker compose`, no feature-branch traffic to `@FactoryLM_Diagnose`, no hand-edited prod schema. See `docs/environments.md`.
 
 ## Cross-references
 
 - Root `CLAUDE.md` — build state, ports, env vars, repo map
+- `docs/environments.md` — dev / staging / prod doctrine (env separation + promotion workflow)
 - `docs/THEORY_OF_OPERATIONS.md` — primary product doctrine
 - `docs/specs/maintenance-namespace-builder-spec.md` — UNS gate, AI proposals, readiness levels (subsumes the older `uns-message-resolver-spec.md` reference)
 - `docs/plans/2026-05-15-maintenance-namespace-builder.md` — phased execution
