@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import { X, ChevronRight, ChevronLeft } from "lucide-react";
 
 const TOUR_KEY = "mira_tour_v1";
@@ -44,6 +45,7 @@ function getNavPos(navKey: string): Pos {
 }
 
 export function OnboardingTour() {
+  const pathname = usePathname();
   const [step, setStep] = useState(-1);
   const [pos, setPos] = useState<Pos>(null);
 
@@ -57,10 +59,14 @@ export function OnboardingTour() {
     setStep(-1);
   }, []);
 
-  // First-login check
+  // First-login check — only auto-launches on /feed (the landing page after sign-in).
+  // Anywhere else, the tour stays dormant unless explicitly restarted via the sidebar
+  // help button. Previously the tour overlaid every (hub)/* route because the mount
+  // sits in the shared layout and the dismissal didn't gate on pathname.
   useEffect(() => {
+    if (pathname !== "/feed") return;
     if (!localStorage.getItem(TOUR_KEY)) show(0);
-  }, [show]);
+  }, [show, pathname]);
 
   // Re-trigger from sidebar "?" button
   useEffect(() => {

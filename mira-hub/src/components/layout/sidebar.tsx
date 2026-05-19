@@ -106,6 +106,8 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "documents":     t("documents"),
       "reports":       t("reports"),
       "plc":           "Ladder Logic",
+      "namespace":     "Namespace",
+      "proposals":     "Proposals",
     };
     return map[key] ?? key;
   }
