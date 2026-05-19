@@ -1,5 +1,22 @@
 # Hot Cache — 2026-05-19 — CHARLIE
 
+## 2026-05-19 — GS11 grounding test surface landed
+Three-layer regression net for "embedding sidecar down → bot must still cite KB, not 'general industrial knowledge'." Installed after the 2026-05-18 GS11 demo failure (PR #1382 + #1379 + #1385 root cause chain).
+
+- **Tests (offline, ~2s):**
+  - DB: `mira-bots/tests/test_recall_no_embedding_fallthrough.py`
+  - Gate: `tests/test_quality_gate_stream_aware.py`
+  - Engine: `mira-bots/tests/test_engine_no_embedding_gs11.py` (new)
+- **LLM judge (Groq):** `mira-bots/benchmarks/deepeval_suite.py` case `de-in-06-gs11-modbus`
+- **One-shot invocation:** `/mira-test-bot-grounding`
+- **Reference doc:** `wiki/references/bot-grounding-tests.md`
+- **Auto-loading skill:** `.claude/skills/bot-grounding-tests/SKILL.md`
+- **CI:** `.github/workflows/deepeval-ci.yml` runs all four layers on every PR touching `mira-bots/**`, `evals/**`, or `tests/golden_*.csv`.
+
+**Mandatory before pushing** any change to `mira-bots/shared/{neon_recall.py, workers/rag_worker.py, engine.py}` recall path, `mira-bots/benchmarks/deepeval_suite.py`, or `tests/golden_gs11_conveyor.csv`.
+
+Open ops follow-ups (deferred post-demo): fix Bravo Tailscale route from VPS; pull `nomic-embed-text` onto VPS localhost Ollama; migrate `evals/query_stub.py` live mode off Anthropic + onto the InferenceRouter Groq cascade.
+
 ## eval-fixer run — 2026-05-19
 - Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (13 days stale, unchanged since 2026-05-06)
 - Action: filed #1419 (multi-cluster hard-stop hit: engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3). Prior canonical #1217 is now closed, so #1419 stands open instead of being closed as a dupe.
