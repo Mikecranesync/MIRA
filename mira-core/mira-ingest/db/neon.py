@@ -647,13 +647,15 @@ def insert_photo_ai_suggestion(
     if not os.environ.get("NEON_DATABASE_URL"):
         return None
 
-    populated = sum(1 for k in ("component", "symptom", "condition")
-                    if (structured.get(k) or "").strip())
+    populated = sum(
+        1 for k in ("component", "symptom", "condition") if (structured.get(k) or "").strip()
+    )
     confidence = max(0.30, min(0.85, 0.30 + 0.20 * populated))
 
     component = (structured.get("component") or "").strip()
     title = (
-        f"Equipment photo: {component} at {asset_tag}" if component
+        f"Equipment photo: {component} at {asset_tag}"
+        if component
         else f"Equipment photo at {asset_tag}"
     )
     body = description[:280] if description else "Photo ingested without description."
@@ -663,9 +665,9 @@ def insert_photo_ai_suggestion(
         "entity_type": "photo_observation",
         "asset_tag": asset_tag,
         "structured": {
-            "component":   structured.get("component") or "",
-            "symptom":     structured.get("symptom") or "",
-            "condition":   structured.get("condition") or "",
+            "component": structured.get("component") or "",
+            "symptom": structured.get("symptom") or "",
+            "condition": structured.get("condition") or "",
             "description": structured.get("description") or description,
         },
         "photo_path": photo_path,

@@ -91,9 +91,11 @@ def _score(fields: dict) -> float:
     model = (fields.get("model") or "").strip()
 
     # Start with a coverage score: how many of the 8 fields are populated?
-    populated = sum(1 for k in ("manufacturer", "model", "serial", "voltage",
-                                "fla", "hp", "frequency", "rpm")
-                    if (fields.get(k) or "").strip())
+    populated = sum(
+        1
+        for k in ("manufacturer", "model", "serial", "voltage", "fla", "hp", "frequency", "rpm")
+        if (fields.get(k) or "").strip()
+    )
     base = populated / 8.0
 
     # Penalize the "Unknown" sentinel — that's a near-failed extraction.
@@ -182,7 +184,8 @@ def propose_from_nameplate(
     if not manufacturer or not model:
         logger.info(
             "photo_ingest_worker: missing manufacturer/model (got %r / %r); no proposal",
-            manufacturer, model,
+            manufacturer,
+            model,
         )
         return {}
 
@@ -210,7 +213,8 @@ def propose_from_nameplate(
                 if confidence < _MIN_PROPOSAL_CONFIDENCE:
                     logger.info(
                         "photo_ingest_worker: confidence %.2f below floor %.2f — no proposal",
-                        confidence, _MIN_PROPOSAL_CONFIDENCE,
+                        confidence,
+                        _MIN_PROPOSAL_CONFIDENCE,
                     )
                     return {}
 
@@ -242,7 +246,7 @@ def propose_from_nameplate(
                             asset_id,
                             f"{manufacturer} {model}",
                             f"{manufacturer} {model}",
-                            None,                        # installed_location filled by reviewer
+                            None,  # installed_location filled by reviewer
                             uns_path,
                             confidence,
                             f"Proposed from photo extraction (chat={chat_id or 'n/a'})",
@@ -256,9 +260,10 @@ def propose_from_nameplate(
                         "model": model,
                         "uns_path": uns_path,
                         "asset_id": asset_id,
-                        "nameplate_fields": {k: fields.get(k) for k in
-                                              ("serial", "voltage", "fla",
-                                               "hp", "frequency", "rpm")},
+                        "nameplate_fields": {
+                            k: fields.get(k)
+                            for k in ("serial", "voltage", "fla", "hp", "frequency", "rpm")
+                        },
                         "photo_path": photo_path,
                     }
                     title = f"Confirm {manufacturer} {model} at {uns_path or 'this asset'}"
@@ -276,9 +281,10 @@ def propose_from_nameplate(
                         "manufacturer": manufacturer,
                         "model": model,
                         "version": "",
-                        "nameplate_fields": {k: fields.get(k) for k in
-                                              ("serial", "voltage", "fla",
-                                               "hp", "frequency", "rpm")},
+                        "nameplate_fields": {
+                            k: fields.get(k)
+                            for k in ("serial", "voltage", "fla", "hp", "frequency", "rpm")
+                        },
                         "photo_path": photo_path,
                         "asset_id": asset_id,
                         "uns_path": uns_path,
@@ -311,7 +317,7 @@ def propose_from_nameplate(
                         tenant_id,
                         suggestion_type,
                         "photo",
-                        None,                          # source_id: no equipment_photos UUID at this layer
+                        None,  # source_id: no equipment_photos UUID at this layer
                         psycopg2.extras.Json(payload),
                         confidence,
                         proposed_by,
@@ -323,8 +329,12 @@ def propose_from_nameplate(
                 logger.info(
                     "photo_ingest_worker: wrote suggestion=%s type=%s tenant=%s "
                     "template_id=%s instance_id=%s confidence=%.2f",
-                    suggestion_id, suggestion_type, tenant_id,
-                    template_id, instance_id, confidence,
+                    suggestion_id,
+                    suggestion_type,
+                    tenant_id,
+                    template_id,
+                    instance_id,
+                    confidence,
                 )
 
                 return {
