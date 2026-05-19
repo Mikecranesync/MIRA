@@ -53,24 +53,27 @@ export const accessControlProvider: AccessControlProvider = {
 };
 
 export const NAV_ITEMS = [
-  // Primary nav — main surfaces, always visible to qualifying roles
-  { key: "event-log",     label: "Event Log",     icon: "Activity",      href: "/event-log",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  // Intelligence — real-time signals and AI conversation
   { key: "conversations", label: "Conversations", icon: "MessageSquare", href: "/conversations", roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
   { key: "alerts",        label: "Alerts",        icon: "AlertTriangle", href: "/alerts",        roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
-  { key: "knowledge",     label: "Knowledge",     icon: "BookOpen",      href: "/knowledge",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "event-log",     label: "Event Log",     icon: "Activity",      href: "/event-log",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  // Knowledge & Structure — namespace is now the primary filesystem
   { key: "namespace",     label: "Namespace",     icon: "Layers",        href: "/namespace",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
-  { key: "proposals",     label: "Proposals",     icon: "Sparkles",      href: "/proposals",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
-  { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "knowledge",     label: "Knowledge",     icon: "BookOpen",      href: "/knowledge",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  // Operations — promoted from secondary
+  { key: "workorders",    label: "Work Orders",   icon: "ClipboardList", href: "/workorders",    roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "schedule",      label: "Schedule",      icon: "CalendarDays",  href: "/schedule",      roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "primary" },
+  { key: "reports",       label: "Reports",       icon: "TrendingUp",    href: "/reports",       roles: ["manager", "scheduler", "admin", "owner"],                           group: "primary" },
+  // Platform
   { key: "channels",      label: "Channels",      icon: "Radio",         href: "/channels",      roles: ["manager", "scheduler", "admin", "owner"],                           group: "primary" },
   { key: "integrations",  label: "Integrations",  icon: "Plug",          href: "/integrations",  roles: ["manager", "admin", "owner"],                                        group: "primary" },
   { key: "usage",         label: "Usage",         icon: "BarChart2",     href: "/usage",         roles: ["manager", "admin", "owner"],                                        group: "primary" },
   { key: "team",          label: "Team",          icon: "Users",         href: "/team",          roles: ["manager", "admin", "owner"],                                        group: "primary" },
-  // Secondary nav — operations & admin surfaces, shown below divider
-  { key: "workorders",    label: "Work Orders",   icon: "ClipboardList", href: "/workorders",    roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
-  { key: "schedule",      label: "Schedule",      icon: "CalendarDays",  href: "/schedule",      roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
+  // Secondary — remaining operations and deferred surfaces
   { key: "requests",      label: "Requests",      icon: "Inbox",         href: "/requests",      roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
   { key: "parts",         label: "Parts",         icon: "Package",       href: "/parts",         roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
   { key: "documents",     label: "Documents",     icon: "FileText",      href: "/documents",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
-  { key: "reports",       label: "Reports",       icon: "TrendingUp",    href: "/reports",       roles: ["manager", "scheduler", "admin", "owner"],                           group: "secondary" },
+  { key: "proposals",     label: "Proposals",     icon: "Sparkles",      href: "/proposals",     roles: ["technician", "manager", "scheduler", "admin", "operator", "owner"], group: "secondary" },
   { key: "plc",           label: "Ladder Logic",  icon: "Cpu",           href: "/plc",           roles: ["technician", "manager", "admin", "owner"],                          group: "secondary" },
+  // Assets route kept for backward compat / deep linking — NOT in nav
 ] as const;

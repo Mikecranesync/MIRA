@@ -4,21 +4,6 @@ import { withTenantContext } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Namespace tree — read-only for Phase 2 slice 1.
- *
- * Spec: docs/specs/maintenance-namespace-builder-spec.md §"Namespace tree"
- * Plan: docs/plans/2026-05-15-maintenance-namespace-builder.md §"Phase 2"
- *
- * Reads kg_entities for the current tenant, orders rows by uns_path (ltree),
- * and builds a tree keyed on the dot-separated path. Counts pending /
- * verified proposals per node (left-join on relationship_proposals).
- *
- * Mutation endpoints (PUT for drag-drop move, PATCH for rename) land in
- * Phase 2 slice 2 — they need the kg_approval_state migration (engine
- * lineage, docs/migrations/008_kg_approval_state.sql) that hasn't shipped.
- */
-
 interface KgEntityRow {
   id: string;
   entity_type: string;
@@ -26,6 +11,8 @@ interface KgEntityRow {
   name: string;
   uns_path: string | null;
   created_at: string;
+  files_count: string;
+  equipment_status: string | null;
 }
 
 interface ProposalCountRow {
@@ -37,8 +24,10 @@ interface ProposalCountRow {
 export interface NamespaceNode {
   id: string;
   name: string;
-  kind: string; // entity_type — 'site', 'area', 'line', 'asset', 'component', 'document', ...
+  kind: string;
   unsPath: string | null;
+  filesCount: number;
+  status: string | null;
   counts: {
     children: number;
     proposalsPending: number;
@@ -57,10 +46,26 @@ export async function GET() {
   try {
     const result = await withTenantContext(ctx.tenantId, async (c) => {
       const entitiesRes = await c.query<KgEntityRow>(
-        `SELECT id, entity_type, entity_id, name, uns_path::text AS uns_path, created_at
-         FROM kg_entities
-         WHERE tenant_id = $1::uuid
-         ORDER BY uns_path::text NULLS LAST, name`,
+        `SELECT
+            e.id,
+            e.entity_type,
+            e.entity_id,
+            e.name,
+            e.uns_path::text AS uns_path,
+            e.created_at,
+            (
+              (SELECT COUNT(*) FROM namespace_direct_uploads ndu WHERE ndu.node_id = e.id AND ndu.tenant_id = e.tenant_id) +
+              (SELECT COUNT(*) FROM uploads u WHERE u.namespace_node_id = e.id AND u.tenant_id = e.tenant_id)
+            )::text AS files_count,
+            eq.status AS equipment_status
+         FROM kg_entities e
+         LEFT JOIN cmms_equipment eq
+           ON e.entity_id IS NOT NULL
+           AND e.entity_id ~ '^[0-9a-f-]{36}$'
+           AND eq.entity_id = e.entity_id::uuid
+           AND eq.tenant_id = e.tenant_id
+         WHERE e.tenant_id = $1::uuid
+         ORDER BY e.uns_path::text NULLS LAST, e.name`,
         [ctx.tenantId],
       );
 
@@ -91,7 +96,6 @@ function buildTree(
   entities: KgEntityRow[],
   proposalCounts: ProposalCountRow[],
 ): NamespaceNode[] {
-  // Index proposal counts by uns_path so we can attach without a per-node loop.
   const proposalsByPath = new Map<string, { pending: number; verified: number }>();
   for (const row of proposalCounts) {
     const path = row.uns_path ?? "";
@@ -102,7 +106,6 @@ function buildTree(
     proposalsByPath.set(path, slot);
   }
 
-  // Map every entity to a node, then wire children by uns_path prefix.
   const nodesByPath = new Map<string, NamespaceNode>();
   const roots: NamespaceNode[] = [];
 
@@ -113,6 +116,8 @@ function buildTree(
       name: e.name,
       kind: e.entity_type,
       unsPath: e.uns_path,
+      filesCount: Number(e.files_count) || 0,
+      status: e.equipment_status ?? null,
       counts: {
         children: 0,
         proposalsPending: proposalSlot.pending,
