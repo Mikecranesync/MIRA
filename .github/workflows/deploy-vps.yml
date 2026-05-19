@@ -1,14 +1,21 @@
 name: Deploy to VPS
 
+# Deploy gate (2026-05-18, see docs/specs/staging-environment-spec.md):
+#   This workflow refuses to deploy unless the most-recent "Staging Gate" run
+#   on the same commit succeeded. Staging Gate runs on every PR to main against
+#   the NeonDB staging branch — by the time code lands on main, it has been
+#   graded by the rubric in docs/specs/mira-answer-quality-standard.md.
+#   `workflow_dispatch` hotfixes bypass the check (set inputs.skip_staging_gate=true).
+
 on:
   # Triggered by smoke-test.yml completing on main — only deploys when smoke passes.
-  # This is the normal push-to-main path: push → smoke-test.yml → deploy-vps.yml.
+  # Push → smoke-test.yml → deploy-vps.yml (also gated by Staging Gate verification).
   workflow_run:
     workflows: ["Smoke Test"]
     types: [completed]
     branches: [main]
 
-  # Manual deploy bypass — use for hotfixes when you need to deploy without
+  # Manual deploy bypass — for hotfixes when you need to deploy without
   # waiting for smoke. Still runs health checks post-deploy.
   workflow_dispatch:
     inputs:
@@ -16,6 +23,14 @@ on:
         description: "Space-separated services to rebuild (leave blank for all)"
         required: false
         default: ""
+      skip_staging_gate:
+        description: "Skip staging-gate verification (hotfix only — record reason in PR/issue)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 concurrency:
   group: deploy-vps
@@ -35,6 +50,58 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Verify Staging Gate passed
+        # Refuse to deploy a commit that hasn't been graded by the staging gate.
+        # This repo uses squash-merge, so the SHA on main is a NEW commit that
+        # no PR workflow ever ran on. We resolve the squashed merge commit
+        # back to its source PR, then check Staging Gate against the PR head.
+        # On workflow_dispatch, the operator may set skip_staging_gate=true.
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_staging_gate != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # On workflow_run, the head_sha is the commit that landed on main.
+          # On manual dispatch (without skip), use the checked-out HEAD.
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "Resolving PR head for merge commit $DEPLOY_SHA"
+          # /commits/{sha}/pulls returns PRs that this commit was the merge of.
+          PR_HEAD_SHA=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" \
+            --jq '[.[] | select(.merge_commit_sha == "'"$DEPLOY_SHA"'") | .head.sha] | first // empty' 2>/dev/null || echo "")
+          if [ -z "$PR_HEAD_SHA" ]; then
+            # Fallback: any PR associated with this commit (covers rebase-merge
+            # corner cases where merge_commit_sha doesn't exactly match).
+            PR_HEAD_SHA=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" \
+              --jq '.[0].head.sha // empty' 2>/dev/null || echo "")
+          fi
+          if [ -z "$PR_HEAD_SHA" ]; then
+            echo "::error::No PR associated with $DEPLOY_SHA. Direct pushes to main are not allowed to deploy. Open a PR (which will run Staging Gate), or use workflow_dispatch with skip_staging_gate=true for verified hotfixes."
+            exit 1
+          fi
+          echo "PR head SHA: $PR_HEAD_SHA"
+          STATUS=$(gh run list \
+            --repo "$REPO" \
+            --workflow "Staging Gate" \
+            --commit "$PR_HEAD_SHA" \
+            --limit 1 \
+            --json status,conclusion \
+            --jq '.[0] | "\(.status):\(.conclusion)"' 2>/dev/null || echo "")
+          echo "Most recent Staging Gate run on $PR_HEAD_SHA: $STATUS"
+          case "$STATUS" in
+            completed:success)
+              echo "✓ staging gate passed — proceeding with deploy"
+              ;;
+            "")
+              echo "::error::No Staging Gate run found for PR head $PR_HEAD_SHA. Re-run the gate (gh workflow run staging-gate.yml) or use workflow_dispatch with skip_staging_gate=true for verified hotfixes."
+              exit 1
+              ;;
+            *)
+              echo "::error::Staging Gate did not pass for PR head $PR_HEAD_SHA (status=$STATUS). Aborting deploy."
+              exit 1
+              ;;
+          esac
 
       - name: Set up SSH
         run: |

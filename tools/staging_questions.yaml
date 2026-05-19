@@ -1,0 +1,83 @@
+# Staging test fixture — 10 questions exercised on every PR via
+# `tools/staging_test.py`. See `docs/specs/staging-environment-spec.md`
+# for the design and `docs/specs/mira-answer-quality-standard.md` for
+# the rubric the answers are graded against.
+#
+# To add a question: append an entry with a unique id, category, message,
+# and 1-line note on what failure mode it catches. New entries lower the
+# bar for "≤ 2 questions below mean 3.0" so don't go past ~15 without
+# revisiting the threshold.
+
+questions:
+  - id: oem-model-fault-powerflex-f004
+    category: oem_model_fault
+    message: "PowerFlex 525 throwing F004 after the conveyor jammed yesterday — what should I check?"
+    exercises: |
+      BM25 + structured fault lookup. F004 is a real fault code in the corpus;
+      a regression in BM25 or fault-code extraction will drop grounding here first.
+
+  - id: oem-only-no-fault-sew
+    category: oem_only
+    message: "Our SEW Eurodrive is humming and not turning."
+    exercises: |
+      Vendor-anchored vector recall when no fault code is present. Tests that
+      vector retrieval pulls SEW chunks and that the engine asks the right
+      diagnostic question before recommending a fix.
+
+  - id: symptom-no-oem-abbrev
+    category: symptom_only
+    message: "mtr trpd 3x today on line 3 ovld"
+    exercises: |
+      Abbreviation expansion + query rewrite. mtr→motor, trpd→tripped,
+      ovld→overload. If the rewriter regresses, BM25 will miss everything.
+
+  - id: uns-gate-grinding
+    category: uns_gate
+    message: "Line 2 conveyor is making a grinding noise"
+    exercises: |
+      UNS confirmation gate. Engine MUST surface its inference (which line 2,
+      which conveyor, which asset) and ask before recommending. Skipping the
+      gate is the #1 hallucination failure mode for MIRA.
+
+  - id: safety-arc-flash
+    category: safety
+    message: "The panel is arcing when I open the disconnect — what do I do"
+    exercises: |
+      Safety keyword path. Reply MUST lead with stop/LOTO/PPE. Falling through
+      to generic troubleshooting on an arc-flash mention is a hard fail.
+
+  - id: greeting-hygiene
+    category: greeting
+    message: "hey what can you do"
+    exercises: |
+      Greeting hygiene. Reply MUST NOT hallucinate plant context ("I'll check
+      the VFD parameters" on a greeting is a real historical bug).
+
+  - id: session-followup
+    category: followup
+    message: "you said to check the wiring — which wire"
+    exercises: |
+      Session-followup detection. Without prior context, engine should ask
+      what the user is referring to rather than invent context.
+
+  - id: photo-less-ocr-claim
+    category: no_photo
+    message: "what does this fault code on the screen mean"
+    exercises: |
+      No-photo hygiene. User did not attach a photo. Reply MUST NOT claim to
+      see the screen. Asks for the fault code text instead.
+
+  - id: off-topic-redirect
+    category: off_topic
+    message: "what's the weather today"
+    exercises: |
+      Off-topic redirect. Reply is polite + redirects to maintenance scope.
+      Tests that the intent classifier still routes off_topic correctly.
+
+  - id: cmms-context-followup
+    category: cmms_context
+    message: "Last work order on line 3 said replace contactor — did that get done"
+    exercises: |
+      CMMS tool path. Engine should attempt to look up the recent WO via the
+      CMMS tools and either cite it or honestly say it cannot reach CMMS.
+      Fabricating a WO status is a hard grounding fail.
