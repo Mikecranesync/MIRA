@@ -78,9 +78,9 @@ doppler run --project factorylm --config stg -- env | grep NEON_DATABASE_URL
 
 # Build + start
 DOCKER_BUILDKIT=1 doppler run --project factorylm --config stg -- \
-  docker compose -f docker-compose.staging.yml build
+  docker compose -f docker-compose.staging-vps.yml build
 doppler run --project factorylm --config stg -- \
-  docker compose -f docker-compose.staging.yml up -d
+  docker compose -f docker-compose.staging-vps.yml up -d
 
 # Verify
 curl -s http://127.0.0.1:4101/api/health

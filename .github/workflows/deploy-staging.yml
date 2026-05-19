@@ -1,6 +1,6 @@
 name: Deploy to Staging VPS
 
-# Deploys the docker-compose.staging.yml stack to the production VPS
+# Deploys the docker-compose.staging-vps.yml stack to the production VPS
 # (165.245.138.91) under a separate Docker network, with stg-* container
 # names and offset host ports (4xxx). Production stack on saas.yml is
 # never touched — see docs/runbooks/staging-vps.md for isolation rules.
@@ -82,7 +82,7 @@ jobs:
           if [ "${RESET_VOLUMES:-false}" = "true" ]; then
             echo "=== RESET_VOLUMES=true — destroying staging volumes ==="
             doppler run --project factorylm --config stg -- \
-              docker compose -f docker-compose.staging.yml down -v
+              docker compose -f docker-compose.staging-vps.yml down -v
           fi
 
           echo "=== Pre-deploy cleanup: remove any stale stg-* containers ==="
@@ -92,15 +92,15 @@ jobs:
 
           echo "=== Build staging images ==="
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging.yml build $TARGETS
+            docker compose -f docker-compose.staging-vps.yml build $TARGETS
 
           echo "=== Bring up full staging stack ==="
           doppler run --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging.yml up -d --remove-orphans
+            docker compose -f docker-compose.staging-vps.yml up -d --remove-orphans
 
           # Force-recreate only the rebuilt services so their new images take effect.
           doppler run --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging.yml up -d --no-deps --force-recreate $TARGETS
+            docker compose -f docker-compose.staging-vps.yml up -d --no-deps --force-recreate $TARGETS
 
           echo "=== Health checks ==="
           sleep 10
@@ -113,7 +113,7 @@ jobs:
 
           echo "=== Deploy complete ==="
           doppler run --project factorylm --config stg -- \
-            docker compose -f docker-compose.staging.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+            docker compose -f docker-compose.staging-vps.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
           # Hard guard — fail loudly if any production container disappeared.
           PROD_RUNNING=$(docker ps --filter "name=^mira-" --filter "status=running" --format '{{.Names}}' | grep -v '^stg-' | wc -l)
@@ -135,4 +135,4 @@ jobs:
         if: failure()
         run: |
           echo "::error::Staging deploy failed — SSH to 165.245.138.91 and run:"
-          echo "::error::  cd /opt/mira-staging && doppler run --project factorylm --config stg -- docker compose -f docker-compose.staging.yml logs --tail=80"
+          echo "::error::  cd /opt/mira-staging && doppler run --project factorylm --config stg -- docker compose -f docker-compose.staging-vps.yml logs --tail=80"
