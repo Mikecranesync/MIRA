@@ -74,3 +74,35 @@ ls mira-hub/db/migrations/ | grep -E '018_relationship_proposals|016_component_t
 ls docs/migrations/ | grep -iE 'ai_suggestions|proposals|wizard|health_scores'
 # (expect: no matches)
 ```
+
+---
+
+## Update (2026-05-19): Empirical reality for `kg_entities` / `kg_relationships`
+
+The original Decision (above) reads: *"`docs/migrations/` continues to own engine-side state (KG entities/relationships, UNS-path enforcement on those tables)…"*
+
+That ownership claim was aspirational. The empirical reality, verified 2026-05-19 via the rewritten `db-inspect.yml` against prod NeonDB:
+
+- **Both `kg_entities` and `kg_relationships` in prod were created by `mira-hub/db/migrations/001_knowledge_graph.sql`**, with the hub-shape columns (`source_id`, `target_id`, `relationship_type`).
+- `docs/migrations/006_kg_bridge.sql` declares the same tables with **different column names** (`source_entity`, `target_entity`, `relation_type`) under `CREATE TABLE IF NOT EXISTS …`. Because hub-001 ran first in prod, engine-006 became a no-op for those tables.
+- Most engine-side column additions DID land — `kg_entities.uns_path` (engine-migration 007), `kg_*.approval_state / proposed_by / evidence_summary` (engine-migration 008), `kg_*.source_chunk_id` (hub-migration 024) — all via `ALTER TABLE`. Only the original `CREATE TABLE` shape was decided by the race.
+
+### Consequences not foreseen in the original Decision
+
+- `mira-crawler/ingest/kg_writer.py:upsert_relationship` was authored against engine-006's column names (`source_entity` / `target_entity` / `relation_type`) and **silently 500-d on every call** from introduction until 2026-05-19. The 30 `kg_relationships` rows in prod at that date came entirely from hub-TS code and `mira-crawler/tasks/full_ingest_pipeline.py` (already hub-shape, lines 426-429 / 459-463).
+- Fixed in PR #1443 (merge commit `623a43d1`): kg_writer now writes to `source_id` / `target_id` / `relationship_type`. Verified by db-inspect run [#26130051449](https://github.com/Mikecranesync/MIRA/actions/runs/26130051449): `kg_relationships` row count 30 → 299; `has_manual` edges 0 → 269, matching the 269 distinct (tenant, manufacturer, model) triples enumerated by `tools/uns_backfill.py`.
+
+### Revised rule
+
+The Decision still stands for **product-surface schema** (proposals / wizard / readiness / health scores / approvals — all hub-side). For `kg_entities` / `kg_relationships` specifically:
+
+1. **Treat hub-001 as the canonical shape.** Future column additions to either table go through `mira-hub/db/migrations/` (`ALTER TABLE`), not `docs/migrations/`. Do not author another competing `CREATE TABLE` under either lineage.
+2. **Python writers use hub-001 column names.** New code targeting `kg_relationships` uses `source_id` / `target_id` / `relationship_type`. The Python parameter names `source_entity` / `target_entity` / `relation_type` are preserved in `kg_writer.py` for back-compat with callers but are **not** the column names in flight.
+3. **Engine-side migrations that ALTER these tables can continue to live under `docs/migrations/`** when the ALTER is engine-policy (e.g., engine-008's `approval_state`). What's forbidden is a parallel `CREATE TABLE` under either lineage.
+4. **Verification path** — `db-inspect.yml` (rewritten in PR #1443 to use `psql` directly) is the read-only inspector. Run it before debugging any "the writer ran but no rows appeared" symptom; it surfaces column shape, indexes, RLS state, connecting role.
+
+### What this Update does NOT change
+
+- The Decision about **proposals / evidence / wizard / readiness / QR / components** (the bulk of this ADR). Hub-side migrations 012, 016, 017, 018, 019, 020 remain the canonical home; no parallel set under `docs/migrations/`.
+- The "engine reads what humans verified" invariant. `kg_relationships.approval_state` continues to record the verified-state copy; `relationship_proposals.status` continues to be the upstream proposal queue.
+- The two-stewardships-two-cadences rationale. Product-surface schema rides with hub Next.js code; engine policy ALTERs ride with mira-bots.
