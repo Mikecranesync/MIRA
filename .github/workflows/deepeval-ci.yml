@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'mira-bots/**'
+      - 'evals/**'
+      - 'tests/golden_*.csv'
     branches:
       - main
       - develop
@@ -42,6 +44,32 @@ jobs:
             --output benchmarks/deepeval_results/
         # offline mode: scores reference responses, no live bot needed
         # fails the job if overall pass rate < 80% (exit code 1)
+        # Includes case `de-in-06-gs11-modbus` — guards the 2026-05-18 GS11
+        # demo regression (embedding sidecar down → BM25 fallthrough).
+
+      - name: GS11 grounding regression layer (unit + engine + gate)
+        run: |
+          pip install pytest pytest-asyncio sqlalchemy
+          # Two invocations: tests/ and mira-bots/tests/ each ship a conftest.py
+          # with the same module name and pytest refuses to mix them in one run.
+          python3 -m pytest -v \
+            mira-bots/tests/test_recall_no_embedding_fallthrough.py \
+            mira-bots/tests/test_engine_no_embedding_gs11.py
+          python3 -m pytest -v tests/test_quality_gate_stream_aware.py
+        # See wiki/references/bot-grounding-tests.md for the full test surface.
+
+      - name: RAGAS sanity on GS11 golden set (advisory)
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          pip install ragas datasets 2>&1 | tail -5 || echo "ragas install failed — skipping"
+          python evals/run_eval.py --use-ragas \
+            --csv tests/golden_gs11_conveyor.csv || true
+        # Advisory: query_stub.py live mode is broken (uses removed Anthropic +
+        # nomic-embed-text on localhost). This step validates the CSV stays
+        # parse-able and emits a RAGAS artifact. Promote to a hard gate once
+        # evals/query_stub.py is migrated to the Groq cascade.
+        continue-on-error: true
 
       - name: Upload results
         if: always()
