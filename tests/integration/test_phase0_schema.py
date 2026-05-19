@@ -365,6 +365,102 @@ def test_propose_from_nameplate_writes_suggestion(conn):
                     )
 
 
+def test_propose_from_nameplate_template_match_writes_instance(conn):
+    """Template-match branch: nameplate matches an existing component_templates
+    row → worker writes BOTH an installed_component_instances row AND an
+    ai_suggestions row (suggestion_type='kg_entity').
+
+    This exercises the code path that the prior test deliberately avoids
+    (it uses a unique model so no template matches). Without this, a typo
+    on the installed_component_instances INSERT would never trip in CI.
+    """
+    from shared.workers.photo_ingest_worker import propose_from_nameplate
+
+    template_id = str(uuid.uuid4())
+    template_mfr = "PhaseZeroVendor"
+    template_model = f"TPL-{uuid.uuid4().hex[:8]}"
+
+    suggestion_id: str | None = None
+    instance_id: str | None = None
+
+    try:
+        # Seed a component_templates row so the worker's _find_template
+        # branch returns a match. component_templates is global (no
+        # tenant_id) — _find_template selects by (manufacturer, model)
+        # case-insensitive. Most NOT NULL JSONB fields have '{}' / '[]'
+        # defaults; component_category + component_type do not.
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO component_templates
+                          (id, manufacturer, model,
+                           component_category, component_type)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (
+                        template_id,
+                        template_mfr, template_model,
+                        "drive", "vfd",
+                    ),
+                )
+
+        result = propose_from_nameplate(
+            tenant_id=STAGING_TENANT,
+            fields={
+                "manufacturer": template_mfr,
+                "model": template_model,
+                "serial": "TPL-SN-1",
+                "voltage": "480V",
+                "fla": "3.5A",
+                "hp": "2",
+                "frequency": "60Hz",
+                "rpm": "1750",
+            },
+            chat_id="phase0-tplmatch",
+        )
+        assert result, "worker refused to write for template-match nameplate"
+        suggestion_id = result["suggestion_id"]
+        instance_id = result.get("instance_id")
+        assert result["suggestion_type"] == "kg_entity", (
+            f"expected kg_entity (template matched), got {result['suggestion_type']}"
+        )
+        assert instance_id, "kg_entity branch must produce an installed_component_instance"
+
+        # Confirm the installed_component_instances row exists with the
+        # template binding the worker claims it wrote.
+        with conn:
+            with conn.cursor() as cur:
+                _with_tenant(cur, STAGING_TENANT)
+                cur.execute(
+                    "SELECT template_id, human_confirmed, component_name "
+                    "FROM installed_component_instances WHERE id = %s",
+                    (instance_id,),
+                )
+                row = cur.fetchone()
+                assert row is not None, "instance row missing"
+                tid, confirmed, cname = row
+                assert str(tid) == template_id
+                assert confirmed is False, \
+                    "proposed-from-photo instance must not be auto-confirmed"
+                assert template_model in cname
+    finally:
+        with conn:
+            with conn.cursor() as cur:
+                if suggestion_id:
+                    cur.execute(
+                        "DELETE FROM ai_suggestions WHERE id = %s",
+                        (suggestion_id,),
+                    )
+                if instance_id:
+                    cur.execute(
+                        "DELETE FROM installed_component_instances WHERE id = %s",
+                        (instance_id,),
+                    )
+                cur.execute(
+                    "DELETE FROM component_templates WHERE id = %s",
+                    (template_id,),
+                )
+
+
 def test_propose_from_nameplate_empty_tenant_no_write():
     """Early exit: empty tenant → no NeonDB call at all."""
     from shared.workers.photo_ingest_worker import propose_from_nameplate

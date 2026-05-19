@@ -4,7 +4,7 @@
 **PR:** [#1418](https://github.com/Mikecranesync/MIRA/pull/1418) — *feat: Phase 0 — schema (025/026/027) + photo→KG demo loop*
 **Branch:** `claude/happy-dirac-094c0b`
 **Environment:** Doppler `factorylm/stg` → Neon staging branch (`ep-polished-hall-ahcqtcxe-pooler.c-3.us-east-1.aws.neon.tech`)
-**Result:** **PASS** — 35/35 schema checks + 6/6 integration tests green
+**Result:** **PASS** — 35/35 schema checks + 7/7 integration tests green
 
 ---
 
@@ -29,7 +29,7 @@ This run produces deterministic proof for all four.
 | Artifact | Purpose |
 |---|---|
 | `tools/verify_phase0_deploy.py` | Post-apply schema checker. Prints a PASS/FAIL table for every table, column, index, RLS policy, grant, and CHECK constraint declared by migrations 025/026/027. Exits 1 on any drift. |
-| `tests/integration/test_phase0_schema.py` | Six pytest tests against a real Neon branch — three round-trips, one RLS isolation, one demo-loop end-to-end, one early-exit. |
+| `tests/integration/test_phase0_schema.py` | Seven pytest tests against a real Neon branch — three round-trips, one RLS isolation, demo-loop end-to-end (no-match and template-match branches), one early-exit. |
 | `.github/workflows/migration-verify.yml` | Auto-apply + verify on every PR that touches `mira-hub/db/migrations/**`. Runs against the `staging` environment. |
 | `.github/workflows/photo-e2e-verify.yml` | Auto-runs the demo-loop subset on every PR that touches the worker, the ingest helper, or the engine glue. |
 
@@ -110,21 +110,22 @@ Exit code: `0`.
 ### Integration tests
 
 <details>
-<summary>6/6 PASS — click to expand</summary>
+<summary>7/7 PASS — click to expand</summary>
 
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0
-collected 6 items
+collected 7 items
 
-tests/integration/test_phase0_schema.py::test_tag_entities_roundtrip                       PASSED [ 16%]
-tests/integration/test_phase0_schema.py::test_wiring_connections_roundtrip                 PASSED [ 33%]
-tests/integration/test_phase0_schema.py::test_ai_suggestions_roundtrip                     PASSED [ 50%]
-tests/integration/test_phase0_schema.py::test_rls_tenant_isolation_ai_suggestions          PASSED [ 66%]
-tests/integration/test_phase0_schema.py::test_propose_from_nameplate_writes_suggestion     PASSED [ 83%]
-tests/integration/test_phase0_schema.py::test_propose_from_nameplate_empty_tenant_no_write PASSED [100%]
+tests/integration/test_phase0_schema.py::test_tag_entities_roundtrip                            PASSED [ 14%]
+tests/integration/test_phase0_schema.py::test_wiring_connections_roundtrip                      PASSED [ 28%]
+tests/integration/test_phase0_schema.py::test_ai_suggestions_roundtrip                          PASSED [ 42%]
+tests/integration/test_phase0_schema.py::test_rls_tenant_isolation_ai_suggestions               PASSED [ 57%]
+tests/integration/test_phase0_schema.py::test_propose_from_nameplate_writes_suggestion          PASSED [ 71%]
+tests/integration/test_phase0_schema.py::test_propose_from_nameplate_template_match_writes_instance PASSED [ 85%]
+tests/integration/test_phase0_schema.py::test_propose_from_nameplate_empty_tenant_no_write      PASSED [100%]
 
-============================== 6 passed in 2.98s ===============================
+============================== 7 passed in 4.16s ===============================
 ```
 
 What each test exercises:
@@ -135,7 +136,8 @@ What each test exercises:
 | `test_wiring_connections_roundtrip` | INSERT a `wire_number='W-1147'` `function_class='signal'` row, verify `approval_state='proposed'` default. |
 | `test_ai_suggestions_roundtrip` | INSERT a `component_profile` suggestion, verify `status='pending'`, `risk_level='low'`, `proposed_by='llm:unknown'` defaults. |
 | `test_rls_tenant_isolation_ai_suggestions` | `SET LOCAL ROLE factorylm_app`, insert as tenant A, query as tenant B → 0 rows; query as tenant A → 1 row. Owner cleans up. |
-| `test_propose_from_nameplate_writes_suggestion` | Full demo loop — call the worker, assert it returns a `suggestion_id`, re-query the table from a fresh transaction, confirm `proposed_by='photo:phase0-verify'`. Uses a unique model number to force the `component_profile` branch (no template match). |
+| `test_propose_from_nameplate_writes_suggestion` | Demo loop — **no-template-match branch**. Call the worker with a unique model so `_find_template()` returns `None` → suggestion_type='component_profile', no `installed_component_instances` row. Confirms the `proposed_by='photo:phase0-verify'` provenance. |
+| `test_propose_from_nameplate_template_match_writes_instance` | Demo loop — **template-match branch**. Seed a `component_templates` row, then call the worker with matching manufacturer/model → suggestion_type='kg_entity', AND an `installed_component_instances` row with `human_confirmed=false` and the correct `template_id` binding. Without this test, a typo on the instance INSERT would never surface in CI. |
 | `test_propose_from_nameplate_empty_tenant_no_write` | Early-exit: empty `tenant_id` → `{}` returned, no DB call. |
 
 </details>
