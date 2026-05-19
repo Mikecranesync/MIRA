@@ -1,4 +1,9 @@
-# Hot Cache — 2026-05-16 — CHARLIE
+# Hot Cache — 2026-05-19 — CHARLIE
+
+## eval-fixer run — 2026-05-19
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (13 days stale, unchanged since 2026-05-06)
+- Action: filed #1419 (multi-cluster hard-stop hit: engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3). Prior canonical #1217 is now closed, so #1419 stands open instead of being closed as a dupe.
+- **Nightly eval job still stalled — same scorecard for 13 days.** No new signal. Action needed: regenerate scorecard (`doppler run -- python3 tests/eval/offline_run.py --suite text`) or land a fix on one of the open clusters before the next eval-fixer run can produce new signal.
 
 ## eval-fixer run — 2026-05-18
 - Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (12 days stale, unchanged since 2026-05-06)
