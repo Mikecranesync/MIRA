@@ -1,0 +1,87 @@
+# MIRA Staging — Phase 1 surface for Coolify
+#
+# Pulls service definitions from the existing module composes so this file
+# does NOT fork the production compose graph. Coolify imports this directly.
+#
+# Phase 1 services: mira-hub, mira-pipeline, mira-mcp, mira-web, atlas-api, atlas-db
+# Explicitly excluded: bots (shared Slack token with prod), sidecar (sunset),
+#   ingest/docling (not needed for Hub preview), relay, sync, nango.
+# See docs/runbooks/coolify-staging.md for the full reasoning.
+#
+# Env contract: all values come from Coolify's Doppler-injected env (factorylm/stg).
+# Never hand-paste prod values.
+
+include:
+  - ../mira-core/docker-compose.yml      # mira-core, mcpo (will subset via Coolify UI)
+  - ../mira-mcp/docker-compose.yml       # mira-mcp
+  - ../mira-cmms/docker-compose.yml      # atlas-db, atlas-api, atlas-frontend
+  - ../mira-web/docker-compose.yml       # mira-web
+
+# Hub + pipeline don't have module-local composes; declare them here so they
+# track the canonical saas.yml shape. Update both when saas.yml shifts.
+services:
+  mira-hub:
+    build:
+      context: ../mira-hub
+      args:
+        NEXT_PUBLIC_BASE_PATH: ""
+        NEXT_PUBLIC_API_BASE: ""
+        NEXT_PUBLIC_PIPELINE_API_URL: ${NEXT_PUBLIC_PIPELINE_API_URL:-https://staging.factorylm.com}
+    container_name: mira-hub
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://staging.factorylm.com}
+      - AUTH_SECRET=${AUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://staging.factorylm.com/api/auth}
+      - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://staging.factorylm.com/api/auth}
+      - HUB_AUTH_GOOGLE_CLIENT_ID=${HUB_AUTH_GOOGLE_CLIENT_ID}
+      - HUB_AUTH_GOOGLE_CLIENT_SECRET=${HUB_AUTH_GOOGLE_CLIENT_SECRET}
+      - HUB_TENANT_ID=${HUB_TENANT_ID:-mike-staging}
+      - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:3000/api/health/ || wget -qO- http://127.0.0.1:3000/hub/api/health/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - core-net
+    # Coolify magic-routing label — handles SSL + reverse proxy automatically.
+    labels:
+      - coolify.managed=true
+      - traefik.http.routers.mira-hub.rule=Host(`staging.factorylm.com`)
+      - traefik.http.services.mira-hub.loadbalancer.server.port=3000
+
+  mira-pipeline:
+    build:
+      context: ../mira-pipeline
+    container_name: mira-pipeline
+    restart: unless-stopped
+    environment:
+      - INFERENCE_BACKEND=cloud
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY}
+      - MIRA_MCP_URL=http://mira-mcp:8001
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9099/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - core-net
+    labels:
+      - coolify.managed=true
+      - traefik.http.routers.mira-pipeline.rule=Host(`staging.factorylm.com`) && PathPrefix(`/v1`)
+      - traefik.http.services.mira-pipeline.loadbalancer.server.port=9099
+
+networks:
+  core-net:
+    external: false
+  cmms-net:
+    external: false
