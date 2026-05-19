@@ -53,14 +53,26 @@ export async function requireSession(): Promise<SessionContext> {
     throw new UnauthorizedError();
   }
 
+  // hub_tenants.id is TEXT, but most data tables (kg_entities, relationship_proposals,
+  // wizard_progress, namespace_versions, etc.) declare tenant_id UUID. A legacy seed
+  // ('mike' as a tenant slug) blew up every UUID-cast query with HTTP 500. Treat any
+  // non-UUID session tenant as unauthenticated so the user gets a clean 401/redirect
+  // instead of a 500 on every API call.
+  const tid = token.tid as string;
+  if (!UUID_RE.test(tid)) {
+    throw new UnauthorizedError();
+  }
+
   return {
     userId: token.uid as string,
-    tenantId: token.tid as string,
+    tenantId: tid,
     email: (token.email as string) ?? "",
     status: (token.status as string) ?? "trial",
     trialExpiresAt: (token.trialExpiresAt as string) ?? null,
   };
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Resolve the session or return a 401 NextResponse. Use at the top of
