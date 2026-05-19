@@ -47,7 +47,7 @@ SURFACES: Sequence[tuple[str, str, set[int]]] = (
     ("pipeline_models",   "https://app.factorylm.com/v1/models",          {200, 401}),
     ("scanbe_health",     "https://app.factorylm.com/api/scanbe/healthz", {200}),
     ("scan_app",          "https://app.factorylm.com/scan/",              {200}),
-    ("hub_feed_login",    "https://app.factorylm.com/feed/",              {200}),
+    ("hub_feed_login",    "https://app.factorylm.com/feed/",              {200, 307}),  # 307 = nextauth login redirect = healthy middleware
     ("atlas_root",        "https://cmms.factorylm.com/",                  {200}),
     ("marketing_landing", "https://factorylm.com/",                       {200}),
 )
