@@ -1,0 +1,138 @@
+name: Deploy to Staging VPS
+
+# Deploys the docker-compose.staging-vps.yml stack to the production VPS
+# (165.245.138.91) under a separate Docker network, with stg-* container
+# names and offset host ports (4xxx). Production stack on saas.yml is
+# never touched — see docs/runbooks/staging-vps.md for isolation rules.
+
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Space-separated services to rebuild (blank = all)"
+        required: false
+        default: ""
+      reset_volumes:
+        description: "Destroy staging volumes before bringing up (DANGER — wipes staging Atlas DB)"
+        required: false
+        default: "false"
+
+  # Auto-deploy when a PR is merged to a staging branch.
+  push:
+    branches:
+      - staging
+      - "release/*"
+
+concurrency:
+  group: deploy-staging-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy MIRA staging to VPS
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy
+        env:
+          SERVICES: ${{ github.event.inputs.services }}
+          RESET_VOLUMES: ${{ github.event.inputs.reset_volumes }}
+        run: |
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+            root@165.245.138.91 "SERVICES='$SERVICES' RESET_VOLUMES='$RESET_VOLUMES' bash -s" << 'ENDSSH'
+
+          set -euo pipefail
+
+          # Staging lives in its own working copy so a force-reset here never
+          # touches the production checkout at /opt/mira.
+          STG_DIR=/opt/mira-staging
+          if [ ! -d "$STG_DIR/.git" ]; then
+            echo "=== First-time clone of staging working copy ==="
+            git clone https://github.com/Mikecranesync/MIRA.git "$STG_DIR"
+          fi
+
+          cd "$STG_DIR"
+          mkdir -p data data/sessions data/agent-runs
+
+          echo "=== Pull latest code ==="
+          git fetch origin
+          # Default to the same ref that triggered this workflow. workflow_dispatch
+          # also lands here — use the branch the user dispatched from.
+          REF="${GITHUB_REF_NAME:-staging}"
+          if git show-ref --verify --quiet "refs/remotes/origin/$REF"; then
+            git reset --hard "origin/$REF"
+          else
+            git reset --hard origin/main
+          fi
+
+          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web}"
+          echo "Rebuild targets: $TARGETS"
+
+          if [ "${RESET_VOLUMES:-false}" = "true" ]; then
+            echo "=== RESET_VOLUMES=true — destroying staging volumes ==="
+            doppler run --project factorylm --config stg -- \
+              docker compose -f docker-compose.staging-vps.yml down -v
+          fi
+
+          echo "=== Pre-deploy cleanup: remove any stale stg-* containers ==="
+          for svc in $TARGETS atlas-api atlas-db atlas-minio; do
+            docker rm -f "stg-${svc}" 2>/dev/null || true
+          done
+
+          echo "=== Build staging images ==="
+          DOCKER_BUILDKIT=1 doppler run --project factorylm --config stg -- \
+            docker compose -f docker-compose.staging-vps.yml build $TARGETS
+
+          echo "=== Bring up full staging stack ==="
+          doppler run --project factorylm --config stg -- \
+            docker compose -f docker-compose.staging-vps.yml up -d --remove-orphans
+
+          # Force-recreate only the rebuilt services so their new images take effect.
+          doppler run --project factorylm --config stg -- \
+            docker compose -f docker-compose.staging-vps.yml up -d --no-deps --force-recreate $TARGETS
+
+          echo "=== Health checks ==="
+          sleep 10
+          echo "--- stg-mira-hub (4101) ---"
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4101/api/health || echo "FAIL"
+          echo "--- stg-mira-pipeline (4099) ---"
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4099/health || echo "FAIL"
+          echo "--- stg-atlas-api (4088) ---"
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:4088/ || echo "FAIL"
+
+          echo "=== Deploy complete ==="
+          doppler run --project factorylm --config stg -- \
+            docker compose -f docker-compose.staging-vps.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+
+          # Hard guard — fail loudly if any production container disappeared.
+          PROD_RUNNING=$(docker ps --filter "name=^mira-" --filter "status=running" --format '{{.Names}}' | grep -v '^stg-' | wc -l)
+          echo "Production mira-* containers still running: $PROD_RUNNING"
+          if [ "$PROD_RUNNING" -lt 3 ]; then
+            echo "::error::Production container count looks too low — investigate before declaring success"
+          fi
+          ENDSSH
+
+      - name: Print staging URL
+        if: success()
+        run: |
+          echo "::notice::Staging Hub: http://165.245.138.91:4101"
+          echo "::notice::Staging Pipeline: http://165.245.138.91:4099/health"
+          echo "::notice::Staging Web: http://165.245.138.91:4200"
+          echo "::notice::Staging Atlas API: http://165.245.138.91:4088"
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "::error::Staging deploy failed — SSH to 165.245.138.91 and run:"
+          echo "::error::  cd /opt/mira-staging && doppler run --project factorylm --config stg -- docker compose -f docker-compose.staging-vps.yml logs --tail=80"
