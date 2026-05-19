@@ -85,7 +85,7 @@ function buildCsp(nonce: string): string {
     `font-src 'self' https://fonts.gstatic.com`,
     `img-src 'self' data: https:`,
     `connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com`,
-    `frame-src https://accounts.google.com https://js.stripe.com https://hooks.stripe.com`,
+    `frame-src https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io`,
   ].join("; ");
 }
 
