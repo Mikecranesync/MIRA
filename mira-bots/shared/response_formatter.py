@@ -291,12 +291,19 @@ def _format_citation_label(c: dict) -> str:
     3. If only source_url is set, parse the URL stem with the same pattern, and
        infer manufacturer from the hostname when possible.
     4. Otherwise, fall back to whatever non-empty pieces we have.
-    Always optionally append the section if present.
+    Always optionally append the section, then the page number (when present).
     """
     mfr = (c.get("manufacturer") or "").strip()
     mdl = (c.get("model_number") or "").strip()
     section = (c.get("section") or "").strip()
     src_url = (c.get("source_url") or "").strip()
+    # Pull page_num from the top-level field (set by rag_worker._build_kb_status)
+    # and fall back to metadata for callers that haven't flattened it yet.
+    page_num = c.get("page_num")
+    if page_num is None:
+        meta = c.get("metadata")
+        if isinstance(meta, dict):
+            page_num = meta.get("page_num")
 
     label = ""
     if mdl:
@@ -325,6 +332,8 @@ def _format_citation_label(c: dict) -> str:
 
     if section:
         label = f"{label} — {section}"
+    if isinstance(page_num, int) and page_num > 0:
+        label = f"{label}, p. {page_num}"
     return label
 
 
