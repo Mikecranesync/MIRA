@@ -1,0 +1,110 @@
+# MIRA staging — bot path only, runs on CHARLIE against NeonDB staging branch.
+#
+# Spec:    docs/specs/staging-environment-spec.md
+# Runbook: docs/runbooks/staging-environment.md
+#
+# Usage (CHARLIE):
+#   doppler run --project factorylm --config stg -- docker compose -f docker-compose.staging.yml up -d --build
+#   docker compose -f docker-compose.staging.yml logs -f mira-bot-telegram-staging
+#   docker compose -f docker-compose.staging.yml down
+#
+# Differences vs. docker-compose.saas.yml (prod):
+#   - Reads NEON_DATABASE_URL from `factorylm/stg` Doppler config (staging branch)
+#   - Telegram token is `STAGING_TELEGRAM_BOT_TOKEN` (separate @MiraStaging_bot)
+#   - Pipeline bound to :9098 to coexist with a local prod pipeline on :9099
+#   - No mira-core / mira-mcp / mira-ingest / mira-hub / atlas — engine path only
+#   - `restart: "no"` — staging is operator-launched, not always-on
+#   - 256 MB memory caps — CHARLIE has limited headroom alongside other dev work
+
+x-staging-env: &staging-env
+  MIRA_DB_PATH: /mira-db/mira.db
+  NEON_DATABASE_URL: ${NEON_DATABASE_URL:?staging must point at a NeonDB staging branch}
+  MIRA_TENANT_ID: ${MIRA_TENANT_ID:-staging}
+  INFERENCE_BACKEND: ${INFERENCE_BACKEND:-cloud}
+  GROQ_API_KEY: ${GROQ_API_KEY:?GROQ_API_KEY required for cascade}
+  GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+  GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
+  CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+  GEMINI_VISION_MODEL: ${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+  # Open WebUI is not deployed in staging; this dummy is referenced but not hit
+  # for text-only flows because RAGWorker retrieves via neon_recall.
+  OPENWEBUI_BASE_URL: http://localhost:11434
+  OPENWEBUI_API_KEY: ${OPENWEBUI_API_KEY:-}
+  KNOWLEDGE_COLLECTION_ID: ${KNOWLEDGE_COLLECTION_ID:-staging-dummy}
+  VISION_MODEL: ${VISION_MODEL:-qwen2.5vl:7b}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  # No staging CMMS; the staging fixture's CMMS question intentionally exercises
+  # the "can't reach CMMS, admit it" path rather than fabricating a WO.
+  MCP_BASE_URL: ${MCP_BASE_URL:-http://localhost:1}
+  MCP_REST_API_KEY: ${MCP_REST_API_KEY:-}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+  LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+
+services:
+  mira-pipeline-staging:
+    build:
+      context: .
+      dockerfile: mira-pipeline/Dockerfile
+    container_name: mira-pipeline-staging
+    ports:
+      - "127.0.0.1:9098:9099"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *staging-env
+      PIPELINE_API_KEY: ${PIPELINE_API_KEY:-staging-local}
+    volumes:
+      - mira-staging-data:/mira-db
+    networks:
+      - staging-net
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9099/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  mira-bot-telegram-staging:
+    build:
+      context: .
+      dockerfile: mira-bots/telegram/Dockerfile
+    container_name: mira-bot-telegram-staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *staging-env
+      TELEGRAM_BOT_TOKEN: ${STAGING_TELEGRAM_BOT_TOKEN:?STAGING_TELEGRAM_BOT_TOKEN required — register @MiraStaging_bot with BotFather and add to factorylm/stg}
+      # Operator's personal Telegram id; only this id may chat with the staging bot.
+      ADMIN_TELEGRAM_IDS: ${STAGING_ADMIN_TELEGRAM_IDS:-${ADMIN_TELEGRAM_IDS:-}}
+      SESSION_RECORDING_PATH: /data/sessions
+    volumes:
+      - mira-staging-data:/mira-db
+      - mira-staging-sessions:/data/sessions
+    networks:
+      - staging-net
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  staging-net:
+    driver: bridge
+
+volumes:
+  mira-staging-data:
+  mira-staging-sessions:
