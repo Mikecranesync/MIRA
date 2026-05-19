@@ -103,6 +103,7 @@ from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
 from .uns_resolver import UNSResolution, resolve_uns_path, resolve_uns_path_multi
 from .workers.nameplate_worker import NameplateWorker
+from .workers.photo_ingest_worker import propose_from_nameplate
 from .workers.plc_worker import PLCWorker
 from .workers.print_worker import PrintWorker
 from .workers.rag_worker import RAGWorker
@@ -2362,6 +2363,27 @@ class Supervisor:
             )
         except Exception as e:
             logger.error("nameplate web call failed: %s", e)
+
+        # 3.5. Write a KG proposal to NeonDB so the Hub /proposals page can
+        # surface this photo for review. Closes the demo loop described in
+        # docs/specs/mira-ground-truth-architecture-investigation.md §3.1 #1.
+        # Best-effort — propose_from_nameplate returns {} on any failure and
+        # never raises into the reply path.
+        uns_ctx = ctx.get("uns_context") or {}
+        try:
+            proposal = await asyncio.to_thread(
+                propose_from_nameplate,
+                resolved_tenant,
+                fields,
+                asset_id=None,
+                uns_path=uns_ctx.get("uns_path"),
+                photo_path=None,
+                chat_id=chat_id,
+            )
+            if proposal:
+                state["last_photo_proposal"] = proposal
+        except Exception as e:
+            logger.error("photo_ingest_worker call failed: %s", e)
 
         # 4. Update session state with nameplate data
         ctx["session_context"] = {
