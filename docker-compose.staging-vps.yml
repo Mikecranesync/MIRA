@@ -330,8 +330,8 @@ services:
     networks:
       - staging-net
     volumes:
-      - ./marketing:/app/marketing:rw
-      - ./docs/promo-screenshots:/app/docs/promo-screenshots:rw
+      - ./marketing:/app/marketing:ro
+      - ./docs/promo-screenshots:/app/docs/promo-screenshots:ro
       - ./tools/web-review-runs:/app/tools/web-review-runs:ro
     restart: unless-stopped
     deploy:

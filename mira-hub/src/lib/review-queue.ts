@@ -3,7 +3,8 @@ import path from "node:path";
 import type { PoolClient } from "pg";
 
 // Unified review-queue aggregator. Each source contributes ReviewItem rows that
-// the /hub/admin/review page renders. New source = new fetcher exported below.
+// the /hub/admin/review page renders. Read-only — no approve/publish workflow
+// in this PR; the page is for visibility while we decide next steps.
 
 export type ReviewItemType = "proposal" | "cartoon" | "screenshot" | "audit";
 
@@ -15,7 +16,6 @@ export interface ReviewItem {
   body?: string | null;
   source: string;
   createdAt: string;
-  actions: { id: "approve" | "reject" | "edit"; label: string }[];
   meta?: Record<string, string>;
 }
 
@@ -35,8 +35,8 @@ function repoRoot(): string {
 const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 // Admin-email allowlist. Comma-separated env var; defaults to the two seats
-// Mike currently uses. Keep this tight — the review surface bypasses the
-// normal tenant scoping for filesystem reads.
+// Mike currently uses. Keep this tight — the review surface bypasses normal
+// tenant scoping for filesystem reads.
 const ADMIN_EMAILS = (
   process.env.ADMIN_EMAILS ??
   "harperhousebuyers@gmail.com,mike@cranesync.com"
@@ -100,10 +100,6 @@ export async function fetchProposals(
     body: r.reasoning ?? null,
     source: `relationship_proposals`,
     createdAt: r.created_at,
-    actions: [
-      { id: "approve", label: "Verify" },
-      { id: "reject", label: "Reject" },
-    ],
     meta: {
       confidence: `${Math.round(r.confidence * 100)}%`,
       createdBy: r.created_by,
@@ -133,9 +129,8 @@ async function* walkImages(absDir: string, base: string): AsyncGenerator<{
     }
     if (!ent.isFile()) continue;
     if (!IMAGE_EXT.has(path.extname(ent.name).toLowerCase())) continue;
-    // Skip already-approved or rejected variants — convention: filename suffix.
+    // Filename suffixes that mean "already triaged" — skip from the queue.
     if (/-rejected[-.]/i.test(ent.name)) continue;
-    if (/\.published\./i.test(ent.name)) continue;
     let mtime = new Date(0);
     try {
       const st = await stat(full);
@@ -154,29 +149,13 @@ async function fetchImageQueue(
   const absRoot = path.join(repoRoot(), relRoot);
   const items: ReviewItem[] = [];
   for await (const f of walkImages(absRoot, relRoot)) {
-    // Skip if a sidecar marks it approved or rejected already.
-    const sidecar = `${f.absPath}.review.json`;
-    let sidecarStatus: string | null = null;
-    try {
-      const raw = await readFile(sidecar, "utf8");
-      const j = JSON.parse(raw) as { status?: string };
-      sidecarStatus = j.status ?? null;
-    } catch {
-      // no sidecar — pending
-    }
-    if (sidecarStatus === "approved" || sidecarStatus === "rejected") continue;
-    const filename = path.basename(f.relPath);
     items.push({
       id: `${type}:${f.relPath}`,
       type,
-      title: filename,
+      title: path.basename(f.relPath),
       previewUrl: `/api/admin/review/asset/${encodeURIComponent(f.relPath)}`,
       source: f.relPath,
       createdAt: f.mtime.toISOString(),
-      actions: [
-        { id: "approve", label: "Approve & publish" },
-        { id: "reject", label: "Reject" },
-      ],
     });
   }
   return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -231,10 +210,6 @@ export async function fetchWebReviewFindings(): Promise<ReviewItem[]> {
     body: f.evidence ?? f.url ?? null,
     source: `tools/web-review-runs/${latest}/summary.json`,
     createdAt,
-    actions: [
-      { id: "approve", label: "File as issue" },
-      { id: "reject", label: "Dismiss" },
-    ],
     meta: {
       severity: f.severity ?? "P3",
       url: f.url ?? "",
@@ -280,8 +255,8 @@ export async function getReviewQueue(
   return { items, counts };
 }
 
-// Helper used by the asset route + approve route. Anchors a relative path
-// inside one of the allow-listed source dirs; rejects traversal attempts.
+// Helper used by the asset route. Anchors a relative path inside one of the
+// allow-listed source dirs; rejects traversal attempts.
 const ALLOWED_REL_ROOTS = ["marketing/cartoons", "docs/promo-screenshots"];
 
 export function resolveAssetPath(relPath: string): string | null {
@@ -294,8 +269,4 @@ export function resolveAssetPath(relPath: string): string | null {
   const root = path.resolve(repoRoot());
   if (!full.startsWith(`${root}${path.sep}`) && full !== root) return null;
   return full;
-}
-
-export function sidecarPathFor(absPath: string): string {
-  return `${absPath}.review.json`;
 }

@@ -546,12 +546,10 @@ services:
       - mira-net
       - cmms-ext
     volumes:
-      # Source assets for the review queue. Read-write so the API can drop
-      # *.review.json sidecars that the tools/review-promote.sh cron then
-      # picks up, commits, and pushes.
-      - ./marketing:/app/marketing:rw
-      - ./docs/promo-screenshots:/app/docs/promo-screenshots:rw
-      # Web-review findings — read-only, the cron only deletes its own files.
+      # Read-only source mounts for /hub/admin/review preview gallery.
+      # No write path — the page just lists what's pending, no approve action.
+      - ./marketing:/app/marketing:ro
+      - ./docs/promo-screenshots:/app/docs/promo-screenshots:ro
       - ./tools/web-review-runs:/app/tools/web-review-runs:ro
     restart: unless-stopped
     deploy:
