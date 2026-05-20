@@ -6330,4 +6330,97 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/audit-hub-signin.png
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
+
+### 2026-05-18 06:33 UTC — `worktree-expo-scan-page`
+**Last commit:** f0907ad1 Merge pull request #1372 from Mikecranesync/claude/vibrant-kalam-3bcfc2
+**Changed (vs. fork point):**
+- .github/workflows/apply-migrations.yml
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-17-audit.md
+- docs/audits/2026-05-18-audit.md
+- docs/context/PROGRESS.md
+- docs/promo-screenshots/2026-05-17_hub-feed-fixed_desktop.png
+- docs/promo-screenshots/2026-05-17_hub-feed-readiness_desktop.png
+- docs/promo-screenshots/2026-05-17_knowledge-mobile-AFTER-page_desktop.png
+- docs/promo-screenshots/2026-05-17_knowledge-mobile-AFTER-page_mobile.png
+- docs/promo-screenshots/2026-05-17_knowledge-mobile-AFTER-picker-timeout_mobile.png
+- docs/promo-screenshots/2026-05-17_knowledge-mobile-AFTER-picker_mobile.png
+- docs/promo-screenshots/2026-05-17_namespace-after-uuid-fix_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-expanded-line3_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-polish_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-polish_mobile.png
+- docs/promo-screenshots/2026-05-17_namespace-powerflex-visible_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-with-data_desktop.png
+- docs/promo-screenshots/2026-05-17_proposals-page_desktop.png
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-18 06:52 UTC — `worktree-expo-scan-page`
+**Last commit:** f0907ad1 Merge pull request #1372 from Mikecranesync/claude/vibrant-kalam-3bcfc2
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-20 22:50 UTC — `feat/hub-admin-review`
+**Last commit:** f083aa2b feat(hub): /admin/review — unified preview + approval gallery
+**Changed (vs. fork point):**
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .githooks/pre-commit
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/migration-verify.yml
+- .github/workflows/photo-e2e-verify.yml
+- .github/workflows/staging-gate.yml
+- HANDOFF_2026-05-20.md
+- PLAN.md
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docs/adr/0014-ai-suggestions-as-broad-work-queue.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_mobile.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_query.png
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? mira-hub/src/components/qr-scanner-view.tsx
+- ?? mira-hub/tests/e2e/audit-post-023-grants.spec.ts
+- ?? mira-hub/tests/e2e/local-namespace-check.spec.ts
+**Next:** _set by next session_
+
+### 2026-05-20 23:00 UTC — `feat/hub-admin-review`
+**Last commit:** c2a94b7d feat(hub): drop approve/cron — make /admin/review read-only
+**Changed (vs. fork point):**
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .githooks/pre-commit
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/migration-verify.yml
+- .github/workflows/photo-e2e-verify.yml
+- .github/workflows/staging-gate.yml
+- HANDOFF_2026-05-20.md
+- PLAN.md
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docs/adr/0014-ai-suggestions-as-broad-work-queue.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_mobile.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_query.png
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? mira-hub/src/components/qr-scanner-view.tsx
+- ?? mira-hub/tests/e2e/audit-post-023-grants.spec.ts
+- ?? mira-hub/tests/e2e/local-namespace-check.spec.ts
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
