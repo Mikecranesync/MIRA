@@ -93,6 +93,8 @@
 | [mira-lessons/mira-architecture-decisions.md](mira-lessons/mira-architecture-decisions.md) | Living decision log driven by research findings |
 | [mira-lessons/mira-lessons-from-fuuz.md](mira-lessons/mira-lessons-from-fuuz.md) | **Top lessons from Fuuz deep-dive, 10-item action plan ordered by impact/effort** |
 | [mira-lessons/mira-fuuz-skill-adaptation-plan.md](mira-lessons/mira-fuuz-skill-adaptation-plan.md) | **Proposed MIRA-native skill roster (10 skills) inspired by Fuuz's public library** |
+| [mira-lessons/mira-twilio-of-industry4-analysis.md](mira-lessons/mira-twilio-of-industry4-analysis.md) | **"Twilio of Industry 4.0" — reality-check of Fuuz onboarding vs MIRA's vision; 30/60/90 plan; competitive table; companion to onboarding spec** |
+| `docs/specs/mira-customer-onboarding-spec.md` | **Companion spec: customer-facing onboarding flow MIRA Hub must deliver — personas, journey, connectors, MVP scope, success metrics** |
 
 ---
 
