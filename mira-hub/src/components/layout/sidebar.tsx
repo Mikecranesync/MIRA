@@ -116,6 +116,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "documents":     t("documents"),
       "reports":       t("reports"),
       "team":          t("team"),
+      "admin-review":  "Review queue",
       // Legacy routes (still reachable, not in sidebar):
       "event-log":     t("eventLog"),
       "usage":         t("usage"),

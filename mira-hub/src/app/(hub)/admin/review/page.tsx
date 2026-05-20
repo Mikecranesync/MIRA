@@ -1,0 +1,275 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Check, FileText, Image as ImageIcon, Loader2, X } from "lucide-react";
+import { API_BASE } from "@/lib/config";
+
+type ReviewItemType = "proposal" | "cartoon" | "screenshot" | "audit";
+
+interface ReviewItem {
+  id: string;
+  type: ReviewItemType;
+  title: string;
+  previewUrl: string | null;
+  body?: string | null;
+  source: string;
+  createdAt: string;
+  actions: { id: "approve" | "reject" | "edit"; label: string }[];
+  meta?: Record<string, string>;
+}
+
+interface QueueResponse {
+  items: ReviewItem[];
+  counts: Record<ReviewItemType | "total", number>;
+}
+
+const TABS: Array<{ key: ReviewItemType | "all"; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "proposal", label: "Proposals" },
+  { key: "cartoon", label: "Cartoons" },
+  { key: "screenshot", label: "Screenshots" },
+  { key: "audit", label: "Audit" },
+];
+
+export default function ReviewPage() {
+  const [items, setItems] = useState<ReviewItem[]>([]);
+  const [counts, setCounts] = useState<QueueResponse["counts"] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<ReviewItemType | "all">("all");
+  const [acting, setActing] = useState<Record<string, "approve" | "reject" | undefined>>({});
+  const [toast, setToast] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/review/queue`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as QueueResponse;
+      setItems(data.items);
+      setCounts(data.counts);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function decide(item: ReviewItem, decision: "approve" | "reject") {
+    setActing((s) => ({ ...s, [item.id]: decision }));
+    const previous = items;
+    setItems((cur) => cur.filter((i) => i.id !== item.id));
+    try {
+      const [type, ...idParts] = item.id.split(":");
+      const idEncoded = encodeURIComponent(idParts.join(":"));
+      const res = await fetch(
+        `${API_BASE}/api/admin/review/approve/${type}/${idEncoded}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ decision }),
+        },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      setToast(
+        decision === "approve"
+          ? `Approved · ${item.title.slice(0, 40)}`
+          : `Rejected · ${item.title.slice(0, 40)}`,
+      );
+    } catch (e) {
+      setItems(previous);
+      setToast(`Failed: ${(e as Error).message}`);
+    } finally {
+      setActing((s) => {
+        const next = { ...s };
+        delete next[item.id];
+        return next;
+      });
+      setTimeout(() => setToast(null), 4000);
+    }
+  }
+
+  const filtered = useMemo(
+    () => (tab === "all" ? items : items.filter((i) => i.type === tab)),
+    [items, tab],
+  );
+
+  return (
+    <div className="mx-auto max-w-5xl p-4 sm:p-6" data-testid="review-page">
+      <header className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">
+          Review queue {counts ? `(${counts.total})` : ""}
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Everything waiting on your approval — proposals, cartoons, screenshots,
+          audit findings. Tap approve to publish.
+        </p>
+      </header>
+
+      <div
+        className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200"
+        data-testid="review-tabs"
+      >
+        {TABS.map((t) => {
+          const count = t.key === "all" ? counts?.total : counts?.[t.key];
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`whitespace-nowrap -mb-px border-b-2 px-3 py-2 text-sm font-medium transition ${
+                tab === t.key
+                  ? "border-blue-600 text-blue-700"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+              data-testid={`review-tab-${t.key}`}
+            >
+              {t.label}
+              {typeof count === "number" && count > 0 && (
+                <span className="ml-2 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading queue…
+        </div>
+      ) : error ? (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          {filtered.map((item) => (
+            <ReviewCard
+              key={item.id}
+              item={item}
+              actingState={acting[item.id]}
+              onDecide={decide}
+            />
+          ))}
+        </div>
+      )}
+
+      {toast && (
+        <div
+          className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md bg-slate-900 px-4 py-2 text-sm text-white shadow-lg"
+          data-testid="review-toast"
+        >
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewCard({
+  item,
+  actingState,
+  onDecide,
+}: {
+  item: ReviewItem;
+  actingState: "approve" | "reject" | undefined;
+  onDecide: (item: ReviewItem, decision: "approve" | "reject") => void;
+}) {
+  const busy = actingState !== undefined;
+  const TypeIcon =
+    item.type === "audit" ? AlertTriangle : item.type === "proposal" ? FileText : ImageIcon;
+  return (
+    <article
+      className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4 shadow-sm"
+      data-testid="review-card"
+      data-item-id={item.id}
+    >
+      {item.previewUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={item.previewUrl}
+          alt={item.title}
+          className="mb-3 w-full rounded border border-slate-100 bg-slate-50 object-cover"
+          style={{ maxHeight: 280 }}
+          loading="lazy"
+        />
+      )}
+      <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+        <TypeIcon className="h-3.5 w-3.5" />
+        <span>{item.type}</span>
+        {item.meta?.severity && (
+          <span className="ml-auto rounded bg-amber-100 px-2 py-0.5 text-amber-800">
+            {item.meta.severity}
+          </span>
+        )}
+        {item.meta?.confidence && (
+          <span className="ml-auto rounded bg-slate-100 px-2 py-0.5 text-slate-600">
+            {item.meta.confidence}
+          </span>
+        )}
+      </div>
+      <h2 className="text-sm font-semibold text-slate-900 break-words">{item.title}</h2>
+      {item.body && (
+        <p className="mt-1 line-clamp-3 text-sm text-slate-600">{item.body}</p>
+      )}
+      <p className="mt-2 text-xs text-slate-400 break-all">{item.source}</p>
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onDecide(item, "reject")}
+          className="inline-flex flex-1 items-center justify-center gap-1 rounded border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          data-testid="review-reject"
+        >
+          {actingState === "reject" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <X className="h-4 w-4" />
+          )}
+          Reject
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onDecide(item, "approve")}
+          className="inline-flex flex-1 items-center justify-center gap-1 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          data-testid="review-approve"
+        >
+          {actingState === "approve" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Check className="h-4 w-4" />
+          )}
+          Approve
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div
+      className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center"
+      data-testid="review-empty"
+    >
+      <Check className="mx-auto h-10 w-10 text-emerald-400" />
+      <h2 className="mt-4 text-lg font-semibold text-slate-900">Inbox zero</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+        Nothing waiting on your approval right now.
+      </p>
+    </div>
+  );
+}

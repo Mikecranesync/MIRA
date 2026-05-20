@@ -2,6 +2,10 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## [1.8.0] - 2026-05-20
+### Added
+- `/hub/admin/review` — unified preview/approval queue. One page, all pending work: KG relationship proposals + cartoons + screenshots + web-review findings. Admin-only (ADMIN_EMAILS allowlist). Mobile-first. Approve writes a `.review.json` sidecar that a 10-min VPS cron promotes via `tools/review-promote.sh` — no git ops from the Node API. New compose volume mounts for `marketing/` + `docs/promo-screenshots/` + `tools/web-review-runs/`.
+
 ## [1.7.0] - 2026-05-18
 ### Changed
 - Feed page renders live work-order + PM data from `/api/work-orders` and `/api/pm-schedules` (#1033). KPI cards show real Open WO / Overdue PM / Total WO / Auto-Extracted PM counts; hardcoded `12 / 3 / 2.4h / 67%` values removed. Feed items composed from the most-recent 5 work orders + 3 nearest-due PM schedules.
