@@ -17,6 +17,11 @@ Three-layer regression net for "embedding sidecar down → bot must still cite K
 
 Open ops follow-ups (deferred post-demo): fix Bravo Tailscale route from VPS; pull `nomic-embed-text` onto VPS localhost Ollama; migrate `evals/query_stub.py` live mode off Anthropic + onto the InferenceRouter Groq cascade.
 
+## eval-fixer run — 2026-05-20
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (14 days stale, unchanged since 2026-05-06)
+- Action: filed #1453, closed as dup of still-open #1419. Same multi-cluster hard-stop (engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3).
+- **Nightly eval job stalled 14 days running.** No new signal. Action needed: either land a fix on one of the three #1419 clusters or regenerate the scorecard manually (`doppler run -- python3 tests/eval/offline_run.py --suite text`). Until then every eval-fixer run will continue to dup-close.
+
 ## eval-fixer run — 2026-05-19
 - Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (13 days stale, unchanged since 2026-05-06)
 - Action: filed #1419 (multi-cluster hard-stop hit: engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3). Prior canonical #1217 is now closed, so #1419 stands open instead of being closed as a dupe.
