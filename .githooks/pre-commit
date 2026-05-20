@@ -19,9 +19,13 @@ bold "=== MIRA pre-commit checks ==="
 # Empty when invoked from a human terminal — that's expected.
 if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
   echo "  ↳ Claude Code session: ${CLAUDE_CODE_SESSION_ID}"
-  mkdir -p .git/claude-sessions
+  # In a worktree, `.git` is a file pointing at the real gitdir — `mkdir
+  # -p .git/...` fails under `set -e`. Resolve via git rev-parse so this
+  # works in both worktrees and the main checkout.
+  GITDIR=$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")
+  mkdir -p "${GITDIR}/claude-sessions" 2>/dev/null || true
   echo "$(date -u +%FT%TZ) ${CLAUDE_CODE_SESSION_ID} pre-commit" \
-    >> .git/claude-sessions/log 2>/dev/null || true
+    >> "${GITDIR}/claude-sessions/log" 2>/dev/null || true
 fi
 
 # Staged files

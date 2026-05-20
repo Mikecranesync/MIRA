@@ -613,6 +613,108 @@ def write_session_analysis(result: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Photo → KG proposal (Phase 0 demo loop).
+# docs/specs/mira-ground-truth-architecture-investigation.md §3.1 #1, §6.1.
+# Mirrors mira-bots/shared/workers/photo_ingest_worker.py but uses this
+# module's SQLAlchemy engine. Architecture wall (tests/test_architecture.py)
+# forbids cross-import between mira-core and mira-bots.
+# ---------------------------------------------------------------------------
+
+
+def insert_photo_ai_suggestion(
+    tenant_id: str,
+    asset_tag: str,
+    structured: dict[str, Any],
+    description: str,
+    photo_path: str,
+) -> str | None:
+    """Write an ai_suggestions row for an ingested equipment photo.
+
+    Returns the new ai_suggestions.id (UUID string) on success, or None when
+    NEON_DATABASE_URL is unset, tenant_id is empty, or the write errors.
+    The endpoint must not raise — the photo write to SQLite is the primary
+    contract.
+
+    Shape of the row:
+      suggestion_type = 'kg_entity'
+      source_kind     = 'photo'
+      extracted_data  = {asset_tag, structured: {component, symptom,
+                         condition, description}, photo_path}
+      confidence      = field-coverage heuristic, 0.30 floor
+    """
+    if not tenant_id or not asset_tag:
+        return None
+    if not os.environ.get("NEON_DATABASE_URL"):
+        return None
+
+    populated = sum(
+        1 for k in ("component", "symptom", "condition") if (structured.get(k) or "").strip()
+    )
+    confidence = max(0.30, min(0.85, 0.30 + 0.20 * populated))
+
+    component = (structured.get("component") or "").strip()
+    title = (
+        f"Equipment photo: {component} at {asset_tag}"
+        if component
+        else f"Equipment photo at {asset_tag}"
+    )
+    body = description[:280] if description else "Photo ingested without description."
+
+    suggestion_id = str(uuid.uuid4())
+    payload: dict[str, Any] = {
+        "entity_type": "photo_observation",
+        "asset_tag": asset_tag,
+        "structured": {
+            "component": structured.get("component") or "",
+            "symptom": structured.get("symptom") or "",
+            "condition": structured.get("condition") or "",
+            "description": structured.get("description") or description,
+        },
+        "photo_path": photo_path,
+    }
+
+    try:
+        with _engine().connect() as conn:
+            # Set the RLS context for this transaction.
+            conn.execute(
+                text("SELECT set_config('app.current_tenant_id', :tid, true)"),
+                {"tid": tenant_id},
+            )
+            conn.execute(
+                text("""
+                INSERT INTO ai_suggestions
+                    (id, tenant_id, suggestion_type,
+                     source_kind, extracted_data, confidence,
+                     status, risk_level, proposed_by,
+                     title, body)
+                VALUES
+                    (:id, cast(:tid AS uuid), 'kg_entity',
+                     'photo', cast(:payload AS jsonb), :conf,
+                     'pending', 'low', :pb,
+                     :title, :body)
+                """),
+                {
+                    "id": suggestion_id,
+                    "tid": tenant_id,
+                    "payload": json.dumps(payload),
+                    "conf": confidence,
+                    "pb": "photo:mira-ingest",
+                    "title": title,
+                    "body": body,
+                },
+            )
+            conn.commit()
+        return suggestion_id
+    except Exception as exc:
+        import logging
+
+        logging.getLogger("mira-ingest").warning(
+            "insert_photo_ai_suggestion failed (non-fatal): %s", exc
+        )
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Magic-inbox safety gate (Unit 3.5): per-tenant content-hash dedup ledger.
 # Decoupled from knowledge_entries (which Open WebUI manages) — see
 # migrations/007_tenant_ingested_files.sql for the table definition.

@@ -34,8 +34,12 @@ State is persisted per `chat_id` in SQLite (`conversation_state` table, WAL mode
 | `rag_worker.py` | `RAGWorker` | Retrieves knowledge, calls LLM for diagnostic reply |
 | `print_worker.py` | `PrintWorker` | Handles ELECTRICAL_PRINT follow-up questions |
 | `plc_worker.py` | `PLCWorker` | **Stub** — deferred to Config 4 |
+| `nameplate_worker.py` | `NameplateWorker` | Vision extraction of nameplate fields |
+| `photo_ingest_worker.py` | _module-level_ `propose_from_nameplate()` | Writes nameplate extraction as an `ai_suggestions` proposal to NeonDB; closes the photo→KG demo loop |
 
 Workers are instantiated in `Supervisor.__init__` and shared across calls.
+`photo_ingest_worker` is a module-level function (no class) — called from
+`_handle_nameplate` via `asyncio.to_thread` because psycopg2 is sync.
 
 ## Guardrails (guardrails.py)
 
