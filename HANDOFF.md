@@ -171,3 +171,86 @@ ctx = resolve_uns_path('I have a powerflex 525 and it has it called f0004')
 print(ctx.manufacturer, ctx.model, ctx.fault_code, ctx.uns_path)
 "
 ```
+
+---
+
+# HANDOFF — 2026-05-20 hub-overhaul staging audit
+
+**Session:** autonomous run, BRAVO node
+**Branch:** `fix/staging-audit-2026-05-20` (at `3ac7033a`)
+**PR:** #1479 (currently titled "namespace explorer fix" — see note below)
+**Goal status:** all 6 phases attempted; Phase 4 partial (sandbox-blocked); Phases 1-3, 5, 6 + wrap complete.
+
+## What I did vs the PLAN
+
+| # | Phase | Status | Evidence |
+|---|---|---|---|
+| 1 | Merge #1478 + deploy to staging | ✅ | #1478 merged at b191b8a8; `stg-mira-hub` + bot + web rebuilt; MIRA services healthy |
+| 2 | Full Playwright E2E audit | ✅ | 12/12 on staging; `mira-hub/tests/e2e/audit-staging-2026-05-20.spec.ts`; 12 screenshots committed |
+| 3 | Bot quality benchmark | ✅ | avg 3.64/5; `tests/golden_staging_benchmark_2026-05-20.csv`; ran via mira-pipeline (NOT Telegram delivery) |
+| 4 | Apply pending Hub migrations | ⚠️ | Sandbox-denied direct read. Indirect evidence (healthy app + green E2E + benchmark working) suggests ≤ #026 applied. Verification procedure in readiness doc |
+| 5 | Clean up open PRs | ✅ | Merged: #1417, #1407, #1410, #1404, #1418. Open 51→46 |
+| 6 | Prod-readiness doc | ✅ | `docs/evaluations/staging-to-prod-readiness-2026-05-20.md` |
+| 7 | wiki/hot.md + auto-memory | ✅ | hot.md prepended; 2 new memory files added |
+
+## Risky / Mike's eyes needed
+
+### PR #1479 is mixed-scope
+
+The branch ended up with 5 commits — 4 are mine (audit + benchmark + readiness doc + wiki), 1 is the namespace-explorer fix that appeared mid-session via unclear mechanism (`5d729fd8`, author `Mike Harper <bravonode@FactoryLM-Bravo.local>`). PR #1479 conflates audit work with namespace explorer.
+
+**Action:** split into two PRs before merging — audit infra (1, 2, 4, 5) vs namespace explorer (3). The namespace fix should NOT land until its staging migration is applied (per its own body).
+
+### Phase 3 used the pipeline, not Telegram
+
+Goal said `@Mira_stagong_bot` (staging Telegram). I ran 10 questions through `mira-pipeline /v1/chat/completions` via `docker exec stg-mira-pipeline curl …` — same Supervisor engine, no Telegram delivery. Per-channel verification needs a human + Telegram client.
+
+### Pre-existing engine issues (NOT today's regressions)
+
+- 0/10 answers cite sources — cite-or-refuse implemented as refuse-only
+- Retrieval miss on PowerFlex 525 (Rockwell, 34k chunks) + GS10 fault codes (AD, 4k chunks) — matches Ollama-embed-sidecar-down pattern from 2026-05-18
+- UNS gate inconsistency (Q4 prox-sensor jumped to advice)
+
+### Phase 4 verification still owed before prod deploy
+
+```bash
+doppler run --project factorylm --config prd -- psql "$NEON_DATABASE_URL" -c "
+SELECT column_name FROM information_schema.columns
+ WHERE table_name='kg_entities' ORDER BY ordinal_position;"
+# Must contain source_chunk_id (#024) + natural_key cols (#025) + unique constraint (#026)
+```
+
+## Reproduce commands
+
+```bash
+# Tunnel to staging
+ssh -fN -L 4101:127.0.0.1:4101 -L 4200:127.0.0.1:4200 root@165.245.138.91
+
+# Audit spec
+cd mira-hub
+E2E_HUB_URL=http://127.0.0.1:4101 E2E_WEB_URL=http://127.0.0.1:4200 \
+E2E_HUB_EMAIL=playwright@factorylm.com E2E_HUB_PASSWORD=TestPass123 \
+  npx playwright test tests/e2e/audit-staging-2026-05-20.spec.ts \
+  --config=tests/e2e/audit-staging.config.ts
+# Expect: 12 passed (38s)
+
+# Bot benchmark replay
+bash tools/bench-staging-pipeline.sh
+```
+
+## What I deliberately did NOT do
+
+- Deploy to production (forbidden)
+- Apply migrations to staging Neon (sandbox-denied)
+- Merge #1479 (mixed-scope + needs migration)
+- Rebase #1445 / #1452 (CONFLICTING — author judgment needed)
+- Touch `~/MiraDrop/`, prod containers, prod DB
+
+## Open follow-ups
+
+1. Split / rename PR #1479
+2. Apply staging migration #1479 references, then merge it
+3. Verify migrations 025-027 on prod Neon, then deploy
+4. Run 10 questions via Telegram client to compare against pipeline-side benchmark
+5. File issues: cite-or-refuse-as-refuse-only, PowerFlex/GS10 retrieval miss, Q4 UNS-gate bypass
+6. Investigate root cause of working-tree contamination during branch switch
