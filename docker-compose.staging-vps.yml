@@ -23,6 +23,7 @@
 #   4000 → mira-mcp MCP     (prod 8009)
 #   4001 → mira-mcp REST    (prod 8001)
 #   4088 → atlas-api        (prod 8088)
+#   4100 → atlas-frontend   (prod 3100)
 #   4433 → atlas-db         (prod 5433)
 #   4900 → atlas-minio API  (prod 9000)
 #   4901 → atlas-minio UI   (prod 9001)
@@ -126,6 +127,47 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  atlas-frontend:
+    # Pre-built image from Docker Hub. Prod's mira-cmms/docker-compose.yml uses a
+    # local build context that only resolves on Bravo — won't build on the VPS.
+    # Using the published image avoids that.
+    image: intelloop/atlas-cmms-frontend@sha256:9393849caa8ff980b02cdc0836d3797da78a8a3a4672acff80206de4e11fa8de
+    container_name: stg-atlas-frontend
+    restart: unless-stopped
+    depends_on:
+      atlas-api:
+        condition: service_healthy
+    environment:
+      API_URL: ${ATLAS_PUBLIC_API_URL:-http://165.245.138.91:4088}
+      INVITATION_VIA_EMAIL: "false"
+      CLOUD_VERSION: "false"
+      NODE_ENV: production
+      ENABLE_SSO: "false"
+      GOOGLE_TRACKING_ID: "disabled"
+      GOOGLE_KEY: "disabled"
+      MUI_X_LICENSE: "disabled"
+      OAUTH2_PROVIDER: "none"
+      LOGO_PATHS: "null"
+      CUSTOM_COLORS: "null"
+      BRAND_CONFIG: "null"
+      DEMO_LINK: "none"
+      PADDLE_SECRET_TOKEN: "disabled"
+      PADDLE_ENVIRONMENT: production
+      RECAPTCHA_SITE_KEY: "disabled"
+    ports:
+      - "0.0.0.0:4100:3000"
+    networks:
+      - staging-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qS -O /dev/null http://127.0.0.1:3000/ 2>&1 | grep -q 'HTTP/'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
   # ─── MIRA core services (staging subset) ───────────────────────────────────
   mira-mcp:
