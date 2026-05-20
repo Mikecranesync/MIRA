@@ -16,9 +16,19 @@ The Industry 4.0 software landscape has bifurcated into:
 
 The decisive bet — verified by every Tier 1 entry below — is that **grounding** is the moat, not the LLM. Anyone can wire ChatGPT to a CMMS. Almost nobody can answer "what's wrong with Line 2's case packer right now?" with citations to the UNS, the wiring diagram, and the last three work orders.
 
-## What we learned this sprint
+## What we learned this sprint (Tier 1 first-pass, 2026-05-19)
 
-(Filled in after Phase 9. Until then, see `initial-research-library-report.md` for the live working notes.)
+Four findings dominate the first sprint:
+
+1. **The industry has converged on UNS + Knowledge Graph + MCP as the emerging substrate.** [LNS Research's ProveIt 2026 writeup](https://blog.lnsresearch.com/proveit-2026-all-about-uns-knowledge-graphs-and-claude-code) names exactly this stack and lists MIRA's Tier 1 vendors as the exhibitors. Notably: **graph-based data models gained substantial momentum** at the event, and **Model Context Protocol (MCP)** emerged as the interface for exposing industrial data to AI agents. [HighByte](../companies/highbyte.md) is explicitly building MCP-oriented services (IDC MarketScape coverage, April 2026). MIRA's `mira-mcp/` + `kg_entities`/`kg_relationships` + UNS gate stack is *the* current direction, not a contrarian bet.
+
+2. **ThredCloud is MIRA's closest architectural twin in the Tier 1 cohort.** [ThredCloud](../companies/thredcloud.md) ships KG + AI + plain-language query, built on Ignition, targeting medium-sized factories — the same architectural shape and ICP band as MIRA. The differentiation reduces to **front door** (their dashboard / NL search vs MIRA's Slack-first chat) and **workflow** (their BI-flavored insights vs MIRA's maintenance-tech-conversation with confirmation gate + citations). Track quarterly.
+
+3. **MaintainX is MIRA's highest threat-level competitor.** [MaintainX](../companies/maintainx.md) ships a grounded AI CoPilot in their CMMS app: work-order generation from manuals, voice-to-WO, photo-to-recommendation, predictive durations. They own the technician's mobile attention. MIRA's defenses are **UNS confirmation gate** (they don't have it), **cross-PLC OT grounding** (they don't have it), and **Slack-as-front-door** (they haven't committed to it). All three must remain non-negotiable.
+
+4. **Generic "AI for manufacturing" framing is now commodity.** Tulip, MachineMetrics, TwinThread, MaintainX, ThredCloud, Fuuz — every Tier 1 player has an AI / agent surface. The market will not be won on "we have AI." It will be won on **what we ground in, and what we cite**. MIRA's groundedness score + citation compliance + UNS gate must remain visible — and demo-able — in every customer touchpoint.
+
+A fifth quieter finding: **HighByte's "model is the UNS, not the broker" framing** matches MIRA's design choice exactly. Cite this framing externally; it's the cleanest public articulation of why MIRA's KG + UNS gate is the right shape.
 
 ## Implications for MIRA
 
