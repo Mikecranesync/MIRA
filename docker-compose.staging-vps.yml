@@ -79,6 +79,13 @@ services:
         condition: service_healthy
       atlas-minio:
         condition: service_started
+    extra_hosts:
+      # Linux Docker bridge has no hairpin NAT — atlas-api's MinioService.init()
+      # connects to PUBLIC_MINIO_ENDPOINT at startup and crash-loops when that URL
+      # points at the host's public IP. Mapping host.docker.internal to the host
+      # gateway lets factorylm/stg set ATLAS_PUBLIC_MINIO_URL=http://host.docker.internal:4900.
+      # Same pattern shipped for prod in PR #1439 (mira-cmms/docker-compose.yml).
+      - "host.docker.internal:host-gateway"
     environment:
       DB_URL: stg-atlas-db/atlas
       DB_USER: ${ATLAS_DB_USER:-atlas}
@@ -92,7 +99,7 @@ services:
       MINIO_ACCESS_KEY: ${ATLAS_MINIO_USER:-minioadmin}
       MINIO_SECRET_KEY: ${ATLAS_MINIO_PASSWORD}
       STORAGE_TYPE: minio
-      PUBLIC_MINIO_ENDPOINT: ${ATLAS_PUBLIC_MINIO_URL:-http://165.245.138.91:4900}
+      PUBLIC_MINIO_ENDPOINT: ${ATLAS_PUBLIC_MINIO_URL:-http://host.docker.internal:4900}
       INVITATION_VIA_EMAIL: "false"
       ENABLE_EMAIL_NOTIFICATIONS: "false"
       ENABLE_SSO: "false"
