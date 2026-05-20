@@ -48,6 +48,13 @@ services:
     image: intelloop/atlas-cmms-backend@sha256:21c42377dd758dbc4a9aa1676e62b01a13cf8822b0ecd3019b274b53c2369b1e
     container_name: atlas-api
     restart: unless-stopped
+    # atlas-api's bean init connects to PUBLIC_MINIO_ENDPOINT at startup; Linux Docker
+    # bridge has no hairpin NAT, so a host-public-IP value crash-loops the container.
+    # Deploys that need to point the public URL at the host gateway can set
+    # ATLAS_PUBLIC_MINIO_URL=http://host.docker.internal:<port>. Mac/Windows already
+    # have host.docker.internal; Linux needs the explicit mapping.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       atlas-db:
         condition: service_healthy
