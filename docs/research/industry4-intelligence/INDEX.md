@@ -30,7 +30,7 @@
 | MaintainX | CMMS / mobile maintenance + AI | Very High (CMMS adjacency) | [companies/maintainx.md](companies/maintainx.md) | first-pass |
 | MachineMetrics | Discrete production analytics | High | [companies/machinemetrics.md](companies/machinemetrics.md) | first-pass |
 | TwinThread | Predictive ops + asset modeling | Medium-High | [companies/twinthread.md](companies/twinthread.md) | first-pass |
-| ThredCloud (Thred) | Edge connectivity / UNS | Medium (low public footprint) | [companies/thredcloud.md](companies/thredcloud.md) | stub |
+| ThredCloud (Thred) | KG + AI on Ignition | **Very High** (closest architectural twin) | [companies/thredcloud.md](companies/thredcloud.md) | first-pass |
 
 ### Tier 2 — adjacent / partial relevance
 
