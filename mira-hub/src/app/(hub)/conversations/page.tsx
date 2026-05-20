@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Search, MessageSquare, ChevronRight, X, Send } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { LabsStub } from "@/components/labs-stub";
 
 type Message = { role: "tech" | "mira"; text: string; ts: string };
 
@@ -78,6 +79,10 @@ const CONVERSATIONS: Conversation[] = [
 ];
 
 export default function ConversationsPage() {
+  // Gated behind Labs flag (ADR-0014). Mock-data UI hidden on prod builds.
+  if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
+    return <LabsStub feature="Conversations" />;
+  }
   const t = useTranslations("conversations");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Conversation | null>(null);

@@ -11,6 +11,7 @@ import { DOCS, CAT_COLOR, CAT_BG } from "@/lib/documents-data";
 import { UploadPicker } from "@/components/UploadPicker";
 import { UploadBlock, type UploadBlockData } from "@/components/UploadBlock";
 import { useToast } from "@/providers/toast-provider";
+import { LabsStub } from "@/components/labs-stub";
 import { API_BASE } from "@/lib/config";
 
 const NON_TERMINAL: ReadonlyArray<UploadBlockData["status"]> = [
@@ -36,6 +37,10 @@ const DOC_STATE_VARIANT: Record<string, "indexed" | "partial" | "superseded"> = 
 };
 
 export default function DocumentsPage() {
+  // Gated behind Labs flag (ADR-0014). Mock-data UI hidden on prod builds.
+  if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
+    return <LabsStub feature="Documents" />;
+  }
   const t = useTranslations("documents");
   const { toast } = useToast();
   const [query, setQuery] = useState("");
