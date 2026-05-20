@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Factory, Send, Loader2, ChevronRight, BookOpen } from "lucide-react";
+import { API_BASE } from "@/lib/config";
 
 type Manufacturer = { name: string; count: number };
 type Citation = { index: number; title: string; url: string | null; page: number | null };
@@ -23,7 +24,7 @@ export default function QuickstartPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/quickstart/manufacturers")
+    fetch(`${API_BASE}/api/quickstart/manufacturers`)
       .then((r) => (r.ok ? r.json() : { manufacturers: [] }))
       .then((d: { manufacturers: Manufacturer[] }) => setManufacturers(d.manufacturers ?? []))
       .catch(() => setManufacturers([]));
@@ -36,7 +37,7 @@ export default function QuickstartPage() {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch("/api/quickstart/ask", {
+      const res = await fetch(`${API_BASE}/api/quickstart/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ manufacturer: manufacturer || undefined, question }),
