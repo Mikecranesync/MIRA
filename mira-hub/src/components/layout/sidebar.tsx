@@ -120,7 +120,6 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "event-log":     t("eventLog"),
       "usage":         t("usage"),
       "schedule":      t("schedule"),
-      "plc":           "Ladder Logic",
     };
     return map[key] ?? key;
   }
