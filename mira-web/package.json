@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.0",
-    "hono": "^4.7.6",
+    "hono": "^4.12.19",
     "jose": "^6.0.11",
     "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
