@@ -138,6 +138,10 @@ services:
       - MIRA_HUB_URL=http://stg-mira-hub:3000
       - INTERNAL_KG_API_KEY=${INTERNAL_KG_API_KEY:-}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      # Atlas CMMS — mira-mcp work-order tools call into stg-atlas-api.
+      - HUB_CMMS_API_URL=http://stg-atlas-api:8080
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
     volumes:
       - /opt/mira-staging/data:/mira-db
     networks:
@@ -370,6 +374,35 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+
+  # ─── mira-cmms-sync — NeonDB ↔ Atlas sync worker (staging) ────────────────
+  # Mirrors saas.yml's mira-cmms-sync block but talks to stg-atlas-api inside
+  # staging-net. Default off (CMMS_SYNC_ENABLED=false) — staging is a clean
+  # sandbox; flip true in Doppler factorylm/stg when ready to test the loop
+  # end-to-end. Required for Hub Feed/Schedule pages to surface real Atlas
+  # work-order data instead of mock fixtures.
+  mira-cmms-sync:
+    build:
+      context: ./mira-hub
+      dockerfile: Dockerfile.sync-worker
+    container_name: stg-mira-cmms-sync
+    environment:
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://stg-atlas-api:8080}
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      - CMMS_SYNC_ENABLED=${CMMS_SYNC_ENABLED:-false}
+      - CMMS_SYNC_INTERVAL_MS=${CMMS_SYNC_INTERVAL_MS:-60000}
+    command: ["bun", "run", "scripts/cmms-sync-worker.ts", "--interval-ms", "${CMMS_SYNC_INTERVAL_MS:-60000}"]
+    networks:
+      - staging-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    depends_on:
+      - mira-hub
 
 networks:
   staging-net:
