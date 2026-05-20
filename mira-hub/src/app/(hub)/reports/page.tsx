@@ -6,6 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { TrendingDown, TrendingUp, Clock, Wrench, CheckCircle2, AlertTriangle, Sparkles, Loader2 } from "lucide-react";
+import { LabsStub } from "@/components/labs-stub";
 import { Button } from "@/components/ui/button";
 import { useTranslations } from "next-intl";
 
@@ -52,6 +53,10 @@ const PM_COLORS = ["#16A34A", "#DC2626", "#EAB308"];
 
 /* ─── Page ──────────────────────────────────────────────────────────── */
 export default function ReportsPage() {
+  // Gated behind Labs flag (ADR-0014). Mock-data UI hidden on prod builds.
+  if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
+    return <LabsStub feature="Reports" />;
+  }
   const t = useTranslations("reports");
   const [narrative, setNarrative] = useState<string | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { restartTour } from "@/components/onboarding/tour";
 import { cn } from "@/lib/utils";
-import { NAV_ITEMS } from "@/providers/access-control";
+import { NAV_ITEMS, labsEnabled } from "@/providers/access-control";
 import { useTheme } from "@/providers/theme-provider";
 import { LanguageSelector } from "@/components/ui/language-selector";
 
@@ -82,32 +82,45 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       .catch(() => {});
   }, []);
 
-  const visible = NAV_ITEMS.filter((item) =>
-    (item.roles as readonly string[]).includes(role)
-  );
+  // Labs items only render when NEXT_PUBLIC_LABS_ENABLED=true. They are
+  // mock-data surfaces (Conversations, Alerts, Requests, Parts, Reports,
+  // Team, Documents) — kept in code, hidden from prod IA per ADR-0014.
+  const labsOn = labsEnabled();
+  const visible = NAV_ITEMS.filter((item) => {
+    if (!(item.roles as readonly string[]).includes(role)) return false;
+    if (item.group === "labs" && !labsOn) return false;
+    return true;
+  });
   const primary   = visible.filter((item) => item.group === "primary");
   const secondary = visible.filter((item) => item.group === "secondary");
+  const labs      = visible.filter((item) => item.group === "labs");
 
   function navLabel(key: string): string {
+    // Map sidebar keys to translated / display strings. Reordered IA per
+    // ADR-0014 — see NAV_ITEMS in providers/access-control.ts.
     const map: Record<string, string> = {
-      "event-log":     t("eventLog"),
+      "feed":          "Feed",
+      "namespace":     "Namespace",
+      "channels":      t("channels"),
+      "knowledge":     t("knowledge"),
+      "proposals":     "Proposals",
+      "assets":        t("assets"),
+      "workorders":    "CMMS",
+      "scan":          "Scan",
+      "integrations":  "Settings",
+      "admin":         "Admin",
       "conversations": t("conversations"),
       "alerts":        t("alerts"),
-      "knowledge":     t("knowledge"),
-      "assets":        t("assets"),
-      "channels":      t("channels"),
-      "integrations":  t("integrations"),
-      "usage":         t("usage"),
-      "team":          t("team"),
-      "workorders":    t("workOrders"),
-      "schedule":      t("schedule"),
       "requests":      t("requests"),
       "parts":         t("parts"),
       "documents":     t("documents"),
       "reports":       t("reports"),
+      "team":          t("team"),
+      // Legacy routes (still reachable, not in sidebar):
+      "event-log":     t("eventLog"),
+      "usage":         t("usage"),
+      "schedule":      t("schedule"),
       "plc":           "Ladder Logic",
-      "namespace":     "Namespace",
-      "proposals":     "Proposals",
     };
     return map[key] ?? key;
   }
@@ -175,6 +188,22 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
               </p>
             )}
             {secondary.map((item) => (
+              <NavItem key={item.key} item={item} collapsed={collapsed}
+                active={pathname === item.href || pathname.startsWith(item.href + "/")}
+                label={navLabel(item.key)} />
+            ))}
+          </>
+        )}
+
+        {labs.length > 0 && (
+          <>
+            <div className="mx-1 my-2" style={{ borderTop: "1px solid var(--sidebar-border)" }} />
+            {!collapsed && (
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#FBBF24" }}>
+                Labs
+              </p>
+            )}
+            {labs.map((item) => (
               <NavItem key={item.key} item={item} collapsed={collapsed}
                 active={pathname === item.href || pathname.startsWith(item.href + "/")}
                 label={navLabel(item.key)} />
