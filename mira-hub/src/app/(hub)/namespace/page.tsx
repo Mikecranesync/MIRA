@@ -42,6 +42,8 @@ const KIND_ICON: Record<string, React.ElementType> = {
   component: Cog,
   component_template: Cog,
   document: FileText,
+  // Synthesized parent (no kg_entities row) — see #1344. Renders as a folder.
+  namespace: Layers,
 };
 
 // Next.js `<Link>` auto-prepends the configured basePath ('/hub' in this
