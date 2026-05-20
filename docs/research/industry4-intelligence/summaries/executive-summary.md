@@ -2,7 +2,7 @@
 
 > Cross-cutting story across the library. Updated when a new finding materially changes the picture. Always read top-down — the lede is the most important paragraph.
 >
-> **Last updated:** 2026-05-19 (after initial Tier 1 sprint)
+> **Last updated:** 2026-05-20 (after Fuuz deep-dive sprint)
 
 ## TL;DR
 
@@ -44,8 +44,31 @@ The three things to watch:
 - **Ignition + LLM integration patterns** — Ignition has the SCADA install base; if a grounded copilot ships natively inside Ignition Perspective, the moat must be UNS-portable, not Ignition-bound. (See [companies/inductive-automation.md](../companies/inductive-automation.md).)
 - **HighByte's Intelligence Hub adding agent surfaces** — HighByte's modeling layer is exactly the substrate MIRA grounds against; partnership > competition is the most likely path. (See [companies/highbyte.md](../companies/highbyte.md).)
 
+## Update — 2026-05-20: Fuuz deep-dive findings
+
+The deep-dive on Fuuz (Episode 6 video + `fuuz-skills` + `proveit2026` repos) **reinforces three findings** from the Tier 1 sprint and **adds three new ones**:
+
+**Reinforced:**
+- UNS = nervous system, KG = queryable memory is now publicly articulated by Fuuz, not just MIRA's interpretation.
+- "Generic AI is commodity, grounding is the moat" — Fuuz's whole thesis ("you have to be really, really good at evaluating the output. Learn your domain") rhymes with MIRA's UNS gate.
+- Skills-as-captured-corrections is the right shape — Fuuz's `fuuz-packages` skill has 71 numbered golden rules; MIRA's `.claude/rules/` does the same informally.
+
+**New findings:**
+- **MIRA is behind on skill rigor and versioning.** Fuuz has semver per skill, status enum, deploy log. MIRA's skills are unversioned. Cheap to fix (see [mira-lessons-from-fuuz.md](../mira-lessons/mira-lessons-from-fuuz.md) action items 1 + 2).
+- **MIRA is ahead on Slack-first + UNS gate + grounded-by-default.** No vendor in the cohort enforces "don't answer without context." Protect the lead.
+- **A new skill, `mira-platform-utilities`, is high-leverage.** Routes Claude to existing MIRA helpers (uns_resolver, citation_compliance, dedup, inference router) so it stops reinventing them. Inspired by Fuuz's `fuuz-platform`. ~4 hours to build.
+
+Full action plan: [mira-lessons-from-fuuz.md](../mira-lessons/mira-lessons-from-fuuz.md) (top 10 lessons, 10-item action plan).
+Skill adaptation roster: [mira-fuuz-skill-adaptation-plan.md](../mira-lessons/mira-fuuz-skill-adaptation-plan.md).
+Detailed report: [fuuz-first-action-final-report.md](fuuz-first-action-final-report.md).
+
 ## Cross-references
 
 - [mira-lessons/mira-wedge-and-positioning.md](../mira-lessons/mira-wedge-and-positioning.md) — the positioning argument in detail
 - [mira-lessons/mira-architecture-decisions.md](../mira-lessons/mira-architecture-decisions.md) — living decision log
+- [mira-lessons/mira-lessons-from-fuuz.md](../mira-lessons/mira-lessons-from-fuuz.md) — Fuuz-specific lessons + action plan
+- [mira-lessons/mira-fuuz-skill-adaptation-plan.md](../mira-lessons/mira-fuuz-skill-adaptation-plan.md) — proposed 10-skill MIRA roster
+- [architecture-patterns/](../architecture-patterns/) — 5 pattern files (Fuuz / agents / screens / data-modeling / UNS-MQTT)
 - [summaries/initial-research-library-report.md](initial-research-library-report.md) — first-sprint working notes
+- [summaries/fuuz-first-action-final-report.md](fuuz-first-action-final-report.md) — Fuuz-sprint final report
+- [summaries/fuuz-initial-research-summary.md](fuuz-initial-research-summary.md) — plain-English summary for Mike
