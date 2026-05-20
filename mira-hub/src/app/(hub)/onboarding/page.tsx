@@ -18,10 +18,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Building2, Factory, Loader2, MapPin, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, Factory, Loader2, MapPin, MessageSquare, Sparkles } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
-type StepId = "company" | "site" | "line" | "review";
+type StepId = "company" | "site" | "line" | "review" | "try";
 
 interface CompanyPayload { name: string }
 interface SitePayload    { name: string; location?: string }
@@ -37,6 +37,7 @@ const STEPS: { id: StepId; label: string; icon: React.ElementType }[] = [
   { id: "site",    label: "First site",     icon: MapPin },
   { id: "line",    label: "First line",     icon: Factory },
   { id: "review",  label: "Review & finish", icon: Sparkles },
+  { id: "try",     label: "Try MIRA",        icon: MessageSquare },
 ];
 
 export default function OnboardingPage() {
@@ -111,7 +112,7 @@ export default function OnboardingPage() {
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; sitePath?: string };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      router.replace("/namespace");
+      advance("try");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -191,6 +192,13 @@ export default function OnboardingPage() {
             finishing={finishing}
             onBack={() => advance("line")}
             onFinish={finish}
+          />
+        )}
+        {activeStep === "try" && (
+          <TryStep
+            payloads={payloads}
+            onTry={() => router.push("/quickstart")}
+            onSkip={() => router.replace("/namespace")}
           />
         )}
       </div>
@@ -437,6 +445,61 @@ function ReviewStep({
         rightTestId="onboarding-finish"
         onRight={onFinish}
       />
+    </div>
+  );
+}
+
+function TryStep({
+  payloads,
+  onTry,
+  onSkip,
+}: {
+  payloads: AllPayloads;
+  onTry: () => void;
+  onSkip: () => void;
+}) {
+  const lineName = payloads.line?.name ?? "your line";
+  return (
+    <div className="space-y-5" data-testid="step-try">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+          <Sparkles className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Namespace ready.</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            MIRA now knows about <span className="font-medium text-slate-900">{lineName}</span>.
+            Ask a real maintenance question and get a cited answer from the OEM corpus —
+            fault codes, troubleshooting steps, part references.
+          </p>
+        </div>
+      </div>
+      <div className="rounded-md border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        <strong>Example asks:</strong>
+        <ul className="mt-1 list-disc space-y-0.5 pl-5">
+          <li>What does fault F0004 mean on a PowerFlex 525?</li>
+          <li>How do I reset an Allen-Bradley 1756-EN2T module?</li>
+          <li>Common causes of overheating on a SEW-Eurodrive gearmotor?</li>
+        </ul>
+      </div>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <button
+          type="button"
+          onClick={onSkip}
+          className="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+          data-testid="onboarding-skip-try"
+        >
+          Skip to namespace
+        </button>
+        <button
+          type="button"
+          onClick={onTry}
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+          data-testid="onboarding-try-mira"
+        >
+          <MessageSquare className="h-4 w-4" /> Try MIRA now <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }
