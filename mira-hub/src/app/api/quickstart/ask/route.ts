@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { withTenantContext } from "@/lib/tenant-context";
-import { DEMO_TENANT_ID } from "@/lib/demo-auth";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
   retrieveManualChunks,
@@ -12,10 +11,12 @@ import {
 export const dynamic = "force-dynamic";
 
 // See /api/quickstart/manufacturers/route.ts for the rationale on
-// QUICKSTART_TENANT_ID. Defaults to the demo tenant in dev; in prod set the
-// env var to the dedicated public-knowledge tenant.
+// QUICKSTART_TENANT_ID. Production sets it via Doppler / docker-compose;
+// fallback is the founder's tenant where the seeded OEM corpus lives.
+const QUICKSTART_FALLBACK_TENANT_ID = "78917b56-f85f-43bb-9a08-1bb98a6cd6c3";
+
 function quickstartTenantId(): string {
-  return process.env.QUICKSTART_TENANT_ID?.trim() || DEMO_TENANT_ID;
+  return process.env.QUICKSTART_TENANT_ID?.trim() || QUICKSTART_FALLBACK_TENANT_ID;
 }
 
 interface AskPayload {

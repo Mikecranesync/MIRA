@@ -232,6 +232,11 @@ services:
       - HUB_AUTH_GOOGLE_CLIENT_ID=${HUB_AUTH_GOOGLE_CLIENT_ID:-}
       - HUB_AUTH_GOOGLE_CLIENT_SECRET=${HUB_AUTH_GOOGLE_CLIENT_SECRET:-}
       - HUB_TENANT_ID=${HUB_TENANT_ID:-mike}
+      # Public /quickstart landing — tenant whose KB corpus the anonymous
+      # ask endpoint queries (ADR-0014, Twilio moment). Doppler-injected in
+      # staging/prod; fallback below is the founder's tenant where the
+      # seeded OEM corpus currently lives.
+      - QUICKSTART_TENANT_ID=${QUICKSTART_TENANT_ID:-78917b56-f85f-43bb-9a08-1bb98a6cd6c3}
       - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-http://165.245.138.91:4099}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}

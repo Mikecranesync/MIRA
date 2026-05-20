@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { withTenantContext } from "@/lib/tenant-context";
-import { DEMO_TENANT_ID } from "@/lib/demo-auth";
 
 export const dynamic = "force-dynamic";
 
 // /quickstart is a public no-auth page (ADR-0014, the "Twilio moment").
-// We query KB chunks scoped to a designated public tenant. By default this
-// is the demo tenant; production sets QUICKSTART_TENANT_ID to a dedicated
-// "shared knowledge" tenant once the 83K-chunk corpus is mounted there.
+// We query KB chunks scoped to a designated public tenant. Production sets
+// QUICKSTART_TENANT_ID via Doppler / docker-compose; if unset we fall back
+// to the founder's tenant, which is where the seeded OEM corpus lives today.
+const QUICKSTART_FALLBACK_TENANT_ID = "78917b56-f85f-43bb-9a08-1bb98a6cd6c3";
+
 function quickstartTenantId(): string {
-  return process.env.QUICKSTART_TENANT_ID?.trim() || DEMO_TENANT_ID;
+  return process.env.QUICKSTART_TENANT_ID?.trim() || QUICKSTART_FALLBACK_TENANT_ID;
 }
 
 /**
