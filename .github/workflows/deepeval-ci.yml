@@ -49,7 +49,7 @@ jobs:
 
       - name: GS11 grounding regression layer (unit + engine + gate)
         run: |
-          pip install pytest pytest-asyncio sqlalchemy
+          pip install pytest pytest-asyncio sqlalchemy pyyaml httpx
           # Two invocations: tests/ and mira-bots/tests/ each ship a conftest.py
           # with the same module name and pytest refuses to mix them in one run.
           python3 -m pytest -v \
