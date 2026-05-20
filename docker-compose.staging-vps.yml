@@ -102,6 +102,15 @@ services:
       PUBLIC_MINIO_ENDPOINT: ${ATLAS_PUBLIC_MINIO_URL:-http://host.docker.internal:4900}
       INVITATION_VIA_EMAIL: "false"
       ENABLE_EMAIL_NOTIFICATIONS: "false"
+      # Spring @Value placeholders below are required even when email is disabled —
+      # bean wiring happens before the feature flag is read. Match prod's compose
+      # (mira-cmms/docker-compose.yml) so atlas-api boots cleanly in staging.
+      SMTP_HOST: ${ATLAS_SMTP_HOST:-}
+      SMTP_PORT: ${ATLAS_SMTP_PORT:-587}
+      SMTP_USER: ${ATLAS_SMTP_USER:-}
+      SMTP_PWD: ${ATLAS_SMTP_PWD:-}
+      MAIL_RECIPIENTS: ${ATLAS_MAIL_RECIPIENTS:-}
+      KEYGEN_PRODUCT_TOKEN: ${ATLAS_KEYGEN_TOKEN:-}
       ENABLE_SSO: "false"
     ports:
       - "0.0.0.0:4088:8080"
