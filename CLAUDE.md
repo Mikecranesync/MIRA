@@ -196,6 +196,19 @@ To restore an archived module: `git checkout archive/<branch> -- <module-dir>` t
 
 ---
 
+## Research Intelligence Library
+
+Before making any **major architecture, product, UNS, Ignition, MQTT, AI-agent, CMMS, or competitive** decision, consult `docs/research/industry4-intelligence/` — start at [`INDEX.md`](docs/research/industry4-intelligence/INDEX.md), then:
+
+- [`summaries/executive-summary.md`](docs/research/industry4-intelligence/summaries/executive-summary.md) — cross-cutting story
+- [`mira-lessons/mira-wedge-and-positioning.md`](docs/research/industry4-intelligence/mira-lessons/mira-wedge-and-positioning.md) — how we position vs the landscape
+- [`mira-lessons/mira-architecture-decisions.md`](docs/research/industry4-intelligence/mira-lessons/mira-architecture-decisions.md) — living decision log
+- Company files under `companies/` (Tier 1: HighByte, Ignition, Tulip, Litmus, HiveMQ, MaintainX, Fuuz, CESMII, MachineMetrics, TwinThread, ThredCloud)
+
+The `mira-industry4-research` skill (`.claude/skills/mira-industry4-research/SKILL.md`) auto-triggers on architecture / competitor / UNS / Ignition / MQTT / market-positioning questions. If a decision needs a company / pattern not yet in the library, run `RESEARCH_ROUTINE.md` first, then decide — don't re-derive what's already captured.
+
+This library is research-only. Findings flow to ADRs (`docs/adr/`); ADRs flow to code. Never change production behavior directly from a library entry.
+
 ## Verification Workflow
 
 After every VPS deploy, run smoke tests against affected routes before claiming success:
