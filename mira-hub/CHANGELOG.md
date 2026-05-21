@@ -2,6 +2,10 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## [1.8.0] - 2026-05-20
+### Added
+- `/hub/admin/review` — **read-only** preview gallery. One page, all pending artifacts visible in one place: KG relationship proposals + cartoons + screenshots + web-review findings. Admin-only (ADMIN_EMAILS allowlist). Mobile-first. No approve/publish action wired in this PR — surface is purely for visibility while the publish workflow gets designed. Read-only compose mounts for `marketing/`, `docs/promo-screenshots/`, `tools/web-review-runs/`.
+
 ## [1.7.0] - 2026-05-18
 ### Changed
 - Feed page renders live work-order + PM data from `/api/work-orders` and `/api/pm-schedules` (#1033). KPI cards show real Open WO / Overdue PM / Total WO / Auto-Extracted PM counts; hardcoded `12 / 3 / 2.4h / 67%` values removed. Feed items composed from the most-recent 5 work orders + 3 nearest-due PM schedules.
