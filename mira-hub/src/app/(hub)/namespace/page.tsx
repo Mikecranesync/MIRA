@@ -9,7 +9,7 @@
  * Drag-drop move, rename, and merge land in slice 2.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, Layers, Loader2, Factory, MapPin, Cog, FileText, Search } from "lucide-react";
 import { API_BASE } from "@/lib/config";
@@ -30,6 +30,36 @@ interface NamespaceNode {
 interface TreeResponse {
   tree: NamespaceNode[];
   total: number;
+}
+
+interface NodeRelationship {
+  id: string;
+  type: string;
+  targetId: string;
+  targetName: string | null;
+  targetUnsPath: string | null;
+  confidence: number | null;
+}
+
+interface NodeDetail {
+  node: {
+    id: string;
+    name: string;
+    kind: string;
+    unsPath: string | null;
+    properties: unknown;
+    createdAt: string;
+    updatedAt: string;
+  };
+  relationships: {
+    verified: NodeRelationship[];
+    proposed: (NodeRelationship & { createdBy: string; status: string })[];
+  };
+  counts: {
+    children: number;
+    proposalsPending: number;
+    proposalsVerified: number;
+  };
 }
 
 const KIND_ICON: Record<string, React.ElementType> = {
@@ -75,6 +105,9 @@ export default function NamespacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<NamespaceNode | null>(null);
+  const [detail, setDetail] = useState<NodeDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -106,6 +139,64 @@ export default function NamespacePage() {
 
   const visibleTree = useMemo(() => filterTree(tree, search), [tree, search]);
 
+  // Detail-fetch cache, keyed by node id. Cleared on drag-drop save so the
+  // freshly-moved node refetches against the new tree state.
+  const detailCacheRef = useRef<Map<string, NodeDetail>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    // All state writes live inside the async IIFE so the synchronous effect
+    // body stays empty (react-hooks/set-state-in-effect).
+    void (async () => {
+      if (!selected) {
+        if (!cancelled) {
+          setDetail(null);
+          setDetailError(null);
+        }
+        return;
+      }
+      if (selected.id.startsWith("synthetic:")) {
+        // Synthesized parent nodes have no kg_entities row — keep counts
+        // from the tree response, skip the per-node fetch (route would 404).
+        if (!cancelled) {
+          setDetail(null);
+          setDetailError(null);
+        }
+        return;
+      }
+      const cached = detailCacheRef.current.get(selected.id);
+      if (cached) {
+        if (!cancelled) {
+          setDetail(cached);
+          setDetailError(null);
+        }
+        return;
+      }
+      if (!cancelled) {
+        setDetailLoading(true);
+        setDetailError(null);
+      }
+      try {
+        const res = await fetch(`${API_BASE}/api/namespace/node/${selected.id}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as NodeDetail;
+        if (!cancelled) {
+          detailCacheRef.current.set(selected.id, data);
+          setDetail(data);
+        }
+      } catch (e) {
+        if (!cancelled) setDetailError((e as Error).message);
+      } finally {
+        if (!cancelled) setDetailLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
   async function handleDrop(sourceId: string, targetId: string) {
     if (sourceId === targetId) return;
     const previous = tree;
@@ -120,6 +211,9 @@ export default function NamespacePage() {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
+      // Tree is the source of truth for counts/positions — invalidate the
+      // detail cache so the next selection refetches against the new state.
+      detailCacheRef.current.clear();
       await refreshTree();
       setToast("Move saved");
     } catch (e) {
@@ -197,7 +291,16 @@ export default function NamespacePage() {
         className="hidden w-80 shrink-0 border-l border-slate-200 bg-slate-50 p-6 lg:block"
         data-testid="namespace-detail-pane"
       >
-        {loading ? null : selected ? <DetailPane node={selected} /> : <DetailEmpty />}
+        {loading ? null : selected ? (
+          <DetailPane
+            node={selected}
+            detail={detail}
+            loading={detailLoading}
+            error={detailError}
+          />
+        ) : (
+          <DetailEmpty />
+        )}
       </aside>
 
       {toast && (
@@ -320,10 +423,28 @@ function TreeNode({
   );
 }
 
-function DetailPane({ node }: { node: NamespaceNode }) {
+function DetailPane({
+  node,
+  detail,
+  loading,
+  error,
+}: {
+  node: NamespaceNode;
+  detail: NodeDetail | null;
+  loading: boolean;
+  error: string | null;
+}) {
   const path = node.unsPath ?? "";
   const proposalsHref = (status: "pending" | "verified") =>
     `/proposals?path=${encodeURIComponent(path)}&status=${status}`;
+
+  // Prefer fresh counts from the detail fetch; fall back to tree-cached counts
+  // while the per-node request is in flight or if it errors.
+  const counts = detail?.counts ?? node.counts;
+  const verified = detail?.relationships.verified ?? [];
+  const proposed = detail?.relationships.proposed ?? [];
+  const isSynthetic = node.id.startsWith("synthetic:");
+
   return (
     <div data-testid="namespace-detail">
       <div className="text-xs uppercase tracking-wide text-slate-500">{node.kind}</div>
@@ -334,26 +455,105 @@ function DetailPane({ node }: { node: NamespaceNode }) {
         </code>
       )}
       <dl className="mt-6 space-y-1 text-sm">
-        <Stat label="Children" value={node.counts.children} />
+        <Stat label="Children" value={counts.children} />
         <CounterLink
           label="Proposals pending"
-          value={node.counts.proposalsPending}
+          value={counts.proposalsPending}
           href={proposalsHref("pending")}
         />
         <CounterLink
           label="Proposals verified"
-          value={node.counts.proposalsVerified}
+          value={counts.proposalsVerified}
           href={proposalsHref("verified")}
         />
       </dl>
-      {node.counts.proposalsPending > 0 && (
+      {counts.proposalsPending > 0 && (
         <Link
           href={proposalsHref("pending")}
           className="mt-6 inline-block text-sm font-medium text-blue-600 hover:underline"
         >
-          Review {node.counts.proposalsPending} pending proposal
-          {node.counts.proposalsPending === 1 ? "" : "s"} →
+          Review {counts.proposalsPending} pending proposal
+          {counts.proposalsPending === 1 ? "" : "s"} →
         </Link>
+      )}
+
+      {isSynthetic ? (
+        <p className="mt-6 text-xs italic text-slate-500" data-testid="namespace-detail-synthetic">
+          Synthesized parent path — no entity row to inspect.
+        </p>
+      ) : loading ? (
+        <div
+          className="mt-6 flex items-center gap-2 text-xs text-slate-500"
+          data-testid="namespace-detail-loading"
+        >
+          <Loader2 className="h-3 w-3 animate-spin" /> Loading relationships…
+        </div>
+      ) : error ? (
+        <div
+          className="mt-6 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700"
+          data-testid="namespace-detail-error"
+        >
+          Failed to load detail: {error}
+        </div>
+      ) : (
+        <RelationshipsList verified={verified} proposed={proposed} />
+      )}
+    </div>
+  );
+}
+
+function RelationshipsList({
+  verified,
+  proposed,
+}: {
+  verified: NodeRelationship[];
+  proposed: (NodeRelationship & { createdBy: string; status: string })[];
+}) {
+  if (verified.length === 0 && proposed.length === 0) {
+    return (
+      <p className="mt-6 text-xs italic text-slate-500" data-testid="namespace-detail-no-rels">
+        No verified or proposed relationships yet.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-6 space-y-4" data-testid="namespace-detail-relationships">
+      {verified.length > 0 && (
+        <section>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Verified ({verified.length})
+          </h3>
+          <ul className="mt-2 space-y-1">
+            {verified.map((r) => (
+              <li key={r.id} className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-900">
+                <span className="font-mono">{r.type}</span> →{" "}
+                <span className="font-semibold">{r.targetName ?? r.targetId}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {proposed.length > 0 && (
+        <section>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Proposed ({proposed.length})
+          </h3>
+          <ul className="mt-2 space-y-1">
+            {proposed.map((r) => (
+              <li key={r.id} className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                <div>
+                  <span className="font-mono">{r.type}</span> →{" "}
+                  <span className="font-semibold">{r.targetName ?? r.targetId}</span>
+                </div>
+                {r.confidence !== null && (
+                  <div className="mt-0.5 text-[10px] text-amber-700">
+                    confidence {(r.confidence * 100).toFixed(0)}% · {r.createdBy}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );
