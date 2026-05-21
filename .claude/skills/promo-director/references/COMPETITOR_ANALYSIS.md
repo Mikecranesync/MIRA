@@ -1,8 +1,29 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-21
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-21
+
+*Scan window: 2026-05-04 → 2026-05-21. 4 vendors with new signal.*
+
+### Most actionable change for the playbook
+Notion 3.5 (May 13) shifted from "agents inside Notion" to "Notion orchestrates agents from everywhere" (Claude Code, Cursor, Codex, Decagon all work in-box via external agents API). The "orchestration hub" frame is spreading across B2B SaaS. MIRA's counter-positioning: not another agent to coordinate — the factory-specific intelligence layer that makes any agent grounded. UNS + KG is the moat; put it front-and-center before a CMMS vendor claims the "hub" frame for maintenance.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — "What's New: May 2026" (blog-only, no video): https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026 — AI Procedure Recommendations attaches the right procedure at work order creation time (from title+description); pattern deepening toward MIRA's diagnostic territory
+
+**Predictive maintenance**
+- **Tractian** — AI Transcription for Voice Notes (late Apr 2026, no video): https://tractian.com/en/blog/ai-transcription-for-voice-notes-release — voice notes → AI transcription → structured text in work orders and inspections; field-first UX direction
+
+**B2B SaaS / dev-tools**
+- **Notion** — 3.5: Developer Platform (May 13): https://www.youtube.com/watch?v=zCFlM2XhJJE — CEO Ivan Zhao livestreamed; orchestration hub framing, external agents API (Claude Code, Cursor, Codex, Decagon out of the box), Workers (hosted code runtime), Database Sync; 1M+ custom agents created since Feb 2026
+- **Anthropic** — Code with Claude 2026 conference: SF keynote https://www.youtube.com/watch?v=wjvESxKgqaQ (May 6), London https://www.youtube.com/watch?v=6amLO7I9xdg (May 20-21) — first developer-conference format; announced Managed Agents, Proactive Workflows, Capability Curve; all keynotes livestreamed to YouTube; new launch vehicle pattern for Anthropic
 
 ---
 
@@ -86,6 +107,13 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
+**May 2026 update (blog-only, no video)**
+- URL: https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026
+- AI Procedure Recommendations: attaches the right procedure at work order creation time, generated from title + description; reduces procedure-from-scratch time
+- Sub Work Orders: break complex jobs into tracked sub-WOs, each assignable to different teams/assets
+- Scalable Automations improvements
+- Pattern note: MaintainX is closing the gap toward MIRA's diagnostic territory — "know the right procedure before the tech starts" is one step from "diagnose the fault before the tech arrives"
+
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
 ---
@@ -119,6 +147,12 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - $120M Series C (Dec 2024, Sapphire + General Catalyst)
 - Oracle Cloud Infrastructure partnership (Mar 2025): adopted OCI to support Copilot scale
 - Competitive note: hardware-first (IoT sensors + software); MIRA's counterplay is sensor-agnostic + OEM-manual-native
+
+**AI Transcription for Voice Notes (late Apr 2026, no video)**
+- URL: https://tractian.com/en/blog/ai-transcription-for-voice-notes-release
+- Voice notes in work orders, inspections, and other modules → instant AI transcription → structured text
+- Designed for field use: reduces friction for technicians who won't type, will speak
+- Pattern note: Tractian is going voice-first for field UX. MIRA's Slack-first approach is messaging-first — watching whether voice becomes the field standard is worth tracking.
 
 ---
 
@@ -304,6 +338,15 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**Code with Claude 2026 conference (May 6 SF, May 20-21 London)**
+- SF keynote: https://www.youtube.com/watch?v=wjvESxKgqaQ
+- London keynote: https://www.youtube.com/watch?v=6amLO7I9xdg
+- Format: multi-city developer conference, all keynotes livestreamed to YouTube; first time Anthropic has run a developer conference as their primary launch vehicle
+- Announced: Managed Agents, Proactive Workflows, Capability Curve
+- Speaker roster: CPO Ami Vora, Head of Claude Code Cat Wu, Boris Cherny; partner demos from GitHub, Vercel, Datadog, Bun
+- Pattern: conference-as-launch-vehicle (same as Figma Config, Stripe Sessions, Inductive Automation ICC) — now standard for developer-platform companies
+- Transfer to MIRA: "factory maintenance summit" or "plant intelligence day" could be a future launch vehicle for enterprise customer acquisition
+
 ---
 
 ### Cursor
@@ -339,6 +382,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Music: likely ambient [not verified]
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
+
+**3.5: Developer Platform (May 13, 2026)**
+- URL: https://www.youtube.com/watch?v=zCFlM2XhJJE ("Notion Just Announced A Massive Shift (Big Update)")
+- Release notes: https://www.notion.com/releases/2026-05-13
+- Presenter: CEO Ivan Zhao (livestreamed "Make with Notion: Developer Platform" event)
+- Key shift: Notion as orchestration hub for external agents — Claude Code, Cursor, Codex, Decagon work in-box via External Agents API
+- Components: Notion Workers (hosted code runtime, no own servers), Database Sync (pull from Salesforce, Zendesk, Postgres, etc.), External Agents API, CLI
+- Scale: 1M+ custom agents created by users since Custom Agents launched Feb 2026
+- Pricing: free through Aug 11, 2026 (developer adoption play)
+- Strategic frame: moved from "Notion has agents" → "Notion coordinates all agents" — orchestration layer positioning
+- Transfer to MIRA: the competing frame is "every tool your agents need in one hub"; MIRA's counter must be "factory-grounded intelligence, not another orchestration layer"
 
 ---
 
@@ -398,3 +452,7 @@ No video content surfaced for 2025–2026.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **MaintainX** (May 2026): deepened knowledge-at-the-moment-of-need from CoPilot (manual lookup) to AI Procedure Recommendations (auto-attach at WO creation). No video — updates are blog/changelog-only now. Converging on MIRA's diagnostic territory from the workflow side.
+- **Tractian** (Apr 2026): added voice-first field UX (AI transcription of voice notes). Direction is reducing text-entry friction for technicians in the field. No video announced.
+- **Notion** (May 2026): pivoted from "product with agents" to "platform that orchestrates all agents". "Orchestration hub" framing is the new battleground in B2B SaaS — multiple vendors will attempt this in the industrial maintenance space.
+- **Anthropic** (May 2026): adopted developer conference as primary product launch vehicle (Code with Claude 2026, multi-city, keynotes on YouTube). Previously analyst/media appearances only.
