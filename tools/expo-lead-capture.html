@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>FactoryLM — Booth Sign-up</title>
+<meta name="robots" content="noindex">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0d0e11; --surface:#14161d; --surface-hi:#1c1e27;
+    --border:rgba(255,255,255,0.08); --border-hi:rgba(255,255,255,0.18);
+    --text:#f1f3f8; --text-dim:rgba(255,255,255,0.62); --text-faint:rgba(255,255,255,0.35);
+    --amber:#f0a000; --amber-hot:#ffb320; --teal:#00d4aa; --bad:#e2563a;
+    --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,system-ui,sans-serif;
+  }
+  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--font);
+    font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased;
+    min-height:100dvh; padding:20px 16px 60px;
+  }
+  body::before{
+    content:''; position:fixed; inset:0;
+    background:radial-gradient(ellipse 80% 50% at 50% -10%, rgba(240,160,0,0.08) 0%, transparent 60%);
+    pointer-events:none; z-index:0;
+  }
+  main{position:relative; z-index:1; max-width:520px; margin:0 auto}
+
+  /* Header */
+  .brand{display:flex; align-items:center; justify-content:center; gap:10px; padding:8px 0 28px; cursor:pointer; user-select:none}
+  .brand-mark{
+    width:38px; height:38px; border-radius:9px;
+    background:linear-gradient(135deg,var(--amber) 0%, var(--amber-hot) 100%);
+    display:flex; align-items:center; justify-content:center;
+    font-weight:800; color:#1a1408; font-size:18px;
+  }
+  .brand-name{font-weight:700; font-size:20px; letter-spacing:-0.01em}
+  .brand-name .lm{color:var(--amber)}
+
+  /* Card */
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:24px 20px;
+  }
+  h1{font-size:22px; line-height:1.2; font-weight:700; letter-spacing:-0.01em; margin-bottom:6px}
+  .sub{color:var(--text-dim); font-size:14px; margin-bottom:22px}
+
+  label{display:block; font-size:13px; font-weight:600; color:var(--text-dim); margin:14px 0 6px; letter-spacing:0.01em}
+  input[type=text], input[type=email], select, textarea{
+    width:100%; background:var(--surface-hi); border:1px solid var(--border);
+    border-radius:10px; color:var(--text); font:inherit; font-size:16px;
+    padding:12px 14px; outline:none; transition:border-color .15s;
+    -webkit-appearance:none; appearance:none;
+  }
+  input:focus, select:focus, textarea:focus{border-color:var(--amber)}
+  textarea{min-height:90px; resize:vertical; font-family:inherit}
+  select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%23f0a000' d='M6 8L0 0h12z'/></svg>"); background-repeat:no-repeat; background-position:right 14px center; padding-right:36px}
+
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:4px}
+  .chip{
+    padding:9px 14px; border-radius:999px;
+    background:var(--surface-hi); border:1px solid var(--border);
+    color:var(--text-dim); font-size:13px; font-weight:500;
+    cursor:pointer; user-select:none; transition:all .12s;
+  }
+  .chip:hover{border-color:var(--border-hi); color:var(--text)}
+  .chip.on{
+    background:rgba(240,160,0,0.14); border-color:var(--amber);
+    color:var(--amber); font-weight:600;
+  }
+
+  .btn{
+    width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:14px 18px; border-radius:11px; border:0; cursor:pointer;
+    font:inherit; font-size:16px; font-weight:600;
+    transition:transform .04s, background .15s, border-color .15s;
+  }
+  .btn:active{transform:scale(0.985)}
+  .btn-primary{background:var(--amber); color:#1a1408}
+  .btn-primary:hover{background:var(--amber-hot)}
+  .btn-ghost{background:transparent; color:var(--text); border:1px solid var(--border-hi)}
+  .btn-ghost:hover{background:var(--surface-hi)}
+  .btn-row{display:flex; gap:10px; margin-top:18px}
+  .btn-row .btn{width:auto; flex:1}
+  .btn[disabled]{opacity:.5; cursor:not-allowed}
+
+  .submit-wrap{margin-top:24px}
+  .footer-note{text-align:center; color:var(--text-faint); font-size:12px; margin-top:14px}
+
+  /* Success */
+  .success-icon{
+    width:64px; height:64px; border-radius:50%;
+    background:rgba(0,212,170,0.14); border:2px solid var(--teal);
+    display:flex; align-items:center; justify-content:center; margin:8px auto 18px;
+    color:var(--teal); font-size:32px; font-weight:700;
+  }
+  .success-name{font-size:24px; font-weight:700; text-align:center; margin-bottom:6px}
+  .success-email{text-align:center; color:var(--text-dim); font-size:14px; margin-bottom:24px; word-break:break-all}
+  .success-body{color:var(--text-dim); font-size:14px; line-height:1.55; margin-bottom:22px; text-align:center}
+  .success-body strong{color:var(--text)}
+
+  /* Admin */
+  .pin-input{
+    width:100%; max-width:240px; margin:18px auto; text-align:center;
+    font-size:32px; letter-spacing:0.4em; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    background:var(--surface-hi); border:1px solid var(--border); border-radius:12px;
+    color:var(--text); padding:16px; outline:none;
+  }
+  .pin-input:focus{border-color:var(--amber)}
+  .admin-list{display:flex; flex-direction:column; gap:10px; margin-top:18px}
+  .admin-row{
+    background:var(--surface-hi); border:1px solid var(--border); border-radius:12px;
+    padding:14px; cursor:pointer; transition:border-color .12s;
+  }
+  .admin-row:hover{border-color:var(--border-hi)}
+  .admin-row-head{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px}
+  .admin-row-name{font-weight:600; font-size:15px}
+  .admin-row-meta{color:var(--text-dim); font-size:13px; word-break:break-all}
+  .admin-row-time{color:var(--text-faint); font-size:11px; margin-top:6px}
+  .status-pill{
+    font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px;
+    text-transform:uppercase; letter-spacing:0.04em;
+  }
+  .status-new{background:rgba(240,160,0,0.18); color:var(--amber)}
+  .status-followup{background:rgba(0,212,170,0.18); color:var(--teal)}
+  .status-converted{background:rgba(0,212,170,0.28); color:#3df0c4}
+  .status-dead{background:rgba(226,86,58,0.16); color:var(--bad)}
+  .admin-toolbar{
+    display:flex; gap:8px; margin-top:18px; flex-wrap:wrap;
+  }
+  .admin-toolbar .btn{flex:1; min-width:140px; padding:10px 12px; font-size:14px}
+  .admin-empty{text-align:center; color:var(--text-faint); padding:32px 0; font-size:14px}
+  .back-link{
+    background:none; border:0; color:var(--text-dim); cursor:pointer; font:inherit;
+    font-size:14px; padding:6px 0; margin-bottom:6px;
+  }
+  .back-link:hover{color:var(--text)}
+
+  .hide{display:none !important}
+
+  /* Toast */
+  .toast{
+    position:fixed; left:50%; bottom:24px; transform:translateX(-50%);
+    background:var(--surface-hi); border:1px solid var(--border-hi); color:var(--text);
+    padding:12px 18px; border-radius:10px; font-size:14px; font-weight:500;
+    box-shadow:0 8px 24px rgba(0,0,0,.4); opacity:0; pointer-events:none;
+    transition:opacity .2s; z-index:50;
+  }
+  .toast.on{opacity:1}
+
+  @media (max-width: 380px){
+    body{padding:12px 10px 50px}
+    .card{padding:18px 14px}
+    h1{font-size:20px}
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand" id="brand" title="FactoryLM">
+    <div class="brand-mark">F</div>
+    <div class="brand-name">Factory<span class="lm">LM</span></div>
+  </div>
+
+  <!-- ============================ VISITOR FORM ============================ -->
+  <section id="form-view" class="card">
+    <h1>Stop searching. Start fixing.</h1>
+    <p class="sub">Tell us a bit about your plant — we'll send the right info.</p>
+
+    <form id="lead-form" novalidate>
+      <label for="f-name">Name</label>
+      <input type="text" id="f-name" name="name" autocomplete="name" required>
+
+      <label for="f-email">Work email</label>
+      <input type="email" id="f-email" name="email" autocomplete="email" inputmode="email" required>
+
+      <label for="f-company">Company</label>
+      <input type="text" id="f-company" name="company" autocomplete="organization" required>
+
+      <label for="f-role">Role</label>
+      <select id="f-role" name="role" required>
+        <option value="">Select a role…</option>
+        <option>Maintenance Manager</option>
+        <option>Maintenance Technician</option>
+        <option>Plant Engineer</option>
+        <option>Plant Manager</option>
+        <option>Reliability Engineer</option>
+        <option>Controls Engineer</option>
+        <option>Operations</option>
+        <option>Owner / Executive</option>
+        <option>Other</option>
+      </select>
+
+      <label>What interests you? (pick any)</label>
+      <div class="chips" id="chips">
+        <span class="chip" data-v="AI maintenance assistant">AI maintenance assistant</span>
+        <span class="chip" data-v="PLC/VFD troubleshooting support">PLC/VFD troubleshooting support</span>
+        <span class="chip" data-v="QR code asset access">QR code asset access</span>
+        <span class="chip" data-v="Work order / CMMS">Work order / CMMS</span>
+        <span class="chip" data-v="Manual ingestion / search">Manual ingestion / search</span>
+        <span class="chip" data-v="UNS / data integration">UNS / data integration</span>
+        <span class="chip" data-v="Preventive maintenance">Preventive maintenance</span>
+      </div>
+
+      <label for="f-challenge">Biggest maintenance challenge (optional)</label>
+      <textarea id="f-challenge" name="challenge" placeholder="e.g. Techs waste 30 min per call looking for manuals…"></textarea>
+
+      <div class="submit-wrap">
+        <button type="submit" class="btn btn-primary" id="submit-btn">Send me more information</button>
+      </div>
+      <p class="footer-note">No spam. We'll email you a one-pager + a Loom walkthrough.</p>
+    </form>
+  </section>
+
+  <!-- ============================ SUCCESS ============================ -->
+  <section id="success-view" class="card hide">
+    <div class="success-icon">✓</div>
+    <div class="success-name" id="success-name">Thanks!</div>
+    <div class="success-email" id="success-email"></div>
+    <p class="success-body">
+      We just logged your interest. <strong>Mike</strong> will reach out within 1 business day with the right materials for your plant.<br><br>
+      Want to skip the wait? Book a 30-minute call.
+    </p>
+    <button type="button" class="btn btn-primary" id="calendly-btn">Schedule a follow-up</button>
+    <div class="btn-row">
+      <button type="button" class="btn btn-ghost" id="another-btn">Add another person</button>
+    </div>
+  </section>
+
+  <!-- ============================ ADMIN PIN ============================ -->
+  <section id="admin-pin-view" class="card hide">
+    <h1 style="text-align:center;font-size:18px">Booth Admin</h1>
+    <p class="sub" style="text-align:center;margin-bottom:8px">Enter PIN to view captured leads</p>
+    <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4" class="pin-input" id="pin-input" autofocus>
+    <div class="btn-row">
+      <button type="button" class="btn btn-ghost" id="pin-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="pin-submit">Unlock</button>
+    </div>
+  </section>
+
+  <!-- ============================ ADMIN LIST ============================ -->
+  <section id="admin-list-view" class="card hide">
+    <button type="button" class="back-link" id="admin-back">← Back to form</button>
+    <h1 style="font-size:18px">Captured Leads (<span id="lead-count">0</span>)</h1>
+    <div class="admin-list" id="admin-list"></div>
+    <div class="admin-toolbar">
+      <button type="button" class="btn btn-ghost" id="export-csv">Export CSV</button>
+      <button type="button" class="btn btn-ghost" id="clear-all" style="border-color:rgba(226,86,58,.4); color:var(--bad)">Clear all</button>
+    </div>
+  </section>
+
+  <!-- ============================ ADMIN DETAIL ============================ -->
+  <section id="admin-detail-view" class="card hide">
+    <button type="button" class="back-link" id="detail-back">← Back to list</button>
+    <h1 style="font-size:18px" id="detail-name">—</h1>
+    <p class="sub" id="detail-meta">—</p>
+
+    <label for="detail-status">Follow-up status</label>
+    <select id="detail-status">
+      <option value="new">New</option>
+      <option value="followup">Follow-up scheduled</option>
+      <option value="converted">Converted</option>
+      <option value="dead">Not a fit</option>
+    </select>
+
+    <label for="detail-notes">Admin notes</label>
+    <textarea id="detail-notes" placeholder="e.g. Met at booth, asked about VFD demo…"></textarea>
+
+    <div class="btn-row">
+      <button type="button" class="btn btn-primary" id="detail-save">Save</button>
+      <button type="button" class="btn btn-ghost" id="detail-delete" style="border-color:rgba(226,86,58,.4); color:var(--bad)">Delete</button>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast">Saved</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ----- Storage -----
+  const LS_KEY = 'expo_leads_v1';
+  function loadLeads(){
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); }
+    catch(e){ return []; }
+  }
+  function saveLeads(arr){ localStorage.setItem(LS_KEY, JSON.stringify(arr)); }
+
+  // ----- Helpers -----
+  const $ = (id) => document.getElementById(id);
+  const VIEWS = ['form-view','success-view','admin-pin-view','admin-list-view','admin-detail-view'];
+  function show(viewId){
+    VIEWS.forEach(v => $(v).classList.toggle('hide', v !== viewId));
+    window.scrollTo({top:0, behavior:'instant'});
+  }
+  function toast(msg){
+    const t = $('toast'); t.textContent = msg; t.classList.add('on');
+    setTimeout(() => t.classList.remove('on'), 1600);
+  }
+  function uid(){
+    return 'l_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7);
+  }
+  function fmtTime(iso){
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString(undefined, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+    } catch(e){ return iso; }
+  }
+  function escapeCSV(s){
+    if (s == null) return '';
+    const v = String(s);
+    if (/[",\n\r]/.test(v)) return '"' + v.replace(/"/g,'""') + '"';
+    return v;
+  }
+
+  // ----- Chips -----
+  const chipsEl = $('chips');
+  chipsEl.addEventListener('click', (e) => {
+    const c = e.target.closest('.chip');
+    if (!c) return;
+    c.classList.toggle('on');
+  });
+  function getChips(){
+    return [...chipsEl.querySelectorAll('.chip.on')].map(c => c.dataset.v);
+  }
+  function resetForm(){
+    $('lead-form').reset();
+    chipsEl.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+  }
+
+  // ----- Submit -----
+  let currentLeadId = null;
+  $('lead-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = $('f-name').value.trim();
+    const email = $('f-email').value.trim();
+    const company = $('f-company').value.trim();
+    const role = $('f-role').value;
+    if (!name || !email || !company || !role){
+      toast('Please fill name, email, company, role');
+      return;
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){
+      toast('Please enter a valid email');
+      return;
+    }
+    const lead = {
+      id: uid(),
+      name, email, company, role,
+      interests: getChips(),
+      challenge: $('f-challenge').value.trim(),
+      created_at: new Date().toISOString(),
+      status: 'new',
+      admin_notes: '',
+      calendly_clicked: false,
+    };
+    const all = loadLeads();
+    all.push(lead);
+    saveLeads(all);
+    currentLeadId = lead.id;
+    $('success-name').textContent = 'Thanks, ' + name.split(/\s+/)[0];
+    $('success-email').textContent = email;
+    show('success-view');
+  });
+
+  // ----- Success actions -----
+  $('calendly-btn').addEventListener('click', () => {
+    if (currentLeadId){
+      const all = loadLeads();
+      const ix = all.findIndex(l => l.id === currentLeadId);
+      if (ix >= 0){ all[ix].calendly_clicked = true; saveLeads(all); }
+    }
+    window.open('https://calendly.com/mike-cranesync/30min', '_blank', 'noopener');
+  });
+  $('another-btn').addEventListener('click', () => {
+    resetForm();
+    currentLeadId = null;
+    show('form-view');
+  });
+
+  // ----- Admin: triple-tap brand mark -----
+  let tapTimes = [];
+  $('brand').addEventListener('click', () => {
+    const now = Date.now();
+    tapTimes.push(now);
+    tapTimes = tapTimes.filter(t => now - t < 1200);
+    if (tapTimes.length >= 3){
+      tapTimes = [];
+      $('pin-input').value = '';
+      show('admin-pin-view');
+      setTimeout(() => $('pin-input').focus(), 50);
+    }
+  });
+  $('pin-cancel').addEventListener('click', () => { show('form-view'); });
+  $('pin-submit').addEventListener('click', tryPin);
+  $('pin-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') tryPin(); });
+  function tryPin(){
+    if ($('pin-input').value === '1234'){
+      renderAdminList();
+      show('admin-list-view');
+    } else {
+      toast('Wrong PIN');
+      $('pin-input').value = '';
+    }
+  }
+
+  // ----- Admin list -----
+  $('admin-back').addEventListener('click', () => {
+    resetForm();
+    currentLeadId = null;
+    show('form-view');
+  });
+  function renderAdminList(){
+    const all = loadLeads().slice().reverse();
+    $('lead-count').textContent = all.length;
+    const wrap = $('admin-list');
+    wrap.innerHTML = '';
+    if (all.length === 0){
+      wrap.innerHTML = '<div class="admin-empty">No leads captured yet.</div>';
+      return;
+    }
+    all.forEach(l => {
+      const row = document.createElement('div');
+      row.className = 'admin-row';
+      row.dataset.id = l.id;
+      const status = l.status || 'new';
+      row.innerHTML =
+        '<div class="admin-row-head">' +
+          '<div class="admin-row-name"></div>' +
+          '<span class="status-pill status-' + status + '">' + status + '</span>' +
+        '</div>' +
+        '<div class="admin-row-meta"></div>' +
+        '<div class="admin-row-meta company-meta"></div>' +
+        '<div class="admin-row-time"></div>';
+      row.querySelector('.admin-row-name').textContent = l.name;
+      row.querySelector('.admin-row-meta').textContent = l.email;
+      row.querySelector('.company-meta').textContent = l.company + ' · ' + l.role;
+      row.querySelector('.admin-row-time').textContent =
+        fmtTime(l.created_at) + (l.calendly_clicked ? ' · 📅 booked' : '');
+      row.addEventListener('click', () => openDetail(l.id));
+      wrap.appendChild(row);
+    });
+  }
+
+  // ----- Admin detail -----
+  let detailId = null;
+  function openDetail(id){
+    const all = loadLeads();
+    const l = all.find(x => x.id === id);
+    if (!l) return;
+    detailId = id;
+    $('detail-name').textContent = l.name;
+    const interests = (l.interests && l.interests.length) ? l.interests.join(', ') : '(no interests selected)';
+    $('detail-meta').textContent = l.email + ' · ' + l.company + ' · ' + l.role + ' · ' + interests;
+    $('detail-status').value = l.status || 'new';
+    $('detail-notes').value = l.admin_notes || '';
+    show('admin-detail-view');
+  }
+  $('detail-back').addEventListener('click', () => { renderAdminList(); show('admin-list-view'); });
+  $('detail-save').addEventListener('click', () => {
+    const all = loadLeads();
+    const ix = all.findIndex(x => x.id === detailId);
+    if (ix < 0) return;
+    all[ix].status = $('detail-status').value;
+    all[ix].admin_notes = $('detail-notes').value.trim();
+    saveLeads(all);
+    toast('Saved');
+    renderAdminList();
+    show('admin-list-view');
+  });
+  $('detail-delete').addEventListener('click', () => {
+    if (!confirm('Delete this lead?')) return;
+    const all = loadLeads().filter(x => x.id !== detailId);
+    saveLeads(all);
+    renderAdminList();
+    show('admin-list-view');
+  });
+
+  // ----- CSV export -----
+  $('export-csv').addEventListener('click', () => {
+    const all = loadLeads();
+    const cols = ['id','created_at','name','email','company','role','interests','challenge','status','admin_notes','calendly_clicked'];
+    const lines = [cols.join(',')];
+    all.forEach(l => {
+      lines.push([
+        l.id, l.created_at, l.name, l.email, l.company, l.role,
+        (l.interests||[]).join('; '),
+        l.challenge || '', l.status || 'new', l.admin_notes || '',
+        l.calendly_clicked ? 'true' : 'false'
+      ].map(escapeCSV).join(','));
+    });
+    const csv = lines.join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url; a.download = 'factorylm-expo-leads-' + stamp + '.csv';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    toast('CSV downloaded (' + all.length + ' leads)');
+  });
+
+  $('clear-all').addEventListener('click', () => {
+    const n = loadLeads().length;
+    if (n === 0){ toast('Nothing to clear'); return; }
+    if (!confirm('Delete all ' + n + ' captured leads? This cannot be undone.')) return;
+    saveLeads([]);
+    renderAdminList();
+    toast('All leads cleared');
+  });
+
+  // Initial view
+  show('form-view');
+
+  // Expose for Playwright assertions
+  window.__expo = { loadLeads, saveLeads };
+})();
+</script>
+</body>
+</html>
