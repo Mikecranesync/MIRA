@@ -1,5 +1,10 @@
 # Hot Cache — 2026-05-19 — CHARLIE
 
+## eval-fixer run — 2026-05-21
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (15 days stale, unchanged since 2026-05-06)
+- Action: filed #1481, closed as dup of still-open #1419. Same multi-cluster hard-stop (engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3).
+- **Nightly eval job stalled 15 days running.** Third dup-close in a row (#1419 → #1453 → #1481). The signal here is the workflow break, not the eval content — the scorecard date hasn't advanced since 2026-05-06. Action needed: regenerate the scorecard or land a fix on one of the three #1419 clusters; until then every eval-fixer run will continue to dup-close.
+
 ## 2026-05-19 — GS11 grounding test surface landed
 Three-layer regression net for "embedding sidecar down → bot must still cite KB, not 'general industrial knowledge'." Installed after the 2026-05-18 GS11 demo failure (PR #1382 + #1379 + #1385 root cause chain).
 
