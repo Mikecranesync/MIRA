@@ -67,7 +67,9 @@ jobs:
                               'kg_relationships','kg_bridge','tenant_invites',
                               'kg_approval_state','relationship_proposals',
                               'relationship_evidence',
-                              'sessions','signals','signal_cache','signal_trends',
+                              'troubleshooting_sessions','live_signal_events',
+                              'live_signal_cache','diagnostic_trend_sessions',
+                              'diagnostic_trend_signals',
                               'namespace_versions','namespace_proposals',
                               'guest_reports','pm_schedules')
           ORDER BY tablename;
@@ -75,18 +77,21 @@ jobs:
           \echo
           \echo === migrations 019-026 artifact presence ===
           SELECT
-            'sessions (019)' AS artifact,
+            'troubleshooting_sessions (019)' AS artifact,
             EXISTS(SELECT 1 FROM information_schema.tables
-                   WHERE table_schema='public' AND table_name='sessions') AS present
-          UNION ALL SELECT 'signals (019)',
+                   WHERE table_schema='public' AND table_name='troubleshooting_sessions') AS present
+          UNION ALL SELECT 'live_signal_events (019)',
             EXISTS(SELECT 1 FROM information_schema.tables
-                   WHERE table_schema='public' AND table_name='signals')
-          UNION ALL SELECT 'signal_cache (020)',
+                   WHERE table_schema='public' AND table_name='live_signal_events')
+          UNION ALL SELECT 'live_signal_cache (020)',
             EXISTS(SELECT 1 FROM information_schema.tables
-                   WHERE table_schema='public' AND table_name='signal_cache')
-          UNION ALL SELECT 'signal_trends (020)',
+                   WHERE table_schema='public' AND table_name='live_signal_cache')
+          UNION ALL SELECT 'diagnostic_trend_sessions (020)',
             EXISTS(SELECT 1 FROM information_schema.tables
-                   WHERE table_schema='public' AND table_name='signal_trends')
+                   WHERE table_schema='public' AND table_name='diagnostic_trend_sessions')
+          UNION ALL SELECT 'diagnostic_trend_signals (020)',
+            EXISTS(SELECT 1 FROM information_schema.tables
+                   WHERE table_schema='public' AND table_name='diagnostic_trend_signals')
           UNION ALL SELECT 'namespace_versions (021_namespace_builder)',
             EXISTS(SELECT 1 FROM information_schema.tables
                    WHERE table_schema='public' AND table_name='namespace_versions')
