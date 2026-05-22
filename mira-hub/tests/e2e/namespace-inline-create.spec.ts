@@ -121,6 +121,37 @@ async function login(page: import("@playwright/test").Page) {
   await page.context().addCookies(cookies);
 }
 
+/**
+ * Seed the tenant's namespace with an Enterprise root + initial Site + Line
+ * by driving the onboarding wizard's REST endpoints. Idempotent — if the
+ * wizard has already completed for this tenant, the calls are no-ops.
+ *
+ * Without this seed, a freshly-registered playwright user has an empty
+ * namespace and `[data-testid="namespace-tree"]` never renders, so the
+ * + button has no row to attach to and scenarios 1-8 cannot run.
+ */
+async function seedWizard(request: import("@playwright/test").APIRequestContext) {
+  // Idempotent if already completed
+  const status = await request.get(`${HUB}/api/wizard/company`);
+  if (status.ok()) {
+    const body = (await status.json()) as { status?: string };
+    if (body.status === "completed") return;
+  }
+
+  // Step through the wizard. Each POST advances current_step.
+  await request.post(`${HUB}/api/wizard/company`, {
+    data: { name: "Playwright Test Co" },
+  });
+  await request.post(`${HUB}/api/wizard/site`, {
+    data: { name: "Plant Seed", location: "Test Location" },
+  });
+  await request.post(`${HUB}/api/wizard/line`, {
+    data: { name: "Line Seed", description: "Seeded by e2e suite" },
+  });
+  // The `finish` route lives at /api/wizard/finish (not part of the [step] path).
+  await request.post(`${HUB}/api/wizard/finish`, { data: {} });
+}
+
 async function findRowByName(
   page: import("@playwright/test").Page,
   name: string,
@@ -149,6 +180,15 @@ async function fillKindAndName(
 
 test.beforeAll(async ({ request }) => {
   await register({ request });
+  // Sign in this request context (sets the session cookie on the APIRequestContext)
+  // so the wizard endpoints accept the call.
+  await apiSignIn(request).catch((e) => {
+    console.warn("[beforeAll] apiSignIn failed — wizard seed will be skipped:", e);
+  });
+  // Seed the tenant's tree with an Enterprise root + Site + Line if not done.
+  await seedWizard(request).catch((e) => {
+    console.warn("[beforeAll] seedWizard failed — tree may be empty:", e);
+  });
 });
 
 test.describe("Namespace inline create + doc attach", () => {
