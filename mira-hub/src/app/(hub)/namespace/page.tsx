@@ -11,8 +11,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Layers, Loader2, Factory, MapPin, Cog, FileText, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Layers, Loader2, Factory, MapPin, Cog, FileText, Search, Plus } from "lucide-react";
 import { API_BASE } from "@/lib/config";
+import { CreateChildCard } from "@/components/namespace/CreateChildCard";
 
 interface NamespaceNode {
   id: string;
@@ -79,6 +80,7 @@ export default function NamespacePage() {
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [creatingUnderId, setCreatingUnderId] = useState<string | null>(null);
 
   const refreshTree = useCallback(async () => {
     try {
@@ -105,6 +107,21 @@ export default function NamespacePage() {
   }, [refreshTree]);
 
   const visibleTree = useMemo(() => filterTree(tree, search), [tree, search]);
+
+  const handleCreated = useCallback(async () => {
+    await refreshTree();
+    setCreatingUnderId(null);
+    setToast("Created");
+    setTimeout(() => setToast(null), 2500);
+  }, [refreshTree]);
+
+  const handleStartCreate = useCallback((nodeId: string) => {
+    setCreatingUnderId(nodeId);
+  }, []);
+
+  const handleCancelCreate = useCallback(() => {
+    setCreatingUnderId(null);
+  }, []);
 
   async function handleDrop(sourceId: string, targetId: string) {
     if (sourceId === targetId) return;
@@ -187,6 +204,10 @@ export default function NamespacePage() {
                 onDragStart={setDraggingId}
                 onDragOver={setDropTargetId}
                 onDrop={handleDrop}
+                creatingUnderId={creatingUnderId}
+                onStartCreate={handleStartCreate}
+                onCancelCreate={handleCancelCreate}
+                onCreated={handleCreated}
               />
             ))}
           </div>
@@ -222,6 +243,10 @@ function TreeNode({
   onDragStart,
   onDragOver,
   onDrop,
+  creatingUnderId,
+  onStartCreate,
+  onCancelCreate,
+  onCreated,
 }: {
   node: NamespaceNode;
   depth: number;
@@ -232,6 +257,10 @@ function TreeNode({
   onDragStart: (id: string | null) => void;
   onDragOver: (id: string | null) => void;
   onDrop: (sourceId: string, targetId: string) => void;
+  creatingUnderId: string | null;
+  onStartCreate: (id: string) => void;
+  onCancelCreate: () => void;
+  onCreated: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(depth < 2);
   const hasChildren = node.children.length > 0;
@@ -292,12 +321,39 @@ function TreeNode({
           <span className="text-slate-900">{node.name}</span>
           <span className="text-xs text-slate-600">{node.kind}</span>
           {node.counts.proposalsPending > 0 && (
-            <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
+            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
               {node.counts.proposalsPending} proposed
             </span>
           )}
         </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onStartCreate(node.id);
+          }}
+          className="ml-2 flex shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-blue-50 hover:text-blue-700"
+          aria-label={`Add child of ${node.name}`}
+          data-testid="namespace-add-child"
+          data-add-child-of={node.id}
+          style={{ minWidth: "44px", minHeight: "44px" }}
+        >
+          <Plus className="h-5 w-5" />
+        </button>
       </div>
+      {creatingUnderId === node.id && (
+        <CreateChildCard
+          parentId={node.id}
+          parentName={node.name}
+          parentPath={node.unsPath ?? ""}
+          existingSiblings={node.children
+            .map((c) => (c.unsPath ? c.unsPath.split(".").pop() ?? "" : ""))
+            .filter((s) => s.length > 0)}
+          depth={depth + 1}
+          onCreated={onCreated}
+          onCancel={onCancelCreate}
+        />
+      )}
       {open && hasChildren && (
         <div>
           {node.children.map((child) => (
@@ -312,6 +368,10 @@ function TreeNode({
               onDragStart={onDragStart}
               onDragOver={onDragOver}
               onDrop={onDrop}
+              creatingUnderId={creatingUnderId}
+              onStartCreate={onStartCreate}
+              onCancelCreate={onCancelCreate}
+              onCreated={onCreated}
             />
           ))}
         </div>
