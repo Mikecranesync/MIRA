@@ -156,25 +156,51 @@ async function login(page: import("@playwright/test").Page) {
  * + button has no row to attach to and scenarios 1-8 cannot run.
  */
 async function seedWizard(request: import("@playwright/test").APIRequestContext) {
-  // Idempotent if already completed
-  const status = await request.get(`${HUB}/api/wizard/company`);
-  if (status.ok()) {
-    const body = (await status.json()) as { status?: string };
-    if (body.status === "completed") return;
+  // Short-circuit if the tenant already has tree rows.
+  const treeRes = await retry5xx("tree-precheck", async () => {
+    const r = await request.get(`${HUB}/api/namespace/tree`);
+    if (r.status() >= 500) throw new Error(`tree transient ${r.status()}`);
+    return r;
+  });
+  if (treeRes.ok()) {
+    const body = (await treeRes.json()) as { total?: number; tree?: unknown[] };
+    if ((body.total ?? 0) > 0 || (body.tree?.length ?? 0) > 0) {
+      console.log(`[seedWizard] tenant already has ${body.total ?? body.tree?.length} entities — skipping seed`);
+      return;
+    }
   }
 
-  // Step through the wizard. Each POST advances current_step.
-  await request.post(`${HUB}/api/wizard/company`, {
-    data: { name: "Playwright Test Co" },
+  // Drive the wizard. Verify each step.
+  const steps: Array<[string, Record<string, unknown>]> = [
+    ["company", { name: "Playwright Test Co" }],
+    ["site", { name: "Plant Seed", location: "Test Location" }],
+    ["line", { name: "Line Seed", description: "Seeded by e2e suite" }],
+    ["finish", {}],
+  ];
+  for (const [step, payload] of steps) {
+    const res = await retry5xx(`wizard:${step}`, async () => {
+      const r = await request.post(`${HUB}/api/wizard/${step}`, { data: payload });
+      if (r.status() >= 500) throw new Error(`wizard:${step} transient ${r.status()}`);
+      return r;
+    });
+    if (!res.ok()) {
+      const body = await res.text().catch(() => "(no body)");
+      throw new Error(`wizard:${step} failed with ${res.status()}: ${body.slice(0, 200)}`);
+    }
+  }
+
+  // Verify the tree now has rows.
+  const after = await retry5xx("tree-postcheck", async () => {
+    const r = await request.get(`${HUB}/api/namespace/tree`);
+    if (r.status() >= 500) throw new Error(`tree transient ${r.status()}`);
+    return r;
   });
-  await request.post(`${HUB}/api/wizard/site`, {
-    data: { name: "Plant Seed", location: "Test Location" },
-  });
-  await request.post(`${HUB}/api/wizard/line`, {
-    data: { name: "Line Seed", description: "Seeded by e2e suite" },
-  });
-  // The `finish` route lives at /api/wizard/finish (not part of the [step] path).
-  await request.post(`${HUB}/api/wizard/finish`, { data: {} });
+  const body = (await after.json()) as { total?: number; tree?: unknown[] };
+  const total = body.total ?? body.tree?.length ?? 0;
+  if (total === 0) {
+    throw new Error("seedWizard ran but tree is still empty after finish");
+  }
+  console.log(`[seedWizard] seeded tenant; tree now has ${total} entities`);
 }
 
 async function findRowByName(
