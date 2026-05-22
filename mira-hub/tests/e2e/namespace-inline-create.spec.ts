@@ -20,7 +20,10 @@ import { test, expect, devices } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const HUB = (process.env.HUB_URL ?? "https://app.factorylm.com/hub").replace(/\/$/, "");
+// Bare host — nginx strips /hub via 301, which Playwright follows as
+// GET on POST endpoints (405). Existing smoke test pattern (smoke-test.yml)
+// also uses the bare host.
+const HUB = (process.env.HUB_URL ?? "https://app.factorylm.com").replace(/\/$/, "");
 const CREDS = {
   email: "playwright@factorylm.com",
   password: "TestPass123",
