@@ -27,15 +27,6 @@ on:
     workflows: ["Deploy to VPS"]
     types: [completed]
     branches: [main]
-  push:
-    branches:
-      - "feat/namespace-inline-create"
-    paths:
-      - "mira-hub/tests/e2e/namespace-inline-create.spec.ts"
-      - "mira-hub/src/app/api/namespace/node/route.ts"
-      - "mira-hub/src/components/namespace/CreateChildCard.tsx"
-      - "mira-hub/src/app/(hub)/namespace/page.tsx"
-      - ".github/workflows/staging-namespace-create-e2e.yml"
 
 jobs:
   e2e:
