@@ -434,21 +434,30 @@ test.describe("Namespace inline create + doc attach", () => {
 
   test("Scenario 6 — no session returns 401 on the create endpoint", async ({ playwright }) => {
     // Fresh APIRequestContext with no cookies so the auth gate fires.
-    // The fixture-injected `request` carries beforeAll's session cookie
-    // (signed in for the seed) and would silently succeed instead of 401.
+    // Also disable redirect-following: the next-auth middleware emits a 307
+    // to /login on unauth, which Playwright would otherwise follow to a 200
+    // login page and we'd never see the auth-gate signal.
     const anon = await playwright.request.newContext({ extraHTTPHeaders: {} });
     try {
-      const res = await anon.post(`${HUB}/api/namespace/node`, {
+      // Hit the trailing-slash form directly so nginx's 308 → /api/.../node/
+      // doesn't double-count as a redirect.
+      const res = await anon.post(`${HUB}/api/namespace/node/`, {
         headers: { "content-type": "application/json" },
         data: {
           parentId: "00000000-0000-0000-0000-000000000000",
           kind: "site",
           name: "should fail",
         },
+        maxRedirects: 0,
       });
-      // 401 from sessionOr401, OR 400 if the body validates that way first.
-      // We accept either as a "did not silently succeed" signal.
-      expect([401, 400, 403, 404]).toContain(res.status());
+      // Accept the auth-gate signals:
+      //   401 — sessionOr401 from inside the handler
+      //   307 — next-auth middleware redirect to /login (no session)
+      //   403/404 — alternative deny shapes
+      //   400 — body-validation rejection (still "did not silently succeed")
+      // Reject 200/201 explicitly so a regression that lets anon writes
+      // through fails this test.
+      expect([401, 400, 403, 404, 307]).toContain(res.status());
       expect(res.status()).not.toBe(201);
       expect(res.status()).not.toBe(200);
     } finally {
