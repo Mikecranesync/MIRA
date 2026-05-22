@@ -17,6 +17,8 @@
  */
 
 import { test, expect } from "@playwright/test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // iPhone 14-equivalent viewport but stays on chromium so the CI install of
 // `chromium --with-deps` is enough (devices["iPhone 14"] requires webkit).
@@ -28,8 +30,6 @@ const IPHONE_14_LIKE = {
   isMobile: true,
   hasTouch: true,
 } as const;
-import * as fs from "node:fs";
-import * as path from "node:path";
 
 // Bare host — nginx strips /hub via 301, which Playwright follows as
 // GET on POST endpoints (405). Existing smoke test pattern (smoke-test.yml)
@@ -62,58 +62,6 @@ async function register({ request }: { request: import("@playwright/test").APIRe
       `[register] unexpected status ${res.status()} — proceeding to signin anyway`,
     );
   }
-}
-
-/**
- * NextAuth credentials sign-in via API instead of the login UI.
- *
- * The login UI is fully client-rendered and password input visibility timing
- * is unreliable from a CI runner. The credentials provider sits behind the
- * standard NextAuth signin flow which we can drive headlessly:
- *   1. GET /api/auth/csrf → csrfToken
- *   2. POST /api/auth/callback/credentials/ with cookie + form fields
- *   3. Response sets the session cookie which we transfer into the browser ctx.
- */
-type PWCookie = Awaited<
-  ReturnType<import("@playwright/test").APIRequestContext["storageState"]>
-> extends { cookies: infer C }
-  ? C
-  : never;
-
-async function apiSignIn(
-  request: import("@playwright/test").APIRequestContext,
-): Promise<PWCookie> {
-  // 1. csrf
-  const csrfRes = await request.get(`${HUB}/api/auth/csrf`);
-  expect(csrfRes.status()).toBe(200);
-  const { csrfToken } = (await csrfRes.json()) as { csrfToken: string };
-
-  // 2. credentials callback (NextAuth expects form-urlencoded, not JSON)
-  const form = new URLSearchParams();
-  form.set("email", CREDS.email);
-  form.set("password", CREDS.password);
-  form.set("csrfToken", csrfToken);
-  form.set("redirect", "false");
-  form.set("json", "true");
-  form.set("callbackUrl", HUB);
-
-  const signInRes = await request.post(`${HUB}/api/auth/callback/credentials/`, {
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    data: form.toString(),
-    maxRedirects: 0,
-  });
-  // 200 OK on success (json:true) — 302 with the error param query on bad creds.
-  expect([200, 302]).toContain(signInRes.status());
-
-  // 3. extract session cookie from request storage
-  const state = await request.storageState();
-  const sessionCookie = state.cookies.find(
-    (c) =>
-      c.name === "next-auth.session-token" ||
-      c.name === "__Secure-next-auth.session-token",
-  );
-  expect(sessionCookie, "no session cookie returned from credentials signin").toBeTruthy();
-  return state.cookies;
 }
 
 /**
