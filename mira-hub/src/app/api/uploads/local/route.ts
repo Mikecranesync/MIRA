@@ -56,6 +56,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: assetTagCheck.reason }, { status: 400 });
   }
   const assetTag = assetTagCheck.value;
+
+  const unsPathRaw = (form.get("unsPath") as string | null)?.trim() ?? "";
+  const unsPath = unsPathRaw.length > 0 && /^[a-z0-9_]+(\.[a-z0-9_]+)*$/.test(unsPathRaw)
+    ? unsPathRaw
+    : null;
+  if (unsPathRaw.length > 0 && !unsPath) {
+    return NextResponse.json({ error: "uns_path_invalid_format" }, { status: 400 });
+  }
   const kind = inferKindFromMime(mime);
   const buffer = new Uint8Array(await file.arrayBuffer());
 
@@ -80,6 +88,7 @@ export async function POST(req: NextRequest) {
     externalCreatedAt: new Date(file.lastModified),
     initialStatus: "parsing",
     assetTag,
+    unsPath,
   });
 
   const requestId = req.headers.get("x-request-id") ?? randomUUID();

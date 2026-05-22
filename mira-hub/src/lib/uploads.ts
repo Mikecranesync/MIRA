@@ -30,6 +30,7 @@ export interface Upload {
   kbFileId: string | null;
   kbChunkCount: number | null;
   assetTag: string | null;
+  unsPath: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -68,6 +69,10 @@ export function ensureUploadsSchema(): Promise<void> {
         ADD COLUMN IF NOT EXISTS asset_tag TEXT
     `);
     await pool.query(`
+      ALTER TABLE hub_uploads
+        ADD COLUMN IF NOT EXISTS uns_path TEXT
+    `);
+    await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_hub_uploads_tenant_status
         ON hub_uploads (tenant_id, status, created_at DESC)
     `);
@@ -95,6 +100,7 @@ export interface CreateUploadInput {
   externalCreatedAt?: string | Date | null;
   initialStatus?: UploadStatus;
   assetTag?: string | null;
+  unsPath?: string | null;
 }
 
 function rowToUpload(r: Record<string, unknown>): Upload {
@@ -114,6 +120,7 @@ function rowToUpload(r: Record<string, unknown>): Upload {
     kbFileId: (r.kb_file_id as string | null) ?? null,
     kbChunkCount: r.kb_chunk_count != null ? Number(r.kb_chunk_count) : null,
     assetTag: (r.asset_tag as string | null) ?? null,
+    unsPath: (r.uns_path as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
@@ -133,8 +140,8 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
     `
     INSERT INTO hub_uploads
       (tenant_id, provider, kind, external_file_id, external_download_url,
-       filename, mime_type, size_bytes, external_created_at, status, asset_tag)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       filename, mime_type, size_bytes, external_created_at, status, asset_tag, uns_path)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING *
   `,
     [
@@ -149,6 +156,7 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
       createdAt,
       status,
       input.assetTag ?? null,
+      input.unsPath ?? null,
     ],
   );
   return rowToUpload(rows[0]);

@@ -27,6 +27,7 @@ interface CreatePayload {
   sizeBytes?: number;
   externalCreatedAt?: string;
   assetTag?: string;
+  unsPath?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -82,6 +83,14 @@ export async function POST(req: NextRequest) {
   }
   const assetTag = assetTagCheck.value;
 
+  const unsPathRaw = body.unsPath?.trim() ?? "";
+  const unsPath = unsPathRaw.length > 0 && /^[a-z0-9_]+(\.[a-z0-9_]+)*$/.test(unsPathRaw)
+    ? unsPathRaw
+    : null;
+  if (unsPathRaw.length > 0 && !unsPath) {
+    return NextResponse.json({ error: "uns_path_invalid_format" }, { status: 400 });
+  }
+
   const kind = inferKindFromMime(mime);
   const requestId = req.headers.get("x-request-id") ?? randomUUID();
 
@@ -114,6 +123,7 @@ export async function POST(req: NextRequest) {
       externalCreatedAt: body.externalCreatedAt ?? null,
       initialStatus: "queued",
       assetTag,
+      unsPath,
     });
   } catch (err) {
     // Race fallback: another request beat us to the unique index between
