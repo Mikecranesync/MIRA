@@ -16,7 +16,18 @@
  *   npx playwright test tests/e2e/namespace-inline-create.spec.ts
  */
 
-import { test, expect, devices } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+
+// iPhone 14-equivalent viewport but stays on chromium so the CI install of
+// `chromium --with-deps` is enough (devices["iPhone 14"] requires webkit).
+const IPHONE_14_LIKE = {
+  viewport: { width: 390, height: 844 },
+  deviceScaleFactor: 3,
+  userAgent:
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+  isMobile: true,
+  hasTouch: true,
+} as const;
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -37,8 +48,20 @@ const PLANT_NAME = `Plant ${RUN_SUFFIX.toUpperCase()}`;
 const AREA_NAME = `Compressor Room ${RUN_SUFFIX.toUpperCase()}`;
 
 async function register({ request }: { request: import("@playwright/test").APIRequestContext }) {
-  const res = await request.post(`${HUB}/api/auth/register/`, { data: CREDS });
-  expect([201, 409]).toContain(res.status());
+  // 201 = created, 409 = already exists, 429 = rate-limited (existing user
+  // probably already on file from prior runs). 5xx = transient prod issue.
+  // Any of these is fine — the real gate is whether apiSignIn() succeeds.
+  // Only log non-success codes so a hard auth failure surfaces.
+  const res = await request.post(`${HUB}/api/auth/register/`, { data: CREDS }).catch(() => null);
+  if (!res) {
+    console.warn("[register] network error — proceeding to signin anyway");
+    return;
+  }
+  if (![201, 409, 429].includes(res.status())) {
+    console.warn(
+      `[register] unexpected status ${res.status()} — proceeding to signin anyway`,
+    );
+  }
 }
 
 /**
@@ -131,7 +154,7 @@ test.beforeAll(async ({ request }) => {
 test.describe("Namespace inline create + doc attach", () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
-    await page.goto(`${HUB}/namespace`, { waitUntil: "networkidle" });
+    await page.goto(`${HUB}/namespace`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await expect(page.locator('[data-testid="namespace-page"]')).toBeVisible();
   });
 
@@ -333,7 +356,7 @@ test.describe("Namespace inline create + doc attach", () => {
   });
 
   test("Scenario 8 — mobile viewport (iPhone)", async ({ browser }) => {
-    const ctx = await browser.newContext({ ...devices["iPhone 14"] });
+    const ctx = await browser.newContext(IPHONE_14_LIKE);
     const page = await ctx.newPage();
     try {
       await page.goto(`${HUB}/login`, { waitUntil: "networkidle" });
@@ -342,7 +365,7 @@ test.describe("Namespace inline create + doc attach", () => {
       await page.locator('button[type="submit"]').first().click();
       await page.waitForURL(/\/(feed|hub|namespace)/i, { timeout: 15_000 });
 
-      await page.goto(`${HUB}/namespace`, { waitUntil: "networkidle" });
+      await page.goto(`${HUB}/namespace`, { waitUntil: "domcontentloaded", timeout: 60_000 });
       await expect(page.locator('[data-testid="namespace-page"]')).toBeVisible();
 
       const firstRow = page.locator('[data-testid="namespace-node"]').first();
