@@ -9,15 +9,25 @@ name: NeonDB inspect (P0 #1305/#1343/#1344)
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: 'NeonDB target. staging = factorylm/stg, prod = factorylm/prd. Default staging — pre-flight check before any prod write.'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - prod
 
 concurrency:
-  group: db-inspect
+  group: db-inspect-${{ inputs.target }}
   cancel-in-progress: false
 
 jobs:
   inspect:
+    name: Inspect ${{ inputs.target }}
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
     timeout-minutes: 5
 
     steps:
@@ -41,9 +51,15 @@ jobs:
             echo "::error::DOPPLER_TOKEN secret not set."
             exit 1
           fi
-          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          case "${{ inputs.target }}" in
+            staging) DOPPLER_CFG=stg ;;
+            prod)    DOPPLER_CFG=prd ;;
+            *) echo "::error::Unknown target ${{ inputs.target }}"; exit 1 ;;
+          esac
+          echo "Doppler config: factorylm/${DOPPLER_CFG}"
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "${DOPPLER_CFG}" --plain)"
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::NEON_DATABASE_URL empty after Doppler fetch"
+            echo "::error::NEON_DATABASE_URL empty after Doppler fetch (factorylm/${DOPPLER_CFG})"
             exit 1
           fi
           echo "::add-mask::$DATABASE_URL"
