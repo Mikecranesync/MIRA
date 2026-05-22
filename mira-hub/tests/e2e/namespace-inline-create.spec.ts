@@ -252,19 +252,32 @@ test.beforeAll(async ({ request }) => {
 
 test.describe("Namespace inline create + doc attach", () => {
   test.beforeEach(async ({ page }) => {
-    // Scenario 9 (regression) and Scenario 6 (auth) don't need a UI session.
-    // Other scenarios need a logged-in browser pointed at a non-empty tree.
     const title = test.info().title;
-    const needsUiSession =
+    // Scenario 6 (no-session auth check) explicitly does NOT log in.
+    // Scenario 8 owns its own context+login (mobile viewport).
+    const skipLogin =
+      title.includes("Scenario 6") || title.includes("Scenario 8");
+    // Scenarios 1-5, 7 need both auth+seed (non-empty tree). Scenario 9
+    // works on either empty or seeded tree.
+    const requiresSeed =
       !title.includes("Scenario 6") &&
+      !title.includes("Scenario 8") &&
       !title.includes("Scenario 9");
-    if (needsUiSession && !SETUP_OK) {
+    if (requiresSeed && !SETUP_OK) {
       test.skip(true, "auth+seed prerequisites failed in beforeAll");
     }
-    if (needsUiSession) {
-      await login(page);
+    if (!skipLogin) {
+      // Best-effort login. If it fails (transient 5xx), let the test see
+      // a logged-out state and decide whether that's a fail or a skip.
+      await login(page).catch((e) => {
+        console.warn(`[beforeEach] login failed for "${title}":`, e);
+      });
       await page.goto(`${HUB}/namespace`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await expect(page.locator('[data-testid="namespace-page"]')).toBeVisible();
+      // If login worked, namespace-page should be visible. If not, the
+      // page may have redirected to /login — tolerate either for Scenario 9.
+      if (requiresSeed) {
+        await expect(page.locator('[data-testid="namespace-page"]')).toBeVisible();
+      }
     }
   });
 
@@ -419,20 +432,28 @@ test.describe("Namespace inline create + doc attach", () => {
     ).toHaveCount(0);
   });
 
-  test("Scenario 6 — no session returns 401 on the create endpoint", async ({ request }) => {
-    const res = await request.post(`${HUB}/api/namespace/node`, {
-      headers: { "content-type": "application/json", cookie: "" },
-      data: {
-        parentId: "00000000-0000-0000-0000-000000000000",
-        kind: "site",
-        name: "should fail",
-      },
-    });
-    // 401 from sessionOr401, OR 400 if the cookie strip didn't take effect.
-    // We accept either as a "did not silently succeed" signal.
-    expect([401, 400, 403, 404]).toContain(res.status());
-    expect(res.status()).not.toBe(201);
-    expect(res.status()).not.toBe(200);
+  test("Scenario 6 — no session returns 401 on the create endpoint", async ({ playwright }) => {
+    // Fresh APIRequestContext with no cookies so the auth gate fires.
+    // The fixture-injected `request` carries beforeAll's session cookie
+    // (signed in for the seed) and would silently succeed instead of 401.
+    const anon = await playwright.request.newContext({ extraHTTPHeaders: {} });
+    try {
+      const res = await anon.post(`${HUB}/api/namespace/node`, {
+        headers: { "content-type": "application/json" },
+        data: {
+          parentId: "00000000-0000-0000-0000-000000000000",
+          kind: "site",
+          name: "should fail",
+        },
+      });
+      // 401 from sessionOr401, OR 400 if the body validates that way first.
+      // We accept either as a "did not silently succeed" signal.
+      expect([401, 400, 403, 404]).toContain(res.status());
+      expect(res.status()).not.toBe(201);
+      expect(res.status()).not.toBe(200);
+    } finally {
+      await anon.dispose();
+    }
   });
 
   test("Scenario 7 — audit row is written on create (best-effort)", async ({
