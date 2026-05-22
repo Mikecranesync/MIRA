@@ -1,4 +1,10 @@
-# Hot Cache — 2026-05-19 — CHARLIE
+# Hot Cache — 2026-05-22 — CHARLIE
+
+## eval-fixer run — 2026-05-22
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (16 days stale, unchanged since 2026-05-06)
+- Action: filed #1487, closed as dup of still-open #1419. Same multi-cluster hard-stop (engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3).
+- **Nightly eval job stalled 16 days running.** Same failure set surfacing on every run. Either land a fix on one of the three #1419 clusters or regenerate the scorecard manually (`doppler run -- python3 tests/eval/offline_run.py --suite text`) — until then every eval-fixer run will keep dup-closing.
+
 
 ## 2026-05-19 — GS11 grounding test surface landed
 Three-layer regression net for "embedding sidecar down → bot must still cite KB, not 'general industrial knowledge'." Installed after the 2026-05-18 GS11 demo failure (PR #1382 + #1379 + #1385 root cause chain).
