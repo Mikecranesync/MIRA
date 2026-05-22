@@ -14,6 +14,19 @@ on:
         description: "Branch ref to test (default: current)"
         required: false
         default: ""
+  # Auto-run on push to the feature branch so we don't have to wait for
+  # the workflow to land on main before dispatching it manually. This
+  # workflow is scoped to a single feature; it removes itself in the
+  # PR that merges the feature.
+  push:
+    branches:
+      - "feat/namespace-inline-create"
+    paths:
+      - "mira-hub/tests/e2e/namespace-inline-create.spec.ts"
+      - "mira-hub/src/app/api/namespace/node/route.ts"
+      - "mira-hub/src/components/namespace/CreateChildCard.tsx"
+      - "mira-hub/src/app/(hub)/namespace/page.tsx"
+      - ".github/workflows/staging-namespace-create-e2e.yml"
 
 jobs:
   e2e:
