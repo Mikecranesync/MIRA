@@ -6330,4 +6330,31 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/audit-hub-signin.png
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
+
+### 2026-05-22 14:19 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** 857415c5 feat(hub): path-first namespace endpoint + namespace_direct_uploads migration
+**Changed (vs. fork point):**
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/staging-gate.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_mobile.png
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
