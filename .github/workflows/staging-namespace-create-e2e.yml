@@ -1,23 +1,32 @@
-name: Staging Playwright — namespace inline create
+name: Namespace inline-create E2E (post-deploy)
 
-# Runs the namespace-inline-create.spec.ts suite against the staging hub
-# (http://165.245.138.91:4101/hub). Triggered manually after a successful
-# deploy-staging.yml run so we have evidence the 9 acceptance scenarios
-# pass on the deployed code before promoting to prod.
+# Runs tests/e2e/namespace-inline-create.spec.ts against the deployed hub.
 #
-# Captures the mobile-viewport screenshot from Scenario 8 as an artifact.
+# Default target is PRODUCTION (https://app.factorylm.com/hub) because the
+# DigitalOcean Cloud Firewall blocks staging :4101 from public internet —
+# only :22, :80, :443 are open, so neither GitHub Actions runners nor a
+# phone on a normal network can reach staging directly. The e2e suite
+# therefore runs after prod deploy succeeds and acts as the "verify prod
+# after deploy" gate the goal prompt calls for.
+#
+# Trigger: workflow_dispatch (any branch) OR auto-run on successful
+# Deploy to VPS workflow_run (which fires after merge to main).
 
 on:
   workflow_dispatch:
     inputs:
+      hub_url:
+        description: "Hub URL to test against"
+        required: false
+        default: "https://app.factorylm.com/hub"
       ref:
-        description: "Branch ref to test (default: current)"
+        description: "Branch ref to checkout (default: current)"
         required: false
         default: ""
-  # Auto-run on push to the feature branch so we don't have to wait for
-  # the workflow to land on main before dispatching it manually. This
-  # workflow is scoped to a single feature; it removes itself in the
-  # PR that merges the feature.
+  workflow_run:
+    workflows: ["Deploy to VPS"]
+    types: [completed]
+    branches: [main]
   push:
     branches:
       - "feat/namespace-inline-create"
@@ -51,23 +60,38 @@ jobs:
         working-directory: mira-hub
         run: npx playwright install chromium --with-deps
 
-      - name: Wait for staging to respond
+      - name: Resolve target URL
+        id: target
         run: |
+          DEFAULT_URL="https://app.factorylm.com/hub"
+          DISPATCH_URL="${{ github.event.inputs.hub_url }}"
+          if [ -n "$DISPATCH_URL" ]; then
+            URL="$DISPATCH_URL"
+          else
+            URL="$DEFAULT_URL"
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "::notice::Testing against $URL"
+
+      - name: Wait for target to respond
+        run: |
+          URL="${{ steps.target.outputs.url }}"
+          BASE="${URL%/hub}"
           for i in $(seq 1 12); do
-            if curl -sf --max-time 5 -o /dev/null -w "%{http_code}" \
-              "http://165.245.138.91:4101/api/health" | grep -qE "^(200|301|302|307|308|401|404)"; then
-              echo "Staging reachable"
+            if curl -sf --max-time 10 -o /dev/null -w "%{http_code}" \
+              "$BASE/api/health" | grep -qE "^(200|301|302|307|308|401|404)"; then
+              echo "Target reachable"
               exit 0
             fi
-            echo "Attempt $i: staging not ready, retrying in 10s"
+            echo "Attempt $i: target not ready, retrying in 10s"
             sleep 10
           done
-          echo "::warning::staging never returned a routable status — running tests anyway"
+          echo "::warning::target never returned a routable status — running tests anyway"
 
-      - name: Run namespace inline-create suite against staging
+      - name: Run namespace inline-create suite
         working-directory: mira-hub
         env:
-          HUB_URL: http://165.245.138.91:4101/hub
+          HUB_URL: ${{ steps.target.outputs.url }}
         run: npx playwright test tests/e2e/namespace-inline-create.spec.ts --reporter=list
 
       - name: Upload screenshots + test results
