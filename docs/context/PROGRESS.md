@@ -6330,4 +6330,143 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/audit-hub-signin.png
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
+
+### 2026-05-19 13:45 UTC — `claude/flamboyant-yonath-8cbe74`
+**Last commit:** e530a12d fix(hub): batch staging-audit P1/P2 fixes (#1424 #1427 #1428 #1429 #1430)
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+- docs/environments.md
+- docs/ideation/2026-05-17-plc-learning-guide-product.md
+- docs/instructions/.gitkeep
+**Working tree:**
+- ?? docs/evaluations/
+**Next:** _set by next session_
+
+### 2026-05-19 13:50 UTC — `claude/flamboyant-yonath-8cbe74`
+**Last commit:** e530a12d fix(hub): batch staging-audit P1/P2 fixes (#1424 #1427 #1428 #1429 #1430)
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+- docs/environments.md
+- docs/ideation/2026-05-17-plc-learning-guide-product.md
+- docs/instructions/.gitkeep
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/evaluations/
+**Next:** _set by next session_
+
+### 2026-05-19 13:55 UTC — `claude/flamboyant-yonath-8cbe74`
+**Last commit:** e530a12d fix(hub): batch staging-audit P1/P2 fixes (#1424 #1427 #1428 #1429 #1430)
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+- docs/environments.md
+- docs/ideation/2026-05-17-plc-learning-guide-product.md
+- docs/instructions/.gitkeep
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/evaluations/
+**Next:** _set by next session_
+
+### 2026-05-19 13:55 UTC — `claude/flamboyant-yonath-8cbe74`
+**Last commit:** e530a12d fix(hub): batch staging-audit P1/P2 fixes (#1424 #1427 #1428 #1429 #1430)
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+- docs/environments.md
+- docs/ideation/2026-05-17-plc-learning-guide-product.md
+- docs/instructions/.gitkeep
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/evaluations/
+**Next:** _set by next session_
+
+### 2026-05-19 13:56 UTC — `claude/flamboyant-yonath-8cbe74`
+**Last commit:** e530a12d fix(hub): batch staging-audit P1/P2 fixes (#1424 #1427 #1428 #1429 #1430)
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+- docs/environments.md
+- docs/ideation/2026-05-17-plc-learning-guide-product.md
+- docs/instructions/.gitkeep
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/evaluations/
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
