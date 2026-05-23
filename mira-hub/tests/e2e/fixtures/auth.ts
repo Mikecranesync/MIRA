@@ -38,8 +38,24 @@ export async function ensureUserRegistered(request: APIRequestContext): Promise<
 }
 
 export async function loginWithPassword(page: Page): Promise<void> {
-  await page.goto(`${HUB_URL}/login`, { waitUntil: "domcontentloaded" });
-  await page.click("text=Sign in with password");
+  await page.goto(`${HUB_URL}/login`, { waitUntil: "networkidle" });
+  // React hydration must complete before the toggle button works.
+  // Poll for the toggle and click via locator (auto-waits for hydration).
+  const toggle = page.getByRole("button", { name: "Sign in with password" });
+  await toggle.waitFor({ state: "visible", timeout: 15_000 });
+  // Some headless runs need a moment after hydration for the onClick handler
+  // to attach. Click twice if the form doesn't reveal after the first click.
+  for (let i = 0; i < 3; i++) {
+    await toggle.click({ force: true });
+    try {
+      await page.locator('input[type="password"]').waitFor({ state: "visible", timeout: 4_000 });
+      break;
+    } catch {
+      // Toggle may have toggled back off — try again
+      await page.waitForTimeout(500);
+    }
+  }
+  await page.locator('input[type="password"]').waitFor({ state: "visible", timeout: 5_000 });
   // Two email inputs on the page — magic link first, credentials second
   await page.locator('input[type="email"]').last().fill(AUDIT_USER.email);
   await page.fill('input[type="password"]', AUDIT_USER.password);

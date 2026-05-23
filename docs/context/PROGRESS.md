@@ -6330,4 +6330,96 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/audit-hub-signin.png
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
+
+### 2026-05-18 02:31 UTC — `claude/romantic-tharp-dc6a16`
+**Last commit:** 86deb3ae fix(hub): propagate null from manufacturerPath/modelPath in mirrorKnowledgeEntities
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- docs/promo-screenshots/2026-05-17_hub-feed-fixed_desktop.png
+- docs/promo-screenshots/2026-05-17_hub-feed-readiness_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-after-uuid-fix_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-expanded-line3_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-powerflex-visible_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-with-data_desktop.png
+- docs/promo-screenshots/2026-05-17_proposals-page_desktop.png
+- docs/promo-screenshots/audit-hub-feed-authenticated.png
+- docs/promo-screenshots/audit-hub-initial.png
+- docs/promo-screenshots/audit-hub-namespace.png
+- docs/promo-screenshots/audit-hub-proposals.png
+- docs/promo-screenshots/audit-hub-signin.png
+- mira-bots/mira-maintenance-agent/.slack/apps.dev.json
+- mira-bots/mira-maintenance-agent/.slack/cache/manifests.json
+- mira-hub/src/app/api/namespace/tree/route.ts
+- mira-hub/src/app/api/proposals/route.ts
+- mira-hub/src/app/api/readiness/route.ts
+- mira-hub/src/app/api/wizard/[step]/route.ts
+- mira-hub/src/lib/__tests__/uns.test.ts
+**Working tree:**
+- M mira-hub/tests/e2e/fixtures/auth.ts
+- ?? docs/audits/2026-05-17-pre-expo-hub-audit.md
+- ?? docs/promo-screenshots/2026-05-17_hub-admin-roles_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-admin-users_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-documents_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-event-log_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-integrations_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-library_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-m-MC-AC-001_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-m-missing-tag-xyz_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-magic_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-more_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-18 02:48 UTC — `claude/romantic-tharp-dc6a16`
+**Last commit:** 86deb3ae fix(hub): propagate null from manufacturerPath/modelPath in mirrorKnowledgeEntities
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- docs/promo-screenshots/2026-05-17_hub-feed-fixed_desktop.png
+- docs/promo-screenshots/2026-05-17_hub-feed-readiness_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-after-uuid-fix_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-expanded-line3_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-powerflex-visible_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-with-data_desktop.png
+- docs/promo-screenshots/2026-05-17_proposals-page_desktop.png
+- docs/promo-screenshots/audit-hub-feed-authenticated.png
+- docs/promo-screenshots/audit-hub-initial.png
+- docs/promo-screenshots/audit-hub-namespace.png
+- docs/promo-screenshots/audit-hub-proposals.png
+- docs/promo-screenshots/audit-hub-signin.png
+- mira-bots/mira-maintenance-agent/.slack/apps.dev.json
+- mira-bots/mira-maintenance-agent/.slack/cache/manifests.json
+- mira-hub/src/app/api/namespace/tree/route.ts
+- mira-hub/src/app/api/proposals/route.ts
+- mira-hub/src/app/api/readiness/route.ts
+- mira-hub/src/app/api/wizard/[step]/route.ts
+- mira-hub/src/lib/__tests__/uns.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M mira-hub/tests/e2e/fixtures/auth.ts
+- ?? docs/audits/2026-05-17-pre-expo-hub-audit-AUTHED.md
+- ?? docs/audits/2026-05-17-pre-expo-hub-audit.md
+- ?? docs/promo-screenshots/2026-05-17_hub-admin-roles_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-admin-users_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-asset-1c7161b2_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-documents_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-event-log_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-integrations_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-knowledge-uploadbtn_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-library_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-login_desktop.png
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
