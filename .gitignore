@@ -214,3 +214,7 @@ tools/monday-marketplace-setup/node_modules/
 tools/monday-marketplace-setup/playwright-report/
 tools/monday-marketplace-setup/.chrome-profile/
 .warp/mcp.json
+
+# Staging test output (regenerable; never commit result snapshots)
+staging_results.json
+tools/staging_results.json

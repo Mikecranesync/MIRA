@@ -6357,4 +6357,142 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 **Working tree:**
 - M docs/context/PROGRESS.md
 **Next:** _set by next session_
+
+### 2026-05-22 14:34 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** 76d7d683 docs(progress): log 2026-05-22 session — staging migration 027 applied
+**Changed (vs. fork point):**
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/staging-gate.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
+- docs/context/PROGRESS.md
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-22 15:00 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** fb5f6a10 fix(guardrails): add 'arcing' to SAFETY_KEYWORDS_IMMEDIATE
+**Changed (vs. fork point):**
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/staging-gate.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
+- docs/context/PROGRESS.md
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? tools/staging_results.json
+**Next:** _set by next session_
+
+### 2026-05-22 15:03 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** fb5f6a10 fix(guardrails): add 'arcing' to SAFETY_KEYWORDS_IMMEDIATE
+**Changed (vs. fork point):**
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/staging-gate.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
+- docs/context/PROGRESS.md
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? tools/staging_results.json
+**Next:** _set by next session_
+
+### 2026-05-22 16:35 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** 374d225b fix(staging): wire Google OAuth via SSH tunnel — localhost:4101 callbacks
+**Changed (vs. fork point):**
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/staging-gate.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
+- docs/context/PROGRESS.md
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? tools/staging_results.json
+**Next:** _set by next session_
+
+### 2026-05-23 11:51 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** 374d225b fix(staging): wire Google OAuth via SSH tunnel — localhost:4101 callbacks
+**Changed (vs. fork point):**
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/staging-gate.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
+- docs/context/PROGRESS.md
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? tools/staging_results.json
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
