@@ -73,7 +73,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deepeval-results-${{ github.run_number }}
           path: mira-bots/benchmarks/deepeval_results/
