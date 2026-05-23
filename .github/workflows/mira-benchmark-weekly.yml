@@ -97,7 +97,11 @@ jobs:
         id: prep
         run: |
           DATE=$(date -u +%Y-%m-%d)
-          OUT="docs/evaluations/runs/${DATE}-ci"
+          # Runner-local — see "Persistence" in PR description. We deliberately
+          # do NOT write under docs/evaluations/runs/ to avoid auto-committing
+          # CI output into a hand-curated docs tree. The 90-day artifact below
+          # is the persistence layer; promote a run by hand if it's noteworthy.
+          OUT="${{ runner.temp }}/mira-bench/${DATE}"
           mkdir -p "$OUT"
           echo "out=$OUT" >> "$GITHUB_OUTPUT"
           echo "date=$DATE" >> "$GITHUB_OUTPUT"
