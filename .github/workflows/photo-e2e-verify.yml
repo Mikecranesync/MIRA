@@ -42,6 +42,11 @@ permissions:
 jobs:
   photo-e2e:
     name: photo-e2e
+    # Dependabot PRs cannot access GitHub environment secrets — the staging
+    # `NEON_STG_DATABASE_URL` is empty, the writer crashes, and the job goes
+    # red. CI lint/unit and the staging-gate dependabot-skip already gate the
+    # dependency-bump risk. Skip the job-level run so the merge can proceed.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     environment: staging
