@@ -1,4 +1,9 @@
-# Hot Cache — 2026-05-22 — CHARLIE
+# Hot Cache — 2026-05-23 — CHARLIE
+
+## eval-fixer run — 2026-05-23
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (17 days stale, unchanged since 2026-05-06)
+- Action: filed #1506, closed as dup of still-open #1419. Same multi-cluster hard-stop (engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3).
+- **4th consecutive run dup-closing.** Nightly eval job has not produced a fresh scorecard in 17 days. Wiring problem, not a code problem. Action: either land a fix on one of the three #1419 clusters or restart the eval cron / regenerate manually (`doppler run --project factorylm --config prd -- python3 tests/eval/offline_run.py --suite text`).
 
 ## eval-fixer run — 2026-05-22
 - Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (16 days stale, unchanged since 2026-05-06)
