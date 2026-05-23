@@ -7,6 +7,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
 to the component (`mira-web/vX.Y.Z`) so they don't collide with the MIRA
 monorepo's top-level tag progression.
 
+## [0.7.1] — 2026-05-23
+
+### Fixed
+- **Pricing CTA reconcile.** `buy.html` Operating Layer card had a
+  `Subscribe — $499/mo →` button pointing at
+  `/api/checkout/session?plan=operating`. The route ignores `plan=` and
+  always uses the single `STRIPE_PRICE_ID` ($97/mo), so users clicking
+  the $499 button were charged $97. The Operating Layer is invoice-quoted
+  (services-led), not Stripe self-serve. CTA now opens a Talk-to-Mike
+  mailto, matching the Pilot tier pattern.
+- **`llms-full.txt` pricing drift.** Removed the stale `MIRA Integrated —
+  $297/month` tier (does not exist in Stripe, on `pricing.html`, or
+  anywhere else). Added the $499/mo Operating Layer entry plus the
+  services entry points so LLM crawlers see the same offer surface as
+  the public site.
+
 ## [0.6.0] — 2026-05-03
 
 ### Changed

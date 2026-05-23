@@ -536,9 +536,23 @@ services:
       - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://cmms-backend:8080}
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      # /hub/admin/review reads filesystem assets relative to this root.
+      # Must point at a directory that contains marketing/cartoons + docs/promo-screenshots
+      # + tools/web-review-runs (see the volume mounts below).
+      - REVIEW_REPO_ROOT=${REVIEW_REPO_ROOT:-/app}
+      # Email allowlist for /hub/admin/review (comma-separated, lower-case).
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-harperhousebuyers@gmail.com,mike@cranesync.com}
     networks:
       - mira-net
       - cmms-ext
+    volumes:
+      # Source assets for the review queue. Read-write so the API can drop
+      # *.review.json sidecars that the tools/review-promote.sh cron then
+      # picks up, commits, and pushes.
+      - ./marketing:/app/marketing:rw
+      - ./docs/promo-screenshots:/app/docs/promo-screenshots:rw
+      # Web-review findings — read-only, the cron only deletes its own files.
+      - ./tools/web-review-runs:/app/tools/web-review-runs:ro
     restart: unless-stopped
     deploy:
       resources:

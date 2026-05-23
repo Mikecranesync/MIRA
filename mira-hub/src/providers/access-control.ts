@@ -90,6 +90,7 @@ export const NAV_ITEMS: ReadonlyArray<{
   { key: "scan",          label: "Scan",          icon: "Cpu",           href: "/scan",          roles: [...ALL_ROLES], group: "secondary" },
   { key: "integrations",  label: "Settings",      icon: "Settings",      href: "/integrations",  roles: [...ADMIN_ROLES], group: "secondary" },
   { key: "admin",         label: "Admin",         icon: "Users",         href: "/admin",         roles: [...ADMIN_ROLES], group: "secondary" },
+  { key: "admin-review",  label: "Review queue",  icon: "Inbox",         href: "/admin/review",  roles: ["admin", "owner"], group: "secondary" },
 
   // ── LABS (gated on NEXT_PUBLIC_LABS_ENABLED) ───────────────────────────────
   { key: "conversations", label: "Conversations", icon: "MessageSquare", href: "/conversations", roles: [...ALL_ROLES], group: "labs" },

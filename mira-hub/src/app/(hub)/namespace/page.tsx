@@ -490,6 +490,7 @@ export default function NamespacePage() {
           x={ctxMenu.x}
           y={ctxMenu.y}
           onClose={() => setCtxMenu(null)}
+          showCreate={!ctxMenu.node.id.startsWith("synthetic:")}
           onNewFolder={() => {
             setCtxMenu(null);
             setNewFolder({ parentId: ctxMenu.node.id, value: "" });
@@ -990,7 +991,7 @@ function CtxMenuItem({
 
 function ContextMenuOverlay({
   x, y, onClose,
-  onNewFolder, onRename, onUpload, onDelete,
+  onNewFolder, onRename, onUpload, onDelete, showCreate = true,
 }: {
   x: number;
   y: number;
@@ -999,6 +1000,7 @@ function ContextMenuOverlay({
   onRename: () => void;
   onUpload: () => void;
   onDelete: () => void;
+  showCreate?: boolean;
 }) {
   useEffect(() => {
     const handler = () => onClose();
@@ -1017,7 +1019,7 @@ function ContextMenuOverlay({
       style={{ top: y, left: x }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <CtxMenuItem icon={<FolderPlus className="h-3.5 w-3.5" />} label="New Folder" onSelect={onNewFolder} />
+      {showCreate && <CtxMenuItem icon={<FolderPlus className="h-3.5 w-3.5" />} label="New Folder" onSelect={onNewFolder} />}
       <CtxMenuItem icon={<Pencil className="h-3.5 w-3.5" />} label="Rename" onSelect={onRename} />
       <CtxMenuItem icon={<Upload className="h-3.5 w-3.5" />} label="Upload Files" onSelect={onUpload} />
       <div className="my-1 h-px bg-gray-200" />
