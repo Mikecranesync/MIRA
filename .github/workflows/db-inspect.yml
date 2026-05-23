@@ -229,8 +229,9 @@ jobs:
 
           \echo
           \echo === fault_codes vs equipment join (slug-normalized) ===
+          -- fault_codes.tenant_id is TEXT; kg_entities.tenant_id is UUID. Cast to text on both sides.
           WITH fc AS (
-            SELECT DISTINCT tenant_id,
+            SELECT DISTINCT tenant_id::text AS tenant_id,
                             LOWER(REGEXP_REPLACE(TRIM(manufacturer), '[^a-zA-Z0-9]+', '_', 'g')) AS mfr_slug,
                             LOWER(REGEXP_REPLACE(TRIM(equipment_model), '[^a-zA-Z0-9]+', '_', 'g')) AS model_slug,
                             code
@@ -239,9 +240,7 @@ jobs:
                AND equipment_model IS NOT NULL AND TRIM(equipment_model) <> ''
           ),
           eq AS (
-            SELECT tenant_id, id AS eq_id,
-                   LOWER(properties->>'manufacturer') AS mfr_slug_raw,
-                   LOWER(name) AS model_slug_raw,
+            SELECT tenant_id::text AS tenant_id, id AS eq_id,
                    LOWER(REGEXP_REPLACE(properties->>'manufacturer', '[^a-zA-Z0-9]+', '_', 'g')) AS mfr_slug,
                    LOWER(REGEXP_REPLACE(name, '[^a-zA-Z0-9]+', '_', 'g')) AS model_slug
               FROM kg_entities
@@ -256,4 +255,11 @@ jobs:
                                               WHERE eq.tenant_id = fc.tenant_id
                                                 AND eq.mfr_slug = fc.mfr_slug
                                                 AND eq.model_slug = fc.model_slug);
+
+          \echo
+          \echo === regression check: kg_relationships created_at distribution ===
+          SELECT DATE(created_at) AS day, COUNT(*) AS edges
+          FROM kg_relationships
+          GROUP BY DATE(created_at)
+          ORDER BY day;
           SQL
