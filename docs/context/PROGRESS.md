@@ -6330,4 +6330,32 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/audit-hub-signin.png
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
+
+### 2026-05-19 06:47 UTC — `claude/dreamy-dirac-eb3925`
+**Last commit:** a7577318 docs(wiki): eval-fixer run 2026-05-19
+**Changed (vs. fork point):**
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deploy-vps.yml
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/context/PROGRESS.md
+- docs/ideation/2026-05-17-plc-learning-guide-product.md
+- docs/instructions/.gitkeep
+- docs/instructions/Conv_Simple_Complete.html
+- docs/instructions/Conv_Simple_Complete.pdf
+- docs/instructions/Conv_Simple_LadderFirst.html
+- docs/instructions/Conv_Simple_LadderFirst.pdf
+- docs/instructions/Conv_Simple_Prog3_Modbus_Polling.html
+- docs/instructions/Conv_Simple_Prog3_Modbus_Polling.pdf
+- docs/instructions/Conv_Simple_UDFB_Intro.html
+- docs/instructions/Conv_Simple_UDFB_Intro.pdf
+**Working tree:**
+- ?? tools/seeds/mike-garage-tenant.sql
+- ?? tools/seeds/run_mike_garage_seed.py
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
