@@ -6330,4 +6330,31 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/audit-hub-signin.png
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
+
+### 2026-05-20 06:12 UTC — `claude/hungry-jemison-863446`
+**Last commit:** 6802b9d8 docs(wiki): eval-fixer run 2026-05-20
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+**Working tree:**
+- ?? docs/evaluations/
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
