@@ -61,6 +61,11 @@ MIRA_HEALER_ALLOW_ROOT=1
 # Closes #838 — Social Media Publisher
 30 11 * * 2,4  cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/social/publisher.py --publish >> \$LOG_DIR/social_publish.log 2>&1
 
+# Review-queue promoter: every 10 min
+# Scans marketing/cartoons + docs/promo-screenshots for *.review.json sidecars
+# written by /hub/admin/review approve actions, then git-mv + commit + push.
+*/10 * * * *  cd \$MIRA_DIR && bash tools/review-promote.sh >> \$LOG_DIR/review_promote.log 2>&1
+
 # ─── MAINTENANCE OPERATIONS (via Docker) ────────────────────────────────────
 
 # Morning Brief: daily 5 AM ET (9 UTC)

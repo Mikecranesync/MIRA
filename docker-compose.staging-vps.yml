@@ -264,8 +264,15 @@ services:
       - HUB_CMMS_API_URL=http://stg-atlas-api:8080
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      # /hub/admin/review filesystem source root (see volume mounts).
+      - REVIEW_REPO_ROOT=${REVIEW_REPO_ROOT:-/app}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-harperhousebuyers@gmail.com,mike@cranesync.com}
     networks:
       - staging-net
+    volumes:
+      - ./marketing:/app/marketing:rw
+      - ./docs/promo-screenshots:/app/docs/promo-screenshots:rw
+      - ./tools/web-review-runs:/app/tools/web-review-runs:ro
     restart: unless-stopped
     deploy:
       resources:
