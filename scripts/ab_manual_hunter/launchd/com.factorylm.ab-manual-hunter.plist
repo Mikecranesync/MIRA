@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Allen-Bradley / Rockwell manual hunter — CHARLIE launchd schedule.
+
+  Install on CHARLIE (NOT the VPS):
+    cp scripts/ab_manual_hunter/launchd/com.factorylm.ab-manual-hunter.plist \
+       ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.factorylm.ab-manual-hunter.plist
+
+  Verify next run:
+    launchctl list | grep ab-manual-hunter
+    tail -f /tmp/ab-manual-hunter-stderr.log
+
+  First runs should be dry-run (default). To go live:
+    launchctl unload ~/Library/LaunchAgents/com.factorylm.ab-manual-hunter.plist
+    # edit MIRA_AB_HUNTER_LIVE=1 below
+    launchctl load ~/Library/LaunchAgents/com.factorylm.ab-manual-hunter.plist
+
+  Pause without unloading:  touch ~/.mira/STOP_INGEST
+  Resume:                   rm ~/.mira/STOP_INGEST
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.factorylm.ab-manual-hunter</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>cd /Users/charlienode/MIRA &amp;&amp; /Users/charlienode/.local/bin/doppler run --project factorylm --config prd -- /usr/bin/python3 scripts/ab_manual_hunter/run.py 2&gt;&gt;/tmp/ab-manual-hunter.log</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/charlienode/MIRA</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <!-- Set to "1" only after the first dry-run cycle confirms healthy behavior. -->
+    <key>MIRA_AB_HUNTER_LIVE</key>
+    <string>0</string>
+    <key>AB_HUNTER_MAX_NEW</key>
+    <string>3</string>
+  </dict>
+
+  <!-- Every 6 hours at minute 17 (offset from other crons to avoid stacking). -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>17</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>17</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>17</integer></dict>
+    <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>17</integer></dict>
+  </array>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/ab-manual-hunter-stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/ab-manual-hunter-stderr.log</string>
+</dict>
+</plist>
