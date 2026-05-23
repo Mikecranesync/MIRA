@@ -6330,4 +6330,20 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/audit-hub-signin.png
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
+
+### 2026-05-23 17:45 UTC — `claude/quizzical-rhodes-e789ff`
+**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- ?? docs/evaluations/
+**Next:** _set by next session_
+
+### 2026-05-23 17:59 UTC — `claude/quizzical-rhodes-e789ff`
+**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M wiki/references/routines.md
+- ?? docs/evaluations/
+**Next:** _set by next session_
 <!-- END AUTOLOG -->

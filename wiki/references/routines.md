@@ -34,6 +34,28 @@ Configure at: https://code.claude.com (Routines tab)
 **Why:** Replaces manual `bash scripts/pr_self_fix.sh <PR>` invocations.
 **Note:** This duplicates the local cascade script — pick one. Native is faster; the cascade keeps the provider trail.
 
+### Weekly — MIRA-vs-LLM grounded-answer benchmark (Wednesdays 05:00 UTC)
+**Trigger:** cron, Wednesday 05:00 UTC (`0 5 * * 3`)
+**Preconditions:** `tests/mira_bench.py` + scoring loop landed (see `docs/evaluations/mira-vs-llm-benchmark-evaluation-2026-05-23.md` §10). Until then this routine has nothing to run.
+**Prompt:**
+> Run the MIRA-vs-LLM grounded-answer benchmark on the staging NeonDB branch only.
+>
+> 1. Assert `NEON_DATABASE_URL` ends in the staging branch hostname — abort otherwise.
+> 2. Verify GS10/GS11 coverage: `kb_has_pair_coverage('AutomationDirect', 'GS11', $MIRA_BENCH_TENANT_ID)`. If `(False, 0)`, open a GitHub issue titled "Benchmark blocked: no GS11 coverage in bench tenant" and stop.
+> 3. Run `doppler run --project factorylm --config stg -- python tests/mira_bench.py --question-set tests/benchmark/mira_vs_llm_questions.json --modes A,B,C`.
+> 4. Run `python tests/eval/score_mira_bench.py --run-dir docs/evaluations/runs/$(date -u +%Y-%m-%d)`.
+> 5. Open a PR titled `docs(eval): mira-vs-llm benchmark $(date -u +%Y-%m-%d)` containing only the new files under `docs/evaluations/runs/`. PR body = the `report.md` contents.
+> 6. If `mean(B) < mean(C) - 0.3` OR `mean(B) < mean(A) + 1.0`, add label `benchmark-regression` and `@`-mention `@mikeharper` in the PR body.
+> 7. If the embedding sidecar was unreachable during the run (per the report's `embedding_available` field), add label `embedding-sidecar-down` — do not treat the regression as real until that is resolved.
+
+**Why:** Pinned regression net for "does grounding still beat copy-pasting the manual into Claude." Drift here is the single most important signal for the product wedge.
+
+**Kill-switch:** Disable from the Routines tab. Fallback: rename `tests/mira_bench.py` — the routine will fail-fast on the next run.
+
+**Cost cap:** Limit to 50 questions × 3 modes × cascade-cheapest-provider. Hard-fail if total LLM tokens exceed 1M per run.
+
+**Reference:** `docs/evaluations/mira-vs-llm-benchmark-evaluation-2026-05-23.md`.
+
 ### Weekly — Dependency audit (Mondays 06:00 UTC)
 **Trigger:** cron, Monday 06:00 UTC
 **Prompt:** "Run `dependency-check.yml` workflow. Open a PR if any high-severity CVEs are found in mira-bots, mira-mcp, mira-pipeline, or atlas-api. Summarize impact in PR body."
