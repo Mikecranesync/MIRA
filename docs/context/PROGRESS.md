@@ -6330,4 +6330,34 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/audit-hub-signin.png
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
+
+### 2026-05-18 08:11 UTC — `claude/awesome-swanson-9ab5f2`
+**Last commit:** d4ab9718 docs(wiki): eval-fixer run 2026-05-18
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- docs/promo-screenshots/2026-05-17_hub-feed-fixed_desktop.png
+- docs/promo-screenshots/2026-05-17_hub-feed-readiness_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-after-uuid-fix_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-expanded-line3_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-powerflex-visible_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-with-data_desktop.png
+- docs/promo-screenshots/2026-05-17_proposals-page_desktop.png
+- docs/promo-screenshots/audit-hub-feed-authenticated.png
+- docs/promo-screenshots/audit-hub-initial.png
+- docs/promo-screenshots/audit-hub-namespace.png
+- docs/promo-screenshots/audit-hub-proposals.png
+- docs/promo-screenshots/audit-hub-signin.png
+- mira-bots/mira-maintenance-agent/.slack/apps.dev.json
+- mira-bots/mira-maintenance-agent/.slack/cache/manifests.json
+- mira-hub/src/app/api/namespace/tree/route.ts
+- mira-hub/src/app/api/proposals/route.ts
+- mira-hub/src/app/api/readiness/route.ts
+- mira-hub/src/app/api/wizard/[step]/route.ts
+- mira-hub/src/lib/__tests__/uns.test.ts
+**Working tree:**
+- M mira-bots/shared/neon_recall.py
+-  M mira-bots/shared/workers/rag_worker.py
+-  M tests/golden_gs11_conveyor.csv
+- ?? tests/test_quality_gate_stream_aware.py
+**Next:** _set by next session_
 <!-- END AUTOLOG -->

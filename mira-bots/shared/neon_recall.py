@@ -513,7 +513,10 @@ def _merge_results(
     bm25_results = bm25_results or []
 
     if not like_results and not product_results and not bm25_results:
-        return vector_results, "vector_only"
+        # Tag vector-only output so the rag_worker quality gate can apply
+        # the cosine threshold without conflating non-vector scores.
+        tagged = [dict(r, retrieval_streams=["vector"]) for r in vector_results]
+        return tagged, "vector_only"
 
     # Stream priority for similarity-field tiebreak (higher = preferred source
     # for the displayed `similarity` value). Does NOT affect RRF scoring.
@@ -537,16 +540,21 @@ def _merge_results(
     }
 
     # Accumulate RRF scores keyed by content[:100]; track best-priority stream
-    # for the similarity field.
+    # for the similarity field, and which streams contributed for each row so
+    # the rag_worker quality gate can apply the cosine threshold ONLY to
+    # vector-originated chunks (BM25 ts_rank_cd and ILIKE hardcoded 0.5 are
+    # not cosine-comparable).
     scores: dict[str, float] = {}
     best_row: dict[str, dict] = {}
     best_priority: dict[str, int] = {}
+    stream_membership: dict[str, set[str]] = {}
 
     for stream_name, rows in streams.items():
         prio = _STREAM_PRIORITY[stream_name]
         for rank, row in enumerate(rows, start=1):
             key = row["content"][:100]
             scores[key] = scores.get(key, 0.0) + 1.0 / (RRF_K + rank)
+            stream_membership.setdefault(key, set()).add(stream_name)
             if key not in best_row or prio > best_priority[key]:
                 best_row[key] = row
                 best_priority[key] = prio
@@ -561,6 +569,7 @@ def _merge_results(
     for key in ordered_keys:
         row = dict(best_row[key])
         row["rrf_score"] = round(scores[key], 6)
+        row["retrieval_streams"] = sorted(stream_membership.get(key, set()))
         merged.append(row)
 
     # Decide retrieval_path label — kept shape-compatible with prior callers
@@ -682,6 +691,7 @@ def recall_knowledge(
                                 "source_page": None,
                                 "metadata": {"section": "Fault Code Table"},
                                 "similarity": 0.95,  # high confidence — deterministic match
+                                "retrieval_streams": ["structured_fault"],
                             }
                         )
                 # ILIKE fallback for codes not in structured table
