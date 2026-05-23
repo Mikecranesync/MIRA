@@ -45,6 +45,8 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
+import yaml
+
 # Force UTF-8 on Windows (matches plc/ccw/scripts/fetch_rockwell_docs.py)
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
@@ -68,12 +70,11 @@ import fetch_rockwell_docs as rw  # noqa: E402  (sys.path-injected import)
 # --- Optional Telegram notifier (degrades gracefully if absent) -----------
 sys.path.insert(0, str(REPO_ROOT / "mira-crawler"))
 try:
-    from reporting.telegram_notify import notify as _tg_notify
+    from reporting.telegram_notify import notify as _tg_notify  # noqa: E402
 except Exception:
     def _tg_notify(*_a, **_kw) -> bool:  # type: ignore[misc]
         return False
 
-import yaml
 
 logging.basicConfig(
     level=logging.INFO,

@@ -34,7 +34,6 @@ from pathlib import Path
 
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # Root + first-level service-dir compose files. Root `docker-compose.yml`
 # uses `include:` directives to pull in mira-{core,bridge,bots,mcp,cmms,web,
