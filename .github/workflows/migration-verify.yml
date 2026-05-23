@@ -40,6 +40,11 @@ permissions:
 jobs:
   apply-and-verify:
     name: apply-and-verify
+    # Dependabot PRs cannot access GitHub environment secrets — the staging
+    # `NEON_STG_DATABASE_URL` is empty, psql fails, and the job goes red.
+    # CI lint/unit and the staging-gate dependabot-skip already gate the
+    # dependency-bump risk. Skip the job-level run so the merge can proceed.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Uses the same `staging` environment as staging-gate.yml so we can read
