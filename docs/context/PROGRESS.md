@@ -6330,4 +6330,40 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/audit-hub-signin.png
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
+
+### 2026-05-18 04:47 UTC — `claude/cranky-driscoll-6684c5`
+**Last commit:** 86deb3ae fix(hub): propagate null from manufacturerPath/modelPath in mirrorKnowledgeEntities
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- docs/promo-screenshots/2026-05-17_hub-feed-fixed_desktop.png
+- docs/promo-screenshots/2026-05-17_hub-feed-readiness_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-after-uuid-fix_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-expanded-line3_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-powerflex-visible_desktop.png
+- docs/promo-screenshots/2026-05-17_namespace-with-data_desktop.png
+- docs/promo-screenshots/2026-05-17_proposals-page_desktop.png
+- docs/promo-screenshots/audit-hub-feed-authenticated.png
+- docs/promo-screenshots/audit-hub-initial.png
+- docs/promo-screenshots/audit-hub-namespace.png
+- docs/promo-screenshots/audit-hub-proposals.png
+- docs/promo-screenshots/audit-hub-signin.png
+- mira-bots/mira-maintenance-agent/.slack/apps.dev.json
+- mira-bots/mira-maintenance-agent/.slack/cache/manifests.json
+- mira-hub/src/app/api/namespace/tree/route.ts
+- mira-hub/src/app/api/proposals/route.ts
+- mira-hub/src/app/api/readiness/route.ts
+- mira-hub/src/app/api/wizard/[step]/route.ts
+- mira-hub/src/lib/__tests__/uns.test.ts
+**Working tree:**
+- ?? docs/promo-screenshots/2026-05-17_assets-desktop-deployed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_assets-mobile-deployed_mobile.png
+- ?? docs/promo-screenshots/2026-05-17_knowledge-desktop-after-timeout_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_knowledge-desktop-deployed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_knowledge-mobile-after-timeout_mobile.png
+- ?? docs/promo-screenshots/2026-05-17_knowledge-mobile-deployed_mobile.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-desktop-deployed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-mobile-deployed_mobile.png
+- ?? docs/promo-screenshots/2026-05-17_scan-desktop-deployed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_scan-mobile-deployed_mobile.png
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
