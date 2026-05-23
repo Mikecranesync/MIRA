@@ -1,7 +1,14 @@
 name: NeonDB inspect (P0 #1305/#1343/#1344)
 
 # Ad-hoc DB inspection workflow. Uses psql against NeonDB directly via the
-# Doppler-managed NEON_DATABASE_URL (factorylm/prd). Read-only.
+# Doppler-managed NEON_DATABASE_URL. Read-only.
+#
+# IMPORTANT: This workflow takes a `target` input (staging or prod) and DEFAULTS
+# TO STAGING. If you trigger it without explicitly passing `-f target=prod` you
+# will be inspecting the staging Neon branch (forked from prod, stale), NOT prod.
+# To prevent the 2026-05-23 confusion incident, the target is now printed at the
+# top of the log, in the job-step summary, in a banner row before every SQL
+# block, and the connection identity result includes the target string.
 #
 # Previous version (pre-2026-05-19) executed Python inside the mira-mcp-saas
 # container and broke when the container lost psycopg2 in a rebuild. Switched
@@ -31,6 +38,27 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Announce target (prevent 2026-05-23 staging/prod confusion)
+        run: |
+          TARGET='${{ inputs.target }}'
+          if [ "$TARGET" = 'prod' ]; then
+            ICON='🔴'
+            DOPPLER_CFG='factorylm/prd'
+          else
+            ICON='🟡'
+            DOPPLER_CFG='factorylm/stg'
+          fi
+          # Visible in the run-list (annotation) AND the job log.
+          echo "::notice title=DB inspect target::${ICON} target=${TARGET} (${DOPPLER_CFG})"
+          # Pinned at the top of the job-step summary so the run page shows it.
+          {
+            echo "## ${ICON} DB inspect target: \`${TARGET}\`"
+            echo ""
+            echo "- Doppler config: \`${DOPPLER_CFG}\`"
+            echo "- Re-run with \`gh workflow run db-inspect.yml -f target=prod\` for prod"
+            echo "- Re-run with \`gh workflow run db-inspect.yml -f target=staging\` for staging"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/checkout@v4
 
       - name: Install Doppler CLI
@@ -68,11 +96,18 @@ jobs:
       - name: Inspect kg_entities + kg_relationships
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
+          MIRA_INSPECT_TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
-          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
-          \echo === connection identity ===
-          SELECT current_user AS connected_as, session_user;
+          echo "========================================================"
+          echo "==  DB INSPECT — TARGET=${MIRA_INSPECT_TARGET}  =="
+          echo "========================================================"
+          # Pass the target into psql as a session variable so it appears
+          # in every \echo banner.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 -v target="${MIRA_INSPECT_TARGET}" <<'SQL'
+          \echo === ▶▶▶ inspecting target=:target ◀◀◀ ===
+          \echo === connection identity (cross-check against target) ===
+          SELECT :'target' AS workflow_target, current_database() AS db, current_user AS connected_as;
           SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname = current_user;
 
           \echo

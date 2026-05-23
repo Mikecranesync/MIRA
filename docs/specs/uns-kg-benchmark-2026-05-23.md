@@ -1,12 +1,14 @@
 ---
 title: "UNS + KG — Empirical Benchmark Addendum"
 date: 2026-05-23
-status: "Empirical companion to docs/specs/uns-kg-standards-compliance.md (2026-05-07) — DRAFT"
+status: "Empirical companion to docs/specs/uns-kg-standards-compliance.md (2026-05-07)"
 author: "Claude (CHARLIE node) on behalf of Mike Harper"
 parent_spec: "docs/specs/uns-kg-standards-compliance.md"
 db_inspect_runs:
-  - 2026-05-19T22:50: workflow run 26130051449 (PR #1443 verification)
-  - 2026-05-23T12:43: workflow run 26332999674 (this addendum)
+  - 2026-05-19T22:50 prod: workflow run 26130051449 (PR #1443 verification)
+  - 2026-05-23T12:43 staging (default): workflow run 26332999674
+  - 2026-05-23T13:11 staging (default): workflow run 26333596051
+  - 2026-05-23T14:25 prod (explicit): workflow run 26335166454
 ---
 
 # UNS + KG — Empirical Benchmark Addendum (2026-05-23)
@@ -15,183 +17,180 @@ db_inspect_runs:
 
 The 2026-05-07 spec (`docs/specs/uns-kg-standards-compliance.md`) scored MIRA's KG design against eight industry standards (ISA-95, ISO 14224, MIMOSA CCOM, W3C OWL/SOSA, OPC UA, Sparkplug B, NAMUR NE 107, ISO 55000). That work remains correct as a **design-level** benchmark and is not duplicated here.
 
-This addendum is the **empirical** companion: how does the prod KG *actually look* today, 16 days later, against both (a) the standards in the parent spec and (b) the vocabulary the code is supposed to write? The data comes from two db-inspect runs against `factorylm/prd` NeonDB (rolbypassrls=t on `neondb_owner`, so RLS is not filtering the view): the 2026-05-19 22:50 UTC run from PR #1443's verification, and a fresh 2026-05-23 12:43 UTC run.
-
-The findings are structured to be actionable, not encyclopedic. They are ordered by severity.
+This addendum is the **empirical** companion: how does the prod KG *actually look* today, against both (a) the standards in the parent spec and (b) the vocabulary the code is supposed to write?
 
 ---
 
-## Headline: a 269-edge regression between 2026-05-19 and 2026-05-23
+## Operator-error retrospective: the staging-vs-prod confusion
 
-| Metric | 2026-05-19 22:50 UTC | 2026-05-23 12:43 UTC | Δ |
+The first three runs of this addendum (workflow runs 26332999674 and 26333596051) hit `db-inspect.yml` without specifying `target=prod`. The workflow defaults to `target=staging`. The staging Neon branch is forked-from-prod but stale, so it has materially fewer rows than prod. The mistake produced a false "299 → 42 row regression" headline that does not exist in production. The PR #1505 commits that asserted this regression have been corrected. Prevention shipped in this same PR: db-inspect now prints the target as a `::notice::` annotation, pins it in the job-step summary, and stamps it into the psql session via a `:target` variable so every SQL block confirms which DB it queried. Lesson: read the job name. The 2026-05-23T12:43 run name was literally "Inspect staging" — the data was correct; the analyst was not.
+
+The remainder of this addendum uses prod data from **workflow run 26335166454** (2026-05-23T14:25 UTC, target=prod explicit).
+
+---
+
+## Prod KG state, 2026-05-23
+
+| Metric | 2026-05-19 22:50 UTC (prod) | 2026-05-23 14:25 UTC (prod) | Δ |
 |---|---|---|---|
-| `kg_entities` rows | 600 | 84 | −516 |
+| `kg_entities` rows | 600 | 600 | 0 |
 | `kg_entities` NULL `uns_path` | 28 | 28 | 0 |
-| `kg_relationships` rows | 299 | 42 | −257 |
-| `has_manual` edges | 269 | **0** | −269 |
+| `kg_relationships` rows | 299 | 299 | 0 |
+| `has_manual` edges | 269 | 269 | 0 |
 | `knowledge_entries` rows | 83,542 | 83,542 | 0 |
 
-The 269 `has_manual` edges that PR #1443's backfill ran (commit `623a43d1`) and verified at 22:50 UTC on 2026-05-19 **no longer exist**. Sampling the current 42 `kg_relationships` rows shows the earliest `created_at` is 2026-04-28 and the latest is 2026-05-08 — every row created on 2026-05-19 is gone. The deletion appears selective: edges from before PR #1443 survived; edges created by PR #1443 did not.
-
-**Likely vector (not confirmed):** migration `026_kg_entities_dedupe_and_constraint.sql` deletes duplicate `kg_entities` rows, and the FK `ON DELETE CASCADE` on `kg_relationships.source_id / target_id` (per migration 001) collapses the attached edges. PR #1443's backfill inserted 269 (mfr, model) → equipment+manual upserts; if any of those rows were treated as duplicates by 026's natural-key dedup (`tenant_id, entity_type, name`), the cascade would have wiped the new edges. The 026 file itself flags this behavior explicitly: *"Kept-row relationships from earlier writes are preserved"* — meaning new relationships attached to deduped duplicates are not.
-
-I could not locate a prod `apply-migrations.yml` run between 2026-05-19 22:50 and 2026-05-23 12:43 that explicitly applies 026 (the 2026-05-22 23:36 run only ran the 014–018 check pass, no application). Either 026 was applied earlier than the listed runs, or another deletion vector exists (e.g., a manual `psql` against prod — which is explicitly banned by `docs/environments.md` rule #1, and would be a separate incident).
-
-**This is an ops finding, not benchmark material.** It belongs in `docs/known-issues.md` and on Mike's desk before any further KG writes happen. The deferred recommendations from the previous session (has_fault backfill, NULL uns_path remediation) should not run until root cause is understood, or the same deletion vector will silently consume them too.
-
-The memory note `project_kg_relationships_schema.md` claiming "verified PR outcome (299 rows / 269 has_manual)" is **frozen in time** — the verification was correct at 22:50 UTC; the durability assumption was wrong. The note has been updated to reflect this addendum.
+**Prod is stable.** PR #1443's backfill (269 has_manual edges + 269 manual entities + 269 equipment entities) is durable. No regression.
 
 ---
 
-## Empirical entity-type vocabulary: 11 in DB, 3 in `kg_writer.py`
+## Empirical entity-type vocabulary: 11 in prod DB, 3 in `kg_writer.py`
 
-`kg_writer.py` (the canonical ingest-side writer in `mira-crawler/ingest/`) only knows three `entity_type` values: `equipment`, `manual`, `fault_code`. The current prod `kg_entities` table has **11 distinct entity types**:
+`kg_writer.py` (the canonical ingest-side writer in `mira-crawler/ingest/`) writes three `entity_type` values: `equipment`, `manual`, `fault_code`. Prod `kg_entities` has **11 distinct entity types** with these counts:
 
-| `entity_type` | rows (2026-05-23) | NULL `uns_path` | empty `properties` | Written by `kg_writer.py`? |
+| `entity_type` | rows (prod 2026-05-23) | NULL `uns_path` | empty `properties` | Written by `kg_writer.py`? |
 |---|---|---|---|---|
+| `manual` | 281 | **12** | 0 | Yes (12 NULLs from a non-kg_writer path) |
+| `equipment` | 276 | 0 | 0 | Yes |
 | `work_order` | 16 | **16** | 0 | No |
-| `equipment` | 15 | 0 | 0 | Yes |
-| `component` | 14 | 0 | 0 | No |
-| `manual` | 12 | **12** | 0 | Yes (but path builder unused) |
-| `plc_tag` | 8 | 0 | 0 | No |
+| `component` | 8 | 0 | 0 | No |
 | `fault_code` | 5 | 0 | 0 | Yes |
-| `area` | 4 | 0 | 1 | No |
-| `site` | 3 | 0 | 0 | No |
-| `line` | 3 | 0 | 1 | No |
-| `tenant` | 2 | 0 | 0 | No |
+| `plc_tag` | 4 | 0 | 0 | No |
+| `area` | 3 | 0 | 1 | No |
+| `site` | 2 | 0 | 0 | No |
+| `line` | 2 | 0 | 1 | No |
 | `asset` | 2 | 0 | 0 | No |
+| `tenant` | 1 | 0 | 0 | No |
 
-**Eight of eleven `entity_type` values are written by code outside `mira-crawler/ingest/kg_writer.py`.** A grep for `entity_type=` across `mira-crawler/`, `mira-bots/shared/`, and `mira-hub/db/migrations/` returns only the three in `kg_writer.py`; the other eight must be written from a different writer path (almost certainly `mira-hub/`'s onboarding wizard, namespace builder, or work-order endpoints — they correspond to the ISA-95 levels `site`/`area`/`line` and the CMMS surface `work_order`/`asset`/`plc_tag`/`component`).
+**Eight of eleven `entity_type` values are written by code outside `mira-crawler/ingest/kg_writer.py`.** A grep for `entity_type=` across `mira-crawler/`, `mira-bots/shared/`, and `mira-hub/db/migrations/` returns only the three in `kg_writer.py`; the other eight come from a different writer path — almost certainly `mira-hub/`'s onboarding wizard, namespace builder, work-order endpoints, and PLC-tag mapper. They correspond to ISA-95 structural levels (`site`/`area`/`line`) and the CMMS surface (`work_order`/`asset`/`plc_tag`/`component`).
 
-**This is the actionable headline the 2026-05-07 spec does not have.** The KG is being populated by multiple writers with no shared vocabulary contract. There is no `kg_entities.entity_type CHECK` constraint, no enum table, no documented authoritative list. Drift is inevitable.
+**There is no shared vocabulary contract.** No `entity_type` CHECK constraint, no enum table, no documented authoritative list. Drift between writers is structurally inevitable. This is the actionable gap the 2026-05-07 spec does not surface — it predates the Hub writer's contributions.
 
 ### Discrimination of the 28 NULL `uns_path` rows
 
-The 28 NULL rows split cleanly into two cohorts:
+- **16 × `work_order`** — no work-order path builder exists in `mira-crawler/ingest/uns.py`. ISA-95 places work orders at Level 3 (manufacturing operations management); ISO 14224 § 8 explicitly addresses work-order data records. They should have a path under `enterprise.{site}.{area}.cmms.work_orders.{wo_id}` or equivalent. Fix lives in whichever Hub writer creates work_order entities (likely `mira-hub/src/app/api/work-orders/route.ts` or similar).
+- **12 × `manual`** — `manual_path()` *exists* in `mira-crawler/ingest/uns.py` and is called by `kg_writer.register_equipment_and_manual()`. The remaining 269 `manual` rows DO have a `uns_path`. These 12 NULL-path manuals were therefore written by a different code path (likely Hub) that doesn't import the path builder.
 
-- **16 × `work_order`.** No `work_order` path builder exists in `mira-crawler/ingest/uns.py`. The Hub writer that creates these rows is inserting them without a path. ISO 14224 § 8 explicitly addresses work-order data records, and ISA-95 places work orders in the Level-3 manufacturing operations management band. They *should* have a UNS path under `enterprise.{site}.{area}.cmms.work_orders.{wo_id}` or similar.
-- **12 × `manual`.** `manual_path()` *exists* in `mira-crawler/ingest/uns.py` and is called by `kg_writer.register_equipment_and_manual()`. The 12 NULL manuals were therefore written by a different code path (likely the same Hub writer, which doesn't call `kg_writer`). This is the *manufacturer/model* path-builder gap noted in the 2026-05-07 spec § 2 ("Action item 2") flowing downstream into a second writer.
-
-No `equipment`, `component`, `fault_code`, `plc_tag`, `site`, `area`, `line`, `tenant`, or `asset` row has a NULL `uns_path`. The 28 NULLs are entirely a `work_order` + `manual` problem and bound to whichever Hub writer creates them.
+No `equipment`, `component`, `fault_code`, `plc_tag`, `site`, `area`, `line`, `tenant`, or `asset` row has a NULL `uns_path`. The 28 NULLs are entirely a `work_order` + `manual`-from-Hub-path-builder gap.
 
 ---
 
-## Empirical relationship-type vocabulary: 10 in DB, 2 in `kg_writer.py`
+## Empirical relationship-type vocabulary: 11 in prod DB, 2 in `kg_writer.py`
 
-`kg_writer.py` writes two `relationship_type` values: `has_manual`, `has_fault`. The current prod `kg_relationships` table has **10 distinct types** (and would have had 11 if the 269 `has_manual` had survived):
+`kg_writer.py` writes two `relationship_type` values: `has_manual`, `has_fault`. Prod has **11 distinct types**:
 
-| `relationship_type` | rows (2026-05-23) | rows (2026-05-19) | Naming | Written by `kg_writer.py`? |
-|---|---|---|---|---|
-| `documented_in` | 12 | 12 | lower | No |
-| `HAS_COMPONENT` | 11 | 5 | UPPER | No |
-| `has_fault_code` | 5 | 5 | lower | **Conflicts with `has_fault`** |
-| `LOCATED_IN` | 5 | 2 | UPPER | No |
-| `POWERED_BY` | 2 | 1 | UPPER | No |
-| `WIRED_TO` | 2 | 1 | UPPER | No |
-| `MAPS_TO` | 2 | 1 | UPPER | No |
-| `has_work_order` | 1 | 1 | lower | No |
-| `USED_IN_LOGIC` | 1 | 1 | UPPER | No |
-| `CAUSES` | 1 | 1 | UPPER | No |
-| `has_manual` | 0 | **269** | lower | Yes — and **gone** |
+| `relationship_type` | rows (prod 2026-05-23) | Naming | Written by `kg_writer.py`? |
+|---|---|---|---|
+| `has_manual` | 269 | lower | Yes (PR #1443 backfill) |
+| `documented_in` | 12 | lower | No |
+| `has_fault_code` | 5 | lower | **Conflicts with `has_fault`** |
+| `HAS_COMPONENT` | 5 | UPPER | No |
+| `LOCATED_IN` | 2 | UPPER | No |
+| `MAPS_TO` | 1 | UPPER | No |
+| `POWERED_BY` | 1 | UPPER | No |
+| `WIRED_TO` | 1 | UPPER | No |
+| `has_work_order` | 1 | lower | No |
+| `USED_IN_LOGIC` | 1 | UPPER | No |
+| `CAUSES` | 1 | UPPER | No |
 
-Two specific problems beyond the headline:
+Two specific problems:
 
-**1. Naming inconsistency.** Seven types are UPPER_SNAKE; four are lower_snake. There is no shared convention. `kg_writer.py` writes lower_snake (`has_manual`, `has_fault`); the Hub writer mostly writes UPPER. A consumer doing `WHERE relationship_type = 'has_component'` would miss every Hub-written row; one doing `'HAS_COMPONENT'` would miss every backfill row. This is silent-failure territory.
+**1. Naming inconsistency.** Six types are UPPER_SNAKE; five are lower_snake. There is no shared convention. `kg_writer.py` writes lower_snake (`has_manual`, `has_fault`); the Hub writer mostly writes UPPER. A consumer doing `WHERE relationship_type = 'has_component'` would miss every Hub-written row; one doing `'HAS_COMPONENT'` would miss every backfill row. Silent-failure territory.
 
-**2. `has_fault` vs `has_fault_code` — same concept, different strings.** `kg_writer.register_fault_code()` writes `has_fault`. The DB has 5 `has_fault_code` rows from Hub. If the deferred has_fault backfill runs against the current schema as-is, it will create a **third edge type** for the same concept, splitting the graph further. **This blocks the has_fault backfill task** until the two writers agree on a string.
-
-The 2026-05-07 spec did not raise this — it predates the Hub writer's relationship contributions. The spec's § 4 "Action item 3" reserved `MEASURES` and `LOCATED_ON` for future use; the DB now has `LOCATED_IN` (note: `_IN` not `_ON`). Drift is observable in production data.
+**2. `has_fault` (kg_writer) vs `has_fault_code` (Hub) — same concept, different strings.** `kg_writer.register_fault_code()` writes `has_fault`. The DB has 5 `has_fault_code` rows from Hub. If the deferred has_fault backfill runs as-is, it creates a **third edge type** for the same concept. This blocks task #2 until reconciled.
 
 ---
 
 ## Properties JSONB richness
 
-Of 84 rows, two have empty `properties`: 1 × `area`, 1 × `line`. The other 82 carry data. This is structurally aligned with the 2026-05-07 spec § 3 finding that `properties` is the MIMOSA `Attribute/AttributeSet` mechanism — but the *content* is unbounded and unvalidated. Sample from a `work_order` row:
+82 of 84 sampled rows carry data; 2 are empty (1 × `area`, 1 × `line`). The 2026-05-07 spec called out structured failure-mode attributes (ISO 14224 Annex D), NE 107 status, and condition_state — these remain unaddressed. Sample `work_order` properties:
 
 ```
-{
-  "status": "open",
-  "priority": "medium",
-  "equipment_id": "b2a90691-7baf-4a8f-b7e3-d2adfed5bdd6",
-  "work_order_number": "MIRA-20260428-E97F"
-}
+{"status": "open", "priority": "medium",
+ "equipment_id": "b2a90691-…", "work_order_number": "MIRA-…"}
 ```
 
-No `failure_mode`, `failure_cause`, `failure_effect`, or `detection_method` (ISO 14224 Annex D). No `ne107_status` (NAMUR NE 107). No `condition_state` (ISO 55000). These are the same gaps the 2026-05-07 spec called out — they remain unaddressed. The properties-richness benchmark is unchanged.
+No `failure_mode`, `failure_cause`, `failure_effect`, `detection_method`, `ne107_status`, or `condition_state`. The gap is unchanged from 2026-05-07.
+
+---
+
+## has_fault backfill viability — 324/443 (73 %) prod slug-match
+
+The fault_codes ↔ equipment slug-normalized join (in `db-inspect.yml`) returned:
+
+- 443 distinct `fault_codes` with manufacturer + equipment_model
+- **324 matched** to an existing equipment entity by `LOWER(REGEXP_REPLACE(…, '[^a-zA-Z0-9]+', '_', 'g'))` on both (mfr, model)
+- 119 unmatched (27 %) — likely manufacturer/model strings that the fault-code extractor stored differently than the equipment-name extractor
+
+The has_fault backfill is **viable** against prod — 324 edges is meaningful coverage. The 119 unmatched rows are a separate normalization issue not blocking the first wave.
 
 ---
 
 ## Updated compliance matrix (delta since 2026-05-07)
 
-Only standards with changes are shown. **No new green, no new red since 2026-05-07.** Several reds got slightly worse because of the regression.
-
-| Standard | Layer 1: UNS Path | Layer 2: Knowledge Graph | Δ since 2026-05-07 |
+| Standard | Layer 1 | Layer 2 | Δ since 2026-05-07 |
 |---|---|---|---|
-| **ISA-95** | ✅ | ⚠️ (path stops at Level 6 + relationship-type case drift) | naming inconsistency surfaced |
-| **ISO 14224** | ⚠️ | ⚠️ (still no structured failure-mode attributes; 269 has_manual lost) | regressed |
-| **MIMOSA CCOM** | ⚠️ | ⚠️ (InfoSource audit weakened — has_manual edges with `source_chunk_id` deleted) | regressed |
-| **NAMUR NE 107** | N/A | ❌ (no `ne107_status` field; not started) | no change |
-| **OPC UA** | ⚠️ | ⚠️ (Class/Instance gap unchanged; relationship-type case drift adds friction for browseable consumers) | naming inconsistency surfaced |
+| **ISA-95** | ✅ | ⚠️ (relationship-type case drift surfaced) | naming inconsistency newly visible |
+| **ISO 14224** | ⚠️ | ⚠️ (still no structured failure-mode attributes) | no change |
+| **MIMOSA CCOM** | ⚠️ | ⚠️ (InfoSource audit holds — has_manual edges with source_chunk_id intact) | no change |
+| **NAMUR NE 107** | N/A | ❌ (no `ne107_status` field) | no change |
+| **OPC UA** | ⚠️ | ⚠️ (class/instance gap; relationship-case drift adds friction) | naming inconsistency newly visible |
+
+No regressions. The 2026-05-07 matrix is still valid; this addendum just adds empirical color.
 
 ---
 
 ## Punch list — re-prioritized for 2026-05-23
 
-### P0 — incident-response (before any more KG writes)
+### P1 — unblock has_fault backfill
 
-1. **Root-cause the 269-row deletion.** Pull every `apply-migrations.yml` run between 2026-05-19 22:50 and 2026-05-23 12:43; verify what (if any) migration touched `kg_entities` or `kg_relationships`. If none, audit prod Neon access logs for hand-run `DELETE`/`TRUNCATE`. The deletion mechanism must be understood before re-running PR #1443's backfill — otherwise the same vector will wipe the re-do.
-2. **Add a kg_relationships canary** to `prod-readiness-check.yml` or a new workflow: alert if total rows drop by >10% between consecutive scheduled runs. The current 269-row loss went undetected for 4 days only because the next session looked.
+1. **Reconcile `has_fault` vs `has_fault_code`.** Pick one string; document in `.claude/rules/uns-compliance.md`. Either rename in `kg_writer.register_fault_code()` to match Hub's `has_fault_code`, or update the 5 Hub rows. The two-string status is silent-failure prone.
+2. **Run the has_fault backfill.** 324/443 prod matches are available. Mirror the has_manual backfill pattern in `tools/migrations/backfill_equipment_entities.py` — distinct (tenant, manufacturer, model, code) → call `kg_writer.register_fault_code()`. Dry-run, then commit.
+3. **Add a CHECK constraint or lookup table for `relationship_type`.** Whichever convention wins, a DB-side guard prevents future drift. The current 11-type case-mixed sprawl is the consequence of having no guard.
 
-### P1 — unblock the has_fault backfill
+### P2 — close the vocabulary contract gap
 
-3. **Reconcile `has_fault` vs `has_fault_code`.** Either rename in `kg_writer.register_fault_code()` to match Hub's `has_fault_code`, or migrate the 5 Hub rows to `has_fault`. The former is one line; the latter is a one-time SQL update. The two-string status is silent-failure prone for any reader. Once chosen, document in `.claude/rules/uns-compliance.md`.
-4. **Add CHECK constraint or lookup table for `relationship_type`.** Whichever convention wins (upper or lower), a database-side guard prevents drift from re-occurring. The current 10-type sprawl is the consequence of having no guard.
-5. *Then* run the has_fault backfill. The 2026-05-23 13:11 UTC inspect (workflow run 26333596051) returned **0 matches out of 443** fault_codes vs current equipment entities (slug-normalized join). This is corroborating evidence for the entity-deletion hypothesis in the headline: the equipment rows that the backfill's fault_codes would have attached to are the rows that got dedupe-cascaded. The backfill cannot proceed against the current 15 equipment entities; either the original ~485 equipment rows (600 − 84 ≈ 516 deleted) need to be re-created (which requires running PR #1443's equipment+manual backfill again, which requires P0 root-cause first), or fault_codes need a different attachment strategy.
+4. **Add a shared `entity_type` enum or lookup table.** The 11 types in prod include MVP-essential ones (`work_order`, `component`, `plc_tag`, `asset`, `site`, `area`, `line`) that `kg_writer.py` doesn't know exist. Decide on the authoritative writer (probably `mira-hub` for `tenant`/`site`/`area`/`line`/`component`/`plc_tag`/`work_order`/`asset`, `mira-crawler` for `equipment`/`manual`/`fault_code`).
+5. **Document Hub's path-builder gap.** 16 work_order + 12 manual rows have NULL uns_path. Hub doesn't import `mira-crawler/ingest/uns.py`. Either import it or mirror the relevant builders locally (<50 LOC).
 
-Edge-creation distribution on the surviving 42 rows: 1 (2026-04-28), 2 (29), 4 (05-01), 11 (05-08), 12 (05-15), 12 (05-19). Some 2026-05-19 edges *did* survive (likely Hub UI writes outside the PR #1443 backfill); the 269 has_manual specifically did not.
+### P3 — graph-level schema additions from 2026-05-07 spec — STILL UNSHIPPED
 
-### P2 — close the vocabulary contract gap (the actionable headline)
+- § 5: `properties.ne107_status` on fault_code — **not started**
+- § 6: `properties.condition_state` on equipment — **not started**
+- § 7: `TRIGGERS_PM` relation type — **not started**
 
-6. **Add a shared `entity_type` enum or lookup table.** The 11 types in DB include MVP-essential ones (`work_order`, `component`, `plc_tag`, `asset`, `site`, `area`, `line`) that `kg_writer.py` doesn't know exist. Decide on the authoritative writer (probably `mira-hub`'s schema for tenant/site/area/line/component/plc_tag/work_order, `mira-crawler` for equipment/manual/fault_code). Document in this file or as a CHECK.
-7. **Document the Hub writer's path builders** for `work_order` and `manual`. Hub-created rows are NULL on `uns_path` (16 work_orders, 12 manuals). The Hub doesn't import `mira-crawler/ingest/uns.py`; it needs either an import or a local mirror. Both options are <50 LOC.
+JSONB-field additions; no migration needed for #5/#6. Bundle into one PR.
 
-### P3 — graph-level schema additions from the 2026-05-07 spec
+### P4 — post-MVP items from 2026-05-07 spec
 
-These [MVP] items from the 2026-05-07 spec § Recommendations have **not shipped** in the 16 days since:
-- § 5: `properties.ne107_status` on fault_code (4 values, unstructured fault triage) — **not started**
-- § 6: `properties.condition_state` on equipment (asset-health surface) — **not started**
-- § 7: `TRIGGERS_PM` relation type (NE 107 → PM workflow) — **not started**
+- Subunit/maintainable_item split (ISO 14224)
+- equipment_class entity (OPC UA)
+- work_cell segment (ISA-95)
+- CCOM XML export
 
-These are all JSONB-field or new-relation-type additions — no migration required for #5/#6. They unlock ISO 14224 § Annex D and NAMUR NE 107 compliance with minimal effort. Recommend bundling all three into a single PR after P0–P1 close.
-
-### P4 — already-known gaps unchanged
-
-The 2026-05-07 spec's other [Post-MVP] items (subunit/maintainable_item split, equipment_class entity, work_cell segment, CCOM XML export) remain post-MVP. No empirical signal changes their priority.
+No empirical signal changes priority.
 
 ---
 
-## What is NOT a finding
+## What is NOT a finding (so future addenda don't re-litigate)
 
-For the record, things that are *fine* (so future addenda don't re-litigate them):
-
-- **RLS is correctly enabled** on both `kg_entities` and `kg_relationships` (verified 2026-05-23, identical policy as 2026-05-19). The `app.current_tenant_id` setting-based qual is intact.
-- **Index coverage is good.** 11 indexes on `kg_entities` including gist on `uns_path` and a unique on `(tenant_id, entity_type, name)`; 11 on `kg_relationships` including the dedup unique. Read performance is not a bottleneck.
-- **Schema columns match ADR-0013 hub-001 shape** (`source_id` / `target_id` / `relationship_type`). PR #1446's amendment is durable; the canonical-schema confusion is resolved.
-- **knowledge_entries did not drop** (83,542 in both runs). The vector store is healthy; the regression is graph-only.
+- **No data regression.** Prod kg_entities=600 and kg_relationships=299 are unchanged from 2026-05-19. PR #1443 is durable.
+- **RLS correctly enabled** on both `kg_entities` and `kg_relationships`. Connection user is `neondb_owner` with `rolbypassrls=t`.
+- **Index coverage is good.** 11 indexes each on `kg_entities` and `kg_relationships`, including gist on `uns_path` and unique on `(tenant_id, entity_type, name)`. Read performance is not a bottleneck.
+- **Schema matches hub-001** (`source_id` / `target_id` / `relationship_type`). ADR-0013 amendment from PR #1446 stands.
+- **knowledge_entries unchanged** (83,542). Vector store is healthy.
 
 ---
 
 ## Cross-references
 
-- Parent spec (design-level standards alignment): `docs/specs/uns-kg-standards-compliance.md`
-- Schema authority (2026-05-19 ADR amendment): `docs/adr/0013-uns-kg-schema-canonicalization.md`
-- Path builders (authoritative): `mira-crawler/ingest/uns.py`
-- KG writer (engine side, 3 entity types): `mira-crawler/ingest/kg_writer.py`
-- Hub migrations (multiple entity types, unknown writer entry point): `mira-hub/db/migrations/021_namespace_builder.sql`, `025_kg_entities_natural_key.sql`, `026_kg_entities_dedupe_and_constraint.sql`, `027_ai_suggestions.sql`
-- db-inspect workflow (probes used): `.github/workflows/db-inspect.yml`
-- 2026-05-19 inspect: workflow run 26130051449
-- 2026-05-23 inspect: workflow run 26332999674
+- Parent spec: `docs/specs/uns-kg-standards-compliance.md`
+- Schema authority: `docs/adr/0013-uns-kg-schema-canonicalization.md`
+- Path builders: `mira-crawler/ingest/uns.py`
+- KG writer: `mira-crawler/ingest/kg_writer.py`
+- Hub migrations (multiple entity types): `mira-hub/db/migrations/021_namespace_builder.sql`, `025_kg_entities_natural_key.sql`, `026_kg_entities_dedupe_and_constraint.sql`, `027_ai_suggestions.sql`
+- db-inspect workflow: `.github/workflows/db-inspect.yml` (target now announced prominently — see the 2026-05-23 staging/prod confusion lesson above)
+- Verified prod state: workflow run 26335166454
 
 ---
 
-*This addendum is data-driven and time-stamped. When the prod KG state changes meaningfully (post-incident remediation, new writer paths, new entity types), regenerate the empirical sections against fresh db-inspect output. Do not rewrite the 2026-05-07 parent spec to reflect operational drift — that spec is the design contract and should remain stable.*
+*This addendum is data-driven and time-stamped. When the prod KG state changes meaningfully, regenerate the empirical sections against fresh `db-inspect.yml -f target=prod` output. Do not rewrite the 2026-05-07 parent spec to reflect operational drift — that spec is the design contract.*
