@@ -268,6 +268,9 @@ function TreeNode({
   const isSelected = node.id === selectedId;
   const isDragging = draggingId === node.id;
   const isDropTarget = dropTargetId === node.id && draggingId !== node.id;
+  // Synthesized parents (#1344) have no kg_entities row — POST /api/namespace/node
+  // rejects their id as non-UUID. Hide create affordance there; show a hint instead.
+  const isSynthetic = node.id.startsWith("synthetic:");
 
   return (
     <div>
@@ -326,22 +329,33 @@ function TreeNode({
             </span>
           )}
         </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onStartCreate(node.id);
-          }}
-          className="ml-2 flex shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-blue-50 hover:text-blue-700"
-          aria-label={`Add child of ${node.name}`}
-          data-testid="namespace-add-child"
-          data-add-child-of={node.id}
-          style={{ minWidth: "44px", minHeight: "44px" }}
-        >
-          <Plus className="h-5 w-5" />
-        </button>
+        {isSynthetic ? (
+          <span
+            className="ml-2 hidden shrink-0 items-center px-2 text-[11px] text-slate-400 sm:flex"
+            data-testid="namespace-add-child-disabled"
+            data-add-child-of={node.id}
+            title="This row is a placeholder for a missing ancestor. Run the onboarding wizard to add a real parent before creating children here."
+          >
+            run onboarding to add
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStartCreate(node.id);
+            }}
+            className="ml-2 flex shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-blue-50 hover:text-blue-700"
+            aria-label={`Add child of ${node.name}`}
+            data-testid="namespace-add-child"
+            data-add-child-of={node.id}
+            style={{ minWidth: "44px", minHeight: "44px" }}
+          >
+            <Plus className="h-5 w-5" />
+          </button>
+        )}
       </div>
-      {creatingUnderId === node.id && (
+      {creatingUnderId === node.id && !isSynthetic && (
         <CreateChildCard
           parentId={node.id}
           parentName={node.name}

@@ -535,6 +535,69 @@ test.describe("Namespace inline create + doc attach", () => {
     }
   });
 
+  test("Scenario 10 — synthetic parent rows show disabled hint, not + button", async ({
+    page,
+  }) => {
+    // Synthesized parents (#1344) are rendered when kg_entities references an
+    // ancestor uns_path that has no row. Their id is `synthetic:<path>` and
+    // POST /api/namespace/node rejects non-UUID parentIds with 400.
+    // The fix in mira-hub v1.9.1 swaps the + button for a hint span on these
+    // rows, so the user never reaches the broken POST.
+    //
+    // We can't reliably seed a synthetic parent through the public wizard
+    // (it always creates a fully-rooted chain). If the seeded tenant happens
+    // to expose one (manual ingest history, prior test runs), assert the new
+    // affordance; otherwise skip cleanly. The API-level guarantee in
+    // Scenario 11 still holds.
+    const tree = page.locator('[data-testid="namespace-tree"]');
+    if (!(await tree.isVisible().catch(() => false))) {
+      test.skip(true, "Empty tree — no rows to inspect");
+    }
+    // The disabled hint is rendered with data-testid="namespace-add-child-disabled".
+    const disabledHint = page.locator('[data-testid="namespace-add-child-disabled"]');
+    const count = await disabledHint.count();
+    if (count === 0) {
+      test.skip(true, "No synthetic parents in this tenant — covered by Scenario 11 API check");
+    }
+    // For every disabled hint, the same row must NOT also have an + button.
+    for (let i = 0; i < count; i++) {
+      const hint = disabledHint.nth(i);
+      const row = hint.locator('xpath=ancestor::*[@data-testid="namespace-node"][1]');
+      const plusInRow = row.locator('[data-testid="namespace-add-child"]');
+      await expect(plusInRow).toHaveCount(0);
+      // The hint row should carry a parent id with the synthetic: prefix.
+      const dataId = await hint.getAttribute("data-add-child-of");
+      expect(dataId, "synthetic hint row missing data-add-child-of").toBeTruthy();
+      expect(dataId!.startsWith("synthetic:")).toBeTruthy();
+    }
+  });
+
+  test("Scenario 11 — POST /api/namespace/node rejects synthetic: parentId with 400 (no 5xx)", async ({
+    page,
+  }) => {
+    // Server contract test. The UI fix hides the + button on synthetic rows,
+    // but the server still has to refuse non-UUID parentIds cleanly. A 5xx
+    // here would mean a regression in the regex guard at
+    // mira-hub/src/app/api/namespace/node/route.ts.
+    const res = await page.request.post(`${HUB}/api/namespace/node`, {
+      headers: { "content-type": "application/json" },
+      data: {
+        parentId: "synthetic:enterprise.knowledge_base",
+        kind: "site",
+        name: "should be rejected",
+      },
+    });
+    // Expect 400 (bad parentId) — accept 401/403 if session expired between
+    // beforeAll and this test. NOT 500, NOT 201.
+    expect([400, 401, 403]).toContain(res.status());
+    expect(res.status()).not.toBe(201);
+    expect(res.status()).not.toBe(500);
+    if (res.status() === 400) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      expect(body.error ?? "").toMatch(/parentId|uuid/i);
+    }
+  });
+
   test("Scenario 9 — regression: existing tree features still work", async ({ page }) => {
     // Drag-drop is exposed via draggable attribute.
     const firstRow = page.locator('[data-testid="namespace-node"]').first();
