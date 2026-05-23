@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b1220" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>FactoryLM — Florida Automation Expo Lead Capture</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #111a2e;
+    --panel-2: #0e1626;
+    --border: #1f2a44;
+    --text: #e7ecf5;
+    --muted: #9aa6bf;
+    --accent: #f59e0b;
+    --accent-press: #d97706;
+    --hot: #ef4444;
+    --warm: #f59e0b;
+    --cold: #3b82f6;
+    --ok: #22c55e;
+    --err: #f87171;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overscroll-behavior-y: contain; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .logo { width: 38px; height: 38px; border-radius: 9px;
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    display: grid; place-items: center; color: #1b1305; font-weight: 800; }
+  .brand h1 { margin: 0; font-size: 17px; letter-spacing: 0.02em; }
+  .brand small { color: var(--muted); display: block; font-size: 12px; }
+  .count {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 12px; font-size: 13px; font-weight: 600;
+  }
+  .count b { color: var(--accent); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px; margin: 0 0 14px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 480px) { .row { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 6px 0 4px; }
+  input[type="text"], input[type="email"], input[type="tel"], select, textarea {
+    width: 100%; appearance: none; -webkit-appearance: none;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 12px; font-size: 16px; outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea { min-height: 84px; resize: vertical; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .chip {
+    border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text); border-radius: 999px;
+    padding: 9px 14px; font-size: 14px; cursor: pointer; user-select: none;
+  }
+  .chip.on { border-color: var(--accent); background: rgba(245, 158, 11, 0.15); color: var(--accent); }
+  .seg { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .seg button {
+    appearance: none; border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text); border-radius: 10px; padding: 12px 10px;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .seg button.hot.on  { background: rgba(239, 68, 68, 0.18);  border-color: var(--hot);  color: var(--hot);  }
+  .seg button.warm.on { background: rgba(245, 158, 11, 0.18); border-color: var(--warm); color: var(--warm); }
+  .seg button.cold.on { background: rgba(59, 130, 246, 0.18); border-color: var(--cold); color: var(--cold); }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button.primary, button.secondary, a.btn {
+    appearance: none; border: 0; border-radius: 12px;
+    padding: 14px 14px; font-size: 16px; font-weight: 700;
+    cursor: pointer; text-align: center; text-decoration: none; display: inline-block;
+  }
+  button.primary { background: var(--accent); color: #1b1305; }
+  button.primary:active { background: var(--accent-press); }
+  button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .leads { margin-top: 10px; }
+  .lead {
+    display: grid; grid-template-columns: 1fr auto; align-items: center;
+    padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--panel-2); margin-bottom: 8px;
+  }
+  .lead .who { font-weight: 600; }
+  .lead .meta { color: var(--muted); font-size: 12px; }
+  .pill { font-size: 11px; padding: 3px 8px; border-radius: 999px; font-weight: 700; }
+  .pill.Hot  { background: rgba(239, 68, 68, 0.18);  color: var(--hot); }
+  .pill.Warm { background: rgba(245, 158, 11, 0.18); color: var(--warm); }
+  .pill.Cold { background: rgba(59, 130, 246, 0.18); color: var(--cold); }
+  .toast { position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 12px);
+    background: var(--ok); color: #052e16; padding: 12px 14px; border-radius: 12px; font-weight: 700;
+    transform: translateY(120%); transition: transform .25s ease; text-align: center; }
+  .toast.show { transform: translateY(0); }
+  .toast.err { background: var(--err); color: #2a0808; }
+  .row-tight { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+  .calendly { display: block; text-align: center; padding: 12px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); text-decoration: none; margin-top: 8px; }
+  .calendly b { color: var(--accent); }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 8px 0; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
+  .danger { color: var(--err); }
+  .ok { color: var(--ok); }
+  .footer-note { color: var(--muted); font-size: 12px; text-align: center; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">FL</div>
+      <div>
+        <h1>FactoryLM Lead Capture</h1>
+        <small>Florida Automation Expo</small>
+      </div>
+    </div>
+    <div class="count">Leads: <b id="count">0</b></div>
+  </header>
+
+  <form id="form" class="card" autocomplete="on" novalidate>
+    <div class="row">
+      <div>
+        <label for="name">Name *</label>
+        <input id="name" name="name" type="text" required autocomplete="name" />
+      </div>
+      <div>
+        <label for="company">Company *</label>
+        <input id="company" name="company" type="text" required autocomplete="organization" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="email">Email *</label>
+        <input id="email" name="email" type="email" inputmode="email" required autocomplete="email" />
+      </div>
+      <div>
+        <label for="phone">Phone</label>
+        <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" />
+      </div>
+    </div>
+
+    <label for="role">Role *</label>
+    <select id="role" name="role" required>
+      <option value="">Pick one…</option>
+      <option>Maintenance Manager</option>
+      <option>Plant Engineer</option>
+      <option>Maintenance Technician</option>
+      <option>Operations / Plant Manager</option>
+      <option>Controls / Automation Engineer</option>
+      <option>Reliability Engineer</option>
+      <option>Integrator / Consultant</option>
+      <option>Other</option>
+    </select>
+
+    <label>Equipment they work with</label>
+    <div class="chips" id="chips">
+      <span class="chip" data-eq="PLCs">PLCs</span>
+      <span class="chip" data-eq="VFDs">VFDs</span>
+      <span class="chip" data-eq="Conveyors">Conveyors</span>
+      <span class="chip" data-eq="Cranes">Cranes</span>
+      <span class="chip" data-eq="Hydraulics">Hydraulics</span>
+      <span class="chip" data-eq="Pneumatics">Pneumatics</span>
+      <span class="chip" data-eq="Robotics">Robotics</span>
+      <span class="chip" data-eq="HMI/SCADA">HMI / SCADA</span>
+      <span class="chip" data-eq="Other">Other</span>
+    </div>
+
+    <label for="pain">Top pain point / what they came to find</label>
+    <textarea id="pain" name="pain" placeholder="What's broken / what slows them down?"></textarea>
+
+    <label>Interest level *</label>
+    <div class="seg" id="interest">
+      <button type="button" class="hot"  data-int="Hot">🔥 Hot</button>
+      <button type="button" class="warm" data-int="Warm">☀️ Warm</button>
+      <button type="button" class="cold" data-int="Cold">❄️ Cold</button>
+    </div>
+
+    <label for="notes">Notes (private)</label>
+    <textarea id="notes" name="notes" placeholder="Booth conversation, follow-up plan, etc."></textarea>
+
+    <hr/>
+
+    <div class="actions">
+      <button type="submit" class="primary" id="saveBtn">Save lead</button>
+      <button type="button" class="secondary" id="resetBtn">Clear form</button>
+    </div>
+
+    <a class="calendly" id="calLink" href="https://calendly.com/mike-cranesync/30min" target="_blank" rel="noopener">
+      📅 Book follow-up — <b>calendly.com/mike-cranesync/30min</b>
+    </a>
+  </form>
+
+  <div class="card">
+    <div class="row-tight">
+      <strong>Captured leads</strong>
+      <span class="meta" id="storageMeta" style="color:var(--muted);font-size:12px;"></span>
+    </div>
+    <div class="leads" id="leads"></div>
+    <div class="toolbar">
+      <button type="button" class="secondary" id="csvBtn">⬇︎ Export CSV</button>
+      <button type="button" class="secondary" id="emailBtn">✉︎ Email me CSV</button>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="ghost"     id="copyBtn">📋 Copy CSV to clipboard</button>
+      <button type="button" class="ghost danger" id="wipeBtn">🗑 Clear all</button>
+    </div>
+    <details>
+      <summary>Sync to HubSpot (later, from laptop)</summary>
+      <p style="color:var(--muted);font-size:13px;line-height:1.4">
+        Export CSV → log in to <b>app.hubspot.com</b> → Contacts → Import → File from computer → upload CSV. Map columns: Name, Company, Email, Phone, Role → Job title, Pain → notes, Interest level → custom property or list tag.
+      </p>
+    </details>
+  </div>
+
+  <p class="footer-note">All data stays on this device until you export. Works offline.</p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  "use strict";
+  const STORAGE_KEY = "factorylm_expo_leads_v1";
+  const MY_EMAIL = "mike@cranesync.com";
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+  const state = {
+    equipment: new Set(),
+    interest: "",
+  };
+
+  const els = {
+    form: $("#form"),
+    name: $("#name"),
+    company: $("#company"),
+    email: $("#email"),
+    phone: $("#phone"),
+    role: $("#role"),
+    pain: $("#pain"),
+    notes: $("#notes"),
+    chips: $("#chips"),
+    interest: $("#interest"),
+    leads: $("#leads"),
+    count: $("#count"),
+    csvBtn: $("#csvBtn"),
+    emailBtn: $("#emailBtn"),
+    copyBtn: $("#copyBtn"),
+    wipeBtn: $("#wipeBtn"),
+    resetBtn: $("#resetBtn"),
+    saveBtn: $("#saveBtn"),
+    toast: $("#toast"),
+    storageMeta: $("#storageMeta"),
+  };
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      console.warn("load failed", e);
+      return [];
+    }
+  }
+  function save(list) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  }
+  function uid() {
+    return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  }
+  function toast(msg, isErr) {
+    els.toast.textContent = msg;
+    els.toast.classList.toggle("err", !!isErr);
+    els.toast.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => els.toast.classList.remove("show"), 2200);
+  }
+  function isEmail(s) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s || "");
+  }
+
+  function renderChips() {
+    $$("#chips .chip").forEach((el) => {
+      el.classList.toggle("on", state.equipment.has(el.dataset.eq));
+    });
+  }
+  function renderInterest() {
+    $$("#interest button").forEach((b) => {
+      b.classList.toggle("on", b.dataset.int === state.interest);
+    });
+  }
+
+  function renderLeads() {
+    const list = load();
+    els.count.textContent = list.length;
+    els.storageMeta.textContent = list.length ? `Stored locally on this device` : "";
+    if (!list.length) {
+      els.leads.innerHTML = `<div style="color:var(--muted);font-size:14px">No leads yet. Start with the form above.</div>`;
+      return;
+    }
+    els.leads.innerHTML = list.slice().reverse().map((l) => {
+      const who = `${escapeHtml(l.name || "(no name)")} <span class="meta">— ${escapeHtml(l.company || "")}</span>`;
+      const when = new Date(l.ts).toLocaleString();
+      return `
+        <div class="lead">
+          <div>
+            <div class="who">${who}</div>
+            <div class="meta">${escapeHtml(l.role || "")} · ${escapeHtml(l.email || "")} · ${when}</div>
+          </div>
+          <span class="pill ${escapeHtml(l.interest || "Cold")}">${escapeHtml(l.interest || "Cold")}</span>
+        </div>`;
+    }).join("");
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[c]);
+  }
+
+  function csvEscape(v) {
+    const s = (v == null ? "" : String(v));
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  }
+
+  function buildCSV() {
+    const rows = load();
+    const headers = ["timestamp","name","company","email","phone","role","equipment","pain","interest","notes"];
+    const lines = [headers.join(",")];
+    rows.forEach((r) => {
+      lines.push([
+        new Date(r.ts).toISOString(),
+        r.name, r.company, r.email, r.phone, r.role,
+        (r.equipment || []).join("; "),
+        r.pain, r.interest, r.notes,
+      ].map(csvEscape).join(","));
+    });
+    return lines.join("\n");
+  }
+
+  function downloadCSV() {
+    const list = load();
+    if (!list.length) { toast("No leads to export", true); return; }
+    const csv = buildCSV();
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.href = url;
+    a.download = `factorylm-expo-leads-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
+    toast(`Exported ${list.length} lead${list.length === 1 ? "" : "s"}`);
+  }
+
+  async function copyCSV() {
+    const list = load();
+    if (!list.length) { toast("No leads to copy", true); return; }
+    const csv = buildCSV();
+    try {
+      await navigator.clipboard.writeText(csv);
+      toast("CSV copied to clipboard");
+    } catch (e) {
+      toast("Clipboard blocked — use Export CSV", true);
+    }
+  }
+
+  function emailCSV() {
+    const list = load();
+    if (!list.length) { toast("No leads yet", true); return; }
+    const csv = buildCSV();
+    const subject = encodeURIComponent(`FactoryLM Expo Leads — ${list.length} contact${list.length===1?"":"s"}`);
+    const body = encodeURIComponent(
+      `Captured at Florida Automation Expo\n\n` +
+      `Paste the CSV below into a .csv file (or your iPhone may already prompt to attach):\n\n` + csv
+    );
+    location.href = `mailto:${MY_EMAIL}?subject=${subject}&body=${body}`;
+  }
+
+  function resetForm() {
+    els.form.reset();
+    state.equipment.clear();
+    state.interest = "";
+    renderChips();
+    renderInterest();
+  }
+
+  function saveLead(e) {
+    e.preventDefault();
+    const name = els.name.value.trim();
+    const company = els.company.value.trim();
+    const email = els.email.value.trim();
+    const role = els.role.value.trim();
+    const interest = state.interest;
+
+    if (!name)    { toast("Name required", true); els.name.focus(); return; }
+    if (!company) { toast("Company required", true); els.company.focus(); return; }
+    if (!email || !isEmail(email)) { toast("Valid email required", true); els.email.focus(); return; }
+    if (!role)    { toast("Pick a role", true); els.role.focus(); return; }
+    if (!interest){ toast("Pick interest level", true); els.interest.scrollIntoView({behavior:"smooth", block:"center"}); return; }
+
+    const lead = {
+      id: uid(),
+      ts: Date.now(),
+      name, company, email,
+      phone: els.phone.value.trim(),
+      role,
+      equipment: Array.from(state.equipment),
+      pain: els.pain.value.trim(),
+      interest,
+      notes: els.notes.value.trim(),
+      source: "Florida Automation Expo 2026",
+    };
+
+    const list = load();
+    list.push(lead);
+    save(list);
+    renderLeads();
+    resetForm();
+    toast(`Saved — ${list.length} total`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // Wire up
+  els.chips.addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip");
+    if (!chip) return;
+    const eq = chip.dataset.eq;
+    if (state.equipment.has(eq)) state.equipment.delete(eq);
+    else state.equipment.add(eq);
+    renderChips();
+  });
+  els.interest.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    state.interest = btn.dataset.int;
+    renderInterest();
+  });
+  els.form.addEventListener("submit", saveLead);
+  els.resetBtn.addEventListener("click", resetForm);
+  els.csvBtn.addEventListener("click", downloadCSV);
+  els.copyBtn.addEventListener("click", copyCSV);
+  els.emailBtn.addEventListener("click", emailCSV);
+  els.wipeBtn.addEventListener("click", () => {
+    const n = load().length;
+    if (!n) { toast("Nothing to clear", true); return; }
+    if (!confirm(`Delete all ${n} leads from this device? This can't be undone.`)) return;
+    localStorage.removeItem(STORAGE_KEY);
+    renderLeads();
+    toast("Cleared");
+  });
+
+  // Init
+  renderLeads();
+  renderChips();
+  renderInterest();
+})();
+</script>
+</body>
+</html>

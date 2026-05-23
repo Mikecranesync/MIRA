@@ -13,6 +13,11 @@ services:
       - ENABLE_COMMUNITY_SHARING=false
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
       - ENABLE_API_KEYS=true
+      # OW v0.8.10 gates POST /api/v1/auths/api_key on ENABLE_API_KEYS (plural)
+      # AND has_permission(user, 'features.api_keys') — which defaults to False.
+      # USER_PERMISSIONS_FEATURES_API_KEYS=true also flips that per-user gate.
+      # Without both, you get 403 "API key creation is not allowed".
+      - USER_PERMISSIONS_FEATURES_API_KEYS=true
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY must be set in .env}
       - WEBUI_ENABLE_TELEMETRY=false
       - WEBUI_CHECK_FOR_UPDATES=false

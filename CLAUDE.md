@@ -169,6 +169,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Ops wiki:** `wiki/` — **Session start: read `wiki/hot.md`. Session end: update it.**
 - **Wiki schema:** `wiki/SCHEMA.md`
 - **Wiki sync across nodes + `~/MiraDrop/` auto-ingest:** `wiki/nodes/wiki-sync.md`
+- **MiraDrop watcher (desktop drop folder → Hub `/api/uploads/folder`):** `tools/mira-drop-watcher/README.md`. LaunchAgent label `com.factorylm.mira-drop-watcher`. Drop a PDF in `~/MiraDrop/inbox/`, it lands chunked in OW knowledge collection "Facility Documents" within ~20 s; sidecars in `~/MiraDrop/done/`.
 - **Skills:** `.claude/skills/`
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**

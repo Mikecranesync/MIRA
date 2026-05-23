@@ -162,6 +162,10 @@ export const config = {
     // `quickstart` and `api/quickstart/*` are public — the Twilio-moment landing
     // page (ADR-0014). Excluding from the matcher prevents the middleware from
     // bouncing anonymous visitors to /login.
-    "/((?!login|signup|magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/scanbe/healthz|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
+    // api/uploads/folder (POST) and api/uploads/[id] (GET, dual-auth) are the
+    // service-token ingest + status routes used by tools/mira-drop-watcher —
+    // they do their own bearer-token check, so the cookie-based middleware
+    // must not intercept them.
+    "/((?!login|signup|magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/scanbe/healthz|api/uploads/folder|api/uploads/[a-f0-9]|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
   ],
 };
