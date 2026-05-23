@@ -6330,4 +6330,41 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/audit-hub-signin.png
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
+
+### 2026-05-20 05:06 UTC — `claude/sweet-payne-612d8d`
+**Last commit:** d4d041eb ci(deepeval): install pyyaml + httpx for GS11 engine test
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+**Working tree:**
+- ?? docs/evaluations/
+- ?? docs/promo-screenshots/2026-05-20_hub-twilio-audit_00-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-20_hub-twilio-audit_00-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-20_hub-twilio-audit_01-signup_desktop.png
+- ?? docs/promo-screenshots/2026-05-20_hub-twilio-audit_01-signup_mobile.png
+- ?? docs/promo-screenshots/2026-05-20_hub-twilio-audit_02-marketing-home_desktop.png
+- ?? docs/promo-screenshots/2026-05-20_hub-twilio-audit_02-marketing-home_mobile.png
+- ?? docs/promo-screenshots/2026-05-20_hub-twilio-audit_03-pricing_desktop.png
+- ?? docs/promo-screenshots/2026-05-20_hub-twilio-audit_03-pricing_mobile.png
+- ?? docs/promo-screenshots/2026-05-20_hub-twilio-audit_04-cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-20_hub-twilio-audit_05-buy_desktop.png
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
