@@ -26,6 +26,8 @@ interface KgEntityRow {
   name: string;
   uns_path: string | null;
   created_at: string;
+  files_count: string;
+  equipment_status: string | null;
 }
 
 interface ProposalCountRow {
@@ -40,6 +42,8 @@ export interface NamespaceNode {
   kind: string; // entity_type — 'site', 'area', 'line', 'asset', 'component', 'document', ...
                 // or 'namespace' for a synthesized path segment that has no kg_entities row.
   unsPath: string | null;
+  filesCount: number;
+  status: string | null;
   counts: {
     children: number;
     proposalsPending: number;
@@ -58,10 +62,19 @@ export async function GET() {
   try {
     const result = await withTenantContext(ctx.tenantId, async (c) => {
       const entitiesRes = await c.query<KgEntityRow>(
-        `SELECT id, entity_type, entity_id, name, uns_path::text AS uns_path, created_at
-         FROM kg_entities
-         WHERE tenant_id = $1::uuid
-         ORDER BY uns_path::text NULLS LAST, name`,
+        `SELECT
+            e.id,
+            e.entity_type,
+            e.entity_id,
+            e.name,
+            e.uns_path::text AS uns_path,
+            e.created_at,
+            (SELECT COUNT(*) FROM namespace_direct_uploads ndu
+             WHERE ndu.node_id = e.id AND ndu.tenant_id = e.tenant_id)::text AS files_count,
+            NULL AS equipment_status
+         FROM kg_entities e
+         WHERE e.tenant_id = $1::uuid
+         ORDER BY e.uns_path::text NULLS LAST, e.name`,
         [ctx.tenantId],
       );
 
@@ -80,8 +93,8 @@ export async function GET() {
       return { entities: entitiesRes.rows, proposals: proposalsRes.rows };
     });
 
-    const tree = buildTree(result.entities, result.proposals);
-    return NextResponse.json({ tree, total: result.entities.length });
+    const nodes = buildTree(result.entities, result.proposals);
+    return NextResponse.json({ nodes, total: result.entities.length });
   } catch (err) {
     console.error("[api/namespace/tree GET]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
@@ -114,6 +127,8 @@ export function buildTree(
       name: e.name,
       kind: e.entity_type,
       unsPath: e.uns_path,
+      filesCount: Number(e.files_count) || 0,
+      status: e.equipment_status ?? null,
       counts: {
         children: 0,
         proposalsPending: proposalSlot.pending,
@@ -176,6 +191,8 @@ function synthesizeParent(path: string): NamespaceNode {
     name: display || lastSegment,
     kind: "namespace",
     unsPath: path,
+    filesCount: 0,
+    status: null,
     counts: { children: 0, proposalsPending: 0, proposalsVerified: 0 },
     children: [],
   };

@@ -1,8 +1,8 @@
-name: Apply Prod Migrations
+name: Apply NeonDB Migrations
 
 # Manually-triggered workflow to apply mira-hub/db/migrations/*.sql against
-# prod NeonDB. All target migrations use IF NOT EXISTS / OR REPLACE and are
-# idempotent — re-running is safe.
+# the chosen NeonDB target (staging or prod). All target migrations use
+# IF NOT EXISTS / OR REPLACE and are idempotent — re-running is safe.
 #
 # Pre-reqs:
 #   - GitHub secret `DOPPLER_TOKEN` set to a Doppler service token scoped to
@@ -19,6 +19,14 @@ name: Apply Prod Migrations
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: 'NeonDB target. staging = factorylm/stg, prod = factorylm/prd. Default staging — promote to prod only after staging is verified.'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - prod
       migrations:
         description: 'Migrations to apply (e.g. "014,015,016,017,018" or "all" for everything in mira-hub/db/migrations not yet recorded).'
         required: true
@@ -48,14 +56,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: prod-migrations
+  group: migrations-${{ inputs.target }}
   cancel-in-progress: false
 
 jobs:
   apply:
-    name: Apply migrations (${{ inputs.mode }})
+    name: Apply migrations (${{ inputs.target }} / ${{ inputs.mode }})
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
     timeout-minutes: 15
 
     steps:
@@ -77,13 +85,23 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${DOPPLER_TOKEN:-}" ]; then
-            echo "::error::DOPPLER_TOKEN secret not set. Create a service token at https://dashboard.doppler.com (factorylm/prd) and run: gh secret set DOPPLER_TOKEN"
+            echo "::error::DOPPLER_TOKEN secret not set. Create a service token at https://dashboard.doppler.com and run: gh secret set DOPPLER_TOKEN (staging env) and/or gh secret set DOPPLER_TOKEN_PROD (production env)."
             exit 1
           fi
-          # Doppler key is NEON_DATABASE_URL in factorylm/prd (no plain DATABASE_URL).
-          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          # Map target → Doppler config. Staging = factorylm/stg, prod = factorylm/prd.
+          # The DOPPLER_TOKEN secret is scoped per GitHub environment (staging vs production),
+          # so we don't need separate token secrets — the active token's project/config
+          # already implies the target. We still pass --project/--config explicitly so a
+          # mis-scoped token surfaces fast.
+          case "${{ inputs.target }}" in
+            staging) DOPPLER_CFG=stg ;;
+            prod)    DOPPLER_CFG=prd ;;
+            *) echo "::error::Unknown target ${{ inputs.target }}"; exit 1 ;;
+          esac
+          echo "Doppler config: factorylm/${DOPPLER_CFG}"
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "${DOPPLER_CFG}" --plain)"
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::NEON_DATABASE_URL empty after Doppler fetch — token scope wrong?"
+            echo "::error::NEON_DATABASE_URL empty after Doppler fetch — token scope wrong (expected factorylm/${DOPPLER_CFG})."
             exit 1
           fi
           # Mask it so it never leaks to the log if a later step echoes env.
@@ -263,11 +281,11 @@ jobs:
           fi
 
   backfill:
-    name: Backfill UNS paths (kg_entities + cmms_equipment)
+    name: Backfill UNS paths (${{ inputs.target }})
     needs: apply
     if: inputs.mode == 'apply' && inputs.run_backfill == 'true'
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
     timeout-minutes: 30
 
     steps:
@@ -301,7 +319,8 @@ jobs:
             echo "::error::tools/uns_backfill.py missing — was PR #1245 reverted?"
             exit 1
           fi
-          doppler run --project factorylm --config prd -- python tools/uns_backfill.py --commit
+          DOPPLER_CFG="${{ inputs.target == 'prod' && 'prd' || 'stg' }}"
+          doppler run --project factorylm --config "${DOPPLER_CFG}" -- python tools/uns_backfill.py --commit
 
       - name: Run cmms_equipment backfill (tools/cmms_equipment_uns_backfill.py)
         env:
@@ -312,4 +331,5 @@ jobs:
             echo "::error::tools/cmms_equipment_uns_backfill.py missing — was PR #1245 reverted?"
             exit 1
           fi
-          doppler run --project factorylm --config prd -- python tools/cmms_equipment_uns_backfill.py --commit
+          DOPPLER_CFG="${{ inputs.target == 'prod' && 'prd' || 'stg' }}"
+          doppler run --project factorylm --config "${DOPPLER_CFG}" -- python tools/cmms_equipment_uns_backfill.py --commit

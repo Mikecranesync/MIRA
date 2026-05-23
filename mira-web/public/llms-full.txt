@@ -38,21 +38,28 @@ the plant's own work order history, not industry averages.
 
 ---
 
-## Pricing (as of 2026-04)
+## Pricing (as of 2026-05)
 
-- **MIRA Troubleshooter** — $97/month per plant
+Two motions: self-serve SaaS ($97/mo, Stripe Checkout) and services-led
+Operating Layer ($499/mo, invoiced per plant).
+
+- **MIRA Troubleshooter** — $97/month per plant (Stripe Checkout)
   - Unlimited AI chat with cited answers
   - One workspace per plant
   - OEM manual upload + OCR indexing
   - Work order templates
   - No per-seat fees
 
-- **MIRA Integrated** — $297/month per plant
+- **Operating Layer** — $499/month per plant (invoiced; contact sales)
   - Everything in Troubleshooter
+  - Structured UNS namespace + quarterly audits
+  - CMMS write-back (Atlas, or your existing CMMS)
   - Auto-generated work orders from MIRA recommendations
-  - Atlas CMMS full access
   - PM schedule automation
   - Shift handoff reports
+
+Engagement entry points (services side): $500 Assessment, $2–5K/mo Pilot
+(3-month minimum) — see https://factorylm.com/pricing.
 
 Enterprise (multi-plant, SOC 2, SSO): contact mike@factorylm.com
 

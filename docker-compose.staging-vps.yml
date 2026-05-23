@@ -276,13 +276,15 @@ services:
       - "0.0.0.0:4101:3000"
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
-      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://165.245.138.91:4101}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:4101}
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
       - AUTH_SECRET=${AUTH_SECRET:-}
-      # NextAuth — staging uses the IP-based URL so callbacks resolve locally.
-      # Real OAuth callbacks won't work without DNS + an OAuth app registered
-      # for staging — that's a Phase-2 follow-up. Phone preview works without.
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://165.245.138.91:4101/api/auth}
+      # NextAuth — staging is reached via SSH tunnel (ssh -L 4101:127.0.0.1:4101).
+      # Google OAuth client `246891599587-usbnoa7g6agveginmbb62rvi2p3rmb83…` has
+      # `http://localhost:4101/api/auth/callback/google` whitelisted (added
+      # 2026-05-22). Override NEXTAUTH_URL via Doppler if reaching staging by
+      # IP — that callback must also be added to the OAuth client.
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:4101/api/auth}
       - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-http://165.245.138.91:4101/api/auth}
       - HUB_AUTH_GOOGLE_CLIENT_ID=${HUB_AUTH_GOOGLE_CLIENT_ID:-}
       - HUB_AUTH_GOOGLE_CLIENT_SECRET=${HUB_AUTH_GOOGLE_CLIENT_SECRET:-}
@@ -330,8 +332,8 @@ services:
     networks:
       - staging-net
     volumes:
-      - ./marketing:/app/marketing:ro
-      - ./docs/promo-screenshots:/app/docs/promo-screenshots:ro
+      - ./marketing:/app/marketing:rw
+      - ./docs/promo-screenshots:/app/docs/promo-screenshots:rw
       - ./tools/web-review-runs:/app/tools/web-review-runs:ro
     restart: unless-stopped
     deploy:

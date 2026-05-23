@@ -1,4 +1,36 @@
-# Hot Cache — 2026-05-19 — CHARLIE
+# Hot Cache — 2026-05-20 — BRAVO
+
+## 2026-05-20 — Hub-overhaul staging audit + bot benchmark
+
+Autonomous run: merged #1478 → deployed to staging VPS → wrote + ran 12-test E2E audit → benchmarked the engine on 10 golden questions → triaged + merged 5 open PRs → wrote prod-readiness doc. All on branch `fix/staging-audit-2026-05-20` (commit `3227d878`).
+
+**Phase 1 deploy:** rebuilt `stg-mira-hub` + `stg-mira-bot-telegram` + `stg-mira-web` (web rebuild was needed because original staging container predated #1477's "Try MIRA Free" CTA). All MIRA services healthy; `stg-atlas-api` pre-existing unhealthy.
+
+**Phase 2 audit — 12/12 passing:**
+- Spec: `mira-hub/tests/e2e/audit-staging-2026-05-20.spec.ts` (12 tests)
+- Config: `mira-hub/tests/e2e/audit-staging.config.ts`
+- Tunnel command in spec docblock: `ssh -L 4101:127.0.0.1:4101 -L 4200:127.0.0.1:4200 root@165.245.138.91 -N`
+- Screenshots saved per Screenshot Rule.
+- Login fix worth remembering: the `text=Sign in with password` disclosure click silently fails when wrapped in `.catch()` and called too early — use `.waitFor({state:"visible"})` on the disclosure THEN on the password input. See `loginIfNeeded()` in the spec.
+
+**Phase 3 benchmark — avg 3.64/5:**
+- Approach: hit `mira-pipeline /v1/chat/completions` via `docker exec stg-mira-pipeline curl …` (localhost-exempt auth, no PIPELINE_API_KEY needed). Same Supervisor engine as the Telegram bot.
+- CSV: `tests/golden_staging_benchmark_2026-05-20.csv`
+- **Critical findings (pre-existing, not regressions):**
+  - 0/10 answers cite sources — cite-or-refuse is implemented as refuse-only
+  - Q3 (PowerFlex 525 baud) + Q5 (GS10 fault codes) return "general industrial knowledge" despite 34k Rockwell + 4k AD chunks in KB — likely the same Ollama-embed-sidecar-down regression flagged by the bot-grounding-tests skill 2026-05-18
+  - UNS gate inconsistently enforced (Q4 prox-sensor jumped to advice without resolving asset)
+- Best answer was Q9 (VFD safety, 4.6/5) — safety-keyword path works perfectly
+
+**Phase 4 migrations — DEFERRED:** direct staging Neon read via `docker exec` was denied by the harness sandbox. Indirect evidence (healthy services + passing E2E + working benchmark) suggests migrations through #026 are applied. Verification procedure documented in the readiness doc.
+
+**Phase 5 PR cleanup — 5 merged:** #1417 docs, #1407 pdfplumber, #1410 sqlalchemy, #1404 lxml, #1418 Phase 0 schema. Skipped #1479 (needs staging migration first per its body), #1445 + #1452 CONFLICTING.
+
+**Phase 6 doc:** `docs/evaluations/staging-to-prod-readiness-2026-05-20.md` — one-page review for Mike before approving prod push. **Verdict: PROCEED WITH CAUTION** — staging green but verify migrations 025-027 on prod Neon before deploy.
+
+**Gotchas captured for next session:**
+- `git checkout -b NEW_BRANCH origin/main` from a feat branch with uncommitted changes can leak modified files into the new branch's working tree even after `git stash -u`. Saw this with namespace-explorer code appearing on the audit branch. The pre-commit hook + careful `git add` paths still worked but required extra cleanup. **Always `git status --short` before commit, even when you "just added 2 files."**
+- The staging Telegram bot is `@Mira_stagong_bot` (typo in the name is intentional per the goal). For per-channel verification a human needs Telegram client — Phase 3 used the pipeline endpoint as a proxy.
 
 ## 2026-05-19 — GS11 grounding test surface landed
 Three-layer regression net for "embedding sidecar down → bot must still cite KB, not 'general industrial knowledge'." Installed after the 2026-05-18 GS11 demo failure (PR #1382 + #1379 + #1385 root cause chain).
