@@ -159,6 +159,9 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
 
 export const config = {
   matcher: [
-    "/((?!login|signup|magic|m/|api/auth|api/public|api/health|api/scanbe/healthz|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
+    // `quickstart` and `api/quickstart/*` are public — the Twilio-moment landing
+    // page (ADR-0014). Excluding from the matcher prevents the middleware from
+    // bouncing anonymous visitors to /login.
+    "/((?!login|signup|magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/scanbe/healthz|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
   ],
 };

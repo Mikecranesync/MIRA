@@ -65,6 +65,41 @@ class TestCitationLabel:
         )
         assert label.endswith("Fault F0005")
 
+    def test_page_num_appended_when_present(self):
+        label = _format_citation_label(
+            {
+                "manufacturer": "Allen-Bradley",
+                "model_number": "PowerFlex 525",
+                "section": "Fault F004",
+                "page_num": 12,
+            }
+        )
+        assert label.endswith("p. 12")
+        assert "Fault F004" in label
+
+    def test_page_num_falls_back_to_metadata(self):
+        # Some callers pass the chunk dict before flattening; _format should
+        # still recover page_num from the metadata sub-dict.
+        label = _format_citation_label(
+            {
+                "manufacturer": "Allen-Bradley",
+                "model_number": "PowerFlex 525",
+                "metadata": {"page_num": 47, "section": ""},
+            }
+        )
+        assert label.endswith("p. 47")
+
+    def test_page_num_zero_or_none_omitted(self):
+        for bad in (None, 0, -1, "12", 12.5):
+            label = _format_citation_label(
+                {
+                    "manufacturer": "Allen-Bradley",
+                    "model_number": "PowerFlex 525",
+                    "page_num": bad,
+                }
+            )
+            assert "p." not in label
+
     def test_no_double_manufacturer(self):
         # If model already includes the manufacturer name, don't repeat it.
         label = _format_citation_label(

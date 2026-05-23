@@ -463,6 +463,9 @@
   },
   "admin": {
     "title": "管理",
+    "users": {
+      "title": "用户"
+    },
     "usersTab": "用户",
     "rolesTab": "角色与权限",
     "inviteUser": "邀请用户",

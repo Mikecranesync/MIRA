@@ -7,6 +7,7 @@ import { Search, Package, ChevronRight, AlertCircle, AlertTriangle, CheckCircle2
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { PARTS, CATEGORIES, OEMS, getStockStatus } from "@/lib/parts-data";
+import { LabsStub } from "@/components/labs-stub";
 
 const STOCK_CONFIG = {
   ok:  { color: "#16A34A", bg: "#DCFCE7", Icon: CheckCircle2, badgeVariant: "green"  as const },
@@ -20,6 +21,10 @@ type SortCol = "description" | "qtyOnHand" | "unitCost" | "status";
 type SortDir = "asc" | "desc";
 
 export default function PartsPage() {
+  // Gated behind Labs flag (ADR-0014). Mock-data UI hidden on prod builds.
+  if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
+    return <LabsStub feature="Parts" />;
+  }
   const t = useTranslations("parts");
   const tCommon = useTranslations("common");
   const [query, setQuery]         = useState("");

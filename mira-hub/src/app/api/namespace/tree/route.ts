@@ -38,6 +38,7 @@ export interface NamespaceNode {
   id: string;
   name: string;
   kind: string; // entity_type — 'site', 'area', 'line', 'asset', 'component', 'document', ...
+                // or 'namespace' for a synthesized path segment that has no kg_entities row.
   unsPath: string | null;
   counts: {
     children: number;
@@ -87,7 +88,7 @@ export async function GET() {
   }
 }
 
-function buildTree(
+export function buildTree(
   entities: KgEntityRow[],
   proposalCounts: ProposalCountRow[],
 ): NamespaceNode[] {
@@ -123,6 +124,21 @@ function buildTree(
     nodesByPath.set(e.uns_path ?? `__orphan__:${e.id}`, node);
   }
 
+  // Synthesize parent nodes for any ancestor path that lacks a kg_entities row.
+  // Without this, a manual at `enterprise.knowledge_base.siemens.sinamics.manuals`
+  // with no row at `enterprise.knowledge_base.siemens` would render as a top-level
+  // root instead of nesting under "Siemens". See #1344.
+  for (const e of entities) {
+    if (!e.uns_path) continue;
+    let cursor = parentOf(e.uns_path);
+    while (cursor) {
+      if (!nodesByPath.has(cursor)) {
+        nodesByPath.set(cursor, synthesizeParent(cursor));
+      }
+      cursor = parentOf(cursor);
+    }
+  }
+
   for (const node of nodesByPath.values()) {
     if (!node.unsPath || node.unsPath.length === 0) {
       roots.push(node);
@@ -145,4 +161,22 @@ function parentOf(path: string): string | null {
   const i = path.lastIndexOf(".");
   if (i < 0) return null;
   return path.slice(0, i);
+}
+
+function synthesizeParent(path: string): NamespaceNode {
+  const lastSegment = path.slice(path.lastIndexOf(".") + 1);
+  // Display: replace underscores with spaces, title-case each word.
+  const display = lastSegment
+    .split("_")
+    .filter((s) => s.length > 0)
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" ");
+  return {
+    id: `synthetic:${path}`,
+    name: display || lastSegment,
+    kind: "namespace",
+    unsPath: path,
+    counts: { children: 0, proposalsPending: 0, proposalsVerified: 0 },
+    children: [],
+  };
 }

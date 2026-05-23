@@ -23,6 +23,7 @@
 #   4000 → mira-mcp MCP     (prod 8009)
 #   4001 → mira-mcp REST    (prod 8001)
 #   4088 → atlas-api        (prod 8088)
+#   4100 → atlas-frontend   (prod 3100)
 #   4433 → atlas-db         (prod 5433)
 #   4900 → atlas-minio API  (prod 9000)
 #   4901 → atlas-minio UI   (prod 9001)
@@ -102,6 +103,15 @@ services:
       PUBLIC_MINIO_ENDPOINT: ${ATLAS_PUBLIC_MINIO_URL:-http://host.docker.internal:4900}
       INVITATION_VIA_EMAIL: "false"
       ENABLE_EMAIL_NOTIFICATIONS: "false"
+      # Spring @Value placeholders below are required even when email is disabled —
+      # bean wiring happens before the feature flag is read. Match prod's compose
+      # (mira-cmms/docker-compose.yml) so atlas-api boots cleanly in staging.
+      SMTP_HOST: ${ATLAS_SMTP_HOST:-}
+      SMTP_PORT: ${ATLAS_SMTP_PORT:-587}
+      SMTP_USER: ${ATLAS_SMTP_USER:-}
+      SMTP_PWD: ${ATLAS_SMTP_PWD:-}
+      MAIL_RECIPIENTS: ${ATLAS_MAIL_RECIPIENTS:-}
+      KEYGEN_PRODUCT_TOKEN: ${ATLAS_KEYGEN_TOKEN:-}
       ENABLE_SSO: "false"
     ports:
       - "0.0.0.0:4088:8080"
@@ -117,6 +127,47 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  atlas-frontend:
+    # Pre-built image from Docker Hub. Prod's mira-cmms/docker-compose.yml uses a
+    # local build context that only resolves on Bravo — won't build on the VPS.
+    # Using the published image avoids that.
+    image: intelloop/atlas-cmms-frontend@sha256:9393849caa8ff980b02cdc0836d3797da78a8a3a4672acff80206de4e11fa8de
+    container_name: stg-atlas-frontend
+    restart: unless-stopped
+    depends_on:
+      atlas-api:
+        condition: service_healthy
+    environment:
+      API_URL: ${ATLAS_PUBLIC_API_URL:-http://165.245.138.91:4088}
+      INVITATION_VIA_EMAIL: "false"
+      CLOUD_VERSION: "false"
+      NODE_ENV: production
+      ENABLE_SSO: "false"
+      GOOGLE_TRACKING_ID: "disabled"
+      GOOGLE_KEY: "disabled"
+      MUI_X_LICENSE: "disabled"
+      OAUTH2_PROVIDER: "none"
+      LOGO_PATHS: "null"
+      CUSTOM_COLORS: "null"
+      BRAND_CONFIG: "null"
+      DEMO_LINK: "none"
+      PADDLE_SECRET_TOKEN: "disabled"
+      PADDLE_ENVIRONMENT: production
+      RECAPTCHA_SITE_KEY: "disabled"
+    ports:
+      - "0.0.0.0:4100:3000"
+    networks:
+      - staging-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qS -O /dev/null http://127.0.0.1:3000/ 2>&1 | grep -q 'HTTP/'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
   # ─── MIRA core services (staging subset) ───────────────────────────────────
   mira-mcp:
@@ -138,6 +189,10 @@ services:
       - MIRA_HUB_URL=http://stg-mira-hub:3000
       - INTERNAL_KG_API_KEY=${INTERNAL_KG_API_KEY:-}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      # Atlas CMMS — mira-mcp work-order tools call into stg-atlas-api.
+      - HUB_CMMS_API_URL=http://stg-atlas-api:8080
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
     volumes:
       - /opt/mira-staging/data:/mira-db
     networks:
@@ -232,6 +287,11 @@ services:
       - HUB_AUTH_GOOGLE_CLIENT_ID=${HUB_AUTH_GOOGLE_CLIENT_ID:-}
       - HUB_AUTH_GOOGLE_CLIENT_SECRET=${HUB_AUTH_GOOGLE_CLIENT_SECRET:-}
       - HUB_TENANT_ID=${HUB_TENANT_ID:-mike}
+      # Public /quickstart landing — tenant whose KB corpus the anonymous
+      # ask endpoint queries (ADR-0014, Twilio moment). Doppler-injected in
+      # staging/prod; fallback below is the founder's tenant where the
+      # seeded OEM corpus currently lives.
+      - QUICKSTART_TENANT_ID=${QUICKSTART_TENANT_ID:-78917b56-f85f-43bb-9a08-1bb98a6cd6c3}
       - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-http://165.245.138.91:4099}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
@@ -377,6 +437,35 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+
+  # ─── mira-cmms-sync — NeonDB ↔ Atlas sync worker (staging) ────────────────
+  # Mirrors saas.yml's mira-cmms-sync block but talks to stg-atlas-api inside
+  # staging-net. Default off (CMMS_SYNC_ENABLED=false) — staging is a clean
+  # sandbox; flip true in Doppler factorylm/stg when ready to test the loop
+  # end-to-end. Required for Hub Feed/Schedule pages to surface real Atlas
+  # work-order data instead of mock fixtures.
+  mira-cmms-sync:
+    build:
+      context: ./mira-hub
+      dockerfile: Dockerfile.sync-worker
+    container_name: stg-mira-cmms-sync
+    environment:
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://stg-atlas-api:8080}
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      - CMMS_SYNC_ENABLED=${CMMS_SYNC_ENABLED:-false}
+      - CMMS_SYNC_INTERVAL_MS=${CMMS_SYNC_INTERVAL_MS:-60000}
+    command: ["bun", "run", "scripts/cmms-sync-worker.ts", "--interval-ms", "${CMMS_SYNC_INTERVAL_MS:-60000}"]
+    networks:
+      - staging-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    depends_on:
+      - mira-hub
 
 networks:
   staging-net:

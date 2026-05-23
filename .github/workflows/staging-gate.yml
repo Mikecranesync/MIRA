@@ -50,18 +50,41 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Dependabot PRs cannot access GitHub environment secrets (security
+      # default — only `dependabot` secrets are exposed). That makes
+      # NEON_STG_DATABASE_URL / STAGING_GROQ_API_KEY empty, the engine
+      # boot fails with "missing env var NEON_DATABASE_URL", the job
+      # reports failure, and deploy-vps.yml then refuses to deploy the
+      # squashed merge commit because the PR head Staging Gate didn't
+      # pass. Dependency bumps are graded by `deepeval-ci.yml` (offline)
+      # and `ci.yml` (lint + unit tests); a real-data gate against the
+      # NeonDB staging branch adds no signal we can act on for a
+      # version bump. Skip the gate for these PRs so the workflow exits
+      # `completed:success` and the merge can deploy.
+      - name: Skip notice (Dependabot PR)
+        if: github.actor == 'dependabot[bot]'
+        run: |
+          echo "Dependabot PR detected (actor=${{ github.actor }})."
+          echo "Staging Gate skipped — Dependabot cannot access the 'staging'"
+          echo "environment secrets, and the offline deepeval suite + CI gate"
+          echo "the dependency-bump risk. Job will exit success so deploy-vps"
+          echo "can deploy the squashed merge commit on main."
+
       - uses: actions/setup-python@v6
+        if: github.actor != 'dependabot[bot]'
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: mira-bots/telegram/requirements.txt
 
       - name: Install engine dependencies
+        if: github.actor != 'dependabot[bot]'
         run: |
           python -m pip install --upgrade pip
           pip install -r mira-bots/telegram/requirements.txt
 
       - name: Run staging gate
+        if: github.actor != 'dependabot[bot]'
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
           GROQ_API_KEY: ${{ secrets.STAGING_GROQ_API_KEY }}
@@ -87,7 +110,7 @@ jobs:
           python tools/staging_test.py
 
       - name: Upload results artifact
-        if: always()
+        if: always() && github.actor != 'dependabot[bot]'
         uses: actions/upload-artifact@v4
         with:
           name: staging-results-${{ github.run_number }}
@@ -95,7 +118,7 @@ jobs:
           retention-days: 30
 
       - name: Render PR comment
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
         run: |
           python tools/staging_render_comment.py \
             --in tools/staging_results.json \
@@ -103,7 +126,7 @@ jobs:
             --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: Post / update PR comment
-        if: always() && github.event_name == 'pull_request' && hashFiles('staging_comment.md') != ''
+        if: always() && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && hashFiles('staging_comment.md') != ''
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: staging-gate

@@ -96,9 +96,10 @@ function hero(): string {
     <h3 class="fl-hero-h3">Then <strong>MIRA</strong> makes it actionable.</h3>
     <p class="fl-hero-sub">Your manuals are in filing cabinets. Your fault history is in someone's head. Your PLC tags don't match your asset names. AI can't help until that's structured. We do the structuring — then MIRA runs on top.</p>
     <div class="fl-hero-cta">
-      ${btnPrimary("Book Your Maintenance Assessment", { href: "/buy", cta: "hero-buy" })}
-      ${btnGhost("Take the readiness scorecard →", { href: "/assess", cta: "hero-secondary" })}
+      ${btnPrimary("Try MIRA Free →", { href: "/signup", cta: "hero-signup" })}
+      ${btnGhost("Book a demo", { href: "/buy", cta: "hero-buy-secondary" })}
     </div>
+    <p class="fl-hero-cta-foot">7-day free trial, no credit card. Or book a $500 in-person assessment and skip the trial.</p>
     <div class="fl-hero-screenshot" aria-hidden="true">
       <img
         src="/images/hero-fault-lookup-cartoon.jpg"
@@ -314,6 +315,42 @@ const PAGE_STYLES = `
 .fl-hero-cta {
   display: flex; gap: var(--fl-sp-4); justify-content: center; flex-wrap: wrap;
 }
+.fl-hero-cta-foot {
+  text-align: center;
+  font-size: var(--fl-type-xs);
+  color: var(--fl-muted-600);
+  margin-top: var(--fl-sp-3);
+}
+
+/* Mobile sticky CTA — visible only ≤720px so it doesn't double up with the
+   above-the-fold buttons on desktop. Bottom-anchored, full-width minus a
+   small inset, large tap target. Hidden when JS isn't present is fine —
+   it's a plain anchor, no script required. */
+.fl-mobile-cta {
+  display: none;
+}
+@media (max-width: 720px) {
+  .fl-mobile-cta {
+    display: block;
+    position: fixed;
+    left: var(--fl-sp-4);
+    right: var(--fl-sp-4);
+    bottom: var(--fl-sp-4);
+    z-index: 50;
+    background: var(--fl-orange-600);
+    color: #fff;
+    text-align: center;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: var(--fl-type-base);
+    padding: var(--fl-sp-4) var(--fl-sp-5);
+    border-radius: var(--fl-radius-pill);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.10);
+  }
+  .fl-mobile-cta:active { transform: translateY(1px); }
+  /* Bottom-page padding so the sticky CTA doesn't sit on top of the footer */
+  body { padding-bottom: 72px; }
+}
 
 .fl-section {
   max-width: 1080px; margin: 0 auto;
@@ -467,6 +504,7 @@ export function renderHome(reqUrl?: string): string {
     ${pricingTeaser()}
   </main>
   ${footer()}
+  <a href="/signup" class="fl-mobile-cta" data-cta="mobile-sticky-signup">Try MIRA Free →</a>
   <script src="/sun-toggle.js"></script>
   <script src="/feature-cartoons.js" defer></script>
 </body>
