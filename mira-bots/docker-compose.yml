@@ -10,6 +10,9 @@ x-bot-common-env: &bot-common-env
   MIRA_TENANT_ID: ${MIRA_TENANT_ID:-}
   VISION_MODEL: ${VISION_MODEL:-qwen2.5vl:7b}
   INFERENCE_BACKEND: ${INFERENCE_BACKEND:-cloud}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+  OPENROUTER_VISION_MODEL: ${OPENROUTER_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct:free}
   GROQ_API_KEY: ${GROQ_API_KEY:-}
   GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
   GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
@@ -25,6 +28,7 @@ x-bot-common-env: &bot-common-env
   LANGFUSE_PUBLIC_API_KEY: ${LANGFUSE_PUBLIC_API_KEY:-}
   LANGFUSE_HOST: ${LANGFUSE_HOST:-}
   LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
+  ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
 
 services:
   telegram-bot:
