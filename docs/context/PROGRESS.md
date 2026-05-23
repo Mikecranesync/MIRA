@@ -6383,4 +6383,57 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 **Working tree:**
 - M docs/context/PROGRESS.md
 **Next:** _set by next session_
+
+### 2026-05-19 14:21 UTC — `chore/promo-director-refresh-2026-05-19`
+**Last commit:** 9830d1f chore(context): log promo-director refresh session progress
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/HANDOFF-mnb-phase-1.md
+- docs/HANDOFF-mnb-phase-2.md
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/audits/2026-05-17-audit.md
+- docs/audits/2026-05-18-audit.md
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-23 18:14 UTC — `chore/promo-director-refresh-2026-05-19`
+**Last commit:** 9830d1f chore(context): log promo-director refresh session progress
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/HANDOFF-mnb-phase-1.md
+- docs/HANDOFF-mnb-phase-2.md
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/audits/2026-05-17-audit.md
+- docs/audits/2026-05-18-audit.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
