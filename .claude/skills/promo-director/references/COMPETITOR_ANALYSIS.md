@@ -1,8 +1,27 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-23
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-23
+
+### Most actionable change for the playbook
+Augury is running a systematic category-corner strategy: first ultra-low RPM (Mar 2025), now classified hazardous zones (May 2026). The pattern — "we're the only ones who monitor [edge case everyone avoids]" — transfers directly to MIRA's OEM-fault-library differentiation. Consider: "first maintenance copilot trained on OEM fault libraries for [equipment class]."
+
+### New findings
+
+**Predictive maintenance**
+- **Augury** — C1D1/C2D1 hazardous-zone PdM webinar (May 14, 2026): Fred Wasden PhD PE + Andrew Pry on "always-on PdM in classified environments without shutdowns or conduit runs." Companion announcement: Baker Hughes Ranger Pro sensor partnership for hazardous-zone deployments. New category claim: extends coverage from ultra-low-RPM → classified environments. [webinar — not a YouTube video; no YouTube URL confirmed]
+
+**B2B SaaS**
+- **Notion** — "Make with Notion: Developer Platform" livestream (May 13, 2026): CEO Ivan Zhao-led event. New framing: "hub for AI agents." Launches: Workers (hosted code runtime), External Agents API (Claude Code, Cursor, Codex, Decagon at launch), Database sync (Salesforce, Zendesk, Postgres → Notion). YouTube playlist: https://www.youtube.com/playlist?list=PLzaYMdbJMZW2to9W0NNPwvYFPy64HpJB9 [transcript not verified]. Significant framing shift: Notion is no longer a productivity app — it's an orchestration surface for third-party agents.
+- **Anthropic** — Claude for Small Business (May 13, 2026): 15 pre-built skills (payroll, reconciliation, marketing, onboarding) + connectors for QuickBooks, PayPal, Gmail, Slack, Canva, Square, Stripe, Webflow. Physical roadshow starting May 14 in Chicago (100 local SMB leaders per city). Third-party YouTube coverage exists; no official Anthropic launch video confirmed. Pattern: enterprise-grade AI packaged as SMB workflow bundles + physical roadshow as acquisition channel.
+
+**CMMS (no dedicated video — competitive intel only)**
+- **MaintainX** May 2026 update: AI Procedure Recommendations (attaches the right procedure at WO creation, Enterprise/CoPilot tier) + Sub Work Orders (parent/child WO hierarchy with shared context). No standalone launch video. These features move MaintainX directly into MIRA's diagnostic-guidance territory.
 
 ---
 
@@ -88,6 +107,11 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
+**May 2026 update (no dedicated video)**
+- AI Procedure Recommendations: AI attaches the right procedure at work order creation moment (Enterprise/CoPilot tier). Source: https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026
+- Sub Work Orders: parent/child WO hierarchy with shared context; assignable to different teams and assets (Premium+)
+- Competitive note: AI Procedure Recommendations is MaintainX's first step into diagnostic guidance at point of action — directly adjacent to MIRA's core KB-grounded troubleshooting. No video confirmed; feature-drop-on-blog format.
+
 ---
 
 ### Fiix
@@ -145,6 +169,13 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Footage style: real factory floor + exec interviews
 
 **Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+
+**Hazardous zone expansion (May 14, 2026 webinar)**
+- Presenters: Fred Wasden, PhD, P.E. + Andrew Pry
+- Claim: always-on PdM in C1D1/C2D1 environments without shutdowns, conduit runs, or permits
+- Companion: Baker Hughes Ranger Pro sensor partnership for classified-area deployments
+- Category pattern: Augury now claims "every environment others can't monitor": ultra-low RPM (Mar 2025) → hazardous zones (May 2026). Systematic corner-claiming.
+- Format: webinar (not YouTube) [transcript not verified]
 
 ---
 
@@ -304,6 +335,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**Claude for Small Business (May 13, 2026)**
+- Official announcement: https://www.anthropic.com/news/claude-for-small-business
+- Third-party YouTube Shorts: https://www.youtube.com/shorts/zoVZt0Ko8dA [not official Anthropic video]
+- Positioning: 15 pre-built skills (payroll, bookkeeping, marketing campaigns, employee onboarding) + integrations (QuickBooks, PayPal, Gmail, Google Workspace, MS365, Docusign, Slack, Canva, Square, Stripe, Webflow)
+- GTM pattern: physical roadshow starting May 14, Chicago — 100 local SMB leaders per city; hands-on AI fluency workshop format
+- Pattern note: enterprise AI downmarket motion. Packaging = pre-built workflow bundles per SMB use case, not generic chat. Physical roadshow as SMB acquisition channel is a new tactic for Anthropic.
+
 ---
 
 ### Cursor
@@ -339,6 +377,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Music: likely ambient [not verified]
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
+
+**Notion 3.5: Developer Platform launch (May 13, 2026)**
+- Event: "Make with Notion" — CEO Ivan Zhao livestreamed product event
+- YouTube playlist: https://www.youtube.com/playlist?list=PLzaYMdbJMZW2to9W0NNPwvYFPy64HpJB9 [transcript not verified]
+- Framing shift: "hub for AI agents" — Notion positioned as orchestration surface, not productivity app
+- Launches: Workers (hosted code runtime, free through Aug 2026), External Agents API (Claude Code, Cursor, Codex, Decagon at launch), Database sync (Salesforce, Zendesk, Postgres → Notion)
+- Pattern: B2B SaaS evolution arc — tool → platform → agent hub. Video is a CEO-led livestream, not a polished promo. The framing "meet your 24/7 AI team" is the new positioning tagline.
 
 ---
 
