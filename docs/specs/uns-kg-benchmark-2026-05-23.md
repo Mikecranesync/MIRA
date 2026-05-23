@@ -146,7 +146,9 @@ Only standards with changes are shown. **No new green, no new red since 2026-05-
 
 3. **Reconcile `has_fault` vs `has_fault_code`.** Either rename in `kg_writer.register_fault_code()` to match Hub's `has_fault_code`, or migrate the 5 Hub rows to `has_fault`. The former is one line; the latter is a one-time SQL update. The two-string status is silent-failure prone for any reader. Once chosen, document in `.claude/rules/uns-compliance.md`.
 4. **Add CHECK constraint or lookup table for `relationship_type`.** Whichever convention wins (upper or lower), a database-side guard prevents drift from re-occurring. The current 10-type sprawl is the consequence of having no guard.
-5. *Then* run the has_fault backfill (443 distinct fault_codes available). Estimated edges: ~443 if the slug-normalized join hits at >95% (db-inspect now contains the verification query — pending the workflow re-run with the cast fix in this PR).
+5. *Then* run the has_fault backfill. The 2026-05-23 13:11 UTC inspect (workflow run 26333596051) returned **0 matches out of 443** fault_codes vs current equipment entities (slug-normalized join). This is corroborating evidence for the entity-deletion hypothesis in the headline: the equipment rows that the backfill's fault_codes would have attached to are the rows that got dedupe-cascaded. The backfill cannot proceed against the current 15 equipment entities; either the original ~485 equipment rows (600 − 84 ≈ 516 deleted) need to be re-created (which requires running PR #1443's equipment+manual backfill again, which requires P0 root-cause first), or fault_codes need a different attachment strategy.
+
+Edge-creation distribution on the surviving 42 rows: 1 (2026-04-28), 2 (29), 4 (05-01), 11 (05-08), 12 (05-15), 12 (05-19). Some 2026-05-19 edges *did* survive (likely Hub UI writes outside the PR #1443 backfill); the 269 has_manual specifically did not.
 
 ### P2 — close the vocabulary contract gap (the actionable headline)
 
