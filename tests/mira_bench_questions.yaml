@@ -1,0 +1,159 @@
+# MIRA vs ungrounded-LLM benchmark question set.
+# Each item asks a real maintenance question about the cluster's gold-path
+# equipment (Micro820 PLC, GS10/GS11 VFDs, Modbus RTU). The required_*
+# fields define the truth set used by the grader.
+
+questions:
+  - id: Q01
+    question: "How do I read a parameter from a GS11 drive using a Micro820 over Modbus RTU?"
+    category: modbus
+    difficulty: hard
+    expected_answer_components:
+      - "Modbus RTU"
+      - "function code 03"
+      - "holding register"
+      - "Micro820 MSG instruction"
+    required_documents:
+      - "GS11 user manual"
+      - "Micro820 / CCW Modbus documentation"
+    required_citations:
+      - "GS11 parameter register table"
+      - "Micro820 MSG_MODBUS function block"
+
+  - id: Q02
+    question: "What is the default baud rate and parity for the GS10 serial port?"
+    category: modbus
+    difficulty: easy
+    expected_answer_components:
+      - "9600 baud"
+      - "8 data bits"
+      - "no parity"
+      - "1 stop bit"
+    required_documents:
+      - "GS10 user manual"
+    required_citations:
+      - "GS10 serial communication parameters section"
+
+  - id: Q03
+    question: "What Modbus register do I write to change the GS10 motor speed?"
+    category: modbus
+    difficulty: medium
+    expected_answer_components:
+      - "frequency command"
+      - "0.01 Hz scaling"
+      - "function code 06"
+      - "holding register"
+    required_documents:
+      - "GS10 Modbus parameter table"
+    required_citations:
+      - "GS10 communication parameter address map"
+
+  - id: Q04
+    question: "How do I wire RS-485 between a Micro820 and a GS10 VFD?"
+    category: wiring
+    difficulty: medium
+    expected_answer_components:
+      - "twisted pair"
+      - "A / B (D+/D-)"
+      - "common / signal ground"
+      - "terminating resistor"
+      - "shield grounded one end"
+    required_documents:
+      - "GS10 wiring manual"
+      - "Micro820 serial port wiring"
+    required_citations:
+      - "GS10 RS-485 terminal diagram"
+
+  - id: Q05
+    question: "What are the fault codes for the GS10 VFD and what do they mean?"
+    category: troubleshooting
+    difficulty: medium
+    expected_answer_components:
+      - "OC"
+      - "OV"
+      - "overcurrent"
+      - "overvoltage"
+      - "ground fault"
+    required_documents:
+      - "GS10 fault code table"
+    required_citations:
+      - "GS10 troubleshooting / fault code chapter"
+
+  - id: Q06
+    question: "How do I configure Modbus communication on the Micro820 in CCW?"
+    category: plc-programming
+    difficulty: medium
+    expected_answer_components:
+      - "Serial Port properties"
+      - "Modbus RTU Master"
+      - "MSG_MODBUS function block"
+      - "baud rate"
+      - "node address"
+    required_documents:
+      - "Micro820 / CCW programming manual"
+    required_citations:
+      - "CCW serial port configuration section"
+
+  - id: Q07
+    question: "What safety precautions should I take before wiring a VFD to a PLC?"
+    category: safety
+    difficulty: easy
+    expected_answer_components:
+      - "de-energize"
+      - "lockout/tagout"
+      - "verify zero voltage"
+      - "DC bus discharge"
+      - "qualified person"
+      - "PPE"
+    required_documents:
+      - "VFD installation manual safety section"
+    required_citations:
+      - "Drive installation safety chapter"
+
+  - id: Q08
+    question: "My GS11 drive shows an overcurrent fault. What should I check?"
+    category: troubleshooting
+    difficulty: medium
+    expected_answer_components:
+      - "motor wiring short"
+      - "motor insulation / megger"
+      - "acceleration time too short"
+      - "load condition"
+      - "drive sizing"
+    required_documents:
+      - "GS11 fault code table"
+      - "GS11 troubleshooting"
+    required_citations:
+      - "GS11 OC fault section"
+
+  - id: Q09
+    question: "Compare the communication setup between GS10 and GS11 drives."
+    category: modbus
+    difficulty: hard
+    expected_answer_components:
+      - "Modbus RTU"
+      - "RS-485"
+      - "register map differences"
+      - "default baud rate"
+    required_documents:
+      - "GS10 user manual"
+      - "GS11 user manual"
+    required_citations:
+      - "GS10 and GS11 communication parameter sections"
+
+  - id: Q10
+    question: "How do I set up a Modbus read function block in CCW ladder logic for the Micro820?"
+    category: plc-programming
+    difficulty: hard
+    expected_answer_components:
+      - "MSG_MODBUS function block"
+      - "TargetCfg / LocalCfg"
+      - "function code 03"
+      - "starting address"
+      - "number of elements"
+      - "trigger bit"
+    required_documents:
+      - "Micro820 / CCW programming manual"
+      - "MSG_MODBUS reference"
+    required_citations:
+      - "CCW MSG_MODBUS instruction help"

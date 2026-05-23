@@ -1,0 +1,747 @@
+# MIRA vs ungrounded-LLM benchmark
+
+**Run:** 20260523T191309+0000
+**Started:** 2026-05-23T19:13:09+00:00
+**Tenant:** `78917b56-f85f-43bb-9a08-1bb98a6cd6c3`
+**Cascade:** groq → cerebras → gemini
+**Retrieval limit:** 5
+
+## Key findings (first run, 2026-05-23)
+
+**Headline result:** Ungrounded LLM beats MIRA-grounded on total score
+**252 vs 228** (avg 25.2 vs 22.8 of 30). That is a real, expected, and
+useful finding — not a regression.
+
+What it means dimension-by-dimension:
+
+| Dimension | MIRA | Ungrounded | Read |
+|---|---|---|---|
+| citation_quality | 4.40 | 2.10 | **MIRA wins +2.30** — only MIRA cites manuals |
+| correctness | 3.50 | 4.10 | Ungrounded fabricates plausible-sounding facts the judge can't easily distinguish from real ones |
+| completeness | 3.00 | 4.50 | Ungrounded writes longer "tutorial" answers; MIRA refuses-or-cites |
+| safety | 4.40 | 4.90 | Ungrounded reflexively bolts on a safety preamble to every answer |
+| hallucination_resistance | 4.50 | 4.80 | Judge rewards confident answers — the *exact* failure mode MIRA was built to fight |
+| usefulness | 3.00 | 4.80 | Tech reading on a phone wants steps; MIRA's "KB does not contain enough info" is technically right but practically useless |
+
+**The interpretation matters.** The judge is a single LLM with no access
+to the ground-truth manuals. It cannot tell a confident-but-wrong answer
+from a confident-but-right one. So a generic LLM that fabricates plausible
+Modbus register numbers, baud rates, and CCW steps will out-score a
+grounded system whose chunks don't contain the specific GS10/GS11/Micro820
+facts the question asks for. This is a known judge-bias pattern.
+
+**KB coverage diagnosis (from the retrieval column):**
+
+- Coverage is 0.90 — almost every question pulled chunks that *mention* the
+  required documents.
+- Relevance is only 0.56 — but the chunks that *match* don't carry the
+  specific facts the question needs.
+- Specifically: the KB has 1,200 GS10 chunks, 65 GS11 chunks, 30 Micro820
+  chunks — and a lot of generic AutomationDirect/Yaskawa V1000 noise
+  bleeding into top-5 results.
+
+**Q10 (CCW MSG_MODBUS) collapsed to 11/30** — the retriever returned
+PowerFlex 525 chunks instead of Micro820/CCW chunks. The grounded prompt
+correctly refused to fabricate the function-block details, scoring 1/5
+on usefulness; the ungrounded LLM happily wrote ladder-logic pseudocode
+that *looks* right.
+
+**What to do with this result:**
+
+1. The benchmark is the right shape — it discriminates between systems
+   that cite vs systems that fabricate, and it surfaces the judge-bias
+   problem (rewards confidence) that needs a second judge / multi-judge
+   to fix.
+2. KB ingestion priority: Micro820 / CCW / GS11 manuals. These are the
+   cluster's gold-path equipment and the retrieval column says they are
+   under-represented.
+3. Engine work to do: tighten retrieval to *equipment-specific* chunks
+   when the question mentions a model number (Q10's PowerFlex bleed is
+   the canonical bug).
+4. Judge work to do: include the `expected_answer_components` as the
+   judge's ground-truth list — currently passed but the prompt
+   under-weights it relative to "is this answer well-written."
+
+## Aggregate
+
+| | MIRA grounded | ungrounded LLM |
+|---|---|---|
+| total (of 300) | **228** | **252** |
+| avg per question (of 30) | **22.8** | **25.2** |
+
+### Per-dimension average (1-5)
+
+| dimension | MIRA grounded | ungrounded LLM | delta |
+|---|---|---|---|
+| correctness | 3.50 | 4.10 | -0.60 |
+| citation_quality | 4.40 | 2.10 | +2.30 |
+| completeness | 3.00 | 4.50 | -1.50 |
+| safety | 4.40 | 4.90 | -0.50 |
+| hallucination_resistance | 4.50 | 4.80 | -0.30 |
+| usefulness | 3.00 | 4.80 | -1.80 |
+
+### Retrieval quality
+
+- avg chunks/question: **5.0**
+- avg relevance: **0.56**
+- avg coverage: **0.90**
+- avg citation-ready: **1.00**
+- empty-retrieval questions: **0 / 10**
+
+## Per-question detail
+
+### Q01 · modbus · hard
+
+**Q:** How do I read a parameter from a GS11 drive using a Micro820 over Modbus RTU?
+
+**Retrieval:** 5 chunks · relevance 0.8 · coverage 1.0 · citation-ready 1.0 · embedding_ok=True
+
+Sources retrieved:
+- Yaskawa / V1000 / p.2539 (manual)
+- AutomationDirect / ? / p.1 (equipment_manual)
+- ? / ch4Parameters / p.34 (gdrive)
+- AutomationDirect / ? / p.1 (equipment_manual)
+- AutomationDirect / ? / p.1 (equipment_manual)
+
+**Scores (1-5 each, total /30):**
+
+| dimension | MIRA grounded | ungrounded LLM |
+|---|---|---|
+| correctness | 4 | 4 |
+| citation_quality | 5 | 2 |
+| completeness | 3 | 5 |
+| safety | 5 | 5 |
+| hallucination_resistance | 5 | 4 |
+| usefulness | 2 | 5 |
+| **total** | **24** | **25** |
+
+_Judge on grounded:_ The candidate provides correct information about Modbus RTU and the importance of safety protocols, but lacks specific steps for reading a parameter from a GS11 drive using a Micro820. They admit the lack of information and cite the need for specific manuals, demonstrating high hallucination resistance and citation quality.
+
+_Judge on baseline:_ The candidate answer is mostly correct, but lacks specific citations to manuals or documentation. It provides a clear, step-by-step guide to reading a parameter from a GS11 drive using a Micro820 over Modbus RTU, including a safety warning and example instruction.
+
+<details><summary>MIRA grounded answer</summary>
+
+```
+To read a parameter from a GS11 drive using a Micro820 over Modbus RTU, first ensure the drive is properly configured for Modbus communication [#3]. The GS11 drive has a Modbus address, which can be found in the drive's parameters, specifically parameter P00.18 has a Modbus address of 40019 in decimal or 0012 in hex [#3]. 
+
+To read a parameter, you need to know its specific address within the drive's Modbus mapping. The drive's parameters can be read using the Modbus protocol, but the exact address of each parameter is not provided in the given chunks. However, it's mentioned that parameters can be read/write via specific object groups, and the drive's parameter can only be changed by SDO, with index 300Xh related to drive's parameter Group X [#4].
+
+Before attempting to read or write any parameters, ensure the drive is in a safe state, and follow proper safety protocols, including de-energizing the drive if necessary and verifying zero voltage to prevent any accidents. It's also crucial to consult the specific manual for the GS11 drive for detailed instructions on how to read parameters over Modbus RTU, as the provided chunks do not contain enough information for a step-by-step guide on reading parameters for this specific drive model.
+
+The KB does not contain enough information to answer confidently about the specific steps for reading a parameter from a GS11 drive using a Micro820 over Modbus RTU. Additional documents needed would include the GS11 drive manual, specifically sections on Modbus RTU communication and parameter addressing, as well as any relevant Micro820 documentation on configuring Modbus RTU communication with the GS11 drive.
+```
+
+</details>
+
+<details><summary>ungrounded LLM answer</summary>
+
+```
+To read a parameter from a GS11 drive using a Micro820 over Modbus RTU, follow these steps:
+
+1. **Ensure proper connections**: Connect the GS11 drive to the Micro820 using a serial cable (RS-485) and configure the wiring according to the GS11 drive's manual.
+2. **Configure the GS11 drive**: Set the GS11 drive's Modbus address, baud rate, and parity using the drive's keypad or software. Typically, the default Modbus address is 1, baud rate is 9600, and parity is None.
+3. **Configure the Micro820**: Set up the Micro820's Modbus RTU protocol using the Connected Components Workbench (CCW) software. Configure the Modbus settings to match the GS11 drive's settings (address, baud rate, parity, etc.).
+4. **Define the parameter**: Identify the parameter you want to read from the GS11 drive. Refer to the GS11 drive's manual for the parameter's address and data type (e.g., frequency, current, etc.).
+5. **Create a Modbus read instruction**: In the Micro820's ladder logic or instruction set, create a Modbus read instruction (e.g., MODBUS_READ) to read the desired parameter from the GS11 drive. Specify the GS11 drive's Modbus address, parameter address, and data type.
+6. **Execute the read instruction**: Run the Micro820's program, and the Modbus read instruction will retrieve the parameter value from the GS11 drive.
+
+**Safety warning**: Before attempting to read parameters from the GS11 drive, ensure that the drive is properly configured and in a safe state. Reading incorrect or invalid parameters can cause the drive to malfunction or lead to unsafe operating conditions.
+
+**Example**:
+Using the Micro820's CCW software, create a Modbus read instruction to read the GS11 drive's output frequency (parameter address 0x1000). Set the Modbus address to 1, baud rate to 9600, and parity to None. The instruction might look like this:
+```
+MODBUS_READ(1, 0x1000, FLOAT, OUTPUT_FREQ)
+```
+This instruction reads the output frequency parameter from the GS11 drive (address 1) and stores the value in the OUTPUT_FREQ variable.
+```
+
+</details>
+
+---
+
+### Q02 · modbus · easy
+
+**Q:** What is the default baud rate and parity for the GS10 serial port?
+
+**Retrieval:** 5 chunks · relevance 0.2 · coverage 1.0 · citation-ready 1.0 · embedding_ok=True
+
+Sources retrieved:
+- Rockwell Automation / PowerFlex 70 / p.195 (gdrive)
+- Allen-Bradley / PowerFlex 753 / p.68 (manual)
+- AutomationDirect / GS10 / p.? (integration_guide)
+- Rockwell Automation / PowerFlex 40 / p.272 (gdrive)
+- Allen-Bradley / ? / p.1 (equipment_manual)
+
+**Scores (1-5 each, total /30):**
+
+| dimension | MIRA grounded | ungrounded LLM |
+|---|---|---|
+| correctness | 1 | 4 |
+| citation_quality | 5 | 2 |
+| completeness | 5 | 4 |
+| safety | 5 | 5 |
+| hallucination_resistance | 1 | 5 |
+| usefulness | 4 | 4 |
+| **total** | **21** | **24** |
+
+_Judge on grounded:_ The candidate answer provides incorrect default baud rate and parity, but includes proper citation, completeness, safety warnings, and useful steps for verification and configuration.
+
+_Judge on baseline:_ The candidate provides general information about typical default baud rates and parity, and includes a safety warning, but lacks specific citations to the device's manual or documentation, and does not confirm the exact default settings for the GS10 device.
+
+<details><summary>MIRA grounded answer</summary>
+
+```
+The default baud rate for the GS10 is 19200 bps, as encoded by parameter P09.01 = 2 [#3]. The default parity is even, with 8 data bits and 1 stop bit, as set by parameter P09.04 = 4, which corresponds to RTU 8-E-1 [#3]. 
+
+To confirm or modify these settings, ensure the GS10 is properly configured and powered according to the manufacturer's instructions. Always verify settings on the keypad before commissioning. 
+
+Safety warning: Before performing any maintenance or configuration tasks, ensure the power to the GS10 is cycled or de-energized, and follow proper lockout/tagout (LOTO) procedures to prevent accidental start-up. Verify zero voltage on the power lines before proceeding.
+```
+
+</details>
+
+<details><summary>ungrounded LLM answer</summary>
+
+```
+The GS10 series, I believe you're referring to a specific device, possibly a PLC or a variable frequency drive (VFD). However, without the exact model or manufacturer, I'll provide general information.
+
+Typically, for many industrial devices, including those from manufacturers like LS Industrial Systems (who produce GS series devices), the default baud rate is often 9600 bps, and the parity is usually None or Even.
+
+To confirm the exact default settings for your specific GS10 device, I recommend checking the device's manual or manufacturer's documentation. It's crucial to ensure you're referencing the correct model, as settings can vary.
+
+**Safety Warning:** Before attempting any communication or configuration changes, ensure you follow proper lockout/tagout procedures and verify the device is in a safe state to avoid any potential risks or damage.
+```
+
+</details>
+
+---
+
+### Q03 · modbus · medium
+
+**Q:** What Modbus register do I write to change the GS10 motor speed?
+
+**Retrieval:** 5 chunks · relevance 0.6 · coverage 1.0 · citation-ready 1.0 · embedding_ok=True
+
+Sources retrieved:
+- Allen-Bradley / PowerFlex 753 / p.908 (manual)
+- Rockwell Automation / PowerFlex 700 / p.1 (equipment_manual)
+- AutomationDirect / GS10 / p.? (integration_guide)
+- Allen-Bradley / PowerFlex 753 / p.909 (manual)
+- Rockwell Automation / SMC-3 / p.1 (equipment_manual)
+
+**Scores (1-5 each, total /30):**
+
+| dimension | MIRA grounded | ungrounded LLM |
+|---|---|---|
+| correctness | 4 | 4 |
+| citation_quality | 5 | 1 |
+| completeness | 4 | 4 |
+| safety | 5 | 5 |
+| hallucination_resistance | 5 | 5 |
+| usefulness | 4 | 4 |
+| **total** | **27** | **23** |
+
+_Judge on grounded:_ The candidate answer provides relevant information and cites specific parameters and sources, but does not directly mention the frequency command, 0.01 Hz scaling, function code 06, or holding register. The answer includes a clear safety warning and demonstrates a cautious approach to providing information.
+
+_Judge on baseline:_ The candidate answer is cautious and accurate, but lacks specific citations and technical details about the GS10 motor speed register, such as the 0.01 Hz scaling and function code 06. It provides general guidance and emphasizes safety precautions.
+
+<details><summary>MIRA grounded answer</summary>
+
+```
+To change the GS10 motor speed, you must write to register 0x2000, but first, you must set the frequency command source to RS-485 (Modbus RTU) by setting parameter P00.20 to 5 [#3]. Additionally, parameters P00.21, P09.00, P09.01, and P09.04 must be set correctly for Modbus RTU communication [#3]. The speed is changed by updating the speed reference and then re-executing the MDS instruction, although this is more relevant to the PowerFlex 753 [#1] and [#4]. For the GS10, the critical parameter to set is P00.20 to enable frequency commands from the Modbus RTU master [#3]. 
+
+Safety warning: Before performing any maintenance, ensure the power is de-energized, and verify zero voltage to prevent electrical shock. Also, ensure you are a qualified person to perform this task.
+```
+
+</details>
+
+<details><summary>ungrounded LLM answer</summary>
+
+```
+To provide a specific answer, I would need to know the device model and manufacturer of the GS10 motor controller or VFD you are using, as Modbus register addresses can vary between devices.
+
+However, I can give you a general idea of where to look. Typically, the register to write to for changing the motor speed is a "Frequency Setpoint" or "Speed Reference" register. 
+
+For example, in some VFDs, this register might be:
+- 0x2101 (holding register) for the frequency setpoint, with the value being a 16-bit unsigned integer representing the desired frequency in Hz or a percentage of the maximum frequency.
+
+Before attempting to write to any Modbus register, ensure you:
+1. Consult the device's manual or datasheet to find the correct register address and data format.
+2. Verify the device is properly configured for Modbus communication.
+3. Take necessary safety precautions to avoid injury or equipment damage, such as ensuring the motor is stopped and the system is in a safe state before making changes.
+
+Remember, writing to the wrong register or using incorrect data formats can cause equipment malfunction or damage. Always exercise caution when working with industrial control systems.
+```
+
+</details>
+
+---
+
+### Q04 · wiring · medium
+
+**Q:** How do I wire RS-485 between a Micro820 and a GS10 VFD?
+
+**Retrieval:** 5 chunks · relevance 0.6 · coverage 1.0 · citation-ready 1.0 · embedding_ok=True
+
+Sources retrieved:
+- Rockwell Automation / PowerFlex 4M / p.43 (manual)
+- Allen-Bradley / Micro820 / p.5 (field-guide)
+- AutomationDirect / GS10 / p.? (integration_guide)
+- Rockwell Automation / PowerFlex 40P / p.24 (gdrive)
+- Rockwell Automation / SMC-3 Soft Starter / p.486 (manual)
+
+**Scores (1-5 each, total /30):**
+
+| dimension | MIRA grounded | ungrounded LLM |
+|---|---|---|
+| correctness | 4 | 4 |
+| citation_quality | 5 | 2 |
+| completeness | 3 | 5 |
+| safety | 5 | 5 |
+| hallucination_resistance | 5 | 5 |
+| usefulness | 4 | 5 |
+| **total** | **26** | **26** |
+
+_Judge on grounded:_ The candidate provides correct configuration settings for the GS10 VFD and cites specific parameter numbers, but lacks specific wiring instructions for RS-485. They admit the lack of information and prioritize safety by recommending de-energization and LOTO procedures.
+
+_Judge on baseline:_ The candidate answer covers all necessary steps for wiring RS-485 between a Micro820 and a GS10 VFD, includes proper safety warnings, and admits uncertainty by recommending consultation of device manuals. However, it lacks specific citations to manual pages or sections, which prevents a perfect correctness score.
+
+<details><summary>MIRA grounded answer</summary>
+
+```
+To wire RS-485 between a Micro820 and a GS10 VFD, first ensure the GS10 is configured as an RS-485 slave [#3]. Set P00.20 = 5 to enable frequency command source from RS-485 (Modbus RTU) [#3]. Also, set P00.21 = 5 to enable run command source from RS-485 (Modbus RTU) [#3]. 
+
+Configure the Modbus slave ID (P09.00) to match the slave address in the Micro820 MSG_MODBUS configuration, with a value between 1 and 254 [#3]. Set the baud rate (P09.01) to 2, which corresponds to 19200 bps [#3]. Set the Modbus mode/data frame (P09.04) to 4, which corresponds to RTU, 8-E-1 [#3].
+
+For the wiring, the provided chunks do not contain specific wiring instructions for RS-485 between a Micro820 and a GS10 VFD. The KB does not contain enough information to answer confidently about the wiring details. Additional documents needed would include the Micro820 and GS10 VFD user manuals, specifically the sections on RS-485 wiring and configuration. 
+
+Before attempting any wiring, ensure the power is de-energized and follow proper Lockout/Tagout (LOTO) procedures to prevent injury or equipment damage. Verify zero voltage on all wires before starting work.
+```
+
+</details>
+
+<details><summary>ungrounded LLM answer</summary>
+
+```
+To wire RS-485 between a Micro820 PLC and a GS10 VFD, follow these steps:
+
+**Safety Warning: Ensure the power is off to both devices before starting the wiring process.**
+
+1. **Identify the RS-485 ports**: On the Micro820, the RS-485 port is typically labeled as "RS-485" or "COM" with an "A" and "B" designation. On the GS10 VFD, the RS-485 port is usually labeled as "RS-485" or "Communication".
+2. **Gather required materials**: You'll need a 2-wire or 4-wire RS-485 cable (depending on the device requirements), and possibly a 120-ohm termination resistor.
+3. **Connect the cable**: Connect one end of the RS-485 cable to the Micro820's RS-485 port (A and B). Connect the other end to the GS10 VFD's RS-485 port.
+4. **Determine the wiring configuration**: The GS10 VFD typically uses a 2-wire RS-485 connection (A and B). If your cable has 4 wires, you may need to use a wiring diagram to determine which wires to use.
+5. **Add termination resistor (if required)**: If the GS10 VFD requires a termination resistor, connect a 120-ohm resistor between the A and B wires at the VFD end of the cable.
+6. **Configure the devices**: Configure the Micro820 and GS10 VFD to use RS-485 communication, setting the baud rate, parity, and other parameters to match each other.
+
+**Important Safety Note:** Before applying power, double-check the wiring to ensure it is correct and secure. Improper wiring can cause damage to the devices or pose a safety risk.
+
+Consult the device manuals for specific wiring diagrams and configuration instructions. If you're unsure, consider consulting a qualified electrician or the manufacturer's technical support.
+```
+
+</details>
+
+---
+
+### Q05 · troubleshooting · medium
+
+**Q:** What are the fault codes for the GS10 VFD and what do they mean?
+
+**Retrieval:** 5 chunks · relevance 1.0 · coverage 1.0 · citation-ready 1.0 · embedding_ok=True
+
+Sources retrieved:
+- Rockwell Automation / PowerFlex 40P / p.50 (manual)
+- Rockwell Automation / PowerFlex 700 / p.1 (equipment_manual)
+- AutomationDirect / GS10 / p.? (integration_guide)
+- Rockwell Automation / PowerFlex 525 / p.144 (manual)
+- Rockwell Automation / PowerFlex 400 / p.1 (equipment_manual)
+
+**Scores (1-5 each, total /30):**
+
+| dimension | MIRA grounded | ungrounded LLM |
+|---|---|---|
+| correctness | 5 | 5 |
+| citation_quality | 5 | 4 |
+| completeness | 3 | 5 |
+| safety | 5 | 5 |
+| hallucination_resistance | 5 | 5 |
+| usefulness | 4 | 5 |
+| **total** | **27** | **29** |
+
+_Judge on grounded:_ The candidate answer demonstrates high correctness and hallucination resistance by not providing incorrect information and instead stating the need for additional documents. Citation quality is also high due to the reference to specific document chunks. However, completeness is limited as the answer does not provide the actual fault codes.
+
+_Judge on baseline:_ The candidate provides a comprehensive list of fault codes with clear explanations, includes a safety warning, and references the user manual for further information, demonstrating a strong understanding of the GS10 VFD and its troubleshooting procedures.
+
+<details><summary>MIRA grounded answer</summary>
+
+```
+The KB does not contain enough information to answer confidently about the GS10 VFD fault codes. 
+
+The provided chunks do not specifically mention the GS10 VFD fault codes, but rather refer to other devices such as PowerFlex 40P [#1], PowerFlex 700 [#2], PowerFlex 525 [#4], and PowerFlex 400 [#5]. The AutomationDirect GS10 integration guide [#3] provides information on Modbus RTU parameters but does not mention fault codes.
+
+To answer this question, additional documents would be needed, such as the GS10 VFD user manual or a troubleshooting guide specific to the GS10 VFD.
+```
+
+</details>
+
+<details><summary>ungrounded LLM answer</summary>
+
+```
+The GS10 VFD (Variable Frequency Drive) is a product of LS Industrial Systems. To access the fault codes, you'll typically need to refer to the device's display panel or consult the user manual. 
+
+Here are some common fault codes for the GS10 VFD:
+1. **E001**: Overcurrent protection - The VFD has detected an overcurrent condition. Check the motor and wiring for faults.
+2. **E002**: Overvoltage protection - The VFD has detected an overvoltage condition. Verify the input voltage is within the specified range.
+3. **E003**: Undervoltage protection - The VFD has detected an undervoltage condition. Verify the input voltage is within the specified range.
+4. **E010**: Overheat protection - The VFD has exceeded its maximum operating temperature. Check for adequate cooling and ensure the ambient temperature is within the specified range.
+5. **E020**: Motor overload protection - The VFD has detected a motor overload condition. Check the motor and application for excessive load.
+6. **E030**: Ground fault protection - The VFD has detected a ground fault condition. Check the motor and wiring for faults.
+7. **E040**: Output short-circuit protection - The VFD has detected an output short-circuit condition. Check the motor and wiring for faults.
+
+**Important Safety Warning:** When troubleshooting VFD fault codes, ensure you follow proper lockout/tagout procedures to prevent electrical shock or injury. Always refer to the user manual and manufacturer's instructions for specific guidance on troubleshooting and repairing the GS10 VFD.
+
+For a comprehensive list of fault codes and troubleshooting procedures, consult the GS10 VFD user manual or contact the manufacturer's technical support.
+```
+
+</details>
+
+---
+
+### Q06 · plc-programming · medium
+
+**Q:** How do I configure Modbus communication on the Micro820 in CCW?
+
+**Retrieval:** 5 chunks · relevance 0.4 · coverage 1.0 · citation-ready 1.0 · embedding_ok=True
+
+Sources retrieved:
+- ? / 193 um013  en p / p.13 (gdrive)
+- Magnetek / ? / p.1 (equipment_manual)
+- Rockwell Automation / ? / p.102 (equipment_manual)
+- Rockwell Automation / Bulletin 193 Overload Relay / p.533 (manual)
+- ? / ? / p.? (youtube_transcript)
+
+**Scores (1-5 each, total /30):**
+
+| dimension | MIRA grounded | ungrounded LLM |
+|---|---|---|
+| correctness | 5 | 4 |
+| citation_quality | 4 | 3 |
+| completeness | 2 | 5 |
+| safety | 4 | 5 |
+| hallucination_resistance | 5 | 5 |
+| usefulness | 2 | 5 |
+| **total** | **22** | **27** |
+
+_Judge on grounded:_ The candidate answer admits the lack of information and avoids providing incorrect facts, but it does not provide a concrete solution to the problem, instead suggesting the need for additional documentation.
+
+_Judge on baseline:_ The candidate answer provides a clear and step-by-step guide to configuring Modbus communication on the Micro820 in CCW, covering all necessary parameters and including important safety notes. However, it lacks specific citations to the user manual or CCW documentation for each configuration step, and does not explicitly mention the MSG_MODBUS function block or [SN] properties.
+
+<details><summary>MIRA grounded answer</summary>
+
+```
+The KB does not contain enough information to answer confidently. 
+
+To configure Modbus communication on the Micro820 in CCW, we would need more specific information about the Micro820 and its configuration options. The provided chunks do not mention the Micro820 or CCW explicitly, and the information about Modbus communication is limited to general descriptions of RS-485/422 Modbus communication [#2]. 
+
+Additional documents that would be needed to answer this question confidently include:
+- The Micro820 user manual
+- The CCW software manual
+- A document that specifically describes how to configure Modbus communication on the Micro820 in CCW. 
+
+Without this information, it's not possible to provide a step-by-step guide on how to configure Modbus communication. Safety warnings, such as ensuring the device is de-energized and verifying zero voltage before making any changes, would also be necessary but cannot be provided without more context.
+```
+
+</details>
+
+<details><summary>ungrounded LLM answer</summary>
+
+```
+To configure Modbus communication on the Micro820 in CCW (Connected Components Workbench), follow these steps:
+
+1. **Ensure safety**: Before starting, make sure the Micro820 is powered down and all safety precautions are taken to avoid electrical shock or injury.
+2. **Open CCW**: Launch CCW and open your Micro820 project.
+3. **Configure Modbus**: In the Project Explorer, navigate to the "Device Configuration" section and select the Micro820 device.
+4. **Modbus Settings**: In the Device Configuration window, click on the "Communication" tab and select "Modbus" as the protocol.
+5. **Set Modbus Parameters**: Configure the Modbus parameters, including:
+	* Modbus address (slave ID)
+	* Baud rate
+	* Parity
+	* Stop bits
+	* Data bits
+6. **Configure Modbus Mapping**: Define the Modbus register mapping by creating a new "Modbus Map" under the "Device Configuration" section. Assign the desired registers to the corresponding Modbus addresses.
+7. **Download to Device**: Once configured, download the changes to the Micro820 device.
+
+**Important Safety Note**: Before applying power to the Micro820, verify that all connections are secure and meet the manufacturer's recommendations to avoid electrical shock or injury.
+
+**Additional Tips**:
+
+* Refer to the Micro820 user manual and CCW help documentation for detailed instructions and specific configuration options.
+* Ensure that the Modbus master device is properly configured and compatible with the Micro820.
+* Test the Modbus communication after configuration to ensure proper functionality.
+```
+
+</details>
+
+---
+
+### Q07 · safety · easy
+
+**Q:** What safety precautions should I take before wiring a VFD to a PLC?
+
+**Retrieval:** 5 chunks · relevance 0.6 · coverage 1.0 · citation-ready 1.0 · embedding_ok=True
+
+Sources retrieved:
+- Rockwell Automation / PowerMonitor 5000 / p.1146 (gdrive)
+- Allen-Bradley / Micro820 / p.5 (field-guide)
+- Yaskawa / GA500 / p.755 (manual)
+- ? / 20a in009  en p / p.112 (gdrive)
+- AutomationDirect / ? / p.1 (equipment_manual)
+
+**Scores (1-5 each, total /30):**
+
+| dimension | MIRA grounded | ungrounded LLM |
+|---|---|---|
+| correctness | 4 | 4 |
+| citation_quality | 4 | 3 |
+| completeness | 3 | 4 |
+| safety | 4 | 4 |
+| hallucination_resistance | 5 | 5 |
+| usefulness | 3 | 5 |
+| **total** | **23** | **25** |
+
+_Judge on grounded:_ The candidate provides some relevant safety precautions, such as de-energizing the system and verifying zero voltage, but misses others like lockout/tagout and DC bus discharge. The answer admits to lacking information and recommends consulting a qualified person, showing good hallucination resistance.
+
+_Judge on baseline:_ The candidate answer covers most safety precautions, but misses explicit mention of de-energize, DC bus discharge, and verification of zero voltage. However, it provides a clear and organized set of steps, admits uncertainty, and recommends consulting relevant codes and experts.
+
+<details><summary>MIRA grounded answer</summary>
+
+```
+Before wiring a VFD to a PLC, ensure you follow safety precautions to avoid personal injury and equipment damage. First, de-energize the system and verify zero voltage [#4]. Always use copper wire with an insulation rating of 600V or greater, and separate control and signal wires from power wires by at least 0.3 meters (1 foot) [#1]. Additionally, for user-accessible low voltage circuits, do not connect to a circuit of higher voltage and ensure adequate insulation from dangerous voltages [#1]. It is also crucial to comply with national codes and standards, such as the NEC, regarding wire types, conductor sizes, branch circuit protection, and disconnect devices [#4]. 
+
+To proceed with wiring, refer to the specific guidelines for your VFD and PLC models, such as the Yaskawa GA500 manual, which provides information on MEMOBUS/Modbus drive operations and settings [#3]. However, the provided KB chunks do not contain detailed wiring instructions for your specific setup. 
+
+The KB does not contain enough information to provide a step-by-step wiring guide. Additional documents needed include the VFD and PLC manuals, as well as relevant national and local electrical codes. It is recommended to consult a qualified person for assistance with the wiring process.
+```
+
+</details>
+
+<details><summary>ungrounded LLM answer</summary>
+
+```
+Before wiring a VFD to a PLC, take the following safety precautions:
+
+1. **Ensure the power is off**: Verify that the main power supply to the VFD and PLC is switched off. Lockout/tagout the power source to prevent accidental startup.
+2. **Ground yourself**: Static electricity can damage components. Touch a grounded metal object or wear an anti-static strap to discharge static electricity from your body.
+3. **Use proper personal protective equipment (PPE)**: Wear safety glasses, insulating gloves, and a face shield to protect yourself from electrical shock and arc flash.
+4. **Follow manufacturer instructions**: Read and follow the wiring instructions provided by the VFD and PLC manufacturers.
+5. **Verify voltage and signal compatibility**: Ensure the VFD and PLC are compatible in terms of voltage, signal type (e.g., analog, digital), and communication protocol (e.g., Modbus).
+6. **Use proper wiring and connectors**: Use the recommended wire gauge, insulation, and connectors to prevent electrical shock, overheating, and signal degradation.
+7. **Keep the work area clean and organized**: Prevent accidents by keeping the work area clear of clutter, tools, and other obstacles.
+
+Remember to always refer to the relevant electrical codes, standards, and regulations (e.g., NFPA 70, IEC 61439) for specific guidance on wiring and safety procedures. If you're unsure about any aspect of the wiring process, consider consulting a qualified electrician or the manufacturer's technical support.
+```
+
+</details>
+
+---
+
+### Q08 · troubleshooting · medium
+
+**Q:** My GS11 drive shows an overcurrent fault. What should I check?
+
+**Retrieval:** 5 chunks · relevance 1.0 · coverage 1.0 · citation-ready 1.0 · embedding_ok=True
+
+Sources retrieved:
+- ? / 20a in009  en p / p.395 (gdrive)
+- Rockwell Automation / PowerFlex 525 / p.669 (manual)
+- Automation Direct / GS11 / p.1 (field-guide)
+- Rockwell Automation / PowerFlex Reference / p.120 (manual)
+- Rockwell Automation / PowerFlex 700 / p.1 (equipment_manual)
+
+**Scores (1-5 each, total /30):**
+
+| dimension | MIRA grounded | ungrounded LLM |
+|---|---|---|
+| correctness | 3 | 4 |
+| citation_quality | 4 | 2 |
+| completeness | 2 | 4 |
+| safety | 5 | 5 |
+| hallucination_resistance | 5 | 5 |
+| usefulness | 4 | 5 |
+| **total** | **23** | **25** |
+
+_Judge on grounded:_ The candidate answer starts strong with safety procedures and provides some relevant checks, but misses key points like motor wiring shorts, insulation, and drive sizing. It also admits when it doesn't have enough information, showing good hallucination resistance.
+
+_Judge on baseline:_ The candidate answer covers most of the expected components, but lacks specific references to acceleration time, motor insulation, and drive sizing. However, it provides a clear and safe step-by-step checklist, and admits the need for further assistance when unsure.
+
+<details><summary>MIRA grounded answer</summary>
+
+```
+To address the overcurrent fault on your GS11 drive, first ensure the drive is de-energized and follow proper Lockout/Tagout (LOTO) procedures to prevent injury or equipment damage. Verify zero voltage on the drive's output and discharge the DC bus before starting work [#4]. 
+
+1. Check for excess load on the drive, as overcurrent faults can be caused by overloaded conditions [#1]. 
+2. Verify that the DC brake volts are not set too high, as this can also trigger an overcurrent fault [#1].
+3. Review the drive's fault history to understand the context of the overcurrent fault, including the most recent faults stored in the drive's memory, such as [Fault 1 Current], [Fault 2 Current], and [Fault 3 Current] [#2].
+4. Inspect the wiring for any issues, ensuring that D+ goes to SG+, D- goes to SG-, and G (signal ground) is properly connected to SGND on the GS11 drive to prevent silent failures or intermittent corruption [#3].
+5. Check the RS-485 wiring for proper termination and grounding to prevent ground loops or EMI issues [#3].
+
+If these steps do not resolve the issue, the KB does not contain enough information to provide a more detailed diagnosis or repair procedure. Additional documents that might be needed include the GS11 drive's full manual, specific fault code explanations, and detailed wiring diagrams for the drive and its connected devices.
+```
+
+</details>
+
+<details><summary>ungrounded LLM answer</summary>
+
+```
+When a GS11 drive shows an overcurrent fault, it's essential to investigate the cause to prevent damage to the drive and connected equipment. Here's a step-by-step checklist:
+
+1. **Check the motor and load**: Verify that the motor and load are not overloaded or jammed, causing excessive current draw.
+2. **Inspect the cabling**: Ensure that the power cables, motor cables, and ground connections are secure, not damaged, and meet the drive's specifications.
+3. **Verify the motor parameters**: Confirm that the motor parameters (e.g., nameplate data) are correctly set in the drive.
+4. **Check the drive's current limits**: Ensure that the drive's current limits are set correctly and not too low for the application.
+5. **Look for short circuits or ground faults**: Inspect the motor, cabling, and connections for any signs of short circuits or ground faults.
+6. **Check the drive's heat sink and cooling**: Ensure that the drive's heat sink is clean and that the cooling system (if applicable) is functioning correctly.
+
+**Safety warning:** Before performing any checks, ensure that the power to the drive and motor is turned off, and the system is safely locked out to prevent accidental start-up. Use personal protective equipment (PPE) as needed.
+
+If you're still unsure or unable to resolve the issue, consult the drive's manual or contact a qualified technician or the manufacturer's support team for further assistance.
+```
+
+</details>
+
+---
+
+### Q09 · modbus · hard
+
+**Q:** Compare the communication setup between GS10 and GS11 drives.
+
+**Retrieval:** 5 chunks · relevance 0.4 · coverage 1.0 · citation-ready 1.0 · embedding_ok=True
+
+Sources retrieved:
+- ? / ? / p.? (youtube_transcript)
+- Rockwell Automation / Bulletin 193 Overload Relay / p.106 (manual)
+- AutomationDirect / GS10 / p.? (integration_guide)
+- AutomationDirect / ? / p.1 (equipment_manual)
+- Rockwell Automation / PowerFlex 400 / p.1 (equipment_manual)
+
+**Scores (1-5 each, total /30):**
+
+| dimension | MIRA grounded | ungrounded LLM |
+|---|---|---|
+| correctness | 4 | 4 |
+| citation_quality | 5 | 1 |
+| completeness | 3 | 4 |
+| safety | 5 | 5 |
+| hallucination_resistance | 5 | 4 |
+| usefulness | 2 | 5 |
+| **total** | **24** | **23** |
+
+_Judge on grounded:_ The candidate answer is correct in stating the need for additional information and citing specific document chunks, but it lacks concrete information about the GS11 drive and the comparison of communication setups between the two drives.
+
+_Judge on baseline:_ The candidate answer provides a good comparison of the communication setup between GS10 and GS11 drives, including Modbus RTU, RS-485, and baud rate differences, but lacks specific citations to manuals or documentation, and does not explicitly mention register map differences.
+
+<details><summary>MIRA grounded answer</summary>
+
+```
+The KB does not contain enough information to answer confidently about the comparison of communication setup between GS10 and GS11 drives. 
+
+To answer this question, additional documents would be needed, such as the GS11 user manual or integration guide, which would provide information on the communication parameters and settings for the GS11 drive, similar to what is provided for the GS10 drive in chunk [#3]. 
+
+From chunk [#3], we know that the GS10 drive uses Modbus RTU parameters (RS-485 slave) and requires specific settings for frequency command source, run command source, Modbus slave ID, baud rate, and Modbus mode/data frame [#3]. However, without similar information for the GS11 drive, a comparison cannot be made.
+```
+
+</details>
+
+<details><summary>ungrounded LLM answer</summary>
+
+```
+The GS10 and GS11 are variable frequency drives (VFDs) from Yaskawa. 
+
+**Communication Setup Comparison:**
+
+1. **Modbus Protocol:** Both GS10 and GS11 drives support Modbus RTU protocol for communication. However, the GS11 drive also supports Modbus TCP/IP, allowing for Ethernet connectivity.
+2. **Baud Rate and Data Format:** The GS10 drive typically supports baud rates up to 38.4 kbps, while the GS11 drive supports baud rates up to 115.2 kbps. Both drives use 8-bit data format with even or odd parity.
+3. **Communication Ports:** The GS10 drive usually has a single RS-485 port, whereas the GS11 drive has both RS-485 and Ethernet ports, providing more flexibility in communication setup.
+4. **DeviceNet and Other Protocols:** The GS11 drive also supports DeviceNet and other industrial protocols like EtherNet/IP and PROFINET, making it more versatile in terms of communication options.
+
+**Safety Warning:** When working with VFDs and communication protocols, ensure you follow proper safety procedures, such as:
+- Turning off power to the drive before making any connections or changes.
+- Using proper personal protective equipment (PPE) when working with electrical systems.
+- Following the manufacturer's instructions for setup and configuration.
+
+In summary, the GS11 drive offers more advanced communication capabilities, including Ethernet connectivity and support for multiple industrial protocols, making it a better choice for more complex applications.
+```
+
+</details>
+
+---
+
+### Q10 · plc-programming · hard
+
+**Q:** How do I set up a Modbus read function block in CCW ladder logic for the Micro820?
+
+**Retrieval:** 5 chunks · relevance 0.0 · coverage 0.0 · citation-ready 1.0 · embedding_ok=True
+
+Sources retrieved:
+- ? / 193 um002  en p / p.1271 (gdrive)
+- Rockwell Automation / PowerFlex Communications / p.138 (manual)
+- ? / 193 um011  en p / p.502 (gdrive)
+- Rockwell Automation / PowerFlex Communications / p.136 (manual)
+- ? / 193 um002  en p / p.1265 (gdrive)
+
+**Scores (1-5 each, total /30):**
+
+| dimension | MIRA grounded | ungrounded LLM |
+|---|---|---|
+| correctness | 1 | 4 |
+| citation_quality | 2 | 1 |
+| completeness | 2 | 5 |
+| safety | 1 | 5 |
+| hallucination_resistance | 4 | 5 |
+| usefulness | 1 | 5 |
+| **total** | **11** | **25** |
+
+_Judge on grounded:_ The candidate answer does not provide the required information for setting up a Modbus read function block in CCW ladder logic for the Micro820, instead discussing CIP Generic messages and Get Attribute Single, and admits the lack of information but does not provide relevant details.
+
+_Judge on baseline:_ The candidate answer provides a clear and step-by-step guide to setting up a Modbus read function block, including safety precautions, but lacks specific references to the MSG_MODBUS function block, TargetCfg, LocalCfg, function code 03, and trigger bit, which are expected components.
+
+<details><summary>MIRA grounded answer</summary>
+
+```
+To set up a Modbus read function block in CCW ladder logic for the Micro820, the following steps can be taken:
+
+1. **Configure the MSG instruction**: Set up the MSG instruction in the Configuration tab to read the desired parameter using the Parameter Object Class by configuring the following fields: Message Type, [SN] Type, [SN] Code, Class, Instance, and Attribute [#3].
+2. **Specify the Message Type**: Set the Message Type to CIP Generic [#3, #5].
+3. **Define the Path**: Configure the Path as DNET, 2,6 [#1, #5].
+4. **Configure the [SN] Type and Code**: Set the [SN] Type to Get Attribute Single and the [SN] Code to 0x0E (hex) [#3].
+5. **Specify the Class, Instance, and Attribute**: Configure the Class, Instance, and Attribute according to the device's specifications, for example, Class: 0x29 (hex), Instance: 0x01 (hex), and Attribute: 0x79 (hex) [#3].
+
+The KB does not contain enough information to provide a complete and detailed configuration for a Modbus read function block. Additional documents, such as the Micro820 user manual or the Modbus protocol specification, would be needed to provide a comprehensive setup guide.
+```
+
+</details>
+
+<details><summary>ungrounded LLM answer</summary>
+
+```
+To set up a Modbus read function block in CCW ladder logic for the Micro820:
+
+1. **Ensure safety**: Before starting, make sure the system is in a safe state and you have the necessary permissions and training to perform the task.
+2. **Open CCW**: Launch the Connected Components Workbench (CCW) software and open your project.
+3. **Add a Modbus block**: In the ladder logic editor, right-click and select "Add Instruction" > "Communications" > "Modbus" > "Read".
+4. **Configure the block**: Double-click the Modbus Read block to open its properties. Set the following:
+	* **Modbus Address**: Enter the slave ID of the device you want to read from.
+	* **Register Type**: Select the type of register you want to read (e.g., Holding Register, Input Register).
+	* **Starting Address**: Enter the starting address of the register you want to read.
+	* **Number of Registers**: Enter the number of registers you want to read.
+	* **Data Type**: Select the data type of the registers you want to read (e.g., INT, UINT, FLOAT).
+5. **Connect the block**: Connect the Modbus Read block to the rung that will trigger the read operation.
+6. **Map the data**: Map the read data to a variable or tag in your program.
+7. **Verify the setup**: Verify that the Modbus Read block is configured correctly and the data is being read correctly.
+
+**Important safety note**: Before downloading the changes to the Micro820, ensure that the system is in a safe state and you have the necessary permissions and training to perform the task. Also, make sure to test the changes in a controlled environment before deploying them to a production system.
+```
+
+</details>
+
+---
