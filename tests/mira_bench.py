@@ -51,13 +51,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT / "mira-bots"))
 sys.path.append(str(ROOT / "tests"))
 
-from shared.inference.router import InferenceRouter  # noqa: E402
-from shared.neon_recall import recall_knowledge  # noqa: E402
-
-# SQL for equipment-targeted fallback retrieval — read-only.
-from sqlalchemy import create_engine, text  # noqa: E402
-from sqlalchemy.pool import NullPool  # noqa: E402
-
 from mira_bench_scorer import (  # noqa: E402
     DIMENSIONS,
     MAX_LLM_TOTAL,
@@ -65,6 +58,12 @@ from mira_bench_scorer import (  # noqa: E402
     score_answer,
     score_retrieval,
 )
+from shared.inference.router import InferenceRouter  # noqa: E402
+from shared.neon_recall import recall_knowledge  # noqa: E402
+
+# SQL for equipment-targeted fallback retrieval — read-only.
+from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy.pool import NullPool  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
