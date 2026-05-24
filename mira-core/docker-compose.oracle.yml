@@ -3,18 +3,24 @@
 # Requires: BRAVO_HOST (Tailscale IP or hostname of the Bravo compute node)
 services:
   open-webui:
+    mem_limit: 512m
+    memswap_limit: 512m
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:${BRAVO_HOST}"
 
   mira-mcpo:
+    mem_limit: 512m
+    memswap_limit: 512m
     image: mira-core-mira-mcpo:${MIRA_MCPO_VERSION:-3.4}
     build:
       context: .
       dockerfile: Dockerfile.mcpo
 
   mira-ingest:
+    mem_limit: 512m
+    memswap_limit: 512m
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     ports:
@@ -23,6 +29,8 @@ services:
       - "host.docker.internal:${BRAVO_HOST}"
 
   mira-pipeline:
+    mem_limit: 512m
+    memswap_limit: 512m
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     extra_hosts:

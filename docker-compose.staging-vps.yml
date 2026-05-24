@@ -31,6 +31,8 @@
 services:
   # ─── Atlas CMMS — staging DB + storage ─────────────────────────────────────
   atlas-db:
+    mem_limit: 1g
+    memswap_limit: 1g
     image: postgres:16-alpine
     container_name: stg-atlas-db
     restart: unless-stopped
@@ -51,6 +53,8 @@ services:
       retries: 5
 
   atlas-minio:
+    mem_limit: 512m
+    memswap_limit: 512m
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: stg-atlas-minio
     restart: unless-stopped
@@ -117,10 +121,8 @@ services:
       - "0.0.0.0:4088:8080"
     networks:
       - staging-net
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    mem_limit: 1g
+    memswap_limit: 1g
     healthcheck:
       test: ["CMD-SHELL", "wget -qS -O /dev/null http://localhost:8080/ 2>&1 | grep -q 'HTTP/'"]
       interval: 15s
@@ -159,10 +161,8 @@ services:
       - "0.0.0.0:4100:3000"
     networks:
       - staging-net
-    deploy:
-      resources:
-        limits:
-          memory: 256M
+    mem_limit: 256m
+    memswap_limit: 256m
     healthcheck:
       test: ["CMD-SHELL", "wget -qS -O /dev/null http://127.0.0.1:3000/ 2>&1 | grep -q 'HTTP/'"]
       interval: 15s
@@ -198,10 +198,8 @@ services:
     networks:
       - staging-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s
@@ -253,10 +251,8 @@ services:
     networks:
       - staging-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    mem_limit: 1g
+    memswap_limit: 1g
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9099/health"]
       interval: 30s
@@ -336,10 +332,8 @@ services:
       - ./docs/promo-screenshots:/app/docs/promo-screenshots:rw
       - ./tools/web-review-runs:/app/tools/web-review-runs:ro
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    mem_limit: 1g
+    memswap_limit: 1g
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health/"]
       interval: 30s
@@ -375,10 +369,8 @@ services:
     networks:
       - staging-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3000/api/health"]
       interval: 30s
@@ -429,10 +421,8 @@ services:
     networks:
       - staging-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
       interval: 30s
@@ -462,10 +452,8 @@ services:
     networks:
       - staging-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 256M
+    mem_limit: 256m
+    memswap_limit: 256m
     depends_on:
       - mira-hub
 

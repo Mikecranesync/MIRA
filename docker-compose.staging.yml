@@ -62,10 +62,8 @@ services:
     networks:
       - staging-net
     restart: "no"
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    mem_limit: 1g
+    memswap_limit: 1g
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9099/health"]
       interval: 30s
@@ -91,10 +89,8 @@ services:
     networks:
       - staging-net
     restart: "no"
-    deploy:
-      resources:
-        limits:
-          memory: 256M
+    mem_limit: 256m
+    memswap_limit: 256m
     healthcheck:
       test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
       interval: 30s

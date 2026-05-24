@@ -49,10 +49,8 @@ services:
       - bot-net
       - core-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
       interval: 30s
@@ -74,10 +72,8 @@ services:
       - bot-net
       - core-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
       interval: 30s
@@ -85,6 +81,8 @@ services:
       retries: 3
 
   teams-bot:
+    mem_limit: 512m
+    memswap_limit: 512m
     profiles: ["dormant"]
     build:
       context: .
@@ -110,6 +108,8 @@ services:
       retries: 3
 
   whatsapp-bot:
+    mem_limit: 512m
+    memswap_limit: 512m
     profiles: ["dormant"]
     build:
       context: .
@@ -135,6 +135,8 @@ services:
       retries: 3
 
   reddit-bot:
+    mem_limit: 512m
+    memswap_limit: 512m
     profiles: ["dormant"]
     build:
       context: .
@@ -165,6 +167,8 @@ services:
       retries: 3
 
   telegram-test-runner:
+    mem_limit: 512m
+    memswap_limit: 512m
     build:
       context: .
       dockerfile: telegram_test_runner/Dockerfile
