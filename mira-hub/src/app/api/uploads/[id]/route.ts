@@ -10,22 +10,47 @@ const OPENWEBUI_DELETE_TIMEOUT_MS = 10_000;
 export const dynamic = "force-dynamic";
 
 const TERMINAL: ReadonlyArray<string> = ["parsed", "failed", "cancelled"];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Dual-mode auth helper. Returns the tenantId to scope queries against, or a
+ * NextResponse to short-circuit. The bearer path is used by
+ * tools/mira-drop-watcher to poll upload status without a browser session.
+ */
+async function resolveTenant(req: NextRequest): Promise<string | NextResponse> {
+  const auth = req.headers.get("authorization") ?? "";
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const expected = process.env.HUB_INGEST_TOKEN ?? "";
+  if (bearer && expected && bearer === expected) {
+    const headerTenant = (req.headers.get("x-mira-tenant-id") ?? "").trim();
+    if (!UUID_RE.test(headerTenant)) {
+      return NextResponse.json(
+        { error: "x_mira_tenant_id_required" },
+        { status: 400 },
+      );
+    }
+    return headerTenant;
+  }
+  const sess = await sessionOr401();
+  if (sess instanceof NextResponse) return sess;
+  return sess.tenantId;
+}
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const ctx = await sessionOr401();
-  if (ctx instanceof NextResponse) return ctx;
+  const tenantId = await resolveTenant(req);
+  if (tenantId instanceof NextResponse) return tenantId;
   const { id } = await params;
-  const row = await getUpload(id, ctx.tenantId);
+  const row = await getUpload(id, tenantId);
   if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   // Counts are only meaningful once the pipeline has finished (or failed).
   // For in-flight uploads we return zeros so the card shows "Processing…".
   const counts =
     row.status === "parsed"
-      ? await getUploadCounts(row, ctx.tenantId)
+      ? await getUploadCounts(row, tenantId)
       : { pm_tasks_count: 0, fault_codes_count: 0, knowledge_chunks_count: 0 };
 
   return NextResponse.json({ ...row, ...counts });
