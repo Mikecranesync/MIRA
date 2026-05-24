@@ -6331,618 +6331,168 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
 
-### 2026-05-19 23:56 UTC — `docs/adr-0013-empirical-column-shape`
-**Last commit:** f9bcc0d2 docs(adr-0013): empirical update — kg_entities/kg_relationships use hub-001 shape
+### 2026-05-22 14:19 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** 857415c5 feat(hub): path-first namespace endpoint + namespace_direct_uploads migration
 **Changed (vs. fork point):**
-- .claude/CLAUDE.md
-- .github/workflows/apply-ingest-migrations.yml
-- .github/workflows/apply-migrations.yml
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
 - .github/workflows/db-inspect.yml
-- .github/workflows/deploy-staging.yml
-- .github/workflows/deploy-vps.yml
+- .github/workflows/deepeval-ci.yml
 - .github/workflows/staging-gate.yml
-- CLAUDE.md
-- deployment/nginx-app-factorylm.conf
-- docker-compose.hub.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
 - docker-compose.saas.yml
 - docker-compose.staging-vps.yml
-- docker-compose.staging.yml
-- docker-compose.sync.yml
 - docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
-- docs/audits/2026-05-18-audit.md
-- docs/audits/2026-05-19-audit.md
-- docs/context/PROGRESS.md
-- docs/environments.md
-- docs/ideation/2026-05-17-plc-learning-guide-product.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_mobile.png
 **Working tree:**
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_feed_desktop.png
+- M docs/context/PROGRESS.md
 **Next:** _set by next session_
 
-### 2026-05-19 23:59 UTC — `feat/gs11-grounding-test-surface`
-**Last commit:** a1a71987 test(grounding): GS11 regression net + agent-discovery surface
+### 2026-05-22 14:34 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** 76d7d683 docs(progress): log 2026-05-22 session — staging migration 027 applied
 **Changed (vs. fork point):**
-- .claude/CLAUDE.md
 - .claude/commands/mira-test-bot-grounding.md
 - .claude/skills/bot-grounding-tests/SKILL.md
-- .github/workflows/apply-ingest-migrations.yml
-- .github/workflows/apply-migrations.yml
 - .github/workflows/db-inspect.yml
 - .github/workflows/deepeval-ci.yml
-- .github/workflows/deploy-staging.yml
-- .github/workflows/deploy-vps.yml
 - .github/workflows/staging-gate.yml
-- CLAUDE.md
-- deployment/nginx-app-factorylm.conf
-- docker-compose.hub.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
 - docker-compose.saas.yml
 - docker-compose.staging-vps.yml
-- docker-compose.staging.yml
-- docker-compose.sync.yml
-- docs/audits/2026-05-18-audit.md
-- docs/audits/2026-05-19-audit.md
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
 - docs/context/PROGRESS.md
-**Working tree:**
-- M docs/context/PROGRESS.md
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
+**Working tree:** clean
 **Next:** _set by next session_
 
-### 2026-05-20 00:01 UTC — `feat/gs11-grounding-test-surface`
-**Last commit:** a1a71987 test(grounding): GS11 regression net + agent-discovery surface
+### 2026-05-22 15:00 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** fb5f6a10 fix(guardrails): add 'arcing' to SAFETY_KEYWORDS_IMMEDIATE
 **Changed (vs. fork point):**
-- .claude/CLAUDE.md
 - .claude/commands/mira-test-bot-grounding.md
 - .claude/skills/bot-grounding-tests/SKILL.md
-- .github/workflows/apply-ingest-migrations.yml
-- .github/workflows/apply-migrations.yml
 - .github/workflows/db-inspect.yml
 - .github/workflows/deepeval-ci.yml
-- .github/workflows/deploy-staging.yml
-- .github/workflows/deploy-vps.yml
 - .github/workflows/staging-gate.yml
-- CLAUDE.md
-- deployment/nginx-app-factorylm.conf
-- docker-compose.hub.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
 - docker-compose.saas.yml
 - docker-compose.staging-vps.yml
-- docker-compose.staging.yml
-- docker-compose.sync.yml
-- docs/audits/2026-05-18-audit.md
-- docs/audits/2026-05-19-audit.md
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
 - docs/context/PROGRESS.md
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
 **Working tree:**
 - M docs/context/PROGRESS.md
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
+- ?? tools/staging_results.json
 **Next:** _set by next session_
 
-### 2026-05-20 00:10 UTC — `feat/gs11-grounding-test-surface`
-**Last commit:** d4d041eb ci(deepeval): install pyyaml + httpx for GS11 engine test
+### 2026-05-22 15:03 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** fb5f6a10 fix(guardrails): add 'arcing' to SAFETY_KEYWORDS_IMMEDIATE
 **Changed (vs. fork point):**
-- .claude/CLAUDE.md
 - .claude/commands/mira-test-bot-grounding.md
 - .claude/skills/bot-grounding-tests/SKILL.md
-- .github/workflows/apply-ingest-migrations.yml
-- .github/workflows/apply-migrations.yml
 - .github/workflows/db-inspect.yml
 - .github/workflows/deepeval-ci.yml
-- .github/workflows/deploy-staging.yml
-- .github/workflows/deploy-vps.yml
 - .github/workflows/staging-gate.yml
-- CLAUDE.md
-- deployment/nginx-app-factorylm.conf
-- docker-compose.hub.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
 - docker-compose.saas.yml
 - docker-compose.staging-vps.yml
-- docker-compose.staging.yml
-- docker-compose.sync.yml
-- docs/audits/2026-05-18-audit.md
-- docs/audits/2026-05-19-audit.md
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
 - docs/context/PROGRESS.md
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
 **Working tree:**
 - M docs/context/PROGRESS.md
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
+- ?? tools/staging_results.json
 **Next:** _set by next session_
 
-### 2026-05-20 00:15 UTC — `feat/gs11-grounding-test-surface`
-**Last commit:** d4d041eb ci(deepeval): install pyyaml + httpx for GS11 engine test
+### 2026-05-22 16:35 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** 374d225b fix(staging): wire Google OAuth via SSH tunnel — localhost:4101 callbacks
 **Changed (vs. fork point):**
-- .claude/CLAUDE.md
 - .claude/commands/mira-test-bot-grounding.md
 - .claude/skills/bot-grounding-tests/SKILL.md
-- .github/workflows/apply-ingest-migrations.yml
-- .github/workflows/apply-migrations.yml
 - .github/workflows/db-inspect.yml
 - .github/workflows/deepeval-ci.yml
-- .github/workflows/deploy-staging.yml
-- .github/workflows/deploy-vps.yml
 - .github/workflows/staging-gate.yml
-- CLAUDE.md
-- deployment/nginx-app-factorylm.conf
-- docker-compose.hub.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
 - docker-compose.saas.yml
 - docker-compose.staging-vps.yml
-- docker-compose.staging.yml
-- docker-compose.sync.yml
-- docs/audits/2026-05-18-audit.md
-- docs/audits/2026-05-19-audit.md
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
 - docs/context/PROGRESS.md
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
 **Working tree:**
 - M docs/context/PROGRESS.md
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
+- ?? tools/staging_results.json
 **Next:** _set by next session_
 
-### 2026-05-20 00:40 UTC — `feat/gs11-grounding-test-surface`
-**Last commit:** d4d041eb ci(deepeval): install pyyaml + httpx for GS11 engine test
+### 2026-05-23 11:51 UTC — `fix/staging-audit-2026-05-20`
+**Last commit:** 374d225b fix(staging): wire Google OAuth via SSH tunnel — localhost:4101 callbacks
 **Changed (vs. fork point):**
-- .claude/CLAUDE.md
 - .claude/commands/mira-test-bot-grounding.md
 - .claude/skills/bot-grounding-tests/SKILL.md
-- .github/workflows/apply-ingest-migrations.yml
-- .github/workflows/apply-migrations.yml
 - .github/workflows/db-inspect.yml
 - .github/workflows/deepeval-ci.yml
-- .github/workflows/deploy-staging.yml
-- .github/workflows/deploy-vps.yml
 - .github/workflows/staging-gate.yml
-- CLAUDE.md
-- deployment/nginx-app-factorylm.conf
-- docker-compose.hub.yml
+- HANDOFF.md
+- HANDOFF_2026-05-20.md
+- PLAN.md
 - docker-compose.saas.yml
 - docker-compose.staging-vps.yml
-- docker-compose.staging.yml
-- docker-compose.sync.yml
-- docs/audits/2026-05-18-audit.md
-- docs/audits/2026-05-19-audit.md
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/adr/0014-product-led-wedge.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-20-audit.md
 - docs/context/PROGRESS.md
+- docs/evaluations/staging-to-prod-readiness-2026-05-20.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/promo-screenshots/2026-05-20_hub-overhaul_login_desktop.png
+- docs/promo-screenshots/2026-05-20_hub-overhaul_quickstart_desktop.png
 **Working tree:**
 - M docs/context/PROGRESS.md
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
-**Next:** _set by next session_
-
-### 2026-05-20 05:11 UTC — `feat/gs11-grounding-test-surface`
-**Last commit:** 6802b9d8 docs(wiki): eval-fixer run 2026-05-20
-**Changed (vs. fork point):**
-- .claude/CLAUDE.md
-- .claude/commands/mira-test-bot-grounding.md
-- .claude/skills/bot-grounding-tests/SKILL.md
-- .github/workflows/apply-ingest-migrations.yml
-- .github/workflows/apply-migrations.yml
-- .github/workflows/db-inspect.yml
-- .github/workflows/deepeval-ci.yml
-- .github/workflows/deploy-staging.yml
-- .github/workflows/deploy-vps.yml
-- .github/workflows/staging-gate.yml
-- CLAUDE.md
-- deployment/nginx-app-factorylm.conf
-- docker-compose.hub.yml
-- docker-compose.saas.yml
-- docker-compose.staging-vps.yml
-- docker-compose.staging.yml
-- docker-compose.sync.yml
-- docs/audits/2026-05-18-audit.md
-- docs/audits/2026-05-19-audit.md
-- docs/context/PROGRESS.md
-**Working tree:**
-- M docs/context/PROGRESS.md
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
-**Next:** _set by next session_
-
-### 2026-05-21 05:11 UTC — `feat/gs11-grounding-test-surface`
-**Last commit:** e7ba90e3 docs(wiki): eval-fixer run 2026-05-21
-**Changed (vs. fork point):**
-- .claude/commands/mira-test-bot-grounding.md
-- .claude/skills/bot-grounding-tests/SKILL.md
-- .github/workflows/deepeval-ci.yml
-- mira-bots/benchmarks/deepeval_suite.py
-- mira-bots/tests/test_engine_no_embedding_gs11.py
-- wiki/hot.md
-- wiki/references/bot-grounding-tests.md
-**Working tree:**
-- M docs/context/PROGRESS.md
--  M marketing/prospects/hardening-alerts.jsonl
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/competitor-research-2026-05-20.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
-**Next:** _set by next session_
-
-### 2026-05-22 04:47 UTC — `main`
-**Last commit:** 4f510b8f Merge pull request #1470 from Mikecranesync/feat/staging-atlas-seed-wrapper
-**Changed (vs. fork point):** (no committed diff vs. base)
-**Working tree:**
-- M docs/context/PROGRESS.md
--  M marketing/prospects/hardening-alerts.jsonl
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/competitor-research-2026-05-20.md
-- ?? docs/competitor-research-2026-05-21.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
-**Next:** _set by next session_
-
-### 2026-05-22 05:11 UTC — `main`
-**Last commit:** abdcbd87 docs(wiki): eval-fixer run 2026-05-22
-**Changed (vs. fork point):** (no committed diff vs. base)
-**Working tree:**
-- M docs/context/PROGRESS.md
--  M marketing/prospects/hardening-alerts.jsonl
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/competitor-research-2026-05-20.md
-- ?? docs/competitor-research-2026-05-21.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
-**Next:** _set by next session_
-
-### 2026-05-22 05:27 UTC — `main`
-**Last commit:** abdcbd87 docs(wiki): eval-fixer run 2026-05-22
-**Changed (vs. fork point):** (no committed diff vs. base)
-**Working tree:**
-- M docs/context/PROGRESS.md
--  M marketing/prospects/hardening-alerts.jsonl
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/competitor-research-2026-05-20.md
-- ?? docs/competitor-research-2026-05-21.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
-**Next:** _set by next session_
-
-### 2026-05-22 11:07 UTC — `main`
-**Last commit:** abdcbd87 docs(wiki): eval-fixer run 2026-05-22
-**Changed (vs. fork point):** (no committed diff vs. base)
-**Working tree:**
-- M docs/context/PROGRESS.md
--  M marketing/prospects/hardening-alerts.jsonl
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/competitor-research-2026-05-20.md
-- ?? docs/competitor-research-2026-05-21.md
-- ?? docs/competitors/2026-05-22-competitor-intelligence.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
-**Next:** _set by next session_
-
-### 2026-05-23 05:11 UTC — `main`
-**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
-**Changed (vs. fork point):** (no committed diff vs. base)
-**Working tree:**
-- M docker-compose.hub.yml
--  M docs/context/PROGRESS.md
--  M marketing/prospects/hardening-alerts.jsonl
--  M mira-hub/src/app/api/uploads/local/route.ts
--  M mira-hub/src/middleware.ts
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/competitor-research-2026-05-20.md
-- ?? docs/competitor-research-2026-05-21.md
-- ?? docs/competitors/2026-05-22-competitor-intelligence.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
-**Next:** _set by next session_
-
-### 2026-05-23 11:14 UTC — `main`
-**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
-**Changed (vs. fork point):** (no committed diff vs. base)
-**Working tree:**
-- M docker-compose.hub.yml
--  M docs/context/PROGRESS.md
--  M marketing/prospects/hardening-alerts.jsonl
--  M mira-hub/src/app/api/uploads/local/route.ts
--  M mira-hub/src/middleware.ts
-- ?? competitors-2026-05-23.md
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/competitor-research-2026-05-20.md
-- ?? docs/competitor-research-2026-05-21.md
-- ?? docs/competitors/2026-05-22-competitor-intelligence.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
-**Next:** _set by next session_
-
-### 2026-05-23 11:54 UTC — `main`
-**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
-**Changed (vs. fork point):** (no committed diff vs. base)
-**Working tree:**
-- M docker-compose.hub.yml
--  M docs/context/PROGRESS.md
--  M marketing/prospects/hardening-alerts.jsonl
--  M mira-hub/src/app/api/uploads/[id]/route.ts
--  M mira-hub/src/app/api/uploads/local/route.ts
--  M mira-hub/src/middleware.ts
-- ?? competitors-2026-05-23.md
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/competitor-research-2026-05-20.md
-- ?? docs/competitor-research-2026-05-21.md
-- ?? docs/competitors/2026-05-22-competitor-intelligence.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
-**Next:** _set by next session_
-
-### 2026-05-23 13:33 UTC — `main`
-**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
-**Changed (vs. fork point):** (no committed diff vs. base)
-**Working tree:**
-- M CLAUDE.md
--  M docker-compose.hub.yml
--  M docs/context/PROGRESS.md
--  M marketing/prospects/hardening-alerts.jsonl
--  M mira-core/docker-compose.yml
--  M mira-hub/src/app/api/uploads/[id]/route.ts
--  M mira-hub/src/app/api/uploads/local/route.ts
--  M mira-hub/src/middleware.ts
-- ?? competitors-2026-05-23.md
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/competitor-research-2026-05-20.md
-- ?? docs/competitor-research-2026-05-21.md
-- ?? docs/competitors/2026-05-22-competitor-intelligence.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-**Next:** _set by next session_
-
-### 2026-05-23 15:20 UTC — `main`
-**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
-**Changed (vs. fork point):** (no committed diff vs. base)
-**Working tree:**
-- M CLAUDE.md
--  M docker-compose.hub.yml
--  M docs/context/PROGRESS.md
--  M marketing/prospects/hardening-alerts.jsonl
--  M mira-core/docker-compose.yml
--  M mira-hub/src/app/api/uploads/[id]/route.ts
--  M mira-hub/src/app/api/uploads/local/route.ts
--  M mira-hub/src/middleware.ts
-- ?? competitors-2026-05-23.md
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/competitor-research-2026-05-20.md
-- ?? docs/competitor-research-2026-05-21.md
-- ?? docs/competitors/2026-05-22-competitor-intelligence.md
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
-**Next:** _set by next session_
-
-### 2026-05-23 16:07 UTC — `main`
-**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
-**Changed (vs. fork point):** (no committed diff vs. base)
-**Working tree:**
-- M CLAUDE.md
--  M docker-compose.hub.yml
--  M docs/context/PROGRESS.md
--  M marketing/prospects/hardening-alerts.jsonl
--  M mira-core/docker-compose.yml
--  M mira-hub/src/app/api/uploads/[id]/route.ts
--  M mira-hub/src/app/api/uploads/local/route.ts
--  M mira-hub/src/middleware.ts
-- ?? competitors-2026-05-23.md
-- ?? docs/competitor-research-2026-05-19.md
-- ?? docs/competitor-research-2026-05-20.md
-- ?? docs/competitor-research-2026-05-21.md
-- ?? docs/competitors/2026-05-22-competitor-intelligence.md
-- ?? docs/cowork/
-- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
-- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
-- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? tools/staging_results.json
 **Next:** _set by next session_
 <!-- END AUTOLOG -->
