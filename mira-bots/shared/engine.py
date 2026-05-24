@@ -1688,6 +1688,11 @@ class Supervisor:
                     effective_photo,
                     tenant_id=resolved_tenant,
                 )
+            # Snapshot kb_status immediately after the RAG await, before any
+            # subsequent awaits (self-critique LLM call at line below) where a
+            # concurrent rag.process() for another session could overwrite the
+            # shared instance attribute.  Fixes issue #1520.
+            _kb_status_snapshot = dict(getattr(self.rag, "kb_status", None) or {})
         except Exception as _re:
             logger.error(
                 "RAG_WORKER_ERROR chat_id=%s fsm=%s error=%s",
@@ -1920,7 +1925,7 @@ class Supervisor:
 
         self._save_state(chat_id, state)
 
-        formatted = self._format_reply(parsed, user_message=message)
+        formatted = self._format_reply(parsed, user_message=message, kb_status=_kb_status_snapshot)
         # Phase 3 — prepend honest crawl-failure message if a prior doc-crawl exhausted.
         if _honest_prefix:
             formatted = _honest_prefix + formatted
@@ -4405,9 +4410,18 @@ class Supervisor:
         """Advance FSM state. Delegates to fsm.advance_state."""
         return advance_state(state, parsed)
 
-    def _format_reply(self, parsed: dict, user_message: str = "") -> str:
-        """Format parsed response for display. Delegates to response_formatter.format_reply."""
-        kb_status = getattr(self.rag, "kb_status", None) or {}
+    def _format_reply(
+        self, parsed: dict, user_message: str = "", kb_status: dict | None = None
+    ) -> str:
+        """Format parsed response for display. Delegates to response_formatter.format_reply.
+
+        Pass ``kb_status`` explicitly when the caller has already snapshotted it before
+        any intervening await — this avoids the shared-instance race where a concurrent
+        rag.process() call overwrites self.rag._kb_status between the RAG await and this
+        formatting step (issue #1520).
+        """
+        if kb_status is None:
+            kb_status = getattr(self.rag, "kb_status", None) or {}
         return format_reply(parsed, user_message, kb_status)
 
     # ------------------------------------------------------------------
