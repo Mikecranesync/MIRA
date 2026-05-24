@@ -6945,4 +6945,57 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
 - ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
 **Next:** _set by next session_
+
+### 2026-05-24 10:10 UTC — `HEAD`
+**Last commit:** 0892fae chore(audits): nightly hub audit 2026-05-24
+**Changed (vs. fork point):**
+- .claude/rules/uns-confirmation-gate.md
+- .claude/skills/mira-industrial-safety/SKILL.md
+- .claude/skills/mira-platform/SKILL.md
+- .claude/skills/mira-uns-architecture/SKILL.md
+- .github/baselines/mira-bench.json
+- .github/workflows/apply-migrations.yml
+- .github/workflows/ci.yml
+- .github/workflows/code-review.yml
+- .github/workflows/compose-mem-lint.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/diag-bm25.yml
+- .github/workflows/enforcement-audit.yml
+- .github/workflows/migration-verify.yml
+- .github/workflows/mira-benchmark-weekly.yml
+- .github/workflows/oauth-redirect-canary.yml
+- .github/workflows/photo-e2e-verify.yml
+- .github/workflows/smoke-test.yml
+- .github/workflows/staging-gate.yml
+- .github/workflows/staging-namespace-create-e2e.yml
+- .github/workflows/web-review-canary.yml
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-24 11:21 UTC — `fix/engine-kb-status-race-1520`
+**Last commit:** b50bee5 fix(engine): snapshot kb_status before self-critique await to close #1520 race
+**Changed (vs. fork point):**
+- .claude/rules/uns-confirmation-gate.md
+- .claude/skills/mira-industrial-safety/SKILL.md
+- .claude/skills/mira-platform/SKILL.md
+- .claude/skills/mira-uns-architecture/SKILL.md
+- .github/baselines/mira-bench.json
+- .github/workflows/apply-migrations.yml
+- .github/workflows/ci.yml
+- .github/workflows/code-review.yml
+- .github/workflows/compose-mem-lint.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/diag-bm25.yml
+- .github/workflows/enforcement-audit.yml
+- .github/workflows/migration-verify.yml
+- .github/workflows/mira-benchmark-weekly.yml
+- .github/workflows/oauth-redirect-canary.yml
+- .github/workflows/photo-e2e-verify.yml
+- .github/workflows/smoke-test.yml
+- .github/workflows/staging-gate.yml
+- .github/workflows/staging-namespace-create-e2e.yml
+- .github/workflows/web-review-canary.yml
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
