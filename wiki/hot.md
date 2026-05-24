@@ -1,4 +1,11 @@
-# Hot Cache — 2026-05-23 — CHARLIE
+# Hot Cache — 2026-05-24 — CHARLIE
+
+## eval-fixer run — 2026-05-24
+- Scorecard: 33/57 passing (58%) — `tests/eval/runs/2026-05-24T0331-offline-text.md` (**FRESH** — cron unstuck)
+- Action: filed #1519. Hard-stopped (24 patchable > 15 ceiling, 3 file targets).
+- **Regression: 48 → 33 (-15 fixtures).** Stale scorecard issue from previous runs is resolved; nightly eval is producing fresh data again. The new fresh data shows a real quality drop since 2026-05-06.
+- **Dominant cluster:** UNS gate intercepting fixtures that expect direct routing to Q1/Q2/DIAGNOSIS (8 fixtures land in `AWAITING_UNS_CONFIRMATION`). Likely needs resolver-confidence tuning, not fixture rewrites.
+- Other clusters: "find manual" intent not terminating at IDLE (5), Q-skip not advancing with extracted fault codes (8), cross-vendor leakage `PowerFlex`/`AutomationDirect` in unrelated responses (3).
 
 ## eval-fixer run — 2026-05-23
 - Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (17 days stale, unchanged since 2026-05-06)
