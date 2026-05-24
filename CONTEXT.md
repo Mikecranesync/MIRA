@@ -65,6 +65,13 @@ Components are identified by **SerialNumber when present**, by **(UNS path, pare
 A component that does not carry a serial number — push buttons, selector switches, pilot lights, limit switches, photo eyes, pneumatic fittings, terminal blocks, fuses. Identified by the (`uns_path`, `asset_id`, `panel_id`) tuple. The UNS path becomes the human-facing identifier on the bench ("PB-7 on Panel 12 of Conveyor A's HMI"). `installed_component_instances.serial_number` is `NULL` for these rows; that's expected, not a data-quality issue.
 _Avoid_: bulk part, generic component, unidentified part.
 
+### Control relationships (sibling tree + typed edge)
+
+Per ADR-0018: a Motor and the VFD that controls it are **siblings** in the Asset tree (under the same sub-assembly), connected by a `DRIVES` / `IS_DRIVEN_BY` edge in `kg_relationships`. Same rule for Inverter↔DC bus (via `POWERED_BY`), Sensor↔PLC analog input (via `WIRED_TO`), and any other "X controls Y" pairing. The tree captures *physical containment*; the graph captures *control / power / signal flow*. This matches IEC 81346, OPC UA Robotics (`IsDrivenBy`), and every major vendor tool (Rockwell PlantPAx `P_Motor`+`P_VFD` as separate AOIs; Siemens TIA Portal SINAMICS+motor as separate Devices).
+
+The Hub `/assets` page renders either view from the same data — **Physical** (default, mirrors UNS path) or **Control** (motors indent under their VFDs via the `DRIVES` edge). Toggle is session-sticky. Orphan motors (across-the-line, no VFD) and orphan VFDs (spare drives in inventory) are first-class — they render at their physical-tree position in both views.
+_Avoid_: "motor is part of the VFD" (it isn't — it's driven by one), "VFD parent / motor child" (no parent_asset_id relationship between them — they share a parent sub-assembly).
+
 ### Counting and reading rules
 
 - "N proposals pending" = `SELECT count(*) FROM ai_suggestions WHERE status='pending'`. Never join through `relationship_proposals` for this count — the `kg_edge` header pattern double-counts.
