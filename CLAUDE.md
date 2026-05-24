@@ -231,3 +231,19 @@ This file targets **~120 lines** (map, not encyclopedia). Agent compliance drops
 - Delete rules Claude follows naturally. Audit monthly.
 - Deep content lives in: `docs/`, `wiki/references/`, `tests/eval/`.
 - Line count as of last audit: see `wc -l CLAUDE.md`
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues at `Mikecranesync/MIRA` via `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Pocock canonical names: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context. Root `CONTEXT-MAP.md` lists per-module contexts. Primary doctrine: `docs/THEORY_OF_OPERATIONS.md`. See `docs/agents/domain.md`.
