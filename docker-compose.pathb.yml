@@ -11,6 +11,8 @@
 
 services:
   mira-sidecar:
+    mem_limit: 1g
+    memswap_limit: 1g
     build:
       context: .
       dockerfile: mira-sidecar/Dockerfile

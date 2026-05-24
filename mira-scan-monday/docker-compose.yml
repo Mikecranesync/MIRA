@@ -1,5 +1,7 @@
 services:
   backend:
+    mem_limit: 512m
+    memswap_limit: 512m
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -46,6 +48,8 @@ services:
       start_period: 10s
 
   frontend:
+    mem_limit: 512m
+    memswap_limit: 512m
     build:
       context: ./frontend
       dockerfile: Dockerfile
