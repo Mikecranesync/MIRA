@@ -1,5 +1,7 @@
 services:
   open-webui:
+    mem_limit: 512m
+    memswap_limit: 512m
     image: ghcr.io/open-webui/open-webui:v0.8.10
     container_name: mira-core
     ports:
@@ -67,6 +69,8 @@ services:
       - "host.docker.internal:host-gateway"
 
   mira-mcpo:
+    mem_limit: 512m
+    memswap_limit: 512m
     image: mira-core-mira-mcpo:${MIRA_MCPO_VERSION:-3.4}
     container_name: mira-mcpo
     command: --port 8000 --api-key ${MCPO_API_KEY} --config /mcp/config.json
@@ -91,6 +95,8 @@ services:
       - "host.docker.internal:host-gateway"
 
   mira-ingest:
+    mem_limit: 512m
+    memswap_limit: 512m
     build:
       context: ./mira-ingest
     container_name: mira-ingest
@@ -127,6 +133,8 @@ services:
       - "host.docker.internal:host-gateway"
 
   mira-tika:
+    mem_limit: 512m
+    memswap_limit: 512m
     image: apache/tika:3.1.0.0
     container_name: mira-tika
     ports:
@@ -142,6 +150,8 @@ services:
       start_period: 15s
 
   mira-pipeline:
+    mem_limit: 512m
+    memswap_limit: 512m
     build:
       context: ..
       dockerfile: mira-pipeline/Dockerfile
@@ -191,6 +201,10 @@ services:
       - "host.docker.internal:host-gateway"
 
   mira-docling:
+    # Match saas.yml — docling is the known OOM victim (PR #1336). 512m WILL
+    # trip on a real PDF.
+    mem_limit: 3g
+    memswap_limit: 3g
     image: quay.io/docling-project/docling-serve:v1.16.1
     container_name: mira-docling
     ports:

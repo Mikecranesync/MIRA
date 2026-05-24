@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Ingest pipeline guardrails — CHARLIE launchd schedule.
+
+  Runs every 15 min. Checks disk / memory / MiraDrop queue / docker OOM /
+  ab-manual-hunter recent failure rate. Telegram alert on warn, writes
+  ~/.mira/STOP_INGEST on stop.
+
+  Install on CHARLIE:
+    cp scripts/ab_manual_hunter/launchd/com.factorylm.ingest-guardrails.plist \
+       ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.factorylm.ingest-guardrails.plist
+
+  Inspect current state:  cat ~/.mira/guardrails-state.json
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.factorylm.ingest-guardrails</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>cd /Users/charlienode/MIRA &amp;&amp; /Users/charlienode/.local/bin/doppler run --project factorylm --config prd -- /usr/bin/python3 scripts/ingest_guardrails.py 2&gt;&gt;/tmp/ingest-guardrails.log</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/charlienode/MIRA</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <!-- Every 15 minutes. -->
+  <key>StartInterval</key>
+  <integer>900</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/ingest-guardrails-stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/ingest-guardrails-stderr.log</string>
+</dict>
+</plist>

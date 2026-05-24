@@ -1,5 +1,7 @@
 services:
   mira-atlas-hub-sync:
+    mem_limit: 256m
+    memswap_limit: 256m
     image: python:3.12-slim
     container_name: mira-atlas-hub-sync
     restart: unless-stopped

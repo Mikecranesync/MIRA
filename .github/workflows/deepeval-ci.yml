@@ -26,6 +26,21 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Dependabot PRs cannot read `secrets.GROQ_API_KEY` (security default —
+      # only `dependabot` secrets are exposed). The offline DeepEval suite
+      # uses Groq as the judge LLM and exits 1 with
+      # "GROQ_API_KEY is not set — required for judge LLM", which blocks
+      # every dependency-bump merge. Skip the judge-LLM steps for Dependabot;
+      # CI (lint + unit tests) and the GS11 grounding regression layer below
+      # still run and catch dependency regressions. Mirrors the same pattern
+      # already used in staging-gate.yml.
+      - name: Skip notice (Dependabot PR)
+        if: github.actor == 'dependabot[bot]'
+        run: |
+          echo "Dependabot PR detected (actor=${{ github.actor }})."
+          echo "DeepEval judge steps skipped — Dependabot cannot access"
+          echo "GROQ_API_KEY. GS11 grounding pytest layer still runs."
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -35,6 +50,7 @@ jobs:
           pip install httpx deepeval>=1.0.0
 
       - name: Run DeepEval suite (offline)
+        if: github.actor != 'dependabot[bot]'
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
@@ -59,6 +75,7 @@ jobs:
         # See wiki/references/bot-grounding-tests.md for the full test surface.
 
       - name: RAGAS sanity on GS11 golden set (advisory)
+        if: github.actor != 'dependabot[bot]'
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
@@ -73,7 +90,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deepeval-results-${{ github.run_number }}
           path: mira-bots/benchmarks/deepeval_results/

@@ -16,9 +16,9 @@ on:
   workflow_dispatch:
     inputs:
       hub_url:
-        description: "Hub URL to test against"
+        description: "Hub URL to test against (bare host — no /hub prefix; nginx strips it)"
         required: false
-        default: "https://app.factorylm.com/hub"
+        default: "https://app.factorylm.com"
       ref:
         description: "Branch ref to checkout (default: current)"
         required: false
@@ -30,7 +30,7 @@ on:
 
 jobs:
   e2e:
-    name: 9-scenario E2E against staging :4101
+    name: 9-scenario E2E against prod
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -39,7 +39,7 @@ jobs:
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
 
@@ -54,7 +54,9 @@ jobs:
       - name: Resolve target URL
         id: target
         run: |
-          DEFAULT_URL="https://app.factorylm.com/hub"
+          # nginx strips /hub via 301, which Playwright follows as GET → 405
+          # on POST endpoints. Use the canonical bare host.
+          DEFAULT_URL="https://app.factorylm.com"
           DISPATCH_URL="${{ github.event.inputs.hub_url }}"
           if [ -n "$DISPATCH_URL" ]; then
             URL="$DISPATCH_URL"
@@ -87,7 +89,7 @@ jobs:
 
       - name: Upload screenshots + test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: namespace-create-e2e-${{ github.run_id }}
           path: |

@@ -1,5 +1,7 @@
 services:
   node-red:
+    mem_limit: 512m
+    memswap_limit: 512m
     image: nodered/node-red:4.1.7-22
     container_name: mira-bridge
     ports:

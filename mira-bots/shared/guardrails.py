@@ -12,6 +12,7 @@ SAFETY_KEYWORDS = [
     "exposed wire",
     "energized conductor",
     "arc flash",
+    "sparking",
     "lockout tagout",
     "lockout/tagout",
     "loto",
@@ -90,6 +91,9 @@ SAFETY_KEYWORDS_IMMEDIATE = frozenset(
         "disconnect power",
         "disconnect the power",
         "isolate power",
+        # Active electrical arc/spark observations — never educational
+        "arcing",
+        "is arcing",
     ]
 )
 

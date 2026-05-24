@@ -1,5 +1,7 @@
 services:
   mira-hub:
+    mem_limit: 1g
+    memswap_limit: 1g
     build:
       context: ./mira-hub
       dockerfile: Dockerfile

@@ -2,6 +2,10 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## [1.9.1] - 2026-05-22
+### Fixed
+- `/hub/namespace` — clicking `+` on a synthesized parent row (kind=`namespace`, id prefixed `synthetic:`) returned `400 parentId required (uuid)` with no way to recover, because POST `/api/namespace/node` requires a UUID and synthesized nodes have no kg_entities row. Hide the `+` button on synthesized rows and show a short hint ("run onboarding to add") so the user is steered to the wizard that materializes a real parent. Inline-create remains available on every real (UUID-id) row.
+
 ## [1.9.0] - 2026-05-21
 ### Added
 - `/hub/namespace` — inline child creation on every tree row. A `+` button (always visible, ≥44×44 tap target) expands a card under the parent with a kind dropdown (site/area/line/equipment/component/namespace/custom), name input, live read-only path preview (`parent.uns_path.<slug>`), and 3-source file attach (Google Drive, Dropbox, Upload-from-device). Save creates the kg_entities row + writes a `namespace_versions` audit row (operation=create) + binds any attached file's `hub_uploads.uns_path` to the new node. Mobile-first; Playwright suite covers 9 acceptance scenarios incl. iPhone viewport tap-target check.

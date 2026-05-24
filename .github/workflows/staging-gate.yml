@@ -111,7 +111,7 @@ jobs:
 
       - name: Upload results artifact
         if: always() && github.actor != 'dependabot[bot]'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: staging-results-${{ github.run_number }}
           path: tools/staging_results.json

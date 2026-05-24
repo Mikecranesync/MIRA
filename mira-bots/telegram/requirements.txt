@@ -1,12 +1,12 @@
 python-telegram-bot==21.*
 httpx==0.28.*
 Pillow>=12.2.0
-pytesseract>=0.3
+pytesseract>=0.3.13
 anthropic>=0.97.0
 PyYAML==6.0.3
-langfuse>=4.5.1,<5.0.0
+langfuse>=4.6.1,<5.0.0
 sqlalchemy>=2.0
 psycopg2-binary>=2.9.12
-deepeval>=1.0.0
-praw>=7.7
-youtube-transcript-api>=0.6
+deepeval>=4.0.3
+praw>=7.8.1
+youtube-transcript-api>=1.2.4

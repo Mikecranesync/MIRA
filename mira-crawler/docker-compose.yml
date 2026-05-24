@@ -1,5 +1,7 @@
 services:
   mira-redis:
+    mem_limit: 512m
+    memswap_limit: 512m
     image: redis:7.4.2-alpine
     container_name: mira-redis
     restart: unless-stopped
@@ -23,10 +25,8 @@ services:
     depends_on:
       mira-redis:
         condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    mem_limit: 1g
+    memswap_limit: 1g
     environment:
       - CELERY_BROKER_URL=redis://mira-redis:6379/0
       - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
@@ -47,6 +47,8 @@ services:
       retries: 3
 
   mira-task-bridge:
+    mem_limit: 512m
+    memswap_limit: 512m
     build:
       context: ..
       dockerfile: mira-crawler/Dockerfile.bridge
