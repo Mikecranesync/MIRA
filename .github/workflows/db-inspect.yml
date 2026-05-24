@@ -1,7 +1,14 @@
 name: NeonDB inspect (P0 #1305/#1343/#1344)
 
 # Ad-hoc DB inspection workflow. Uses psql against NeonDB directly via the
-# Doppler-managed NEON_DATABASE_URL (factorylm/prd). Read-only.
+# Doppler-managed NEON_DATABASE_URL. Read-only.
+#
+# IMPORTANT: This workflow takes a `target` input (staging or prod) and DEFAULTS
+# TO STAGING. If you trigger it without explicitly passing `-f target=prod` you
+# will be inspecting the staging Neon branch (forked from prod, stale), NOT prod.
+# To prevent the 2026-05-23 confusion incident, the target is now printed at the
+# top of the log, in the job-step summary, in a banner row before every SQL
+# block, and the connection identity result includes the target string.
 #
 # Previous version (pre-2026-05-19) executed Python inside the mira-mcp-saas
 # container and broke when the container lost psycopg2 in a rebuild. Switched
@@ -31,6 +38,27 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Announce target (prevent 2026-05-23 staging/prod confusion)
+        run: |
+          TARGET='${{ inputs.target }}'
+          if [ "$TARGET" = 'prod' ]; then
+            ICON='🔴'
+            DOPPLER_CFG='factorylm/prd'
+          else
+            ICON='🟡'
+            DOPPLER_CFG='factorylm/stg'
+          fi
+          # Visible in the run-list (annotation) AND the job log.
+          echo "::notice title=DB inspect target::${ICON} target=${TARGET} (${DOPPLER_CFG})"
+          # Pinned at the top of the job-step summary so the run page shows it.
+          {
+            echo "## ${ICON} DB inspect target: \`${TARGET}\`"
+            echo ""
+            echo "- Doppler config: \`${DOPPLER_CFG}\`"
+            echo "- Re-run with \`gh workflow run db-inspect.yml -f target=prod\` for prod"
+            echo "- Re-run with \`gh workflow run db-inspect.yml -f target=staging\` for staging"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/checkout@v4
 
       - name: Install Doppler CLI
@@ -68,11 +96,18 @@ jobs:
       - name: Inspect kg_entities + kg_relationships
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
+          MIRA_INSPECT_TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
-          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
-          \echo === connection identity ===
-          SELECT current_user AS connected_as, session_user;
+          echo "========================================================"
+          echo "==  DB INSPECT — TARGET=${MIRA_INSPECT_TARGET}  =="
+          echo "========================================================"
+          # Pass the target into psql as a session variable so it appears
+          # in every \echo banner.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 -v target="${MIRA_INSPECT_TARGET}" <<'SQL'
+          \echo === ▶▶▶ inspecting target=:target ◀◀◀ ===
+          \echo === connection identity (cross-check against target) ===
+          SELECT :'target' AS workflow_target, current_database() AS db, current_user AS connected_as;
           SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname = current_user;
 
           \echo
@@ -194,4 +229,72 @@ jobs:
           FROM kg_relationships
           GROUP BY relationship_type
           ORDER BY 2 DESC;
+
+          \echo
+          \echo === kg_entities by type (benchmark 2026-05-23) ===
+          SELECT entity_type, COUNT(*) AS rows,
+                 SUM(CASE WHEN uns_path IS NULL THEN 1 ELSE 0 END) AS null_uns,
+                 SUM(CASE WHEN properties IS NULL OR properties::text = '{}' THEN 1 ELSE 0 END) AS empty_props
+          FROM kg_entities
+          GROUP BY entity_type
+          ORDER BY rows DESC;
+
+          \echo
+          \echo === kg_entities NULL uns_path sample (10) ===
+          SELECT id, tenant_id, entity_type, name, properties::text AS props
+          FROM kg_entities
+          WHERE uns_path IS NULL
+          LIMIT 10;
+
+          \echo
+          \echo === fault_codes inventory (has_fault backfill scope) ===
+          SELECT 'fault_codes total' AS metric, COUNT(*)::text AS n FROM fault_codes
+          UNION ALL SELECT 'with manufacturer + equipment_model',
+                          COUNT(*)::text FROM fault_codes
+                          WHERE manufacturer IS NOT NULL AND TRIM(manufacturer) <> ''
+                            AND equipment_model IS NOT NULL AND TRIM(equipment_model) <> ''
+          UNION ALL SELECT 'distinct (tenant, mfr, model, code)',
+                          COUNT(*)::text FROM (
+                            SELECT DISTINCT tenant_id, TRIM(manufacturer) AS mfr,
+                                            TRIM(equipment_model) AS model, code
+                              FROM fault_codes
+                             WHERE manufacturer IS NOT NULL AND TRIM(manufacturer) <> ''
+                               AND equipment_model IS NOT NULL AND TRIM(equipment_model) <> ''
+                          ) t;
+
+          \echo
+          \echo === fault_codes vs equipment join (slug-normalized) ===
+          -- fault_codes.tenant_id is TEXT; kg_entities.tenant_id is UUID. Cast to text on both sides.
+          WITH fc AS (
+            SELECT DISTINCT tenant_id::text AS tenant_id,
+                            LOWER(REGEXP_REPLACE(TRIM(manufacturer), '[^a-zA-Z0-9]+', '_', 'g')) AS mfr_slug,
+                            LOWER(REGEXP_REPLACE(TRIM(equipment_model), '[^a-zA-Z0-9]+', '_', 'g')) AS model_slug,
+                            code
+              FROM fault_codes
+             WHERE manufacturer IS NOT NULL AND TRIM(manufacturer) <> ''
+               AND equipment_model IS NOT NULL AND TRIM(equipment_model) <> ''
+          ),
+          eq AS (
+            SELECT tenant_id::text AS tenant_id, id AS eq_id,
+                   LOWER(REGEXP_REPLACE(properties->>'manufacturer', '[^a-zA-Z0-9]+', '_', 'g')) AS mfr_slug,
+                   LOWER(REGEXP_REPLACE(name, '[^a-zA-Z0-9]+', '_', 'g')) AS model_slug
+              FROM kg_entities
+             WHERE entity_type = 'equipment'
+          )
+          SELECT 'fc rows' AS metric, COUNT(*)::text AS n FROM fc
+          UNION ALL SELECT 'fc matched to equipment', COUNT(*)::text
+                            FROM fc JOIN eq USING (tenant_id, mfr_slug, model_slug)
+          UNION ALL SELECT 'fc UNMATCHED', COUNT(*)::text
+                            FROM fc
+                            WHERE NOT EXISTS (SELECT 1 FROM eq
+                                              WHERE eq.tenant_id = fc.tenant_id
+                                                AND eq.mfr_slug = fc.mfr_slug
+                                                AND eq.model_slug = fc.model_slug);
+
+          \echo
+          \echo === regression check: kg_relationships created_at distribution ===
+          SELECT DATE(created_at) AS day, COUNT(*) AS edges
+          FROM kg_relationships
+          GROUP BY DATE(created_at)
+          ORDER BY day;
           SQL
