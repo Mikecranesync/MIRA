@@ -42,10 +42,8 @@ services:
     networks:
       - mira-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 1.5G
+    mem_limit: 1.5g
+    memswap_limit: 1.5g
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -87,10 +85,8 @@ services:
     networks:
       - mira-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    mem_limit: 1g
+    memswap_limit: 1g
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s
@@ -121,10 +117,8 @@ services:
     networks:
       - mira-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    mem_limit: 1g
+    memswap_limit: 1g
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s
@@ -162,10 +156,8 @@ services:
       - mira-net
       - cmms-ext
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3000/api/health"]
       interval: 30s
@@ -221,10 +213,8 @@ services:
     networks:
       - mira-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 2G
+    mem_limit: 2g
+    memswap_limit: 2g
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9099/health"]
       interval: 30s
@@ -270,10 +260,8 @@ services:
     networks:
       - mira-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
       interval: 30s
@@ -319,10 +307,8 @@ services:
     networks:
       - mira-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD", "python", "-c", "import slack_bolt"]
       interval: 30s
@@ -364,10 +350,8 @@ services:
     networks:
       - mira-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 256M
+    mem_limit: 256m
+    memswap_limit: 256m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8765/health')"]
       interval: 30s
@@ -390,10 +374,8 @@ services:
     networks:
       - mira-net
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nango"]
       interval: 10s
@@ -435,10 +417,8 @@ services:
       nango-db:
         condition: service_healthy
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    mem_limit: 1g
+    memswap_limit: 1g
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
       interval: 30s
@@ -554,10 +534,8 @@ services:
       # Web-review findings — read-only, the cron only deletes its own files.
       - ./tools/web-review-runs:/app/tools/web-review-runs:ro
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    mem_limit: 1g
+    memswap_limit: 1g
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health/"]
       interval: 30s
@@ -589,10 +567,8 @@ services:
       - mira-net
       - cmms-ext
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 256M
+    mem_limit: 256m
+    memswap_limit: 256m
     depends_on:
       - mira-hub
 
