@@ -6495,4 +6495,43 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - M docs/context/PROGRESS.md
 - ?? tools/staging_results.json
 **Next:** _set by next session_
+
+### 2026-05-24 15:14 UTC — `claude/cool-moser-0152ac`
+**Last commit:** f17c75e0 docs(plc): add ST code review naming the MSG_MODBUS vs MSG_MODBUS2 type bomb
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- ?? docs/evaluations/
+**Next:** _set by next session_
+
+### 2026-05-24 15:44 UTC — `claude/cool-moser-0152ac`
+**Last commit:** f17c75e0 docs(plc): add ST code review naming the MSG_MODBUS vs MSG_MODBUS2 type bomb
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/evaluations/
+**Next:** _set by next session_
+
+### 2026-05-24 15:44 UTC — `claude/cool-moser-0152ac`
+**Last commit:** f17c75e0 docs(plc): add ST code review naming the MSG_MODBUS vs MSG_MODBUS2 type bomb
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/evaluations/
+**Next:** _set by next session_
+
+### 2026-05-24 15:44 UTC — `claude/cool-moser-0152ac`
+**Last commit:** f17c75e0 docs(plc): add ST code review naming the MSG_MODBUS vs MSG_MODBUS2 type bomb
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/evaluations/
+**Next:** _set by next session_
+
+### 2026-05-24 15:44 UTC — `claude/cool-moser-0152ac`
+**Last commit:** f17c75e0 docs(plc): add ST code review naming the MSG_MODBUS vs MSG_MODBUS2 type bomb
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/evaluations/
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
