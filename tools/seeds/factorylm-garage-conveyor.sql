@@ -67,10 +67,10 @@ VALUES
     '{"manufacturer": "Banner Engineering", "model": "Q4XBLAF300Q8", "type": "laser_distance_sensor", "mounting": "side_rail_B16", "tag": "1.SOC_B16_2", "fault_pattern": "OCCUPIED_TOO_LONG"}'::jsonb,
     'enterprise.home_garage.conveyor_lab.conveyor_1.photoeye_1'::ltree
   )
-ON CONFLICT (tenant_id, entity_type, entity_id) DO UPDATE
-  SET name        = EXCLUDED.name,
-      properties  = EXCLUDED.properties,
+ON CONFLICT (tenant_id, entity_type, name) DO UPDATE
+  SET properties  = EXCLUDED.properties,
       uns_path    = EXCLUDED.uns_path,
+      entity_id   = EXCLUDED.entity_id,
       updated_at  = now();
 
 -- ─── namespace_versions audit rows ─────────────────────────────────────────
@@ -84,8 +84,8 @@ SELECT
   e.entity_type,
   NULL,
   jsonb_build_object('uns_path', e.uns_path::text, 'name', e.name),
-  'seed:garage-conveyor',
-  'import',
+  NULL,
+  'system',
   'Seeded from factorylm-garage-conveyor.sql'
 FROM kg_entities e
 WHERE e.tenant_id = '__TENANT_ID__'::uuid
@@ -113,7 +113,7 @@ SELECT
   'proposed',
   'medium',
   false,
-  'llm:gemini',
+  'llm',
   'GS10 VFD (HR100-102) controls motor speed for Conveyor 1. '
   'Extracted from GS10 integration guide and Micro820 ladder logic (Rung 12, Coil0=run).'
 FROM kg_entities src
@@ -145,7 +145,7 @@ SELECT
   'proposed',
   'low',
   false,
-  'rule:plc_modbus_map',
+  'rule',
   'Micro820 at 192.168.1.20 writes Modbus coils C0/C1/C2 and reads HR100-102 to control the GS10. '
   'Derived from CLUSTER.md Modbus map and Micro820 v4.1.9 ladder logic.'
 FROM kg_entities src
@@ -177,7 +177,7 @@ SELECT
   'proposed',
   'medium',
   false,
-  'llm:groq',
+  'llm',
   'Photoeye 1 (tag 1.SOC_B16_2, Banner Q4X laser sensor) has triggered OCCUPIED_TOO_LONG '
   'fault 14 times in the last 6 months, each time stopping Conveyor 1. '
   'Pattern extracted from work order history.'
@@ -213,7 +213,7 @@ SELECT
   0.99,
   'pending',
   'low',
-  'rule:plc_modbus_map',
+  'rule',
   'Map PLC tag ' || tag_info.tag || ' → Micro820 PLC',
   tag_info.description || ' (Micro820 at 192.168.1.20)'
 FROM kg_entities plc

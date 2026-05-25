@@ -69,10 +69,10 @@ VALUES
     '{"description": "Guest unloading platform and return queue", "system_type": "station_conveyor"}'::jsonb,
     'enterprise.celestial_park.stardust_racers.station_unload'::ltree
   )
-ON CONFLICT (tenant_id, entity_type, entity_id) DO UPDATE
-  SET name        = EXCLUDED.name,
-      properties  = EXCLUDED.properties,
+ON CONFLICT (tenant_id, entity_type, name) DO UPDATE
+  SET properties  = EXCLUDED.properties,
       uns_path    = EXCLUDED.uns_path,
+      entity_id   = EXCLUDED.entity_id,
       updated_at  = now();
 
 -- ─── namespace_versions audit rows ─────────────────────────────────────────
@@ -86,8 +86,8 @@ SELECT
   e.entity_type,
   NULL,
   jsonb_build_object('uns_path', e.uns_path::text, 'name', e.name),
-  'seed:epic-universe',
-  'import',
+  NULL,
+  'system',
   'Seeded from epic-universe-stardust-racers.sql'
 FROM kg_entities e
 WHERE e.tenant_id = '__TENANT_ID__'::uuid
@@ -116,7 +116,7 @@ SELECT
   'proposed',
   'high',
   true,
-  'llm:gemini',
+  'llm',
   'Launch 1 (forward) triggers Launch 2 (reverse boost) in the ride control sequence. '
   'Extracted from ride ops documentation. Flagged high-risk: sequence timing is safety-critical.'
 FROM kg_entities src
@@ -147,7 +147,7 @@ SELECT
   'proposed',
   'medium',
   false,
-  'llm:groq',
+  'llm',
   'Station Load is the entry point of the ride cycle. '
   'Guest vehicles flow from the load platform into the launch zone.'
 FROM kg_entities src
@@ -178,7 +178,7 @@ SELECT
   'proposed',
   'low',
   false,
-  'llm:groq',
+  'llm',
   'Station Unload is the final stage of the ride cycle — vehicles return here after Launch 2.'
 FROM kg_entities src
 JOIN kg_entities tgt
