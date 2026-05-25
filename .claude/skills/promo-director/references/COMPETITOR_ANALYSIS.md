@@ -1,8 +1,31 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-25
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-25
+
+### Most actionable change for MIRA playbook
+
+Ecosystem-wide shift from "AI assistant" to "AI initiator" is now the dominant narrative across every category. Stripe reframed as "economic infrastructure for AI" (agentic commerce). Anthropic led with managed agents that act proactively without being asked. Figma shipped a native agent inside the canvas. The phrase pattern to steal: **"already done X before you even ask"** — for MIRA, that's "MIRA has the fault context and suggested procedure ready before the tech reaches the machine."
+
+### New findings
+
+**B2B SaaS / dev-tools**
+- **Stripe** — Sessions 2026 opening keynote (May 2026): https://www.youtube.com/watch?v=Nadf3MdJS-8 — reframed as "economic infrastructure for AI"; 288 launches, agentic commerce suite (Meta + Google integrations, agent wallet via Link); new hook is scale + agent-native, not feature-list
+- **Stripe** — Sessions 2026 12-min summary: https://www.youtube.com/watch?v=8F4XyWYqZi8 — best "what changed" distillation; pattern for MIRA: ship a tight summary cut alongside the full keynote
+- **Anthropic** — Code with Claude 2026 SF opening keynote (May 6): https://www.youtube.com/watch?v=GMIWm5y90xA — developer conference format; leads with Managed Agents + Proactive Workflows; peer-engineer register; partners shown on stage (GitHub, Vercel, Datadog, Bun)
+- **Anthropic** — Code with Claude 2026 London keynote (May 19): https://www.youtube.com/watch?v=6amLO7I9xdg — second city event; same format
+- **Figma** — Release Notes 2026: May Edition (May 5): https://www.youtube.com/watch?v=11mdb7lLclM — monthly release notes livestream series; May edition focuses on native AI agent inside canvas (limited beta May 20) and "Make Skills" (markdown workflow files called via slash command); new recurring format worth watching
+
+**CMMS / EAM**
+- **MaintainX** — "What's New: May 2026" (blog, no standalone video): https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026 — AI Procedure Recommendations: AI attaches the right maintenance procedure at the moment a work order is created; Sub Work Orders: breaks large WOs into trackable sub-tasks. No new YouTube video for this cycle, but the AI Procedure Recommendations feature directly overlaps MIRA's OEM-manual-grounded diagnostic approach.
+
+**Predictive maintenance**
+- **Augury** — C1D1/C2D1 hazardous environment webinar (May 14): LinkedIn-announced, no YouTube URL confirmed [transcript not verified] — claim: "always-on predictive maintenance now reaches C1D1/C2D1 hazardous environments without shutdowns, conduit runs, or operational disruption"; category expansion beyond low-RPM into explosion-proof environments; presenters: Fred Wasden PhD PE + Andrew Pry
 
 ---
 
@@ -86,6 +109,13 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
+**"What's New at MaintainX: May 2026" (May 2026, blog only — no dedicated video)**
+- Source: https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026
+- AI Procedure Recommendations: AI attaches the right maintenance procedure at the exact moment a work order is created — no manual search
+- Sub Work Orders: break large WOs into trackable sub-tasks shared to different teams/assets; parent WO shows aggregate progress
+- More scalable Automations
+- Pattern note: MaintainX is now generating the diagnostic procedure at WO creation — directly adjacent to MIRA's OEM-manual-grounded diagnostic approach. MIRA's counterplay: MIRA generates the procedure *before* the WO is even created, grounded in the specific asset's OEM manual and fault history, not a generic template.
+
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
 ---
@@ -144,7 +174,14 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Distribution: Bloomberg Originals Genbiz Video Series — third-party credibility format
 - Footage style: real factory floor + exec interviews
 
-**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+**Hazardous environment webinar (May 14, 2026)**
+- Source: LinkedIn-announced; no YouTube URL confirmed [transcript not verified]
+- Presenters: Fred Wasden PhD PE + Andrew Pry
+- Claim: "always-on predictive maintenance now reaches C1D1/C2D1 hazardous environments without shutdowns, conduit runs, or operational disruption"
+- Category expansion: moves beyond low-RPM into explosion-proof environments — new niche claim
+- Format: webinar, not promo video
+
+**Pattern note (updated 2026-05-25):** Augury is running a three-track strategy — category-creation technical videos (Ultra Low RPM), third-party credibility (Bloomberg/Fortune Brands), and practitioner webinars (hazardous environment expansion). Each track targets a different buyer layer. The 2.5x ROI claim with named customer + specific machine count remains the strongest proof template. C1D1/C2D1 expansion is a category claim not yet countered by any competitor.
 
 ---
 
@@ -254,11 +291,19 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 opening keynote (May 2026)**
+- URL: https://www.youtube.com/watch?v=Nadf3MdJS-8 (opening keynote) | https://www.youtube.com/live/e13-s0p1tfE (live stream)
+- 12-min summary cut: https://www.youtube.com/watch?v=8F4XyWYqZi8 — tightest "what changed" distillation
+- Developer keynote: https://www.youtube.com/watch?v=m2omCJcrkE0
+- Positioning shift: lead framing is now "economic infrastructure for AI" — first time Stripe leads with AI infra, not payments
+- Scale claim: 288 new products and features in one day — "most ambitious single-day launches in Stripe's history"
+- Key launches: Agentic Commerce Suite (Meta + Google integrations, agent wallet via Link, Checkout Studio), Bridge stablecoin orchestration, Tempo blockchain (incubated with Paradigm)
+- Footage style: on-stage keynote, 9,000+ attendees
+- VO register: founder (Collison brothers) + product exec (Will Gaybrick)
+- CTA: none explicit; platform ecosystem play
+- New pattern: shipped a tight 12-min summary cut alongside the full keynote
 
-**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
+**Pattern note (updated 2026-05-25):** Stripe shifted from "future of commerce" to "economic infrastructure for AI" — explicit agentic positioning at the platform level. Volume (288 launches) creates PR gravity independent of any individual video. The summary-cut companion to the full keynote is worth replicating for MIRA launches.
 
 ---
 
@@ -302,7 +347,23 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**Code with Claude 2026 — San Francisco (May 6, 2026)**
+- URL: https://www.youtube.com/watch?v=GMIWm5y90xA
+- Title: "Code with Claude 2026: Opening Keynote"
+- Presenters: CPO Ami Vora, Boris Cherny (creator of Claude Code), Dianne Na Penn, Angela Jiang, Cat Wu
+- Key launches: Managed Agents (agents that act within defined parameters without constant human input), Proactive Workflows (Claude initiates actions when it detects conditions — failing tests, dependency conflicts — without being asked), Capability Curve
+- Partners shown on stage: GitHub, Vercel, Datadog, Bun
+- Hook: not verified [transcript not verified — from search snippet/description]
+- VO register: peer-engineer / product leadership
+- Footage style: developer conference stage, SF
+
+**Code with Claude 2026 — London (May 19, 2026)**
+- URL: https://www.youtube.com/watch?v=6amLO7I9xdg
+- Title: "Code with Claude London 2026: Opening Keynote"
+- Same format as SF; second-city model extends conference content tail
+
+**Pattern note (added 2026-05-25):** Anthropic adopted the developer conference format (like Stripe Sessions, Figma Config) as its primary video launch vehicle. The "proactive workflows" framing — AI initiates without being asked — is the new top-of-funnel hook across the ecosystem. No dedicated promo ad; all video investment in conference keynote content that lives organically on YouTube.
 
 ---
 
@@ -314,8 +375,11 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Cursor 3.0 (Apr 2, 2026): Agents Window
 - Cursor 3.1 (Apr 13, 2026): Tiled Layout
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
+- Microsoft Teams integration (May 8, 2026): @mention @Cursor in any Teams channel to delegate tasks to cloud agents — "task delegation from the place where your team already coordinates work"; no dedicated launch video
+- Composer 2.5 (May 2026): improved intelligence on long-horizon agentic tasks
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
 - No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+- Pattern shift: Cursor is moving from IDE-only to where-work-happens (Teams channels) — follow pattern for MIRA: Slack is the right channel, not a separate app
 
 ---
 
@@ -355,6 +419,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
 
+**Release Notes 2026: May Edition (May 5, 2026)**
+- URL: https://www.youtube.com/watch?v=11mdb7lLclM
+- Format: monthly release notes livestream (recurring series — playlist: https://www.youtube.com/playlist?list=PLXDU_eVOJTx4wCgXwkYeI5gQ6miXjWe1p)
+- Topics: vibe-coded prototypes, connecting design systems to code, native AI agent on canvas
+- Key feature: Figma AI agent (limited beta May 20) — generates designs, edits files, automates tasks via natural language directly inside the canvas
+- "Make Skills" = markdown workflow files that encode conventions; call with slash command in any prompt; agents use them to match your standards with fewer prompts [search-derived]
+- Footage style: hosted livestream / product demo
+- VO register: product team, peer-engineer
+- CTA: soft — "expanding to eligible users"
+- Pattern note: monthly release notes video series is a low-cost recurring touchpoint; Figma is now using agent delegation language ("define agents", "Make Skills as slash commands") that maps directly to how MIRA should describe its diagnostic procedures
+
 ---
 
 ### Replit
@@ -385,6 +460,9 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Proactive agent: "acts without being asked" | Anthropic Code w/ Claude 2026: Proactive Workflows detect conditions + initiate fixes autonomously | "MIRA flags the bearing fault and surfaces the procedure before the tech files the work order" |
+| Volume signal as authority | Stripe Sessions 2026: 288 launches — "most ambitious single-day launches in history" | MIRA: "X fault patterns resolved, Y OEM manuals indexed, Z procedures generated this month" |
+| Meet-where-work-happens | Cursor Teams: @mention agent in any channel to delegate | MIRA lives in Slack — where maintenance coordinators already work |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +473,9 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; now (May 2026) generating AI procedures at WO creation. Trajectory: reactive CMMS → proactive AI-generated workflows. MIRA's window is narrowing — OEM-manual grounding is the differentiator.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, maintaining technical deep-dives for practitioners, now adding practitioner webinars for hazardous environments (C1D1/C2D1). Three-track strategy, one audience layer per track.
+- **Stripe**: shifted positioning from "future of commerce" to "economic infrastructure for AI" (Sessions 2026). Now explicitly agent-native; no longer leading with payments features.
+- **Anthropic**: adopted developer conference format (Code with Claude SF + London, May 2026) as primary video launch vehicle; "Proactive Workflows" is now the lead hook — AI that initiates without being asked.
+- **Figma**: launched monthly release notes video series (recurring, ~5 min, hosted demo); using agent delegation language ("Make Skills", "define agents") that signals design tools are becoming agent orchestration platforms.
