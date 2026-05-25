@@ -1,511 +1,137 @@
-# Hot Cache — 2026-05-24 — CHARLIE
+# Hot — Where to resume
 
-## eval-fixer run — 2026-05-24
-- Scorecard: 33/57 passing (58%) — `tests/eval/runs/2026-05-24T0331-offline-text.md` (**FRESH** — cron unstuck)
-- Action: filed #1519. Hard-stopped (24 patchable > 15 ceiling, 3 file targets).
-- **Regression: 48 → 33 (-15 fixtures).** Stale scorecard issue from previous runs is resolved; nightly eval is producing fresh data again. The new fresh data shows a real quality drop since 2026-05-06.
-- **Dominant cluster:** UNS gate intercepting fixtures that expect direct routing to Q1/Q2/DIAGNOSIS (8 fixtures land in `AWAITING_UNS_CONFIRMATION`). Likely needs resolver-confidence tuning, not fixture rewrites.
-- Other clusters: "find manual" intent not terminating at IDLE (5), Q-skip not advancing with extracted fault codes (8), cross-vendor leakage `PowerFlex`/`AutomationDirect` in unrelated responses (3).
-
-## eval-fixer run — 2026-05-23
-- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (17 days stale, unchanged since 2026-05-06)
-- Action: filed #1506, closed as dup of still-open #1419. Same multi-cluster hard-stop (engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3).
-- **4th consecutive run dup-closing.** Nightly eval job has not produced a fresh scorecard in 17 days. Wiring problem, not a code problem. Action: either land a fix on one of the three #1419 clusters or restart the eval cron / regenerate manually (`doppler run --project factorylm --config prd -- python3 tests/eval/offline_run.py --suite text`).
-
-## eval-fixer run — 2026-05-22
-- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (16 days stale, unchanged since 2026-05-06)
-- Action: filed #1487, closed as dup of still-open #1419. Same multi-cluster hard-stop (engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3).
-- **Nightly eval job stalled 16 days running.** Same failure set surfacing on every run. Either land a fix on one of the three #1419 clusters or regenerate the scorecard manually (`doppler run -- python3 tests/eval/offline_run.py --suite text`) — until then every eval-fixer run will keep dup-closing.
-
-
-## 2026-05-19 — GS11 grounding test surface landed
-Three-layer regression net for "embedding sidecar down → bot must still cite KB, not 'general industrial knowledge'." Installed after the 2026-05-18 GS11 demo failure (PR #1382 + #1379 + #1385 root cause chain).
-
-- **Tests (offline, ~2s):**
-  - DB: `mira-bots/tests/test_recall_no_embedding_fallthrough.py`
-  - Gate: `tests/test_quality_gate_stream_aware.py`
-  - Engine: `mira-bots/tests/test_engine_no_embedding_gs11.py` (new)
-- **LLM judge (Groq):** `mira-bots/benchmarks/deepeval_suite.py` case `de-in-06-gs11-modbus`
-- **One-shot invocation:** `/mira-test-bot-grounding`
-- **Reference doc:** `wiki/references/bot-grounding-tests.md`
-- **Auto-loading skill:** `.claude/skills/bot-grounding-tests/SKILL.md`
-- **CI:** `.github/workflows/deepeval-ci.yml` runs all four layers on every PR touching `mira-bots/**`, `evals/**`, or `tests/golden_*.csv`.
-
-**Mandatory before pushing** any change to `mira-bots/shared/{neon_recall.py, workers/rag_worker.py, engine.py}` recall path, `mira-bots/benchmarks/deepeval_suite.py`, or `tests/golden_gs11_conveyor.csv`.
-
-Open ops follow-ups (deferred post-demo): fix Bravo Tailscale route from VPS; pull `nomic-embed-text` onto VPS localhost Ollama; migrate `evals/query_stub.py` live mode off Anthropic + onto the InferenceRouter Groq cascade.
-
-## eval-fixer run — 2026-05-20
-- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (14 days stale, unchanged since 2026-05-06)
-- Action: filed #1453, closed as dup of still-open #1419. Same multi-cluster hard-stop (engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3).
-- **Nightly eval job stalled 14 days running.** No new signal. Action needed: either land a fix on one of the three #1419 clusters or regenerate the scorecard manually (`doppler run -- python3 tests/eval/offline_run.py --suite text`). Until then every eval-fixer run will continue to dup-close.
-
-## eval-fixer run — 2026-05-19
-- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (13 days stale, unchanged since 2026-05-06)
-- Action: filed #1419 (multi-cluster hard-stop hit: engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3). Prior canonical #1217 is now closed, so #1419 stands open instead of being closed as a dupe.
-- **Nightly eval job still stalled — same scorecard for 13 days.** No new signal. Action needed: regenerate scorecard (`doppler run -- python3 tests/eval/offline_run.py --suite text`) or land a fix on one of the open clusters before the next eval-fixer run can produce new signal.
-
-## eval-fixer run — 2026-05-18
-- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (12 days stale, unchanged since 2026-05-06)
-- Action: filed #1373 (multi-cluster hard-stop hit), then closed as duplicate of #1217. Prior dupes: #1144, #1170, #1187, #1217, #1329.
-- **Nightly eval job still stalled** — same scorecard, same 9 fixtures, same 3 file_clusters (engine.py×7, guardrails.py×3, prompts×3). No new signal. Action needed: regenerate scorecard (`doppler run -- python3 tests/eval/offline_run.py --suite text`) or land a fix on one of the open issues before the next eval-fixer run will produce signal.
-
-## eval-fixer run — 2026-05-16
-- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (10 days stale, unchanged since 2026-05-10)
-- Action: filed #1329, then closed it as duplicate of #1217. Prior dupes: #1144, #1170, #1187, #1217, #1329.
-- **Nightly eval job is still stalled** — no new scorecard since 2026-05-06. Next eval-fixer run on this scorecard should suppress before opening an issue; today's CLI agent missed the wiki note. Action needed: regenerate the scorecard (run `doppler run -- python3 tests/eval/offline_run.py --suite text`) or land a fix on one of the open clusters in #1217.
-
-## Session — 2026-05-15 (Maintenance Namespace Builder doctrine + spec + plan landed)
-
-- **NEW PRIMARY DOCTRINE — read first for any feature work:**
-  - `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Establishes "MIRA turns everyday maintenance activity into an AI-ready factory namespace" as the primary product framing. Promoted above `mira-component-intelligence-architecture.md` (which is now positioned as implementation-level architecture).
-  - `docs/specs/maintenance-namespace-builder-spec.md` — technical contract for the product surface (UNS Location-Confirmation Gate, `ai_suggestions` + `approvals` queue, L0–L6 AI Readiness score, namespace tree editor, onboarding wizard, photo + tag ingestion API).
-  - `docs/plans/2026-05-15-maintenance-namespace-builder.md` — phased execution plan (Phase 0 docs done; Phases 1–6 across ≈14 weeks). Integrates with the 90-day MVP plan rather than replacing it.
-- **CLAUDE.md pointers updated** (root + `.claude/CLAUDE.md`) — North Star points to TOO doc as primary; the broken `uns-message-resolver-spec.md` reference is replaced by a pointer to the namespace-builder spec's UNS gate section.
-- **CORRECTION** (after `git fetch origin main` mid-session): the local main was 19+ commits behind. The UNS resolver + Stage-1 confirmation gate are **already merged** (PRs #1220, #1280, #1295, #1314). `mira-bots/shared/uns_resolver.py` + `uns_paths.py` exist on origin/main; `engine.py` calls `resolve_uns_path()` in 14+ places; the gate is at engine.py line 1316. The existing scope is **vendor / model / fault-code**; Phase 1 extends it to full **site / area / line / machine / asset / component** plant hierarchy. The TOO doc, spec, and plan were corrected mid-session to reflect this — they now describe an additive extension, not a from-scratch build. **Always run `git log main..origin/main --oneline` before claiming any UNS-related work.**
-- **In-flight coordination:** Phase 0 is doc-only and runs on `main`. Phases 1+ live on new `feat/mnb-phase-N-*` branches. The active 90-day MVP units (`feat/mvp-unit-4-exports`, `feat/mvp-unit-9a-landing`) are **not** paused — they fold into Phases 2 + 4 respectively.
-- **Marketing repositioning queued for Phase 4** (Weeks 7–8): new homepage H1 candidate "Turn your maintenance data into an AI-ready factory namespace." + new landing pages `/namespace-builder`, `/ignition`, `/ai-readiness-scan`. Coordinate with Unit 9a's branch before any merge to `mira-web/`.
-- **Open decision (resolve before Phase 1):** KG schema canonicalization — Hub `001_knowledge_graph.sql` vs. NeonDB `004_kg_entities.sql + 007_uns_path.sql`. The new spec assumes the latter (per CLAUDE.md).
-
-**To resume:**
-1. Read the three new docs in order (TOO → spec → plan).
-2. `git fetch origin main && git log main..origin/main --oneline` to see how far behind local is.
-3. Read `docs/specs/uns-message-resolver-spec.md` (the existing spec on origin/main — describes the Stage-1 gate that's already shipped).
-4. Read `mira-bots/shared/uns_resolver.py` and the engine.py UNS hook (line ~1316 on origin/main).
-5. Then coordinate with the 90-day plan's in-flight section before any code change.
-
-## eval-fixer run — 2026-05-15
-- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (9 days stale, unchanged since 2026-05-10)
-- Action: no-op (suppressed duplicate issue — #1217 from 2026-05-13 still covers this exact scorecard; prior dupes: #1144, #1170, #1187)
-- Same 9 fixtures, same 3 file_clusters (engine.py×7, guardrails.py×3, prompts×3). No new signal — nightly eval job is stalled. Action needed: regenerate scorecard or land a fix on one of the open issues before the next eval-fixer run will produce signal.
-
-# Hot Cache — 2026-05-14 — CHARLIE
-
-## eval-fixer run — 2026-05-14
-- Scorecard: 48/57 passing (84%) — source: `tests/eval/runs/2026-05-06T0833-offline-text.md` (unchanged since 2026-05-12, now 8 days stale)
-- Action: issue-filed (autopatch skipped — 3 file_clusters, hard stop)
-- Issue: https://github.com/Mikecranesync/MIRA/issues/1269 (third repeat — see #1217, #1187 — same scorecard, no fresh eval run)
-- Same 9 fixtures still failing across `engine.py`, `guardrails.py`, `prompts/diagnose/active.yaml`. Nightly eval job is almost certainly dead — needs human investigation, not another auto-issue.
-
-# Hot Cache — 2026-05-13 — CHARLIE
-
-## eval-fixer run — 2026-05-13
-- Scorecard: 48/57 passing (84%) — source: `tests/eval/runs/2026-05-06T0833-offline-text.md` (unchanged since 2026-05-12)
-- Action: issue-filed (autopatch skipped — 3 file_clusters, hard stop)
-- Issue: https://github.com/Mikecranesync/MIRA/issues/1217 (duplicates pattern from #1187 — same scorecard, no new run)
-- Same 9 fixtures failing as 2026-05-12; scorecard has not refreshed. Nightly eval job may be stalled — check.
-
-# Hot Cache — 2026-05-12 — CHARLIE
-
-## eval-fixer run — 2026-05-12
-- Scorecard: 48/57 passing (84%) — source: `tests/eval/runs/2026-05-06T0833-offline-text.md`
-- Action: issue-filed (autopatch skipped — 3 file_clusters, hard stop)
-- Issue: https://github.com/Mikecranesync/MIRA/issues/1187
-- 4 failure clusters: (A) FSM state-progression regression — 6 fixtures stuck at wrong states in `engine.py`; (B) `/reset` not re-entering Q1 — spans engine.py + guardrails.py + active.yaml; (C) GS20 cross-vendor contamination — "PowerFlex" leaking into GS20 response; (D) CMMS WO creation not emitting confirmation text
-
-# Hot Cache — 2026-05-10 — ALPHA
-
-## Session — 2026-05-10 (printing-press toolchain bootstrap + Linear/Stripe CLIs)
-
-- **Bootstrapped `mksglu/context-mode` Claude Code plugin** (user scope). `/plugin marketplace add mksglu/context-mode` → `/plugin install context-mode@context-mode`. Registers `PreToolUse`/`PostToolUse`/`PreCompact`/`SessionStart` hooks + 11 ctx_* MCP tools. Now intercepts `WebFetch`/`Bash` large-output calls and routes through `ctx_execute` + FTS5 sandbox. Healthy v1.0.111 → v1.0.118 patch updates available; non-urgent.
-- **Installed Go 1.26.3** via `brew install go` and added `export PATH="$HOME/go/bin:$PATH"` to `~/.zprofile` (line 2, after `brew shellenv`).
-- **Printing Press generator installed** (`mvanhorn/cli-printing-press` v4.2.2). Binary at `~/go/bin/printing-press`; 9 skills under `~/.claude/skills/printing-press*`. Drives `/printing-press <api>` slash command. MIT-licensed.
-- **Linear CLI installed via the npm orchestrator** (`npx -y @mvanhorn/printing-press install linear`). Binary `linear-pp-cli` 1.0.0; skill `pp-linear` symlinked from `~/.agents/skills/pp-linear`. Local SQLite mirror path: `~/.config/linear-pp-cli/store.db` (not hydrated yet — `sync` will pull it). Auth: env-only via `LINEAR_API_KEY` already in Doppler `factorylm/prd`. `doctor` 4/4 green; `me` returned `mike @ Cranesync (Admin)`.
-- **Stripe CLI installed same orchestrator** (`stripe-pp-cli` 1.0.0). Skill `pp-stripe`. Local DB path: `~/.local/share/stripe-pp-cli/data.db` (XDG split — Stripe uses `share/`, Linear used `config/`). `doctor` 5/5 green via Doppler-injected `STRIPE_SECRET_KEY`. Live `balance` call returned `meta.source: "live"`. Sync NOT yet run (Stripe event volume could be large — recommend `--dry-run` first).
-- **Doppler-wrapped invocation pattern is canonical for printed CLIs**: `doppler run --project factorylm --config prd -- <pp-cli> <cmd>`. Both CLIs honor `auth_source: env:<KEY>` ahead of file auth — no on-disk plaintext.
-- **Updated `~/.claude/CLAUDE.md`**: removed stale "`gh` CLI auth is broken (keyring token invalid)" note. Verified `gh 2.87.2` logged in as `Mikecranesync` via keyring with `gist`, `read:org`, `repo`, `workflow` scopes; auth-required API calls succeed. CLAUDE.md `## Secrets` section now only mentions the real-remaining gotcha (`TS_AUTH_KEY`).
-- **Plan file with full analysis**: `~/.claude/plans/polymorphic-hugging-parnas.md`. Current contents: cross-referenced Doppler × MIRA env-vars × printing-press registry → ranked candidate API list (3 tiers). Tier 1 prebuilt + key-in-Doppler: Stripe ✅ (installed), OpenRouter (backlog), DigitalOcean (backlog). Tier 3 fresh-print candidates: NeonDB, Groq, Telegram Bot API, Atlassian, Mautic, Monday, YouTube Data.
-
-**To resume:** the plan file's "Recommended next install" and "Backlog" sections are the menu. Easiest next steps: bundle install (`npx -y @mvanhorn/printing-press install openrouter digitalocean`) or kick a fresh print (`/printing-press NeonDB`, 30–60 min). Stripe `sync --dry-run` and Linear `sync` are also pending if you want the local mirrors hydrated.
-
-## Session — 2026-05-10 (Atlas seed data fixes + session handoff)
-
-- **PR #1169 merged** (`fix/atlas-seed-data-cra248-cra249`): fixed CRA-248 + CRA-249
-  - **CRA-248**: Removed 3 of 4 duplicate KG triples (`PowerFlex 755 → exhibited_fault → F005`) in `mira-hub/scripts/seed-synthetic-users.ts` — was causing 3 duplicate work orders in demo
-  - **CRA-249**: Expanded PM_SCHEDULES from 3 → 8 entries: added PUMP-01 seal inspection (overdue -5d, critical), HVAC-02 filter (+30d, low), VFD-07 annual thermal (+60d, high), CONV-03 belt splice (+75d, medium), PUMP-01 annual overhaul (+85d, critical). Calendar now spans -5 to +85 days with 5 equipment covered.
-- **PR #1168 closed** (superseded by #1167 — FSM + multipart CVE fixes already merged)
-- **Eval Offline pre-existing fail**: `rich.errors.MarkupError` in pytest sessionfinish when `[/new]` bracket appears in output — pre-existing on main, not blocking merges. Track in known-issues.md.
-- **PROGRESS.md updated** to 2026-05-10 state
-- **Next (IMMEDIATE)**: Re-run `bun run scripts/seed-synthetic-users.ts` against staging NeonDB → reshoot Atlas CMMS demo screens (work orders list, PM calendar, asset list). Then CRA-250: wire MIRA chat interface into demo flow.
-
-## Session — 2026-05-10 (PostHog PLG funnel + merge to main)
-
-- **PostHog server-side telemetry shipped**: `mira-web/src/lib/posthog-server.ts` + 5 funnel events wired in `server.ts` (register_submitted, checkout_started, checkout_completed, activation_completed, chat_sent)
-- **PR #1167** merged to main. Branch: `fix/mira-hub-lockfile`.
-- ~~**Next**: fix Atlas seed data (CRA-248 — duplicate work orders) + CRA-249 (PM calendar empty) before demo reshoot~~ ✅ Done in PR #1169
-
-## Session — 2026-05-10 (demo video story scripts + pipeline extension)
-
-**Iteration 2 additions:**
-- **`build_video_v2.py` extended** with `--storyboard`, `--story`, `--recordings`, `--dry-run` flags; full backwards-compatible with original `storyboard_v2.yaml`
-- **Dry-run validated**: all 5 stories, 49 total beats, all screenshots resolve `✓` (zero missing)
-- **`--recordings` mode**: reads `beat-01.mp3...beat-NN.mp3` from a folder; user records voice, pipeline assembles video without OpenAI TTS
-- **`_compute_pivot()`**: replaces hardcoded shot-3 pivot with `shots[min(2, len(shots)-1)]` for story length safety
-- **Per-story isolated `output/` cache dirs**: multiple stories don't clobber each other's renders
-- **Image path resolution**: `docs/promo-screenshots/*` paths resolve from MIRA_ROOT, legacy `reference/*` paths still work
-
-**To build immediately (TTS voice):**
-```bash
-cd marketing/comic-pipeline
-doppler run --project factorylm --config prd -- \
-  .venv/bin/python build_video_v2.py \
-  --storyboard ../demo-videos/story-scripts.yaml \
-  --story 60-second-setup --skip-verify
-```
-
-## Session — 2026-05-10 (demo video story scripts)
-
-- **5 demo video story scripts written**: `marketing/demo-videos/story-scripts.yaml` + `README.md`
-- **Stories**: 60-second-setup, fault-code-30s, qr-scan-to-diagnose, pm-scheduling-autopilot, your-team-your-manuals
-- **Format**: storyboard_v2.yaml-compatible — real screenshots + user-recorded voiceover, Ken Burns focal points per beat
-- **8 new screenshots captured**: homepage-hero, cmms-signin, pricing-page, qr-asset-sheet, atlas-cmms-login, security-page (all 2026-05-10, docs/promo-screenshots/)
-- **Pipeline gap**: `build_video_v2.py` needs `--storyboard`, `--story`, `--recordings` flags added before user-recorded voice works. TTS mode works today via Option A (swap shots into storyboard_v2.yaml). See README for details.
-- **Hub login**: app.factorylm.com uses Google OAuth only — no password login; Playwright can't automate auth. Authenticated screenshots (chat, upload, QR chooser) still needed — capture manually.
-
-## eval-fixer run — 2026-05-11
-- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md`
-- Action: issue-filed (#1170 — added to Kanban)
-- 9 failures across 3 file clusters (engine.py×7, guardrails.py×3, prompts×3); multi-file span blocked autopatch
-- Dominant pattern: FSM stuck at Q-states / not advancing to DIAGNOSIS; also PowerFlex cross-vendor bleed + CMMS WO keyword miss
-
-## eval-fixer run — 2026-05-10
-- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md`
-- Action: issue-filed (#1144 — added to Kanban)
-- Hard-stop: 3 file_clusters keys (engine.py + guardrails.py + active.yaml). 9 failures: 7 FSM state advancement regressions in engine.py (Q1→Q2 and Q2→DIAGNOSIS gates too conservative, plus 3 IDLE fallback cases), 1 cross-vendor leak (GS20 PHL fixture returning PowerFlex content), 1 CMMS WO flow not surfacing keywords. Scorecard is fresher than prior runs (2026-05-06, 84% vs prior 77%). Suggested fix order: engine.py FSM first (unblocks 7/9), then guardrails+prompt.
-
-## eval-fixer run — 2026-05-09
-- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (same stale scorecard, 10 days old)
-- Action: issue-filed (#1103 — added to Kanban)
-- Hard-stop: 3 file_clusters keys (engine.py + guardrails.py + active.yaml). Identical 13 failures as 2026-05-04/05/06/07/08 runs. Prior issues #985, #1017, #1044, #1074 still open. Scorecard hasn't been regenerated in 10 days — judge eval is badly overdue, or one of the prior issues needs to land a fix before signal returns.
-
-## eval-fixer run — 2026-05-08
-- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (same stale scorecard, 9 days old)
-- Action: issue-filed (#1074 — added to Kanban)
-- Hard-stop: 3 file_clusters keys (engine.py + guardrails.py + active.yaml). Identical 13 failures as 2026-05-04/05/06/07 runs. Prior issues #985, #1017, #1044 still open. Underlying scorecard hasn't been regenerated in 9 days — fresh judge eval is overdue, or one of the prior issues needs to land a fix before another run will produce signal.
-
-## eval-fixer run — 2026-05-07
-- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (same stale scorecard, 8 days old)
-- Action: issue-filed (#1044 — added to Kanban)
-- Hard-stop: 3 file_clusters keys (engine.py + guardrails.py + active.yaml). Identical 13 failures as 2026-05-04/05/06 runs. Prior issues #985 and #1017 still open. Underlying scorecard has not been regenerated for 8 days — judge eval needs to be re-run or one of the prior issues needs to land a fix before another run will produce signal.
-
-# Hot Cache — 2026-05-06 — CHARLIE
-
-## Session — 2026-05-06 (CHARLIE, CRA-8 Phase 0 re-baseline)
-
-- **Fresh eval scorecard**: `tests/eval/runs/2026-05-06T0752-offline-text.md` — `40/57 (70%)` on `main` HEAD (`90df74d`). Stale was `44/57 (77%)` on `2026-04-29T0617`. **4 net new regressions** since the stale scorecard.
-- **Cluster A (3 fixtures from spec) — RESOLVED on main**: `vfd_danfoss_02_aqua_drive_manual`, `vfd_mitsu_02_fr_e700_find_datasheet`, `vfd_siemens_02_micromaster_manual` all PASS now (commit `28aba78` did the work).
-- **Cluster B residuals**: `pilz_manual_miss_11`, `distribution_block_forensic_36` still stuck in `MANUAL_LOOKUP_GATHERING`. `vfd_mitsu_03_a700_parameter` PASSES now.
-- **Cluster C residuals**: `vague_opener_stuck_state_05` PASSES now; `vfd_danfoss_04_vlt_fc360_edge` still stalls at `Q1`.
-- **NEW Q-state regressions (not in spec's 13)**: `pf525_f004_02`, `gs20_cross_vendor_03`, `asset_change_mid_session_08`, `reset_new_session_09`, `gs3_ground_fault_14`, `gs20_phase_loss_16`, `yaskawa_a1000_ov_23`, `yaskawa_ga700_encoder_26`, `vfd_abb_01_acs580_fault_2310`, `vfd_siemens_03_sinamics_cross_vendor`, `self_critique_low_instruction_35`. Mostly LLM-stochastic Q1↔Q2↔DIAGNOSIS stalls — Cluster C reword + Phase 2 hard FSM rule should mop these up.
-- **Branch**: `fix/cra-8-fsm-eval-residual` (from `main` `90df74d`). Phase 1 (apply all clusters per Mike) starting next.
-
-# Hot Cache — 2026-05-04 — CHARLIE
-
-## Session — 2026-05-04 (CHARLIE, Stage 1 DST merge)
-
-- **Stage 1 merged to main**: `feat/dialogue-state-tracker` → `main` fast-forward at `26b69ed`. No conflicts. 7 new files (dialogue_acts.py, dialogue_state.py, dialogue_tracker.py, 3 test files, +201 lines in engine.py).
-- **Tests**: 115/115 pass (0.16s). Full suite: 470 pass, 52 pre-existing adapter import failures (unchanged from before merge — not regressions).
-- **Flag-gated OFF**: `_DST_ENABLED = os.getenv("MIRA_USE_DST", "0") == "1"` — live behavior is **identical** to before until flag is enabled.
-- **To enable DST**: add `MIRA_USE_DST=1` to Doppler `factorylm/prd` → restart `mira-bots` container on VPS.
-- **After enabling**: run Mike's 5-question human test. Synthetic harness: `cd mira-bots && uv run pytest tests/test_dialogue_tracker.py tests/test_dialogue_acts_llm.py tests/test_engine_dst_integration.py -v`.
-- **Also merged today**: CRA-20 (Open CMMS button on /m/:tag/* scan pages — PR #975), CRA-21/22 (magic-link JWT). PRs open: CRA-23 (PR #959 — Atlas→MIRA floating button), CRA-18 (PR #945 — landing page rewrite).
-
-## Stage 2 — Next Actions (in order)
-
-1. **[user-action]** Enable DST on VPS: `doppler secrets set MIRA_USE_DST=1 --project factorylm --config prd` → `docker compose restart mira-bots` → run 5-question human test
-2. **[agent-action] Remove legacy `route_intent`** — once DST validated live, delete `mira-bots/shared/conversation_router.py` and all call sites except engine.py line 17 import (replace with DST-only path, remove `_DST_ENABLED` flag)
-3. **[agent-action] Slot-fill ladder** — when DST classifies `answering_question`, extract answer into slot (equipment/fault_code/symptom) instead of re-embedding as RAG query. Lives in `dialogue_tracker.py` dispatch handler.
-4. **[agent-action] Hard vendor filter on RAG** — if `SalientEntities.equipment_vendor = "Siemens"`, filter `recall_knowledge()` results to Siemens-sourced chunks only. Target: `neon_recall.py` WHERE clause + `dialogue_state.py` entity extraction.
-5. **[agent-action] Conversation repair** — when DST detects `action_interrupt` mid-diagnosis, acknowledge + handle interrupt + prompt to resume original thread. Lives in `_maybe_dispatch_via_dst()`.
-6. **[agent-action] CRA-11** — Source citations in RAG (extend `neon_recall.py:372-395`, inject `[Source:]` in `rag_worker.py:376`, compliance check in `engine.py Supervisor.process_full()`). Branch: `feat/mvp-unit-2-citations`.
-
-## PRs Open (as of 2026-05-04)
-
-| PR | Branch | What | Status |
-|----|--------|------|--------|
-| #975 | fix/cra-20-cmms-scan-buttons | Open CMMS button on scan pages | Open, ready to merge |
-| #959 | fix/cra-23-open-mira-from-cmms | "Open MIRA →" float on CMMS | In Review |
-| #945 | feat/unit-9a-landing | Landing page $97/mo rewrite | In Review |
-
-# Hot Cache — 2026-05-03 — BRAVO
-
-## Session — 2026-05-03 (BRAVO, eval recovery engine fixes)
-
-- **Fix 1 (FSM stuck in MANUAL_LOOKUP_GATHERING)**: In `engine.py` ~line 736, before falling through to `_enter_manual_lookup_gathering()`, added a KB pre-check when `mfr` is already known. If `kb_has_coverage()` returns True, routes directly to `_do_documentation_lookup()` instead. Targets 5 failing fixtures where FSM was stuck gathering vendor info we already had.
-- **Fix 2 (canned "documentation indexed" vs vendor URL)**: In `_do_documentation_lookup()` ~line 2459, updated the `kb_covered` reply to include the vendor name and URL if available (`f"I have {mfr} documentation indexed. Official source: {url} Ask about fault codes, specs, or wiring."`). Targets 3 failing fixtures expecting vendor name/model keywords in the response.
-- **Tests**: 345 passed, 0 new failures (excluding 5 pre-existing import/isolation issues: slack_relay, teams_adapter, email_adapter, telegram_adapter x2).
-- **Eval status**: fixes address 8 of the 13 failures from the 2026-04-30 run (77%→estimated ~91%). Remaining 5 are thin-diagnosis content — active.yaml tuning if needed.
-- **Branch**: `feat/multi-tenant-telegram` — not yet committed.
-
-# Hot Cache — 2026-04-30 — CHARLIE
+> **Last updated:** 2026-05-25 (session-end handoff)
+> **Read this first.** Then check `CLAUDE.md` build state and `docs/plans/2026-05-15-maintenance-namespace-builder.md` for the active 90-day plan.
 
 ---
 
-# Hot Cache — 2026-05-03 — CHARLIE
+## TL;DR for the next Claude
 
-## Session — 2026-05-03 (CHARLIE, Marketing Director audit)
+A long session just wrapped. Two new feature branches are open as PRs (QA regression + conversational engine spec). The current working branch (`docs/plc-rs485-bench-runbook`) has 7 unmerged docs commits including 3 new Modbus training PDFs — **PR not yet open for it**. Six follow-up issues filed (#1549–#1554). PR #1526 (schematic vision fix) merged but staging deploy is still pending behind prod-guard.
 
-**What was done:**
-- Full marketing audit: MIRA + FactoryLM repos, Linear board (Cranesync), all open PRs
-- **PR #941 merged** — competitor analysis refresh (COMPETITOR_ANALYSIS.md)
-- **PR #927 merged** — gitignore audio/video outputs in marketing/videos
-- **PR #945 opened** — Unit 9a landing page rewrite (feat/mvp-unit-9a-landing) — 1,516-line index.html, three features above fold, $97/mo pricing
-- **PR #946 opened** — LinkedIn 6-part series + warm outreach DM templates (feat/marketing-content-clean)
-- **feature-cartoons.js** — already on main via PR #931, no action needed
-- **PR #790** — promo director playbook v1.0.0 — CI re-triggered (pushed YAML change), pending pass
-
-**New files:**
-- `marketing/content/linkedin-series-2am-vfd-problem.md` — 6 posts, weekly from 2026-05-10
-- `marketing/content/warm-outreach-dm-templates.md` — 6 DM templates + tracking sheet
-
-**Critical path (first paid demo May 4):**
-- Unit 9a: PR #945 open, CI pending, needs Lighthouse ≥90 + Stripe test charge
-- Unit 2 (citations): CRA-11, branch feat/mvp-unit-2-citations — TODO
-- Unit 6 (hybrid retrieval): CRA-15 — TODO
-
-## Next Actions (2026-05-03 priority order)
-
-1. **Merge PR #790** — watch CI on feat/promo-director-playbook; merge when lint green
-2. **Merge PR #946** — markdown-only, CI will skip, can merge now
-3. **Merge PR #945** — needs Lighthouse ≥90 + Stripe test charge
-4. **Start LinkedIn Post 1** — schedule "The 2 AM Call" for Tue 2026-05-10, 7-9 AM Eastern
-5. **HubSpot API key** — add `HUBSPOT_API_KEY` to Doppler `factorylm/prd` to unlock 330-prospect import
-6. **Unit 2 + 6** — needed for first paid demo May 4
+**Priority #1: QA regression Phase 2** (issue #1549). It's the lock-in against the GS11-style silent regression pattern.
 
 ---
 
-# Hot Cache — 2026-05-02 — CHARLIE
+## In flight — PRs open
 
-## Just Finished
+| # | Title | Branch | What it is |
+|---|---|---|---|
+| **#1531** | docs(specs): conversational engine upgrade — 3-layer model | `feat/conversational-engine-spec` | Spec for splitting Supervisor into front desk / router / grounded specialist. **Implementation tracked at #1551.** |
+| **#1530** | feat(qa): boundary-level regression routine for staging Telegram bot | `feat/qa-regression-routine` | Phase 1 runner. Two run artifacts exist. **Phases 2-4 tracked at #1549.** |
+| **#1529** | chore(promo-director): COMPETITOR_ANALYSIS.md refresh 2026-05-25 | `chore/promo-director-refresh-2026-05-25` | Draft. |
+| **#1527** | security(scan-monday): CRA-159 per-account burst rate limit on /chat/message | `fix/cra-159-chat-burst-rate-limit` | |
+| **#1524** | docs: Modbus RTU framing mismatch golden case + product case study + Q14 benchmark | `docs/modbus-troubleshooting-golden-case-2026-05-24` | |
+| **#1523** | feat: component hierarchy — sibling tree + DRIVES edge + state-machine glossary (ADR-0017, 0018, mig 028) | `feat/component-hierarchy-grilling-2026-05-24` | |
+| **#1522** | docs(plc): Conv_Simple v1.4 bench-code review with byte-level evidence | `claude/cool-moser-0152ac` | |
+| **#1521** | fix(engine): snapshot kb_status before self-critique await (closes #1520) | `fix/engine-kb-status-race-1520` | Draft. |
+| **#1508** | docs(benchmark): empirical KG addendum + db-inspect target-confusion prevention | `chore/kg-benchmark-2026-05-23` | |
+| **#1452** | docs(research): Fuuz deep-dive — Episode 6 + skills + repos + MIRA action plan | `claude/charming-ride-719fde` | |
+| **#1392** | feat(hub): Windows 3.1 namespace explorer | `feat/hub-namespace-explorer` | |
+| **#1377** | feat: answer-quality standard + scaffolding benchmark | `claude/agitated-kowalevski-17c2c5` | |
+| **#1340** | experiment(plc): CCW Ladder Diagram .isaxch import format | `experiment/ccw-ld-isaxch` | Draft. |
+| 1532-1548 | dependabot updates | various | Routine. |
 
-- **Linear board fully operational** — Cranesync workspace, 3 projects (MVP Build / Sales & GTM / Ops & Infra), 15 issues (CRA-5 through CRA-19), all labeled with `user-action` / `agent-action`. All 4 custom statuses created (Shaping, Reviewed, Ready to Deploy, Pending Deployed). Board cleaned up: FactoryLM stale project cancelled, all 3 active projects set to In Progress.
-- **Linear MCP plugin confirmed installed** — HTTP transport → `https://mcp.linear.app/mcp`. Config: `~/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/linear/.mcp.json`. Zero config changes needed.
-- **YouTube transcript researcher skill shipped** — `tools/youtube_transcript.py` + global skill `.claude/skills/youtube-transcript.md`. Triggers when YouTube URL is pasted and WebFetch would fail.
-- **Promo screenshots** — captured to `docs/promo-screenshots/` for video pipeline.
-- **Memory snapshot committed** — `docs/memory-snapshots/2026-05-02/` + tag `memory-rollback-2026-05-02`.
-
-## Machine State
-
-- **CHARLIE (this machine):** `main` @ `4c90bf1` — memory snapshot + wiki update. YouTube transcript skill + promo screenshots at `3ede8ef`.
-- **VPS:** last known `main` @ `eeb9a4b` (mira-bot-telegram) — not touched this session.
-- **Alpha / Bravo:** no changes this session.
-
-## Blocked
-
-- **"In Review" status** — Linear Settings → Workflow → delete it manually. The API cannot manage workflow states; this default status conflicts with the custom "Reviewed". One-minute manual fix.
-- **Eval FSM 77%** — CRA-8 (Ops & Infra). Same 13-failure cluster (engine.py + guardrails.py + active.yaml) has run 4 days without progress. Needs human triage — manual-lookup misroute is the highest-leverage fix.
-
-## Next (any machine)
-
-**All active work is tracked in Linear → linear.app/cranesync**
-
-Quick orientation:
-- `agent-action` issues = Claude can execute autonomously
-- `user-action` issues = needs Mike
-- Urgent/blocked: CRA-5 (SPF/DKIM DNS), CRA-6 (NEXTAUTH_SECRET to Doppler), CRA-8 (eval FSM fix)
-- In-flight branches: `feat/mvp-unit-4-exports` (CRA-13), `feat/mvp-unit-9a-landing` (CRA-18)
+**Recently merged this session:**
+- **#1526** — `fix(engine): analyze schematic photos with vision LLM when a question is attached`. Merged 2026-05-25 05:50Z. **Staging deploy still blocked** by prod-guard (correctly) — see issue #1552.
 
 ---
 
-## Recent Eval-Fixer Runs (context for eval debugging)
+## Current branch state
 
-### eval-fixer run — 2026-05-03
-- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (stale for 5th day; no new run)
-- Action: issue-filed (#932)
-- Same 13-failure pattern persists. Issue groups failures into Cluster A (FSM, 5) and Cluster B (keyword/content, 8) with B1–B4 sub-patterns. B1 (manual-lookup canned "I already have documentation indexed" deflection, 4 fixtures) flagged as highest-leverage fix in `engine.py`. → **CRA-8**
-
-### eval-fixer run — 2026-05-02
-- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md` (stale for 4th day; no new run)
-- Action: issue-filed (#918)
-- Same 13-failure pattern as #884/#916 — engine.py FSM stuck (5) + guardrails/active.yaml content (8). Cluster spread blocks autopatch. Manual-lookup misroute first (3 fixtures get canned "documentation indexed" deflection instead of vendor URL + IDLE state). → **CRA-8 in Linear**
-
-### eval-fixer run — 2026-05-01
-- Scorecard: 44/57 passing (77%) — same stale scorecard
-- Action: issue-filed (#916)
-
-### eval-fixer run — 2026-04-30
-- Scorecard: 44/57 passing (77%) — `tests/eval/runs/2026-04-29T0617.md`
-- Action: issue-filed (#884)
-- 13 failures spanning 3 files — exceeds single-file autopatch limit. FSM stuck (5), manual-lookup canned reply (3), cross-vendor RAG bleed (1), thin diagnosis (4).
-
-## eval-fixer run — 2026-04-29
-- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0455.md` (stale, same scorecard as 2026-04-28 — no new run produced)
-- Action: issue-filed (#854)
-- Third day in a row of the same systemic infra failure (#753, #803, now #854). Every fixture returns 0-char responses — `cp_pipeline_active` fails universally, 0 patchable. No upstream eval has produced a fresh scorecard since 2026-04-27 04:55 UTC. Engine/cascade still silent.
-
-## eval-fixer run — 2026-04-28
-- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0455.md`
-- Action: issue-filed (#803)
-- Same systemic failure as 2026-04-27 (#753): all 57 fixtures returned 0-char responses; `cp_pipeline_active` fails for every fixture, so 0 patchable. Engine is silent — infra/cascade still broken. Last fresh scorecard is the 2026-04-27 04:55 UTC run.
-
-## eval-fixer run — 2026-04-27
-- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-27T0103.md`
-- Action: issue-filed (#753)
-- All 57 fixtures failed `cp_pipeline_active` with 0-char responses — pipeline silent across the board, infra/cascade issue, not patchable. State stayed IDLE because no response was ever generated.
-
-## Session — 2026-04-27 (CHARLIE, PM end-to-end demo)
-
-- **PM Work Order Auto-Generator shipped**: `pm_scheduler.py` + `/api/pm/generate-work-orders` in mira-pipeline. Generates WOs from due `pm_schedules`, mirrors to Atlas CMMS, runs at UTC midnight via asyncio task. Fixed enums: `auto_pm` (sourcetype), `PM` (routetype), `user_id='pm_scheduler'`, equipment_id FK via `_resolve_equipment_id()`.
-- **26 PMs extracted** across 8 equipment models (Yaskawa, Rockwell, Allen-Bradley, Danfoss, Siemens). 43 WOs in mike tenant, 3 auto-generated (Auto-PM source).
-- **Hub WO page**: now fetches live from NeonDB via new `/api/work-orders` route. Auto-PM badge (Sparkles), Telegram badge, source citations, parts preview. Fixed basePath URL bug: `fetch("/hub/api/...")` not `fetch("/api/...")`.
-- **Hub Schedule page**: fetches 26 real PMs via `/hub/api/pm-schedules`. "26 AI-extracted" badge. Calendar shows live data.
-- **STRATEGY.md + NORTH_STAR.md** committed to repo root. CLAUDE.md updated with screenshot rule.
-- **Auto-trigger PM extraction**: `_maybe_trigger_pm_extraction()` in mira-ingest fires after `ingest_document_kb` success.
-- **PR #732 merged** (5 UX fixes — #688 #719 #720 #721 #722).
-- **Promo screenshots** (8): schedule + WO pages at desktop+mobile. In `docs/promo-screenshots/`.
-- **NEXTAUTH_SECRET**: hardcoded in `/opt/mira/docker-compose.hub.yml` on VPS (not in Doppler — add it!).
-- **Issue #690** (SPF/DKIM): DNS check shows no SPF/DMARC configured. Action plan in issue comments. Manual DNS work for Mike.
-
-## Next Actions (2026-04-27 priority order)
-
-1. **#690 SPF/DKIM** — Mike adds SPF+DMARC+DKIM CNAMEs to DNS registrar (5 records, manual). Documented in issue.
-2. **NEXTAUTH_SECRET** — add to Doppler `factorylm/prd` so it survives hub rebuilds (current hardcode in docker-compose.hub.yml will be lost on next git pull on VPS).
-3. **WO detail page** — rewrite to fetch real WO from NeonDB (currently hardcoded fallback); add `/api/work-orders/[id]` route.
-4. **PM scheduler midnight run** — confirm it ran overnight (check mira-pipeline-saas logs morning of 2026-04-28).
-5. **Branch cleanup** — `feat/hub-741-login-gate` has all hub work; PR + merge to main.
-
-# Hot Cache — 2026-04-25 — BRAVO
-
-## Session — 2026-05-01 (BRAVO, development status orientation)
-
-- **Repo/GitHub orientation only**: no code changes beyond this hot-cache note.
-- **Current local branch**: `feat/multi-tenant-telegram`, with `24` local commits ahead and `260` commits behind `origin/main`; working tree also has a pre-existing modification in `marketing/prospects/hardening-alerts.jsonl`.
-- **Latest `origin/main`**: `9d3ac48` after PR #915 (`feat(cmms): WO completion validation + PM multi-trigger scheduling`) and PR #914 (`feat(security+export): /security page + data export API`).
-- **MVP plan drift**: `docs/plans/2026-04-19-mira-90-day-mvp.md` still lists only Unit 6 as in-flight, but commits/env docs show Unit 3 magic inbox, Unit 4 exports, and Unit 6 hybrid retrieval have landed or partially landed. The plan file needs a sync before new unit work is claimed.
-- **Open PR focus from `gh pr list`**: security/site-hardening PRs #890, #891, #892 plus plan #888 remain open; #885 is a post-sweep status update; large non-MVP branches remain open (#879 synthetic Rico, #836 RealWear, #790 promo director) plus Dependabot PRs.
-- **Open issue focus from GitHub connector**: #913 says main CI has 3 failing workflows; #884 reports eval at 44/57 with 13 patchable failures; #880 Telegram inbound is blocked by a competing CHARLIE poller; #881 KB growth is blocked by missing `mira-docling` on VPS; #889/#877 are engine/RAG security findings.
-- **Coordination note**: start new work from fresh `origin/main`, not the current local branch, unless intentionally continuing `feat/multi-tenant-telegram`.
-
-## Session — 2026-05-01 (BRAVO, ingest latency tracking)
-
-- **Added local ingest latency utility**: `mira-crawler/metrics/latency.py` writes append-only JSONL records; `mira-crawler/tools/record_ingest_latency.py` wraps arbitrary parser/ingest commands.
-- **Instrumented local folder watcher path**: `mira-crawler/main.py` now records `read`, `dedup`, `parse`, `chunk`, `embed`, and `store` timings for dropped-file ingestion.
-- **Documented usage**: `docs/developer/ingest-latency.md`; default log is `mira-crawler/data/ingest_latency.jsonl`, override with `MIRA_INGEST_LATENCY_LOG`.
-- **VPS side script deployed**: copied recorder files to `/opt/mira/mira-crawler/{metrics,tools}` and smoke-tested writes to `/var/log/mira-agents/ingest_latency.jsonl`.
-- **VPS cron wrapped**: KB-growth crontab line now runs `record_ingest_latency.py --parser docling --source-id kb_growth` around `/opt/mira/mira-crawler/cron/kb_growth_cron.py`, logging latency JSONL plus normal output to `kb_growth.log`.
-- **#881 status discovered**: `mira-docling-saas` is deployed and healthy, but the PowerFlex-525 queue item still fails with `Docling: timed out`; next fix is parser timeout/split behavior in `mira-crawler/tasks/full_ingest_pipeline.py` on the current `origin/main`/VPS code path.
-- **#881 parser hotfix applied on VPS**: `full_ingest_pipeline.py` now splits large PDFs before Docling sync and falls back to `pypdf` if Docling times out or returns empty text; `kb_growth_cron.py` now exits nonzero when an item fails.
-- **Verification**: direct CompactLogix-L1 ingest succeeded after patch (`20,842` chars, `8` KB chunks, `1` equipment entity, `1` fault-code entity). Wrapped KB-growth run then processed MicroLogix-1400 successfully (`62,624` chars, `9` KB chunks, `1` equipment entity); latency JSONL recorded `199,415 ms`.
-- **Queue after verification**: `3 done`, `1 failed`, `31 pending`; remaining failed item is PowerFlex-525 from the pre-hotfix run and should be retried or reset after confirming dedup behavior.
-- **Git preservation**: created local worktree `/tmp/mira-issue-881-patch` on branch `fix/kb-growth-parser-fallback-881` with the VPS parser/cron patch plus ingest latency utility files staged as working-tree changes.
-
-## Session — 2026-05-01 (BRAVO, KB library dashboard PRD)
-
-- **PRD/spec added**: `docs/superpowers/specs/2026-05-01-kb-library-dashboard-design.md` defines a public FactoryLM KB Library page plus an authenticated Hub KB Ops dashboard.
-- **Dashboard indicators chosen**: ingest latency, parse success rate, queue freshness, and coverage quality; includes status/actions for retry, fallback reparse, quarantine, parser restart, publish/unpublish, and log review.
-- **Schema proposed**: `kb_documents`, `kb_ingest_runs`, and `kb_ingest_events` to stop inferring manuals from chunks and to make ingest self-diagnosing.
-- **OSS research outcome**: use existing Hub stack first (`recharts` already installed); compatible candidates include Apache ECharts, TanStack Table, shadcn/ui patterns, Docling, and Unstructured. Avoid Grafana/Metabase OSS because AGPL violates the current Apache/MIT-only rule.
-- **Live ingest note**: second watched KB-growth run for Allen-Bradley 100-C later failed after the 900s wrapper timeout. Latency JSONL recorded `status=error`, `returncode=1`, `delivery_to_done_ms=900132`; queue became `4 done`, `2 failed`, `29 pending`. Treat this as a dashboard requirement: show slow-but-progressing separately from timed-out/stuck, and surface command-level timeout as a distinct failure category.
-
-## Session — 2026-04-26 (BRAVO, marketing landing-page recon)
-
-- **Recon artifact added**: `docs/recon/marketing-landing-pages-2026-04-26/recon-notes.md` compares public `factorylm.com` and `factorylm.com/cmms` against public Factory AI (`f7i.ai`) plus current competitor references.
-- **Screenshots captured**: homepage/pricing/trial screenshots saved in `docs/recon/marketing-landing-pages-2026-04-26/screenshots/` for FactoryLM, Factory AI, MaintainX, UpKeep, Limble, and Fiix.
-- **Key finding**: FactoryLM's product thesis is strong, but the first viewport lacks trust proof and the `/cmms` beta form asks for too much too early.
-- **Highest-leverage recommendation**: make `/cmms` the tester funnel with passwordless magic-link entry, ask only for email first, and land users in a seeded sample workspace or guided first diagnostic.
-- **Competitor patterns to borrow**: Factory AI page sequencing, UpKeep hero composition, MaintainX free-trial clarity, Limble dark-theme polish, Fiix credibility stacking.
-- **Safety**: no public forms submitted, no emails sent, no beta signups created.
-
-## Session — 2026-04-25 (BRAVO, repo sync baseline)
-
-- **Repo sync baseline implemented**: switched from stale `feat/lsp-claude-code` to fresh `codex/repo-sync-baseline` tracking `origin/main` at `ca3c54a`.
-- **Preserved old branch tip**: local branch `codex/preserve-lsp-claude-code-20260425` points at the previous LSP checkout; it was 44 commits ahead / 204 behind `origin/main`.
-- **Local untracked work preserved**: `.agents/`, `AGENTS.md`, `.playwright-mcp/page-2026-04-12*.yml`, and `marketing/prospects/hardening-alerts.jsonl` remain present.
-- **Baseline note added**: `docs/developer/repo-sync-baseline-2026-04-25.md` records current branch, preserved work, coordination check, collaboration map, and verification results.
-- **Coordination check**: open PRs include #637 Unit 9a landing, #635 CI billing/auth skip, #634 hub auth secret, #610 Anthropic runtime removal. MVP plan currently shows Unit 6 hybrid retrieval claimed by `agent-claude`; avoid `neon_recall.py` / migration 006 until coordinated.
-- **Verification**:
-  - `pytest mira-bots/tests/test_citation_gate.py -v` passed: 25/25.
-  - `pytest tests/ -m "not network and not slow"` still blocked during collection after network rerun: missing `hypothesis`, broken local `starlette` import for FastAPI, and `shared.session_memory` import resolution.
-  - `cd mira-web && bun test` failed on existing environment/dependency issues: `@neondatabase/serverless` missing named `Client`, missing `NEON_DATABASE_URL` for QR tracker, and Stripe network behavior in account deletion test.
-
-## Session — 2026-04-25 (BRAVO, Factory AI / Hub recon)
-
-- **Recon artifact added**: `docs/recon/factory-ai-hub-2026-04-25/recon-notes.md` compares signed-in Factory AI (`app.f7i.ai`) against signed-in FactoryLM Hub (`app.factorylm.com/hub/*`) for layout, styling, functions, flows, and bootstrap recommendations.
-- **Screenshots captured**: 43 PNGs in `docs/recon/factory-ai-hub-2026-04-25/screenshots/`, including Factory AI registry/assets/work orders/inventory/purchasing/knowledge/settings/AI tour and FactoryLM feed/event-log/conversations/knowledge/channels/workorders.
-- **Key design takeaway**: Factory AI's polish comes from a consistent shell, persistent right-side AI rail, dense table tooling, skeletons, and finished empty states; FactoryLM has stronger industrial content but needs route reliability and shell polish.
-- **Hub issues found live**: `/hub/assets` bounced to login from a signed-in page, `/hub/usage` failed with a browser load error even after reload, and New Work Order step 1 labels the progression button `Save` despite a 3-step wizard.
-- **No live records changed**: no submit/save/delete/acknowledge/dismiss/connect actions were completed; upload/file-picker flows were inspected without selecting files.
-
-# Hot Cache — 2026-04-22 — CHARLIE
-
-## eval-fixer run — 2026-04-23
-- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-20T1011.md` (stale 3+ days)
-- Action: issue-filed — #525 (57 failures, 0 patchable; pipeline produced 0-char responses on every fixture)
-- Systemic pipeline failure, not single-file patchable. Still no fresh scorecard since 2026-04-20 — upstream eval job on Alpha still appears stuck (see #474).
-
-## eval-fixer run — 2026-04-22
-- Scorecard: 0/57 passing (0%) — `tests/eval/runs/2026-04-20T1011.md` (unchanged from 2026-04-21)
-- Action: issue-commented — #474 re-flagged (dup #484 closed)
-- Same scorecard as yesterday; watchdog has not ingested a fresh eval in 2+ days. Escalation added to #474: check Alpha Celery beat + `mira_eval_tasks.py` logs — hourly eval may have stopped producing scorecards.
-
-## Session — 2026-04-22 (CHARLIE, tech debt sprint)
-
-- **Tech debt sprint complete** — 6 issues closed: #508 (shell injection), #509 (hardcoded IPs), #510 (:latest tags), #511 (PLCWorker dead code), #512 (dup env vars), #513 (zero unit tests)
-- **Conversation stability fixes shipped** (PR #514 merged): formatted reply stored in history, `active_alarm` anchor, photo role split (user caption vs system OCR), `_strip_memory_block` combined
-- **Cascade fix**: router.py now logs unconditionally when all providers fail (commit b463dbe) — fixes #474
-- **CD pipeline live** (#392 closed): `.github/workflows/deploy-vps.yml` auto-deploys on push to main; VPS SSH key in GitHub secrets
-- **Eval baseline**: 47/57 passing (82.5%) — `tests/eval/runs/2026-04-22T0828-offline-text.md`. Closed #474, #399.
-- **V1000 ingest**: `pdf_stored=false` reset for id=266; pdfplumber extracted 2923 chunks; Ollama embedding in progress (background, pid 5740). Closes #383 once complete.
-- **VPS**: healthy post-deploy (PR #515 auto-triggered CD), all 8 containers up. Last deploy: `06e8e82`.
-
-## Session — 2026-04-20 (CHARLIE, QR pipeline ship)
-
-- **v3.6.0 tagged + pushed** — QR asset-tagging pipeline complete: scan → pipeline → asset-aware chat + channel chooser + guest reports.
-- **PR #412 merged** (`feat/qr-asset-tagging`): QR MVP — 66 tests, migrations 003 applied to NeonDB prod. Conflicts resolved: `Supervisor` rename + format fix.
-- **PR #423 merged** (closes #408): `lookup_scan_context` with LEFT JOIN — saves ~200-300ms per scan-to-chat turn.
-- **PR #424 merged** (closes #409): Reset wins over pending scan (Option B). `Set-Cookie: mira_pending_scan=; Max-Age=0` on `/reset`.
-- **PR #421 merged** (`feat/qr-channel-chooser`): channel chooser + guest form + admin channel config. Migrations 004+005 applied to NeonDB prod.
-- **PR #425 merged** (closes #407): `NOT_FOUND_HTML` extracted to `src/views/scan-not-found.html`.
-- **PR #426 merged** (closes #408-guardrails): `"was live"` + `"while live"` added to `SAFETY_KEYWORDS`.
-- **Issue #410 done**: `PLG_JWT_SECRET` synced to Doppler `factorylm/dev` config.
-- **NeonDB migrations applied**: 003 (asset_qr_tags + qr_scan_events), 004 (tenant_channel_config), 005 (guest_reports).
-
-## Session — 2026-04-20 (BRAVO)
-
-- **PR #421 opened (draft)**: `feat/qr-channel-chooser` → `main` — Phase 1 QR channel chooser + guest form + admin config. **52/52 tests pass**. Commit `a675cf6`.
-- **feat/qr-channel-chooser branch**: full Phase 1 implementation shipped. See PR #421 for acceptance checklist.
-- **Phase 1 summary**:
-  - DB: `tenant_channel_config` + `guest_reports` migrations (004, 005)
-  - `/m/:tag` now auth-optional; unauthed scans route to chooser / guest form / direct channel via cookie
-  - `/m/:tag/choose` — tenant-ordered channel buttons, sets 30-day HMAC cookie on pick
-  - `/m/:tag/report` — guest fault-report form + `POST /api/m/report` (no Atlas WO auto-created)
-  - `/admin/channels` — per-tenant channel config (admin-gated)
-- **Kanban board**: needs `gh auth refresh -h github.com -s read:project` to add PR #421. Run this in terminal then add: `gh project item-add 4 --owner Mikecranesync --url https://github.com/Mikecranesync/MIRA/pull/421`
-- **GitHub auth scope fix needed**: token is missing `read:project`. Run: `gh auth refresh -h github.com -s read:project`
-
-## Machine State (as of 2026-04-20 BRAVO)
-
-- **BRAVO (this machine):** `feat/qr-channel-chooser` branch — `a675cf6`, pushed to origin
-- **VPS (165.245.138.91):** still on `main` — `1997a0d`. PR #421 not yet merged/deployed.
-- **Bravo Ollama (100.86.236.11):** :11434 OK
-- **PLC Laptop (100.72.2.99):** PLC at 192.168.1.100 unreachable — physical check needed
-
-## Next Actions (priority order)
-
-1. **Fix GitHub auth scope** → `gh auth refresh -h github.com -s read:project` then add PR #421 to kanban
-2. **Review + merge PR #421** — Phase 1 QR chooser. Deploy checklist in PR body.
-3. **After PR #421 merge**: apply migrations 004 + 005 on VPS NeonDB, rebuild `mira-web`
-4. **Fix #378** — `guardrails.rewrite_question` can return `""` — P1 safety bug (branch: `fix/hypothesis-rewrite-question-input` exists)
-5. **Fix #377** — `test_crawler_type_is_valid` fails — Siemens `playwright:chrome` rename (branch: `fix/crawler-type-playwright-prefix` exists)
-6. **VPS stash**: drop stale fixture stash from old `feat/training-loop-v1` session once eval confirms clean
-7. **BFG git history cleanup** — purge old secrets from history
-8. **HTTPS/TLS** — nginx config on VPS
-9. **#392** — VPS CD pipeline (still manual SSH deploy)
-
-## Open Issues (active)
-
-- **#383** — V1000 chunks backfill — ingest running (2923 chunks being embedded)
-- **#403** — 6 missing Rockwell publications (documentation gap, needs manual download)
-- ~~**#338, #335, #377, #378, #399, #474, #392**~~ — all confirmed CLOSED as of 2026-04-22
-
-## Key NeonDB Facts
 ```
-Total chunks: ~68,000+
-Rockwell Automation: 13,686 chunks (main KB)
-ABB: 931 chunks — mostly NULL model_number
-Siemens: 905 (SINAMICS) + 442 (other)
-AutomationDirect: 2,250 chunks (GS10, PF525, etc.)
-Yaskawa: 27 chunks (NULL model) + 1 (CIMR-AU4A0058AAA)
-Danfoss: 2 chunks (VLT FC302 only)
-Mitsubishi Electric: 16 chunks (NULL model)
+docs/plc-rs485-bench-runbook (HEAD)
+  ba94a213 chore: session 2026-05-25 cleanup — eval runs, lead-hunter state, PROGRESS
+  6deb3348 docs(guides): Modbus RTU student workbook + implementation guides + domain glossary
+  b591fe47 docs(plc): corrected ST code review (MSG_MODBUS retraction)
+  31607d61 docs(plc): add RS-485 bench troubleshooting runbook + Claude driver brief
+  4239d680 docs(wiki): eval-fixer run 2026-05-24
+  d7af5b66 chore: session 2026-05-23 cleanup
+  8115ba00 docs: benchmark results, evaluations, and research from 2026-05-23 session
 ```
+
+- 7 commits ahead of `origin/main`, 78 commits behind `origin/main`. **No PR yet.**
+- Pushed to `origin/docs/plc-rs485-bench-runbook` (up to date).
+- Decide whether to (a) open a PR for the whole branch, (b) cherry-pick the recent docs commits to a fresh branch off `main`, or (c) rebase. Option (b) is cleanest — the branch name no longer reflects the contents.
+
+**Local `main` is 79 commits behind `origin/main`** with 5 stale local commits ahead — see issue #1554 for the rebase task.
+
+---
+
+## Open issues filed this session
+
+| # | Title | Status |
+|---|---|---|
+| **#1549** | QA regression routine — finish Phases 2-4 (golden / load / regression suites) | **Priority #1** |
+| #1550 | Hermes Agent — provision DigitalOcean VPS + install | Blocked on droplet creation |
+| #1551 | Conversational engine upgrade — implement 3-layer architecture from spec | Depends on #1549 Phase 2 |
+| #1552 | Staging deploy of PR #1526 (schematic vision fix) — blocked by prod-guard this session | Resume via `smoke-test.yml` → `deploy-vps.yml` |
+| #1553 | Modbus RTU student workbook + implementation guides — next iteration | Open PR for `docs/plc-rs485-bench-runbook` branch |
+| #1554 | Rebase `main` — local was 79 commits behind origin/main | Mechanical |
+
+---
+
+## Decisions locked this session
+
+1. **Hermes Agent provisioning:** DigitalOcean droplet (NOT Hetzner — see memory `project_vps_provider_digitalocean.md`). Reuse OpenRouter key from Doppler `factorylm/prd`. NEW Telegram bot (`@Hermes_FactoryLM_bot` proposed). Subdomain `hermes.factorylm.com`.
+
+2. **QA regression is Priority #1.** Without it the GS11 embedding-gate pattern repeats. See `feedback_lock_in_chronic_ops_bugs.md`.
+
+3. **Conversational engine 3-layer architecture** (front desk / router / grounded specialist). UNS confirmation gate MUST sit in the router, not the specialist. Feature-flag behind `ENGINE_3LAYER=true` until golden-set parity.
+
+4. **PR #1526 staging promotion goes through the gate.** Don't bypass prod-guard with `MIRA_ALLOW_PROD=1`.
+
+---
+
+## What to do next (priority order)
+
+1. **Resume QA regression Phase 2** (issue #1549) — wire `tests/golden_factorylm.csv` + `tests/golden_hybrid.csv` into the runner. Branch: `feat/qa-regression-routine` (already pushed, PR #1530 open).
+
+2. **Open a PR for `docs/plc-rs485-bench-runbook`** OR cherry-pick the recent docs commits to a fresh branch. The branch has 7 commits ahead and no PR — the Modbus PDFs need review.
+
+3. **Promote PR #1526 to staging** (issue #1552). `gh workflow run smoke-test.yml` then `gh workflow run deploy-vps.yml -f services="…"` if green.
+
+4. **Rebase local main** (issue #1554). Mechanical. Do this before starting any new branch.
+
+5. **Hermes Agent provisioning** (issue #1550) when Mike is back at a keyboard for DO droplet creation.
+
+6. **Conversational engine implementation** (issue #1551) — but ONLY once Phase 2 of QA regression is in flight, so parity can be verified.
+
+---
+
+## Untracked files left on disk (intentional)
+
+- Root-level `gs10-*.pdf` (6 files) — session scratch from Modbus troubleshooting. Not committed. Mike can clean up.
+- `tests/qa_regression/runs/2026052*.json` + `.md` (4 files) — runner outputs. **Will be gitignored once PR #1530 merges** (the gitignore commit is on that branch).
+
+---
+
+## Worktrees
+
+30+ `.claude/worktrees/*` exist; most point at stale `claude/*` branches from prior sessions. Cleanup is part of issue #1554. Don't accidentally cd into one and start work — confirm `git rev-parse --show-toplevel` first.
+
+---
+
+## Memory updates this session
+
+Added (all under `~/.claude/projects/-Users-charlienode-MIRA/memory/`):
+- `project_modbus_guides_2026_05_25.md`
+- `project_hermes_agent.md`
+- `project_conversational_engine_3layer.md`
+- `project_qa_regression_priority.md`
+- `project_vps_provider_digitalocean.md`
+- `project_pr_1526_staging_blocked.md`
+
+Index updated in `MEMORY.md`.
+
+---
+
+## Pointers (unchanged, but re-stating for the next session)
+
+- **Primary doctrine:** `docs/THEORY_OF_OPERATIONS.md`
+- **Product surface contract:** `docs/specs/maintenance-namespace-builder-spec.md`
+- **Active plan:** `docs/plans/2026-05-15-maintenance-namespace-builder.md`
+- **Environments doctrine:** `docs/environments.md` (read before any deploy / migration)
+- **Build state:** `CLAUDE.md`
+- **Product rules:** `.claude/CLAUDE.md`
+- **Karpathy principles:** `.claude/rules/karpathy-principles.md`
