@@ -7581,4 +7581,57 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 **Working tree:**
 - M docs/context/PROGRESS.md
 **Next:** _set by next session_
+
+### 2026-05-25 14:32 UTC — `chore/promo-director-refresh-2026-05-25`
+**Last commit:** 95a6ad6 chore(context): session progress log 2026-05-25
+**Changed (vs. fork point):**
+- .claude/rules/uns-confirmation-gate.md
+- .claude/skills/mira-industrial-safety/SKILL.md
+- .claude/skills/mira-platform/SKILL.md
+- .claude/skills/mira-uns-architecture/SKILL.md
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .github/baselines/mira-bench.json
+- .github/workflows/apply-migrations.yml
+- .github/workflows/ci.yml
+- .github/workflows/code-review.yml
+- .github/workflows/compose-mem-lint.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/diag-bm25.yml
+- .github/workflows/enforcement-audit.yml
+- .github/workflows/migration-verify.yml
+- .github/workflows/mira-benchmark-weekly.yml
+- .github/workflows/oauth-redirect-canary.yml
+- .github/workflows/photo-e2e-verify.yml
+- .github/workflows/smoke-test.yml
+- .github/workflows/staging-gate.yml
+- .github/workflows/staging-namespace-create-e2e.yml
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-25 14:33 UTC — `chore/promo-director-refresh-2026-05-25`
+**Last commit:** 95a6ad6 chore(context): session progress log 2026-05-25
+**Changed (vs. fork point):**
+- .claude/rules/uns-confirmation-gate.md
+- .claude/skills/mira-industrial-safety/SKILL.md
+- .claude/skills/mira-platform/SKILL.md
+- .claude/skills/mira-uns-architecture/SKILL.md
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .github/baselines/mira-bench.json
+- .github/workflows/apply-migrations.yml
+- .github/workflows/ci.yml
+- .github/workflows/code-review.yml
+- .github/workflows/compose-mem-lint.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/diag-bm25.yml
+- .github/workflows/enforcement-audit.yml
+- .github/workflows/migration-verify.yml
+- .github/workflows/mira-benchmark-weekly.yml
+- .github/workflows/oauth-redirect-canary.yml
+- .github/workflows/photo-e2e-verify.yml
+- .github/workflows/smoke-test.yml
+- .github/workflows/staging-gate.yml
+- .github/workflows/staging-namespace-create-e2e.yml
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
