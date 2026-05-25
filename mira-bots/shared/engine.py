@@ -80,6 +80,7 @@ from .nemotron import NemotronClient
 from .neon_recall import kb_has_coverage, kb_has_pair_coverage
 from .notifications.push import push_safety_alert, push_wo_created
 from .photo_handler import (
+    DEFAULT_PHOTO_CAPTION,
     build_print_reply,
     clear_session_photo,
     load_session_photo,
@@ -606,6 +607,108 @@ class Supervisor:
 
     def _build_print_reply(self, vision_data: dict) -> str:
         return build_print_reply(vision_data)
+
+    async def _analyze_schematic_with_question(
+        self,
+        photo_b64: str,
+        question: str,
+        vision_data: dict,
+        chat_id: str,
+    ) -> str:
+        """Send schematic photo + technician question to the vision LLM and
+        return a circuit-analysis reply.
+
+        Used when the user attaches a real question to a schematic photo
+        (not the bot's default ``Analyze this equipment photo`` caption).
+        The model is asked to identify components, trace paths, and answer
+        the specific question. OCR labels already extracted by the vision
+        worker are fed in as ground-truth so the model doesn't have to
+        re-read every wire number from pixels.
+
+        Returns the empty string when the inference cascade has no vision
+        provider available or every provider failed — the caller MUST fall
+        back to ``_build_print_reply`` in that case so the user is never
+        left with nothing.
+        """
+        ocr_items = vision_data.get("ocr_items") or []
+        drawing_type = vision_data.get("drawing_type") or "electrical drawing"
+        ocr_block = (
+            "OCR labels extracted from the drawing (ground truth — use these "
+            "verbatim, do not invent new labels):\n"
+            + "\n".join(f"- {item}" for item in ocr_items[:80])
+            if ocr_items
+            else "No OCR labels were extracted; rely on the image."
+        )
+
+        system_prompt = (
+            "You are MIRA, an industrial maintenance intelligence assistant "
+            "with 30 years of experience reading electrical schematics, "
+            "wiring diagrams, PLC prints, and control-circuit drawings.\n\n"
+            "When shown a schematic or wiring diagram:\n"
+            "1. Identify the circuit type (motor control, safety circuit, "
+            "sensor circuit, communication, power distribution, etc.).\n"
+            "2. List the major components with their designations "
+            "(K10, R11, CR1, etc.) using the OCR labels when available.\n"
+            "3. Trace the signal/power paths and explain what the circuit "
+            "does.\n"
+            "4. Identify safety-critical elements (emergency stops, "
+            "interlocks, ground-fault paths).\n"
+            "5. Note component values where visible (resistance, voltage "
+            "ratings).\n"
+            "6. Answer the technician's specific question directly.\n"
+            "7. Flag any unusual configurations or potential issues.\n\n"
+            "Be specific. Use the actual designations from the drawing. "
+            "Explain in terms a maintenance technician would understand. "
+            "If you cannot read a label or value clearly, say so — do not "
+            "guess. Keep the reply under 350 words; bullet lists are fine."
+        )
+
+        user_text = (
+            f"Drawing type (auto-detected): {drawing_type}.\n\n"
+            f"{ocr_block}\n\n"
+            f"Technician's question: {question}"
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{photo_b64}",
+                        },
+                    },
+                    {"type": "text", "text": user_text},
+                ],
+            },
+        ]
+
+        try:
+            reply, usage = await self.router.complete(
+                messages,
+                max_tokens=900,
+                session_id=str(chat_id),
+            )
+        except Exception as exc:
+            logger.warning("SCHEMATIC_ANALYSIS_ROUTER_ERROR error=%s", exc)
+            return ""
+        if reply:
+            InferenceRouter.log_usage(usage)
+            logger.info(
+                "SCHEMATIC_ANALYSIS_OK chat_id=%s provider=%s tokens=%s",
+                chat_id,
+                usage.get("provider", "unknown") if isinstance(usage, dict) else "unknown",
+                usage.get("total_tokens", "?") if isinstance(usage, dict) else "?",
+            )
+        else:
+            logger.warning(
+                "SCHEMATIC_ANALYSIS_EMPTY chat_id=%s — cascade returned nothing, "
+                "falling back to OCR-only reply",
+                chat_id,
+            )
+        return reply or ""
 
     async def _extract_schematic(self, photo_b64: str) -> dict:
         """Call mira-mcp's /api/kg/schematic endpoint to run the schematic
@@ -1491,7 +1594,23 @@ class Supervisor:
                 ctx["drawing_type"] = vision_data["drawing_type"]
                 state["context"] = ctx
 
-                reply = self._build_print_reply(vision_data)
+                # If the technician sent a real question with the schematic,
+                # send image + question to the vision LLM for circuit analysis.
+                # Otherwise (just the default "Analyze this equipment photo"
+                # caption) keep the OCR-label preview + prompt-for-question.
+                has_real_question = bool(message) and message != DEFAULT_PHOTO_CAPTION
+                reply = ""
+                if has_real_question:
+                    reply = await self._analyze_schematic_with_question(
+                        photo_b64=photo_b64,
+                        question=message,
+                        vision_data=vision_data,
+                        chat_id=chat_id,
+                    )
+                if not reply:
+                    reply = self._build_print_reply(vision_data)
+                    if not has_real_question:
+                        reply += "\n\nWhat would you like to know about this circuit?"
 
                 # Phase 5 schematic intelligence — opportunistically run the
                 # IEC/ANSI symbol + connection extractor on the same photo.
