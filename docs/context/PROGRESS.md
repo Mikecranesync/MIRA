@@ -6495,4 +6495,59 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - M docs/context/PROGRESS.md
 - ?? tools/staging_results.json
 **Next:** _set by next session_
+
+### 2026-05-25 20:50 UTC — `docs/plc-rs485-bench-runbook`
+**Last commit:** b591fe47 docs(plc): corrected ST code review (MSG_MODBUS retraction)
+**Changed (vs. fork point):**
+- plc/RS485_CLAUDE_DRIVER_BRIEF.md
+- plc/RS485_ST_CODE_REVIEW.md
+- plc/RS485_TROUBLESHOOTING_RUNBOOK.md
+- plc/rs485_sniff.py
+**Working tree:**
+- ?? CONTEXT.md
+- ?? docs/competitive-intelligence-2026-05-25.md
+- ?? docs/guides/
+- ?? gs10-final-fix-instructions.pdf
+- ?? gs10-modbus-troubleshooting-final.pdf
+- ?? gs10-pinout-visual-guide.pdf
+- ?? gs10-rj45-wiring-diagnosis.pdf
+- ?? gs10-sniffer-analysis.pdf
+- ?? gs10-wiring-step-by-step.pdf
+- ?? tests/eval/runs/2026-05-24T1616-offline-text.md
+- ?? tests/eval/runs/2026-05-24T2033-offline-text.md
+- ?? tests/eval/runs/2026-05-25T0049-offline-text.md
+- ?? tests/eval/runs/2026-05-25T0505-offline-text.md
+- ?? tests/eval/runs/2026-05-25T0922-offline-text.md
+- ?? tests/eval/runs/2026-05-25T1344-offline-text.md
+- ?? tests/eval/runs/2026-05-25T1807-offline-text.md
+- ?? tests/qa_regression/
+**Next:** _set by next session_
+
+### 2026-05-25 20:59 UTC — `docs/plc-rs485-bench-runbook`
+**Last commit:** b591fe47 docs(plc): corrected ST code review (MSG_MODBUS retraction)
+**Changed (vs. fork point):**
+- plc/RS485_CLAUDE_DRIVER_BRIEF.md
+- plc/RS485_ST_CODE_REVIEW.md
+- plc/RS485_TROUBLESHOOTING_RUNBOOK.md
+- plc/rs485_sniff.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/competitive-intelligence-2026-05-25.md
+- ?? docs/guides/
+- ?? gs10-final-fix-instructions.pdf
+- ?? gs10-modbus-troubleshooting-final.pdf
+- ?? gs10-pinout-visual-guide.pdf
+- ?? gs10-rj45-wiring-diagnosis.pdf
+- ?? gs10-sniffer-analysis.pdf
+- ?? gs10-wiring-step-by-step.pdf
+- ?? tests/eval/runs/2026-05-24T1616-offline-text.md
+- ?? tests/eval/runs/2026-05-24T2033-offline-text.md
+- ?? tests/eval/runs/2026-05-25T0049-offline-text.md
+- ?? tests/eval/runs/2026-05-25T0505-offline-text.md
+- ?? tests/eval/runs/2026-05-25T0922-offline-text.md
+- ?? tests/eval/runs/2026-05-25T1344-offline-text.md
+- ?? tests/eval/runs/2026-05-25T1807-offline-text.md
+- ?? tests/qa_regression/
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
