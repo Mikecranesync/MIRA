@@ -849,6 +849,194 @@ def classify_intent(message: str) -> str:
     return "industrial"
 
 
+# ---------------------------------------------------------------------------
+# Conversational engine v2 — front-desk router for the 3-layer architecture.
+# Spec: docs/specs/conversational-engine-upgrade-spec.md §3
+#
+# classify_intent_v2 wraps classify_intent additively. It can return any v1
+# intent ("safety", "industrial", "instructional", "documentation",
+# "greeting", "help", "off_topic") plus the new conversational intents
+# below. Existing call sites that import classify_intent stay valid.
+# ---------------------------------------------------------------------------
+
+# Educational / definition asks — when present in an otherwise-industrial
+# message with no specific asset context, the question is general_knowledge,
+# not troubleshooting.
+_DEFINITION_PHRASES = (
+    "what is ",
+    "what are ",
+    "what does ",
+    "what's a ",
+    "what's an ",
+    "what's the difference",
+    "whats the difference",
+    "how does ",
+    "how do ",
+    "explain ",
+    "define ",
+    "tell me about ",
+    "difference between ",
+)
+
+# Conversational small-talk markers — beyond a single greeting word.
+_SMALL_TALK_PHRASES = (
+    "how's it going",
+    "hows it going",
+    "how are you",
+    "how you doing",
+    "you doing",
+    "what's up",
+    "whats up",
+    "what's new",
+    "whats new",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "morning ",
+    "afternoon ",
+    "evening ",
+)
+
+# Disengage / acknowledgment markers. Length-gated so a real question
+# containing "thanks for the help, what about…" isn't mis-routed.
+_DISENGAGE_PHRASES = (
+    "thanks",
+    "thank you",
+    "thx",
+    "ty ",
+    "nevermind",
+    "never mind",
+    "got it",
+    "all good",
+    "all set",
+    "appreciate it",
+    "later",
+    "cya",
+    "see you",
+)
+
+
+def _clean_for_v2(message: str) -> str:
+    """Cheap normalization — strip mentions, lowercase, collapse whitespace.
+
+    Kept separate from `classify_intent`'s internal cleaning so v2 can
+    inspect message length / token shape without re-running v1's regex.
+    """
+    return strip_mentions(message or "").lower().strip()
+
+
+def classify_intent_v2(
+    message: str,
+    *,
+    photo_present: bool = False,
+    uns_confidence: float = 0.0,
+    fsm_state: str = "IDLE",
+    session_followup: bool = False,
+    has_session_asset: bool = False,
+) -> str:
+    """Conversational-engine intent classifier.
+
+    Returns one of the v1 intents OR one of:
+      - "general_knowledge"   — educational ask, no asset context
+      - "small_talk"          — multi-word conversational opener
+      - "clarification_needed" — equipment-adjacent, no resolvable context
+      - "attachment_only"     — photo with no/empty caption
+      - "disengage"           — "thanks", "nevermind", "got it"
+
+    Parameters are advisory: pass `photo_present=True` when a photo is
+    attached, `uns_confidence` from `UNSContext.confidence`, and
+    `has_session_asset=True` when state["asset_identified"] is set.
+
+    Per spec §3.2 the decision order is:
+      1. Safety (tier 1) short-circuit — unchanged from v1.
+      2. Attachment with empty caption → attachment_only.
+      3. In-session follow-up in active state → industrial (no re-route).
+      4. Disengage shortcut (short message + disengage phrase).
+      5. Run v1 classify_intent.
+      6. Refine v1's verdict:
+         - industrial + definition phrase + no context → general_knowledge
+         - industrial + no context → clarification_needed
+         - greeting + multi-word + small-talk phrase → small_talk
+      7. Otherwise return v1 verdict unchanged.
+    """
+    msg = _clean_for_v2(message)
+
+    # 1. Safety short-circuit (mirror v1, evaluated up-front so a photo
+    #    with a safety caption still escalates).
+    if any(kw in msg for kw in SAFETY_KEYWORDS_IMMEDIATE):
+        return "safety"
+
+    # 2. Attachment with no signal — vision OCR still runs in the caller,
+    #    but routing goes to Layer 1 to ask "what about this?"
+    if photo_present and len(msg) < 5:
+        return "attachment_only"
+
+    # 3. In-session follow-up — let the FSM continue. Re-classifying a
+    #    "yes" / "tried that" / "nope" mid-diagnosis would break the
+    #    diagnostic flow.
+    if session_followup and fsm_state not in ("IDLE", "RESOLVED"):
+        return "industrial"
+
+    # 4. Disengage shortcut — only on short messages so "thanks for the
+    #    help, what about voltage" stays a question.
+    if msg and len(msg) <= 25 and any(p in msg for p in _DISENGAGE_PHRASES):
+        return "disengage"
+
+    # 4b. Small-talk shortcut — multi-word conversational opener with a
+    #     small-talk phrase. Checked BEFORE v1 because "good morning" and
+    #     "morning, what's new" otherwise get swept into industrial by
+    #     overlapping INTENT_KEYWORDS, and a single-word "morning" is
+    #     handled by v1's greeting path on its own.
+    if msg and len(msg) <= 60 and len(msg.split()) > 1:
+        if any(p in msg for p in _SMALL_TALK_PHRASES):
+            return "small_talk"
+
+    # 5. Run existing v1 classifier.
+    v1 = classify_intent(message)
+
+    # Safety / documentation / instructional / off_topic / help — v1
+    # already nails these; no refinement needed.
+    if v1 in ("safety", "documentation", "instructional", "off_topic", "help"):
+        return v1
+
+    # 6. Refinements for industrial / greeting only.
+    if v1 == "industrial":
+        # 6a. Definition asks with no resolved context → general_knowledge.
+        has_definition_phrase = any(p in msg for p in _DEFINITION_PHRASES)
+        no_context = uns_confidence < 0.5 and not has_session_asset
+        if has_definition_phrase and no_context:
+            return "general_knowledge"
+        # 6b. Industrial-without-context → clarification_needed.
+        if no_context:
+            return "clarification_needed"
+        return "industrial"
+
+    if v1 == "greeting":
+        # 7. Small talk beats greeting when multi-word + conversational tokens.
+        words = msg.split()
+        if len(words) > 1 and any(p in msg for p in _SMALL_TALK_PHRASES):
+            return "small_talk"
+        return "greeting"
+
+    return v1
+
+
+# Layer-1 intents that route to the conversational front-desk (Layer 1) rather
+# than the grounded specialist (Layer 3). Consumed by Supervisor._layer1_reply.
+LAYER1_INTENTS = frozenset(
+    {
+        "general_knowledge",
+        "small_talk",
+        "greeting",
+        "help",
+        "disengage",
+        "off_topic",
+        "clarification_needed",
+        "attachment_only",
+    }
+)
+
+
 # 2026-04-19 audit — Rule 21 verbatim-reflection enforcement.
 #
 # Pattern: LLM opens reply with "You've [verb] [noun]" claiming the technician

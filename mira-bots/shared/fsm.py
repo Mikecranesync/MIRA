@@ -36,7 +36,10 @@ _MAX_TURNS_PER_STATE = int(os.getenv("MIRA_MAX_TURNS_PER_STATE", "6"))
 # in engine._handle_uns_confirmation_request; cleared back to IDLE by
 # _handle_uns_confirmation_response on yes/no/fallthrough. Not part of STATE_ORDER,
 # so the backward-transition guard never sees it.
-# Spec: docs/specs/maintenance-namespace-builder-spec.md §"The UNS Location-Confirmation Gate"
+# AWAITING_CLARIFICATION is the Layer-1 sibling: entered when the conversational
+# layer asked a clarifying question (clarification_needed / attachment_only intent).
+# Next turn re-runs classify_intent_v2; the transition table is documented in
+# docs/specs/conversational-engine-upgrade-spec.md §7.1.
 VALID_STATES = frozenset(
     STATE_ORDER
     + [
@@ -46,6 +49,7 @@ VALID_STATES = frozenset(
         "DIAGNOSIS_REVISION",
         "QUERY_UNDERSTANDING",
         "AWAITING_UNS_CONFIRMATION",
+        "AWAITING_CLARIFICATION",
     ]
 )
 
