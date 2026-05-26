@@ -222,3 +222,6 @@ tools/monday-marketplace-setup/.chrome-profile/
 # Staging test output (regenerable; never commit result snapshots)
 staging_results.json
 tools/staging_results.json
+
+# CodeGraph local index (machine-specific, regenerable via `npx @colbymchenry/codegraph index`)
+.codegraph/

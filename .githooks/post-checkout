@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# MIRA post-checkout hook — refresh CodeGraph index after branch switches.
+# Installed via: git config core.hooksPath .githooks
+#
+# Git invokes post-checkout with: $1 = prev HEAD, $2 = new HEAD,
+# $3 = 1 for branch checkout / 0 for file checkout. We only sync on
+# branch checkouts ($3 == 1) — a `git checkout -- somefile` would
+# otherwise trigger a sync on every file restore.
+
+set -u
+
+# $3 is set by git; default to 0 if invoked manually for testing.
+IS_BRANCH_CHECKOUT="${3:-0}"
+if [ "$IS_BRANCH_CHECKOUT" != "1" ]; then
+  exit 0
+fi
+
+# Skip when CodeGraph isn't installed in this checkout.
+if [ ! -d ".codegraph" ]; then
+  exit 0
+fi
+
+# Skip when npx is unavailable.
+if ! command -v npx >/dev/null 2>&1; then
+  exit 0
+fi
+
+(
+  npx -y @colbymchenry/codegraph sync >/dev/null 2>&1 || true
+) &
+disown 2>/dev/null || true
+
+exit 0
