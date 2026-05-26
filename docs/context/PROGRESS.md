@@ -7182,4 +7182,24 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? tools/seeds/epic-universe-stardust-racers.sql
 - ?? tools/seeds/factorylm-garage-conveyor.sql
 **Next:** _set by next session_
+
+### 2026-05-25 23:35 UTC — `feat/component-hierarchy-grilling-2026-05-24`
+**Last commit:** f72534ed fix(seeds): correct ON CONFLICT key + actor_kind/created_by constraints
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- tools/seeds/epic-universe-stardust-racers.sql
+- tools/seeds/factorylm-garage-conveyor.sql
+- tools/seeds/run_demo_seed.py
+**Working tree:** clean
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
