@@ -5,7 +5,7 @@ pytesseract>=0.3.13
 anthropic>=0.97.0
 PyYAML==6.0.3
 langfuse>=4.6.1,<5.0.0
-sqlalchemy>=2.0
+sqlalchemy>=2.0.50
 psycopg2-binary>=2.9.12
 deepeval>=4.0.3
 praw>=7.8.1
