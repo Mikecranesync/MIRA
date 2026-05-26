@@ -21,7 +21,7 @@ jobs:
     if: github.event_name == 'pull_request_target' && github.event.label.name == 'auto-fix'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}

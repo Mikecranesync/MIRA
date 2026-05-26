@@ -52,7 +52,7 @@ jobs:
     environment: staging
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Full history so the "Resolve migration plan" step can diff
           # against the merge-base SHA. Shallow clone (default depth=1)

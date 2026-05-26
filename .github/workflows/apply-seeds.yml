@@ -49,7 +49,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@v3
