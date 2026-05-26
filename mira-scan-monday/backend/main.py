@@ -17,6 +17,7 @@ from . import (
     mira_rag,
     monday_api,
     oauth,
+    rate_limit,
     scan_queue,
     session,
     usage,
@@ -331,6 +332,23 @@ async def chat_message(req: ChatMessageRequest, request: Request) -> ChatMessage
     # Chat is downstream of scan — bump last_seen so we know the install
     # is active, but don't bump scan_count (that would double-count).
     account_id = session.account_id_from_headers(request.headers)
+    rate = await rate_limit.check_and_record(account_id)
+    if not rate.allowed:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "rate_limit_exceeded",
+                "used": rate.used,
+                "limit": rate.limit,
+                "window_seconds": rate.window_seconds,
+                "retry_after": rate.retry_after,
+                "message": (
+                    f"Too many requests — limit is {rate.limit} per "
+                    f"{rate.window_seconds}s. Retry in {rate.retry_after}s."
+                ),
+            },
+            headers={"Retry-After": str(rate.retry_after)},
+        )
     if account_id:
         await oauth.touch_last_seen(account_id)
         used = await usage.month_chat_count(account_id)
