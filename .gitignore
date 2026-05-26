@@ -108,6 +108,9 @@ mira-crawler/agents/gdrive_photo_scanner_state.json
 tests/regime1_telethon/photos/
 tests/regime3_nameplate/photos/real/
 
+# QA regression run outputs (raw json + Markdown reports)
+tests/qa_regression/runs/
+
 # Local backups
 backups/
 
