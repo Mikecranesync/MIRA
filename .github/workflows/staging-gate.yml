@@ -127,7 +127,7 @@ jobs:
 
       - name: Post / update PR comment
         if: always() && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && hashFiles('staging_comment.md') != ''
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: staging-gate
           # Reading the body from a file avoids the GITHUB_OUTPUT heredoc
