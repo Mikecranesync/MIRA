@@ -20,22 +20,23 @@ Keyboard:
 """
 
 import argparse
+import os
 import sys
-import time
 import threading
+import time
 
 try:
     from pymodbus.client import ModbusTcpClient
 except ImportError:
     from pymodbus.client.sync import ModbusTcpClient
 
-from rich.console import Console
-from rich.live import Live
-from rich.table import Table
-from rich.panel import Panel
-from rich.layout import Layout
-from rich.text import Text
 from rich import box
+from rich.console import Console
+from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 # -- Modbus addresses (zero-indexed) -----------------------------------------
 # Coils: C1-C22 → address 0-21
@@ -117,7 +118,7 @@ def bool_text(val, true_color="green", false_color="dim"):
 def alarm_text(val, label=""):
     if val:
         return Text(f"TRUE  {label}", style="red bold")
-    return Text(f"FALSE", style="green")
+    return Text("FALSE", style="green")
 
 
 class PLCMonitor:
@@ -234,7 +235,7 @@ class PLCMonitor:
         if self.last_command:
             header.append(f"\n  Last cmd: {self.last_command}")
         if self.last_error and not self.connected:
-            header.append(f"\n  ")
+            header.append("\n  ")
             header.append(Text(self.last_error, style="red"))
 
         # -- State Machine table ----------------------------------------------
@@ -350,38 +351,75 @@ class PLCMonitor:
         return layout
 
 
-def key_listener(monitor):
-    """Non-blocking keyboard listener (Windows msvcrt)."""
+def _handle_key(monitor, key):
+    if key == "q":
+        monitor.running = False
+    elif key == "f":
+        monitor.write_vfd_cmd(18)  # GS10 FWD+RUN
+    elif key == "r":
+        monitor.write_vfd_cmd(20)  # GS10 REV+RUN
+    elif key == "s":
+        monitor.write_vfd_cmd(1)   # GS10 STOP
+    elif key == "x":
+        monitor.write_vfd_cmd(7)   # Fault reset
+    elif key == "+":
+        monitor.write_speed(monitor.speed_setpoint + 200)
+    elif key == "-":
+        monitor.write_speed(monitor.speed_setpoint - 200)
+    elif key == "0":
+        monitor.write_speed(0)
+
+
+def _key_listener_windows(monitor):
     import msvcrt
     while monitor.running:
-        if msvcrt.kbhit():
-            ch = msvcrt.getch()
+        if msvcrt.kbhit():  # type: ignore[attr-defined]
+            ch = msvcrt.getch()  # type: ignore[attr-defined]
             try:
                 key = ch.decode("utf-8", errors="ignore").lower()
             except Exception:
                 key = ""
-            if key == "q":
-                monitor.running = False
-            elif key == "f":
-                monitor.write_vfd_cmd(18)  # GS10 FWD+RUN
-            elif key == "r":
-                monitor.write_vfd_cmd(20)  # GS10 REV+RUN
-            elif key == "s":
-                monitor.write_vfd_cmd(1)   # GS10 STOP
-            elif key == "x":
-                monitor.write_vfd_cmd(7)   # Fault reset
-            elif key == "+":
-                monitor.write_speed(monitor.speed_setpoint + 200)
-            elif key == "-":
-                monitor.write_speed(monitor.speed_setpoint - 200)
-            elif key == "0":
-                monitor.write_speed(0)
+            if key:
+                _handle_key(monitor, key)
         time.sleep(0.05)
+
+
+def _key_listener_posix(monitor):
+    import select
+    import termios
+    import tty
+
+    fd = sys.stdin.fileno()
+    try:
+        old = termios.tcgetattr(fd)
+    except termios.error:
+        return  # Not a real TTY.
+
+    try:
+        tty.setcbreak(fd)
+        while monitor.running:
+            r, _, _ = select.select([sys.stdin], [], [], 0.05)
+            if not r:
+                continue
+            ch = sys.stdin.read(1)
+            if ch:
+                _handle_key(monitor, ch.lower())
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def key_listener(monitor):
+    """Non-blocking keyboard listener (Windows msvcrt / POSIX termios)."""
+    if os.name == "nt":
+        _key_listener_windows(monitor)
+    elif sys.stdin.isatty():
+        _key_listener_posix(monitor)
+    # else: not a TTY — keyboard control silently disabled.
 
 
 def main():
     parser = argparse.ArgumentParser(description="MIRA PLC Live Monitor")
-    parser.add_argument("--host", default="169.254.32.93", help="PLC IP address")
+    parser.add_argument("--host", default=os.getenv("DEMO_PLC_IP", "192.168.1.100"), help="PLC IP address")
     parser.add_argument("--port", type=int, default=502, help="Modbus TCP port")
     parser.add_argument("--poll", type=float, default=0.5, help="Poll interval (seconds)")
     args = parser.parse_args()
