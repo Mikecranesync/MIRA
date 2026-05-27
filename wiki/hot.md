@@ -1,4 +1,9 @@
-# Hot Cache — 2026-05-23 — CHARLIE
+# Hot Cache — 2026-05-27 — CHARLIE
+
+## eval-fixer run — 2026-05-27
+- Scorecard: 33/57 passing (58%) — `tests/eval/runs/2026-05-27T0457-offline-text.md` (**FRESH** — first new scorecard since 2026-05-06, 21 days stale finally broken)
+- Action: filed #1572 (autopatch hard-stop: 24 patchable failures > 15-cap AND clusters span 3 files).
+- **Pass rate regressed 84% → 58%** vs. the long-stale 2026-05-06 baseline. The fresh run surfaces the failures #1419 was tracking PLUS new ones. Dominant patterns: 7 fixtures stuck at `AWAITING_UNS_CONFIRMATION`, 5 doc-finding fixtures stuck at `ASSET_IDENTIFIED` instead of exiting to IDLE, 5 stuck at Q1 with vendor+model+fault-code already supplied. Looks like UNS-gate + Q1-skip + doc-intent-routing regression rather than independent bugs.
 
 ## eval-fixer run — 2026-05-23
 - Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (17 days stale, unchanged since 2026-05-06)
