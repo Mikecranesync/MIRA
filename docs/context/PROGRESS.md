@@ -6945,4 +6945,261 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
 - ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
 **Next:** _set by next session_
+
+### 2026-05-23 13:57 UTC — `main`
+**Last commit:** 8dff5376 feat(hub): GET /api/namespace/node/[id] + detail-pane wire-up (#1483)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-23 14:25 UTC — `main`
+**Last commit:** 8dff5376 feat(hub): GET /api/namespace/node/[id] + detail-pane wire-up (#1483)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-23 14:58 UTC — `main`
+**Last commit:** 8dff5376 feat(hub): GET /api/namespace/node/[id] + detail-pane wire-up (#1483)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-23 16:56 UTC — `main`
+**Last commit:** 8dff5376 feat(hub): GET /api/namespace/node/[id] + detail-pane wire-up (#1483)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-24 11:17 UTC — `main`
+**Last commit:** 0892faed chore(audits): nightly hub audit 2026-05-24
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-24 11:26 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-24 11:27 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-24 11:34 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-24 12:09 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+**Next:** _set by next session_
+
+### 2026-05-24 12:43 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 12:45 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 12:51 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 12:57 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 13:00 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 13:39 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 13:56 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 14:12 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 14:19 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 14:23 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 15:49 UTC — `feat/component-hierarchy-grilling-2026-05-24`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+- ?? mira-hub/db/migrations/028_drives_relationship_type.sql
+**Next:** _set by next session_
+
+### 2026-05-24 17:35 UTC — `feat/component-hierarchy-grilling-2026-05-24`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+-  M docs/specs/maintenance-namespace-builder-spec.md
+-  M docs/specs/uns-kg-standards-compliance.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+- ?? docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- ?? mira-hub/db/migrations/028_drives_relationship_type.sql
+**Next:** _set by next session_
+
+### 2026-05-24 17:57 UTC — `feat/component-hierarchy-grilling-2026-05-24`
+**Last commit:** ce2e43e0 feat(hub): DRIVES/IS_DRIVEN_BY edge type + sibling-tree decision (ADR-0018, migration 028)
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-25 01:43 UTC — `feat/component-hierarchy-grilling-2026-05-24`
+**Last commit:** ce2e43e0 feat(hub): DRIVES/IS_DRIVEN_BY edge type + sibling-tree decision (ADR-0018, migration 028)
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+**Working tree:**
+- M .claude/commands/mira-create-demo-plant.md
+-  M docs/context/PROGRESS.md
+-  M tools/seeds/run_demo_seed.py
+- ?? mira-hub/db/migrations/029_kg_approval_state.sql
+- ?? tools/seeds/epic-universe-stardust-racers.sql
+- ?? tools/seeds/factorylm-garage-conveyor.sql
+**Next:** _set by next session_
+
+### 2026-05-25 23:35 UTC — `feat/component-hierarchy-grilling-2026-05-24`
+**Last commit:** f72534ed fix(seeds): correct ON CONFLICT key + actor_kind/created_by constraints
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- tools/seeds/epic-universe-stardust-racers.sql
+- tools/seeds/factorylm-garage-conveyor.sql
+- tools/seeds/run_demo_seed.py
+**Working tree:** clean
+**Next:** _set by next session_
 <!-- END AUTOLOG -->

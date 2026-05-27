@@ -7,7 +7,7 @@ Generate a realistic demo plant dataset for evals, screenshots, and SaaS onboard
 The canonical demo (already scripted in `marketing/comic-pipeline/` and `docs/specs/mira-component-intelligence-architecture.md`):
 
 ```
-Site:      Stardust Racers (Garage Factory)
+Site:      Lake Wales Demo (Lake Wales Plant)
 Area:      Conveyor Lab
 Line:      Line 5
 Asset:     Conveyor Section B16
@@ -16,7 +16,11 @@ PLC tag:   1.SOC_B16_2
 Fault:     1.SOC B16.2 OCCUPIED TOO LONG
 Pattern:   14 repeats in 6 months
 Fix:       Reset at Panel B16 (no parts required)
-UNS path:  enterprise.stardust_racers.site.garage_factory.area.conveyor_lab.line.line5.work_cell.conveyor_b16.pe_b16_2
+UNS path:  enterprise.lake_wales_demo.site.lake_wales_plant.area.conveyor_lab.line.line5.work_cell.conveyor_b16.pe_b16_2
+
+NOTE: Enterprise was renamed from "stardust_racers" → "lake_wales_demo" (2026-05-24).
+"Stardust Racers" is now reserved for the real Epic Universe rollercoaster tenant
+(tools/seeds/epic-universe-stardust-racers.sql). Do not reuse that name for demo data.
 ```
 
 This scenario MUST appear in the generated dataset.
