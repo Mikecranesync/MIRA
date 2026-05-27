@@ -107,7 +107,7 @@ ADDRESS_MAP: list[PLCPoint] = [
     PLCPoint("error_code",       HOLDING, 105, 1.0,  "demo/training/conveyor001/faults/code",              "Conveyor.ErrorCode",          "faultCode"),
 ]
 
-EQUIPMENT_ID = "conveyor001"
+EQUIPMENT_ID = "CONV-001"
 DEFAULT_TENANT_ID = "garage-demo"
 AGENT_ID = "demo-plc-poller"
 
@@ -460,7 +460,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--plc-ip", default=os.getenv("DEMO_PLC_IP", "192.168.1.100"))
     p.add_argument("--plc-port", type=int, default=int(os.getenv("DEMO_PLC_PORT", "502")))
     p.add_argument("--poll-interval", type=float, default=float(os.getenv("DEMO_PLC_POLL_INTERVAL", "1.0")))
-    p.add_argument("--relay-url", default=os.getenv("MIRA_RELAY_URL"))
+    p.add_argument("--relay-url", default=os.getenv("MIRA_RELAY_URL", "http://localhost:8765"))
     p.add_argument("--relay-api-key", default=os.getenv("RELAY_API_KEY"))
     p.add_argument("--db-url", default=os.getenv("NEON_DATABASE_URL"))
     p.add_argument("--tenant-id", default=os.getenv("MIRA_TENANT_ID", DEFAULT_TENANT_ID))
