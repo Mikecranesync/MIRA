@@ -777,6 +777,15 @@ def resolve_uns_path(
         # alias is a model token from FAMILY_FROM_ALIAS we already populated.
         product_family = None
 
+    # When the alias matched a family-marker (gs10, gs20, powerflex, micromaster,
+    # sinamics, fr-e/a/d/f, aqua drive) AND no separate model token was extracted,
+    # fall back to the family token as the model. The family token IS the model
+    # class for these aliases — without this, confidence stays at 0.5 (mfr only)
+    # and engine.py never sets state["asset_identified"], which loops the UNS
+    # Confirmation Gate on every turn. See #1572 cluster 1.
+    if model is None and family_token:
+        model = family_token
+
     uns_path = _build_uns_path(mfr, product_family, model, fault_code, category)
 
     fresh = UNSContext(
