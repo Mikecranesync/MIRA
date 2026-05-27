@@ -7202,4 +7202,369 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - tools/seeds/run_demo_seed.py
 **Working tree:** clean
 **Next:** _set by next session_
+
+### 2026-05-27 02:00 UTC — `chore/disable-prod-guard-vps-workflows`
+**Last commit:** 3480f1b8 chore: disable prod-guard hook — blocking development workflow
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/settings.json
+- .github/workflows/vps-cleanup.yml
+- .github/workflows/vps-install-amux.yml
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- mira-hub/src/components/UploadPicker.tsx
+- tools/seeds/epic-universe-stardust-racers.sql
+- tools/seeds/factorylm-garage-conveyor.sql
+- tools/seeds/run_demo_seed.py
+**Working tree:**
+- ?? docs/adr/0017-miradrop-ingest-v2.md
+- ?? docs/plans/2026-05-26-miradrop-auto-splitter.md
+- ?? docs/specs/miradrop-ingest-v2-spec.md
+- ?? tests/eval/runs/2026-05-27T0030-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-27 02:00 UTC — `chore/disable-prod-guard-vps-workflows`
+**Last commit:** 3480f1b8 chore: disable prod-guard hook — blocking development workflow
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/settings.json
+- .github/workflows/vps-cleanup.yml
+- .github/workflows/vps-install-amux.yml
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- mira-hub/src/components/UploadPicker.tsx
+- tools/seeds/epic-universe-stardust-racers.sql
+- tools/seeds/factorylm-garage-conveyor.sql
+- tools/seeds/run_demo_seed.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/adr/0017-miradrop-ingest-v2.md
+- ?? docs/plans/2026-05-26-miradrop-auto-splitter.md
+- ?? docs/specs/miradrop-ingest-v2-spec.md
+- ?? tests/eval/runs/2026-05-27T0030-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-27 02:02 UTC — `chore/disable-prod-guard-vps-workflows`
+**Last commit:** 3480f1b8 chore: disable prod-guard hook — blocking development workflow
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/settings.json
+- .github/workflows/vps-cleanup.yml
+- .github/workflows/vps-install-amux.yml
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- mira-hub/src/components/UploadPicker.tsx
+- tools/seeds/epic-universe-stardust-racers.sql
+- tools/seeds/factorylm-garage-conveyor.sql
+- tools/seeds/run_demo_seed.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/adr/0017-miradrop-ingest-v2.md
+- ?? docs/plans/2026-05-26-miradrop-auto-splitter.md
+- ?? docs/specs/miradrop-ingest-v2-spec.md
+- ?? tests/eval/runs/2026-05-27T0030-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-27 03:07 UTC — `chore/disable-prod-guard-vps-workflows`
+**Last commit:** 3480f1b8 chore: disable prod-guard hook — blocking development workflow
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/settings.json
+- .github/workflows/vps-cleanup.yml
+- .github/workflows/vps-install-amux.yml
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- mira-hub/src/components/UploadPicker.tsx
+- tools/seeds/epic-universe-stardust-racers.sql
+- tools/seeds/factorylm-garage-conveyor.sql
+- tools/seeds/run_demo_seed.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/adr/0017-miradrop-ingest-v2.md
+- ?? docs/plans/2026-05-26-miradrop-auto-splitter.md
+- ?? docs/specs/miradrop-ingest-v2-spec.md
+- ?? tests/eval/runs/2026-05-27T0030-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-27 04:17 UTC — `feat/conveyor-live-pipeline`
+**Last commit:** abf721c5 feat(conveyor): wire up live monitoring pipeline for garage demo
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/settings.json
+- .github/workflows/vps-cleanup.yml
+- .github/workflows/vps-install-amux.yml
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docker-compose.override.yml
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- mira-hub/src/components/UploadPicker.tsx
+- plc/live_monitor.py
+- tools/bench-test-conveyor.sh
+- tools/demo_plc_poller.py
+- tools/run-conveyor-live.sh
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/adr/0017-miradrop-ingest-v2.md
+- ?? docs/guides/
+- ?? docs/plans/2026-05-26-miradrop-auto-splitter.md
+- ?? docs/specs/miradrop-ingest-v2-spec.md
+- ?? tests/eval/runs/2026-05-27T0030-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-27 04:18 UTC — `feat/conveyor-live-pipeline`
+**Last commit:** d54c674c feat(conveyor): wire up live monitoring pipeline for garage demo
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/settings.json
+- .github/workflows/vps-cleanup.yml
+- .github/workflows/vps-install-amux.yml
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docker-compose.override.yml
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- mira-hub/src/components/UploadPicker.tsx
+- plc/live_monitor.py
+- tools/bench-test-conveyor.sh
+- tools/demo_plc_poller.py
+- tools/run-conveyor-live.sh
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/adr/0017-miradrop-ingest-v2.md
+- ?? docs/guides/
+- ?? docs/plans/2026-05-26-miradrop-auto-splitter.md
+- ?? docs/specs/miradrop-ingest-v2-spec.md
+- ?? tests/eval/runs/2026-05-27T0030-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-27 04:45 UTC — `feat/conveyor-one-click-launchers`
+**Last commit:** dbe2ba9c feat(conveyor): double-click Finder launchers for garage demo
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/settings.json
+- .github/workflows/vps-cleanup.yml
+- .github/workflows/vps-install-amux.yml
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docker-compose.override.yml
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- mira-hub/src/components/UploadPicker.tsx
+- plc/live_monitor.py
+- tools/bench-test-conveyor.sh
+- tools/demo_plc_poller.py
+- tools/run-conveyor-live.sh
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/adr/0017-miradrop-ingest-v2.md
+- ?? docs/guides/
+- ?? docs/plans/2026-05-26-miradrop-auto-splitter.md
+- ?? docs/specs/miradrop-ingest-v2-spec.md
+- ?? tests/eval/runs/2026-05-27T0030-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-27 04:45 UTC — `feat/conveyor-one-click-launchers`
+**Last commit:** dbe2ba9c feat(conveyor): double-click Finder launchers for garage demo
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/settings.json
+- .github/workflows/vps-cleanup.yml
+- .github/workflows/vps-install-amux.yml
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docker-compose.override.yml
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- mira-hub/src/components/UploadPicker.tsx
+- plc/live_monitor.py
+- tools/bench-test-conveyor.sh
+- tools/demo_plc_poller.py
+- tools/run-conveyor-live.sh
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/adr/0017-miradrop-ingest-v2.md
+- ?? docs/guides/
+- ?? docs/plans/2026-05-26-miradrop-auto-splitter.md
+- ?? docs/specs/miradrop-ingest-v2-spec.md
+- ?? tests/eval/runs/2026-05-27T0030-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-27 05:11 UTC — `feat/conveyor-one-click-launchers`
+**Last commit:** b91be9d4 docs(wiki): eval-fixer run 2026-05-27
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/settings.json
+- .github/workflows/vps-cleanup.yml
+- .github/workflows/vps-install-amux.yml
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docker-compose.override.yml
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- mira-hub/src/components/UploadPicker.tsx
+- plc/live_monitor.py
+- tools/bench-test-conveyor.sh
+- tools/demo_plc_poller.py
+- tools/run-conveyor-live.sh
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/adr/0017-miradrop-ingest-v2.md
+- ?? docs/guides/
+- ?? docs/plans/2026-05-26-miradrop-auto-splitter.md
+- ?? docs/specs/miradrop-ingest-v2-spec.md
+- ?? tests/eval/runs/2026-05-27T0030-offline-text.md
+- ?? tests/eval/runs/2026-05-27T0457-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-27 14:45 UTC — `feat/conveyor-one-click-launchers`
+**Last commit:** b91be9d4 docs(wiki): eval-fixer run 2026-05-27
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/settings.json
+- .github/workflows/vps-cleanup.yml
+- .github/workflows/vps-install-amux.yml
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docker-compose.override.yml
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- mira-hub/src/components/UploadPicker.tsx
+- plc/live_monitor.py
+- tools/bench-test-conveyor.sh
+- tools/demo_plc_poller.py
+- tools/run-conveyor-live.sh
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/adr/0017-miradrop-ingest-v2.md
+- ?? docs/competitive-intelligence/
+- ?? docs/guides/
+- ?? docs/ops/fault-detective-demo-prompt.md
+- ?? docs/plans/2026-05-26-miradrop-auto-splitter.md
+- ?? docs/specs/miradrop-ingest-v2-spec.md
+- ?? tests/eval/runs/2026-05-27T0030-offline-text.md
+- ?? tests/eval/runs/2026-05-27T0457-offline-text.md
+- ?? tests/eval/runs/2026-05-27T0920-offline-text.md
+- ?? tests/eval/runs/2026-05-27T1348-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-27 14:46 UTC — `feat/conveyor-one-click-launchers`
+**Last commit:** b91be9d4 docs(wiki): eval-fixer run 2026-05-27
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/settings.json
+- .github/workflows/vps-cleanup.yml
+- .github/workflows/vps-install-amux.yml
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docker-compose.override.yml
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- mira-hub/src/components/UploadPicker.tsx
+- plc/live_monitor.py
+- tools/bench-test-conveyor.sh
+- tools/demo_plc_poller.py
+- tools/run-conveyor-live.sh
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/adr/0017-miradrop-ingest-v2.md
+- ?? docs/competitive-intelligence/
+- ?? docs/guides/
+- ?? docs/ops/fault-detective-demo-prompt.md
+- ?? docs/plans/2026-05-26-miradrop-auto-splitter.md
+- ?? docs/specs/miradrop-ingest-v2-spec.md
+- ?? tests/eval/runs/2026-05-27T0030-offline-text.md
+- ?? tests/eval/runs/2026-05-27T0457-offline-text.md
+- ?? tests/eval/runs/2026-05-27T0920-offline-text.md
+- ?? tests/eval/runs/2026-05-27T1348-offline-text.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
