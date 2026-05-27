@@ -1,8 +1,27 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-27
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-27
+
+### Most actionable change for MIRA playbook
+
+Figma's Design Agent launch (May 20, 2026) flipped from conference-keynote-as-launch to "agent lives inside the tool you already use." Hook is not "use a new AI tool" — it's "the agent lives in the canvas where you already work." MIRA equivalent: "MIRA lives in Slack, where maintenance already happens." This framing sidesteps the adoption objection entirely. Worth stealing as primary UX-differentiation pitch against standalone AI apps.
+
+### New findings
+
+**CMMS / EAM**
+- **UpKeep** — "AI adoption didn't fail in maintenance—it got real" (YouTube Short, ~May 2026): https://www.youtube.com/shorts/BDvEIrdSEz4 — maturity reframe; "AI is real now" not "AI is coming"; narrative shift from hype to ground-truth positioning
+- **MaintainX** — "What's New at MaintainX: May 2026" (blog, no YouTube video confirmed): https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026 — AI Procedure Recommendations; right procedure attaches when a work order is created; grounding-at-WO-creation pattern directly adjacent to MIRA's OEM-manual approach
+
+**B2B SaaS / dev-tools**
+- **Figma** — "Meet the Figma design agent" (May 20, 2026): https://www.youtube.com/watch?v=vY5IoRVTnJs — agent shipped *inside* the canvas, not as a separate tool; Claude Code + OpenAI Codex as backends; $15/seat; **style drift: Figma moved from conference-keynote to product-demo launch format**
+- **Anthropic** — "Introducing Claude Design by Anthropic Labs" (Apr 17, 2026; missed from prior cache): https://www.youtube.com/watch?v=t_LBECIQQqs — prompts to polished visuals (prototypes, slides, one-pagers); built on Claude Opus 4.7; entered Figma/Canva competitive space
+- **Stripe Sessions 2026** (Apr 29–30; was placeholder in prior cache — details now filled): opening keynote https://www.youtube.com/watch?v=Nadf3MdJS-8 — 288 launches; theme "economic infrastructure for AI"; agents as first-class economic actors; Machine Payments Protocol; agent wallets via Link; Meta/Google UCP partnerships
 
 ---
 
@@ -57,6 +76,14 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 **Pattern note:** UpKeep shifted from feature-demo VO to autonomous-agent narrative between 2024 and Sep 2025. The "acts on it" vs "analyzes" dichotomy is a direct steal target for MIRA.
 
+**"AI adoption didn't fail — it got real" (YouTube Short, ~May 2026)**
+- URL: https://www.youtube.com/shorts/BDvEIrdSEz4
+- Thought-leadership short; not a product launch
+- Framing: AI adoption in maintenance has passed the hype phase — "got real" is a maturity/credibility signal aimed at skeptical buyers
+- VO register: peer-engineer [transcript not verified]
+- CTA: soft brand / none
+- Pattern note: second narrative gear after Nova launch — Nova was hype-up ("it acts on it"), this short is credibility-down ("it actually works"). Two-gear messaging strategy worth tracking.
+
 ---
 
 ### MaintainX
@@ -87,6 +114,12 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+
+**AI Procedure Recommendations (May 2026)**
+- Source: https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026
+- Feature: AI attaches the right procedure to a work order at creation time
+- No dedicated YouTube video confirmed; changelog-only launch
+- Pattern note: knowledge grounding moved upstream (attach-on-create vs after-the-fact lookup). MIRA's OEM-manual context surfaces with the fault confirmation — same instinct, different delivery point.
 
 ---
 
@@ -254,9 +287,18 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 (Apr 29–30, 2026)**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8
+- 12-min recap: https://www.youtube.com/watch?v=8F4XyWYqZi8
+- Developer keynote: https://www.youtube.com/watch?v=m2omCJcrkE0
+- Livestream (archived): https://www.youtube.com/watch?v=e13-s0p1tfE
+- Presenters: Patrick Collison (opening), Will Gaybrick (product keynote)
+- Hook: "economic infrastructure for AI" — agents as first-class economic actors
+- 288 product launches to 9,000+ attendees
+- Key launches: Machine Payments Protocol (MPP, co-authored with Tempo) — agents transact via microtransactions and recurring payments; Link's agent wallet with spend approvals + purchase visibility; Agentic Commerce Suite — Meta partnership (native checkout in Facebook ads), Google partnership (Gemini / AI Mode via Universal Commerce Protocol); Checkout Studio
+- VO register: founder / peer-to-peer
+- CTA: soft — "available now" callouts; no hard URL
+- Forrester frame: "Stripe is rearchitecting payments for an agentic AI economy"
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -302,7 +344,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**Claude Design launch (Apr 17, 2026)**
+- URL: https://www.youtube.com/watch?v=t_LBECIQQqs
+- Title: "Introducing Claude Design by Anthropic Labs"
+- Product: turns text prompts into polished visual output — prototypes, slides, one-pagers, videos
+- Powered by Claude Opus 4.7; positioned as Figma/Canva rival for non-designers
+- Coverage: TechCrunch, VentureBeat, Gizmodo ("Figma Stock Immediately Nosedives")
+- VO register: product/founder [transcript not verified]
+- CTA: soft — available via claude.ai
+- Pattern note: first standalone product-demo launch video from Anthropic (prior: analyst/conference appearances only). Entered design-tool space directly; within 5 weeks Figma countered by shipping its own Design Agent with Claude Code integration — competitive loop confirmed.
 
 ---
 
@@ -355,6 +406,19 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
 
+**Figma Design Agent launch (May 20, 2026)**
+- Official launch video: https://www.youtube.com/watch?v=vY5IoRVTnJs ("Meet the Figma design agent")
+- Release notes video: https://www.youtube.com/watch?v=11mdb7lLclM ("Release Notes 2026: May Edition | Figma")
+- Coverage: TechCrunch (May 20), Dataconomy (May 21)
+- Product: AI agent built directly into the Figma canvas; generates, edits, iterates on designs via natural language while respecting your existing design system; open beta
+- Backends: Anthropic (Claude Code) + OpenAI (Codex) as integration partners
+- Pricing: $15/seat
+- Hook: "Agents, meet the Figma canvas" — agent lives in the tool where design already happens [blog-derived; video transcript not verified]
+- VO register: product designer + PM walkthrough
+- CTA: "available now in open beta"
+- **Style drift:** Figma moved from conference-keynote-as-primary-launch to standalone product-demo video. First major Figma capability shipped outside the Config conference cycle.
+- Pattern note: "agent in context" framing — not "use a new AI app" but "the agent lives in the canvas you already use." Direct analog for MIRA: "MIRA lives in Slack, where maintenance already happens."
+
 ---
 
 ### Replit
@@ -385,6 +449,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "Agent in context" (agent lives inside the tool) | Figma: "agents, meet the canvas" — agent inside existing design canvas, not a separate app | "MIRA lives in Slack, where maintenance already happens. No new tool to learn." |
+| Maturity reframe: "got real" (past hype, into proof) | UpKeep: "AI adoption didn't fail — it got real" | "Not a demo. This is your P&ID, your work-order history, your manuals." |
 
 ### Anti-patterns (avoid)
 
@@ -398,3 +464,5 @@ No video content surfaced for 2025–2026.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Figma**: moved from conference-keynote-as-primary-launch (Config) to standalone product-demo video for the Design Agent (May 2026). First major capability shipped outside the Config cycle.
+- **Anthropic**: moved from analyst/conference appearances to standalone product-demo launch video with Claude Design (Apr 2026). Entered consumer-facing design-tool space; Figma counter-launched Design Agent with Claude Code as a backend within 5 weeks.
