@@ -438,6 +438,23 @@ def test_gs10_overcurrent_reaches_threshold():
     assert ctx.confidence == 0.7
 
 
+def test_family_marker_path_does_not_double_segment():
+    """When model fell back to family-token, _build_uns_path must not insert
+    both as separate slots (would produce .../gs20/gs20/...).  The model
+    field still reads GS20 for downstream consumers, but the path drops the
+    duplicate slot."""
+    ctx = resolve_uns_path("GS20 OC fault")
+    assert ctx.model == "GS20"
+    assert ctx.product_family == "GS20"
+    assert ctx.uns_path is not None
+    # No "gs20.gs20" doubled segment anywhere in the path
+    assert "gs20.gs20" not in ctx.uns_path, ctx.uns_path
+    # And the manufacturer + fault still appear (path is well-formed)
+    assert "automationdirect" in ctx.uns_path
+    assert "fault_codes" in ctx.uns_path
+    assert "oc" in ctx.uns_path
+
+
 # ---------------------------------------------------------------------------
 # Offline guarantee — these must pass without a NeonDB connection
 # ---------------------------------------------------------------------------

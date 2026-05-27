@@ -540,6 +540,12 @@ def _build_uns_path(
         return None
 
     family = product_family
+    # The family-marker model fallback (see resolve_uns_path) can set model
+    # equal to the family token for openers like "GS20 OC". Both occupy
+    # distinct path slots, so without this guard the path doubles the segment
+    # (.../automationdirect/gs20/gs20/...). Drop the duplicate.
+    if model and family and model.lower() == family.lower():
+        model = None
     if fault_code:
         # fault_code_path handles the "no model" fallback internally
         return _uns.fault_code_path(manufacturer, fault_code, model=model, family=family)
