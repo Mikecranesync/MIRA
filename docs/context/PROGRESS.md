@@ -18067,4 +18067,57 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 **Working tree:**
 - M docs/context/PROGRESS.md
 **Next:** _set by next session_
+
+### 2026-05-27 17:48 UTC — `chore/promo-director-refresh-2026-05-27`
+**Last commit:** f623393 chore: session stop-hook log append 2026-05-27
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/commands/staging-to-prod-fix-2026-05-21.md
+- .claude/rules/codegraph-usage.md
+- .claude/rules/uns-confirmation-gate.md
+- .claude/settings.json
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .claude/skills/mira-industrial-safety/SKILL.md
+- .claude/skills/mira-platform/SKILL.md
+- .claude/skills/mira-uns-architecture/SKILL.md
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .githooks/post-checkout
+- .githooks/post-merge
+- .githooks/pre-commit
+- .github/baselines/mira-bench.json
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/apply-seeds.yml
+- .github/workflows/ci.yml
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-27 17:48 UTC — `chore/promo-director-refresh-2026-05-27`
+**Last commit:** f623393 chore: session stop-hook log append 2026-05-27
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/commands/staging-to-prod-fix-2026-05-21.md
+- .claude/rules/codegraph-usage.md
+- .claude/rules/uns-confirmation-gate.md
+- .claude/settings.json
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .claude/skills/mira-industrial-safety/SKILL.md
+- .claude/skills/mira-platform/SKILL.md
+- .claude/skills/mira-uns-architecture/SKILL.md
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .githooks/post-checkout
+- .githooks/post-merge
+- .githooks/pre-commit
+- .github/baselines/mira-bench.json
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/apply-seeds.yml
+- .github/workflows/ci.yml
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
