@@ -8,6 +8,9 @@ mira_copy/outputs/*
 .worktrees/
 .claude/scratchpad/
 
+# Auto-log target for .claude/hooks/stop.sh — per-machine session history
+docs/context/PROGRESS.local.md
+
 # Skill eval workspaces (skill-creator iteration runs; rebuilt locally per session)
 .claude/skills/*-workspace/
 
