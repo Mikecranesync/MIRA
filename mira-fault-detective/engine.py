@@ -22,7 +22,6 @@ import time
 from typing import Optional
 
 import aiomqtt
-
 import rules
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()

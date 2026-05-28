@@ -30,7 +30,6 @@ def push(flow_path: str, base: str = "http://localhost:1880") -> None:
         print(f"could not reach Node-RED at {base}: {e}", file=sys.stderr)
         sys.exit(1)
 
-    existing_ids = {n["id"] for n in existing}
     new_ids = {n["id"] for n in new_flows}
 
     # Drop any nodes from existing that share ids with new (replacement) and any
