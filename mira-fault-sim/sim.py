@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import time
 from contextlib import asynccontextmanager
@@ -84,6 +85,12 @@ class SimState:
     vision_object_present: bool = False
     vision_object_motion: bool = False
 
+    # GS10 VFD DC bus voltage (register 0x2105 / 8453). Healthy ~325 V DC,
+    # 0 V when VFD is powered down. Real value comes from Node-RED Modbus
+    # ingest in production; this is a demo stand-in so the HMI gauge has
+    # something live to render.
+    vfd_dc_bus_v: float = 325.0
+
     waiting_on: str = "nothing"
 
 
@@ -117,6 +124,9 @@ def _apply_mode(s: SimState, t: float) -> None:
     s.fuse_f3_ok = True
     s.vision_object_present = vis_pres
     s.vision_object_motion = vis_motion
+    # Slow ripple around 325 V keeps the DC bus gauge alive without looking
+    # synthetic. Modes below can override to 0 V if they kill VFD power.
+    s.vfd_dc_bus_v = 325.0 + math.sin((t - s.started_ts) * 0.7) * 8.0
     s.waiting_on = "nothing"
 
     m = s.mode
@@ -222,6 +232,7 @@ async def _publish_state(client: aiomqtt.Client, s: SimState) -> None:
         (f"{base}/power/fuse_f3/status", _stamp("ok" if s.fuse_f3_ok else "blown")),
         (f"{base}/vision/zone2/object_present", _stamp(s.vision_object_present)),
         (f"{base}/vision/zone2/object_motion", _stamp(s.vision_object_motion)),
+        (f"{base}/vfd/vfd101/dc_bus", _stamp(round(s.vfd_dc_bus_v, 1))),
         (f"{base}/state/waiting_on", _stamp(s.waiting_on)),
         (f"{base}/sim/active_mode", _stamp(s.mode)),
     ]
@@ -300,6 +311,7 @@ def get_state():
         "fuse_f2_ok": SIM.fuse_f2_ok,
         "fuse_f3_ok": SIM.fuse_f3_ok,
         "vision": {"present": SIM.vision_object_present, "motion": SIM.vision_object_motion},
+        "vfd": {"dc_bus_v": round(SIM.vfd_dc_bus_v, 1)},
     }
 
 
