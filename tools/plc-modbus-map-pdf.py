@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the Micro820 v4.1.9 Modbus mapping reference PDF.
 
-The Modbus server map (`plc/MbSrvConf_v3.xml`) doesn't auto-deploy with the
+The Modbus server map (`plc/MbSrvConf_v4.xml`) doesn't auto-deploy with the
 ladder program — it has to be entered separately in Connected Components
 Workbench (CCW). This tool prints the exact rows you type, in CCW order,
 so you can match it against a paper trail.
@@ -80,7 +80,7 @@ HOLDING_REGISTERS = [
     ("400114", "conv_state",       "Int", "enum",           "0=IDLE 1=STARTING 2=RUNNING 3=STOPPING 4=FAULT"),
     ("400115", "vfd_cmd_word",     "Int", "enum",           "1=STOP 18=FWD+RUN 20=REV+RUN 7=RESET"),
     ("400116", "vfd_freq_setpoint", "Int", "Hz x 10",       "Written from HMI / Modbus, sent to VFD reg 0x2001"),
-    ("400117", "vfd_poll_step",    "Int", "1..4",           "1=read 2=cmd 3=freq 4=fault_reset"),
+    ("400117", "vfd_poll_step",    "Int", "1..5",           "1=read 2=cmd 3=freq 4=fault_reset 5=status_word"),
 ]
 
 WIRING = [
@@ -165,7 +165,7 @@ def build(output_path: str) -> None:
     story.append(Paragraph(
         f"Connected Components Workbench data-entry sheet. "
         f"Generated {date.today().isoformat()} from "
-        f"<font face='Courier'>plc/MbSrvConf_v3.xml</font> and "
+        f"<font face='Courier'>plc/MbSrvConf_v4.xml</font> and "
         f"<font face='Courier'>plc/live_monitor.py</font>.",
         MUTED))
     story.append(Spacer(1, 12))
@@ -235,7 +235,7 @@ def build(output_path: str) -> None:
     story.append(Paragraph(
         "<i>This sheet is generated; do not hand-edit. Source: "
         "tools/plc-modbus-map-pdf.py. If the ladder gains a new variable, "
-        "add it to plc/MbSrvConf_v3.xml AND to this generator's tables, "
+        "add it to plc/MbSrvConf_v4.xml AND to this generator's tables, "
         "then re-run.</i>",
         MUTED))
 

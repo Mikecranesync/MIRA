@@ -7,7 +7,8 @@ as a plain XML file inside the project directory:
     <ProjectDir>/Controller/Controller/MbSrvConf.xml
 
 Editing it in the GUI is just typing into that file. So we skip the GUI
-entirely: back up whatever's there, drop in `plc/MbSrvConf_v3.xml`, and
+entirely: back up whatever's there, drop in `plc/MbSrvConf_v4.xml`
+(22 coils + 17 holding registers, matching the v4.1.9 ladder), and
 the next time CCW opens the project the mapping is fully populated.
 
 Usage (run on the PLC laptop, where CCW lives):
@@ -22,8 +23,8 @@ Usage (run on the PLC laptop, where CCW lives):
     # dry-run (show what would change, don't write)
     python plc/deploy_modbus_map.py --auto --dry-run
 
-    # use a different source XML
-    python plc/deploy_modbus_map.py --auto --source plc/MbSrvConf_v4.xml
+    # use a different source XML (e.g. the older v3 map)
+    python plc/deploy_modbus_map.py --auto --source plc/MbSrvConf_v3.xml
 
 After it runs:
 
@@ -51,7 +52,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-DEFAULT_SOURCE = "plc/MbSrvConf_v3.xml"
+DEFAULT_SOURCE = "plc/MbSrvConf_v4.xml"
 TARGET_RELATIVE = Path("Controller") / "Controller" / "MbSrvConf.xml"
 COMMON_PARENTS = [
     Path.home() / "Documents" / "CCW",
