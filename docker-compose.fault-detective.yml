@@ -13,6 +13,8 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2.0
     container_name: mira-mosquitto
+    mem_limit: 128m
+    memswap_limit: 128m
     ports:
       - "1883:1883"
     volumes:
@@ -33,6 +35,8 @@ services:
     build:
       context: ./mira-fault-sim
     container_name: mira-fault-sim
+    mem_limit: 256m
+    memswap_limit: 256m
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: "1883"
@@ -58,6 +62,8 @@ services:
     build:
       context: ./mira-fault-detective
     container_name: mira-fault-detective
+    mem_limit: 256m
+    memswap_limit: 256m
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: "1883"
